@@ -43,7 +43,7 @@ Files created by this plan, and the single responsibility each one owns:
 | `frontend/app/components/monitoring/AssociateClientsModal.vue` | The candidate picker and the three ways to associate. |
 | `frontend/app/components/monitoring/MessageDetail.vue` | The consent step and the single call to `readMessage`. |
 | `frontend/app/pages/monitoring/termos.vue` | The office's authorization term. |
-| `frontend/app/pages/monitoring/execucoes.vue` | The sync-run list. |
+| `frontend/app/pages/monitoring/execucoes/index.vue` | The sync-run list. |
 | `frontend/app/pages/monitoring/execucoes/[id].vue` | One run's per-client items and the re-sync action. |
 | `frontend/app/pages/admin/serpro.vue` | The platform credential, its metadata and the connectivity test. |
 
@@ -2604,7 +2604,9 @@ There is **no upload of a signed document** and no button inviting the office to
 
 - [ ] **Step 2: The runs list**
 
-`app/pages/monitoring/execucoes.vue`: one `useAsyncData('serpro-sync-runs', () => syncRuns())` with `getCachedData: () => undefined`, the same four-branch ladder, and a `UTable` of `state` / `total` / `synchronized` / `skipped` / `failed` / `finished_at`, where every state label, colour and icon comes from `serproRunStatePresentation` and every date from `formatMonitoringDate`.
+`app/pages/monitoring/execucoes/index.vue`: one `useAsyncData('serpro-sync-runs', () => syncRuns())` with `getCachedData: () => undefined`, the same four-branch ladder, and a `UTable` of `state` / `total` / `synchronized` / `skipped` / `failed` / `finished_at`, where every state label, colour and icon comes from `serproRunStatePresentation` and every date from `formatMonitoringDate`.
+
+The file is `execucoes/index.vue`, **not** `execucoes.vue`. Nuxt nests a `pages/x.vue` against a `pages/x/` directory, so a sibling `execucoes.vue` with no `<NuxtPage />` inside it would swallow `/monitoring/execucoes/1` and render the list there instead of the run. A directory with an `index.vue` is the house shape, and it is the only one of the two that lets the `[id]` page resolve.
 
 - [ ] **Step 3: The run detail**
 
@@ -2622,7 +2624,7 @@ Run: `cd frontend && pnpm dev`, then open `/monitoring/termos`, `/monitoring/exe
 - [ ] **Step 5: Commit**
 
 ```bash
-cd frontend && git add app/pages/monitoring/termos.vue app/pages/monitoring/execucoes.vue 'app/pages/monitoring/execucoes/[id].vue'
+cd frontend && git add app/pages/monitoring/termos.vue app/pages/monitoring/execucoes/index.vue 'app/pages/monitoring/execucoes/[id].vue'
 git commit -m "feat(monitoring): terms and sync run screens"
 ```
 
