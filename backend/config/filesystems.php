@@ -55,6 +55,16 @@ return [
             'report' => true,
         ],
 
+        // XML de documento fiscal de terceiro: nome, endereço, CPF/CNPJ e
+        // `infCpl`. Nunca servido — só por download autenticado.
+        'fiscal' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/fiscal'),
+            'serve' => false,
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
