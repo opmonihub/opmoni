@@ -284,9 +284,14 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         // The guide is not read from `fields`: it is derived from the
         // assessment periods already synchronized for this declaration, so the
         // page can say which period it belongs to, when it was issued and
-        // whether it was paid without a second provider call. `due_on` stays
-        // declared as the declaration's own deadline, which is a different
-        // deadline from the guide's.
+        // whether it was paid without a second provider call.
+        //
+        // Two deadlines are declared and they come from two different fields:
+        // `due_on` is the row's own, `guia_vencimento` is the period's `due_on`.
+        // `MonitoringAssessmentPeriod` does not say which document the latter
+        // belongs to — only that the assessment period carries a deadline — so
+        // nothing here claims it is a different document from the row's, and the
+        // column keeps its id and header because the contract is fixed.
         slug: 'declaracoes/pgdas',
         label: 'PGDAS',
         icon: 'i-lucide-file-spreadsheet',

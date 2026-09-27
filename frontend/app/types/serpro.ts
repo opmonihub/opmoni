@@ -88,10 +88,14 @@ export interface MonitoringClient {
   /**
    * The assessment periods behind the guide, from already synchronized data.
    * Read for the collection-slip columns through `latestSlipFor` — no extra
-   * provider call. A row with none renders the em dash, which is a claim about
-   * the data and not a claim that no guide exists.
+   * provider call.
+   *
+   * `| null` because the API does not send it yet, and a required annotation
+   * would assert a runtime shape that does not exist — the same convention as
+   * `MonitoringObligationSummary.progress`. A row with none renders the em dash,
+   * which is a claim about the data and not a claim that no guide exists.
    */
-  periods: MonitoringAssessmentPeriod[]
+  periods: MonitoringAssessmentPeriod[] | null
   /** Caixas Postais rows are messages; reading one is a legal act (D19). */
   message: MonitoringMessageStub | null
 }
@@ -114,6 +118,14 @@ export interface MonitoringAssessmentPeriod {
   rectified: boolean
   slip_number: string | null
   slip_issued_at: string | null
+  /**
+   * The deadline the **assessment period** carries — the date the declaration
+   * for it is due.
+   *
+   * NOT the guide's payment due date: nothing in this shape says which document
+   * that date belongs to, so the PGDAS column reading it must not claim it is
+   * one. It is a deadline attached to the period, read from synchronized data.
+   */
   due_on: string | null
   slip_paid: boolean | null
 }
