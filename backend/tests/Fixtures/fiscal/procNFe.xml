@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<procNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">
+  <NFe>
+    <infNFe versao="4.00" Id="NFe35220499999999999999550010020000001240556600">
+      <ide>
+        <cUF>35</cUF>
+        <cNF>12345678</cNF>
+        <natOp>VENDA DE MERCADORIA</natOp>
+        <mod>55</mod>
+        <serie>1</serie>
+        <nNF>123</nNF>
+        <dhEmi>2022-04-04T11:54:49-03:00</dhEmi>
+        <tpNF>1</tpNF>
+        <idDest>1</idDest>
+        <cMunFG>3550308</cMunFG>
+        <tpImp>1</tpImp>
+        <tpEmis>1</tpEmis>
+        <cDV>0</cDV>
+        <tpAmb>1</tpAmb>
+        <finNFe>1</finNFe>
+        <indFinal>0</indFinal>
+        <indPres>1</indPres>
+        <procEmi>0</procEmi>
+        <verProc>opmoni-1.0</verProc>
+      </ide>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>SUPERMERCADO EXEMPLO LTDA</xNome>
+        <xFant>SUPERMERCADO EXEMPLO</xFant>
+        <enderEmit>
+          <xLgr>RUA EXEMPLO</xLgr>
+          <nro>1000</nro>
+          <xBairro>CENTRO</xBairro>
+          <cMun>3550308</cMun>
+          <UF>SP</UF>
+          <CEP>01001000</CEP>
+          <cPais>1058</cPais>
+          <xPais>BRASIL</xPais>
+        </enderEmit>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <dest>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>DISTRIBUIDORA COMERCIO LTDA</xNome>
+        <enderDest>
+          <xLgr>AVENIDA EXEMPLO</xLgr>
+          <nro>250</nro>
+          <xBairro>INDUSTRIAL</xBairro>
+          <cMun>3550308</cMun>
+          <UF>SP</UF>
+          <CEP>04578000</CEP>
+          <cPais>1058</cPais>
+          <xPais>BRASIL</xPais>
+        </enderDest>
+        <indIEDest>9</indIEDest>
+        <IE>110042490114</IE>
+      </dest>
+      <total>
+        <ICMSTot>
+          <vBC>620.00</vBC>
+          <vICMS>93.00</vICMS>
+          <vICMSDeson>0.00</vICMSDeson>
+          <vFCP>0.00</vFCP>
+          <vFCPSTRet>0.00</vFCPSTRet>
+          <vProd>620.00</vProd>
+          <vFrete>0.00</vFrete>
+          <vSeg>0.00</vSeg>
+          <vDesc>0.00</vDesc>
+          <vII>0.00</vII>
+          <vIPI>0.00</vIPI>
+          <vIPIDevol>0.00</vIPIDevol>
+          <vPIS>10.16</vPIS>
+          <vCOFINS>59.34</vCOFINS>
+          <vOutro>0.00</vOutro>
+          <vNF>710.00</vNF>
+        </ICMSTot>
+      </total>
+      <transp>
+        <modFrete>9</modFrete>
+      </transp>
+      <pag>
+        <detPag>
+          <indPag>1</indPag>
+          <tPag>15</tPag>
+          <vPag>710.00</vPag>
+        </detPag>
+      </pag>
+    </infNFe>
+  </NFe>
+  <protNFe versao="4.00">
+    <infProt Id="ID352204999999999999991550010020000001240556600">
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS20220404115602</verAplic>
+      <chNFe>35220499999999999999550010020000001240556600</chNFe>
+      <dhRecbto>2022-04-04T11:56:02-03:00</dhRecbto>
+      <nProt>135220000000123</nProt>
+      <digVal>L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso da NF-e</xMotivo>
+    </infProt>
+  </protNFe>
+</procNFe>

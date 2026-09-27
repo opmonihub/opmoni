@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTe>
+    <infCte versao="4.00">
+      <chCTe>35220799999999999999570010000001231123456786</chCTe>
+      <dhRecbto>2022-07-16T12:31:00-03:00</dhRecbto>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <rem>
+        <xNome>REMETENTE EXEMPLO LTDA</xNome>
+        <vPrest>1500.00</vPrest>
+        <vTPrest>1500.00</vTPrest>
+        <vRec>0.00</vRec>
+      </rem>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+    </infCte>
+  </CTe>
+</cteProc>

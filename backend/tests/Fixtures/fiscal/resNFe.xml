@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+  <chNFe>35220499999999999999550010020000001240556600</chNFe>
+  <CNPJ>99999999999999</CNPJ>
+  <xNome>SUPERMERCADO EXEMPLO LTDA</xNome>
+  <IE>110042490114</IE>
+  <dhEmi>2022-04-04T11:54:49-03:00</dhEmi>
+  <vNF>710.00</vNF>
+  <digVal>L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=</digVal>
+</resNFe>
