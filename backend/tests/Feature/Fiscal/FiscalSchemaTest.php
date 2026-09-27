@@ -9,9 +9,13 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
+use App\Services\Fiscal\Capture\FiscalXmlPath;
+use App\Tenant\CurrentTenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 class FiscalSchemaTest extends TestCase
@@ -45,10 +49,49 @@ class FiscalSchemaTest extends TestCase
         $account = Account::factory()->create();
         $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
 
-        FiscalDocument::factory()->create($this->documentAttributes($account, $client, '1'));
-        FiscalDocument::factory()->create($this->documentAttributes($account, $client, '2'));
+        // `event_id` fica de fora nos dois inserts: o valor gravado é o default
+        // do banco, não um valor escolhido pelo teste.
+        DB::table('fiscal_documents')->insert($this->rawDocument($account, $client, '1'));
+        DB::table('fiscal_documents')->insert($this->rawDocument($account, $client, '2'));
 
-        $this->assertSame(2, FiscalDocument::count());
+        $this->assertSame(2, FiscalDocument::withoutGlobalScope('account')->count());
+
+        $eventIds = DB::table('fiscal_documents')->orderBy('nsu')->pluck('event_id');
+
+        // String vazia, não `null`: é esse valor não-nulo que a restrição
+        // única consegue comparar.
+        $this->assertSame(['', ''], $eventIds->all());
+    }
+
+    public function test_duplicate_document_relying_on_the_default_event_id_is_rejected(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        DB::table('fiscal_documents')->insert($this->rawDocument($account, $client, '1'));
+
+        $this->expectException(QueryException::class);
+
+        // Mesma chave, mesmo default. Se `event_id` fosse nullable, as duas
+        // linhas carregariam `NULL` e o Postgres — onde `NULL != NULL` — aceitaria
+        // as duas: a unicidade evaporaria justamente nos documentos comuns,
+        // que são os que não têm evento.
+        DB::table('fiscal_documents')->insert($this->rawDocument($account, $client, '1'));
+    }
+
+    public function test_event_id_null_is_refused_by_the_database(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        $this->expectException(QueryException::class);
+
+        // `null` explícito, não a ausência da coluna: a ausência cairia no
+        // default `''` e o `NOT NULL` nem seria exercitado.
+        DB::table('fiscal_documents')->insert([
+            ...$this->rawDocument($account, $client, '1'),
+            'event_id' => null,
+        ]);
     }
 
     public function test_event_and_document_share_an_access_key(): void
@@ -82,6 +125,47 @@ class FiscalSchemaTest extends TestCase
         ]);
     }
 
+    public function test_conta_nao_enxerga_documento_nem_cursor_de_outra(): void
+    {
+        $conta = Account::factory()->create();
+        $outra = Account::factory()->create();
+
+        resolve(CurrentTenant::class)->accountId = $conta->getKey();
+
+        $cliente = Client::factory()->individual()->create(['account_id' => $conta->getKey()]);
+        $documento = FiscalDocument::factory()->create(['client_id' => $cliente->getKey()]);
+        $cursor = FiscalCursor::factory()->create(['client_id' => $cliente->getKey()]);
+
+        $clienteEstrangeiro = Client::factory()->individual()->create(['account_id' => $outra->getKey()]);
+        $documentoEstrangeiro = FiscalDocument::factory()->create([
+            'account_id' => $outra->getKey(),
+            'client_id' => $clienteEstrangeiro->getKey(),
+        ]);
+        $cursorEstrangeiro = FiscalCursor::factory()->create([
+            'account_id' => $outra->getKey(),
+            'client_id' => $clienteEstrangeiro->getKey(),
+        ]);
+
+        $this->assertSame($outra->getKey(), $documentoEstrangeiro->account_id);
+        $this->assertSame($outra->getKey(), $cursorEstrangeiro->account_id);
+
+        resolve(CurrentTenant::class)->accountId = $conta->getKey();
+
+        $this->assertSame([$documento->getKey()], FiscalDocument::query()->pluck('id')->all());
+        $this->assertSame([$cursor->getKey()], FiscalCursor::query()->pluck('id')->all());
+        $this->assertNull(FiscalDocument::find($documentoEstrangeiro->getKey()));
+        $this->assertNull(FiscalCursor::find($cursorEstrangeiro->getKey()));
+
+        // A linha estrangeira existe de verdade: quem esconde é o escopo global
+        // de conta, não um insert que não aconteceu.
+        $this->assertTrue(
+            FiscalDocument::withoutGlobalScope('account')->whereKey($documentoEstrangeiro->getKey())->exists()
+        );
+        $this->assertTrue(
+            FiscalCursor::withoutGlobalScope('account')->whereKey($cursorEstrangeiro->getKey())->exists()
+        );
+    }
+
     public function test_fiscal_disk_is_private(): void
     {
         $this->assertFalse(config('filesystems.disks.fiscal.serve'));
@@ -90,10 +174,9 @@ class FiscalSchemaTest extends TestCase
         Storage::disk('fiscal')->delete('probe.txt');
     }
 
-    public function test_fiscal_disk_root_is_outside_the_public_directory(): void
+    public function test_fiscal_disk_root_is_not_under_public_directory(): void
     {
         $this->assertFalse(config('filesystems.disks.fiscal.serve'));
-        $this->assertStringStartsWith(storage_path('app/private'), config('filesystems.disks.fiscal.root'));
         $this->assertStringNotContainsString('public', config('filesystems.disks.fiscal.root'));
     }
 
@@ -140,6 +223,37 @@ class FiscalSchemaTest extends TestCase
         $this->assertNotNull($event->evento_ocorrido_em_at);
     }
 
+    public function test_fiscal_xml_path_format_is_stable(): void
+    {
+        $chave = str_repeat('3', 44);
+
+        $this->assertSame("7/9/{$chave}-documento.xml", FiscalXmlPath::for(7, 9, $chave));
+        $this->assertSame("7/9/{$chave}-documento.xml", FiscalXmlPath::for(7, 9, $chave, ''));
+        $this->assertSame("7/9/{$chave}-110111.xml", FiscalXmlPath::for(7, 9, $chave, '110111'));
+    }
+
+    public function test_storage_path_follows_the_shared_fiscal_xml_path_contract(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        $document = FiscalDocument::factory()->create(['client_id' => $client->getKey()]);
+        $event = FiscalDocument::factory()->event()->create(['client_id' => $client->getKey()]);
+
+        // Sem esta igualdade, a factory pode escrever num caminho e o download
+        // ler outro: os dois estariam coerentes consigo mesmos e nenhum teste
+        // perceberia a divergência da produção.
+        $this->assertSame(
+            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $document->chave_acesso, ''),
+            $document->storage_path,
+        );
+
+        $this->assertSame(
+            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $event->chave_acesso, '110111'),
+            $event->storage_path,
+        );
+    }
+
     public function test_stored_xml_state_puts_the_payload_on_the_fiscal_disk(): void
     {
         $document = FiscalDocument::factory()->withStoredXml()->create();
@@ -151,6 +265,26 @@ class FiscalSchemaTest extends TestCase
         $this->assertStringContainsString('<nfeProc', $bytes);
         $this->assertSame(hash('sha256', $bytes), $document->sha256);
         $this->assertSame(strlen($bytes), $document->xml_bytes);
+    }
+
+    public function test_stored_xml_state_refuses_to_write_when_fiscal_disk_is_not_faked(): void
+    {
+        // Desfaz o fake do setUp: o disco volta a resolver para a raiz real.
+        app('filesystem')->forgetDisk('fiscal');
+
+        $before = Storage::disk('fiscal')->allFiles();
+
+        try {
+            FiscalDocument::factory()->withStoredXml()->create();
+            $this->fail('withStoredXml() deveria recusar gravar no disco fiscal de verdade.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString("Storage::fake('fiscal')", $e->getMessage());
+        }
+
+        // Falhou antes do `put`: nenhum XML de terceiro foi parar no `storage/`
+        // da máquina de desenvolvimento, e nada foi persistido.
+        $this->assertSame($before, Storage::disk('fiscal')->allFiles());
+        $this->assertSame(0, FiscalDocument::count());
     }
 
     /**
@@ -171,6 +305,37 @@ class FiscalSchemaTest extends TestCase
             'model' => FiscalModel::Nfe,
             'chave_acesso' => str_pad($nsu, 44, '0', STR_PAD_LEFT),
             'nsu' => (int) $nsu,
+        ];
+    }
+
+    /**
+     * Linha crua de `fiscal_documents`, com `event_id` deliberadamente ausente
+     * para o default do banco agir.
+     *
+     * Inserção por `DB::table` de propósito, e não pelo model: o model e a
+     * factory preenchem `event_id` sempre, então só um insert cru deixa o
+     * default entrar. Se alguém "simplificar" estes testes para chamadas de
+     * model, a garantia some — e é exatamente a garantia que a coluna
+     * `NOT NULL` default `''` existe para dar.
+     *
+     * @return array<string, mixed>
+     */
+    private function rawDocument(Account $account, Client $client, string $nsu): array
+    {
+        $chave = str_pad($nsu, 44, '0', STR_PAD_LEFT);
+
+        return [
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::NfeDistribuicao->value,
+            'model' => FiscalModel::Nfe->value,
+            'kind' => FiscalKind::Document->value,
+            'chave_acesso' => $chave,
+            'nsu' => (int) $nsu,
+            'storage_path' => FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), $chave),
+            'sha256' => hash('sha256', $chave),
+            'xml_bytes' => 10,
+            'captured_at' => now(),
         ];
     }
 }

@@ -8,9 +8,11 @@ use App\Enums\FiscalSource;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalDocument;
+use App\Services\Fiscal\Capture\FiscalXmlPath;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * @extends Factory<FiscalDocument>
@@ -21,9 +23,10 @@ class FiscalDocumentFactory extends Factory
      * Define the model's default state.
      *
      * `storage_path`, `sha256` e `xml_bytes` não são nullable no schema, então
-     * o estado padrão já devolve os três preenchidos — com um caminho derivado
-     * da conta e do cliente, mas sem gravar arquivo nenhum. Quem precisa do
-     * XML de verdade no disco `fiscal` usa `withStoredXml()`.
+     * o estado padrão já devolve os três preenchidos — com o caminho derivado
+     * por `FiscalXmlPath`, o mesmo contrato do writer de produção, mas sem
+     * gravar arquivo nenhum. Quem precisa do XML de verdade no disco `fiscal`
+     * usa `withStoredXml()`.
      *
      * @return array<string, mixed>
      */
@@ -79,6 +82,8 @@ class FiscalDocumentFactory extends Factory
     public function withStoredXml(?string $xml = null): static
     {
         return $this->afterMaking(function (FiscalDocument $document) use ($xml): void {
+            self::assertFiscalDiskIsFaked();
+
             $contents = $xml ?? self::nfeProc($document);
 
             Storage::disk('fiscal')->put($document->storage_path, $contents);
@@ -95,7 +100,12 @@ class FiscalDocumentFactory extends Factory
                 $document->account_id = $document->client->account_id;
             }
 
-            $document->storage_path = self::storagePath($document);
+            $document->storage_path = FiscalXmlPath::for(
+                (int) $document->account_id,
+                (int) $document->client_id,
+                (string) $document->chave_acesso,
+                (string) $document->event_id,
+            );
         })->afterCreating(function (FiscalDocument $document): void {
             if ($document->client instanceof Client && $document->account_id !== $document->client->account_id) {
                 $document->account_id = $document->client->account_id;
@@ -104,15 +114,26 @@ class FiscalDocumentFactory extends Factory
         });
     }
 
-    private static function storagePath(FiscalDocument $document): string
+    /**
+     * O XML gravado tem cara de documento fiscal de terceiro — nome,
+     * endereço, CPF/CNPJ. Um teste que esqueça `Storage::fake('fiscal')`
+     * escreveria esse conteúdo no `storage/` de verdade da máquina de
+     * desenvolvimento, e o teste continuaria verde. A factory não pode
+     * reconfigurar o container para se proteger, então falha na hora.
+     */
+    private static function assertFiscalDiskIsFaked(): void
     {
-        return sprintf(
-            '%d/%d/%s-%s.xml',
-            (int) $document->account_id,
-            (int) $document->client_id,
-            $document->chave_acesso,
-            $document->event_id !== '' ? $document->event_id : 'documento'
-        );
+        $normalise = fn (string $path): string => rtrim(str_replace('\\', '/', $path), '/');
+
+        $configured = $normalise((string) config('filesystems.disks.fiscal.root'));
+        $resolved = $normalise(Storage::disk('fiscal')->path(''));
+
+        if ($resolved === $configured) {
+            throw new RuntimeException(
+                'withStoredXml() exige Storage::fake(\'fiscal\') no setUp(): '
+                .'sem ele o XML fiscal seria gravado em '.$configured.'.'
+            );
+        }
     }
 
     /**
