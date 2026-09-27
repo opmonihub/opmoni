@@ -28,9 +28,9 @@ final class DfeResponseParser
         }
 
         $xpath = new DOMXPath($dom);
-        $body = $xpath->query('//*[local-name()="retDistDFeInt"]')->item(0);
+        $body = XmlQuery::first($xpath, 'retDistDFeInt');
 
-        if (! $body instanceof DOMElement) {
+        if ($body === null) {
             throw new RuntimeException('A resposta do serviço não contém retDistDFeInt.');
         }
 
@@ -50,11 +50,7 @@ final class DfeResponseParser
     {
         $entries = [];
 
-        foreach ($xpath->query('.//*[local-name()="docZip"]', $body) ?: [] as $node) {
-            if (! $node instanceof DOMElement) {
-                continue;
-            }
-
+        foreach (XmlQuery::all($xpath, 'docZip', $body) as $node) {
             $entries[] = new DfeEntry(
                 nsu: (int) $node->getAttribute('NSU'),
                 schema: $node->getAttribute('schema'),
@@ -67,8 +63,6 @@ final class DfeResponseParser
 
     private function text(DOMXPath $xpath, DOMElement $scope, string $localName): ?string
     {
-        $node = $xpath->query('.//*[local-name()="'.$localName.'"]', $scope)->item(0);
-
-        return $node?->textContent;
+        return XmlQuery::first($xpath, $localName, $scope)?->textContent;
     }
 }

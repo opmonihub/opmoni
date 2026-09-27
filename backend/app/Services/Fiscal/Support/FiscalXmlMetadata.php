@@ -6,7 +6,6 @@ use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use Carbon\CarbonImmutable;
 use DOMDocument;
-use DOMElement;
 use DOMXPath;
 use RuntimeException;
 use Throwable;
@@ -14,10 +13,19 @@ use Throwable;
 final class FiscalXmlMetadata
 {
     /**
-     * Modelos que ocupam as posições 21-22 da chave de acesso: NF-e, CT-e e
-     * NFC-e. Usado só para descartar janelas candidatas do `Id` de um evento.
+     * Tamanho do prefixo que o `Id` de um evento carrega antes da chave: `ID` +
+     * `tpEvento` (6 dígitos), com ou sem o CNPJ do emitente (14 dígitos) no
+     * meio. Nenhuma das duas layouts é assumida — as duas são conferidas
+     * contra o `nSeqEvento` do próprio documento.
      */
-    private const CHAVE_MODELS = ['55', '57', '65'];
+    private const ID_PREFIX_LENGTHS = [6, 20];
+
+    /**
+     * Largura máxima do campo `nSeqEvento` dentro do `Id`, pela tipagem da NT.
+     * É o que separa as duas layouts: na de 52 dígitos a sequência ocupa 1 ou
+     * 2 posições, e na de 66 o prefixo sem o CNPJ deixaria uma sobra de 16.
+     */
+    private const ID_SEQUENCE_MAX_LENGTH = 10;
 
     public function extract(string $xml, FiscalModel $model): FiscalXmlMetadataResult
     {
@@ -36,22 +44,26 @@ final class FiscalXmlMetadata
         $xpath = new DOMXPath($dom);
         $schema = $this->schemaOf($dom);
 
+        $tpEvento = $this->firstText($xpath, ['tpEvento']);
+        $nSeqEvento = $this->firstText($xpath, ['nSeqEvento']);
+
         $chave = $this->firstText($xpath, ['chNFe', 'chCTe'])
-            ?? $this->chaveFromId($xpath)
+            ?? $this->chaveFromId($xpath, $nSeqEvento)
             ?? throw new RuntimeException('O documento capturado não expõe chave de acesso.');
 
         if (! self::isValidChave($chave)) {
             throw new RuntimeException("Chave de acesso com dígito verificador inválido: {$chave}.");
         }
 
-        $tpEvento = $this->firstText($xpath, ['tpEvento']);
+        $this->guardModel($chave, $model);
+
         $isEvent = $tpEvento !== null;
 
         return new FiscalXmlMetadataResult(
             chave: $chave,
             model: $model,
             kind: $isEvent ? FiscalKind::Event : FiscalKind::Document,
-            eventId: $isEvent ? $tpEvento.'-'.($this->firstText($xpath, ['nSeqEvento']) ?? '1') : '',
+            eventId: $isEvent ? $tpEvento.'-'.($nSeqEvento ?? '1') : '',
             schema: $schema,
             emitenteCnpj: $this->firstText($xpath, ['emit/CNPJ', 'prest/CNPJ', 'CNPJ']),
             destinatarioCnpj: $this->firstText($xpath, ['dest/CNPJ', 'toma/CNPJ', 'destinatario/CNPJ']),
@@ -59,6 +71,29 @@ final class FiscalXmlMetadata
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
         );
+    }
+
+    /**
+     * A chave carrega o modelo do documento nas posições 21-22, então ele sai
+     * dali e não de quem chamou. Um `resCTe` entregue ao conector da NF-e é
+     * um documento real e uma etiqueta errada: a unicidade de
+     * `(client_id, chave_acesso, event_id)` não o protegeria, porque a chave é
+     * de outro documento e entraria sem conflito. Recusar aqui é o que impede
+     * que ele seja gravado; a decisão de pular o documento em vez de falhar o
+     * lote é do conector, e este erro é nomeado para que ele possa classificá-lo.
+     */
+    private function guardModel(string $chave, FiscalModel $expected): void
+    {
+        $code = substr($chave, 20, 2);
+        $found = FiscalModel::fromDocumentModel($code);
+
+        if ($found === null) {
+            throw new RuntimeException("Chave de acesso com modelo fora do catálogo ({$code}): {$chave}.");
+        }
+
+        if ($found !== $expected) {
+            throw new RuntimeException("Chave de acesso de {$found->label()} onde se esperava {$expected->label()}: {$chave}.");
+        }
     }
 
     /**
@@ -97,7 +132,7 @@ final class FiscalXmlMetadata
     private function firstText(DOMXPath $xpath, array $paths): ?string
     {
         foreach ($paths as $path) {
-            $node = $xpath->query($this->expressionFor($path))->item(0);
+            $node = XmlQuery::first($xpath, $path);
 
             if ($node !== null && trim($node->textContent) !== '') {
                 return trim($node->textContent);
@@ -108,57 +143,54 @@ final class FiscalXmlMetadata
     }
 
     /**
-     * `emit/CNPJ` vira `//*[local-name()="emit"]/*[local-name()="CNPJ"]`: o
-     * nome local casa em qualquer namespace, mas cada segmento tem de estar
-     * dentro do anterior. Comparar o nome local com a alternativa inteira
-     * (`"emit/CNPJ"`) nunca casaria, e com isso morreria todo caminho por
-     * modelo — `toma` no CT-e, `dest` na NF-e. Os segmentos são literais
-     * desta classe, nunca texto do documento.
+     * A chave não vem em elemento nenhum do evento: ela é a parte do `Id` que
+     * não é `ID`, `tpEvento` nem `nSeqEvento`. O `nSeqEvento` do próprio
+     * documento é a âncora — a chave são os 44 dígitos imediatamente antes
+     * dele — e é ela que decide entre as duas layouts publicadas do `Id` (com
+     * e sem o CNPJ do emitente entre o `tpEvento` e a chave), porque a sobra
+     * de uma não pode parecer a sequência da outra.
+     *
+     * Nenhuma das duas é assumida, e nenhuma janela é testada "até uma
+     * fechar": a chave é a identidade do documento, e uma janela vizinha que
+     * passa no DV (~1,3% das vezes, com o modelo ainda legível) faria o
+     * documento ser gravado sob uma identidade que não existe, sem erro em
+     * lugar nenhum. Layout desconhecido recusa, com o mesmo erro de chave
+     * ausente.
      */
-    private function expressionFor(string $path): string
+    private function chaveFromId(DOMXPath $xpath, ?string $nSeqEvento): ?string
     {
-        $steps = array_map(
-            static fn (string $segment): string => '*[local-name()="'.$segment.'"]',
-            explode('/', $path),
-        );
+        $node = XmlQuery::firstBy($xpath, '//*[@Id]');
 
-        return '//'.implode('/', $steps);
-    }
-
-    /**
-     * O `Id` de um evento é `ID` + `tpEvento` (6) + `CNPJ` (14) + chave (44) +
-     * `nSeqEvento`, então a chave é a janela de 44 dígitos logo após as 20
-     * primeiras; o `Id` de um documento é a chave pura. Os 44 primeiros
-     * dígitos — o que uma expressão gulosa entregaria — carregariam o
-     * `tpEvento` junto e reprovariam no dígito verificador.
-     */
-    private function chaveFromId(DOMXPath $xpath): ?string
-    {
-        $node = $xpath->query('//*[@Id]')->item(0);
-
-        if (! $node instanceof DOMElement) {
-            return null;
-        }
-
-        if (preg_match('/\d+/', $node->getAttribute('Id'), $matches) !== 1) {
+        if ($node === null || preg_match('/\d+/', $node->getAttribute('Id'), $matches) !== 1) {
             return null;
         }
 
         $digits = $matches[0];
 
+        // O `Id` de um documento é a chave pura; o de um evento nunca é.
         if (strlen($digits) === 44) {
             return $digits;
         }
 
-        // O `Id` do evento põe `tpEvento` (e, na NT, o CNPJ) antes da chave e
-        // `nSeqEvento` depois, em largura variável — fixar um deslocamento
-        // erra. A chave é a última janela antes da sequência, então as janelas
-        // são varridas do fim para o começo; cada uma é conferida pelo modelo
-        // (`mod` nas posições 21-22) e pelo DV antes de ser aceita.
-        for ($offset = strlen($digits) - 44; $offset >= 0; $offset--) {
-            $candidate = substr($digits, $offset, 44);
+        if ($nSeqEvento === null) {
+            return null;
+        }
 
-            if (in_array(substr($candidate, 20, 2), self::CHAVE_MODELS, true) && self::isValidChave($candidate)) {
+        foreach (self::ID_PREFIX_LENGTHS as $prefix) {
+            $candidate = substr($digits, $prefix, 44);
+            $sequence = substr($digits, $prefix + 44);
+
+            if (strlen($candidate) !== 44 || $sequence === '' || strlen($sequence) > self::ID_SEQUENCE_MAX_LENGTH) {
+                continue;
+            }
+
+            // A sequência no `Id` é o valor do XML, com ou sem zero à
+            // esquerda — `01` para o `nSeqEvento` 1 que o brief traz.
+            if (ltrim($sequence, '0') !== ltrim($nSeqEvento, '0')) {
+                continue;
+            }
+
+            if (FiscalModel::fromDocumentModel(substr($candidate, 20, 2)) !== null && self::isValidChave($candidate)) {
                 return $candidate;
             }
         }

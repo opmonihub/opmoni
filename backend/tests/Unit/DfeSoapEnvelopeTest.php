@@ -17,6 +17,7 @@ class DfeSoapEnvelopeTest extends TestCase
             cUf: '35',
             fromNsu: 0,
             method: 'nfeDistDFeInteresse',
+            holder: 'nfeDadosMsg',
         );
 
         $this->assertStringContainsString('http://www.w3.org/2003/05/soap-envelope', $envelope);
@@ -39,8 +40,30 @@ class DfeSoapEnvelopeTest extends TestCase
             cUf: '35',
             fromNsu: 42,
             method: 'nfeDistDFeInteresse',
+            holder: 'nfeDadosMsg',
         );
 
         $this->assertStringContainsString('<ultNSU>000000000000042</ultNSU>', $envelope);
+    }
+
+    public function test_takes_the_holder_element_from_the_caller(): void
+    {
+        // O CT-e embrulha o payload em `dfeDadosMsg`. Um literal `nfeDadosMsg`
+        // aqui obrigaria o conector de CT-e a editar a classe que o da NF-e
+        // consome.
+        $envelope = (new DfeSoapEnvelope)->build(
+            serviceNamespace: 'ns',
+            payloadNamespace: 'ns2',
+            version: '1.00',
+            cnpj: '00000000000191',
+            cUf: '35',
+            fromNsu: 0,
+            method: 'cteDistDFeInteresse',
+            holder: 'dfeDadosMsg',
+        );
+
+        $this->assertStringContainsString('<dfeDadosMsg xmlns="ns"><distDFeInt', $envelope);
+        $this->assertStringContainsString('</dfeDadosMsg></cteDistDFeInteresse>', $envelope);
+        $this->assertStringNotContainsString('nfeDadosMsg', $envelope);
     }
 }
