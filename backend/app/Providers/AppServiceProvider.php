@@ -17,6 +17,8 @@ use App\Policies\ProcessPolicy;
 use App\Policies\ProcessTemplatePolicy;
 use App\Policies\SerproMonitoringPolicy;
 use App\Policies\TaskPolicy;
+use App\Services\Fiscal\Contracts\FiscalConnector;
+use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Support\Facades\Gate;
@@ -30,6 +32,11 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(CurrentTenant::class);
+
+        // O contrato resolve para o conector do serviço de Distribution DF-e da
+        // NF-e, que é a única fonte habilitada nesta versão. `bind` e não
+        // `singleton`: o conector é sem estado e quem chama é a fila.
+        $this->app->bind(FiscalConnector::class, NfeDistributionConnector::class);
     }
 
     /**
