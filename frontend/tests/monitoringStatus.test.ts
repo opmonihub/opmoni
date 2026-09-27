@@ -9,6 +9,7 @@ import {
   monitoringSituacaoPresentation,
   serproRunItemStatePresentation,
   serproRunStatePresentation,
+  serproTermGuidance,
   serproTermStatePresentation
 } from '../app/utils/monitoringPresentation.ts'
 import type { AttentionReasonCode, MonitoringCounter, MonitoringSituacao, ObligationCategory, SerproRunItemState, SerproSyncRunState } from '../app/types/serpro.ts'
@@ -115,6 +116,18 @@ describe('run and term vocabulary', () => {
   it('labels every term state', () => {
     for (const state of ['ausente', 'pendente', 'validado', 'autenticado', 'vencido', 'recusado'] as const) {
       assert.ok(serproTermStatePresentation[state].label)
+    }
+  })
+
+  it('names the office as the actor for a lapsed or refused term', () => {
+    assert.doesNotMatch(serproTermGuidance.vencido, /sem nenhuma ação sua|não há nada a fazer/i)
+    assert.doesNotMatch(serproTermGuidance.recusado, /sem nenhuma ação sua|não há nada a fazer/i)
+    assert.match(serproTermGuidance.vencido, /escritório/i)
+  })
+
+  it('gives guidance for every term state', () => {
+    for (const state of ['ausente', 'pendente', 'validado', 'autenticado', 'vencido', 'recusado'] as const) {
+      assert.ok(serproTermGuidance[state].length > 0, `${state} has no guidance`)
     }
   })
 })
