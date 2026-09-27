@@ -28,7 +28,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
   const rows: DropdownMenuItem[] = [
     {
       label: 'Todas as empresas',
-      icon: props.modelValue == null ? 'i-lucide-check' : 'i-lucide-buildings',
+      icon: props.modelValue == null ? 'i-lucide-check' : 'i-lucide-building-2',
       onSelect() {
         emit('update:modelValue', null)
       }
