@@ -34,7 +34,7 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 3.6 Criar `FiscalXmlMetadata` extraindo chave de acesso, emitente, destinatário, valor e datas por modelo, validando o dígito verificador da chave; verificar com teste unitário por modelo contra fixtures de XML reais, incluindo chave com DV inválido
 - [x] 3.7 Criar a comparação de `digVal` entre resumo e documento completo, marcando divergência em vez de descartar; verificar com teste unitário que dois `digVal` iguais marcam íntegro e diferentes marcam divergente
 - [ ] 3.8 Criar a rotina de encoding que detecta Latin-1 antes de converter e preserva os bytes crus para persistência; verificar com teste unitário que acento não vira `?` e que o bruto é mantido
-- [ ] 3.9 Vendorizar o bundle de AC ICP-Brasil e apontar a verificação de TLS para ele com verificação ligada; verificar com teste que a verificação do servidor permanece ativa e que o bundle está versionado
+- [x] 3.9 Vendorizar o bundle de AC ICP-Brasil e apontar a verificação de TLS para ele com verificação ligada; verificar com teste que a verificação do servidor permanece ativa e que o bundle está versionado
 
 > **Ressalva de 3.2, 3.3 e 3.6:** os fixtures em `backend/tests/Fixtures/fiscal/` são sintéticos e
 > estruturalmente realistas, não capturas reais do ambiente nacional. Falta, antes de produção, um par
@@ -43,26 +43,26 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 
 ## 4. Conector de NF-e
 
-- [ ] 4.1 Definir o contrato `FiscalConnector` e os value objects `PullResult` e `PulledDocument`; verificar com teste unitário a construção e a leitura dos value objects
+- [x] 4.1 Definir o contrato `FiscalConnector` e os value objects `PullResult` e `PulledDocument`; verificar com teste unitário a construção e a leitura dos value objects
 - [ ] 4.2 Implementar `NfeDistributionConnector` com a URL do ambiente nacional, versão `1.01` e o payload `distDFeInt`; verificar com teste de contrato usando fixture de resposta real gravada, sem rede
-- [ ] 4.3 Mapear a lista real de rejeições do serviço, sem os códigos que pertencem ao serviço de autorização; verificar com teste unitário que um código inexistente no serviço cai em `Rejected` genérico e não num ramo específico inexistente
-- [ ] 4.4 Tratar `137` e a rejeição de consumo indevido como parada de uma hora, adotando a posição que vem no XML da rejeição; verificar com teste unitário usando fixture do `656` com posição embutida
+- [x] 4.3 Mapear a lista real de rejeições do serviço, sem os códigos que pertencem ao serviço de autorização; verificar com teste unitário que um código inexistente no serviço cai em `Rejected` genérico e não num ramo específico inexistente
+- [x] 4.4 Tratar `137` e a rejeição de consumo indevido como parada de uma hora, adotando a posição que vem no XML da rejeição; verificar com teste unitário usando fixture do `656` com posição embutida
 - [ ] 4.5 Detectar a rejeição de posição à frente do serviço e marcar a posição como exigindo reconciliação sem descartar o valor armazenado; verificar com teste unitário
-- [ ] 4.6 Tratar indisponibilidade do serviço e serviço paralisado como falha retentável, e a rejeição por CNPJ sem correspondência como falha de credencial do cliente; verificar com teste unitário para cada caso
-- [ ] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
+- [x] 4.6 Tratar indisponibilidade do serviço e serviço paralisado como falha retentável, e a rejeição por CNPJ sem correspondência como falha de credencial do cliente; verificar com teste unitário para cada caso
+- [x] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
 
 ## 5. Persistência e execução da captura
 
-- [ ] 5.1 Implementar `FiscalDocumentWriter` com upsert por chave composta, sobrescrevendo o documento repetido e preservando as várias etapas de distribuição da mesma chave; verificar com teste de feature que reprocessar o mesmo lote não cria linhas extras
-- [ ] 5.2 Gravar o XML no disco `fiscal` com hash e tamanho, e storing o corpo bruto; verificar com teste de feature que o arquivo existe, que o hash confere e que o caminho não é servido publicamente
-- [ ] 5.3 Implementar `FiscalCaptureService` que resolve o certificado, respeita o bloqueio, persiste o lote inteiro e só então avança a posição com o valor devolvido; verificar com teste de feature usando conector falso, sem rede
-- [ ] 5.4 Garantir que falha no meio do lote não advance a posição e que os documentos já gravados permanecem; verificar com teste de feature
-- [ ] 5.5 Garantir que cliente sem certificado utilizável, vencido ou sem senha armazenada não faça chamada externa e mantenha a posição; verificar com teste de feature
+- [x] 5.1 Implementar `FiscalDocumentWriter` com upsert por chave composta, sobrescrevendo o documento repetido e preservando as várias etapas de distribuição da mesma chave; verificar com teste de feature que reprocessar o mesmo lote não cria linhas extras
+- [x] 5.2 Gravar o XML no disco `fiscal` com hash e tamanho, e storing o corpo bruto; verificar com teste de feature que o arquivo existe, que o hash confere e que o caminho não é servido publicamente
+- [x] 5.3 Implementar `FiscalCaptureService` que resolve o certificado, respeita o bloqueio, persiste o lote inteiro e só então avança a posição com o valor devolvido; verificar com teste de feature usando conector falso, sem rede
+- [x] 5.4 Garantir que falha no meio do lote não advance a posição e que os documentos já gravados permanecem; verificar com teste de feature
+- [x] 5.5 Garantir que cliente sem certificado utilizável, vencido ou sem senha armazenada não faça chamada externa e mantenha a posição; verificar com teste de feature
 - [ ] 5.6 Criar `CaptureFiscalDocumentsJob` com exclusão por cliente e fonte acima do timeout do worker, e verificar que uma sobreposição não vira duas chamadas concorrentes; verificar com teste de feature
 - [ ] 5.7 Criar o comando `fiscal:capture` e agendá-lo com sobreposição proibida; verificar com `php artisan schedule:list` que a entrada aparece
-- [ ] 5.8 Implementar a checagem de continuidade e impedir a consulta, marcando o cliente como histórico interrompido quando a última captura bem-sucedida ultrapassar a janela; verificar com teste de feature
+- [x] 5.8 Implementar a checagem de continuidade e impedir a consulta, marcando o cliente como histórico interrompido quando a última captura bem-sucedida ultrapassar a janela; verificar com teste de feature
 - [ ] 5.9 Implementar a contabilidade de consultas por chave respeitando o limite horário published, deferindo o restante em vez de consumir nova tentativa; verificar com teste de feature
-- [ ] 5.10 Garantir que nenhuma manifestação do destinatário é enviada em nenhum caminho de código; verificar com teste de feature que a captura não faz chamada ao serviço de eventos
+- [x] 5.10 Garantir que nenhuma manifestação do destinatário é enviada em nenhum caminho de código; verificar com teste de feature que a captura não faz chamada ao serviço de eventos
 
 ## 6. API do módulo
 
