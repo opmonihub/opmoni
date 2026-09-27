@@ -24,6 +24,9 @@ class FiscalContractsTest extends TestCase
             kind: FiscalKind::Document,
             chave: str_repeat('1', 44),
             eventId: '',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
             nsu: 10,
             schema: 'resNFe_v1.01.xsd',
             emissaoAt: null,
@@ -34,6 +37,54 @@ class FiscalContractsTest extends TestCase
         $this->assertSame(FiscalModel::Nfe, $document->model);
         $this->assertSame(10, $document->nsu);
         $this->assertSame('', $document->eventId);
+    }
+
+    public function test_pulled_document_carries_the_three_metadata_columns(): void
+    {
+        // São as três colunas que a camada de parse já extraiu e que a escrita
+        // precisa: atravessam o contrato para ninguém reparsear o XML depois.
+        $document = new PulledDocument(
+            model: FiscalModel::Nfe,
+            kind: FiscalKind::Document,
+            chave: str_repeat('1', 44),
+            eventId: '',
+            emitenteCnpj: '11222333000181',
+            destinatarioCnpj: '99887766000199',
+            valorTotal: '1500.75',
+            nsu: 10,
+            schema: 'procNFe_v1.01.xsd',
+            emissaoAt: null,
+            eventoOcorridoEmAt: null,
+            xml: '<a/>',
+        );
+
+        $this->assertSame('11222333000181', $document->emitenteCnpj);
+        $this->assertSame('99887766000199', $document->destinatarioCnpj);
+        $this->assertSame('1500.75', $document->valorTotal);
+    }
+
+    public function test_pulled_document_metadata_columns_are_null_when_the_xml_has_none(): void
+    {
+        // Caso comum em evento e em resumo: o valor some, e some como nulo — que
+        // é o que a coluna nullable espera, não string vazia nem zero.
+        $document = new PulledDocument(
+            model: FiscalModel::Nfe,
+            kind: FiscalKind::Event,
+            chave: str_repeat('1', 44),
+            eventId: '110110-1',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
+            nsu: 11,
+            schema: 'resEvento_v1.01.xsd',
+            emissaoAt: null,
+            eventoOcorridoEmAt: null,
+            xml: '<a/>',
+        );
+
+        $this->assertNull($document->emitenteCnpj);
+        $this->assertNull($document->destinatarioCnpj);
+        $this->assertNull($document->valorTotal);
     }
 
     public function test_pulled_document_carries_the_xml_and_both_dates(): void
@@ -48,6 +99,9 @@ class FiscalContractsTest extends TestCase
             kind: FiscalKind::Event,
             chave: str_repeat('1', 44),
             eventId: '110110-1',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
             nsu: 11,
             schema: 'procNFe_v1.01.xsd',
             emissaoAt: $emissao,
@@ -110,6 +164,9 @@ class FiscalContractsTest extends TestCase
                 kind: FiscalKind::Document,
                 chave: str_repeat('1', 44),
                 eventId: '',
+                emitenteCnpj: '11222333000181',
+                destinatarioCnpj: '99887766000199',
+                valorTotal: '1500.75',
                 nsu: 198,
                 schema: 'resNFe_v1.01.xsd',
                 emissaoAt: null,
@@ -121,6 +178,9 @@ class FiscalContractsTest extends TestCase
                 kind: FiscalKind::Event,
                 chave: str_repeat('1', 44),
                 eventId: '110110-1',
+                emitenteCnpj: null,
+                destinatarioCnpj: null,
+                valorTotal: null,
                 nsu: 200,
                 schema: 'resEvento_v1.01.xsd',
                 emissaoAt: null,

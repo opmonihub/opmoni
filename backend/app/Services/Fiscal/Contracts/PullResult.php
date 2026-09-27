@@ -10,6 +10,15 @@ use Carbon\CarbonImmutable;
  *
  * A ordem é deliberada e é o que segura a captura contra interrupção: o
  * consumidor grava `documents` primeiro e só depois adota `lastNsu`.
+ *
+ * Rejeição é estado, não exceção. Uma rejeição que bloqueia — `137` de nenhum
+ * documento localizado, `656` de consumo indevido — **volta como resultado**, com
+ * `blockedUntil` preenchido e a posição que a resposta traz, porque o serviço
+ * respondeu: a resposta é "pare uma hora". A exceção (`FiscalException`, criada
+ * com o conector) é para a chamada que não produz resposta alguma: indisponibilidade
+ * do serviço, credencial recusada, CNPJ sem correspondência, certificado
+ * inutilizável, posição à frente. Os dois canais não são redundantes — um diz "a
+ * resposta é esperar", o outro diz "não houve resposta".
  */
 final readonly class PullResult
 {
@@ -24,8 +33,8 @@ final readonly class PullResult
      * @param  bool  $more  o serviço ainda tem posições depois desta, para quem
      *                      quiser continuar sem esperar o próximo agendamento
      * @param  CarbonImmutable|null  $blockedUntil  até quando o cliente não pode
-     *                                              ser consultado de novo, quando
-     *                                              o conector o informa
+     *                                              ser consultado de novo, porque
+     *                                              o serviço mandou esperar
      */
     public function __construct(
         public array $documents,

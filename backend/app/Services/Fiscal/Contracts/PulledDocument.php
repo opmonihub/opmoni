@@ -22,6 +22,13 @@ final readonly class PulledDocument
      * evento, e é o que fecha a chave composta
      * `(client_id, chave, event_id)`.
      *
+     * `emitenteCnpj`, `destinatarioCnpj` e `valorTotal` são as três colunas de
+     * metadado que a camada de parse já extraiu, e atravessam o contrato para
+     * que o `FiscalDocumentWriter` não reparseie `$xml` para preenchê-las: uma
+     * segunda leitura do mesmo XML produziria uma segunda fonte para os mesmos
+     * três valores, na camada que grava. Nulos quando o XML não os traz, que é
+     * o caso comum em evento e em resumo.
+     *
      * `nsu` é a posição desta entrega, não a do documento: resumo, documento
      * completo e evento chegam em posições diferentes e os três coexistem.
      *
@@ -36,6 +43,9 @@ final readonly class PulledDocument
         public FiscalKind $kind,
         public string $chave,
         public string $eventId,
+        public ?string $emitenteCnpj,
+        public ?string $destinatarioCnpj,
+        public ?string $valorTotal,
         public int $nsu,
         public string $schema,
         public ?CarbonImmutable $emissaoAt,
