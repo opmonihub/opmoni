@@ -6,35 +6,40 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 
 ## 1. Credencial do certificado
 
-- [ ] 1.1 Adicionar coluna `password_encrypted` (text, nullable) em `client_certificates` e verificar que `php artisan migrate --force` roda em banco existente sem tocar nas linhas
-- [ ] 1.2 Adicionar `password_encrypted` ao array `#[Fillable]` de `ClientCertificate` e o accessor `certificatePassword(): ?string` com `Crypt::decryptString`, espelhando `SerproConnection::certificatePassword()`; verificar com teste unitário que retorna a senha correta e `null` quando ausente
-- [ ] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
-- [ ] 1.4 Garantir que `ClientCertificateResource` e qualquer `safeMetadata()` jamais exponham `password_encrypted`; verificar com teste de feature `assertJsonMissingPath` espelhando `SerproConnectionTest:24`
-- [ ] 1.5 Ao remover ou substituir um certificado, apagar também a senha armazenada do anterior; verificar com teste de feature que a senha do certificado substituído não é mais descriptografável
-- [ ] 1.6 Criar `ClientCertificateMaterializer` em `app/Services/Fiscal/`, espelhando `SerproCertificateMaterializer`: grava o PFX efêmero, `chmod 0600`, apaga o arquivo e zera a senha no `finally`, inclusive em exceção; verificar com teste unitário que o arquivo não existe depois de sucesso e depois de falha
-- [ ] 1.7 Verificar que duas chamadas concorrentes do mesmo cliente usam arquivos distintos e que uma não lê o material da outra; verificar com teste unitário
+- [x] 1.1 Adicionar coluna `password_encrypted` (text, nullable) em `client_certificates` e verificar que `php artisan migrate --force` roda em banco existente sem tocar nas linhas
+- [x] 1.2 Adicionar `password_encrypted` ao array `#[Fillable]` de `ClientCertificate` e o accessor `certificatePassword(): ?string` com `Crypt::decryptString`, espelhando `SerproConnection::certificatePassword()`; verificar com teste unitário que retorna a senha correta e `null` quando ausente
+- [x] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
+- [x] 1.4 Garantir que `ClientCertificateResource` e qualquer `safeMetadata()` jamais exponham `password_encrypted`; verificar com teste de feature `assertJsonMissingPath` espelhando `SerproConnectionTest:24`
+- [x] 1.5 Ao remover ou substituir um certificado, apagar também a senha armazenada do anterior; verificar com teste de feature que a senha do certificado substituído não é mais descriptografável
+- [x] 1.6 Criar `ClientCertificateMaterializer` em `app/Services/Fiscal/`, espelhando `SerproCertificateMaterializer`: grava o PFX efêmero, `chmod 0600`, apaga o arquivo e zera a senha no `finally`, inclusive em exceção; verificar com teste unitário que o arquivo não existe depois de sucesso e depois de falha
+- [x] 1.7 Verificar que duas chamadas concorrentes do mesmo cliente usam arquivos distintos e que uma não lê o material da outra; verificar com teste unitário
 - [ ] 1.8 Traduzir falha de `openssl_pkcs12_read` por PFX exportado com `-legacy` (RC2) para erro próprio nomeando o cliente, em vez da exceção genérica do OpenSSL; verificar com teste unitário alimentando um PFX RC2
 
 ## 2. Esquema
 
-- [ ] 2.1 Criar migration de `fiscal_documents` com `account_id`, `client_id`, `source`, `model`, `kind`, `chave_acesso`, `event_id` NOT NULL default `''`, `nsu`, `emitente_cnpj`, `destinatario_cnpj`, `valor_total`, `emissao_at`, `evento_ocorrido_em_at`, `storage_path`, `sha256`, `xml_bytes`, `captured_at`, timestamps, e as restrições `UNIQUE (client_id, chave_acesso, event_id)`, `INDEX (client_id, model, nsu)`, `INDEX (account_id, captured_at)`; verificar que a unique rejeita documento duplicado e **aceita** múltiplos documentos sem evento
-- [ ] 2.2 Criar migration de `fiscal_cursors` com `account_id`, `client_id`, `source`, `last_nsu`, `last_run_at`, `last_success_at`, `last_error`, `blocked_until`, `last_seen_at`, e `UNIQUE (client_id, source)`; verificar que a unique barra dois cursores para o mesmo cliente e fonte
-- [ ] 2.3 Registrar o disco `fiscal` em `config/filesystems.php` com `serve => false`, `throw => true` e `report => true`, apontando para `storage/app/private/fiscal`; verificar que `Storage::disk('fiscal')` resolve e que o diretório não é servido publicamente
-- [ ] 2.4 Criar `FiscalDocument` e `FiscalCursor` com `BelongsToAccount`, casts e relações, mais factories; verificar com teste de feature que uma conta não enxerga documento nem cursor de outra
-- [ ] 2.5 Remover `documents`: migration, model, factory, controller, request, resource, policy, binding em `AppServiceProvider`, rota `apiResource` e a relação em `Account`; verificar que `php artisan route:list` não mostra mais a rota e que a migration de remoção roda
+- [x] 2.1 Criar migration de `fiscal_documents` com `account_id`, `client_id`, `source`, `model`, `kind`, `chave_acesso`, `event_id` NOT NULL default `''`, `nsu`, `emitente_cnpj`, `destinatario_cnpj`, `valor_total`, `emissao_at`, `evento_ocorrido_em_at`, `storage_path`, `sha256`, `xml_bytes`, `captured_at`, timestamps, e as restrições `UNIQUE (client_id, chave_acesso, event_id)`, `INDEX (client_id, model, nsu)`, `INDEX (account_id, captured_at)`; verificar que a unique rejeita documento duplicado e **aceita** múltiplos documentos sem evento
+- [x] 2.2 Criar migration de `fiscal_cursors` com `account_id`, `client_id`, `source`, `last_nsu`, `last_run_at`, `last_success_at`, `last_error`, `blocked_until`, `last_seen_at`, e `UNIQUE (client_id, source)`; verificar que a unique barra dois cursores para o mesmo cliente e fonte
+- [x] 2.3 Registrar o disco `fiscal` em `config/filesystems.php` com `serve => false`, `throw => true` e `report => true`, apontando para `storage/app/private/fiscal`; verificar que `Storage::disk('fiscal')` resolve e que o diretório não é servido publicamente
+- [x] 2.4 Criar `FiscalDocument` e `FiscalCursor` com `BelongsToAccount`, casts e relações, mais factories; verificar com teste de feature que uma conta não enxerga documento nem cursor de outra
+- [x] 2.5 Remover `documents`: migration, model, factory, controller, request, resource, policy, binding em `AppServiceProvider`, rota `apiResource` e a relação em `Account`; verificar que `php artisan route:list` não mostra mais a rota e que a migration de remoção roda
 - [ ] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
 
 ## 3. Núcleo de transporte e parsing
 
-- [ ] 3.1 Criar `FiscalFailure` como enum espelhando a forma de `SerproFailure`, com a separação entre o que não adianta repetir e o que adianta; verificar com teste unitário que `classify()` mapeia status HTTP e código do provedor para o caso certo
-- [ ] 3.2 Criar `DocZipDecoder` que higieniza whitespace do base64, decodifica, detecta por magic bytes e aceita a forma documentada e a alternativa observada em produção, decodificando entrada a entrada sem materializar o lote; verificar com teste unitário usando fixture real dos três formatos, mais payload corrompido
-- [ ] 3.3 Criar `DfeSoapEnvelope` montando envelope SOAP 1.2 com namespace de serviço, `SOAPAction` e versão parametrizados por driver, sem cabeçalho SOAP, e `cUFAutor` siendo a UF do interessado; verificar com teste unitário comparando o envelope gerado contra uma fixture
-- [ ] 3.4 Criar `DfeResponseParser` localizando `retDistDFeInt` por nome local, extraindo `cStat`, `xMotivo`, `ultNSU`, `maxNSU` e as entradas do lote; verificar com teste unitário que a extração é imune a prefixo de namespace
+- [x] 3.1 Criar `FiscalFailure` como enum espelhando a forma de `SerproFailure`, com a separação entre o que não adianta repetir e o que adianta; verificar com teste unitário que `classify()` mapeia status HTTP e código do provedor para o caso certo
+- [x] 3.2 Criar `DocZipDecoder` que higieniza whitespace do base64, decodifica, detecta por magic bytes e aceita a forma documentada e a alternativa observada em produção, decodificando entrada a entrada sem materializar o lote; verificar com teste unitário usando fixture real dos três formatos, mais payload corrompido
+- [x] 3.3 Criar `DfeSoapEnvelope` montando envelope SOAP 1.2 com namespace de serviço, `SOAPAction` e versão parametrizados por driver, sem cabeçalho SOAP, e `cUFAutor` siendo a UF do interessado; verificar com teste unitário comparando o envelope gerado contra uma fixture
+- [x] 3.4 Criar `DfeResponseParser` localizando `retDistDFeInt` por nome local, extraindo `cStat`, `xMotivo`, `ultNSU`, `maxNSU` e as entradas do lote; verificar com teste unitário que a extração é imune a prefixo de namespace
 - [ ] 3.5 Criar `FiscalXmlValidator` validando a requisição contra o XSD local do serviço antes de enviar; verificar com teste unitário que requisição com prefixo de namespace, codificação errada e versão fora do vigente é rejeitada antes da chamada
-- [ ] 3.6 Criar `FiscalXmlMetadata` extraindo chave de acesso, emitente, destinatário, valor e datas por modelo, validando o dígito verificador da chave; verificar com teste unitário por modelo contra fixtures de XML reais, incluindo chave com DV inválido
+- [x] 3.6 Criar `FiscalXmlMetadata` extraindo chave de acesso, emitente, destinatário, valor e datas por modelo, validando o dígito verificador da chave; verificar com teste unitário por modelo contra fixtures de XML reais, incluindo chave com DV inválido
 - [ ] 3.7 Criar a comparação de `digVal` entre resumo e documento completo, marcando divergência em vez de descartar; verificar com teste unitário que dois `digVal` iguais marcam íntegro e diferentes marcam divergente
 - [ ] 3.8 Criar a rotina de encoding que detecta Latin-1 antes de converter e preserva os bytes crus para persistência; verificar com teste unitário que acento não vira `?` e que o bruto é mantido
 - [ ] 3.9 Vendorizar o bundle de AC ICP-Brasil e apontar a verificação de TLS para ele com verificação ligada; verificar com teste que a verificação do servidor permanece ativa e que o bundle está versionado
+
+> **Ressalva de 3.2, 3.3 e 3.6:** os fixtures em `backend/tests/Fixtures/fiscal/` são sintéticos e
+> estruturalmente realistas, não capturas reais do ambiente nacional. Falta, antes de produção, um par
+> capturado de verdade `resNFe` + `procNFe` e um par com `digVal` deliberadamente divergente (item 3.7).
+> 3.3 é verificado por asserção de conteúdo do envelope, não por comparação com um arquivo fixture.
 
 ## 4. Conector de NF-e
 
