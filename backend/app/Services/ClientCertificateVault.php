@@ -46,6 +46,7 @@ class ClientCertificateVault
                 'original_filename' => $file->getClientOriginalName(),
                 'storage_path' => $path,
                 'sha256' => hash('sha256', $contents),
+                'password_encrypted' => Crypt::encryptString($password),
             ];
 
             $oldPath = null;
@@ -62,7 +63,11 @@ class ClientCertificateVault
 
                 if ($current !== null) {
                     $oldPath = $current->storage_path;
-                    $current->forceFill(['replaced_at' => now(), 'storage_path' => null])->save();
+                    $current->forceFill([
+                        'replaced_at' => now(),
+                        'storage_path' => null,
+                        'password_encrypted' => null,
+                    ])->save();
                 }
 
                 resolve(CurrentTenant::class)->accountId ??= $locked->account_id;
@@ -115,7 +120,11 @@ class ClientCertificateVault
             }
 
             $path = $current->storage_path;
-            $current->forceFill(['removed_at' => now(), 'storage_path' => null])->save();
+            $current->forceFill([
+                'removed_at' => now(),
+                'storage_path' => null,
+                'password_encrypted' => null,
+            ])->save();
 
             return $path;
         });
