@@ -13,7 +13,7 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 1.5 Ao remover ou substituir um certificado, apagar também a senha armazenada do anterior; verificar com teste de feature que a senha do certificado substituído não é mais descriptografável
 - [x] 1.6 Criar `ClientCertificateMaterializer` em `app/Services/Fiscal/`, espelhando `SerproCertificateMaterializer`: grava o PFX efêmero, `chmod 0600`, apaga o arquivo e zera a senha no `finally`, inclusive em exceção; verificar com teste unitário que o arquivo não existe depois de sucesso e depois de falha
 - [x] 1.7 Verificar que duas chamadas concorrentes do mesmo cliente usam arquivos distintos e que uma não lê o material da outra; verificar com teste unitário
-- [ ] 1.8 Traduzir falha de `openssl_pkcs12_read` por PFX exportado com `-legacy` (RC2) para erro próprio nomeando o cliente, em vez da exceção genérica do OpenSSL; verificar com teste unitário alimentando um PFX RC2
+- [x] 1.8 Traduzir falha de `openssl_pkcs12_read` por PFX exportado com `-legacy` (RC2) para erro próprio nomeando o cliente, em vez da exceção genérica do OpenSSL; verificar com teste unitário alimentando um PFX RC2
 
 ## 2. Esquema
 
