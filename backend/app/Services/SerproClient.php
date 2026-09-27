@@ -39,6 +39,7 @@ final class SerproClient
             );
         }
 
+        $service = $this->service($idServico);
         $tag = $this->tag->build($autor, $contribuinte, $serviceSequence);
 
         return $this->materializer->withCertificate(
@@ -52,6 +53,7 @@ final class SerproClient
                 $contribuinte,
                 $procuradorToken,
                 $tag,
+                $service,
                 $path,
             ),
         );
@@ -59,6 +61,7 @@ final class SerproClient
 
     /**
      * @param  array<string, mixed>  $dados
+     * @param  array{path: string, versaoSistema: string}  $service
      */
     private function send(
         SerproConnection $connection,
@@ -69,13 +72,14 @@ final class SerproClient
         string $contribuinte,
         ?string $procuradorToken,
         string $tag,
+        array $service,
         string $certificatePath,
     ): SerproResult {
-        $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $certificatePath);
+        $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath);
 
         if ($response->status() === 401) {
             $this->tokens->forget();
-            $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $certificatePath);
+            $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath);
         }
 
         return $this->interpret($response, $tag);
@@ -83,6 +87,7 @@ final class SerproClient
 
     /**
      * @param  array<string, mixed>  $dados
+     * @param  array{path: string, versaoSistema: string}  $service
      */
     private function request(
         SerproConnection $connection,
@@ -93,13 +98,13 @@ final class SerproClient
         string $contribuinte,
         ?string $procuradorToken,
         string $tag,
+        array $service,
         string $certificatePath,
     ): Response {
-        $versao = $this->versao($idServico);
-        $path = $this->path($idServico);
+        $pair = $this->tokens->pair();
 
         $headers = [
-            'jwt_token' => $this->tokens->pair()->jwtToken(),
+            'jwt_token' => $pair->jwtToken(),
             'X-Request-Tag' => $tag,
         ];
 
@@ -110,21 +115,21 @@ final class SerproClient
         try {
             return Http::acceptJson()
                 ->withHeaders($headers)
-                ->withToken($this->tokens->pair()->accessToken())
+                ->withToken($pair->accessToken())
                 ->withOptions(['curl' => [
                     CURLOPT_SSLCERT => $certificatePath,
                     CURLOPT_SSLCERTPASSWD => $connection->certificatePassword() ?? '',
                     CURLOPT_SSLCERTTYPE => 'P12',
                 ]])
                 ->timeout((int) config('integra-contador.timeout', 25))
-                ->post($this->baseUrl().'/'.$path, $this->envelope->build(
+                ->post($this->baseUrl().'/'.$service['path'], $this->envelope->build(
                     $connection->contratante_numero,
                     (int) $connection->contratante_tipo,
                     $autor,
                     $contribuinte,
                     $idSistema,
                     $idServico,
-                    $versao,
+                    $service['versaoSistema'],
                     $dados,
                 ));
         } catch (ConnectionException) {
@@ -167,19 +172,22 @@ final class SerproClient
         return (string) config('integra-contador.gateway_url');
     }
 
-    private function path(string $idServico): string
+    /**
+     * @return array{path: string, versaoSistema: string}
+     */
+    private function service(string $idServico): array
     {
         /** @var array<string, array{path: string, versaoSistema: string}> $services */
         $services = (array) config('integra-contador.services', []);
 
-        return $services[$idServico]['path'] ?? 'Consultar';
-    }
+        if (! isset($services[$idServico])) {
+            throw new SerproException(
+                "Serviço {$idServico} não está mapeado no catálogo do Integra Contador.",
+                SerproFailure::DoNotRetry,
+                0,
+            );
+        }
 
-    private function versao(string $idServico): string
-    {
-        /** @var array<string, array{path: string, versaoSistema: string}> $services */
-        $services = (array) config('integra-contador.services', []);
-
-        return $services[$idServico]['versaoSistema'] ?? '1.0';
+        return $services[$idServico];
     }
 }

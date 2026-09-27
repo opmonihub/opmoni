@@ -334,4 +334,36 @@ class SerproClientTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    public function test_an_unmapped_service_is_refused_without_touching_the_network(): void
+    {
+        $this->connection();
+        $this->fakeTokens();
+        $this->cacheTokenPair();
+
+        Http::fake([
+            'gateway.apiserpro.serpro.gov.br/*' => Http::response(['status' => 200], 200),
+        ]);
+
+        try {
+            resolve(SerproClient::class)->call(
+                'REGIMEAPURACAO',
+                'SERVICOINEXISTENTE999',
+                [],
+                '33683111000107',
+                '33683111000875',
+            );
+
+            $this->fail('Um serviço não mapeado deve levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+            $this->assertStringContainsString('SERVICOINEXISTENTE999', $exception->getMessage());
+        }
+
+        $gatewayCalls = Http::recorded(
+            fn (Request $request): bool => str_contains($request->url(), 'gateway.apiserpro.serpro.gov.br'),
+        );
+
+        $this->assertCount(0, $gatewayCalls);
+    }
 }
