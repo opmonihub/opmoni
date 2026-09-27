@@ -1499,7 +1499,7 @@ It inherits the `super-admin` middleware from `app/pages/admin.vue`, which is wh
 - [ ] **Step 6: Run the test to see it pass**
 
 Run: `cd frontend && node --test tests/monitoringRoutes.test.ts`
-Expected: PASS, 14 assertions across both `describe` blocks.
+Expected: PASS, 13 tests across both `describe` blocks.
 
 - [ ] **Step 7: Verify**
 
