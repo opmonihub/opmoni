@@ -54,6 +54,7 @@ Files modified:
 | `frontend/app/utils/monitoringNav.ts` | Becomes the nineteen-obligation registry: columns, service, category, catalogue revision. Keeps only the route helpers. |
 | `frontend/app/utils/adminNav.ts` | Gains the `Serpro` entry. |
 | `frontend/app/layouts/default.vue` | Renders the two integration links after the groups. No structural change. |
+| `frontend/app/pages/monitoring.vue` | The parent panel: group title and the sub-tab bar. Carries the selected situation from one obligation to the next. |
 | `frontend/app/pages/monitoring/index.vue` | Reads the overview from the API. |
 | `frontend/app/pages/monitoring/[...slug].vue` | Passes the registry entry, not `page`/`status`. |
 | `frontend/app/components/monitoring/MonitoringSheet.vue` | Server-filtered, paginated, four-state ladder, category branch. |
@@ -1452,7 +1453,7 @@ export function monitoringSidebarChildren(path: string): NavigationMenuItem[] {
 
 In `app/utils/monitoringNav.ts` the rewrite above has already removed `monitoringCompanies`, `statusCycle`, `monitoringStatusFor`, `pageOrder`, `monitoringAttentionCount`, `monitoringColumns`, `monitoringStatuses`, `monitoringStatusPresentation`, the local `MonitoringStatus` and the `MonitoringCompany` interface.
 
-Fix the three files that imported them, in the shape Task 4 and Task 5 need:
+Four files imported them and all four must be fixed, or nothing typechecks:
 
 `app/pages/monitoring/index.vue` — replace its whole `<script setup>` with the Task 4 version, and drop `monitoringAttentionCount` / `monitoringCompanies` from the import. Until Task 4 lands, the interim state is:
 
@@ -1461,6 +1462,8 @@ import { monitoringGroups, monitoringListPath, monitoringObligations } from '~/u
 const firstObligation = monitoringObligations[0]
 const attentionFor = () => '0'
 ```
+
+`app/pages/monitoring.vue` — the parent panel, which reads `parseMonitoringSlug` for the group title and builds the sub-tab bar from `group.pages`. It keeps that structure and takes the new fields: `listing.obligation` instead of `listing.page`, and the tab target becomes `monitoringListPath(page, listing.situacao ?? undefined)`. That second half is not cosmetic — it is the spec's "Situação preservada entre obrigações": moving from one obligation to another while a situation is selected must keep the situation in the resulting route. `pageTabs` stays `null` for a group with a single obligation.
 
 `app/pages/monitoring/[...slug].vue` — pass the registry entry and the nullable situation:
 
@@ -1474,7 +1477,7 @@ const attentionFor = () => '0'
 </template>
 ```
 
-`app/components/monitoring/MonitoringSheet.vue` — the props change from `page`/`status` to `obligation`/`situacao`, and the columns come from `obligation.columns` instead of `monitoringColumns[page.family]`. The three local filters are removed in Task 5; until then, keep the component rendering so `pnpm typecheck` passes, with the row list coming from a local `const rows: MonitoringClient[] = []`.
+`app/components/monitoring/MonitoringSheet.vue` — the props change from `page`/`status` to `obligation`/`situacao`, and the columns come from `obligation.columns` instead of `monitoringColumns[page.family]`. The three local filters are removed in Task 5; until then, rewrite the `<script setup>` so it compiles against the new registry, keeping the existing template structure working against the new props, with the row list coming from a local `const rows: MonitoringClient[] = []`.
 
 - [ ] **Step 5: Add the two integration links and the admin entry**
 
