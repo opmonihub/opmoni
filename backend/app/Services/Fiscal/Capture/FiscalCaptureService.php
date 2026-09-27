@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PullResult;
+use App\Services\Fiscal\Exceptions\FiscalException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -240,20 +241,43 @@ final class FiscalCaptureService
     }
 
     /**
-     * A coluna `last_error` é lida pelo painel, então é texto de usuário: a classe
-     * da exceção, que diz a origem, e uma frase curta, que diz a etapa. A
-     * mensagem não entra — pelo mesmo motivo que `FailedEntry::$reason` não a
-     * carrega: quem a escreve é o serviço ou o libxml, o `faultstring` vem da
-     * autoridade, e o validador deste módulo cita na mensagem o valor do elemento
-     * que reprovou.
+     * A coluna `last_error` é lida pelo painel, então é texto de usuário: quem
+     * falhou, de que tipo, e em que etapa. A mensagem da exceção não entra — pelo
+     * mesmo motivo que `FailedEntry::$reason` não a carrega: quem a escreve é o
+     * serviço ou o libxml, o `faultstring` vem da autoridade, e o validador deste
+     * módulo cita na mensagem o valor do elemento que reprovou.
      */
     private function boundedReason(Throwable $exception, string $phrase): string
     {
-        $reason = class_basename($exception).' — '.$phrase;
+        $reason = class_basename($exception).$this->failureKindOf($exception).' — '.$phrase;
 
         return mb_strlen($reason) > self::REASON_LIMIT
             ? mb_substr($reason, 0, self::REASON_LIMIT).'…'
             : $reason;
+    }
+
+    /**
+     * `[cursor_ahead]`, `[unauthorized]`, `[upstream]` — a classificação que o
+     * conector já pôs no `FiscalException` e que ninguém estava lendo.
+     *
+     * Sem ela, a coluna descreve com a mesma frase uma posição que precisa de
+     * reconciliação, uma credencial que o serviço recusou e uma indisponibilidade
+     * que se resolve sozinha — e as três pedem uma reação diferente de quem vai
+     * ler. A reconciliação é a segunda metade da spec do `CursorAhead`, e ela
+     * depende de distinguir: o valor gravado é o que este caminho **não** toca,
+     * então a posição do cliente continua intacta para ser reconciliada.
+     *
+     * Nada entra que não seja nosso: o valor do enum é uma palavra da taxonomia do
+     * módulo, e é por isso que ele pode ir na coluna onde a mensagem do serviço não
+     * pode. Exceção que não é do conector não tem classificação — a
+     * `RuntimeException` do writer, por exemplo, já diz a etapa na frase, e o que
+     * a recusou é o nome da classe.
+     */
+    private function failureKindOf(Throwable $exception): string
+    {
+        return $exception instanceof FiscalException
+            ? ' ['.$exception->failure->value.']'
+            : '';
     }
 
     private function cursor(Client $client, FiscalSource $source): FiscalCursor

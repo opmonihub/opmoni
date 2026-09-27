@@ -503,6 +503,85 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertLessThanOrEqual(200, mb_strlen($error));
     }
 
+    public function test_records_a_position_ahead_of_the_service_as_its_own_kind(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->cursor($client)->forceFill(['last_nsu' => 900])->save();
+
+        // Posição à frente do serviço: o ambiente nacional tem menos posições do
+        // que o cursor pede. Não é indisponibilidade, e é por isso que precisa
+        // de nome próprio na coluna: a reconciliação é o que resolve este
+        // cliente, e ela não consegue escolher um cliente se a coluna não diz
+        // qual deles é.
+        $this->bindConnector(fn (): PullResult => throw new FiscalException(
+            'Rejeicao: A posicao enviada e maior que a maior posicao do ambiente nacional.',
+            FiscalFailure::CursorAhead,
+        ));
+
+        $this->failTheCapture($client);
+
+        $cursor = $this->cursor($client);
+        $error = (string) $cursor->last_error;
+
+        $this->assertStringContainsString('cursor_ahead', $error);
+        $this->assertStringNotContainsString('upstream', $error);
+        $this->assertStringNotContainsString('unauthorized', $error);
+        $this->assertStringNotContainsString('maior que a maior', $error);
+
+        // A segunda metade da spec: a posição guardada é o insumo da
+        // reconciliação, então ela não é descartada nem reescrita por uma falha
+        // de consulta.
+        $this->assertSame(900, $cursor->last_nsu);
+        $this->assertNull($cursor->last_seen_at);
+    }
+
+    public function test_records_a_credential_mismatch_as_its_own_kind(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // CNPJ sem correspondência com o certificado: a credencial é recusada, e
+        // recusar de novo não resolve nada. A coluna precisa dizer "credencial",
+        // porque a reação é o cliente reenviar o certificado e não o serviço
+        // voltar.
+        $this->bindConnector(fn (): PullResult => throw new FiscalException(
+            'Rejeicao: Certificado invalido para o CNPJ consultado.',
+            FiscalFailure::Unauthorized,
+        ));
+
+        $this->failTheCapture($client);
+
+        $cursor = $this->cursor($client);
+        $error = (string) $cursor->last_error;
+
+        $this->assertStringContainsString('unauthorized', $error);
+        $this->assertStringNotContainsString('cursor_ahead', $error);
+        $this->assertStringNotContainsString('upstream', $error);
+        $this->assertNull($cursor->last_seen_at);
+        $this->assertSame(0, $cursor->last_nsu);
+    }
+
+    public function test_records_a_transient_outage_as_its_own_kind(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // O caso que a distinção existe para não confundir: a mesma frase, a mesma
+        // classe, a única diferença é que esta se resolve sozinha.
+        $this->bindConnector(fn (): PullResult => throw new FiscalException(
+            'O servico de distribuicao recusou a chamada: manutencao programada.',
+            FiscalFailure::Upstream,
+        ));
+
+        $this->failTheCapture($client);
+
+        $error = (string) $this->cursor($client)->last_error;
+
+        $this->assertStringContainsString('upstream', $error);
+        $this->assertStringNotContainsString('cursor_ahead', $error);
+        $this->assertStringNotContainsString('unauthorized', $error);
+        $this->assertStringNotContainsString('manutencao', $error);
+    }
+
     public function test_clears_the_recorded_reason_after_a_capture_that_works(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -606,6 +685,21 @@ class FiscalCaptureServiceTest extends TestCase
     private function service(): FiscalCaptureService
     {
         return resolve(FiscalCaptureService::class);
+    }
+
+    /**
+     * Roda a captura esperando a falha do conector. A exceção sobe — quem chamou é
+     * quem decide se adianta repetir — e o que fica no cursor é o que se verifica
+     * depois.
+     */
+    private function failTheCapture(Client $client): void
+    {
+        try {
+            $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+            $this->fail('Uma chamada sem resposta não devolve resultado.');
+        } catch (FiscalException) {
+            // esperado
+        }
     }
 
     /**
