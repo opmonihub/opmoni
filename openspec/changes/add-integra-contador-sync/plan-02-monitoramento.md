@@ -1939,7 +1939,9 @@ const filterColumns = computed<DataTableFilterColumn[]>(() => [
     label: 'Tags',
     icon: 'i-lucide-tags',
     type: 'multiOption',
-    options: (tagCatalog.value ?? []).map(tag => ({ label: tag.name, value: String(tag.id) }))
+    // `listTags()` returns the envelope, not the array — `tagCatalog.value` is
+    // `{ data: ClientTag[] }`, so the `.data` is what carries the options.
+    options: (tagCatalog.value?.data ?? []).map(tag => ({ label: tag.name, value: String(tag.id) }))
   }
 ])
 
