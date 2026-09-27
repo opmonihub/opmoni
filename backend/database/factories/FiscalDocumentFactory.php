@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalDocument;
@@ -38,6 +39,7 @@ class FiscalDocumentFactory extends Factory
             'source' => FiscalSource::NfeDistribuicao,
             'model' => FiscalModel::Nfe,
             'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Document,
             'chave_acesso' => self::chaveDeAcesso(),
             'event_id' => '',
             'nsu' => fake()->numberBetween(1, 999999),
@@ -68,8 +70,23 @@ class FiscalDocumentFactory extends Factory
     {
         return $this->state(fn (): array => [
             'kind' => FiscalKind::Event,
+            'stage' => FiscalStage::Event,
             'event_id' => $eventId,
             'evento_ocorrido_em_at' => now()->subHours(fake()->numberBetween(1, 72)),
+        ]);
+    }
+
+    /**
+     * Resumo da distribuição: a entrega que traz os campos do documento sem o
+     * XML dele, na mesma chave de acesso e com `event_id` vazio como o documento
+     * completo. A etapa é o que separa as duas linhas.
+     */
+    public function summary(): static
+    {
+        return $this->state(fn (): array => [
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Summary,
+            'event_id' => '',
         ]);
     }
 
@@ -105,6 +122,7 @@ class FiscalDocumentFactory extends Factory
                 (int) $document->client_id,
                 (string) $document->chave_acesso,
                 (string) $document->event_id,
+                $document->stage,
             );
         })->afterCreating(function (FiscalDocument $document): void {
             if ($document->client instanceof Client && $document->account_id !== $document->client->account_id) {

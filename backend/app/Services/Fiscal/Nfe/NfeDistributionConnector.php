@@ -256,6 +256,7 @@ final class NfeDistributionConnector implements FiscalConnector
             $documents[] = new PulledDocument(
                 model: $extracted->model,
                 kind: $extracted->kind,
+                stage: $extracted->stage,
                 chave: $extracted->chave,
                 eventId: $extracted->eventId,
                 emitenteCnpj: $extracted->emitenteCnpj,

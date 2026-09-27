@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Contracts;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalStage;
 use Carbon\CarbonImmutable;
 
 /**
@@ -18,6 +19,12 @@ use Carbon\CarbonImmutable;
 final readonly class PulledDocument
 {
     /**
+     * `stage` é onde a entrega caiu na cadeia da distribuição, e entra na chave
+     * composta da identidade: resumo e documento autorizado são o mesmo
+     * documento, chegam sob a mesma chave de acesso e são duas linhas
+     * diferentes. A camada de parse é quem sabe — o writer não reparseia o XML
+     * para descobrir, pelo mesmo motivo dos metadados abaixo.
+     *
      * `eventId` é a string vazia no documento comum e `tpEvento-nSeqEvento` no
      * evento, e é o que fecha a chave composta
      * `(client_id, chave, event_id)`.
@@ -46,6 +53,7 @@ final readonly class PulledDocument
     public function __construct(
         public FiscalModel $model,
         public FiscalKind $kind,
+        public FiscalStage $stage,
         public string $chave,
         public string $eventId,
         public ?string $emitenteCnpj,

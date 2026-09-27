@@ -18,9 +18,12 @@ use PHPUnit\Framework\TestCase;
 class FiscalDigValComparisonTest extends TestCase
 {
     /**
-     * SHA-1 em base64, os 28 caracteres que um `digVal` sempre tem.
+     * SHA-1 de 20 bytes em base64, que é sempre 28 caracteres — o que a coluna
+     * `digval` aceita. O valor de 32 caracteres que estava aqui antes era mais
+     * longo que qualquer digest real, e o `varchar(28)` do Postgres recusaria
+     * escrevê-lo.
      */
-    private const DIGVAL = 'L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=';
+    private const DIGVAL = 'i2rqNaD6rqmCfhXHyTBf4xe1ImQ=';
 
     public function test_two_equal_digests_confirm_each_other(): void
     {

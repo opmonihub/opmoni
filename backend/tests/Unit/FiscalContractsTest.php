@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use App\Models\Client;
 use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
@@ -23,6 +24,7 @@ class FiscalContractsTest extends TestCase
         $document = new PulledDocument(
             model: FiscalModel::Nfe,
             kind: FiscalKind::Document,
+            stage: FiscalStage::Document,
             chave: str_repeat('1', 44),
             eventId: '',
             emitenteCnpj: null,
@@ -41,6 +43,34 @@ class FiscalContractsTest extends TestCase
         $this->assertSame('', $document->eventId);
     }
 
+    public function test_pulled_document_carries_the_stage_of_the_distribution(): void
+    {
+        // A etapa atravessa o contrato porque o writer não pode descobrir-a
+        // reparseando o XML: resumo e documento completo são a mesma chave de
+        // acesso com o mesmo `event_id` vazio, e é a etapa que os separa na
+        // chave composta da identidade.
+        $document = new PulledDocument(
+            model: FiscalModel::Nfe,
+            kind: FiscalKind::Document,
+            stage: FiscalStage::Summary,
+            chave: str_repeat('1', 44),
+            eventId: '',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
+            digVal: null,
+            nsu: 10,
+            schema: 'resNFe_v1.01.xsd',
+            emissaoAt: null,
+            eventoOcorridoEmAt: null,
+            xml: '<a/>',
+        );
+
+        $this->assertSame(FiscalStage::Summary, $document->stage);
+        $this->assertSame(FiscalKind::Document, $document->kind);
+        $this->assertSame('', $document->eventId);
+    }
+
     public function test_pulled_document_carries_the_three_metadata_columns(): void
     {
         // São as três colunas que a camada de parse já extraiu e que a escrita
@@ -48,6 +78,7 @@ class FiscalContractsTest extends TestCase
         $document = new PulledDocument(
             model: FiscalModel::Nfe,
             kind: FiscalKind::Document,
+            stage: FiscalStage::Document,
             chave: str_repeat('1', 44),
             eventId: '',
             emitenteCnpj: '11222333000181',
@@ -75,12 +106,13 @@ class FiscalContractsTest extends TestCase
         $document = new PulledDocument(
             model: FiscalModel::Nfe,
             kind: FiscalKind::Document,
+            stage: FiscalStage::Document,
             chave: str_repeat('1', 44),
             eventId: '',
             emitenteCnpj: null,
             destinatarioCnpj: null,
             valorTotal: null,
-            digVal: 'L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=',
+            digVal: 'i2rqNaD6rqmCfhXHyTBf4xe1ImQ=',
             nsu: 10,
             schema: 'resNFe_v1.01.xsd',
             emissaoAt: null,
@@ -88,7 +120,7 @@ class FiscalContractsTest extends TestCase
             xml: '<a/>',
         );
 
-        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $document->digVal);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $document->digVal);
     }
 
     public function test_pulled_document_metadata_columns_are_null_when_the_xml_has_none(): void
@@ -98,6 +130,7 @@ class FiscalContractsTest extends TestCase
         $document = new PulledDocument(
             model: FiscalModel::Nfe,
             kind: FiscalKind::Event,
+            stage: FiscalStage::Event,
             chave: str_repeat('1', 44),
             eventId: '110110-1',
             emitenteCnpj: null,
@@ -126,6 +159,7 @@ class FiscalContractsTest extends TestCase
         $document = new PulledDocument(
             model: FiscalModel::Nfe,
             kind: FiscalKind::Event,
+            stage: FiscalStage::Event,
             chave: str_repeat('1', 44),
             eventId: '110110-1',
             emitenteCnpj: null,
@@ -238,6 +272,7 @@ class FiscalContractsTest extends TestCase
             new PulledDocument(
                 model: FiscalModel::Nfe,
                 kind: FiscalKind::Document,
+                stage: FiscalStage::Document,
                 chave: str_repeat('1', 44),
                 eventId: '',
                 emitenteCnpj: '11222333000181',
@@ -253,6 +288,7 @@ class FiscalContractsTest extends TestCase
             new PulledDocument(
                 model: FiscalModel::Nfe,
                 kind: FiscalKind::Event,
+                stage: FiscalStage::Event,
                 chave: str_repeat('1', 44),
                 eventId: '110110-1',
                 emitenteCnpj: null,

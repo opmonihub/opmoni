@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Support;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalStage;
 use Carbon\CarbonImmutable;
 use DOMDocument;
 use DOMXPath;
@@ -63,6 +64,7 @@ final class FiscalXmlMetadata
             chave: $chave,
             model: $model,
             kind: $isEvent ? FiscalKind::Event : FiscalKind::Document,
+            stage: $this->stageOf($xpath, $isEvent),
             eventId: $isEvent ? $tpEvento.'-'.($nSeqEvento ?? '1') : '',
             schema: $schema,
             emitenteCnpj: $this->firstText($xpath, ['emit/CNPJ', 'prest/CNPJ', 'CNPJ']),
@@ -77,6 +79,27 @@ final class FiscalXmlMetadata
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
         );
+    }
+
+    /**
+     * A etapa sai do formato do XML, e não do modelo nem da posição: o resumo é
+     * a entrega que traz os campos do documento sem o XML dele, e o que
+     * distingue uma do outro é o protocolo de autorização. Um `resNFe` é resumo
+     * porque não tem `protNFe`, um `procNFe` é documento completo porque tem.
+     *
+     * A ordem importa: um evento não tem protocolo, e classificá-lo pelo
+     * `tpEvento` primeiro é o que impede que ele caia na etapa de documento.
+     */
+    private function stageOf(DOMXPath $xpath, bool $isEvent): FiscalStage
+    {
+        if ($isEvent) {
+            return FiscalStage::Event;
+        }
+
+        $isAuthorised = XmlQuery::first($xpath, 'protNFe/infProt') !== null
+            || XmlQuery::first($xpath, 'protCTe/infProt') !== null;
+
+        return $isAuthorised ? FiscalStage::Document : FiscalStage::Summary;
     }
 
     /**

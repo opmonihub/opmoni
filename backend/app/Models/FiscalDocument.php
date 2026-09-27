@@ -6,13 +6,14 @@ use App\Concerns\BelongsToAccount;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use Database\Factories\FiscalDocumentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['client_id', 'source', 'model', 'kind', 'chave_acesso', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
+#[Fillable(['client_id', 'source', 'model', 'kind', 'stage', 'chave_acesso', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
 class FiscalDocument extends Model
 {
     /** @use HasFactory<FiscalDocumentFactory> */
@@ -24,6 +25,7 @@ class FiscalDocument extends Model
             'source' => FiscalSource::class,
             'model' => FiscalModel::class,
             'kind' => FiscalKind::class,
+            'stage' => FiscalStage::class,
             'nsu' => 'integer',
             'valor_total' => 'decimal:2',
             // Nulo é o terceiro estado: "a outra etapa da distribuição ainda não

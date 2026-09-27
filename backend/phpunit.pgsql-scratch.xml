@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Configuração para os testes que só fazem sentido no Postgres de verdade.
+
+    Por que existe: a suíte padrão (phpunit.xml) roda em sqlite, e o sqlite não
+    aplica o comprimento declarado de um varchar. Um digVal de 32 caracteres numa
+    coluna varchar(28) passava em toda a suíte e rebentava em produção com
+    "value too long". Esta configuração cobre a verificação que faltava.
+
+    NÃO APONTE ESTA CONFIGURAÇÃO PARA UM BANCO COM DADO. Os testes usam
+    RefreshDatabase, que em Postgres faz migrate:fresh na primeira execução, e o
+    banco nomeado abaixo é apagado. Crie um banco descartável antes:
+
+        php artisan tinker "DB::statement('CREATE DATABASE fiscal_writer_scratch')"
+        DB_DATABASE=fiscal_writer_scratch php artisan migrate (com force)
+        php vendor/bin/phpunit -c phpunit.pgsql-scratch.xml
+
+    Os testes pulam sozinhos (markTestSkipped) quando o banco não é Postgres, então
+    rodá-los por engano com o phpunit.xml não faz nada.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+>
+    <testsuites>
+        <testsuite name="Fiscal contra Postgres">
+            <file>tests/Feature/Fiscal/FiscalDocumentWriterPostgresTest.php</file>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <!-- Banco descartável, nunca o de desenvolvimento. Ver o aviso acima. -->
+        <env name="DB_DATABASE" value="fiscal_writer_scratch" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+    </php>
+</phpunit>

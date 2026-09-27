@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalStage;
 use App\Services\Fiscal\Support\DigValComparison;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use RuntimeException;
@@ -63,7 +64,7 @@ class FiscalXmlMetadataTest extends TestCase
 
         $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
 
-        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $result->digVal);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $result->digVal);
     }
 
     public function test_extracts_the_digest_from_the_authorized_document(): void
@@ -76,7 +77,7 @@ class FiscalXmlMetadataTest extends TestCase
 
         $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
 
-        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $result->digVal);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $result->digVal);
     }
 
     public function test_the_two_stages_of_one_document_carry_the_same_digest(): void
@@ -98,6 +99,50 @@ class FiscalXmlMetadataTest extends TestCase
         $this->assertNotNull($resumo->digVal);
         $this->assertSame($resumo->digVal, $documento->digVal);
         $this->assertTrue(DigValComparison::compare($resumo->digVal, $documento->digVal));
+    }
+
+    public function test_the_summary_and_the_authorized_document_are_different_stages(): void
+    {
+        // As duas etapas de um mesmo documento, e a razão de `stage` existir: com
+        // `event_id` vazio nas duas, a chave composta guardava o resumo e o
+        // documento completo na mesma linha, e o segundo apagava o XML, a posição
+        // e o digest do primeiro. A spec exige duas linhas.
+        $resumo = (new FiscalXmlMetadata)->extract(file_get_contents(base_path('tests/Fixtures/fiscal/resNFe.xml')), FiscalModel::Nfe);
+        $documento = (new FiscalXmlMetadata)->extract(file_get_contents(base_path('tests/Fixtures/fiscal/procNFe.xml')), FiscalModel::Nfe);
+
+        $this->assertSame(FiscalStage::Summary, $resumo->stage);
+        $this->assertSame(FiscalStage::Document, $documento->stage);
+
+        // Continua sendo o mesmo documento: mesmo tipo, mesma chave, e
+        // `event_id` vazio nas duas — a diferença é a etapa, não a identidade.
+        $this->assertSame(FiscalKind::Document, $resumo->kind);
+        $this->assertSame(FiscalKind::Document, $documento->kind);
+        $this->assertSame($resumo->chave, $documento->chave);
+        $this->assertSame('', $resumo->eventId);
+        $this->assertSame('', $documento->eventId);
+    }
+
+    public function test_an_event_is_its_own_stage(): void
+    {
+        $xml = $this->evento('ID1101113522049999999999999955001002000000124055660001', '1');
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+
+        $this->assertSame(FiscalStage::Event, $result->stage);
+        $this->assertSame(FiscalKind::Event, $result->kind);
+        $this->assertSame('110111-1', $result->eventId);
+    }
+
+    public function test_an_nfce_summary_is_also_a_summary(): void
+    {
+        $xml = file_get_contents(base_path('tests/Fixtures/fiscal/resNFe_nfce.xml'));
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfce);
+
+        // A etapa vem do formato do XML — o resumo não traz o protocolo de
+        // autorização — e não do modelo: uma NFC-e chega pela distribuição do
+        // mesmo jeito que uma NF-e.
+        $this->assertSame(FiscalStage::Summary, $result->stage);
     }
 
     public function test_a_document_without_a_digest_extracts_none(): void

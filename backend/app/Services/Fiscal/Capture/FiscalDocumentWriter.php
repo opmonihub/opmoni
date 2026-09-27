@@ -15,13 +15,17 @@ use RuntimeException;
 /**
  * O único caminho de escrita do módulo.
  *
- * A identidade é a chave composta `(client_id, chave_acesso, event_id)`: o
- * mesmo lote reprocessado sobrescreve e nunca duplica, e as várias etapas da
+ * A identidade é a chave composta `(client_id, chave_acesso, stage, event_id)`: o
+ * mesmo lote reprocessado sobrescreve e nunca duplica, e as três entregas da
  * distribuição que chegam sob a mesma chave de acesso — resumo, documento
- * completo, evento — continuam convivendo. Um `event_id` não-nulo defaultando a
- * string vazia é o que torna isso possível no banco: nele `NULL != NULL`, e uma
- * coluna nullable deixaria passar quantas duplicatas de documento comum
- * quisesse, em silêncio.
+ * completo, evento — convivem como três linhas. Um `event_id` não-nulo defaultando
+ * a string vazia é o que torna isso possível no banco: nele `NULL != NULL`, e uma
+ * coluna nullable deixaria passar quantas duplicatas de documento comum quisesse,
+ * em silêncio.
+ *
+ * A etapa entrou na chave porque `event_id` sozinho não separava o resumo do
+ * documento completo: nenhum dos dois é evento, os dois têm `event_id` vazio, e o
+ * segundo sobrescrevia o XML, a posição e o digest do primeiro.
  */
 final class FiscalDocumentWriter
 {
@@ -50,14 +54,22 @@ final class FiscalDocumentWriter
         $row = FiscalDocument::firstOrNew([
             'client_id' => $client->getKey(),
             'chave_acesso' => $document->chave,
+            'stage' => $document->stage,
             'event_id' => $document->eventId,
         ]);
 
-        // O veredito sai da linha que já existia, e é por isso que a comparação
-        // acontece antes do `fill()`: depois dele `$row->digval` já seria o
-        // digest que está entrando, e a comparação seria o documento consigo
-        // mesmo — sempre verdadeira.
-        $digvalConfere = DigValComparison::compare($row->digval, $document->digVal);
+        // A comparação é com a **outra** etapa da mesma chave de acesso, nunca
+        // com a linha que está sendo gravada. Ler o digest da própria linha
+        // comparava o documento com ele mesmo: o veredito só valia na primeira
+        // escrita, e um reprocessamento do mesmo lote — caminho normal, não
+        // exceção — devolvia `true` para o documento que acabara de divergir,
+        // apagando o achado. Lendo a etapa parceira, que nunca é a linha sendo
+        // escrita, o veredito é estável em qualquer ordem de chegada: um par que
+        // bate continua batendo, e um que diverge continua divergindo.
+        $digvalConfere = DigValComparison::compare(
+            $this->counterpartDigest($client, $document),
+            $document->digVal,
+        );
 
         // O digest gravado é o do XML que está no arquivo, nunca o de uma
         // entrega anterior: um digest que não descreve o arquivo apontado seria
@@ -66,6 +78,7 @@ final class FiscalDocumentWriter
             'source' => $source,
             'model' => $document->model,
             'kind' => $document->kind,
+            'stage' => $document->stage,
             'nsu' => $document->nsu,
             'emitente_cnpj' => $document->emitenteCnpj,
             'destinatario_cnpj' => $document->destinatarioCnpj,
@@ -132,6 +145,30 @@ final class FiscalDocumentWriter
     }
 
     /**
+     * O digest da etapa parceira da mesma chave de acesso, ou `null` quando ela
+     * ainda não chegou — o caso de toda captura que começa no meio da fila, do
+     * evento e da consulta por chave que devolveu só o XML completo.
+     *
+     * A busca é pela etapa que faz par com a que está chegando (`counterpart()`),
+     * e nunca pela própria: a linha da etapa parceira é a única que não é a linha
+     * que este `store()` vai sobrescrever.
+     */
+    private function counterpartDigest(Client $client, PulledDocument $document): ?string
+    {
+        $counterpart = $document->stage->counterpart();
+
+        if ($counterpart === null) {
+            return null;
+        }
+
+        return FiscalDocument::query()
+            ->where('client_id', $client->getKey())
+            ->where('chave_acesso', $document->chave)
+            ->where('stage', $counterpart)
+            ->value('digval');
+    }
+
+    /**
      * O caminho é derivado, não higienizado.
      *
      * `FiscalXmlPath` interpola a chave de acesso e o `event_id` no caminho, e a
@@ -160,6 +197,7 @@ final class FiscalDocumentWriter
             (int) $client->getKey(),
             $document->chave,
             $document->eventId,
+            $document->stage,
         );
     }
 }

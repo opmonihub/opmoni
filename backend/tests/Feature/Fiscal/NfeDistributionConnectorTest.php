@@ -6,6 +6,7 @@ use App\Enums\FiscalFailure;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
@@ -79,12 +80,13 @@ class NfeDistributionConnectorTest extends TestCase
 
         $this->assertSame(FiscalModel::Nfe, $document->model);
         $this->assertSame(FiscalKind::Document, $document->kind);
+        $this->assertSame(FiscalStage::Summary, $document->stage);
         $this->assertSame(self::CHAVE, $document->chave);
         $this->assertSame('', $document->eventId);
         $this->assertSame('99999999999999', $document->emitenteCnpj);
         $this->assertNull($document->destinatarioCnpj);
         $this->assertSame('710.00', $document->valorTotal);
-        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $document->digVal);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $document->digVal);
         $this->assertSame(200, $document->nsu);
         $this->assertSame('resNFe_v1.01.xsd', $document->schema);
         $this->assertSame('2022-04-04T11:54:49-03:00', $document->emissaoAt?->toIso8601String());

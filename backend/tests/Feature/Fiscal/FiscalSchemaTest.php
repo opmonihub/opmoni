@@ -5,6 +5,7 @@ namespace Tests\Feature\Fiscal;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalCursor;
@@ -167,6 +168,50 @@ class FiscalSchemaTest extends TestCase
         );
     }
 
+    public function test_the_summary_and_the_full_document_of_one_key_coexist(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        // A spec: resumo e documento completo são duas entregas de distribuição do
+        // mesmo documento, e as duas ficam recuperáveis pela chave de acesso.
+        // Com a etapa fora da chave composta, as duas linhas colidiam e o
+        // documento completo sobrescrevia o resumo.
+        // A mesma chave de acesso nos dois inserts: sem a etapa na chave, estes
+        // dois eram um só.
+        FiscalDocument::factory()->create([
+            ...$this->documentAttributes($account, $client),
+            'stage' => FiscalStage::Summary,
+        ]);
+
+        FiscalDocument::factory()->create([
+            ...$this->documentAttributes($account, $client),
+            'stage' => FiscalStage::Document,
+        ]);
+
+        $this->assertSame(2, FiscalDocument::count());
+    }
+
+    public function test_reprocessing_one_stage_of_a_key_is_rejected_as_a_duplicate(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        FiscalDocument::factory()->create([
+            ...$this->documentAttributes($account, $client),
+            'stage' => FiscalStage::Document,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        // Reprocessar o mesmo lote reentrega a mesma etapa, e é a unicidade que
+        // transforma a reentrega em sobrescrita em vez de linha duplicada.
+        FiscalDocument::factory()->create([
+            ...$this->documentAttributes($account, $client),
+            'stage' => FiscalStage::Document,
+        ]);
+    }
+
     public function test_document_carries_the_digest_and_its_verdict(): void
     {
         $account = Account::factory()->create();
@@ -181,12 +226,12 @@ class FiscalSchemaTest extends TestCase
         // comparar.
         FiscalDocument::factory()->create([
             'client_id' => $client->getKey(),
-            'digval' => 'L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=',
+            'digval' => 'i2rqNaD6rqmCfhXHyTBf4xe1ImQ=',
             'digval_confere' => false,
         ]);
 
         $divergente = FiscalDocument::query()->firstOrFail();
-        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $divergente->digval);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $divergente->digval);
         $this->assertFalse($divergente->digval_confere);
 
         // Nulo é um estado, não uma ausência: as duas colunas precisam aceitá-lo.
@@ -240,6 +285,7 @@ class FiscalSchemaTest extends TestCase
         $this->assertInstanceOf(FiscalSource::class, $document->source);
         $this->assertInstanceOf(FiscalModel::class, $document->model);
         $this->assertInstanceOf(FiscalKind::class, $document->kind);
+        $this->assertInstanceOf(FiscalStage::class, $document->stage);
         $this->assertSame(44, strlen($document->chave_acesso));
         $this->assertSame('', $document->event_id);
         $this->assertGreaterThan(0, $document->nsu);
@@ -254,17 +300,42 @@ class FiscalSchemaTest extends TestCase
         $event = FiscalDocument::factory()->event()->create();
 
         $this->assertSame(FiscalKind::Event, $event->kind);
+        $this->assertSame(FiscalStage::Event, $event->stage);
         $this->assertNotSame('', $event->event_id);
         $this->assertNotNull($event->evento_ocorrido_em_at);
+    }
+
+    public function test_summary_state_marks_the_document_as_a_summary_stage(): void
+    {
+        $summary = FiscalDocument::factory()->summary()->create();
+
+        $this->assertSame(FiscalKind::Document, $summary->kind);
+        $this->assertSame(FiscalStage::Summary, $summary->stage);
+        $this->assertSame('', $summary->event_id);
+        $this->assertStringEndsWith('-resumo.xml', $summary->storage_path);
     }
 
     public function test_fiscal_xml_path_format_is_stable(): void
     {
         $chave = str_repeat('3', 44);
 
-        $this->assertSame("7/9/{$chave}-documento.xml", FiscalXmlPath::for(7, 9, $chave));
-        $this->assertSame("7/9/{$chave}-documento.xml", FiscalXmlPath::for(7, 9, $chave, ''));
-        $this->assertSame("7/9/{$chave}-110111.xml", FiscalXmlPath::for(7, 9, $chave, '110111'));
+        $this->assertSame("7/9/{$chave}-documento.xml", FiscalXmlPath::for(7, 9, $chave, '', FiscalStage::Document));
+        $this->assertSame("7/9/{$chave}-resumo.xml", FiscalXmlPath::for(7, 9, $chave, '', FiscalStage::Summary));
+        $this->assertSame("7/9/{$chave}-110111.xml", FiscalXmlPath::for(7, 9, $chave, '110111', FiscalStage::Event));
+    }
+
+    public function test_the_two_document_stages_do_not_share_a_file(): void
+    {
+        $chave = str_repeat('3', 44);
+
+        // Resumo e documento completo têm a mesma chave de acesso e o mesmo
+        // `event_id` vazio: se o caminho não carregasse a etapa, o segundo
+        // sobrescreveria o XML do primeiro em disco, e o download da linha do
+        // resumo serviria o documento completo.
+        $this->assertNotSame(
+            FiscalXmlPath::for(7, 9, $chave, '', FiscalStage::Summary),
+            FiscalXmlPath::for(7, 9, $chave, '', FiscalStage::Document),
+        );
     }
 
     public function test_storage_path_follows_the_shared_fiscal_xml_path_contract(): void
@@ -279,12 +350,12 @@ class FiscalSchemaTest extends TestCase
         // ler outro: os dois estariam coerentes consigo mesmos e nenhum teste
         // perceberia a divergência da produção.
         $this->assertSame(
-            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $document->chave_acesso, ''),
+            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $document->chave_acesso, '', FiscalStage::Document),
             $document->storage_path,
         );
 
         $this->assertSame(
-            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $event->chave_acesso, '110111'),
+            FiscalXmlPath::for((int) $account->getKey(), (int) $client->getKey(), (string) $event->chave_acesso, '110111', FiscalStage::Event),
             $event->storage_path,
         );
     }
