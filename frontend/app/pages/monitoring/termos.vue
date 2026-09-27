@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { apiStatus } from '~/composables/useApiError'
 import type { SerproAuthorizationTerm } from '~/types/serpro'
-import { formatMonitoringDate, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { formatMonitoringDate, serproTermGuidance, serproTermStatePresentation } from '~/utils/monitoringPresentation'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -34,7 +34,13 @@ const { data, status, error, refresh } = await useAsyncData<SerproAuthorizationT
 
 const isLoading = computed(() => status.value === 'pending')
 const term = computed(() => data.value)
-const presentation = computed(() => serproTermStatePresentation[term.value?.state ?? 'ausente'])
+/**
+ * The badge below lives inside `v-else-if="term"`, so the no-term case is the
+ * alert that follows, never this badge: there is no `ausente` reading to fall
+ * back to, and pretending otherwise would put a "Termo não emitido" badge on a
+ * path that renders no badge at all.
+ */
+const presentation = computed(() => serproTermStatePresentation[term.value!.state])
 
 async function onRefresh() {
   try {
@@ -101,7 +107,10 @@ const showError = computed(() => !!error.value && apiStatus(error.value) !== 404
       </div>
 
       <p class="text-sm text-muted">
-        A assinatura é do escritório. A renovação é feita pela plataforma, sem nenhuma ação sua.
+        A assinatura é do escritório.
+      </p>
+      <p class="text-sm text-muted">
+        {{ serproTermGuidance[term.state] }}
       </p>
     </UCard>
 

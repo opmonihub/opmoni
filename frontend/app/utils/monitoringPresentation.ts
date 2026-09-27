@@ -116,6 +116,23 @@ export const serproTermStatePresentation: Record<SerproAuthorizationTermState, {
   recusado: { label: 'Recusado', color: 'error', icon: 'i-lucide-ban' }
 }
 
+/**
+ * What the office is expected to do about a term in each state. The wording
+ * lives here rather than in a template because it is state-conditional and a
+ * single sentence that is true for a valid term is false for an expired one:
+ * `tasks.md` 4.11 makes renewal the office's own action when the term lapses,
+ * so a page that says "nothing to do" above an expired badge is telling the
+ * office something false about its own position.
+ */
+export const serproTermGuidance: Record<SerproAuthorizationTermState, string> = {
+  ausente: 'O termo é emitido automaticamente assim que o escritório tiver um certificado válido.',
+  pendente: 'A validação está em curso na plataforma. Não há nada a fazer.',
+  validado: 'A renovação é feita pela plataforma, sem nenhuma ação sua.',
+  autenticado: 'A renovação é feita pela plataforma, sem nenhuma ação sua.',
+  vencido: 'O termo venceu. A renovação é do escritório e depende de um certificado válido — a plataforma não a faz sozinha.',
+  recusado: 'O provedor recusou o termo. O escritório precisa emitir um novo termo a partir de um certificado válido.'
+}
+
 /** The total is the sum of the four; `encerrado` is deliberately not in it. */
 export function monitoringCountersTotal(summary: Pick<MonitoringObligationSummary, 'em_dia' | 'processando' | 'pendencias' | 'atencao'>) {
   return summary.em_dia + summary.processando + summary.pendencias + summary.atencao
