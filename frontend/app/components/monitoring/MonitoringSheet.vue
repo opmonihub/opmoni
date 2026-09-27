@@ -6,14 +6,22 @@ import { sheetBodyClass, sheetTableUi, sheetToolbarUi } from '~/components/data-
 import { apiStatus } from '~/composables/useApiError'
 import type { ObligationListParams } from '~/composables/useSerpro'
 import type { MonitoringClient, MonitoringMessageStub, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
-import type { MonitoringObligation } from '~/utils/monitoringNav'
+import { monitoringObligationUnserved, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
   formatMonitoringDate,
   formatMonitoringDueOn,
+  isMonitoringSlipColumn,
+  latestSlipFor,
   monitoringAttentionReasonPresentation,
   monitoringCategoryPresentation,
   monitoringDeadlinePassed,
+  monitoringMissingValue,
+  monitoringProvenance,
+  monitoringProvenanceLabels,
   monitoringSituacaoPresentation,
+  monitoringSlipColumnValue,
+  monitoringSlipMissingPresentation,
+  monitoringSlipStatusPresentation,
   monitoringStalePresentation
 } from '~/utils/monitoringPresentation'
 import AssociateClientsModal from '~/components/monitoring/AssociateClientsModal.vue'
@@ -42,8 +50,6 @@ const debouncedSearch = refDebounced(search, 350)
 const tagFilter = ref<number[]>([])
 const page = ref(1)
 
-const UNSERVED_CATEGORIES = ['unavailable', 'extinct'] as const
-
 function emptySummary(obligation: MonitoringObligation): MonitoringObligationSummary {
   return {
     obligation: obligation.slug,
@@ -54,6 +60,7 @@ function emptySummary(obligation: MonitoringObligation): MonitoringObligationSum
     pendencias: 0,
     atencao: 0,
     encerrado: 0,
+    progress: null,
     current_page: 1,
     attention_reasons: []
   }
@@ -78,7 +85,7 @@ const params = computed<ObligationListParams>(() => ({
 const listKey = computed(() => `serpro-monitoring-${props.obligation.slug}-${props.situacao ?? 'todas'}`)
 
 const { data, status, error, refresh } = await useAsyncData(listKey, async () => {
-  if (UNSERVED_CATEGORIES.includes(props.obligation.category as typeof UNSERVED_CATEGORIES[number])) {
+  if (isUnserved.value) {
     return { data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }
   }
   try {
@@ -95,8 +102,10 @@ const { data, status, error, refresh } = await useAsyncData(listKey, async () =>
 
 const summary = computed(() => data.value?.data ?? emptySummary(props.obligation))
 const isLoading = computed(() => status.value === 'pending')
-const isUnserved = computed(() => UNSERVED_CATEGORIES.includes(props.obligation.category as typeof UNSERVED_CATEGORIES[number]))
+const isUnserved = computed(() => monitoringObligationUnserved(props.obligation))
 const category = computed(() => monitoringCategoryPresentation[props.obligation.category])
+/** What a `derived` obligation projects over; `null` for anything else. */
+const provenance = computed(() => monitoringProvenance(props.obligation))
 
 const rows = ref<MonitoringClient[]>([])
 const total = ref(0)
@@ -199,8 +208,9 @@ watch(error, (value) => {
  * delivered. One accessor makes the default cell agree with the card.
  *
  * `meta.class` stays the `{ th, td }` object @nuxt/ui v4 reads (it resolves
- * `class.th`/`class.td`, nothing else), so a numeric column stays right-aligned
- * in the body without being right-aligned in the header.
+ * `class.th`/`class.td`, nothing else), and a numeric column declares **both**,
+ * so the header label shares the right edge of the figures under it. A `th`
+ * only entry would left-align the heading over right-aligned numbers.
  */
 const columns = computed<TableColumn<MonitoringClient>[]>(() =>
   props.obligation.columns.map(column => ({
@@ -217,8 +227,13 @@ function fieldValue(row: MonitoringClient, id: string) {
   if (id === 'name') return row.name
   if (id === 'situacao') return monitoringSituacaoPresentation[row.situacao].label
   if (id === 'due_on') return formatMonitoringDueOn(row.due_on)
+  // The guide columns come from the periods already synchronized for the row,
+  // not from `fields`: an opaque provider string could not say which period it
+  // belonged to or whether it was paid. Handled before the `fields` lookup, or
+  // they would resolve to a key the backend never populates.
+  if (isMonitoringSlipColumn(id)) return monitoringSlipColumnValue(id, row.periods)
   const value = row.fields[id]
-  return value == null || value === '' ? '—' : String(value)
+  return value == null || value === '' ? monitoringMissingValue : String(value)
 }
 
 /** The row's situation, refined by its named cause when it is `atencao`. */
@@ -228,10 +243,32 @@ function situacaoLabel(row: MonitoringClient) {
   return monitoringAttentionReasonPresentation(row.cause, reason?.label).label
 }
 
+/**
+ * The cause's colour, not the aggregate's. A `sem_declaracao` row is an
+ * `atencao` counter, so the situation's own colour is `error` — while the label
+ * and the icon on the same badge both resolve the cause and say `warning`. One
+ * severity per row: whichever of the two the office reads, they have to agree.
+ */
+function situacaoColor(row: MonitoringClient) {
+  if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao].color
+  const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
+  return monitoringAttentionReasonPresentation(row.cause, reason?.label).color
+}
+
 function situacaoIcon(row: MonitoringClient) {
   if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao].icon
   const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
   return monitoringAttentionReasonPresentation(row.cause, reason?.label).icon
+}
+
+/**
+ * The derived guide status for the desktop badge. `null` becomes the em dash
+ * presentation rather than "Sem guia": a row with no synchronized period has not
+ * been told it owes nothing.
+ */
+function slipPresentation(row: MonitoringClient) {
+  const slip = latestSlipFor(row.periods)
+  return slip ? monitoringSlipStatusPresentation[slip.status] : monitoringSlipMissingPresentation
 }
 
 async function afterAssociate() {
@@ -283,8 +320,16 @@ async function afterRead() {
     <UDashboardToolbar class="hidden min-w-0 md:flex" :ui="sheetToolbarUi">
       <template #left>
         <div class="min-w-0 flex-1">
+          <!--
+            Gated on the real failure, and on nothing else. A 404 is the inert
+            state, so the exemption stays; but under a `500` the alert below
+            announces the failure while these five readings would render
+            `emptySummary`'s zeros — the page would claim nothing needs attention
+            at the same moment as saying it could not load. Same reason the
+            overview hides its whole body behind `showError`.
+          -->
           <ObligationCounters
-            v-if="!isUnserved"
+            v-if="!isUnserved && !(error && failed)"
             :obligation="obligation"
             :summary="summary"
             :situacao="situacao"
@@ -295,6 +340,30 @@ async function afterRead() {
     </UDashboardToolbar>
 
     <div :class="sheetBodyClass">
+      <!--
+        The provenance of a `derived` obligation, above the readings it qualifies.
+        Without it the office reads a projection as an independent source, which
+        is the one thing the classification exists to prevent.
+      -->
+      <p
+        v-if="provenance"
+        class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted"
+      >
+        <UBadge
+          size="sm"
+          variant="subtle"
+          :color="category.color"
+          :icon="category.icon"
+          :label="category.label"
+        />
+        <span v-if="provenance.origin">
+          {{ monitoringProvenanceLabels.origin }}: {{ provenance.origin }}.
+        </span>
+        <span v-if="provenance.service">
+          {{ monitoringProvenanceLabels.service }}: {{ provenance.service }}.
+        </span>
+      </p>
+
       <template v-if="isUnserved">
         <UAlert
           :color="category.color"
@@ -306,7 +375,12 @@ async function afterRead() {
       </template>
 
       <template v-else>
-        <div class="md:hidden">
+        <!-- Same gate as the desktop strip, and it is already inside the served
+             branch, so `isUnserved` is not repeated here. -->
+        <div
+          v-if="!(error && failed)"
+          class="md:hidden"
+        >
           <ObligationCounters
             :obligation="obligation"
             :summary="summary"
@@ -314,6 +388,23 @@ async function afterRead() {
             @associate="associateOpen = true"
           />
         </div>
+
+        <!--
+          Inside the served branch, deliberately, and outside the
+          loading/error/table chain below so a refilter cannot unmount an open
+          picker. An unserved obligation (`declaracoes/dirf`) has nothing to
+          associate clients to, and a picker mounted beside the chain would be
+          one edit away from offering to attach clients to an obligation that
+          does not exist. Both triggers for it — the counter strip and the empty
+          state — are in here too, so the mount cannot outlive its own triggers.
+        -->
+        <AssociateClientsModal
+          v-if="canManageClients"
+          v-model:open="associateOpen"
+          :obligation="obligation"
+          :associated-ids="rows.map(row => row.client_id)"
+          @associated="afterAssociate"
+        />
 
         <UAlert
           v-if="error && failed"
@@ -371,7 +462,7 @@ async function afterRead() {
                   <DataTableIdentity :title="row.name" :meta="row.tax_id ?? ''" />
                   <div class="flex shrink-0 flex-col items-end gap-1">
                     <UBadge
-                      :color="monitoringSituacaoPresentation[row.situacao].color"
+                      :color="situacaoColor(row)"
                       :icon="situacaoIcon(row)"
                       variant="subtle"
                       :label="situacaoLabel(row)"
@@ -487,11 +578,27 @@ async function afterRead() {
                   </div>
                 </template>
 
+                <!--
+                  The guide carries a severity the plain cell cannot: a slip
+                  issued and unpaid is a warning, and a slip paid is not. Read
+                  from the row's periods, never from `fields`.
+                -->
+                <template #guia-cell="{ row }">
+                  <UBadge
+                    class="max-w-full"
+                    :color="slipPresentation(row.original).color"
+                    :icon="slipPresentation(row.original).icon"
+                    variant="subtle"
+                    :label="slipPresentation(row.original).label"
+                    :ui="{ base: 'max-w-full', label: 'truncate' }"
+                  />
+                </template>
+
                 <template #situacao-cell="{ row }">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <UBadge
                       class="max-w-full"
-                      :color="monitoringSituacaoPresentation[row.original.situacao].color"
+                      :color="situacaoColor(row.original)"
                       :icon="situacaoIcon(row.original)"
                       variant="subtle"
                       :label="situacaoLabel(row.original)"
@@ -525,14 +632,9 @@ async function afterRead() {
       </template>
     </div>
 
-    <AssociateClientsModal
-      v-if="canManageClients"
-      v-model:open="associateOpen"
-      :obligation="obligation"
-      :associated-ids="rows.map(row => row.client_id)"
-      @associated="afterAssociate"
-    />
-
+    <!-- `MessageDetail` carries its own `v-if="messageStub"`, and a stub only
+         exists once a served obligation's row was opened, so it needs no gate
+         the modal below does not get from being inside the served branch. -->
     <MessageDetail
       v-if="messageStub"
       v-model:open="messageOpen"
