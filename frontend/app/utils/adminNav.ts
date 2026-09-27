@@ -12,7 +12,8 @@ export const adminPages: readonly AdminPage[] = [
   { label: 'Planos', icon: 'i-lucide-layers', to: '/admin/planos' },
   { label: 'Assinaturas', icon: 'i-lucide-receipt', to: '/admin/assinaturas' },
   { label: 'Usuários', icon: 'i-lucide-users', to: '/admin/usuarios' },
-  { label: 'Suporte', icon: 'i-lucide-life-buoy', to: '/admin/suporte' }
+  { label: 'Suporte', icon: 'i-lucide-life-buoy', to: '/admin/suporte' },
+  { label: 'Serpro', icon: 'i-lucide-plug', to: '/admin/serpro' }
 ]
 
 export function adminPageActive(path: string, page: AdminPage) {

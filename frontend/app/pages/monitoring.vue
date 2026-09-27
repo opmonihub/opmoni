@@ -1,24 +1,30 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
-import { monitoringListPath, monitoringPageKey, parseMonitoringSlug } from '~/utils/monitoringNav'
+import { monitoringGroups, monitoringListPath, parseMonitoringSlug } from '~/utils/monitoringNav'
 
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const listing = computed(() => parseMonitoringSlug(route.params.slug))
 
-const title = computed(() => listing.value?.group.label ?? 'Monitoramento')
+const currentGroup = computed(() => {
+  const obligation = listing.value?.obligation
+  if (!obligation) return null
+  return monitoringGroups.find(group => group.pages.some(page => page.slug === obligation.slug)) ?? null
+})
+
+const title = computed(() => currentGroup.value?.label ?? 'Monitoramento')
 
 const pageTabs = computed<NavigationMenuItem[][] | null>(() => {
   const current = listing.value
-  if (!current || current.group.pages.length < 2) return null
-  const currentKey = monitoringPageKey(current.page)
+  const group = currentGroup.value
+  if (!current || !group || group.pages.length < 2) return null
   return [[
-    ...current.group.pages.map(page => ({
+    ...group.pages.map(page => ({
       label: page.label,
       icon: page.icon,
-      to: monitoringListPath(page, current.status),
-      active: monitoringPageKey(page) === currentKey
+      to: monitoringListPath(page, current.situacao ?? undefined),
+      active: page.slug === current.obligation.slug
     }))
   ]]
 })

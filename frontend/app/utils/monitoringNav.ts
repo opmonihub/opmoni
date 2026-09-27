@@ -1,110 +1,86 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
+import type { MonitoringSituacao, ObligationCategory } from '~/types/serpro'
 
-export type MonitoringStatus = 'pending' | 'expiring' | 'expired' | 'regular'
-export type MonitoringFamily = 'obligation' | 'installment' | 'fiscal' | 'mailbox'
+export interface MonitoringColumn {
+  id: string
+  header: string
+  /** Right-aligned, for counts and amounts. */
+  numeric?: boolean
+}
 
-export interface MonitoringPage {
+export interface MonitoringObligation {
+  /** The path under `/monitoring`, and the key the backend is addressed by. */
+  slug: string
   label: string
   icon: string
-  segments: readonly string[]
-  family: MonitoringFamily
+  /** Only the columns this obligation's source actually returns (D21). */
+  columns: readonly MonitoringColumn[]
+  /** `null` when the catalogue publishes no service for it. */
+  service: string | null
+  procuracao: string | null
+  category: ObligationCategory
+  /** What a `derived` obligation projects over, named for the office. */
+  derivedFrom?: string
 }
 
 export interface MonitoringGroup {
   label: string
   icon: string
   description: string
-  pages: readonly MonitoringPage[]
+  pages: readonly MonitoringObligation[]
 }
 
-export interface MonitoringCompany {
-  id: number
-  name: string
-  taxId: string
-  competence: string
-  dueOn: string
-  installments: string
-  balance: string
-  issuedOn: string
-  unread: number
-  lastMessage: string
-}
+/**
+ * The published catalogue revision this mapping was read from (D22). The
+ * catalogue is a moving document that contradicts itself, so the mapping
+ * records its shelf life instead of being trusted as settled.
+ */
+export const monitoringCatalogueRevision = '2026-09'
 
-export const monitoringStatuses: {
-  value: MonitoringStatus | 'all'
-  label: string
-  icon: string
-}[] = [
-  { value: 'all', label: 'Todos', icon: 'i-lucide-list' },
-  { value: 'pending', label: 'Pendente', icon: 'i-lucide-clock' },
-  { value: 'expiring', label: 'A vencer', icon: 'i-lucide-clock-alert' },
-  { value: 'expired', label: 'Vencido', icon: 'i-lucide-circle-alert' },
-  { value: 'regular', label: 'Regular', icon: 'i-lucide-circle-check' }
-]
+const NAME: MonitoringColumn = { id: 'name', header: 'Cliente' }
+const SITUACAO: MonitoringColumn = { id: 'situacao', header: 'Situação' }
+const DUE_ON: MonitoringColumn = { id: 'due_on', header: 'Vencimento' }
 
-const statusBySlug = {
-  'pendente': 'pending',
-  'a-vencer': 'expiring',
-  'vencido': 'expired',
-  'regular': 'regular'
-} as const
-
-const slugByStatus: Record<MonitoringStatus, keyof typeof statusBySlug> = {
-  pending: 'pendente',
-  expiring: 'a-vencer',
-  expired: 'vencido',
-  regular: 'regular'
-}
-
-const statusCycle: MonitoringStatus[] = ['expired', 'expiring', 'pending', 'regular']
-
-export const monitoringStatusPresentation: Record<MonitoringStatus, {
-  label: string
-  color: 'warning' | 'error' | 'success'
-  icon: string
-}> = {
-  pending: { label: 'Pendente', color: 'warning', icon: 'i-lucide-clock' },
-  expiring: { label: 'A vencer', color: 'warning', icon: 'i-lucide-clock-alert' },
-  expired: { label: 'Vencido', color: 'error', icon: 'i-lucide-circle-alert' },
-  regular: { label: 'Regular', color: 'success', icon: 'i-lucide-circle-check' }
-}
-
-export const monitoringColumns: Record<MonitoringFamily, { id: string, header: string }[]> = {
-  obligation: [
-    { id: 'name', header: 'Cliente' },
-    { id: 'competence', header: 'Competência' },
-    { id: 'status', header: 'Situação' },
-    { id: 'dueOn', header: 'Vencimento' }
-  ],
-  installment: [
-    { id: 'name', header: 'Cliente' },
-    { id: 'agency', header: 'Órgão' },
-    { id: 'installments', header: 'Parcelas' },
-    { id: 'status', header: 'Situação' },
-    { id: 'balance', header: 'Saldo' }
-  ],
-  fiscal: [
-    { id: 'name', header: 'Cliente' },
-    { id: 'document', header: 'Documento' },
-    { id: 'status', header: 'Situação' },
-    { id: 'issuedOn', header: 'Emissão' }
-  ],
-  mailbox: [
-    { id: 'name', header: 'Cliente' },
-    { id: 'mailbox', header: 'Caixa' },
-    { id: 'unread', header: 'Não lidas' },
-    { id: 'lastMessage', header: 'Última mensagem' }
-  ]
-}
+/** Every served obligation carries the client's name and the situation. */
+const served = (...specific: MonitoringColumn[]) => [NAME, ...specific, SITUACAO] as const
+/** An obligation the provider does not serve presents no column at all. */
+const unserved: readonly MonitoringColumn[] = []
 
 export const monitoringGroups: readonly MonitoringGroup[] = [
   {
     label: 'Simples Nacional',
     icon: 'i-lucide-store',
-    description: 'Apuração do Simples e do MEI.',
+    description: 'Apuração do regime e data da opção.',
     pages: [
-      { label: 'PGDAS', icon: 'i-lucide-file-spreadsheet', segments: ['simples', 'pgdas'], family: 'obligation' },
-      { label: 'PGMEI', icon: 'i-lucide-store', segments: ['simples', 'pgmei'], family: 'obligation' }
+      {
+        slug: 'simples-nacional',
+        label: 'Simples Nacional',
+        icon: 'i-lucide-store',
+        columns: served(
+          { id: 'regime_escolhido', header: 'Regime escolhido' },
+          { id: 'data_da_opcao', header: 'Data da opção' },
+          DUE_ON
+        ),
+        service: 'REGIMEAPURACAO/CONSULTAROPCAOREGIME103',
+        procuracao: '00060',
+        category: 'direct'
+      }
+    ]
+  },
+  {
+    label: 'MEI',
+    icon: 'i-lucide-store',
+    description: 'Dívida ativa do microempreendedor.',
+    pages: [
+      {
+        slug: 'mei',
+        label: 'MEI',
+        icon: 'i-lucide-store',
+        columns: served({ id: 'divida_ativa', header: 'Dívida ativa', numeric: true }),
+        service: 'PGMEI/DIVIDAATIVA24',
+        procuracao: null,
+        category: 'direct'
+      }
     ]
   },
   {
@@ -112,26 +88,89 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
     icon: 'i-lucide-file-spreadsheet',
     description: 'Entregas da DCTFWeb.',
     pages: [
-      { label: 'DCTFWeb', icon: 'i-lucide-file-chart-column', segments: ['dctfweb'], family: 'obligation' }
+      {
+        slug: 'dctfweb',
+        label: 'DCTFWeb',
+        icon: 'i-lucide-file-chart-column',
+        columns: served(
+          { id: 'gi_declaracao', header: 'GI_Declaração' },
+          { id: 'receitas', header: 'Receitas', numeric: true },
+          DUE_ON
+        ),
+        service: 'DCTFWEB/CONSXMLDECLARACAO38',
+        procuracao: '00103',
+        category: 'direct'
+      }
     ]
   },
   {
     label: 'FGTS Digital',
     icon: 'i-lucide-landmark',
-    description: 'Entregas do FGTS Digital.',
+    description: 'Valores apurados no FGTS Digital.',
     pages: [
-      { label: 'FGTS Digital', icon: 'i-lucide-landmark', segments: ['fgts-digital'], family: 'obligation' }
+      {
+        // PGDAS-D publishes a closed tax-code table with no FGTS, and FGTS due
+        // from a Simples optant is not collected in the DAS. The only
+        // structured FGTS in the catalogue is inside the DCTFWeb declaration.
+        slug: 'fgts-digital',
+        label: 'FGTS Digital',
+        icon: 'i-lucide-landmark',
+        columns: served({ id: 'valor_apurado_1718', header: 'Valor apurado (1718)', numeric: true }),
+        service: 'DCTFWEB/CONSXMLDECLARACAO38',
+        procuracao: '00103',
+        category: 'derived',
+        derivedFrom: 'o valor 1718 da declaração DCTFWeb'
+      }
     ]
   },
   {
     label: 'Parcelamentos',
     icon: 'i-lucide-calendar-clock',
-    description: 'Parcelas em aberto por órgão.',
+    description: 'Parcelas em aberto por programa.',
     pages: [
-      { label: 'Simples Nacional', icon: 'i-lucide-store', segments: ['parcelamentos', 'simples-nacional'], family: 'installment' },
-      { label: 'PGFN', icon: 'i-lucide-scale', segments: ['parcelamentos', 'pgfn'], family: 'installment' },
-      { label: 'Receita Federal', icon: 'i-lucide-building-2', segments: ['parcelamentos', 'receita-federal'], family: 'installment' },
-      { label: 'Especiais', icon: 'i-lucide-folder-lock', segments: ['parcelamentos', 'especiais'], family: 'installment' }
+      {
+        slug: 'parcelamentos/simples-nacional',
+        label: 'Simples Nacional',
+        icon: 'i-lucide-store',
+        columns: served(),
+        service: 'PARCSN',
+        procuracao: '00076+00188',
+        category: 'direct'
+      },
+      {
+        // All eight parcelamento systems say the debts are Simples Nacional
+        // ones under collection at the RFB: federal parcelamento runs on
+        // Receita's own channels, and the catalogue publishes nothing for it.
+        slug: 'parcelamentos/pgfn',
+        label: 'PGFN',
+        icon: 'i-lucide-scale',
+        columns: unserved,
+        service: null,
+        procuracao: null,
+        category: 'unavailable'
+      },
+      {
+        // "Receita Federal" is a misnomer: PERTSN and RELPSN are Simples
+        // Nacional debts under federal programmes. The name is kept because it
+        // is the office's word for the tab, and the comment keeps it honest.
+        slug: 'parcelamentos/receita-federal',
+        label: 'Receita Federal',
+        icon: 'i-lucide-building-2',
+        columns: served(),
+        service: 'PERTSN+RELPSN',
+        procuracao: '00149+10011, 00210+10036',
+        category: 'derived',
+        derivedFrom: 'os sistemas PERTSN e RELPSN'
+      },
+      {
+        slug: 'parcelamentos/especiais',
+        label: 'Especiais',
+        icon: 'i-lucide-folder-lock',
+        columns: served(),
+        service: 'PARCSN-ESP',
+        procuracao: '00125',
+        category: 'direct'
+      }
     ]
   },
   {
@@ -139,9 +178,40 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
     icon: 'i-lucide-shield-check',
     description: 'Relatório, certidões e comprovantes.',
     pages: [
-      { label: 'Relatório Fiscal', icon: 'i-lucide-file-text', segments: ['situacao-fiscal', 'relatorio-fiscal'], family: 'fiscal' },
-      { label: 'Certidões', icon: 'i-lucide-badge-check', segments: ['situacao-fiscal', 'certidoes'], family: 'fiscal' },
-      { label: 'Comprovantes', icon: 'i-lucide-receipt', segments: ['situacao-fiscal', 'comprovantes'], family: 'fiscal' }
+      {
+        slug: 'situacao-fiscal/relatorio-fiscal',
+        label: 'Relatório Fiscal',
+        icon: 'i-lucide-file-text',
+        columns: served(),
+        service: 'SITFIS/RELATORIOSITFIS92',
+        procuracao: '00002',
+        category: 'direct'
+      },
+      {
+        // Not a separate source: a projection of the same SITFIS PDF, titled
+        // "informações de apoio para emissão de certidão".
+        slug: 'situacao-fiscal/certidoes',
+        label: 'Certidões',
+        icon: 'i-lucide-badge-check',
+        columns: served(
+          { id: 'certidao', header: 'Certidão' },
+          { id: 'emissao', header: 'Emissão' },
+          { id: 'validade', header: 'Validade' }
+        ),
+        service: 'SITFIS/RELATORIOSITFIS92',
+        procuracao: '00002',
+        category: 'derived',
+        derivedFrom: 'o relatório SITFIS, que já traz o número negativo, a emissão e a validade'
+      },
+      {
+        slug: 'situacao-fiscal/comprovantes',
+        label: 'Comprovantes',
+        icon: 'i-lucide-receipt',
+        columns: served(),
+        service: 'PAGTOWEB/PAGAMENTOS71',
+        procuracao: '00004',
+        category: 'direct'
+      }
     ]
   },
   {
@@ -149,9 +219,39 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
     icon: 'i-lucide-mailbox',
     description: 'Mensagens por caixa.',
     pages: [
-      { label: 'e-CAC', icon: 'i-lucide-landmark', segments: ['caixas-postais', 'e-cac'], family: 'mailbox' },
-      { label: 'FGTS Digital', icon: 'i-lucide-wallet', segments: ['caixas-postais', 'fgts-digital'], family: 'mailbox' },
-      { label: 'DET', icon: 'i-lucide-inbox', segments: ['caixas-postais', 'det'], family: 'mailbox' }
+      {
+        slug: 'caixas-postais/e-cac',
+        label: 'e-CAC',
+        icon: 'i-lucide-landmark',
+        columns: served(
+          { id: 'nao_lidas', header: 'Não lidas', numeric: true },
+          { id: 'ultima', header: 'Última mensagem' }
+        ),
+        service: 'CAIXAPOSTAL/MSGCONTRIBUINTE61',
+        procuracao: '00006',
+        category: 'direct'
+      },
+      {
+        // A subject filter over CAIXAPOSTAL, not a service of its own.
+        slug: 'caixas-postais/fgts-digital',
+        label: 'FGTS Digital',
+        icon: 'i-lucide-wallet',
+        columns: served(),
+        service: 'CAIXAPOSTAL',
+        procuracao: '00006',
+        category: 'derived',
+        derivedFrom: 'um filtro por assunto sobre a caixa postal e-CAC'
+      },
+      {
+        slug: 'caixas-postais/det',
+        label: 'DET',
+        icon: 'i-lucide-inbox',
+        columns: served(),
+        service: 'CAIXAPOSTAL',
+        procuracao: '00006',
+        category: 'derived',
+        derivedFrom: 'um filtro por assunto sobre a caixa postal e-CAC'
+      }
     ]
   },
   {
@@ -159,75 +259,123 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
     icon: 'i-lucide-files',
     description: 'Obrigações acessórias da carteira.',
     pages: [
-      { label: 'PGDAS', icon: 'i-lucide-file-spreadsheet', segments: ['declaracoes', 'pgdas'], family: 'obligation' },
-      { label: 'DCTFWeb', icon: 'i-lucide-file-chart-column', segments: ['declaracoes', 'dctfweb'], family: 'obligation' },
-      { label: 'FGTS', icon: 'i-lucide-wallet', segments: ['declaracoes', 'fgts'], family: 'obligation' },
-      { label: 'DEFIS', icon: 'i-lucide-file-text', segments: ['declaracoes', 'defis'], family: 'obligation' },
-      { label: 'DIRF', icon: 'i-lucide-files', segments: ['declaracoes', 'dirf'], family: 'obligation' }
+      {
+        // `00146` is shared by PGDASD and DEFIS: one client's grant covers
+        // both, so the office setup must not present them as two grants (D5).
+        slug: 'declaracoes/pgdas',
+        label: 'PGDAS',
+        icon: 'i-lucide-file-spreadsheet',
+        columns: served(
+          { id: 'gi_declaracao', header: 'GI_Declaração' },
+          { id: 'guia_emitida', header: 'Guia emitida' },
+          { id: 'guia_paga', header: 'Guia paga' },
+          DUE_ON
+        ),
+        service: 'PGDASD/CONSDECLARACAO13',
+        procuracao: '00146',
+        category: 'direct'
+      },
+      {
+        slug: 'declaracoes/dctfweb',
+        label: 'DCTFWeb',
+        icon: 'i-lucide-file-chart-column',
+        columns: served(),
+        service: 'DCTFWEB/CONSXMLDECLARACAO38',
+        procuracao: '00103',
+        category: 'direct'
+      },
+      {
+        slug: 'declaracoes/fgts',
+        label: 'FGTS',
+        icon: 'i-lucide-wallet',
+        columns: unserved,
+        service: null,
+        procuracao: null,
+        category: 'unavailable'
+      },
+      {
+        // Shares `00146` with PGDAS-D — see the comment there.
+        slug: 'declaracoes/defis',
+        label: 'DEFIS',
+        icon: 'i-lucide-file-text',
+        columns: served(),
+        service: 'DEFIS/CONSDECLARACAO142',
+        procuracao: '00146',
+        category: 'direct'
+      },
+      {
+        // Not waiting for data. IN RFB 2.043/2021 replaced DIRF with EFD-Reinf
+        // and eSocial; IN RFB 2.181/2024 made that a fact from 1 January 2025.
+        // Neither successor is exposed by the integration.
+        slug: 'declaracoes/dirf',
+        label: 'DIRF',
+        icon: 'i-lucide-files',
+        columns: unserved,
+        service: null,
+        procuracao: null,
+        category: 'extinct'
+      }
     ]
   }
 ]
 
-export const monitoringCompanies: readonly MonitoringCompany[] = [
-  { id: 1, name: 'Padaria Estrela do Sul Ltda', taxId: '12.345.678/0001-90', competence: '03/2026', dueOn: '20/04/2026', installments: '8/60', balance: 'R$ 12.480,00', issuedOn: '02/03/2026', unread: 3, lastMessage: 'Guia disponível para pagamento' },
-  { id: 2, name: 'Oficina Horizonte ME', taxId: '23.456.789/0001-01', competence: '03/2026', dueOn: '20/04/2026', installments: '14/48', balance: 'R$ 6.230,40', issuedOn: '11/02/2026', unread: 0, lastMessage: 'Parcelamento confirmado' },
-  { id: 3, name: 'Mercado Bom Dia Ltda', taxId: '34.567.890/0001-12', competence: '02/2026', dueOn: '20/03/2026', installments: '3/24', balance: 'R$ 2.150,00', issuedOn: '18/01/2026', unread: 5, lastMessage: 'Intimação aguardando ciência' },
-  { id: 4, name: 'Clínica Vida Plena Ltda', taxId: '45.678.901/0001-23', competence: '03/2026', dueOn: '20/04/2026', installments: '21/36', balance: 'R$ 18.900,00', issuedOn: '09/03/2026', unread: 1, lastMessage: 'Certidão emitida' },
-  { id: 5, name: 'Transportes Serra Azul Ltda', taxId: '56.789.012/0001-34', competence: '01/2026', dueOn: '20/02/2026', installments: '40/60', balance: 'R$ 41.220,15', issuedOn: '28/02/2026', unread: 2, lastMessage: 'Mensagem não lida no e-CAC' },
-  { id: 6, name: 'Studio Lume ME', taxId: '67.890.123/0001-45', competence: '03/2026', dueOn: '20/04/2026', installments: '1/12', balance: 'R$ 890,00', issuedOn: '04/03/2026', unread: 0, lastMessage: 'Caixa sem mensagens novas' },
-  { id: 7, name: 'Construtora Vale Verde Ltda', taxId: '78.901.234/0001-56', competence: '02/2026', dueOn: '20/03/2026', installments: '11/84', balance: 'R$ 73.400,00', issuedOn: '15/01/2026', unread: 4, lastMessage: 'Comprovante de pagamento recebido' },
-  { id: 8, name: 'Farmácia Central do Bairro Ltda', taxId: '89.012.345/0001-67', competence: '03/2026', dueOn: '20/04/2026', installments: '6/18', balance: 'R$ 4.760,80', issuedOn: '22/03/2026', unread: 1, lastMessage: 'DEFIS disponível para entrega' },
-  { id: 9, name: 'Escola Pequeno Mundo Ltda', taxId: '90.123.456/0001-78', competence: '03/2026', dueOn: '20/04/2026', installments: '27/60', balance: 'R$ 9.340,00', issuedOn: '01/03/2026', unread: 0, lastMessage: 'Situação fiscal regular' },
-  { id: 10, name: 'Gráfica Folha Inteira Ltda', taxId: '10.234.567/0001-89', competence: '02/2026', dueOn: '20/03/2026', installments: '9/36', balance: 'R$ 15.010,50', issuedOn: '19/02/2026', unread: 2, lastMessage: 'FGTS Digital com pendência' }
-]
+export const monitoringObligations: readonly MonitoringObligation[] = monitoringGroups.flatMap(group => group.pages)
 
-const pageOrder = new Map<string, number>()
-const pageByKey = new Map<string, { page: MonitoringPage, group: MonitoringGroup }>()
+/** Static siblings, resolved by Nuxt ahead of the `[...slug].vue` catch-all. */
+export const monitoringIntegrationLinks = [
+  { label: 'Termo de autorização', icon: 'i-lucide-file-signature', to: '/monitoring/termos' },
+  { label: 'Execuções de sincronização', icon: 'i-lucide-refresh-cw', to: '/monitoring/execucoes' }
+] as const
 
-monitoringGroups.forEach((group) => {
-  group.pages.forEach((page) => {
-    const key = page.segments.join('/')
-    pageOrder.set(key, pageOrder.size)
-    pageByKey.set(key, { page, group })
-  })
-})
-
-export function monitoringPageKey(page: MonitoringPage) {
-  return page.segments.join('/')
+const situacaoSlug: Record<MonitoringSituacao, string> = {
+  em_dia: 'em-dia',
+  processando: 'processando',
+  pendencias: 'pendencias',
+  atencao: 'atencao',
+  encerrado: 'encerrado'
 }
 
-export function monitoringListPath(page: MonitoringPage, status: MonitoringStatus | 'all' = 'all') {
-  const base = `/monitoring/${monitoringPageKey(page)}`
-  if (status === 'all') return base
-  return `${base}/${slugByStatus[status]}`
+const situacaoBySlug = {
+  'em-dia': 'em_dia',
+  'processando': 'processando',
+  'pendencias': 'pendencias',
+  'atencao': 'atencao',
+  'encerrado': 'encerrado'
+} as const satisfies Record<string, MonitoringSituacao>
+
+export function monitoringListPath(obligation: MonitoringObligation, situacao?: MonitoringSituacao) {
+  const base = `/monitoring/${obligation.slug}`
+  return situacao ? `${base}/${situacaoSlug[situacao]}` : base
 }
 
-export function monitoringStatusFor(company: MonitoringCompany, page: MonitoringPage): MonitoringStatus {
-  const pageIndex = pageOrder.get(monitoringPageKey(page)) ?? 0
-  return statusCycle[(company.id + pageIndex) % statusCycle.length] ?? 'regular'
-}
-
+/**
+ * The situation is a route segment, never local state, so a list restricted to
+ * one state is a link that reproduces for whoever follows it. A trailing
+ * segment the vocabulary does not know is treated as part of the obligation
+ * path and therefore fails to resolve — the alternative is a mistyped situation
+ * silently showing everything.
+ */
 export function parseMonitoringSlug(slug: unknown) {
   const source = Array.isArray(slug) ? slug : typeof slug === 'string' ? [slug] : []
   const parts = source.filter((part): part is string => typeof part === 'string' && part !== '')
   if (!parts.length) return null
 
-  let status: MonitoringStatus | 'all' = 'all'
+  let situacao: MonitoringSituacao | null = null
   let body = parts
   const last = parts[parts.length - 1]
-  if (last && last in statusBySlug) {
-    status = statusBySlug[last as keyof typeof statusBySlug]
+  if (last && last in situacaoBySlug) {
+    situacao = situacaoBySlug[last as keyof typeof situacaoBySlug]
     body = parts.slice(0, -1)
   }
   if (!body.length) return null
 
-  const match = pageByKey.get(body.join('/'))
-  if (!match) return null
-  return { ...match, status }
+  const obligation = monitoringObligations.find(item => item.slug === body.join('/'))
+  if (!obligation) return null
+  return { obligation, situacao }
 }
 
-function pageActive(path: string, page: MonitoringPage) {
-  const base = monitoringListPath(page)
+function obligationActive(path: string, obligation: MonitoringObligation) {
+  const base = monitoringListPath(obligation)
   return path === base || path.startsWith(`${base}/`)
 }
 
@@ -242,17 +390,21 @@ export function monitoringSidebarChildren(path: string): NavigationMenuItem[] {
   for (const group of monitoringGroups) {
     const first = group.pages[0]
     if (!first) continue
-
     items.push({
       label: group.label,
       to: monitoringListPath(first),
-      active: group.pages.some(page => pageActive(path, page))
+      active: group.pages.some(obligation => obligationActive(path, obligation))
+    })
+  }
+
+  for (const link of monitoringIntegrationLinks) {
+    items.push({
+      label: link.label,
+      icon: link.icon,
+      to: link.to,
+      active: path === link.to || path.startsWith(`${link.to}/`)
     })
   }
 
   return items
-}
-
-export function monitoringAttentionCount(page: MonitoringPage) {
-  return monitoringCompanies.filter(company => monitoringStatusFor(company, page) !== 'regular').length
 }

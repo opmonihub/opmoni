@@ -19,7 +19,7 @@ watch(listing, (value) => {
 <template>
   <MonitoringSheet
     v-if="listing"
-    :page="listing.page"
-    :status="listing.status"
+    :obligation="listing.obligation"
+    :situacao="listing.situacao"
   />
 </template>

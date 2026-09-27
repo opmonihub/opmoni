@@ -1,18 +1,10 @@
 <script setup lang="ts">
-import {
-  monitoringAttentionCount,
-  monitoringCompanies,
-  monitoringGroups,
-  monitoringListPath
-} from '~/utils/monitoringNav'
+import { monitoringGroups, monitoringListPath, monitoringObligations } from '~/utils/monitoringNav'
 
 definePageMeta({ middleware: 'auth' })
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat('pt-BR').format(value)
-}
-
-const firstPage = monitoringGroups[0]?.pages[0]
+const firstObligation = monitoringObligations[0]
+const attentionFor = () => '0'
 </script>
 
 <template>
@@ -31,8 +23,8 @@ const firstPage = monitoringGroups[0]?.pages[0]
         <MetricCard
           icon="i-lucide-building-2"
           title="Na carteira"
-          :to="firstPage ? monitoringListPath(firstPage) : undefined"
-          :value="formatCount(monitoringCompanies.length)"
+          :to="firstObligation ? monitoringListPath(firstObligation) : undefined"
+          value="0"
         />
       </UPageGrid>
     </section>
@@ -52,12 +44,12 @@ const firstPage = monitoringGroups[0]?.pages[0]
 
       <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
         <MetricCard
-          v-for="page in group.pages"
-          :key="monitoringListPath(page)"
+          v-for="obligation in group.pages"
+          :key="monitoringListPath(obligation)"
           :icon="group.icon"
-          :title="page.label"
-          :to="monitoringListPath(page)"
-          :value="formatCount(monitoringAttentionCount(page))"
+          :title="obligation.label"
+          :to="monitoringListPath(obligation)"
+          :value="attentionFor()"
         />
       </UPageGrid>
     </section>
