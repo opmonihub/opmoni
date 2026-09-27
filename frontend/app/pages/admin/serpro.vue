@@ -245,6 +245,23 @@ watch(error, (value) => {
         </div>
 
         <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <!--
+            The key's own hint, which the API returns as `consumer_key_hint` and
+            which is a hint precisely because it is not the stored secret. It is
+            what makes the rotation path reachable: `consumer_key` is required on
+            every save, so without it only an operator who already knows the key
+            being replaced can rotate — not the one the "key lost or compromised"
+            scenario is about, who has the new key in hand and no idea what the
+            old one was.
+          -->
+          <div>
+            <dt class="text-sm text-muted">
+              Chave de integração
+            </dt>
+            <dd class="text-sm font-medium text-default tabular-nums">
+              {{ configuredCredential.consumer_key_hint ?? '—' }}
+            </dd>
+          </div>
           <div>
             <dt class="text-sm text-muted">
               Titular do certificado
@@ -280,7 +297,7 @@ watch(error, (value) => {
         </dl>
 
         <p class="text-sm text-muted">
-          O segredo, a senha e o arquivo do certificado não são devolvidos pela API e não aparecem aqui.
+          O segredo, a senha e o arquivo do certificado não são devolvidos pela API e não aparecem aqui. A chave aparece apenas como pista: o que está gravado não é devolvido.
         </p>
 
         <div class="flex justify-end">
