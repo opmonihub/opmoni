@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\SerproConnectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,8 +22,16 @@ use Illuminate\Support\Facades\Crypt;
 ])]
 class SerproConnection extends Model
 {
-    /** @use HasFactory<SerproConnection> */
+    /** @use HasFactory<SerproConnectionFactory> */
     use HasFactory;
+
+    protected function casts(): array
+    {
+        return [
+            'certificate_valid_from' => 'datetime',
+            'certificate_valid_until' => 'datetime',
+        ];
+    }
 
     /**
      * A credencial é da plataforma, não de uma conta: exatamente uma linha.

@@ -26,10 +26,14 @@ class SerproConnectionTest extends TestCase
 
     public function test_safe_metadata_reports_configured_state(): void
     {
-        $metadata = SerproConnection::factory()->create()->safeMetadata();
+        SerproConnection::factory()->create();
+
+        $metadata = SerproConnection::current()->fresh()->safeMetadata();
 
         $this->assertTrue($metadata['configured']);
         $this->assertSame('12345678000195', $metadata['contratante_numero']);
+        $this->assertIsString($metadata['certificate_valid_from']);
+        $this->assertIsString($metadata['certificate_valid_until']);
     }
 
     public function test_current_returns_null_when_absent(): void
