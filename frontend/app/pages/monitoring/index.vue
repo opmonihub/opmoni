@@ -48,6 +48,14 @@ watch(error, (value) => {
   }
 })
 
+/**
+ * The same exemption the toast applies, applied to the template. Guarding only
+ * the toast would leave the page shouting "Não foi possível carregar" over a
+ * backend that simply has not shipped the endpoint yet — and `tasks.md` 10.3
+ * requires these screens to sit in an empty state in that situation.
+ */
+const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
+
 function attentionFor(obligation: MonitoringObligation) {
   return formatMonitoringCount(data.value.attention[obligation.slug] ?? 0)
 }
@@ -56,7 +64,7 @@ function attentionFor(obligation: MonitoringObligation) {
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-4 sm:p-6">
     <UAlert
-      v-if="error"
+      v-if="showError"
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
@@ -65,7 +73,7 @@ function attentionFor(obligation: MonitoringObligation) {
       :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
     />
 
-    <UPageSkeleton v-else-if="isLoading" :rows="6" />
+    <UPageSkeleton v-else-if="isLoading && !error" :rows="6" />
 
     <template v-else>
       <section class="flex flex-col gap-4">
