@@ -2258,7 +2258,7 @@ Run: `cd frontend && pnpm lint && pnpm typecheck`
 Expected: PASS.
 
 Run: `cd frontend && node --test tests/`
-Expected: PASS — the 23 pre-existing files plus the three new ones stay green. `AssociateClientsModal` does not exist yet, so create it as a stub first:
+Expected: PASS — the 22 pre-existing files plus the three new ones, 25 in total, stay green. `AssociateClientsModal` does not exist yet, so create it as a stub first:
 
 ```vue
 <!-- app/components/monitoring/AssociateClientsModal.vue -->
@@ -2809,14 +2809,17 @@ git commit -m "feat(monitoring): consent before reading a legal notice"
 ```bash
 cd frontend && pnpm lint && pnpm typecheck && node --test tests/
 ```
-Expected: PASS, the pre-existing 23 test files still green alongside the three new ones.
+Expected: PASS, 25 test files green — the 22 pre-existing plus the three this change adds.
 
 - [ ] **Step 2: Confirm nothing fictitious survives**
 
+Run both from the **repository root**, not from `frontend/` — `openspec/` does not exist under `frontend/`, and a wrong path exits `2` rather than `1`, so a `2>/dev/null` on it turns a broken command into a silent pass.
+
 ```bash
 cd frontend && grep -rn "monitoringCompanies\|monitoringStatusFor\|statusCycle\|monitoringAttentionCount\|monitoringColumns" app/ tests/
+cd .. && grep -rn "Padaria Estrela\|Mercado Bom Dia\|Transportes Serra Azul\|Construtora Vale Verde\|Gráfica Folha Inteira" app/ tests/ openspec/
 ```
-Expected: no matches.
+Expected: no matches from either. The ten hardcoded company names are the sample rows this change exists to remove; any survivor is a Critical finding, not a note.
 
 - [ ] **Step 3: Confirm the inert and unserved states**
 
