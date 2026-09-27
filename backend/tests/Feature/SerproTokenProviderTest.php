@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
 use App\Services\SerproException;
 use App\Services\SerproTokenProvider;
@@ -112,9 +113,13 @@ class SerproTokenProviderTest extends TestCase
             'certificate_password_encrypted' => encrypt('senha'),
         ]);
 
-        $this->expectException(SerproException::class);
-
-        resolve(SerproTokenProvider::class)->pair();
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('A rejected credential should throw a SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+            $this->assertSame(400, $exception->status);
+        }
     }
 
     public function test_a_response_without_the_authorization_token_is_refused(): void
@@ -131,8 +136,30 @@ class SerproTokenProviderTest extends TestCase
             'certificate_password_encrypted' => encrypt('senha'),
         ]);
 
-        $this->expectException(SerproException::class);
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('A response missing jwt_token should throw a SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Upstream, $exception->failure);
+            $this->assertSame(502, $exception->status);
+        }
+    }
 
-        resolve(SerproTokenProvider::class)->pair();
+    public function test_an_unreachable_provider_raises_an_upstream_failure(): void
+    {
+        Http::fake(Http::failedConnection('connection refused'));
+
+        SerproConnection::factory()->create([
+            'certificate_encrypted' => encrypt('pfx'),
+            'certificate_password_encrypted' => encrypt('senha'),
+        ]);
+
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('An unreachable auth provider should throw a SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Upstream, $exception->failure);
+            $this->assertSame(503, $exception->status);
+        }
     }
 }
