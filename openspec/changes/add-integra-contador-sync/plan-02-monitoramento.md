@@ -2549,7 +2549,11 @@ const { data, status, error, refresh } = await useAsyncData<SerproAuthorizationT
 
 const isLoading = computed(() => status.value === 'pending')
 const term = computed(() => data.value)
-const presentation = computed(() => serproTermStatePresentation[term.value?.state ?? 'ausente'])
+// `?.` is load-bearing — `term` is nullable and a computed body has no
+// `v-else-if` to narrow it — but the `'ausente'` fallback was not: the badge is
+// the only consumer and sits inside `v-else-if="term"`, so the getter never runs
+// without a term. A loud `TypeError` beats a silent fallback.
+const presentation = computed(() => serproTermStatePresentation[term.value!.state])
 </script>
 
 <template>
@@ -2564,7 +2568,7 @@ const presentation = computed(() => serproTermStatePresentation[term.value?.stat
     </div>
 
     <UAlert
-      v-if="error"
+      v-if="showError"
       color="error"
       variant="subtle"
       icon="i-lucide-circle-alert"
