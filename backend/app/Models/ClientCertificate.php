@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Concerns\BelongsToAccount;
 use Database\Factories\ClientCertificateFactory;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,12 +46,21 @@ class ClientCertificate extends Model
 
     /**
      * A senha do PKCS#12 em claro, ou `null` quando o certificado não tem senha
-     * armazenada. A coluna guarda apenas o texto cifrado.
+     * utilizável. `null` cobre os dois casos que exigem novo upload: coluna
+     * vazia e coluna presente mas indecifrável (APP_KEY rotacionado, valor
+     * truncado, lixo antigo). Um `DecryptException` aqui viraria erro cru na
+     * captura, justamente onde o painel precisa dizer "reenvie o certificado".
      */
     public function certificatePassword(): ?string
     {
-        return $this->password_encrypted === null
-            ? null
-            : Crypt::decryptString($this->password_encrypted);
+        if ($this->password_encrypted === null) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($this->password_encrypted);
+        } catch (DecryptException) {
+            return null;
+        }
     }
 }

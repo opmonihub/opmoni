@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
@@ -34,6 +35,39 @@ class ClientCertificatePasswordTest extends TestCase
         $certificate = ClientCertificate::factory()->create(['password_encrypted' => null]);
 
         $this->assertNull($certificate->certificatePassword());
+    }
+
+    public function test_returns_null_when_password_is_not_a_ciphertext_payload(): void
+    {
+        $certificate = ClientCertificate::factory()->create([
+            'password_encrypted' => 'coluna-com-lixo-antigo',
+        ]);
+
+        $this->assertNull($certificate->certificatePassword());
+    }
+
+    public function test_returns_null_when_password_was_encrypted_with_another_key(): void
+    {
+        // APP_KEY rotacionado: o payload é um ciphertext válido do Laravel, mas
+        // o MAC não bate. Tem de virar `null` como qualquer senha inutilizável.
+        $otherKey = new Encrypter(random_bytes(32), 'AES-256-CBC');
+        $certificate = ClientCertificate::factory()->create([
+            'password_encrypted' => $otherKey->encryptString('segredo'),
+        ]);
+
+        $this->assertNull($certificate->certificatePassword());
+    }
+
+    public function test_undecryptable_password_still_reports_the_column_as_present(): void
+    {
+        $certificate = ClientCertificate::factory()->create([
+            'password_encrypted' => 'coluna-com-lixo-antigo',
+        ]);
+
+        // A coluna continua preenchida: o que falta é utilizabilidade, e o
+        // painel precisa continuar vendo o histórico do certificado.
+        $this->assertNotNull($certificate->password_encrypted);
+        $this->assertArrayNotHasKey('password_encrypted', $certificate->toArray());
     }
 
     public function test_password_is_not_serialized(): void

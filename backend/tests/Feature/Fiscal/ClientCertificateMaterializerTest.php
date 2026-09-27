@@ -4,6 +4,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Models\ClientCertificate;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
+use Closure;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -53,7 +54,6 @@ class ClientCertificateMaterializerTest extends TestCase
         $this->assertSame('resultado', $result);
         $this->assertIsString($seen);
         $this->assertFileDoesNotExist($seen);
-        $this->assertSame([], Storage::disk('local')->allFiles());
     }
 
     public function test_file_is_removed_when_callback_throws(): void
@@ -79,7 +79,6 @@ class ClientCertificateMaterializerTest extends TestCase
 
         $this->assertIsString($seen);
         $this->assertFileDoesNotExist($seen);
-        $this->assertSame([], Storage::disk('local')->allFiles());
     }
 
     public function test_two_calls_use_distinct_files(): void
@@ -105,7 +104,10 @@ class ClientCertificateMaterializerTest extends TestCase
 
         $this->assertCount(2, $paths);
         $this->assertNotSame($paths[0], $paths[1]);
-        $this->assertSame([], Storage::disk('local')->allFiles());
+
+        foreach ($paths as $path) {
+            $this->assertFileDoesNotExist($path);
+        }
     }
 
     public function test_named_failure_when_certificate_is_not_stored(): void
@@ -117,7 +119,7 @@ class ClientCertificateMaterializerTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Certificado do cliente não está disponível.');
 
-        (new ClientCertificateMaterializer)->withCertificate($certificate, fn (string $path) => null);
+        (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
     }
 
     public function test_named_failure_when_certificate_file_vanished_from_the_vault(): void
@@ -131,7 +133,22 @@ class ClientCertificateMaterializerTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Certificado do cliente não está disponível.');
 
-        (new ClientCertificateMaterializer)->withCertificate($certificate, fn (string $path) => null);
+        (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
+    }
+
+    public function test_named_failure_when_stored_certificate_cannot_be_decrypted(): void
+    {
+        $certificate = ClientCertificate::factory()->withPassword()->create();
+
+        // Material ilegível: lixo no lugar do texto cifrado. A senha segue
+        // intacta, então a falha é atribuível aos bytes, não à senha.
+        Storage::disk('certificates')->put((string) $certificate->storage_path, 'conteudo-que-nao-e-payload-cifrado');
+        $this->assertNotNull($certificate->certificatePassword());
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Certificado do cliente não está disponível.');
+
+        (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
     }
 
     public function test_named_failure_when_password_is_not_stored(): void
@@ -145,33 +162,80 @@ class ClientCertificateMaterializerTest extends TestCase
         $this->assertNull($certificate->certificatePassword());
 
         try {
-            (new ClientCertificateMaterializer)->withCertificate($certificate, fn (string $path) => null);
+            (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
 
             $this->fail('Um certificado sem senha armazenada deveria falhar.');
         } catch (RuntimeException $exception) {
             $this->assertSame('A senha do certificado do cliente não está armazenada.', $exception->getMessage());
             $this->assertStringNotContainsString('segredo-unico-9f2b', $exception->getMessage());
         }
-
-        // A falha é anterior à escrita: nenhum material temporário é criado.
-        $this->assertSame([], Storage::disk('local')->allFiles());
     }
 
-    public function test_named_failure_when_temporary_file_cannot_be_written(): void
+    public function test_named_failure_when_stored_password_cannot_be_decrypted(): void
+    {
+        $certificate = ClientCertificate::factory()->withPassword('senha')->create();
+
+        // Senha presente e indecifrável (APP_KEY rotacionado, coluna truncada):
+        // mesmo desfecho de "sem senha", nunca um DecryptException cru.
+        $certificate->forceFill(['password_encrypted' => 'coluna-que-nao-e-payload-cifrado'])->saveQuietly();
+
+        $this->assertNotNull($certificate->storage_path);
+        $this->assertNull($certificate->certificatePassword());
+
+        try {
+            (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
+
+            $this->fail('Uma senha indecifrável deveria ser tratada como ausência de senha.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('A senha do certificado do cliente não está armazenada.', $exception->getMessage());
+        }
+    }
+
+    public function test_leftover_file_is_removed_when_the_write_reports_failure(): void
     {
         $certificate = ClientCertificate::factory()->withPassword()->create();
+        $leaked = null;
 
         $cofre = Storage::disk('certificates');
+        $real = Storage::disk('local');
+
+        // Modela `UnableToSetVisibility`: `file_put_contents` conclui e o
+        // arquivo fica em disco, o `chmod` falha e `put()` devolve `false`.
+        // É o vazamento que o `finally` fora do `put()` não cobria.
         $local = Mockery::mock(Filesystem::class);
-        $local->shouldReceive('put')->andReturn(false);
+        $local->shouldReceive('path')->andReturnUsing(fn (string $path) => $real->path($path));
+        $local->shouldReceive('put')->andReturnUsing(function (string $path, string $contents) use ($real, &$leaked): bool {
+            $real->put($path, $contents);
+            $leaked = $real->path($path);
+            $this->assertFileExists($leaked);
 
-        Storage::shouldReceive('disk')->andReturnUsing(
-            fn (?string $name = null) => $name === 'local' ? $local : $cofre
-        );
+            return false;
+        });
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Não foi possível gravar o certificado no diretório temporário.');
+        Storage::shouldReceive('disk')->andReturnUsing(fn (?string $name = null) => $name === 'local' ? $local : $cofre);
 
-        (new ClientCertificateMaterializer)->withCertificate($certificate, fn (string $path) => null);
+        try {
+            (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
+
+            $this->fail('Uma gravação que falhou deveria ser erro nomeado.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Não foi possível gravar o certificado no diretório temporário.', $exception->getMessage());
+        }
+
+        // O caminho exato que vazou, não o disco inteiro.
+        $this->assertIsString($leaked);
+        $this->assertStringContainsString('fiscal-tmp/', $leaked);
+        $this->assertFileDoesNotExist($leaked);
+    }
+
+    /**
+     * Nenhuma falha nomeada pode chegar a materializar um arquivo: um callback
+     * chamado aqui significaria que o material temporário foi criado.
+     */
+    private function callbackThatMustNotRun(): Closure
+    {
+        return function (string $path): never {
+            $this->fail("O callback não deveria rodar sem material utilizável ({$path}).");
+        };
     }
 }

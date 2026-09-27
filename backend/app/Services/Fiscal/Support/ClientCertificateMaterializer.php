@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Support;
 
 use App\Models\ClientCertificate;
 use Closure;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -39,16 +40,24 @@ final class ClientCertificateMaterializer
 
         $disk = Storage::disk('local');
         $relative = 'fiscal-tmp/'.Str::uuid().'.pfx';
-
-        if ($disk->put($relative, $bytes) === false) {
-            throw new RuntimeException('Não foi possível gravar o certificado no diretório temporário.');
-        }
-
         $path = null;
 
+        // A escrita fica *dentro* do `try`: `put()` pode devolver `false`
+        // depois de o arquivo já estar no disco (`UnableToSetVisibility` é o
+        // caso comum — `file_put_contents` OK, `chmod` falhando), e esse PFX
+        // não pode sobreviver à chamada. O disco `local` é `throw => false` e
+        // `report => false`, então a falha é silenciosa e ninguém mais limpa.
         try {
             $path = $disk->path($relative);
+            $written = $disk->put($relative, $bytes) !== false;
+
+            // Antes de olhar o resultado: se sobrou arquivo, ele não pode
+            // ficar legível por mais tempo, mesmo que a escrita tenha falhado.
             @chmod($path, 0600);
+
+            if (! $written) {
+                throw new RuntimeException('Não foi possível gravar o certificado no diretório temporário.');
+            }
 
             return $callback($path);
         } finally {
@@ -89,6 +98,14 @@ final class ClientCertificateMaterializer
         // O cofre grava `encrypt(base64($conteudo))`: a base64 fica sob a cifra,
         // então a ordem é decifrar e só então decodificar. Invertido, o
         // `base64_decode` estrito devolve `false` e o certificado some.
-        return base64_decode(Crypt::decryptString($stored), true) ?: null;
+        try {
+            $decrypted = Crypt::decryptString($stored);
+        } catch (DecryptException) {
+            // Material ilegível é a mesma condição de "não há certificado
+            // utilizável": falha nomeada, nunca `DecryptException` cru.
+            return null;
+        }
+
+        return base64_decode($decrypted, true) ?: null;
     }
 }

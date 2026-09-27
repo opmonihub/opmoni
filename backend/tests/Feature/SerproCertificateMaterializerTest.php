@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
 use App\Services\SerproCertificateMaterializer;
 use App\Services\SerproException;
@@ -80,7 +81,9 @@ class SerproCertificateMaterializerTest extends TestCase
         ]);
 
         $mockDisk = Mockery::mock(Filesystem::class);
-        $mockDisk->shouldReceive('path')->with('')->andReturn(storage_path('app/private'));
+        $mockDisk->shouldReceive('path')->andReturnUsing(fn (string $path = '') => $path === ''
+            ? storage_path('app/private')
+            : storage_path('app/private/serpro-tmp/inexistente.pfx'));
         $mockDisk->shouldReceive('put')->andReturn(false);
         Storage::shouldReceive('disk')->andReturn($mockDisk);
 
@@ -88,6 +91,48 @@ class SerproCertificateMaterializerTest extends TestCase
         $this->expectExceptionMessage('Não foi possível gravar o certificado no diretório temporário.');
 
         (new SerproCertificateMaterializer)->withCertificate($connection, fn (string $path) => null);
+    }
+
+    public function test_it_removes_a_file_left_behind_by_a_failed_write(): void
+    {
+        $connection = SerproConnection::factory()->create([
+            'certificate_encrypted' => encrypt('conteudo-do-pfx'),
+            'certificate_password_encrypted' => encrypt('senha'),
+        ]);
+
+        $real = Storage::disk('local');
+        $leaked = null;
+
+        // `put()` pode devolver `false` já com o arquivo no disco (o
+        // `chmod` falha depois do `file_put_contents`). Sem o `finally`
+        // cobrindo a escrita, esse PFX sobrevivia à chamada.
+        $mockDisk = Mockery::mock(Filesystem::class);
+        $mockDisk->shouldReceive('path')->with('')->andReturn($real->path(''));
+        $mockDisk->shouldReceive('path')->andReturnUsing(fn (string $path) => $real->path($path));
+        $mockDisk->shouldReceive('put')->andReturnUsing(function (string $path, string $contents) use ($real, &$leaked): bool {
+            $real->put($path, $contents);
+            $leaked = $real->path($path);
+            $this->assertFileExists($leaked);
+
+            return false;
+        });
+
+        Storage::shouldReceive('disk')->andReturn($mockDisk);
+
+        try {
+            (new SerproCertificateMaterializer)->withCertificate(
+                $connection,
+                fn (string $path) => $this->fail('O callback não deveria rodar sem arquivo gravado.'),
+            );
+
+            $this->fail('Uma gravação que falhou deveria ser SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+        }
+
+        $this->assertIsString($leaked);
+        $this->assertStringContainsString('serpro-tmp/', $leaked);
+        $this->assertFileDoesNotExist($leaked);
     }
 
     public function test_it_uses_the_configured_temp_directory(): void
