@@ -84,6 +84,30 @@ const params = computed<ObligationListParams>(() => ({
 
 const listKey = computed(() => `serpro-monitoring-${props.obligation.slug}-${props.situacao ?? 'todas'}`)
 
+/**
+ * Above the `useAsyncData` call, and that ordering is load-bearing.
+ *
+ * `useAsyncData` invokes its handler **synchronously** during `await`, on both
+ * entry paths (server at `asyncData.js:85-86`, client navigation at `:112`, both
+ * through `initialFetch` → `execute` → the promise executor at `:348`). So every
+ * `const` the handler reads has to be initialized before the call: declared
+ * below it, `isUnserved.value` throws a temporal-dead-zone `ReferenceError` inside
+ * the async function, which becomes a rejected promise, and `asyncData.js:368-377`
+ * swallows it — `error.value` is set, `data` falls back to the `default`, and
+ * setup does not throw, so nothing is logged as a crash. The result is the worst
+ * of every state: no request is issued, `data` is `emptySummary()`, `isLoading` is
+ * false, and because the throw happens before the `try`, `failed` stays false — a
+ * clean, plausible, entirely false "nothing needs anything" with no message at all.
+ *
+ * `summary` and `isLoading` stay below: they read `data`, which only exists after
+ * the call. TypeScript does not catch the other order — a closure boundary hides
+ * the use-before-declaration — and neither does a green unit suite.
+ */
+const isUnserved = computed(() => monitoringObligationUnserved(props.obligation))
+const category = computed(() => monitoringCategoryPresentation[props.obligation.category])
+/** What a `derived` obligation projects over; `null` for anything else. */
+const provenance = computed(() => monitoringProvenance(props.obligation))
+
 const { data, status, error, refresh } = await useAsyncData(listKey, async () => {
   if (isUnserved.value) {
     return { data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }
@@ -102,10 +126,6 @@ const { data, status, error, refresh } = await useAsyncData(listKey, async () =>
 
 const summary = computed(() => data.value?.data ?? emptySummary(props.obligation))
 const isLoading = computed(() => status.value === 'pending')
-const isUnserved = computed(() => monitoringObligationUnserved(props.obligation))
-const category = computed(() => monitoringCategoryPresentation[props.obligation.category])
-/** What a `derived` obligation projects over; `null` for anything else. */
-const provenance = computed(() => monitoringProvenance(props.obligation))
 
 const rows = ref<MonitoringClient[]>([])
 const total = ref(0)
@@ -632,9 +652,19 @@ async function afterRead() {
       </template>
     </div>
 
-    <!-- `MessageDetail` carries its own `v-if="messageStub"`, and a stub only
-         exists once a served obligation's row was opened, so it needs no gate
-         the modal below does not get from being inside the served branch. -->
+    <!--
+      Outside the served branch, and the `v-if="messageStub"` is what makes that
+      safe — not the branch. A stub can only exist once a row was opened, and a
+      row requires `rows`, which requires a served obligation.
+
+      Which depends on the `:key` in `pages/monitoring/[...slug].vue`: the
+      remount on an obligation or situation change is what clears `messageStub`.
+      Remove that key and the reactive-key carry-forward in `useAsyncData` brings
+      the stale dialog straight back — a message body from the previous
+      obligation's row, under the new obligation's name, including for one the
+      provider does not serve. The stub guard is real; the key is what keeps it
+      true.
+    -->
     <MessageDetail
       v-if="messageStub"
       v-model:open="messageOpen"
