@@ -1860,11 +1860,18 @@ function emptySummary(obligation: MonitoringObligation): MonitoringObligationSum
   }
 }
 
+/**
+ * `page` is deliberately **not** in `params`. `params` is what `useAsyncData`
+ * watches, so a `page` here would mean `loadMore`'s own `page.value = nextPage`
+ * re-triggers the fetch and replaces the accumulated list with the last page
+ * alone — and a filter or counter navigation would then request page N of a new
+ * query. The `watch(data)` handler is the single owner of `page`, so it always
+ * reflects the last page actually fetched, which is 1 after every refilter.
+ */
 const params = computed(() => ({
   situacao: props.situacao ?? '',
   q: debouncedSearch.value.trim(),
-  tag_id: tagFilter.value.length ? tagFilter.value : undefined,
-  page: page.value
+  tag_id: tagFilter.value.length ? tagFilter.value : undefined
 }))
 
 const listKey = computed(() => `serpro-monitoring-${props.obligation.slug}-${props.situacao ?? 'todas'}`)
@@ -1957,7 +1964,13 @@ function onFilters(models: DataTableFilterModel[]) {
   tagFilter.value = (models.find(model => model.columnId === 'tag_id')?.values ?? []).map(Number).filter(Number.isFinite)
 }
 
-const hasActiveFilters = computed(() => !!debouncedSearch.value.trim() || tagFilter.value.length > 0 || !!props.situacao)
+/**
+ * The situation is the list's identity — it is in the route, and a member
+ * follows it as a link — so it is not one of the filters a member applied to a
+ * list, and counting it here would offer "Limpar filtros" on a button that
+ * cannot clear anything.
+ */
+const hasActiveFilters = computed(() => !!debouncedSearch.value.trim() || tagFilter.value.length > 0)
 
 function clearFilters() {
   search.value = ''
