@@ -81,7 +81,7 @@ This table is the contract. It is derived from the provider's own catalogue, and
 | `caixas-postais/e-cac` | Caixas Postais › e-CAC | `CAIXAPOSTAL/MSGCONTRIBUINTE61` | `00006` | `direct` | `nao_lidas`, `ultima` |
 | `caixas-postais/fgts-digital` | Caixas Postais › FGTS Digital | `CAIXAPOSTAL`, filtro de assunto | `00006` | `derived` | — |
 | `caixas-postais/det` | Caixas Postais › DET | `CAIXAPOSTAL`, filtro de assunto | `00006` | `derived` | — |
-| `declaracoes/pgdas` | Declarações › PGDAS | `PGDASD/CONSDECLARACAO13` | `00146` | `direct` | `gi_declaracao`, `guia_emitida`, `guia_paga`, `due_on` |
+| `declaracoes/pgdas` | Declarações › PGDAS | `PGDASD/CONSDECLARACAO13` | `00146` | `direct` | `gi_declaracao`, `due_on`, `guia`, `guia_numero`, `guia_emitida_em`, `guia_vencimento`, `guia_paga` |
 | `declaracoes/dctfweb` | Declarações › DCTFWeb | `DCTFWEB/CONSXMLDECLARACAO38` | `00103` | `direct` | — |
 | `declaracoes/fgts` | Declarações › FGTS | — | — | `unavailable` | — |
 | `declaracoes/defis` | Declarações › DEFIS | `DEFIS/CONSDECLARACAO142` | `00146` | `direct` | — |
@@ -240,6 +240,8 @@ export interface MonitoringClient {
   power_of_attorney_expires_on: string | null
   /** Values for the obligation's declared `columns`, keyed by column id. */
   fields: Record<string, string | number | null>
+  /** The assessment periods behind the guide; not sent by the API yet. */
+  periods: MonitoringAssessmentPeriod[] | null
   /** Caixas Postais rows are messages; reading one is a legal act (D19). */
   message: MonitoringMessageStub | null
 }
@@ -262,8 +264,15 @@ export interface MonitoringAssessmentPeriod {
   rectified: boolean
   slip_number: string | null
   slip_issued_at: string | null
+  /** The deadline the assessment period carries — not the guide's. */
   due_on: string | null
   slip_paid: boolean | null
+}
+
+/** The synchronization's own axis; never a state of a client. */
+export interface MonitoringSyncProgress {
+  transmitted: number
+  requested: number
 }
 
 export interface MonitoringObligationSummary {
@@ -277,6 +286,8 @@ export interface MonitoringObligationSummary {
   atencao: number
   /** Outside the partition: a closed obligation never inflates an action state. */
   encerrado: number
+  /** The synchronization's own axis, beside the counters and outside them. */
+  progress: MonitoringSyncProgress | null
   current_page: number
   attention_reasons: AttentionReason[]
 }
@@ -2837,7 +2848,7 @@ Nothing, unless a fix was needed above.
 
 ## Self-Review
 
-**Spec coverage.** All nine requirements in `specs/monitoring/spec.md` are covered. *Clientes derivados* (Tasks 3, 4 — the ten companies and the arithmetic gone, `portfolio_total` from the API, natural persons excluded by the same rule the association picker applies). *Obrigação classificada* (Tasks 1, 3, 5 — the four categories in the registry, and the no-counter branch). *Contadores* (Tasks 2, 5 — four summing to the total, `encerrado` outside, zero displayed, progress not mixed in). *Situação e causa* (Tasks 2, 5 — five row states plus four causes, the cause resolved from the backend's code). *Dado desatualizado* (Task 2's `monitoringStalePresentation`, Task 5's separate badge — never a sixth situation). *Listagem* (Task 5 — server-filtered, route-carried, 404 answered). *Estados* (Task 5 — the ladder plus the unserved state). *Colunas por obrigação* (Tasks 3, 5 — declared per obligation, none at all for an unserved one). *Painel coerente* (Tasks 4, 5, 6 — the counter is a link to the list it announced, and an association refreshes the counters it invalidated). *Guia* (Task 2's `slipStatusFor` — most recent transmission wins, no extra provider call).
+**Spec coverage.** All nine requirements in `specs/monitoring/spec.md` are covered. *Clientes derivados* (Tasks 3, 4 — the ten companies and the arithmetic gone, `portfolio_total` from the API, natural persons excluded by the same rule the association picker applies). *Obrigação classificada* (Tasks 1, 3, 5 — the four categories in the registry, and the no-counter branch). *Contadores* (Tasks 2, 5 — four summing to the total, `encerrado` outside, zero displayed, and the progress axis rendered beside the counters as its own reading, never inside them). *Situação e causa* (Tasks 2, 5 — five row states plus four causes, the cause resolving label, colour and icon from the backend's code, so one row carries one severity). *Dado desatualizado* (Task 2's `monitoringStalePresentation`, Task 5's separate badge — never a sixth situation). *Listagem* (Task 5 — server-filtered, route-carried, 404 answered). *Estados* (Task 5 — the ladder plus the unserved state, and the counter strip hidden under a real failure so a `500` never renders invented zeros). *Colunas por obrigação* (Tasks 3, 5 — declared per obligation, none at all for an unserved one, and the PGDAS guide read from the row's synchronized periods rather than from an opaque provider string). *Painel coerente* (Tasks 4, 5, 6 — the counter is a link to the list it announced, an association refreshes the counters it invalidated, an obligation the provider does not serve shows no attention count at all, and a `derived` one is flagged as a projection before the click). *Guia* (Task 2's `slipStatusFor` through `latestSlipFor` and the five guide columns — most recent period, most recent transmission wins, no extra provider call, and the em dash where the data reports no period).
 
 **Type consistency.** The obligation table is transcribed once, in Task 3, and every later task reads it. `MonitoringCounter`, `MonitoringSituacao`, `AttentionReasonCode` and `ObligationCategory` are declared once in Task 1 and consumed by Tasks 2, 3, 5, 6, 7 and 8. The obligation slug is the registry key throughout and the contract fixes it for the backend. `parseMonitoringSlug` returns `{ obligation, situacao }` in Task 3 and `[...slug].vue` passes exactly those two names in Task 5. `ObligationCounters` takes `{ obligation, summary, situacao }` and emits `associate`; `MonitoringSheet` owns the modal and its `afterAssociate` handler. `useSerpro` is the only caller of every serpro endpoint.
 
