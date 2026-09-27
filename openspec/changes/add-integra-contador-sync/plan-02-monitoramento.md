@@ -814,8 +814,24 @@ export const monitoringCategoryPresentation: Record<ObligationCategory, { label:
   }
 }
 
-export const monitoringSlipStatusPresentation: Record<MonitoringSlipStatus, { label: string, color: Tone, icon: string }> = {
-  paid: { label: 'Guia emitida e paga', color: 'success', icon: 'i-lucide-circle-check' },
+/**
+ * What the office is expected to do about a term in each state. The wording
+ * lives here rather than in a template because it is state-conditional and a
+ * single sentence that is true for a valid term is false for an expired one:
+ * `tasks.md` 4.11 makes renewal the office's own action when the term lapses,
+ * so a page that says "nothing to do" above an expired badge is telling the
+ * office something false about its own position.
+ */
+export const serproTermGuidance: Record<SerproAuthorizationTermState, string> = {
+  ausente: 'O termo é emitido automaticamente assim que o escritório tiver um certificado válido.',
+  pendente: 'A validação está em curso na plataforma. Não há nada a fazer.',
+  validado: 'A renovação é feita pela plataforma, sem nenhuma ação sua.',
+  autenticado: 'A renovação é feita pela plataforma, sem nenhuma ação sua.',
+  vencido: 'O termo venceu. A renovação é do escritório e depende de um certificado válido — a plataforma não a faz sozinha.',
+  recusado: 'O provedor recusou o termo. O escritório precisa emitir um novo termo a partir de um certificado válido.'
+}
+
+export const monitoringSlipStatusPresentation: Record<MonitoringSlipStatus, { label: string, color: Tone, icon: string }> = {  paid: { label: 'Guia emitida e paga', color: 'success', icon: 'i-lucide-circle-check' },
   issued: { label: 'Guia emitida, não paga', color: 'warning', icon: 'i-lucide-receipt' },
   owed: { label: 'Período em aberto', color: 'warning', icon: 'i-lucide-clock' },
   none: { label: 'Sem guia', color: 'neutral', icon: 'i-lucide-circle-minus' }
@@ -2512,7 +2528,7 @@ git commit -m "feat(monitoring): associate clients to an obligation"
 <script setup lang="ts">
 import { apiStatus } from '~/composables/useApiError'
 import type { SerproAuthorizationTerm } from '~/types/serpro'
-import { formatMonitoringDate, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { formatMonitoringDate, serproTermGuidance, serproTermStatePresentation } from '~/utils/monitoringPresentation'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -2584,7 +2600,10 @@ const presentation = computed(() => serproTermStatePresentation[term.value?.stat
       </div>
 
       <p class="text-sm text-muted">
-        A assinatura é do escritório. A renovação é feita pela plataforma, sem nenhuma ação sua.
+        A assinatura é do escritório.
+      </p>
+      <p class="text-sm text-muted">
+        {{ serproTermGuidance[term.state] }}
       </p>
     </UCard>
 
