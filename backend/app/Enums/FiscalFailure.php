@@ -17,13 +17,18 @@ enum FiscalFailure: string
      * A lista de rejeições do serviço de distribuição, que é bem menor que a
      * tabela geral de NF-e: códigos do serviço de autorização (297, 539, 225)
      * não têm ramo aqui de propósito.
+     *
+     * `108` e `109` são indisponibilidade do serviço inteiro, não um evento do
+     * CNPJ, e por isso não viram `Blocked`: retomar cedo não zera contagem
+     * nenhuma. Custam um retry, não uma hora de silêncio por cliente.
      */
     public static function classify(int $httpStatus, string $cStat): self
     {
         return match ($cStat) {
             '138' => self::DocumentsFound,
             '137' => self::NoDocuments,
-            '108', '109', '656', '678' => self::Blocked,
+            '108', '109' => self::Upstream,
+            '656', '678' => self::Blocked,
             '589' => self::CursorAhead,
             '593', '472', '473' => self::Unauthorized,
             '640', '641' => self::NotInterested,
