@@ -2309,12 +2309,22 @@ const selected = ref<number[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const capped = ref(false)
-async function loadCandidates() {
+
+/**
+ * `exclude` carries the ids just associated in this open session. The sheet's
+ * `associatedIds` is only refreshed *after* the modal emits, so filtering on
+ * the prop alone would reload against the pre-add rows and hand back the very
+ * client that was just added.
+ */
+async function loadCandidates(exclude: number[] = []) {
   loading.value = true
   try {
-    const response = await list({ q: debouncedSearch.value.trim() })
+    // `sort`/`direction` are required by `ClientListParams`, and without
+    // `sheet: 1` the backend paginates at 25 — which would silently turn the
+    // 100-cap and "Selecionar todos" into "the first 25".
+    const response = await list({ sheet: 1, q: debouncedSearch.value.trim(), sort: 'name', direction: 'asc' })
     const companies = (response.data ?? []).filter(client => client.person_type === 'company')
-    const already = new Set(props.associatedIds)
+    const already = new Set([...props.associatedIds, ...exclude])
     const fresh = companies.filter(client => !already.has(client.id))
     // Capped, never paginated. A load-more inside a modal is awkward on the
     // pointer and worse on a phone; the honest alternative to a bounded list
@@ -2373,7 +2383,7 @@ async function associate(ids: number[], keepOpen: boolean) {
       // first, which is only true if a second one is one click away. The client
       // just added must also leave the picker, or the list goes on offering
       // someone the office is already monitoring.
-      await loadCandidates()
+      await loadCandidates(ids)
     } else {
       isOpen.value = false
     }
