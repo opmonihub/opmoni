@@ -4,6 +4,10 @@
 .env
 .env.*
 !.env.example
+# Arquivo de segredo com sufixo (opmoni.prod.env, secrets.env): `.env`/`.env.*`
+# acima NÃO pega a forma `nome.env`, e é exatamente essa que o AGENTS.md manda
+# criar com APP_KEY e DB_PASSWORD antes do deploy.
+*.env
 
 # Deps / build — bate em qualquer nível (inclui futuros pacotes)
 node_modules/
@@ -45,10 +49,25 @@ docker-compose.override.yml
 
 # Ferramentas locais (não versionar: config da máquina + licença de skill copiada)
 .impeccable/
+.codex/
+.cursor/
+.nova/
 .agents/skills/frontend-design/LICENSE.txt
 
 # Certificados A1 de dev (conteúdo criptografado — nunca versionar)
 backend/storage/app/private/certificates/
+
+# Chave/certificado solto em qualquer lugar do repo. O disco `private` do
+# Laravel já se autoprotege (backend/storage/app/private/.gitignore = `*`), mas
+# o que o dev baixa para testar upload de A1 ou mTLS do SERPRO nem sempre cai
+# lá dentro. PFX/P12 é o formato de procuração eletrônica: conteúdo
+# criptografado não quer dizer inofensivo no git.
+*.pfx
+*.p12
+*.pem
+*.key
+# .crt/.cer NÃO entram aqui de propósito: certificado é público por definição e
+# CA bundle legítimo é comum no repo. Quem vaza chave vaza em .key/.pem.
 
 # SQLite acidental (testes usam :memory:; nunca commitar arquivo)
 *.sqlite
