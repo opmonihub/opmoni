@@ -18,6 +18,9 @@ use App\Services\Fiscal\Support\DfeSoapEnvelope;
 use App\Services\Fiscal\Support\DocZipDecoder;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use App\Services\Fiscal\Support\FiscalXmlValidator;
+use App\Services\Fiscal\Support\XmlQuery;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
@@ -153,6 +156,117 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame(1678, $result->lastNsu);
         $this->assertNotNull($result->blockedUntil);
         $this->assertTrue($result->blockedUntil->isAfter(now()->addMinutes(50)));
+    }
+
+    public function test_a_posicao_do_lote_integro_pode_ser_adotada(): void
+    {
+        // "Avanço do cursor": um lote que virou documento inteiro autoriza a
+        // posição que a resposta devolveu.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertTrue($result->mayAdoptPosition);
+        $this->assertSame(200, $result->lastNsu);
+    }
+
+    public function test_a_posicao_de_um_lote_sem_documentos_nao_pode_ser_adotada(): void
+    {
+        // "Resposta sem documentos": a posição armazenada fica intacta. O que o
+        // serviço devolve nesse caso é o eco da posição pedida, não uma
+        // confirmação — gravá-la sobrescreveria o cursor com o valor anterior e
+        // apagaria a posição que a consulta anterior tinha conquistado.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('137', 'Nenhum documento localizado', 0), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertFalse($result->mayAdoptPosition);
+    }
+
+    public function test_a_posicao_do_consumo_indevido_pode_ser_adotada(): void
+    {
+        // "Rejeição por consumo indevido": a posição relatada é gravada, porque
+        // é a alavanca de recuperação que o fisco oferece dentro da rejeição.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_656_com_nsu.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertTrue($result->mayAdoptPosition);
+        $this->assertSame(1678, $result->lastNsu);
+    }
+
+    public function test_uma_entrada_corrompida_e_registrada_e_o_lote_continua(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            $this->docZip(298, $this->resNFe()),
+            // Base64 que não é nenhum dos três containers aceitos: nem ZIP, nem
+            // gZip, nem zlib.
+            $this->docZipPayload(299, base64_encode('isto nao e um container comprimido')),
+            $this->docZip(300, $this->resNFe()),
+        ]), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        // A entrada do meio não cancela a de depois: o lote inteiro é lido.
+        $this->assertSame([298, 300], array_column($result->documents, 'nsu'));
+        $this->assertCount(1, $result->failures);
+        $this->assertSame(299, $result->failures[0]->nsu);
+        $this->assertSame('resNFe_v1.01.xsd', $result->failures[0]->schema);
+        // O motivo nomeia a etapa e não carrega o payload: o Global Constraint
+        // de não registrar o `docZip` continua valendo aqui.
+        $this->assertSame('DocZipDecoder não decodificou o payload comprimido.', $result->failures[0]->reason);
+        $this->assertStringNotContainsString('container comprimido', $result->failures[0]->reason);
+        // E a posição não é adotada: avançar além da entrada que falhou
+        // perderia documento em silêncio na próxima consulta.
+        $this->assertFalse($result->mayAdoptPosition);
+    }
+
+    public function test_uma_chave_com_dv_invalido_e_registrada_sem_guardar_o_documento(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            $this->docZip(300, $this->resNFe('35220499999999999999550010020000001240556603')),
+        ]), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        // "Chave com dígito verificador inválido": rejeita, não guarda nada e
+        // reporta. O motivo não repete a chave — a mensagem da exceção de
+        // metadados a interpola, e o motivo vai para o painel e para o log.
+        $this->assertSame([], $result->documents);
+        $this->assertCount(1, $result->failures);
+        $this->assertSame(300, $result->failures[0]->nsu);
+        $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $result->failures[0]->reason);
+        $this->assertStringNotContainsString('35220499999999999999550010020000001240556603', $result->failures[0]->reason);
+        $this->assertFalse($result->mayAdoptPosition);
+    }
+
+    public function test_um_documento_de_outro_modelo_e_registrado_sem_virar_nfe(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            // Um `resCTe` entregue ao conector da NF-e é um documento real com
+            // etiqueta errada: a chave é de outro documento e entraria na
+            // unicidade sem conflito nenhum.
+            $this->docZip(300, $this->resCTe(), 'resCTe_v1.00.xsd'),
+        ]), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertSame([], $result->documents);
+        $this->assertCount(1, $result->failures);
+        $this->assertSame('resCTe_v1.00.xsd', $result->failures[0]->schema);
+        $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $result->failures[0]->reason);
     }
 
     public function test_a_requisicao_nao_carrega_assinatura(): void
@@ -341,8 +455,43 @@ class NfeDistributionConnectorTest extends TestCase
 
         // Consulta por chave e consulta por posição não podem se confundir: o
         // corpo vai com `consChNFe` e sem nenhum `distNSU`.
-        Http::assertSent(fn (Request $request): bool => str_contains($request->body(), '<consChNFe><chNFe>'.self::CHAVE.'</chNFe></consChNFe>')
-            && ! str_contains($request->body(), 'distNSU'));
+        Http::assertSent(function (Request $request): bool {
+            $this->assertStringContainsString('<consChNFe><chNFe>'.self::CHAVE.'</chNFe></consChNFe>', $request->body());
+            $this->assertStringNotContainsString('distNSU', $request->body());
+
+            // E o corpo que entrou no serviço é um que o schema local aceita:
+            // o `consChNFe` é uma das opções do grupo de consulta do
+            // `distDFeInt`, e o mesmo `validate()` do caminho por posição roda
+            // sobre ele.
+            $dom = new DOMDocument;
+            $dom->loadXML($request->body());
+
+            (new FiscalXmlValidator)->validate(
+                $dom->saveXML(XmlQuery::first(new DOMXPath($dom), 'distDFeInt')),
+                'distDFeInt',
+            );
+
+            return true;
+        });
+    }
+
+    public function test_a_consulta_por_chave_e_recusada_pelo_schema_antes_de_sair(): void
+    {
+        // CNPJ com 13 dígitos: o `TCnpj` do XSD exige 14. O corpo da consulta
+        // por chave é o único que sai de uma reescrita de outro corpo, então
+        // ele passa pelo mesmo validador antes de qualquer byte na rede.
+        $client = $this->clientWithCertificate('1234567800019');
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Requisição rejeitada pelo schema');
+
+        try {
+            $this->connector()->fetchByChave($client, self::CHAVE);
+        } finally {
+            Http::assertNothingSent();
+        }
     }
 
     public function test_fetch_by_chave_devolve_nulo_quando_o_servico_nao_localiza(): void
@@ -370,6 +519,22 @@ class NfeDistributionConnectorTest extends TestCase
         } catch (FiscalException $exception) {
             $this->assertSame(FiscalFailure::Blocked, $exception->failure);
         }
+    }
+
+    public function test_fetch_by_chave_nao_chama_ausencia_quando_a_resposta_nao_deixa_ler_nada(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 200, 200, [
+            $this->docZipPayload(200, base64_encode('isto nao e um container comprimido')),
+        ]), 200)]);
+
+        // O serviço disse que localizei, e o que veio não pôde ser lido.
+        // Devolver `null` aqui seria dizer que a chave não existe com ele.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('DocZipDecoder não decodificou o payload comprimido.');
+
+        $this->connector()->fetchByChave($client, self::CHAVE);
     }
 
     public function test_fetch_by_chave_recusa_chave_com_dv_invalido_sem_chamar_o_servico(): void
@@ -543,15 +708,41 @@ class NfeDistributionConnectorTest extends TestCase
 
     private function docZipResNFe(int $nsu): string
     {
-        $document = '<resNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">'
-            .'<chNFe>'.self::CHAVE.'</chNFe>'
+        return $this->docZip($nsu, $this->resNFe());
+    }
+
+    private function docZip(int $nsu, string $document, string $schema = 'resNFe_v1.01.xsd'): string
+    {
+        return $this->docZipPayload($nsu, base64_encode(gzencode($document)), $schema);
+    }
+
+    private function docZipPayload(int $nsu, string $payload, string $schema = 'resNFe_v1.01.xsd'): string
+    {
+        return '<docZip NSU="'.str_pad((string) $nsu, 15, '0', STR_PAD_LEFT).'" schema="'.$schema.'">'
+            .$payload
+            .'</docZip>';
+    }
+
+    private function resNFe(string $chave = self::CHAVE): string
+    {
+        return '<resNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">'
+            .'<chNFe>'.$chave.'</chNFe>'
             .'<CNPJ>99999999999999</CNPJ>'
             .'<dhEmi>2022-04-04T11:54:49-03:00</dhEmi>'
             .'<vNF>710.00</vNF>'
             .'</resNFe>';
+    }
 
-        return '<docZip NSU="'.str_pad((string) $nsu, 15, '0', STR_PAD_LEFT).'" schema="resNFe_v1.01.xsd">'
-            .base64_encode(gzencode($document))
-            .'</docZip>';
+    /**
+     * Chave de CT-e com DV válido: o que a rejeita não é o dígito, é o modelo
+     * `57` nos dois dígitos que a chave carrega.
+     */
+    private function resCTe(): string
+    {
+        return '<resCTe xmlns="http://www.portalfiscal.inf.br/cte" versao="1.00">'
+            .'<chCTe>35200499999999999999570010010000001231000000</chCTe>'
+            .'<CNPJ>99999999999999</CNPJ>'
+            .'<dhRecbto>2022-04-04T11:54:49-03:00</dhRecbto>'
+            .'</resCTe>';
     }
 }

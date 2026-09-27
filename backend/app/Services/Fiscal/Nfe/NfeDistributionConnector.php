@@ -7,6 +7,7 @@ use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
@@ -123,6 +124,14 @@ final class NfeDistributionConnector implements FiscalConnector
                 maxNsu: $parsed->maxNsu,
                 more: false,
                 blockedUntil: $this->blockUntil(),
+                // "Nenhum documento localizado" e "consumo indevido" bloqueiam
+                // igual e discordam sobre a posição. A primeira não entrega
+                // nada, e o que devolve é o eco da posição pedida: a posição
+                // armazenada fica intacta. A segunda entrega a posição correta
+                // dentro do próprio corpo da rejeição, e é a única alavanca de
+                // recuperação que o serviço oferece — descartá-la custaria
+                // recomeçar do começo.
+                mayAdoptPosition: $failure !== FiscalFailure::NoDocuments,
             );
         }
 
@@ -166,16 +175,67 @@ final class NfeDistributionConnector implements FiscalConnector
             );
         }
 
-        return $this->collect($parsed)->documents[0] ?? null;
+        $result = $this->collect($parsed);
+
+        if ($result->documents !== []) {
+            return $result->documents[0];
+        }
+
+        // Uma resposta de "localizado" que não virou documento é conteúdo que
+        // não deu para ler, e isso não é a mesma coisa que o serviço não ter a
+        // chave. Devolver `null` aqui diria que a posição está vazia, e quem
+        // reconcilia contaria a consulta como feita e seguiria para a próxima,
+        // com o buraco intacto e o limite horário de consultas gasto. A
+        // assinatura do contrato não tem onde carregar a lista de recusas, então
+        // a falha sobe — alta e nomeada, como todo o resto do módulo.
+        $refused = $result->failures[0];
+
+        throw new RuntimeException("A resposta do serviço traz uma entrada que não pôde ser lida na posição {$refused->nsu}: {$refused->reason}");
     }
 
+    /**
+     * Lê o lote entrada a entrada, e uma entrada que não vira documento não
+     * interrompe as outras: o serviço entrega posições, e uma posição ilegível
+     * é um buraco a reconciliar, não o fim da fila. O que decide o cursor é
+     * `mayAdoptPosition`, e é por isso que a recusa de uma entrada tem de
+     * aparecer no resultado em vez de sumir.
+     *
+     * Cada `try` envolve uma única chamada, então o `RuntimeException` capturado
+     * só pode ter vindo dela — `DocZipDecoder` e `FiscalXmlMetadata` lançam
+     * `RuntimeException` e não existe tipo mais estreito para pegar.
+     */
     private function collect(DfeResponse $parsed): PullResult
     {
         $documents = [];
+        $failures = [];
 
         foreach ($parsed->entries as $entry) {
-            $xml = $this->decoder->decode($entry->payload);
-            $extracted = $this->metadata->extract($xml, FiscalModel::Nfe);
+            try {
+                $xml = $this->decoder->decode($entry->payload);
+            } catch (RuntimeException) {
+                $failures[] = new FailedEntry(
+                    nsu: $entry->nsu,
+                    schema: $entry->schema,
+                    reason: 'DocZipDecoder não decodificou o payload comprimido.',
+                );
+
+                continue;
+            }
+
+            try {
+                $extracted = $this->metadata->extract($xml, FiscalModel::Nfe);
+            } catch (RuntimeException) {
+                // A chave com dígito verificador inválido, o modelo que não é o
+                // do serviço e o XML ilegível chegam todos aqui, e em nenhum
+                // deles houve o suficiente para guardar o documento.
+                $failures[] = new FailedEntry(
+                    nsu: $entry->nsu,
+                    schema: $entry->schema,
+                    reason: 'FiscalXmlMetadata rejeitou o documento decodificado.',
+                );
+
+                continue;
+            }
 
             $documents[] = new PulledDocument(
                 model: $extracted->model,
@@ -199,6 +259,10 @@ final class NfeDistributionConnector implements FiscalConnector
             maxNsu: $parsed->maxNsu,
             more: $parsed->maxNsu !== null && $parsed->ultNsu < $parsed->maxNsu,
             blockedUntil: null,
+            // Havendo buraco, a posição não é adotada: a próxima consulta volta
+            // a pedir a partir da posição anterior e tenta ler a entrada de novo.
+            mayAdoptPosition: $failures === [],
+            failures: $failures,
         );
     }
 
@@ -225,12 +289,18 @@ final class NfeDistributionConnector implements FiscalConnector
     ): Response {
         $endpoint = $this->endpoint();
 
-        return $this->request(
-            $endpoint,
-            $certificate,
-            $certificatePath,
-            $this->lookupOf($this->envelopeFor($endpoint, $client, 0), $chave),
-        );
+        $body = $this->lookupOf($this->envelopeFor($endpoint, $client, 0), $chave);
+
+        // O corpo da consulta por chave é o único que sai de uma reescrita de
+        // outro corpo, e é por isso que ele também passa pelo schema local: a
+        // reescrita é exatamente o que o validador existe para pegar. O XSD
+        // aceita `consChNFe` — é uma das três opções do grupo de consulta do
+        // `distDFeInt` — então a checagem cobre a posição do `consChNFe`, a
+        // versão, a ordem dos elementos e o CNPJ e a UF do próprio pedido, e
+        // não só a chave, que `isValidChave()` já conferiu antes de chegar aqui.
+        $this->validator->validate($this->payloadOf($body), 'distDFeInt');
+
+        return $this->request($endpoint, $certificate, $certificatePath, $body);
     }
 
     /**
@@ -255,18 +325,14 @@ final class NfeDistributionConnector implements FiscalConnector
     }
 
     /**
-     * O XSD descreve `distDFeInt` com `consChNFe` como uma das três opções do
-     * grupo de consulta, então o corpo trocado ainda descreveria um documento
-     * válido para o schema local. A troca é feita por substituição mesmo assim
-     * — o envelope é a única fonte da forma do pedido — e por isso ela é
-     * conferida: `str_replace` que não encontra o padrão devolve o corpo
-     * intacto em silêncio, e um `distNSU` sob o nome de consulta por chave
-     * voltaria com o documento da posição zero, que é a resposta errada com
-     * aparência de resposta certa.
-     *
-     * A chave já foi validada por `isValidChave()` antes de chegar aqui, e
-     * isso é mais estrito que o `[0-9]{44}` do `TChNFe`: o XSD não acrescentaria
-     * nada a validar neste corpo.
+     * O `DfeSoapEnvelope` monta um corpo de consulta por posição, e o serviço
+     * também aceita consulta por chave: a diferença é o grupo de consulta, que
+     * o XSD descreve como escolha entre `distNSU`, `consNSU` e `consChNFe`. Não
+     * há construtor para o outro corpo, e a reescrita é conferida porque
+     * `str_replace` que não encontra o padrão devolve o corpo intacto em
+     * silêncio: um `distNSU` sob o nome de consulta por chave voltaria com o
+     * documento da posição zero, que é a resposta errada com aparência de
+     * resposta certa.
      */
     private function lookupOf(string $body, string $chave): string
     {
