@@ -38,6 +38,7 @@ class FiscalEnumsTest extends TestCase
         $this->assertSame('document', FiscalKind::Document->value);
         $this->assertSame('event', FiscalKind::Event->value);
         $this->assertSame('blocked', FiscalSkipReason::Blocked->value);
+        $this->assertSame('locked', FiscalSkipReason::Locked->value);
         $this->assertSame('no_certificate', FiscalSkipReason::NoCertificate->value);
         $this->assertSame('interrupted', FiscalSkipReason::Interrupted->value);
     }
