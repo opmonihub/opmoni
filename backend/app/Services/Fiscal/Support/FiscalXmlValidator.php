@@ -1,0 +1,59 @@
+<?php
+
+namespace App\Services\Fiscal\Support;
+
+use DOMDocument;
+use RuntimeException;
+
+final class FiscalXmlValidator
+{
+    /**
+     * Valida a requisição contra o XSD local antes de enviar. A validação
+     * remove a classe inteira de rejeições de forma (schema, versão, cursor,
+     * assinatura injetada) sem ida à rede.
+     *
+     * A versão mora no nome do arquivo (`distDFeInt_v1.01.xsd`): uma versão
+     * por diretório de serviço, junto dos `xs:include` que ela puxa.
+     */
+    public function validate(string $xml, string $schemaName): void
+    {
+        $schema = resource_path("xsd/nfe/{$schemaName}_v1.01.xsd");
+
+        if (! is_file($schema)) {
+            throw new RuntimeException("XSD não encontrado: {$schemaName}.");
+        }
+
+        $dom = new DOMDocument;
+        $dom->preserveWhiteSpace = false;
+
+        // O libxml acumula erro em buffer global; pegamos o que ele produzir
+        // aqui e devolvemos o estado anterior, senão a próxima validação lê
+        // erro de quem rodou antes.
+        $previous = libxml_use_internal_errors(true);
+        libxml_clear_errors();
+
+        try {
+            if (! $dom->loadXML($xml)) {
+                throw new RuntimeException('XML malformado: '.self::primeiroErro());
+            }
+
+            if (! $dom->schemaValidate($schema)) {
+                throw new RuntimeException('Requisição rejeitada pelo schema: '.self::primeiroErro());
+            }
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /**
+     * A primeira mensagem do libxml é a que o log mostra: o resto do buffer
+     * descreve consequência, não causa. Quando o buffer vem vazio — o que
+     * acontece quando a validação falha sem produzir erro, o que o libxml
+     * permite — a exceção ainda precisa dizer alguma coisa.
+     */
+    private static function primeiroErro(): string
+    {
+        return trim(libxml_get_errors()[0]->message ?? 'erro desconhecido');
+    }
+}

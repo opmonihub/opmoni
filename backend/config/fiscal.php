@@ -45,5 +45,12 @@ return [
         ],
     ],
 
-    'ca_bundle' => storage_path('app/icp-brasil/ca-bundle.pem'),
+    /*
+     * Cadeia da ICP-Brasil versionada no repositório, e não no `storage`: o
+     * conector aponta o `CURLOPT_CAINFO` para cá, e um bundle que o deploy não
+     * recebe é uma verificação de TLS que aceita qualquer autoridade. Extensão
+     * `.crt` de propósito — o `.gitignore` da raiz esconde `*.pem`, que é
+     * formato de chave.
+     */
+    'ca_bundle' => resource_path('icp-brasil/ca-bundle.crt'),
 ];
