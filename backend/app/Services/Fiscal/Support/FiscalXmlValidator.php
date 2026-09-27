@@ -23,6 +23,8 @@ final class FiscalXmlValidator
             throw new RuntimeException("XSD não encontrado: {$schemaName}.");
         }
 
+        self::rejectUnsupportedEncodingDeclaration($xml);
+
         $dom = new DOMDocument;
         $dom->preserveWhiteSpace = false;
 
@@ -36,6 +38,8 @@ final class FiscalXmlValidator
             if (! $dom->loadXML($xml)) {
                 throw new RuntimeException('XML malformado: '.self::primeiroErro());
             }
+
+            self::rejectPrefixedElements($dom);
 
             if (! $dom->schemaValidate($schema)) {
                 throw new RuntimeException('Requisição rejeitada pelo schema: '.self::primeiroErro());
@@ -55,5 +59,25 @@ final class FiscalXmlValidator
     private static function primeiroErro(): string
     {
         return trim(libxml_get_errors()[0]->message ?? 'erro desconhecido');
+    }
+
+    private static function rejectUnsupportedEncodingDeclaration(string $xml): void
+    {
+        if (! preg_match('/^\s*<\?xml\s+[^?]*encoding=["\']([^"\']+)["\']/i', $xml, $matches)) {
+            return;
+        }
+
+        if (strcasecmp($matches[1], 'UTF-8') !== 0) {
+            throw new RuntimeException('XML com codificação incompatível: '.$matches[1].'.');
+        }
+    }
+
+    private static function rejectPrefixedElements(DOMDocument $dom): void
+    {
+        foreach ($dom->getElementsByTagName('*') as $element) {
+            if ($element->prefix !== '' && $element->prefix !== null) {
+                throw new RuntimeException('XML com prefixo de namespace incompatível: '.$element->prefix.'.');
+            }
+        }
     }
 }

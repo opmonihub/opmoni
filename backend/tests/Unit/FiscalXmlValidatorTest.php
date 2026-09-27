@@ -35,6 +35,28 @@ class FiscalXmlValidatorTest extends TestCase
         (new FiscalXmlValidator)->validate($request, 'distDFeInt');
     }
 
+    public function test_rejects_a_request_with_a_prefixed_namespace(): void
+    {
+        $request = str_replace(
+            ['<distDFeInt ', '</distDFeInt>'],
+            ['<nfe:distDFeInt xmlns:nfe="http://www.portalfiscal.inf.br/nfe" ', '</nfe:distDFeInt>'],
+            $this->payloadDaConsulta(),
+        );
+
+        $this->expectException(RuntimeException::class);
+
+        (new FiscalXmlValidator)->validate($request, 'distDFeInt');
+    }
+
+    public function test_rejects_a_request_with_non_utf8_encoding_declaration(): void
+    {
+        $request = '<?xml version="1.0" encoding="ISO-8859-1"?>'.$this->payloadDaConsulta();
+
+        $this->expectException(RuntimeException::class);
+
+        (new FiscalXmlValidator)->validate($request, 'distDFeInt');
+    }
+
     public function test_rejects_an_unsupported_version(): void
     {
         $this->expectException(RuntimeException::class);
