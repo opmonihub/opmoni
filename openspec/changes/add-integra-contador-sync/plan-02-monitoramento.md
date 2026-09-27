@@ -2767,7 +2767,11 @@ async function confirm() {
 
 - [ ] **Step 2: Record and show the consequence**
 
-Once read, the row shows that it was and when, plus the deadline it started — from `message.ciencia_em` and `message.prazo_limite`. An office that has missed one needs to see that it missed one. `MonitoringSheet.vue` renders a Caixas Postais row's `message` stub through a row action that opens `MessageDetail`, never through a click handler that fetches.
+Once read, the row shows that it was and when, plus the deadline it started — from `message.ciencia_em` and `message.prazo_limite`. An office that has missed one needs to see that it missed one.
+
+`MonitoringSheet.vue` puts the action in the **`#name-cell`** slot, not in a slot on the mailbox's own column. `name` is the only column every served obligation declares — `served()` always puts it first — whereas `ultima` is declared by `caixas-postais/e-cac` alone. A slot on `ultima` would therefore leave `caixas-postais/fgts-digital` and `caixas-postais/det` with no way to reach the consent gate on desktop while their phone cards had one, and the two layouts would disagree about whether the act is reachable at all. It also keeps the `ultima` column rendering through the default cell exactly as it did before this task, so no pre-existing case changes appearance.
+
+Put the subject on **both** layouts, so an office on a phone is not asked to consent to a message it has not seen named.
 
 - [ ] **Step 3: Verify**
 
