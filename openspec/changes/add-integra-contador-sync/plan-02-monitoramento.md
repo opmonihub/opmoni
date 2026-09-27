@@ -2644,6 +2644,10 @@ Expected: PASS.
 
 Run: `cd frontend && pnpm dev`, then open `/monitoring/termos`, `/monitoring/execucoes` and `/monitoring/execucoes/1`. Each must resolve. A static sibling under `app/pages/monitoring/` is matched before `[...slug].vue`, so none of them may 404 — which is exactly what the integration-link assertion in `tests/monitoringRoutes.test.ts` pins.
 
+The list is `execucoes/index.vue`, not `execucoes.vue`: Nuxt nests a `pages/x.vue` against a `pages/x/` directory, so a sibling `execucoes.vue` with no `<NuxtPage />` swallows `/monitoring/execucoes/1` and renders the list there instead of the run.
+
+The term's per-state guidance is user-facing copy keyed by a `Record` union, and a `Record` forbids a missing key but not a wrong value — so `tasks.md` 4.11's "verificar com teste para cada estado" needs a guard in `tests/monitoringStatus.test.ts` beside `it('labels every term state')`: every state has non-empty guidance, and neither `vencido` nor `recusado` matches `/sem nenhuma ação sua|não há nada a fazer/i`. Use `assert.doesNotMatch`, which is the real API in `node:assert/strict`.
+
 - [ ] **Step 5: Commit**
 
 ```bash
