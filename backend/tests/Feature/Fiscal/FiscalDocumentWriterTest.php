@@ -13,6 +13,7 @@ use App\Services\Fiscal\Capture\FiscalDocumentWriter;
 use App\Services\Fiscal\Capture\FiscalXmlPath;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
@@ -237,6 +238,75 @@ class FiscalDocumentWriterTest extends TestCase
         $this->assertSame(self::DIGVAL, $nota->digval);
         $this->assertNull($evento->digval);
         $this->assertNull($evento->digval_confere);
+    }
+
+    public function test_logs_a_warning_naming_the_document_whose_digest_diverged(): void
+    {
+        [, $client] = $this->tenant();
+
+        Log::spy();
+
+        $writer = $this->writer();
+
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1234, digVal: self::DIGVAL));
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1300, xml: '<nfeProc/>', digVal: self::OUTRO_DIGVAL));
+
+        // Uma coluna que ninguém lê não marca nada: a linha continua no banco,
+        // o painel a conta como documento normal e o download a serve como se
+        // estivesse íntegra. O log é o que dá a divergência como achado, e ele
+        // diz qual cliente, qual chave e qual posição — a chave de acesso é
+        // identificador fiscal público, não dado pessoal.
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context) use ($client): bool {
+                $this->assertSame('fiscal.capture.digval_divergente', $message);
+                $this->assertSame($client->getKey(), $context['client_id']);
+                $this->assertSame(self::CHAVE, $context['chave_acesso']);
+                $this->assertSame(1300, $context['nsu']);
+
+                // Nem digest, nem payload, nem XML: o valor dos dois digests
+                // fica na linha, e o log carrega só o fato. Quem for atrás do
+                // documento tem a linha; o log não precisa duplicar o segredo
+                // de nada.
+                $this->assertStringNotContainsString(self::DIGVAL, serialize($context));
+                $this->assertStringNotContainsString(self::OUTRO_DIGVAL, serialize($context));
+
+                return true;
+            });
+    }
+
+    public function test_does_not_log_a_warning_when_the_digest_matches(): void
+    {
+        [, $client] = $this->tenant();
+
+        Log::spy();
+
+        $writer = $this->writer();
+
+        // O caso comum: duas etapas que batem é a integridade funcionando, e é
+        // o que acontece em praticamente toda captura. Logar aqui seria ruído que
+        // treina quem lê a ignorar a linha.
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1234, digVal: self::DIGVAL));
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1300, xml: '<nfeProc/>', digVal: self::DIGVAL));
+
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_does_not_log_a_warning_when_there_is_no_second_digest(): void
+    {
+        [, $client] = $this->tenant();
+
+        Log::spy();
+
+        $writer = $this->writer();
+
+        // "Não dá para dizer" não é achado: é o estado de todo documento de etapa
+        // única, e de toda captura que começa no meio da fila. Logar aqui marcaria
+        // como corrupção o documento comum.
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1234, digVal: self::DIGVAL));
+        $writer->store($client, FiscalSource::NfeDistribuicao, $this->pulled(1300, '110111-1', FiscalKind::Event));
+
+        Log::shouldNotHaveReceived('warning');
     }
 
     public function test_refuses_an_access_key_that_does_not_close(): void

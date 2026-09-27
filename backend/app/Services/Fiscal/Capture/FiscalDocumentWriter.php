@@ -8,6 +8,7 @@ use App\Models\FiscalDocument;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Support\DigValComparison;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -88,7 +89,46 @@ final class FiscalDocumentWriter
 
         $row->save();
 
+        // Só depois do `save()`: a linha existe, o documento está em disco e
+        // então há algo para relatar. Se o `save()` falhar, o log mentiria.
+        if ($digvalConfere === false) {
+            $this->reportDivergence($client, $document);
+        }
+
         return $row;
+    }
+
+    /**
+     * Uma divergência de `digVal` é o achado que a decisão 8 existe para produzir,
+     * e uma coluna que ninguém lê não marca nada: o documento segue no banco, o
+     * painel o conta como normal e o download o serve como se estivesse
+     * íntegra. O log é o mínimo honesto que dá conta da ocorrência.
+     *
+     * **Warning, e não error:** nada falhou. A captura terminou, o lote está
+     * gravado e a posição pode avançar — mas alguém pode estar lendo um XML que
+     * o ambiente nacional não atestou. A exceção seria o tratamento errado: um
+     * `error` aqui convida o retry, e repetir a mesma entrega de novo não muda
+     * digest nenhum.
+     *
+     * **O que não entra:** nem o XML, nem o `docZip`, nem a senha do
+     * certificado, nem os dois valores de digest. O log diz que houve
+     * divergência — que é o sinal inteiro — e quem for atrás do documento tem a
+     * linha, com os dois digests nela. A chave de acesso entra porque é
+     * identificador fiscal público, e sem ela o log não diz de qual documento
+     * se trata.
+     *
+     * O que fazer depois do log é decisão de outra tarefa: o design deixa
+     * explícito que a reação à rejeição é aberta, e um alerta aqui seria
+     * decidir isso no lugar de quem ainda não decidiu.
+     */
+    private function reportDivergence(Client $client, PulledDocument $document): void
+    {
+        Log::warning('fiscal.capture.digval_divergente', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'chave_acesso' => $document->chave,
+            'nsu' => $document->nsu,
+        ]);
     }
 
     /**
