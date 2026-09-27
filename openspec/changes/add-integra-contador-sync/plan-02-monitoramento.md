@@ -2016,13 +2016,17 @@ watch(error, (value) => {
  * renders blanks — the mobile card reads the same values through
  * `fieldValue`, so the two layouts would disagree about what the source
  * delivered. One accessor makes the default cell agree with the card.
+ *
+ * `meta.class` is the `{ th, td }` object `@nuxt/ui` v4 resolves — it reads
+ * `class.th`, `class.td` and `class.tr` and nothing else, so a flat string
+ * there is a type error at best and a silently dropped alignment at worst.
  */
 const columns = computed<TableColumn<MonitoringClient>[]>(() =>
   props.obligation.columns.map(column => ({
     id: column.id,
     accessorFn: (row: MonitoringClient) => fieldValue(row, column.id),
     header: column.header,
-    meta: { class: column.numeric ? 'text-right tabular-nums' : '' }
+    meta: { class: column.numeric ? { th: 'text-right', td: 'text-right tabular-nums' } : undefined }
   }))
 )
 
