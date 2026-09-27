@@ -1333,9 +1333,12 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         icon: 'i-lucide-file-spreadsheet',
         columns: served(
           { id: 'gi_declaracao', header: 'GI_Declaração' },
-          { id: 'guia_emitida', header: 'Guia emitida' },
-          { id: 'guia_paga', header: 'Guia paga' },
-          DUE_ON
+          DUE_ON,
+          { id: 'guia', header: 'Status da guia' },
+          { id: 'guia_numero', header: 'Número da guia' },
+          { id: 'guia_emitida_em', header: 'Guia emitida em' },
+          { id: 'guia_vencimento', header: 'Vencimento da guia' },
+          { id: 'guia_paga', header: 'Pagamento da guia' }
         ),
         service: 'PGDASD/CONSDECLARACAO13',
         procuracao: '00146',
