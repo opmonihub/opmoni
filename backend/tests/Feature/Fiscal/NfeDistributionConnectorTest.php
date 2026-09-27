@@ -494,6 +494,10 @@ class NfeDistributionConnectorTest extends TestCase
         }
     }
 
+    /**
+     * `null` significa uma coisa só: **o serviço diz que não tem aquele
+     * documento.**
+     */
     public function test_fetch_by_chave_devolve_nulo_quando_o_servico_nao_localiza(): void
     {
         $client = $this->clientWithCertificate();
@@ -617,6 +621,117 @@ class NfeDistributionConnectorTest extends TestCase
         }
     }
 
+    public function test_um_fault_soap_em_200_e_falha_retentavel(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fault('Servico em manutencao programada.'), 200)]);
+
+        // Um fault chega no mesmo `2xx` e no mesmo envelope, e o parser o leria
+        // como "não contém retDistDFeInt" — uma condição esperada do serviço
+        // classificada como se fosse defeito nosso.
+        $exception = $this->falhaEm($client);
+
+        $this->assertSame(FiscalFailure::Upstream, $exception->failure);
+        $this->assertTrue($exception->failure->retryable());
+        $this->assertFalse($exception->failure->blocksForAnHour());
+        // O texto do fault é a condição, e ela não se perde.
+        $this->assertStringContainsString('Servico em manutencao programada.', $exception->getMessage());
+        // O `detail` fica de fora: é onde um serviço ecoa o pedido, e o corpo
+        // não é o que se registra.
+        $this->assertStringNotContainsString('CONTEUDO-DO-DETAIL', $exception->getMessage());
+    }
+
+    public function test_o_fault_e_retentavel_e_a_rejeicao_de_schema_nao_e(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        // Duas respostas no mesmo teste exigem uma sequência: um segundo
+        // `Http::fake()` acumularia stub, e o primeiro registrado é quem
+        // responde.
+        Http::fake(['*' => Http::sequence()
+            ->push($this->fault('Servico fora do ar.'), 200)
+            ->push($this->responseWith('215', 'Rejeicao: Falha no Schema XML', 0), 200)]);
+
+        // O fisco está recusando de processar, não recusando o pedido: amanhã
+        // a mesma consulta funciona.
+        $falha = $this->falhaEm($client);
+
+        $this->assertSame(FiscalFailure::Upstream, $falha->failure);
+        $this->assertTrue($falha->failure->retryable());
+
+        // A rejeição de schema é erro nosso, e repetir devolve a mesma resposta
+        // amanhã. As duas direções precisam ser distinguíveis por quem decide
+        // se tenta de novo.
+        $rejeicao = $this->falhaEm($client);
+
+        $this->assertSame(FiscalFailure::Rejected, $rejeicao->failure);
+        $this->assertFalse($rejeicao->failure->retryable());
+    }
+
+    public function test_um_fault_de_soap_12_tambem_e_lido(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->faultSoap12('Codigo da operacao cancelado pelo servidor.'), 200)]);
+
+        $exception = $this->falhaEm($client);
+
+        $this->assertSame(FiscalFailure::Upstream, $exception->failure);
+        $this->assertStringContainsString('Codigo da operacao cancelado pelo servidor.', $exception->getMessage());
+    }
+
+    public function test_o_texto_do_fault_e_limitado_antes_de_virar_mensagem(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        // Um `faultstring` de serviço pode ser longo, e a mensagem de exceção vai
+        // para o painel e para o log: o limite é o que impede que o tamanho da
+        // resposta do fisco vire o tamanho do nosso registro.
+        Http::fake(['*' => Http::response($this->fault(str_repeat('detalhe-longo-', 200)), 200)]);
+
+        $exception = $this->falhaEm($client);
+
+        $this->assertLessThanOrEqual(400, mb_strlen($exception->getMessage()));
+        $this->assertStringContainsString('detalhe-longo-', $exception->getMessage());
+        $this->assertStringEndsWith('…', $exception->getMessage());
+    }
+
+    public function test_um_200_sem_fault_e_sem_resultado_continua_sendo_erro_do_parser(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response('<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><algoImprevisto xmlns="http://exemplo.invalido"/></soap:Body></soap:Envelope>', 200)]);
+
+        // Não é fault, então o caso do parser continua significando o que
+        // significava: um `2xx` cujo corpo não é a resposta do serviço.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('A resposta do serviço não contém retDistDFeInt.');
+
+        $this->connector()->pull($client, 0, 50);
+    }
+
+    private function fault(string $text): string
+    {
+        // O endpoint é `.asmx`, que é .NET, e o fault que um ASMX devolve é o de
+        // SOAP 1.1, com `faultstring` — mesmo numa requisição 1.2.
+        return '<?xml version="1.0" encoding="utf-8"?>'
+            .'<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault>'
+            .'<faultcode>soap:Server</faultcode>'
+            .'<faultstring>'.$text.'</faultstring>'
+            .'<detail>CONTEUDO-DO-DETAIL</detail>'
+            .'</soap:Fault></soap:Body></soap:Envelope>';
+    }
+
+    private function faultSoap12(string $text): string
+    {
+        return '<?xml version="1.0" encoding="utf-8"?>'
+            .'<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><soap:Fault>'
+            .'<soap:Code><soap:Value>soap:Sender</soap:Value></soap:Code>'
+            .'<soap:Reason><soap:Text xml:lang="pt-BR">'.$text.'</soap:Text></soap:Reason>'
+            .'</soap:Fault></soap:Body></soap:Envelope>';
+    }
+
     /**
      * Um `Http::fake()` por teste: o registro de stubs acumula a cada chamada,
      * e o primeiro registrado é quem responde.
@@ -627,15 +742,22 @@ class NfeDistributionConnectorTest extends TestCase
 
         Http::fake(['*' => Http::response($this->responseWith($cStat, 'Rejeicao do teste', 0), 200)]);
 
+        $exception = $this->falhaEm($client);
+
+        $this->assertSame('Rejeicao do teste', $exception->getMessage());
+
+        return $exception;
+    }
+
+    private function falhaEm(Client $client): FiscalException
+    {
         try {
             $this->connector()->pull($client, 0, 50);
         } catch (FiscalException $exception) {
-            $this->assertSame('Rejeicao do teste', $exception->getMessage());
-
             return $exception;
         }
 
-        $this->fail("A rejeicao {$cStat} deveria virar FiscalException.");
+        $this->fail('A resposta deveria ter virado FiscalException.');
     }
 
     private function connector(): NfeDistributionConnector

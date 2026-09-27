@@ -75,6 +75,13 @@ final class NfeDistributionConnector implements FiscalConnector
      */
     private const CONNECT_TIMEOUT_SECONDS = 15;
 
+    /**
+     * O que o serviço diz sobre a própria falha, e o máximo que vai para a
+     * mensagem. A condição cabe em uma linha; um `faultstring` de serviço em
+     * manutenção é o que estoura isso.
+     */
+    private const FAULT_TEXT_LIMIT = 300;
+
     public function __construct(
         private DfeSoapEnvelope $envelope,
         private DfeResponseParser $parser,
@@ -142,11 +149,22 @@ final class NfeDistributionConnector implements FiscalConnector
     }
 
     /**
-     * `null` significa uma coisa só: o serviço respondeu que aquela chave não
-     * está com ele. Bloqueio, indisponibilidade e rejeição viram
-     * `FiscalException`, porque devolver `null` nos três casos diria "esta
-     * chave não existe" e mandaria quem reconcilia procurar a próxima — com o
-     * CNPJ já bloqueado e o limite horário de consultas sendo gasto.
+     * `null` significa uma coisa só: **o serviço diz que não tem aquele
+     * documento.** Qualquer outra coisa é alta.
+     *
+     * Bloqueio, indisponibilidade e rejeição viram `FiscalException`, porque
+     * `null` nesses casos diria "esta chave não existe" e mandaria quem
+     * reconcilia procurar a próxima — com o CNPJ bloqueado e o limite horário de
+     * consultas sendo gasto.
+     *
+     * E um "localizado" cujo documento não pôde ser lido também não é `null`: é
+     * um documento que chegou e uma entrada que não deu para abrir, que é o
+     * contrário de "o serviço não tem a chave". A assinatura do contrato não
+     * tem onde carregar a lista de recusas, e um `FiscalFailure` mentiria sobre
+     * a origem — a taxonomia classifica o que o *serviço* respondeu, e quem
+     * recusou a entrada foi o nosso parse. Então a falha sobe como
+     * `RuntimeException` nomeada, com a posição e o mesmo `reason` seguro para
+     * log que vai em `FailedEntry`.
      */
     public function fetchByChave(Client $client, string $chave): ?PulledDocument
     {
@@ -185,9 +203,7 @@ final class NfeDistributionConnector implements FiscalConnector
         // não deu para ler, e isso não é a mesma coisa que o serviço não ter a
         // chave. Devolver `null` aqui diria que a posição está vazia, e quem
         // reconcilia contaria a consulta como feita e seguiria para a próxima,
-        // com o buraco intacto e o limite horário de consultas gasto. A
-        // assinatura do contrato não tem onde carregar a lista de recusas, então
-        // a falha sobe — alta e nomeada, como todo o resto do módulo.
+        // com o buraco intacto e o limite horário de consultas gasto.
         $refused = $result->failures[0];
 
         throw new RuntimeException("A resposta do serviço traz uma entrada que não pôde ser lida na posição {$refused->nsu}: {$refused->reason}");
@@ -404,6 +420,13 @@ final class NfeDistributionConnector implements FiscalConnector
      * escreveu no contrato dele — página de erro do proxy, `502` do
      * balanceador — não tem `cStat` para classificar, e quem decide é o status
      * HTTP que ela realmente teve.
+     *
+     * O fault é conferido **antes** do parser, e não depois: ele vem no mesmo
+     * envelope e no mesmo `2xx`, então o parser o leria como "não contém
+     * `retDistDFeInt`" — a exceção de parse de uma condição que o serviço
+     * esperava que aparecesse, e que nada no resultado permitiria distinguir de
+     * um defeito nosso. O caso do parser continua significando o que
+     * significava: um `2xx` cujo corpo não é a resposta do serviço.
      */
     private function interpret(Response $response): DfeResponse
     {
@@ -414,7 +437,82 @@ final class NfeDistributionConnector implements FiscalConnector
             );
         }
 
-        return $this->parser->parse($response->body());
+        $body = $response->body();
+        $fault = $this->faultOf($body);
+
+        if ($fault !== null) {
+            // `classify()` lê status HTTP e `cStat`, e um fault de `2xx` não
+            // tem nenhum dos dois. `Upstream` é a escolha porque o fisco está
+            // recusando de processar, não recusando o pedido: retentável é o que
+            // "tente mais tarde" significa aqui. Isso não vira laço porque quem
+            // aciona a captura tem os guardas — uma tentativa por execução, o
+            // limite horário de consultas e a janela de bloqueio.
+            throw new FiscalException(
+                'O serviço de distribuição recusou a chamada: '.($fault === '' ? 'fault sem descrição.' : $fault),
+                FiscalFailure::Upstream,
+            );
+        }
+
+        return $this->parser->parse($body);
+    }
+
+    /**
+     * O texto do fault, ou `null` quando a resposta não é um fault — a string
+     * vazia é um fault que não descreve a condição.
+     *
+     * O `faultstring` (SOAP 1.1, o que um endpoint `.asmx` devolve) e o
+     * `Reason/Text` (SOAP 1.2) são as duas formas do mesmo texto. O `detail`
+     * fica de fora: é onde um serviço ecoa o pedido, e o corpo da requisição é
+     * uma das coisas que o módulo não registra.
+     *
+     * Custa um `loadXML` a mais por resposta, e é deliberado: o `DOMDocument`
+     * é local deste método e some com ele, então o pico de memória não muda, e
+     * o caminho já estava esperando uma chamada de rede.
+     */
+    private function faultOf(string $body): ?string
+    {
+        $dom = new DOMDocument;
+        $dom->preserveWhiteSpace = false;
+
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $dom->loadXML($body);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        if (! $loaded) {
+            return null;
+        }
+
+        $xpath = new DOMXPath($dom);
+
+        // O fault é filho do corpo SOAP, e é por nome local porque o prefixo
+        // varia entre o que o serviço declara e o que a gente esperaria.
+        $fault = XmlQuery::first($xpath, 'Body/Fault');
+
+        if ($fault === null) {
+            return null;
+        }
+
+        $text = XmlQuery::first($xpath, 'faultstring', $fault)
+            ?? XmlQuery::first($xpath, 'Reason/Text', $fault);
+
+        return $text === null ? '' : $this->condense($text->textContent);
+    }
+
+    /**
+     * Texto do fisco, do mesmo jeito que `FailedEntry::reason` é uma frase
+     * fixa: cabe numa linha de log. O serviço escreve sobre o pedido que
+     * recebeu, e o pedido não tem nada que este módulo não registre em outro
+     * lugar — mas o tamanho da resposta não pode ser o tamanho do registro, e um
+     * `faultstring` longo é o caso comum de serviço em manutenção.
+     */
+    private function condense(string $text): string
+    {
+        $condensed = trim(preg_replace('/\s+/', ' ', $text) ?? '');
+
+        return mb_strlen($condensed) > self::FAULT_TEXT_LIMIT
+            ? mb_substr($condensed, 0, self::FAULT_TEXT_LIMIT).'…'
+            : $condensed;
     }
 
     /**
