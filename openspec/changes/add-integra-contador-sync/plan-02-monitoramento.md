@@ -2025,7 +2025,8 @@ function situacaoIcon(row: MonitoringClient) {
 }
 
 async function afterAssociate() {
-  associateOpen.value = false
+  // The modal decides whether it closes — a per-row add must not, so the next
+  // one is a click away. The counters behind it are stale either way.
   await onRefresh()
   emit('refreshed')
 }
@@ -2262,7 +2263,8 @@ git commit -m "feat(monitoring): obligation counters, server filtering and categ
 - Rewrite: `frontend/app/components/monitoring/AssociateClientsModal.vue`
 
 **Interfaces:**
-- Consumes: `useSerpro().associateClients`, `useClients().list`, `clientSheetTaxIdLabel` from `~/utils/portfolioLabels.ts`, `useAuth().canManageClients`.
+- Consumes: `useSerpro().associateClients`, `useClients().list` (called with `sheet: 1, sort: 'name', direction: 'asc'` — `sort`/`direction` are required by `ClientListParams`, and without `sheet: 1` the backend paginates at 25, which would silently turn the 100-cap and "Selecionar todos" into "the first 25"), `clientSheetTaxIdLabel` from `~/utils/portfolioLabels.ts`.
+- The role gate is **not** consumed here. `MonitoringSheet.vue` mounts this component under `v-if="canManageClients"`, and that is the only mount site — a second one would have to gate it again.
 - Produces: the modal, emitting `associated` once the counters behind it are stale.
 
 **Candidates come from `useClients().list`, not from a new endpoint.** The contract publishes no candidate list, and inventing one would be a second source of truth for "who is in this office". The existing `/clients` list is already Account-scoped, already filtered server-side, and already the place the office recognises. `person_type === 'company'` is applied to the response rather than as a query parameter, because the existing list does not declare that filter.
@@ -2348,10 +2350,10 @@ function toggleOne(id: number) {
 
 const addingId = ref<number | null>(null)
 
-async function associate(ids: number[]) {
-  if (!ids.length) return
+async function associate(ids: number[], keepOpen: boolean) {
+  if (!ids.length || saving.value) return
   saving.value = true
-  addingId.value = ids.length === 1 ? ids[0]! : null
+  addingId.value = ids.length === 1 && keepOpen ? ids[0]! : null
   try {
     const result = await associateClients(props.obligation.slug, ids)
     // Reporting the whole batch as added would be a lie whenever `already` > 0.
@@ -2360,10 +2362,21 @@ async function associate(ids: number[]) {
         title: `${result.associated} clientes associados, ${result.already} já estavam`,
         color: 'warning'
       })
-    } else {
+    } else if (result.associated > 0) {
       toast.add({ title: `${result.associated} clientes associados`, color: 'success' })
+    } else {
+      toast.add({ title: 'Nenhum cliente foi associado', color: 'warning' })
     }
     selected.value = selected.value.filter(id => !ids.includes(id))
+    if (keepOpen) {
+      // The per-row `+` exists so one client can be added without selecting it
+      // first, which is only true if a second one is one click away. The client
+      // just added must also leave the picker, or the list goes on offering
+      // someone the office is already monitoring.
+      await loadCandidates()
+    } else {
+      isOpen.value = false
+    }
     emit('associated')
   } catch {
     toast.add({ title: 'Não foi possível associar os clientes', color: 'error' })
@@ -2428,7 +2441,7 @@ async function associate(ids: number[]) {
               size="sm"
               :loading="addingId === client.id"
               :aria-label="`Adicionar ${client.name}`"
-              @click="associate([client.id])"
+              @click="associate([client.id], true)"
             />
           </div>
         </div>
@@ -2449,7 +2462,7 @@ async function associate(ids: number[]) {
           icon="i-lucide-user-plus"
           :disabled="selected.length === 0"
           :loading="saving"
-          @click="associate(selected)"
+          @click="associate(selected, false)"
         />
       </div>
     </template>
