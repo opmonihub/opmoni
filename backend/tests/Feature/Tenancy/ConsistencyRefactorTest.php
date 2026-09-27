@@ -19,14 +19,6 @@ class ConsistencyRefactorTest extends TestCase
         $this->seed(PlanSeeder::class);
     }
 
-    public function test_documents_return_paginated_data_envelope(): void
-    {
-        $member = $this->memberOf(Account::factory()->create(), 'operador');
-
-        $this->actingAs($member, 'sanctum')->getJson('/api/documents')
-            ->assertOk()->assertJsonStructure(['data', 'meta']);
-    }
-
     public function test_monitorings_return_paginated_data_envelope(): void
     {
         $member = $this->memberOf(Account::factory()->create(), 'operador');

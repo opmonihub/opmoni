@@ -9,7 +9,6 @@ use App\Models\ClientCertificate;
 use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\ClientSavedFilter;
 use App\Models\Department;
-use App\Models\Document;
 use App\Models\Plan;
 use App\Models\Process;
 use App\Models\ProcessTemplate;
@@ -74,7 +73,6 @@ class SecurityRefactorTest extends TestCase
             Department::class,
             Process::class,
             Task::class,
-            Document::class,
             SerproMonitoring::class,
             ClientSavedFilter::class,
             TemplateClientException::class,

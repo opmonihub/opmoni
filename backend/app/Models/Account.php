@@ -83,11 +83,6 @@ class Account extends Model
         return $this->hasMany(SerproMonitoring::class);
     }
 
-    public function documents(): HasMany
-    {
-        return $this->hasMany(Document::class);
-    }
-
     public function processes(): HasMany
     {
         return $this->hasMany(Process::class);

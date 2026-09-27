@@ -19,7 +19,6 @@ use App\Http\Controllers\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Tenant\ClientSelectionController;
 use App\Http\Controllers\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Tenant\DepartmentController;
-use App\Http\Controllers\Tenant\DocumentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
@@ -63,7 +62,6 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::delete('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'destroy']);
     Route::apiResource('clients', ClientController::class);
     Route::apiResource('monitorings', SerproMonitoringController::class);
-    Route::apiResource('documents', DocumentController::class);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);
