@@ -77,10 +77,10 @@ function toggleOne(id: number) {
 
 const addingId = ref<number | null>(null)
 
-async function associate(ids: number[]) {
-  if (!ids.length) return
+async function associate(ids: number[], keepOpen: boolean) {
+  if (!ids.length || saving.value) return
   saving.value = true
-  addingId.value = ids.length === 1 ? ids[0]! : null
+  addingId.value = ids.length === 1 && keepOpen ? ids[0]! : null
   try {
     const result = await associateClients(props.obligation.slug, ids)
     // Reporting the whole batch as added would be a lie whenever `already` > 0.
@@ -89,10 +89,21 @@ async function associate(ids: number[]) {
         title: `${result.associated} clientes associados, ${result.already} já estavam`,
         color: 'warning'
       })
-    } else {
+    } else if (result.associated > 0) {
       toast.add({ title: `${result.associated} clientes associados`, color: 'success' })
+    } else {
+      toast.add({ title: 'Nenhum cliente foi associado', color: 'warning' })
     }
     selected.value = selected.value.filter(id => !ids.includes(id))
+    if (keepOpen) {
+      // The per-row `+` exists so one client can be added without selecting it
+      // first, which is only true if a second one is a click away. The client
+      // just added must also leave the picker, or the list goes on offering
+      // someone the office is already monitoring.
+      await loadCandidates()
+    } else {
+      isOpen.value = false
+    }
     emit('associated')
   } catch {
     toast.add({ title: 'Não foi possível associar os clientes', color: 'error' })
@@ -157,7 +168,7 @@ async function associate(ids: number[]) {
               size="sm"
               :loading="addingId === client.id"
               :aria-label="`Adicionar ${client.name}`"
-              @click="associate([client.id])"
+              @click="associate([client.id], true)"
             />
           </div>
         </div>
@@ -178,7 +189,7 @@ async function associate(ids: number[]) {
           icon="i-lucide-user-plus"
           :disabled="selected.length === 0"
           :loading="saving"
-          @click="associate(selected)"
+          @click="associate(selected, false)"
         />
       </div>
     </template>

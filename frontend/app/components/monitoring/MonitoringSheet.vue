@@ -219,7 +219,8 @@ function situacaoIcon(row: MonitoringClient) {
 }
 
 async function afterAssociate() {
-  associateOpen.value = false
+  // The modal decides whether it closes — a per-row add must not, so the next
+  // one is a click away. The counters behind it are stale either way.
   await onRefresh()
   emit('refreshed')
 }
