@@ -1,6 +1,6 @@
 ## Purpose
 
-Substitui o painel de Monitoramento, hoje alimentado por dados fictícios, pelos dados realmente sincronizados com o Integra Contador, expondo por obrigação o estado de cada cliente do escritório e explicitando quem ainda não tem dado.
+Substitui o painel de Monitoramento, hoje alimentado por dados fictícios, pelos dados realmente sincronizados com o Integra Contador. O painel passa a expor por obrigação os contadores que subdividem a carteira do escritório, a situação de cada cliente e a causa nomeada por trás de cada agregação, e passa a distinguir as obrigações que o provedor atende das que ele não atende e das que deixaram de existir.
 
 ## ADDED Requirements
 
@@ -15,50 +15,92 @@ The system SHALL build the monitoring lists and the portfolio count from clients
 - **WHEN** an Account has no synchronized record at all
 - **THEN** the portfolio count is zero and every list presents an explicit empty state instead of example rows
 
-#### Scenario: Empresa não atendida é identificada
-- **WHEN** a client of the Account has no synchronized record
-- **THEN** it is presented as not covered by the integration, with a distinct label, and is never counted as regular
+#### Scenario: Contribuinte pessoa jurídica fora do alcance da integração
+- **WHEN** a client of the Account is a natural person
+- **THEN** that client is excluded from the total and from every list, because the integration only acts for company clients, and its exclusion is not reported as a failure of the integration
 
-### Requirement: Estado derivado por obrigação
-The system SHALL derive each client's state per monitored obligation as pending, expiring, expired or regular from the synchronized data, and SHALL preserve this state vocabulary for existing clients of the panel.
+### Requirement: Obrigação classificada pela fonte que o provedor tem
+The system SHALL classify every monitored obligation according to what the Integra Contador catalogue actually serves, into exactly one of four categories, and SHALL NOT treat an obligation it cannot serve as if the data were merely pending.
 
-#### Scenario: Obrigação vencida
-- **WHEN** the synchronized data reports an obligation whose due date is earlier than the current date
-- **THEN** the client is returned in the expired state for that obligation
+#### Scenario: Obrigação com leitura estruturada
+- **WHEN** an obligation maps to a provider service that returns structured data
+- **THEN** the obligation is classified as `direct` and presents counters and client rows
 
-#### Scenario: Obrigação a vencer
-- **WHEN** the synchronized data reports an obligation whose due date falls between the current date and thirty calendar days from it inclusive
-- **THEN** the client is returned in the expiring state with the due date
+#### Scenario: Obrigação derivada de outra leitura
+- **WHEN** an obligation is served by the same provider call as another obligation, or by a filter over the content of a returned message rather than by a dedicated service
+- **THEN** the obligation is classified as `derived` and the panel names the call or the filter it derives from, so that the office knows it is a projection and not an independent source
 
-#### Scenario: Obrigação regular
-- **WHEN** the synchronized data reports an obligation whose due date is beyond thirty calendar days and which is not marked as pending upstream
-- **THEN** the client is returned in the regular state
+#### Scenario: Obrigação sem serviço no provedor
+- **WHEN** an obligation exists as a Brazilian tax obligation but the Integra Contador catalogue publishes no service serving it
+- **THEN** the obligation is classified as `unavailable`, the panel states that the integration does not serve it, and the panel presents no counter and no client row for it, which is distinct from an obligation whose counter is zero
 
-#### Scenario: Obrigação pendente
-- **WHEN** the synchronized data marks the obligation as pending upstream
-- **THEN** the client is returned in the pending state even if its due date is beyond thirty calendar days
+#### Scenario: Obrigação extinta
+- **WHEN** an obligation ceased to be due under Brazilian law and its reporting content moved to systems the integration does not expose
+- **THEN** the obligation is classified as `extinct`, the panel says the obligation itself no longer exists rather than that the integration is failing, and the panel presents no counter and no client row for it
 
-#### Scenario: Sem dado suficiente para derivar
-- **WHEN** the synchronized record exists but carries no due date and no upstream pending marker for an obligation
-- **THEN** the state for that obligation is not reported as regular and the client is surfaced as requiring attention
+#### Scenario: Obrigação sem fonte não é apresentada como pendência do cliente
+- **WHEN** an obligation is classified as `unavailable` or `extinct`
+- **THEN** no client of the Account is reported as pending, expiring, expired or requiring attention for that obligation, because the absence is a property of the obligation and not of any client
 
-### Requirement: Contagem de atenção
-The system SHALL report, per monitored obligation, the number of clients in a state that requires attention, and SHALL compute that count from synchronized records only.
+### Requirement: Contadores que subdividem o total
+The system SHALL present, per monitored obligation that is classified as `direct` or `derived`, the total number of clients in scope together with the number in each of the states that subdivide it: `em_dia`, `processando`, `pendencias` and `atencao`. The system SHALL report the total as the sum of those four, and SHALL report it as zero rather than omitting it when nothing is to be counted. A state outside the partition, `encerrado`, SHALL be presented on the row and SHALL NOT be folded into any of the four counters.
 
-#### Scenario: Contagem reflete o estado real
-- **WHEN** an Account has clients in the expired, expiring or pending state for an obligation
-- **THEN** the count for that obligation equals the number of those clients and excludes the regular ones
+#### Scenario: Total é a soma dos quatro
+- **WHEN** an obligation presents its counters
+- **THEN** the total equals the sum of `em_dia`, `processando`, `pendencias` and `atencao`, and no client is counted in two of them
 
-#### Scenario: Painel de contagem
-- **WHEN** an authorized member opens the monitoring overview
-- **THEN** each card shows the attention count for its obligation, including zero when there is nothing to attend
+#### Scenario: Nada a atender
+- **WHEN** no client of an Account requires attention for an obligation
+- **THEN** the `atencao` counter is reported as zero and is displayed, rather than omitted
+
+#### Scenario: Obrigação encerrada fica fora da partição
+- **WHEN** a client of an obligation has been closed
+- **THEN** the client is shown as `encerrado` on the row and is excluded from the four counters, so that a closed obligation never inflates a state that requires action
+
+#### Scenario: Contador de progresso é eixo separado
+- **WHEN** an obligation reports how many clients have been transmitted or emitted out of how many were requested
+- **THEN** that progress is presented beside the counters as a separate reading of the synchronization rather than as a state of any client
+
+### Requirement: Situação nomeada por cliente e causa por trás do agregador
+The system SHALL present each client's situation on the row, and SHALL name the cause behind an aggregate counter rather than presenting only the aggregate. The system SHALL return the list of causes with a code for each, and the presentation of every cause SHALL be derived from that list rather than hardcoded in the client.
+
+#### Scenario: Atenção nomes a causa
+- **WHEN** the `atencao` counter of an obligation is greater than zero
+- **THEN** each client counted in it shows a named cause rather than the bare aggregate, and the named causes include the absence of a power of attorney, an invalid power of attorney, and the absence of a declaration
+
+#### Scenario: Lista de causas vem do backend
+- **WHEN** a cause is presented
+- **THEN** its label and colour are resolved from the code supplied by the system, and adding a cause does not require redeploying the client
+
+#### Scenario: Pentência com e sem prazo
+- **WHEN** a client has an obligation that is due or approaching its due date
+- **THEN** the client is counted in `pendencias` with its due date shown, and a due date beyond thirty days does not by itself place the client in that counter
+
+#### Scenario: Regular com carência
+- **WHEN** an obligation's due date is beyond thirty days and it is not marked as pending upstream
+- **THEN** the client is counted in `em_dia`
+
+#### Scenario: Processando por obrigação
+- **WHEN** a client has an item of the current synchronization still queued or running for the obligation being viewed
+- **THEN** the client is counted in `processando` for that obligation, and a client synchronized for one obligation while still processing another may be counted in `em_dia` for the first and in `processando` for the second
+
+### Requirement: Dado sincronizado desatualizado é sinalizado à parte
+The system SHALL report whether a client's synchronized data is out of date as an attribute separate from the client's situation, so that a client whose power of attorney lapsed keeps its retained data without that data being presented as current, and SHALL NOT express staleness as a further situation.
+
+#### Scenario: Procuração vencida com dado retido
+- **WHEN** a client's power of attorney has expired and previously synchronized data is retained
+- **THEN** the client is reported as no longer eligible to be acted for, the retained data is labelled as out of date, and the client's situation for the obligation is left intact
+
+#### Scenario: Dado vigente não é sinalizado
+- **WHEN** a client's power of attorney is in force
+- **THEN** no out-of-date label is reported, whatever the client's situation is
 
 ### Requirement: Listagem por obrigação e situação
-The system SHALL list the clients of the current Account for a selected obligation and situation, and SHALL resolve the selection from the requested route so that a situation can be shared as a link.
+The system SHALL list the clients of the current Account for a selected obligation and situation, and SHALL resolve the selection from the requested route so that a situation can be shared as a link, and SHALL resolve it by navigating rather than by local state.
 
 #### Scenario: Listagem filtrada
-- **WHEN** a member opens a monitored obligation restricted to the expired situation
-- **THEN** only clients in the expired state for that obligation are returned, scoped to the current Account
+- **WHEN** a member opens a monitored obligation restricted to a situation
+- **THEN** only clients in that situation for that obligation are returned, scoped to the current Account
 
 #### Scenario: Situação desconhecida
 - **WHEN** the requested obligation or situation does not exist
@@ -68,8 +110,12 @@ The system SHALL list the clients of the current Account for a selected obligati
 - **WHEN** a member moves from one obligation to another while a situation is selected
 - **THEN** the selected situation is kept in the resulting route
 
-### Requirement: Estados de carregamento, vazio e erro
-The system SHALL present a distinct recoverable error state with a retry action, a loading state, an empty state, and an empty-result-after-filtering state, and SHALL NOT present a failed load as an empty list.
+#### Scenario: Situação é um link
+- **WHEN** a member shares the address of an obligation restricted to a situation
+- **THEN** the address reproduces the same list for whoever follows it
+
+### Requirement: Estados de carregamento, vazio, sem fonte e erro
+The system SHALL present a distinct recoverable error state with a retry action, a loading state, an empty state, an empty-result-after-filtering state, and a distinct state for an obligation the integration does not serve, and SHALL NOT present a failed load as an empty list, nor an unserved obligation as an obligation with nothing to show.
 
 #### Scenario: Falha ao carregar
 - **WHEN** the monitoring data cannot be loaded
@@ -83,16 +129,31 @@ The system SHALL present a distinct recoverable error state with a retry action,
 - **WHEN** the list has clients but the applied filters exclude all of them
 - **THEN** the page shows an empty-result state offering to clear the filters
 
-### Requirement: Painel coerente com a listagem
-The system SHALL make the overview counts, the group summaries and the list contents consistent with each other, so that navigating from a count to a list yields the number of clients the count announced.
+#### Scenario: Obrigação não servida
+- **WHEN** an obligation is classified as `unavailable` or `extinct`
+- **THEN** the page states which of the two it is and why, and does not show the empty state used for an obligation that has no clients
 
-#### Scenario: Contagem e listagem concordam
-- **WHEN** a member navigates from an attention count card to the corresponding list and situation
-- **THEN** the list contains exactly the clients counted by that card
+### Requirement: Colunas declaradas por obrigação
+The system SHALL declare the columns each obligation displays in the obligation's own registry entry, and SHALL NOT derive the column set from a family shared with other obligations, so that an obligation the integration does not serve is not obliged to display a column about that data.
+
+#### Scenario: Obrigação sem coluna própria
+- **WHEN** an obligation serves no data of its own
+- **THEN** it presents no obligation-specific column, rather than repeating a column that belongs to another obligation
+
+#### Scenario: Colunas descrevem o que a fonte entrega
+- **WHEN** an obligation is displayed
+- **THEN** each of its columns corresponds to a value its source actually returns
+
+### Requirement: Painel coerente com a listagem
+The system SHALL make the overview counters, the group summaries and the list contents consistent with each other, so that navigating from a counter to a list yields the number of clients the counter announced.
+
+#### Scenario: Contador e listagem concordam
+- **WHEN** a member navigates from a counter to the corresponding list and situation
+- **THEN** the list contains exactly the clients counted by that counter
 
 #### Scenario: Atualização após sincronização
 - **WHEN** a synchronization completes and changes the state of clients
-- **THEN** a subsequent load of the overview reflects the new counts without requiring a manual recalculation
+- **THEN** a subsequent load of the overview reflects the new counters without requiring a manual recalculation
 
 ### Requirement: Status de guia derivado dos dados sincronizados
 The system SHALL derive collection-slip status from the synchronized declaration data, presenting whether a slip was issued, its issue date, its due date and whether it was paid, and SHALL NOT require a separate provider call to present it.
@@ -107,7 +168,7 @@ The system SHALL derive collection-slip status from the synchronized declaration
 
 #### Scenario: Guia ainda não emitida
 - **WHEN** the synchronized data reports an assessment period with a declaration but no slip
-- **THEN** the client is presented as owing that period, and the state is not reported as regular
+- **THEN** the client is presented as owing that period, and the situation is not reported as regular
 
 #### Scenario: Declaração retificadora
 - **WHEN** the synchronized data reports a rectified declaration for a period that already had an original one

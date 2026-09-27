@@ -8,8 +8,12 @@ Permite ao opmoni, na posição de software house, manter uma única credencial 
 The system SHALL store the Integra Contador consumer key, consumer secret and contracting e-CNPJ certificate as one platform-level credential shared by every Account, SHALL require the contracting document in that credential to match the document presented to the provider, and SHALL NOT require, hold or forward a Serpro credential per office.
 
 #### Scenario: Credencial de plataforma cadastrada
-- **WHEN** an authorized member saves the consumer key, consumer secret and contracting certificate for the platform
-- **THEN** the credential is stored once and is available to every Account without being duplicated per office
+- **WHEN** a platform operator saves the consumer key, consumer secret and contracting certificate for the platform
+- **THEN** the credential is stored once, is reachable only from the platform operator's area, and is available to every Account without being duplicated per office
+
+#### Scenario: Credencial é rotacionável
+- **WHEN** the platform operator submits a new consumer secret, leaving the certificate and the contracting document untouched
+- **THEN** only the secret is replaced and the rest of the credential is preserved
 
 #### Scenario: Escritório não informa credencial própria
 - **WHEN** a member of an office configures its monitoring without providing any Serpro key, secret or certificate
@@ -169,15 +173,23 @@ The system SHALL require an Account to be explicitly enabled before any of its c
 - **THEN** new synchronization requests for that Account are refused while previously recorded runs and synchronized data remain readable
 
 ### Requirement: Escrita restrita a papéis autorizados
-The system SHALL permit only `admin` and `operador` members to create, update or remove the platform connection and to store or replace a client's authorization term, and SHALL let a `user` member read both without modifying them.
+The system SHALL permit only a platform operator to create, update or remove the platform connection, SHALL permit only `admin` and `operador` members of an Account to store or replace an authorization term, and SHALL let a `user` member read both without modifying them. The platform connection is a single credential owned by the platform rather than by any office, so writing it is reserved to the platform operator and is not exposed to the accounts that use it; the authorization term belongs to an office and is therefore written by that office's own roles.
 
 #### Scenario: Membro com papel=user
-- **WHEN** a member whose role in the current Account is `user` attempts to change the connection or store a term
+- **WHEN** a member whose role in the current Account is `user` attempts to store a term
 - **THEN** the system responds 403 and nothing is changed
 
-#### Scenario: Membro com papel=admin
-- **WHEN** a member whose role in the current Account is `admin` changes a non-secret connection field
+#### Scenario: Membro com papel=admin grava o termo
+- **WHEN** a member whose role in the current Account is `admin` stores or replaces an authorization term
 - **THEN** the change is applied and recorded
+
+#### Scenario: Operador da plataforma grava a conexão
+- **WHEN** a platform operator changes a non-secret connection field
+- **THEN** the change is applied and recorded
+
+#### Scenario: Membro de Account não altera a conexão
+- **WHEN** a member of an Account, whatever that member's role, attempts to change the platform connection
+- **THEN** the system responds 403 and the connection is unchanged, because the credential is the platform's and is not that office's to change
 
 ### Requirement: Segredos e senha do certificado fora de log
 The system SHALL NOT write the consumer secret, the certificate password, certificate contents or a signed authorization document to logs, and SHALL zero the in-memory certificate password as soon as the certificate has been opened.

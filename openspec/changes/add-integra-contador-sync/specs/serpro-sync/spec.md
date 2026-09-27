@@ -53,6 +53,21 @@ The system SHALL persist each run through the states queued, running, completed,
 - **WHEN** the worker terminates while a run is in the running state
 - **THEN** the run is eventually moved to a terminal failed state rather than remaining running indefinitely
 
+### Requirement: Estados por item de execução
+The system SHALL report each client's item of a run as one of `sincronizado`, `ignorado`, `falhou`, `indeterminado` or `nao_processado`, SHALL record the reason for every `ignorado` item, and SHALL NOT reuse the vocabulary of an obligation's situation for an item.
+
+#### Scenario: Item não processado
+- **WHEN** a run has not yet reached a client
+- **THEN** that client's item is reported as `nao_processado`, which is distinct from an item that was processed and skipped
+
+#### Scenario: Motivo do item ignorado
+- **WHEN** an item is `ignorado`
+- **THEN** the reason is reported, and a client with no valid power of attorney is reported as not eligible rather than as a failure
+
+#### Scenario: Item não elegível
+- **WHEN** a client has no valid power of attorney
+- **THEN** the item is `ignorado` with the ineligibility as its reason, and is counted neither as synchronized nor as failed
+
 ### Requirement: Contagens por execução
 The system SHALL report, for each run, the total number of clients considered, the number synchronized, the number skipped and the number failed.
 
