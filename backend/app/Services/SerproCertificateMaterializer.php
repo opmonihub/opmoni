@@ -33,17 +33,33 @@ final class SerproCertificateMaterializer
         }
 
         $password = $connection->certificatePassword() ?? '';
-        $relative = 'serpro-tmp/'.Str::uuid().'.pfx';
 
-        Storage::disk('local')->put($relative, $bytes);
+        $diskRoot = rtrim(Storage::disk('local')->path(''), '/');
+        $tempDir = rtrim((string) config('integra-contador.temp_dir'), '/');
+        $relativeDir = ltrim(str_replace($diskRoot, '', $tempDir), '/');
+        $relative = $relativeDir.'/'.Str::uuid().'.pfx';
 
-        $path = Storage::disk('local')->path($relative);
-        @chmod($path, 0600);
+        $written = Storage::disk('local')->put($relative, $bytes);
+
+        if ($written === false) {
+            throw new SerproException(
+                'Não foi possível gravar o certificado no diretório temporário.',
+                SerproFailure::DoNotRetry,
+                0,
+            );
+        }
+
+        $path = null;
 
         try {
+            $path = Storage::disk('local')->path($relative);
+            @chmod($path, 0600);
+
             return $callback($path);
         } finally {
-            @unlink($path);
+            if ($path !== null) {
+                @unlink($path);
+            }
             $password = str_repeat("\0", strlen($password));
             unset($password);
         }
