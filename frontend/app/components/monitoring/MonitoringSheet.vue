@@ -190,9 +190,22 @@ watch(error, (value) => {
   }
 })
 
+/**
+ * `accessorFn`, not `accessorKey`. The per-obligation values live under
+ * `row.fields[id]`, so a flat `accessorKey: column.id` resolves to `undefined`
+ * for every column that is not `name` or `situacao` and the desktop table
+ * renders blanks — the mobile card reads the same values through
+ * `fieldValue`, so the two layouts would disagree about what the source
+ * delivered. One accessor makes the default cell agree with the card.
+ *
+ * `meta.class` stays the `{ th, td }` object @nuxt/ui v4 reads (it resolves
+ * `class.th`/`class.td`, nothing else), so a numeric column stays right-aligned
+ * in the body without being right-aligned in the header.
+ */
 const columns = computed<TableColumn<MonitoringClient>[]>(() =>
   props.obligation.columns.map(column => ({
-    accessorKey: column.id,
+    id: column.id,
+    accessorFn: (row: MonitoringClient) => fieldValue(row, column.id),
     header: column.header,
     meta: { class: column.numeric ? { th: 'text-right', td: 'text-right tabular-nums' } : undefined }
   }))
