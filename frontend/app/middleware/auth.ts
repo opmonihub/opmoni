@@ -13,12 +13,17 @@ function forbidden(error: unknown) {
 }
 
 export default defineNuxtRouteMiddleware(async () => {
-  const { fetchMe, user } = useAuth()
+  const { fetchMe, registrationAvailable, user } = useAuth()
   if (user.value) return
   try {
     await fetchMe()
   } catch (error) {
-    if (unauthenticated(error)) return navigateTo('/login')
+    if (unauthenticated(error)) {
+      // Base sem usuários/contas: primeiro acesso vai direto ao onboarding
+      // (criação do primeiro usuário) em vez de passar pelo login.
+      const onboarding = await registrationAvailable().catch(() => false)
+      return navigateTo(onboarding ? '/onboarding' : '/login')
+    }
     if (forbidden(error)) {
       const toast = useToast()
       toast.add({ title: 'Acesso negado', description: 'Você não tem permissão para acessar esta área.', color: 'error' })
