@@ -37,6 +37,19 @@ export interface MonitoringGroup {
  */
 export const monitoringCatalogueRevision = '2026-09'
 
+/**
+ * The obligations the provider does not serve, in one place because two screens
+ * have to agree on them: the obligation page draws no counter and no row for
+ * these, and the overview draws no attention count — and a `0` on either would
+ * say "nobody needs attention" about an obligation no client can be pending for.
+ */
+const UNSERVED_CATEGORIES: readonly ObligationCategory[] = ['unavailable', 'extinct']
+
+/** Whether the integration serves this obligation at all. */
+export function monitoringObligationUnserved(obligation: Pick<MonitoringObligation, 'category'>): boolean {
+  return UNSERVED_CATEGORIES.includes(obligation.category)
+}
+
 const NAME: MonitoringColumn = { id: 'name', header: 'Cliente' }
 const SITUACAO: MonitoringColumn = { id: 'situacao', header: 'Situação' }
 const DUE_ON: MonitoringColumn = { id: 'due_on', header: 'Vencimento' }
@@ -58,6 +71,11 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         icon: 'i-lucide-store',
         columns: served(
           { id: 'regime_escolhido', header: 'Regime escolhido' },
+          // Read from `fields['data_da_opcao']` and from nothing else: the date
+          // the office opted for the regime, as
+          // REGIMEAPURACAO/CONSULTAROPCAOREGIME103 returns it. There is no
+          // branch deriving it, so populating exactly that key is the backend
+          // task's half of the contract this column declares.
           { id: 'data_da_opcao', header: 'Data da opção' },
           DUE_ON
         ),
@@ -262,14 +280,24 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
       {
         // `00146` is shared by PGDASD and DEFIS: one client's grant covers
         // both, so the office setup must not present them as two grants (D5).
+        //
+        // The guide is not read from `fields`: it is derived from the
+        // assessment periods already synchronized for this declaration, so the
+        // page can say which period it belongs to, when it was issued and
+        // whether it was paid without a second provider call. `due_on` stays
+        // declared as the declaration's own deadline, which is a different
+        // deadline from the guide's.
         slug: 'declaracoes/pgdas',
         label: 'PGDAS',
         icon: 'i-lucide-file-spreadsheet',
         columns: served(
           { id: 'gi_declaracao', header: 'GI_Declaração' },
-          { id: 'guia_emitida', header: 'Guia emitida' },
-          { id: 'guia_paga', header: 'Guia paga' },
-          DUE_ON
+          DUE_ON,
+          { id: 'guia', header: 'Status da guia' },
+          { id: 'guia_numero', header: 'Número da guia' },
+          { id: 'guia_emitida_em', header: 'Guia emitida em' },
+          { id: 'guia_vencimento', header: 'Vencimento da guia' },
+          { id: 'guia_paga', header: 'Pagamento da guia' }
         ),
         service: 'PGDASD/CONSDECLARACAO13',
         procuracao: '00146',

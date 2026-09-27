@@ -85,6 +85,13 @@ export interface MonitoringClient {
   power_of_attorney_expires_on: string | null
   /** Values for the obligation's declared `columns`, keyed by column id. */
   fields: Record<string, string | number | null>
+  /**
+   * The assessment periods behind the guide, from already synchronized data.
+   * Read for the collection-slip columns through `latestSlipFor` — no extra
+   * provider call. A row with none renders the em dash, which is a claim about
+   * the data and not a claim that no guide exists.
+   */
+  periods: MonitoringAssessmentPeriod[]
   /** Caixas Postais rows are messages; reading one is a legal act (D19). */
   message: MonitoringMessageStub | null
 }
@@ -111,6 +118,20 @@ export interface MonitoringAssessmentPeriod {
   slip_paid: boolean | null
 }
 
+/**
+ * The synchronization on its own axis: how many clients have been transmitted
+ * out of how many were requested.
+ *
+ * A reading of the synchronization, never a state of any client — it therefore
+ * sits beside the counters and never inside them, and `total` stays the sum of
+ * the four. `null` until the backend reports the pair: the absence of the
+ * reading is not a reading of zero.
+ */
+export interface MonitoringSyncProgress {
+  transmitted: number
+  requested: number
+}
+
 export interface MonitoringObligationSummary {
   obligation: string
   category: ObligationCategory
@@ -122,6 +143,8 @@ export interface MonitoringObligationSummary {
   atencao: number
   /** Outside the partition: a closed obligation never inflates an action state. */
   encerrado: number
+  /** The synchronization's own axis, beside the counters and outside them. */
+  progress: MonitoringSyncProgress | null
   current_page: number
   attention_reasons: AttentionReason[]
 }

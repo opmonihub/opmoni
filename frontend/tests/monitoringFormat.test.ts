@@ -5,7 +5,14 @@ import {
   formatMonitoringCount,
   formatMonitoringDate,
   formatMonitoringDueOn,
+  isMonitoringSlipColumn,
+  latestSlipFor,
   monitoringDeadlinePassed,
+  monitoringMissingValue,
+  monitoringPaidPresentation,
+  monitoringSlipColumnValue,
+  monitoringSlipMissingPresentation,
+  monitoringSlipStatusPresentation,
   slipStatusFor
 } from '../app/utils/monitoringPresentation.ts'
 import type { MonitoringAssessmentPeriod } from '../app/types/serpro.ts'
@@ -64,6 +71,13 @@ describe('monitoringDeadlinePassed', () => {
   })
 })
 
+describe('the em dash is one value, not a literal per reader', () => {
+  it('is what every absent reading is drawn as', () => {
+    assert.equal(monitoringMissingValue, '—')
+    assert.equal(formatMonitoringDate(null), monitoringMissingValue)
+  })
+})
+
 function period(overrides: Partial<MonitoringAssessmentPeriod>): MonitoringAssessmentPeriod {
   return {
     period: '2026-03',
@@ -110,5 +124,93 @@ describe('slipStatusFor', () => {
 
   it('reports no slip for a period the data does not mention', () => {
     assert.equal(slipStatusFor([period({ period: '2026-02' })], '2026-03').status, 'none')
+  })
+})
+
+describe('latestSlipFor', () => {
+  it('reads the most recent period, not the first the array lists', () => {
+    const result = latestSlipFor([
+      period({ period: '2026-03', declared_at: '2026-03-31T10:00:00Z', slip_number: '0815', slip_paid: true }),
+      period({ period: '2026-02', declared_at: '2026-02-28T10:00:00Z', slip_number: '0801', slip_paid: true })
+    ])
+    assert.equal(result?.slip_number, '0815')
+    assert.equal(result?.status, 'paid')
+  })
+
+  it('reads the most recent transmission inside that period', () => {
+    const result = latestSlipFor([
+      period({ period: '2026-03', declared_at: '2026-03-31T10:00:00Z', slip_number: '0815', slip_paid: false }),
+      period({ period: '2026-03', declared_at: '2026-04-10T10:00:00Z', slip_number: '0821', slip_paid: false })
+    ])
+    assert.equal(result?.slip_number, '0821')
+  })
+
+  it('is null — not "Sem guia" — when the data mentions no period', () => {
+    assert.equal(latestSlipFor([]), null)
+    assert.equal(latestSlipFor(null), null)
+    assert.equal(latestSlipFor(undefined), null)
+  })
+
+  it('distinguishes a period that owes a guide from no period at all', () => {
+    assert.equal(latestSlipFor([period({ declared_at: '2026-03-31T10:00:00Z' })])?.status, 'owed')
+    assert.equal(latestSlipFor([])?.status, undefined)
+  })
+})
+
+describe('monitoringSlipColumnValue', () => {
+  const paid = period({
+    period: '2026-03',
+    declared_at: '2026-03-31T10:00:00Z',
+    slip_number: '0815',
+    slip_issued_at: '2026-04-01T09:00:00Z',
+    due_on: '2026-04-20',
+    slip_paid: true
+  })
+
+  it('presents the status, the number, both dates and the paid flag', () => {
+    assert.equal(monitoringSlipColumnValue('guia', [paid]), monitoringSlipStatusPresentation.paid.label)
+    assert.equal(monitoringSlipColumnValue('guia_numero', [paid]), '0815')
+    assert.equal(monitoringSlipColumnValue('guia_emitida_em', [paid]), '01/04/2026')
+    assert.equal(monitoringSlipColumnValue('guia_vencimento', [paid]), '20/04/2026')
+    assert.equal(monitoringSlipColumnValue('guia_paga', [paid]), monitoringPaidPresentation.paid.label)
+  })
+
+  it('says a slip issued and unpaid is unpaid', () => {
+    const unpaid = period({ ...paid, slip_paid: false })
+    assert.equal(monitoringSlipColumnValue('guia', [unpaid]), monitoringSlipStatusPresentation.issued.label)
+    assert.equal(monitoringSlipColumnValue('guia_paga', [unpaid]), monitoringPaidPresentation.unpaid.label)
+  })
+
+  it('gives a period with no slip no paid verdict', () => {
+    const owed = period({ declared_at: '2026-03-31T10:00:00Z' })
+    assert.equal(monitoringSlipColumnValue('guia', [owed]), monitoringSlipStatusPresentation.owed.label)
+    assert.equal(monitoringSlipColumnValue('guia_paga', [owed]), monitoringMissingValue)
+    assert.equal(monitoringSlipColumnValue('guia_numero', [owed]), monitoringMissingValue)
+  })
+
+  it('degrades to the em dash for a row with no periods, without throwing', () => {
+    for (const id of ['guia', 'guia_numero', 'guia_emitida_em', 'guia_vencimento', 'guia_paga']) {
+      assert.equal(monitoringSlipColumnValue(id, []), monitoringMissingValue, `${id} must not claim a guide`)
+      assert.equal(monitoringSlipColumnValue(id, null), monitoringMissingValue, `${id} must not claim a guide`)
+    }
+  })
+
+  it('never claims "Sem guia" for a row the source said nothing about', () => {
+    assert.notEqual(monitoringSlipColumnValue('guia', []), monitoringSlipStatusPresentation.none.label)
+    assert.equal(monitoringSlipMissingPresentation.label, monitoringMissingValue)
+  })
+
+  it('falls back to the em dash for a column nothing can read', () => {
+    assert.equal(monitoringSlipColumnValue('guia_inexistente', [paid]), monitoringMissingValue)
+  })
+
+  it('does not claim a guide column for an id inherited from the prototype', () => {
+    for (const id of ['toString', 'constructor', 'hasOwnProperty']) {
+      assert.equal(isMonitoringSlipColumn(id), false, `${id} is not a guide column`)
+      assert.equal(monitoringSlipColumnValue(id, [paid]), monitoringMissingValue, `${id} must not render a value`)
+    }
+    for (const id of ['guia', 'guia_numero', 'guia_emitida_em', 'guia_vencimento', 'guia_paga']) {
+      assert.equal(isMonitoringSlipColumn(id), true, `${id} is a declared guide column`)
+    }
   })
 })

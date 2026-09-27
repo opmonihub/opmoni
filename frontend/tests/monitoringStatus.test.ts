@@ -2,10 +2,14 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  formatMonitoringProgress,
   monitoringAttentionReasonPresentation,
   monitoringCategoryPresentation,
   monitoringCounterPresentation,
   monitoringCountersTotal,
+  monitoringProgressPresentation,
+  monitoringProvenance,
+  monitoringProvenanceLabels,
   monitoringSituacaoPresentation,
   serproRunItemStatePresentation,
   serproRunStatePresentation,
@@ -45,9 +49,40 @@ describe('monitoring counters', () => {
       pendencias: 1,
       atencao: 2,
       encerrado: 3,
+      progress: null,
       current_page: 1,
       attention_reasons: []
     }), 12)
+  })
+})
+
+describe('the progress axis', () => {
+  it('reads as a reading of the synchronization, not a client state', () => {
+    const line = formatMonitoringProgress({ transmitted: 3, requested: 40 })
+    assert.match(line ?? '', /3/)
+    assert.match(line ?? '', /40/)
+    assert.match(line ?? '', /sincroniza/i)
+    assert.match(line ?? '', /nenhum cliente/i)
+  })
+
+  it('is a sentence, never a truncated "3 de"', () => {
+    const line = formatMonitoringProgress({ transmitted: 0, requested: 0 })
+    assert.equal(line?.includes('de .'), false)
+    assert.ok((line?.match(/de/g) ?? []).length >= 1)
+  })
+
+  it('renders nothing at all while the pair is absent', () => {
+    assert.equal(formatMonitoringProgress(null), null)
+    assert.equal(formatMonitoringProgress(undefined), null)
+  })
+
+  it('keeps zero transmitted visible rather than omitting the reading', () => {
+    assert.match(formatMonitoringProgress({ transmitted: 0, requested: 12 }) ?? '', /: 0 de 12/)
+  })
+
+  it('carries the icon the panel draws it with', () => {
+    assert.ok(monitoringProgressPresentation.icon.startsWith('i-lucide-'))
+    assert.ok(monitoringProgressPresentation.label.length > 0)
   })
 })
 
@@ -100,6 +135,37 @@ describe('obligation categories', () => {
   it('says an unserved obligation is not a client pending', () => {
     assert.match(monitoringCategoryPresentation.unavailable.description, /obrigação/i)
     assert.match(monitoringCategoryPresentation.extinct.description, /deixou de ser devida/i)
+  })
+})
+
+describe('provenance of a derived obligation', () => {
+  const derived = {
+    category: 'derived' as const,
+    derivedFrom: 'o relatório SITFIS',
+    service: 'SITFIS/RELATORIOSITFIS92'
+  }
+
+  it('names what it projects over and the call it projects it with', () => {
+    const provenance = monitoringProvenance(derived)
+    assert.equal(provenance?.origin, 'o relatório SITFIS')
+    assert.equal(provenance?.service, 'SITFIS/RELATORIOSITFIS92')
+  })
+
+  it('has no provenance for an obligation that is not a projection', () => {
+    assert.equal(monitoringProvenance({ category: 'direct', service: 'MEI/DIVIDAATIVA24' }), null)
+    assert.equal(monitoringProvenance({ category: 'unavailable', service: null }), null)
+    assert.equal(monitoringProvenance({ category: 'extinct', service: null }), null)
+  })
+
+  it('still renders a derived obligation whose origin was not declared', () => {
+    const provenance = monitoringProvenance({ category: 'derived', service: 'CAIXAPOSTAL' })
+    assert.equal(provenance?.origin, null)
+    assert.equal(provenance?.service, 'CAIXAPOSTAL')
+  })
+
+  it('labels the two things a projection has to declare', () => {
+    assert.ok(monitoringProvenanceLabels.origin.length > 0)
+    assert.ok(monitoringProvenanceLabels.service.length > 0)
   })
 })
 

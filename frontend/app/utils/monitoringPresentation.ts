@@ -6,6 +6,7 @@ import type {
   MonitoringObligationSummary,
   MonitoringSituacao,
   MonitoringSlipStatus,
+  MonitoringSyncProgress,
   ObligationCategory,
   SerproAuthorizationTermState,
   SerproRunItemState,
@@ -16,6 +17,14 @@ type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error'
 
 /** The counter row's own label — the fifth reading, which is not a state. */
 export const monitoringTotalLabel = 'Total'
+
+/**
+ * What a reading the source did not supply is drawn as. Named rather than
+ * written inline because "the source said nothing" must never read as a blank
+ * cell, and every reader of this module has to agree on what that blank means:
+ * it is not a zero, and not a value the office is expected to supply.
+ */
+export const monitoringMissingValue = '—'
 
 /**
  * Staleness is an attribute of the synchronized data, never a situation. The
@@ -92,6 +101,30 @@ export const monitoringSlipStatusPresentation: Record<MonitoringSlipStatus, { la
   none: { label: 'Sem guia', color: 'neutral', icon: 'i-lucide-circle-minus' }
 }
 
+/**
+ * The guide column when the synchronized data mentions no period at all.
+ *
+ * Deliberately **not** `monitoringSlipStatusPresentation.none`: that says a
+ * known period owes no guide, and a dash says the source told us nothing about
+ * a period. Rendering the first for the second would claim a fact about the
+ * office's own declaration that nobody has evidence for.
+ */
+export const monitoringSlipMissingPresentation: { label: string, color: Tone, icon: string } = {
+  label: monitoringMissingValue,
+  color: 'neutral',
+  icon: 'i-lucide-minus'
+}
+
+/**
+ * Whether an issued guide was paid, in words. `null` for a period that owes a
+ * guide or has none — "unpaid" is a claim about a guide that exists, and
+ * applying it to a period with no guide would invent an obligation to pay.
+ */
+export const monitoringPaidPresentation: Record<'paid' | 'unpaid', { label: string, color: Tone, icon: string }> = {
+  paid: { label: 'Paga', color: 'success', icon: 'i-lucide-circle-check' },
+  unpaid: { label: 'Não paga', color: 'warning', icon: 'i-lucide-circle-x' }
+}
+
 export const serproRunStatePresentation: Record<SerproSyncRunState, { label: string, color: Tone, icon: string }> = {
   queued: { label: 'Na fila', color: 'neutral', icon: 'i-lucide-clock' },
   running: { label: 'Em execução', color: 'info', icon: 'i-lucide-arrow-repeat' },
@@ -143,11 +176,64 @@ export function formatMonitoringCount(value: number) {
   return new Intl.NumberFormat('pt-BR').format(value)
 }
 
+/** What a projection has to name before the office can read it as one. */
+export const monitoringProvenanceLabels: { origin: string, service: string } = {
+  origin: 'Deriva de',
+  service: 'Serviço no provedor'
+}
+
+/**
+ * The provenance of a `derived` obligation, as the office reads it.
+ *
+ * A derived obligation is a projection: the same provider call as another
+ * obligation, or a filter over a message that call already returned. Naming what
+ * it projects over — and on which service — is what keeps it from being read as
+ * an independent source, so the panel declares it on the obligation page and
+ * the overview flags the card before the member clicks.
+ *
+ * `null` for anything that is not `derived`. A direct obligation has no
+ * projection to declare, and an unserved one is replaced by its own alert
+ * explaining why there is nothing here.
+ */
+export function monitoringProvenance(obligation: {
+  category: ObligationCategory
+  derivedFrom?: string
+  service: string | null
+}): { origin: string | null, service: string | null } | null {
+  if (obligation.category !== 'derived') return null
+  return {
+    origin: obligation.derivedFrom ?? null,
+    service: obligation.service
+  }
+}
+
+/**
+ * The progress axis, and the sentence that reads it.
+ *
+ * How many clients have been transmitted out of how many were requested is a
+ * reading of the synchronization, not a state of any client — so it is labelled
+ * as one and never joins the four counters, whose `total` it does not touch. The
+ * sentence is built here so the panel cannot render "3 de" with nothing after
+ * it, and `null` while the backend does not report the pair: no reading is not a
+ * reading of zero.
+ */
+export const monitoringProgressPresentation: { label: string, color: Tone, icon: string, note: string } = {
+  label: 'Transmitidos',
+  color: 'info',
+  icon: 'i-lucide-send',
+  note: 'leitura da sincronização, e não o estado de nenhum cliente'
+}
+
+export function formatMonitoringProgress(progress: MonitoringSyncProgress | null | undefined): string | null {
+  if (!progress) return null
+  return `${monitoringProgressPresentation.label}: ${formatMonitoringCount(progress.transmitted)} de ${formatMonitoringCount(progress.requested)} — ${monitoringProgressPresentation.note}.`
+}
+
 export function formatMonitoringDate(value: string | null | undefined) {
-  if (!value) return '—'
+  if (!value) return monitoringMissingValue
   const [date] = value.split('T')
   const [year, month, day] = (date ?? '').split('-')
-  if (!year || !month || !day) return '—'
+  if (!year || !month || !day) return monitoringMissingValue
   return `${day}/${month}/${year}`
 }
 
@@ -208,4 +294,69 @@ export function slipStatusFor(periods: readonly MonitoringAssessmentPeriod[], pe
     issued_on: latest.slip_issued_at,
     due_on: latest.due_on
   }
+}
+
+/**
+ * The guide a row's synchronized periods describe: the most recent period, with
+ * the most recent transmission of it. `period` is `YYYY-MM`, so the greatest
+ * string is the most recent period without a date parse.
+ *
+ * `null` — never `slipStatusFor`'s `none` — when the data mentions no period at
+ * all. The two are different claims and must not read the same on a screen: one
+ * is about a known period, the other is about the data.
+ */
+export function latestSlipFor(periods: readonly MonitoringAssessmentPeriod[] | null | undefined): MonitoringSlip | null {
+  if (!periods?.length) return null
+  const period = periods.reduce((latest, item) => (!latest || item.period > latest ? item.period : latest), '')
+  if (!period) return null
+  return slipStatusFor(periods, period)
+}
+
+function paidKeyFor(slip: MonitoringSlip): 'paid' | 'unpaid' | null {
+  if (slip.status === 'paid') return 'paid'
+  if (slip.status === 'issued') return 'unpaid'
+  return null
+}
+
+/**
+ * The guide columns, read from the row's synchronized periods instead of
+ * `fields`. A provider string could not say which period a guide belonged to,
+ * when it was issued, or whether it was paid — and reading it from `fields`
+ * would render whatever opaque text arrived, under a header promising a status.
+ *
+ * Keyed by the column ids the registry declares, so the two are edited together
+ * and an id nobody can read falls back to the em dash rather than to `fields`.
+ */
+export const monitoringSlipColumns: Record<string, (slip: MonitoringSlip) => string> = {
+  guia: slip => monitoringSlipStatusPresentation[slip.status].label,
+  guia_numero: slip => slip.slip_number ?? monitoringMissingValue,
+  guia_emitida_em: slip => formatMonitoringDate(slip.issued_on),
+  guia_vencimento: slip => formatMonitoringDate(slip.due_on),
+  guia_paga: (slip) => {
+    const paid = paidKeyFor(slip)
+    return paid ? monitoringPaidPresentation[paid].label : monitoringMissingValue
+  }
+}
+
+/**
+ * Whether this column id is one the guide derivation reads.
+ *
+ * `Object.hasOwn`, not `in`: a plain `in` would answer `true` for an id like
+ * `toString` inherited from `Object.prototype`, and the row's cell would render
+ * `[object Object]` under a column header.
+ */
+export function isMonitoringSlipColumn(id: string): boolean {
+  return Object.hasOwn(monitoringSlipColumns, id)
+}
+
+/**
+ * What one guide column shows for a row, or the em dash when the synchronized
+ * data says nothing about a period. The dash is not "no guide exists": it is the
+ * source having reported no period at all, which is what a row looks like
+ * before the backend populates `periods`.
+ */
+export function monitoringSlipColumnValue(id: string, periods: readonly MonitoringAssessmentPeriod[] | null | undefined): string {
+  if (!isMonitoringSlipColumn(id)) return monitoringMissingValue
+  const slip = latestSlipFor(periods)
+  return slip ? monitoringSlipColumns[id]!(slip) : monitoringMissingValue
 }

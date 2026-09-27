@@ -4,7 +4,9 @@ import type { MonitoringCounter, MonitoringObligationSummary, MonitoringSituacao
 import { monitoringListPath, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
   formatMonitoringCount,
+  formatMonitoringProgress,
   monitoringCounterPresentation,
+  monitoringProgressPresentation,
   monitoringSituacaoPresentation,
   monitoringTotalLabel
 } from '~/utils/monitoringPresentation'
@@ -82,6 +84,24 @@ const counters: readonly MonitoringCounter[] = ['em_dia', 'processando', 'penden
         :label="`${formatMonitoringCount(summary.encerrado)} ${monitoringSituacaoPresentation.encerrado.label}`"
       />
       <span>fora dos quatro contadores acima.</span>
+    </p>
+
+    <!--
+      The synchronization's own axis, beside the counters and outside them. Not
+      a sixth reading of a client: it says how far the transmission got, so it
+      is plain text, it is not a link into a filtered list, and it renders only
+      when the backend reports the pair — an absent reading is not a reading of
+      zero transmitted.
+    -->
+    <p
+      v-if="formatMonitoringProgress(summary.progress)"
+      class="flex items-center gap-1.5 text-xs text-muted"
+    >
+      <UIcon
+        :name="monitoringProgressPresentation.icon"
+        class="shrink-0"
+      />
+      <span>{{ formatMonitoringProgress(summary.progress) }}</span>
     </p>
   </div>
 </template>
