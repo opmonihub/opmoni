@@ -24,7 +24,15 @@ class ClientCertificateVault
         $committed = false;
 
         try {
+            $this->flushOpenSslErrors();
+
             if (! openssl_pkcs12_read($contents, $parsed, $password) || ! isset($parsed['cert'])) {
+                if ($this->failedBecauseOfLegacyRc2($contents)) {
+                    throw ValidationException::withMessages([
+                        'certificate' => sprintf('O certificado do cliente %s usa criptografia legada RC2 e precisa ser exportado novamente sem a opção legacy.', $client->name),
+                    ]);
+                }
+
                 throw ValidationException::withMessages(['password' => 'Não foi possível abrir o certificado com a senha informada.']);
             }
 
@@ -172,5 +180,46 @@ class ClientCertificateVault
         }
 
         return 'desconhecido';
+    }
+
+    private function flushOpenSslErrors(): void
+    {
+        while (openssl_error_string() !== false) {
+            // OpenSSL keeps a per-thread error queue; clear stale failures before reading this PFX.
+        }
+    }
+
+    private function failedBecauseOfLegacyRc2(string $contents): bool
+    {
+        $unsupportedAlgorithm = false;
+
+        while (($error = openssl_error_string()) !== false) {
+            $normalized = strtolower($error);
+
+            if (str_contains($normalized, 'rc2')) {
+                return true;
+            }
+
+            if (str_contains($normalized, 'unsupported')) {
+                $unsupportedAlgorithm = true;
+            }
+        }
+
+        return $unsupportedAlgorithm && $this->containsLegacyRc2Identifier($contents);
+    }
+
+    private function containsLegacyRc2Identifier(string $contents): bool
+    {
+        foreach ([
+            hex2bin('060a2a864886f70d010c0105'),
+            hex2bin('060a2a864886f70d010c0106'),
+            hex2bin('06082a864886f70d0302'),
+        ] as $identifier) {
+            if ($identifier !== false && str_contains($contents, $identifier)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
