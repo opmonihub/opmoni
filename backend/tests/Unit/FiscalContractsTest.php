@@ -28,6 +28,7 @@ class FiscalContractsTest extends TestCase
             emitenteCnpj: null,
             destinatarioCnpj: null,
             valorTotal: null,
+            digVal: null,
             nsu: 10,
             schema: 'resNFe_v1.01.xsd',
             emissaoAt: null,
@@ -52,6 +53,7 @@ class FiscalContractsTest extends TestCase
             emitenteCnpj: '11222333000181',
             destinatarioCnpj: '99887766000199',
             valorTotal: '1500.75',
+            digVal: null,
             nsu: 10,
             schema: 'procNFe_v1.01.xsd',
             emissaoAt: null,
@@ -62,6 +64,31 @@ class FiscalContractsTest extends TestCase
         $this->assertSame('11222333000181', $document->emitenteCnpj);
         $this->assertSame('99887766000199', $document->destinatarioCnpj);
         $this->assertSame('1500.75', $document->valorTotal);
+    }
+
+    public function test_pulled_document_carries_the_digest_of_the_xml(): void
+    {
+        // O `digVal` atravessa o contrato pelo mesmo motivo dos outros três
+        // metadados: o writer compara o digest que chega com o que já gravou, e
+        // comparar exigiria que ele reparseasse `$xml` — uma segunda fonte para
+        // um valor que a camada de parse já resolveu.
+        $document = new PulledDocument(
+            model: FiscalModel::Nfe,
+            kind: FiscalKind::Document,
+            chave: str_repeat('1', 44),
+            eventId: '',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
+            digVal: 'L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=',
+            nsu: 10,
+            schema: 'resNFe_v1.01.xsd',
+            emissaoAt: null,
+            eventoOcorridoEmAt: null,
+            xml: '<a/>',
+        );
+
+        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $document->digVal);
     }
 
     public function test_pulled_document_metadata_columns_are_null_when_the_xml_has_none(): void
@@ -76,6 +103,7 @@ class FiscalContractsTest extends TestCase
             emitenteCnpj: null,
             destinatarioCnpj: null,
             valorTotal: null,
+            digVal: null,
             nsu: 11,
             schema: 'resEvento_v1.01.xsd',
             emissaoAt: null,
@@ -103,6 +131,7 @@ class FiscalContractsTest extends TestCase
             emitenteCnpj: null,
             destinatarioCnpj: null,
             valorTotal: null,
+            digVal: null,
             nsu: 11,
             schema: 'procNFe_v1.01.xsd',
             emissaoAt: $emissao,
@@ -214,6 +243,7 @@ class FiscalContractsTest extends TestCase
                 emitenteCnpj: '11222333000181',
                 destinatarioCnpj: '99887766000199',
                 valorTotal: '1500.75',
+                digVal: null,
                 nsu: 198,
                 schema: 'resNFe_v1.01.xsd',
                 emissaoAt: null,
@@ -228,6 +258,7 @@ class FiscalContractsTest extends TestCase
                 emitenteCnpj: null,
                 destinatarioCnpj: null,
                 valorTotal: null,
+                digVal: null,
                 nsu: 200,
                 schema: 'resEvento_v1.01.xsd',
                 emissaoAt: null,

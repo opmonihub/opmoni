@@ -14,6 +14,7 @@ use App\Tenant\CurrentTenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
@@ -164,6 +165,40 @@ class FiscalSchemaTest extends TestCase
         $this->assertTrue(
             FiscalCursor::withoutGlobalScope('account')->whereKey($cursorEstrangeiro->getKey())->exists()
         );
+    }
+
+    public function test_document_carries_the_digest_and_its_verdict(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        $this->assertTrue(Schema::hasColumns('fiscal_documents', ['digval', 'digval_confere']));
+
+        // A verificação de integridade do módulo (decisão 8) tem três respostas —
+        // confere, não confere e não dá para dizer — e o banco é quem guarda a
+        // diferença: uma coluna que só aceitasse verdadeiro e falso acusaria de
+        // corrompido o documento que chegou sozinho, sem a outra etapa para
+        // comparar.
+        FiscalDocument::factory()->create([
+            'client_id' => $client->getKey(),
+            'digval' => 'L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=',
+            'digval_confere' => false,
+        ]);
+
+        $divergente = FiscalDocument::query()->firstOrFail();
+        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $divergente->digval);
+        $this->assertFalse($divergente->digval_confere);
+
+        // Nulo é um estado, não uma ausência: as duas colunas precisam aceitá-lo.
+        DB::table('fiscal_documents')->insert([
+            ...$this->rawDocument($account, $client, '9'),
+            'digval' => null,
+            'digval_confere' => null,
+        ]);
+
+        $semVeredito = FiscalDocument::query()->where('nsu', 9)->firstOrFail();
+        $this->assertNull($semVeredito->digval);
+        $this->assertNull($semVeredito->digval_confere);
     }
 
     public function test_fiscal_disk_is_private(): void

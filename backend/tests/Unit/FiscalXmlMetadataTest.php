@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Services\Fiscal\Support\DigValComparison;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use RuntimeException;
 use Tests\TestCase;
@@ -52,6 +53,62 @@ class FiscalXmlMetadataTest extends TestCase
         $this->assertSame('35220499999999999999550010020000001240556600', $result->chave);
         $this->assertSame('99999999999999', $result->emitenteCnpj);
         $this->assertSame('11222333000181', $result->destinatarioCnpj);
+    }
+
+    public function test_extracts_the_digest_from_the_summary(): void
+    {
+        // No resumo o `digVal` está no topo: é o resumo do XML que o ambiente
+        // nacional calculou quando catalogou a nota.
+        $xml = file_get_contents(base_path('tests/Fixtures/fiscal/resNFe.xml'));
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+
+        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $result->digVal);
+    }
+
+    public function test_extracts_the_digest_from_the_authorized_document(): void
+    {
+        // No documento completo o `digVal` vem de `protNFe/infProt` — o protocolo
+        // de autorização — e é o mesmo valor que o resumo traz. A igualdade dos
+        // dois é a verificação de integridade do módulo, sem uma linha de
+        // cripto.
+        $xml = file_get_contents(base_path('tests/Fixtures/fiscal/procNFe.xml'));
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+
+        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $result->digVal);
+    }
+
+    public function test_the_two_stages_of_one_document_carry_the_same_digest(): void
+    {
+        // Par sintético, e o módulo avisa disso: os fixtures são
+        // estruturalmente realistas, não capturas do ambiente nacional. Um par
+        // `resNFe` + `procNFe` de verdade, e um par deliberadamente divergente,
+        // têm de vir do serviço antes de produção.
+        $resumo = (new FiscalXmlMetadata)->extract(
+            file_get_contents(base_path('tests/Fixtures/fiscal/resNFe.xml')),
+            FiscalModel::Nfe,
+        );
+
+        $documento = (new FiscalXmlMetadata)->extract(
+            file_get_contents(base_path('tests/Fixtures/fiscal/procNFe.xml')),
+            FiscalModel::Nfe,
+        );
+
+        $this->assertNotNull($resumo->digVal);
+        $this->assertSame($resumo->digVal, $documento->digVal);
+        $this->assertTrue(DigValComparison::compare($resumo->digVal, $documento->digVal));
+    }
+
+    public function test_a_document_without_a_digest_extracts_none(): void
+    {
+        // Evento não tem `digVal` em lugar nenhum, e a coluna nullable espera
+        // nulo — não string vazia, que o writer leria como digest.
+        $xml = $this->evento('ID1101113522049999999999999955001002000000124055660001', '1');
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+
+        $this->assertNull($result->digVal);
     }
 
     public function test_follows_the_model_path_instead_of_any_matching_element(): void

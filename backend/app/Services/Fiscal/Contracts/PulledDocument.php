@@ -26,8 +26,13 @@ final readonly class PulledDocument
      * metadado que a camada de parse já extraiu, e atravessam o contrato para
      * que o `FiscalDocumentWriter` não reparseie `$xml` para preenchê-las: uma
      * segunda leitura do mesmo XML produziria uma segunda fonte para os mesmos
-     * três valores, na camada que grava. Nulos quando o XML não os traz, que é
-     * o caso comum em evento e em resumo.
+     * três valores, na camada que grava. Nulos quando o XML não os traz, que é o
+     * caso comum em evento e em resumo.
+     *
+     * `digVal` atravessa pelo mesmo motivo, e é o SHA-1 em base64 que o ambiente
+     * nacional calculou sobre o XML: o resumo o traz no topo e o documento
+     * autorizado em `protNFe/infProt`, e são esses dois que o writer compara para
+     * dizer se o XML completo é o que foi catalogado.
      *
      * `nsu` é a posição desta entrega, não a do documento: resumo, documento
      * completo e evento chegam em posições diferentes e os três coexistem.
@@ -46,6 +51,7 @@ final readonly class PulledDocument
         public ?string $emitenteCnpj,
         public ?string $destinatarioCnpj,
         public ?string $valorTotal,
+        public ?string $digVal,
         public int $nsu,
         public string $schema,
         public ?CarbonImmutable $emissaoAt,

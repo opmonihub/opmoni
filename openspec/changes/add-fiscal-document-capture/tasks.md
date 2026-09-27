@@ -32,7 +32,7 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 3.4 Criar `DfeResponseParser` localizando `retDistDFeInt` por nome local, extraindo `cStat`, `xMotivo`, `ultNSU`, `maxNSU` e as entradas do lote; verificar com teste unitário que a extração é imune a prefixo de namespace
 - [ ] 3.5 Criar `FiscalXmlValidator` validando a requisição contra o XSD local do serviço antes de enviar; verificar com teste unitário que requisição com prefixo de namespace, codificação errada e versão fora do vigente é rejeitada antes da chamada
 - [x] 3.6 Criar `FiscalXmlMetadata` extraindo chave de acesso, emitente, destinatário, valor e datas por modelo, validando o dígito verificador da chave; verificar com teste unitário por modelo contra fixtures de XML reais, incluindo chave com DV inválido
-- [ ] 3.7 Criar a comparação de `digVal` entre resumo e documento completo, marcando divergência em vez de descartar; verificar com teste unitário que dois `digVal` iguais marcam íntegro e diferentes marcam divergente
+- [x] 3.7 Criar a comparação de `digVal` entre resumo e documento completo, marcando divergência em vez de descartar; verificar com teste unitário que dois `digVal` iguais marcam íntegro e diferentes marcam divergente
 - [ ] 3.8 Criar a rotina de encoding que detecta Latin-1 antes de converter e preserva os bytes crus para persistência; verificar com teste unitário que acento não vira `?` e que o bruto é mantido
 - [ ] 3.9 Vendorizar o bundle de AC ICP-Brasil e apontar a verificação de TLS para ele com verificação ligada; verificar com teste que a verificação do servidor permanece ativa e que o bundle está versionado
 

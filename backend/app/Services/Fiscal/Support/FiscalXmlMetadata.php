@@ -68,6 +68,12 @@ final class FiscalXmlMetadata
             emitenteCnpj: $this->firstText($xpath, ['emit/CNPJ', 'prest/CNPJ', 'CNPJ']),
             destinatarioCnpj: $this->firstText($xpath, ['dest/CNPJ', 'toma/CNPJ', 'destinatario/CNPJ']),
             valorTotal: $this->firstText($xpath, ['vNF', 'vTPrest', 'vLiq']),
+            // O mesmo digest nas duas etapas da distribuição, em lugares
+            // diferentes: o resumo o traz no topo, o documento autorizado no
+            // protocolo. O caminho específico vem primeiro porque é o protocolo
+            // que o ambiente nacional escreveu, e o topo é o que sobra para o
+            // resumo. Evento não tem digest, e aí a coluna fica nula.
+            digVal: $this->firstText($xpath, ['protNFe/infProt/digVal', 'protCTe/infProt/digVal', 'digVal']),
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
         );

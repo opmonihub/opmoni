@@ -261,6 +261,7 @@ final class NfeDistributionConnector implements FiscalConnector
                 emitenteCnpj: $extracted->emitenteCnpj,
                 destinatarioCnpj: $extracted->destinatarioCnpj,
                 valorTotal: $extracted->valorTotal,
+                digVal: $extracted->digVal,
                 nsu: $entry->nsu,
                 schema: $entry->schema,
                 emissaoAt: $extracted->emissaoAt,

@@ -84,6 +84,7 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame('99999999999999', $document->emitenteCnpj);
         $this->assertNull($document->destinatarioCnpj);
         $this->assertSame('710.00', $document->valorTotal);
+        $this->assertSame('L0xl/8X3vX0gk0m3sQ0m0L0Y8X3vX0g=', $document->digVal);
         $this->assertSame(200, $document->nsu);
         $this->assertSame('resNFe_v1.01.xsd', $document->schema);
         $this->assertSame('2022-04-04T11:54:49-03:00', $document->emissaoAt?->toIso8601String());

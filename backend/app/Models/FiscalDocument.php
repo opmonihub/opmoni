@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['client_id', 'source', 'model', 'kind', 'chave_acesso', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'xml_bytes', 'mascarado', 'captured_at'])]
+#[Fillable(['client_id', 'source', 'model', 'kind', 'chave_acesso', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
 class FiscalDocument extends Model
 {
     /** @use HasFactory<FiscalDocumentFactory> */
@@ -26,6 +26,9 @@ class FiscalDocument extends Model
             'kind' => FiscalKind::class,
             'nsu' => 'integer',
             'valor_total' => 'decimal:2',
+            // Nulo é o terceiro estado: "a outra etapa da distribuição ainda não
+            // chegou", que não é o mesmo que "os digests divergem".
+            'digval_confere' => 'boolean',
             'mascarado' => 'boolean',
             'xml_bytes' => 'integer',
             'emissao_at' => 'datetime',
