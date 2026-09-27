@@ -385,30 +385,40 @@ async function afterRead() {
                 </dl>
                 <div
                   v-if="row.message"
-                  class="mt-3 flex flex-wrap items-center gap-2 border-t border-default pt-3"
+                  class="mt-3 flex flex-col gap-2 border-t border-default pt-3"
                 >
-                  <UButton
-                    size="xs"
-                    color="neutral"
-                    variant="outline"
-                    icon="i-lucide-mail-open"
-                    :label="messageAction(row.message, row.name).label"
-                    :aria-label="messageAction(row.message, row.name).ariaLabel"
-                    @click="openMessage(row)"
-                  />
-                  <span
-                    v-if="row.message.ciencia_em"
-                    class="text-xs text-muted tabular-nums"
-                  >
-                    Ciência {{ formatMonitoringDate(row.message.ciencia_em) }}
+                  <!--
+                    The subject the office is about to consent to. A phone that showed
+                    the action and the dates without naming the message would ask for
+                    the act before showing what the act is about.
+                  -->
+                  <span class="truncate text-xs text-muted" :title="row.message.assunto">
+                    {{ row.message.assunto }}
                   </span>
-                  <span
-                    v-if="row.message.prazo_limite"
-                    class="text-xs tabular-nums"
-                    :class="prazoPresentation(row.message).class"
-                  >
-                    {{ prazoPresentation(row.message).label }}
-                  </span>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-mail-open"
+                      :label="messageAction(row.message, row.name).label"
+                      :aria-label="messageAction(row.message, row.name).ariaLabel"
+                      @click="openMessage(row)"
+                    />
+                    <span
+                      v-if="row.message.ciencia_em"
+                      class="text-xs text-muted tabular-nums"
+                    >
+                      Ciência {{ formatMonitoringDate(row.message.ciencia_em) }}
+                    </span>
+                    <span
+                      v-if="row.message.prazo_limite"
+                      class="text-xs tabular-nums"
+                      :class="prazoPresentation(row.message).class"
+                    >
+                      {{ prazoPresentation(row.message).label }}
+                    </span>
+                  </div>
                 </div>
               </UCard>
             </div>
@@ -422,7 +432,46 @@ async function afterRead() {
                 :ui="sheetTableUi"
               >
                 <template #name-cell="{ row }">
-                  <DataTableIdentity :title="row.original.name" :meta="row.original.tax_id ?? ''" />
+                  <div class="flex min-w-0 flex-col gap-1">
+                    <DataTableIdentity :title="row.original.name" :meta="row.original.tax_id ?? ''" />
+                    <!--
+                      The mailbox's one legal act, and it lives here because `name` is the only
+                      column every served obligation declares: `ultima` is declared by
+                      `caixas-postais/e-cac` alone, so a slot on it would leave the two derived
+                      mailbox pages unable to open a message on desktop while the phone card
+                      could. A cell never reaches the body — the button asks `MessageDetail`
+                      for consent.
+                    -->
+                    <template v-if="row.original.message">
+                      <span class="truncate text-xs text-muted" :title="row.original.message.assunto">
+                        {{ row.original.message.assunto }}
+                      </span>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <UButton
+                          size="xs"
+                          color="neutral"
+                          variant="outline"
+                          icon="i-lucide-mail-open"
+                          :label="messageAction(row.original.message, row.original.name).label"
+                          :aria-label="messageAction(row.original.message, row.original.name).ariaLabel"
+                          @click="openMessage(row.original)"
+                        />
+                        <span
+                          v-if="row.original.message.ciencia_em"
+                          class="text-xs text-muted tabular-nums"
+                        >
+                          Ciência {{ formatMonitoringDate(row.original.message.ciencia_em) }}
+                        </span>
+                        <span
+                          v-if="row.original.message.prazo_limite"
+                          class="text-xs tabular-nums"
+                          :class="prazoPresentation(row.original.message).class"
+                        >
+                          {{ prazoPresentation(row.original.message).label }}
+                        </span>
+                      </div>
+                    </template>
+                  </div>
                 </template>
 
                 <template #situacao-cell="{ row }">
@@ -444,46 +493,6 @@ async function afterRead() {
                       :label="monitoringStalePresentation.label"
                     />
                   </div>
-                </template>
-
-                <!--
-                  The mailbox's own column. Only a row that carries a message
-                  stub gets here, and the button asks `MessageDetail` for consent
-                  — the body is never reached from a cell.
-                -->
-                <template #ultima-cell="{ row }">
-                  <div v-if="row.original.message" class="flex min-w-0 flex-col gap-1">
-                    <span class="truncate" :title="row.original.message.assunto">
-                      {{ row.original.message.assunto }}
-                    </span>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <UButton
-                        size="xs"
-                        color="neutral"
-                        variant="outline"
-                        icon="i-lucide-mail-open"
-                        :label="messageAction(row.original.message, row.original.name).label"
-                        :aria-label="messageAction(row.original.message, row.original.name).ariaLabel"
-                        @click="openMessage(row.original)"
-                      />
-                      <span
-                        v-if="row.original.message.ciencia_em"
-                        class="text-xs text-muted tabular-nums"
-                      >
-                        Ciência {{ formatMonitoringDate(row.original.message.ciencia_em) }}
-                      </span>
-                      <span
-                        v-if="row.original.message.prazo_limite"
-                        class="text-xs tabular-nums"
-                        :class="prazoPresentation(row.original.message).class"
-                      >
-                        {{ prazoPresentation(row.original.message).label }}
-                      </span>
-                    </div>
-                  </div>
-                  <span v-else>
-                    {{ fieldValue(row.original, 'ultima') }}
-                  </span>
                 </template>
               </UTable>
             </div>
