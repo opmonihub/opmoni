@@ -5,16 +5,19 @@ import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/d
 import { sheetBodyClass, sheetTableUi, sheetToolbarUi } from '~/components/data-table/sheet'
 import { apiStatus } from '~/composables/useApiError'
 import type { ObligationListParams } from '~/composables/useSerpro'
-import type { MonitoringClient, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
+import type { MonitoringClient, MonitoringMessageStub, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
 import type { MonitoringObligation } from '~/utils/monitoringNav'
 import {
+  formatMonitoringDate,
   formatMonitoringDueOn,
   monitoringAttentionReasonPresentation,
   monitoringCategoryPresentation,
+  monitoringDeadlinePassed,
   monitoringSituacaoPresentation,
   monitoringStalePresentation
 } from '~/utils/monitoringPresentation'
 import AssociateClientsModal from '~/components/monitoring/AssociateClientsModal.vue'
+import MessageDetail from '~/components/monitoring/MessageDetail.vue'
 import ObligationCounters from '~/components/monitoring/ObligationCounters.vue'
 
 const props = defineProps<{
@@ -224,6 +227,42 @@ async function afterAssociate() {
   await onRefresh()
   emit('refreshed')
 }
+
+/**
+ * The mailbox's one legal act. The sheet holds the row and opens the detail; it
+ * never fetches a body. `MessageDetail` asks for the consent first and is the
+ * only caller of `readMessage`, because opening the dialog is not the act.
+ */
+const messageOpen = ref(false)
+const messageStub = ref<MonitoringMessageStub | null>(null)
+const messageClientName = ref('')
+
+function openMessage(row: MonitoringClient) {
+  if (!row.message) return
+  messageClientName.value = row.name
+  messageStub.value = row.message
+  messageOpen.value = true
+}
+
+/** An office that has missed a deadline has to see that it missed one. */
+function prazoPresentation(message: MonitoringMessageStub) {
+  const passed = monitoringDeadlinePassed(message.prazo_limite)
+  return {
+    label: `${passed ? 'Prazo vencido em' : 'Prazo'} ${formatMonitoringDate(message.prazo_limite)}`,
+    class: passed ? 'font-medium text-error' : 'text-muted'
+  }
+}
+
+/** The same wording on both layouts, so a phone does not read as a different act. */
+function messageAction(message: MonitoringMessageStub, clientName: string) {
+  const label = message.ciencia_em ? 'Ver mensagem' : 'Abrir mensagem'
+  return { label, ariaLabel: `${label}: ${message.assunto} (${clientName})` }
+}
+
+/** Reading is done: the row, its unread count and the counters all moved. */
+async function afterRead() {
+  await onRefresh()
+}
 </script>
 
 <template>
@@ -344,6 +383,33 @@ async function afterAssociate() {
                     </dd>
                   </div>
                 </dl>
+                <div
+                  v-if="row.message"
+                  class="mt-3 flex flex-wrap items-center gap-2 border-t border-default pt-3"
+                >
+                  <UButton
+                    size="xs"
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-mail-open"
+                    :label="messageAction(row.message, row.name).label"
+                    :aria-label="messageAction(row.message, row.name).ariaLabel"
+                    @click="openMessage(row)"
+                  />
+                  <span
+                    v-if="row.message.ciencia_em"
+                    class="text-xs text-muted tabular-nums"
+                  >
+                    Ciência {{ formatMonitoringDate(row.message.ciencia_em) }}
+                  </span>
+                  <span
+                    v-if="row.message.prazo_limite"
+                    class="text-xs tabular-nums"
+                    :class="prazoPresentation(row.message).class"
+                  >
+                    {{ prazoPresentation(row.message).label }}
+                  </span>
+                </div>
               </UCard>
             </div>
 
@@ -379,6 +445,46 @@ async function afterAssociate() {
                     />
                   </div>
                 </template>
+
+                <!--
+                  The mailbox's own column. Only a row that carries a message
+                  stub gets here, and the button asks `MessageDetail` for consent
+                  — the body is never reached from a cell.
+                -->
+                <template #ultima-cell="{ row }">
+                  <div v-if="row.original.message" class="flex min-w-0 flex-col gap-1">
+                    <span class="truncate" :title="row.original.message.assunto">
+                      {{ row.original.message.assunto }}
+                    </span>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <UButton
+                        size="xs"
+                        color="neutral"
+                        variant="outline"
+                        icon="i-lucide-mail-open"
+                        :label="messageAction(row.original.message, row.original.name).label"
+                        :aria-label="messageAction(row.original.message, row.original.name).ariaLabel"
+                        @click="openMessage(row.original)"
+                      />
+                      <span
+                        v-if="row.original.message.ciencia_em"
+                        class="text-xs text-muted tabular-nums"
+                      >
+                        Ciência {{ formatMonitoringDate(row.original.message.ciencia_em) }}
+                      </span>
+                      <span
+                        v-if="row.original.message.prazo_limite"
+                        class="text-xs tabular-nums"
+                        :class="prazoPresentation(row.original.message).class"
+                      >
+                        {{ prazoPresentation(row.original.message).label }}
+                      </span>
+                    </div>
+                  </div>
+                  <span v-else>
+                    {{ fieldValue(row.original, 'ultima') }}
+                  </span>
+                </template>
               </UTable>
             </div>
 
@@ -403,6 +509,15 @@ async function afterAssociate() {
       :obligation="obligation"
       :associated-ids="rows.map(row => row.client_id)"
       @associated="afterAssociate"
+    />
+
+    <MessageDetail
+      v-if="messageStub"
+      v-model:open="messageOpen"
+      :obligation="obligation"
+      :client-name="messageClientName"
+      :stub="messageStub"
+      @read="afterRead"
     />
   </div>
 </template>

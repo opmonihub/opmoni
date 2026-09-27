@@ -5,6 +5,7 @@ import {
   formatMonitoringCount,
   formatMonitoringDate,
   formatMonitoringDueOn,
+  monitoringDeadlinePassed,
   slipStatusFor
 } from '../app/utils/monitoringPresentation.ts'
 import type { MonitoringAssessmentPeriod } from '../app/types/serpro.ts'
@@ -27,6 +28,39 @@ describe('formatMonitoringDate', () => {
   it('renders an absent value as an em dash', () => {
     assert.equal(formatMonitoringDate(null), '—')
     assert.equal(formatMonitoringDueOn(null), '—')
+  })
+})
+
+/** Today in the runner's own timezone, so the assertions do not depend on it. */
+function today() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+describe('monitoringDeadlinePassed', () => {
+  it('reports a deadline whose day is over', () => {
+    assert.equal(monitoringDeadlinePassed('2020-04-20T00:00:00Z'), true)
+  })
+
+  it('does not report a deadline still ahead', () => {
+    assert.equal(monitoringDeadlinePassed('2999-04-20T00:00:00Z'), false)
+  })
+
+  it('does not report today as passed, whatever hour the provider sent', () => {
+    assert.equal(monitoringDeadlinePassed(today()), false)
+    assert.equal(monitoringDeadlinePassed(`${today()}T23:59:59Z`), false)
+  })
+
+  it('reports no deadline as not passed', () => {
+    assert.equal(monitoringDeadlinePassed(null), false)
+    assert.equal(monitoringDeadlinePassed(undefined), false)
+    assert.equal(monitoringDeadlinePassed(''), false)
+  })
+
+  it('reports a date it cannot read as not passed', () => {
+    assert.equal(monitoringDeadlinePassed('quando o prazo vencer'), false)
   })
 })
 

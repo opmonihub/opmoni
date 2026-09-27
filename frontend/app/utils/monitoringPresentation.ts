@@ -1,3 +1,4 @@
+import { isBefore, startOfToday } from 'date-fns'
 import type {
   AttentionReasonCode,
   MonitoringAssessmentPeriod,
@@ -152,6 +153,24 @@ export function formatMonitoringDate(value: string | null | undefined) {
 
 export function formatMonitoringDueOn(value: string | null | undefined) {
   return formatMonitoringDate(value)
+}
+
+/**
+ * Whether the deadline a message opened is already over (D19).
+ *
+ * The provider publishes a day, and a deadline is missed when that day is over —
+ * so the time of day is discarded before comparing. `new Date('2026-05-20')` is
+ * midnight UTC, which in Brasília is 21h on the 19th: it would report a
+ * deadline as missed an hour before the day it names.
+ *
+ * One function for the row and the detail, because a message cannot be both
+ * within and beyond its prazo depending on which screen the office is reading.
+ */
+export function monitoringDeadlinePassed(deadline: string | null | undefined) {
+  const [day] = (deadline ?? '').split('T')
+  if (!day) return false
+  // A date the client cannot parse is not a deadline it may call missed.
+  return isBefore(new Date(`${day}T00:00:00`), startOfToday())
 }
 
 export type MonitoringSlip = {
