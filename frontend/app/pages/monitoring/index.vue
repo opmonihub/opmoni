@@ -5,10 +5,11 @@ import {
   monitoringGroups,
   monitoringIntegrationLinks,
   monitoringListPath,
+  monitoringObligationUnserved,
   monitoringObligations,
   type MonitoringObligation
 } from '~/utils/monitoringNav'
-import { formatMonitoringCount } from '~/utils/monitoringPresentation'
+import { formatMonitoringCount, monitoringCategoryPresentation, monitoringMissingValue } from '~/utils/monitoringPresentation'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -56,7 +57,16 @@ watch(error, (value) => {
  */
 const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
 
+/**
+ * The dash, not a zero, for an obligation the provider does not serve. `0` would
+ * say "no client needs attention here", which is a claim about the office's
+ * clients; the truth is that the integration cannot answer for that obligation
+ * at all. The sheet already draws no counter for these — the overview cannot
+ * answer a different question than the page it links to, or the same obligation
+ * reads as pending on one screen and unserved on the other.
+ */
 function attentionFor(obligation: MonitoringObligation) {
+  if (monitoringObligationUnserved(obligation)) return monitoringMissingValue
   return formatMonitoringCount(data.value.attention[obligation.slug] ?? 0)
 }
 </script>
@@ -110,14 +120,35 @@ function attentionFor(obligation: MonitoringObligation) {
         </div>
 
         <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
+          <!--
+            The default slot, as `HomeStats` uses it, so a `derived` obligation
+            can carry its classification on the card. The office has to be able
+            to see that a projection is a projection *before* clicking into it —
+            the badge is the difference between "Certidões shows no problems"
+            and "Certidões is a filter over the SITFIS report". The value lives
+            in the slot for every obligation, so the cards stay one row.
+          -->
           <MetricCard
             v-for="obligation in group.pages"
             :key="obligation.slug"
             :icon="obligation.icon"
             :title="obligation.label"
             :to="monitoringListPath(obligation)"
-            :value="attentionFor(obligation)"
-          />
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-2xl font-semibold tabular-nums text-highlighted">
+                {{ attentionFor(obligation) }}
+              </span>
+              <UBadge
+                v-if="obligation.category === 'derived'"
+                size="sm"
+                variant="subtle"
+                :color="monitoringCategoryPresentation.derived.color"
+                :icon="monitoringCategoryPresentation.derived.icon"
+                :label="monitoringCategoryPresentation.derived.label"
+              />
+            </div>
+          </MetricCard>
         </UPageGrid>
       </section>
 
