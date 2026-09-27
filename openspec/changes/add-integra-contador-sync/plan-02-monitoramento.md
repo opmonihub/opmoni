@@ -2009,9 +2009,18 @@ watch(error, (value) => {
   }
 })
 
+/**
+ * `accessorFn`, not `accessorKey`. The per-obligation values live under
+ * `row.fields[id]`, so a flat `accessorKey: column.id` resolves to `undefined`
+ * for every column that is not `name` or `situacao` and the desktop table
+ * renders blanks — the mobile card reads the same values through
+ * `fieldValue`, so the two layouts would disagree about what the source
+ * delivered. One accessor makes the default cell agree with the card.
+ */
 const columns = computed<TableColumn<MonitoringClient>[]>(() =>
   props.obligation.columns.map(column => ({
-    accessorKey: column.id,
+    id: column.id,
+    accessorFn: (row: MonitoringClient) => fieldValue(row, column.id),
     header: column.header,
     meta: { class: column.numeric ? 'text-right tabular-nums' : '' }
   }))
