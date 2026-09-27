@@ -95,6 +95,34 @@ class AuthTest extends TestCase
         $this->spaGetJson('/api/me')->assertUnauthorized();
     }
 
+    public function test_registration_status_allows_initial_onboarding_without_users_or_accounts(): void
+    {
+        $this->getJson('/api/registration-status')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('registration_available', true);
+    }
+
+    public function test_registration_status_blocks_onboarding_when_a_user_exists(): void
+    {
+        User::factory()->create();
+
+        $this->getJson('/api/registration-status')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('registration_available', false);
+    }
+
+    public function test_registration_status_blocks_onboarding_when_an_account_exists(): void
+    {
+        Account::create(['name' => 'Existente']);
+
+        $this->getJson('/api/registration-status')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('registration_available', false);
+    }
+
     public function test_me_with_session_returns_profile_accounts_and_current_account(): void
     {
         $this->postJson('/api/register', $this->registerPayload())->assertCreated();

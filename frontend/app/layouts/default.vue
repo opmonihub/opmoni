@@ -13,14 +13,14 @@ const inSupportMode = useSupportMode()
 const open = ref(false)
 
 const links = [[{
-  label: 'Home',
+  label: 'Início',
   icon: 'i-lucide-house',
   to: '/',
   onSelect: () => {
     open.value = false
   }
 }, {
-  label: 'Inbox',
+  label: 'Caixa de entrada',
   icon: 'i-lucide-inbox',
   to: '/inbox',
   badge: '4',
@@ -72,26 +72,26 @@ const links = [[{
     open.value = false
   }
 }, {
-  label: 'Settings',
+  label: 'Configurações',
   to: '/settings',
   icon: 'i-lucide-settings',
   defaultOpen: true,
   type: 'trigger',
   children: [{
-    label: 'General',
+    label: 'Geral',
     to: '/settings',
     exact: true,
     onSelect: () => {
       open.value = false
     }
   }, {
-    label: 'Notifications',
+    label: 'Notificações',
     to: '/settings/notifications',
     onSelect: () => {
       open.value = false
     }
   }, {
-    label: 'Security',
+    label: 'Segurança',
     to: '/settings/security',
     onSelect: () => {
       open.value = false
@@ -103,7 +103,7 @@ const links = [[{
   to: 'https://github.com/nuxt-ui-templates/dashboard',
   target: '_blank'
 }, {
-  label: 'Help & Support',
+  label: 'Ajuda',
   icon: 'i-lucide-life-buoy',
   to: 'https://github.com/nuxt-ui-templates/dashboard',
   target: '_blank'
@@ -181,18 +181,8 @@ const navLinks = computed<NavigationMenuItem[][]>(() => {
 
 const groups = computed(() => [{
   id: 'links',
-  label: 'Go to',
+  label: 'Ir para',
   items: [...links.flat(), ...(isSuperAdmin.value ? adminPages : [])]
-}, {
-  id: 'code',
-  label: 'Code',
-  items: [{
-    id: 'source',
-    label: 'View page source',
-    icon: 'i-simple-icons-github',
-    to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
-    target: '_blank'
-  }]
 }])
 
 onMounted(async () => {
@@ -202,18 +192,18 @@ onMounted(async () => {
   }
 
   toast.add({
-    title: 'We use first-party cookies to enhance your experience on our website.',
+    title: 'Usamos cookies próprios para melhorar sua experiência.',
     duration: 0,
     close: false,
     actions: [{
-      label: 'Accept',
+      label: 'Aceitar',
       color: 'neutral',
       variant: 'outline',
       onClick: () => {
         cookie.value = 'accepted'
       }
     }, {
-      label: 'Opt out',
+      label: 'Recusar',
       color: 'neutral',
       variant: 'ghost'
     }]
@@ -238,7 +228,7 @@ onMounted(async () => {
       </template>
 
       <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
+        <UDashboardSearchButton :collapsed="collapsed" label="Buscar..." class="bg-transparent ring-default" />
 
         <UNavigationMenu
           :collapsed="collapsed"
@@ -262,7 +252,7 @@ onMounted(async () => {
       </template>
     </UDashboardSidebar>
 
-    <UDashboardSearch :groups="groups" />
+    <UDashboardSearch placeholder="Buscar..." :groups="groups" />
 
     <slot />
 

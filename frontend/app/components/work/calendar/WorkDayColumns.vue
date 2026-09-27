@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { WorkTask } from '~/types/work'
+import { priorityPresentation } from '~/composables/useWorkPresentation'
 import { accessibleDateLabel } from '~/utils/calendarUi'
 import { calendarStatusPresentation, parseDateKey } from '~/utils/workCalendar'
 
@@ -75,7 +76,7 @@ function dayLabel(key: string) {
             </span>
             <span class="truncate pl-3 text-xs text-muted">
               {{ task.department || 'Sem depto' }}
-              · {{ task.priority }}
+              · {{ priorityPresentation(task.priority).label }}
               <template v-if="task.assignee_member_id"> · #{{ task.assignee_member_id }}</template>
             </span>
           </button>

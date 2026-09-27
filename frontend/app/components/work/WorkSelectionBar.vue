@@ -82,7 +82,7 @@ const moreItems = computed<DropdownMenuItem[][]>(() => [
       <UButton
         label="Dispensar"
         icon="i-lucide-circle-minus"
-        color="neutral"
+        color="warning"
         variant="outline"
         size="sm"
         class="hidden sm:inline-flex"

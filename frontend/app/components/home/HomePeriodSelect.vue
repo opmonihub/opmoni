@@ -10,6 +10,12 @@ const props = defineProps<{
 
 const days = computed(() => eachDayOfInterval(props.range))
 
+const PERIOD_LABELS: Record<Period, string> = {
+  daily: 'Diário',
+  weekly: 'Semanal',
+  monthly: 'Mensal'
+}
+
 const periods = computed<Period[]>(() => {
   if (days.value.length <= 8) {
     return [
@@ -30,6 +36,11 @@ const periods = computed<Period[]>(() => {
   ]
 })
 
+const periodItems = computed(() => periods.value.map(value => ({
+  label: PERIOD_LABELS[value],
+  value
+})))
+
 // Ensure the model value is always a valid period
 watch(periods, () => {
   if (!periods.value.includes(model.value)) {
@@ -41,9 +52,10 @@ watch(periods, () => {
 <template>
   <USelect
     v-model="model"
-    :items="periods"
+    :items="periodItems"
+    value-key="value"
     variant="ghost"
     class="data-[state=open]:bg-elevated"
-    :ui="{ value: 'capitalize', itemLabel: 'capitalize', trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
+    :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
   />
 </template>

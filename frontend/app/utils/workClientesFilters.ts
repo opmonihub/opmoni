@@ -36,9 +36,10 @@ const STATUS_OPTIONS: DataTableFilterOption[] = ([
   color: statusPresentation(status).color
 }))
 
+// Wording matches the `Cascata` badge in workGroupedTable.cascadeLabel().
 const CASCADE_OPTIONS: DataTableFilterOption[] = [
-  { label: 'Cascata: sim', value: 'true', color: 'warning' },
-  { label: 'Cascata: não', value: 'false', color: 'neutral' }
+  { label: 'Cascata', value: 'true', color: 'warning' },
+  { label: 'Sem cascata', value: 'false', color: 'neutral' }
 ]
 
 function uniqueSorted(values: Iterable<string>): string[] {

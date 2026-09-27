@@ -7,7 +7,7 @@ definePageMeta({
 })
 
 const toast = useToast()
-const { fetchMe, login, user } = useAuth()
+const { fetchMe, registrationAvailable, login, user } = useAuth()
 
 // Client-only e pós-hydration: evita divergência SSR/cliente (mismatch no ULink)
 // e o setup assíncrono (warning do <Suspense>).
@@ -17,13 +17,17 @@ onMounted(async () => {
   }
   if (user.value) {
     await navigateTo('/')
+    return
+  }
+  if (await registrationAvailable().catch(() => false)) {
+    await navigateTo('/onboarding')
   }
 })
 
 const fields: AuthFormField[] = [{
   name: 'email',
   type: 'email',
-  label: 'Email',
+  label: 'E-mail',
   placeholder: 'voce@empresa.com',
   required: true
 }, {
@@ -39,7 +43,7 @@ const fields: AuthFormField[] = [{
 }]
 
 const schema = z.object({
-  email: z.email('Email inválido'),
+  email: z.email('E-mail inválido'),
   password: z.string('Senha é obrigatória').min(8, 'Mínimo de 8 caracteres')
 })
 
@@ -54,7 +58,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     toast.add({ title: `Bem-vindo de volta, ${event.data.email}!`, color: 'success' })
     await navigateTo('/')
   } catch {
-    toast.add({ title: 'Não foi possível entrar', description: 'Verifique seu email e senha.', color: 'error' })
+    toast.add({ title: 'Não foi possível entrar', description: 'Verifique seu e-mail e senha.', color: 'error' })
   } finally {
     loading.value = false
   }
@@ -73,11 +77,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         icon="i-lucide-lock"
         @submit="onSubmit"
       >
-        <template #password-hint>
-          <ULink to="/login" :active="false" class="font-medium text-primary">Esqueci a senha</ULink>
-        </template>
         <template #footer>
-          Não tem conta? <ULink to="/onboarding" :active="false" class="font-medium text-primary">Comece pelo onboarding</ULink>.
+          Não tem conta? <ULink to="/onboarding" :active="false" class="font-medium text-primary">Criar conta</ULink>.
         </template>
       </UAuthForm>
     </UPageCard>

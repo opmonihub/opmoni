@@ -6,7 +6,8 @@ import {
   deadlinePresentation,
   taxRegimeLabel
 } from '~/utils/portfolioLabels'
-import { formatDate, formatTaxId } from '~/utils'
+import { formatDate } from '~/utils'
+import { formatTaxId } from '~/utils/taxId'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -502,7 +503,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             :actions="canManageClients ? [{ label: 'Renovar agora', color: 'error', variant: 'solid', onClick: () => { certificateOpen = true } }] : undefined"
           />
           <UAlert
-            v-else-if="poaStatus === 'expired'"
+            v-if="poaStatus === 'expired'"
             color="error"
             variant="subtle"
             icon="i-lucide-circle-alert"
@@ -511,7 +512,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             :actions="canManageClients ? [{ label: 'Renovar agora', color: 'error', variant: 'solid', onClick: () => { powerOfAttorneyOpen = true } }] : undefined"
           />
           <UAlert
-            v-else-if="certStatus === 'expiring' || poaStatus === 'expiring'"
+            v-if="certStatus !== 'expired' && poaStatus !== 'expired' && (certStatus === 'expiring' || poaStatus === 'expiring')"
             color="warning"
             variant="subtle"
             icon="i-lucide-clock-alert"

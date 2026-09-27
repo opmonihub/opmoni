@@ -50,12 +50,12 @@ defineShortcuts({
       :ref="(el) => { mailsRefs[mail.id] = el as Element | null }"
     >
       <div
-        class="p-4 sm:px-6 text-sm cursor-pointer border-l-2 transition-colors"
+        class="p-4 sm:px-6 text-sm cursor-pointer transition-colors"
         :class="[
           mail.unread ? 'text-highlighted' : 'text-toned',
           selectedMail && selectedMail.id === mail.id
-            ? 'border-primary bg-primary/10'
-            : 'border-bg hover:border-primary hover:bg-primary/5'
+            ? 'bg-primary/10'
+            : 'hover:bg-elevated/50'
         ]"
         @click="selectedMail = mail"
       >

@@ -64,8 +64,7 @@ export function useAuth() {
   }
 
   async function ensureCsrf() {
-    const config = useRuntimeConfig()
-    await $fetch(`${config.public.apiUrl}/sanctum/csrf-cookie`, { credentials: 'include' })
+    await $fetch(`${apiOrigin()}/sanctum/csrf-cookie`, { credentials: 'include' })
     refreshCookie('XSRF-TOKEN')
   }
 
@@ -74,6 +73,12 @@ export function useAuth() {
     const me = await $api<MeResponse>('/me')
     applyMe(me)
     return me
+  }
+
+  async function registrationAvailable(): Promise<boolean> {
+    const { $api } = useNuxtApp()
+    const status = await $api<{ registration_available: boolean }>('/registration-status')
+    return status.registration_available
   }
 
   async function login(email: string, password: string) {
@@ -90,10 +95,21 @@ export function useAuth() {
     return fetchMe()
   }
 
+  /**
+   * Always drops local state, even when `/logout` fails (419 stale CSRF, 401
+   * already-expired session, 500). Without `finally` a failed call kept
+   * `auth.user` truthy, and the resulting loop was: plugin bounces to /login →
+   * fetchMe() 401 → user still set → navigateTo('/') → auth middleware returns
+   * early on `if (user.value)` → every API call 401s again. The error still
+   * propagates so the caller can toast the failure.
+   */
   async function logout() {
     const { $api } = useNuxtApp()
-    await $api('/logout', { method: 'POST' })
-    clearAuth()
+    try {
+      await $api('/logout', { method: 'POST' })
+    } finally {
+      clearAuth()
+    }
   }
 
   async function switchAccount(accountId: number) {
@@ -114,5 +130,5 @@ export function useAuth() {
     return fetchMe()
   }
 
-  return { user, isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients, canManageWork, canManageDepartments, canManageMembers, fetchMe, login, register, logout, switchAccount, enterSupport, exitSupport }
+  return { user, isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients, canManageWork, canManageDepartments, canManageMembers, fetchMe, registrationAvailable, login, register, logout, switchAccount, enterSupport, exitSupport }
 }

@@ -2,19 +2,19 @@
 import { DateFormatter, getLocalTimeZone, CalendarDate, today } from '@internationalized/date'
 import type { Range } from '~/types'
 
-const df = new DateFormatter('en-US', {
+const df = new DateFormatter('pt-BR', {
   dateStyle: 'medium'
 })
 
 const selected = defineModel<Range>({ required: true })
 
 const ranges = [
-  { label: 'Last 7 days', days: 7 },
-  { label: 'Last 14 days', days: 14 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 3 months', months: 3 },
-  { label: 'Last 6 months', months: 6 },
-  { label: 'Last year', years: 1 }
+  { label: 'Últimos 7 dias', days: 7 },
+  { label: 'Últimos 14 dias', days: 14 },
+  { label: 'Últimos 30 dias', days: 30 },
+  { label: 'Últimos 3 meses', months: 3 },
+  { label: 'Últimos 6 meses', months: 6 },
+  { label: 'Último ano', years: 1 }
 ]
 
 const toCalendarDate = (date: Date) => {
@@ -95,7 +95,7 @@ const selectRange = (range: { days?: number, months?: number, years?: number }) 
           </template>
         </template>
         <template v-else>
-          Pick a date
+          Escolher período
         </template>
       </span>
 

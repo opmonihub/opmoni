@@ -13,9 +13,20 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function registrationStatus(): JsonResponse
+    {
+        return response()->json([
+            'registration_available' => $this->isInitialRegistrationAvailable(),
+        ])->header('Cache-Control', 'no-store');
+    }
+
     public function register(Request $request): JsonResponse
     {
-        if (User::exists() || Account::exists()) {
+        // Atalho preservado: registro já fechado responde 403 antes de
+        // validar (ver SecurityRefactorTest::test_register_is_throttled_after_five_attempts).
+        // Não é a checagem autoritativa — duas requisições simultâneas passam
+        // por aqui juntas; quem decide é o gate transacional abaixo.
+        if (! $this->isInitialRegistrationAvailable()) {
             abort(403, 'Registro inicial indisponível.');
         }
 
@@ -28,6 +39,23 @@ class AuthController extends Controller
         ]);
 
         $user = DB::transaction(function () use ($data) {
+            // O gate de "registro inicial" é reavaliado dentro da transação:
+            // uma checagem de leitura fora dela deixa dois POST /api/register
+            // simultâneos verem o mesmo estado vazio. Atenção ao alcance real
+            // do lock: Account::lockForUpdate() serializa Transactions que
+            // disputam linhas existentes, mas no primeiro registro a tabela
+            // está vazia por definição e o Postgres não trava nada sobre um
+            // result set vazio. O que fecha a corrida na prática é o índice
+            // único de users.email — o perdedor da corrida estoura a
+            // constraint e a transação inteira é desfeita. Para uma garantia
+            // dura, independente do schema, o lock teria que ser um advisory
+            // lock (pg_advisory_xact_lock), que funciona com a tabela vazia.
+            Account::lockForUpdate()->count();
+
+            if (! $this->isInitialRegistrationAvailable()) {
+                abort(403, 'Registro inicial indisponível.');
+            }
+
             $user = new User;
             $user->name = $data['name'];
             $user->email = $data['email'];
@@ -95,5 +123,10 @@ class AuthController extends Controller
             'accounts' => $accounts,
             'current_account' => $user->currentAccount,
         ]);
+    }
+
+    private function isInitialRegistrationAvailable(): bool
+    {
+        return ! User::exists() && ! Account::exists();
     }
 }

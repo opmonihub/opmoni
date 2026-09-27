@@ -40,8 +40,8 @@ function isGroupRow(index: number): boolean {
   >
     <div class="overflow-x-auto">
       <div class="min-w-[36rem]">
-        <div class="flex items-center gap-3 border-b border-default px-4 py-3">
-          <span v-if="grouped" class="inline-block size-6 shrink-0" />
+        <div class="flex items-center gap-2 border-b border-default px-3 py-2">
+          <span v-if="grouped" class="inline-block size-5 shrink-0" />
           <USkeleton
             v-for="col in columns"
             :key="`head-${col}`"
@@ -53,7 +53,7 @@ function isGroupRow(index: number): boolean {
         <div
           v-for="row in rows"
           :key="row"
-          class="flex items-center gap-3 border-b border-default px-4 py-2.5 last:border-b-0"
+          class="flex items-center gap-2 border-b border-default px-3 py-1.5 last:border-b-0"
         >
           <template v-if="grouped">
             <span
@@ -62,11 +62,11 @@ function isGroupRow(index: number): boolean {
             />
             <USkeleton
               v-if="isGroupRow(row - 1)"
-              class="size-6 shrink-0 rounded"
+              class="size-5 shrink-0 rounded"
             />
             <span
               v-else
-              class="inline-block size-6 shrink-0"
+              class="inline-block size-5 shrink-0"
             />
           </template>
 

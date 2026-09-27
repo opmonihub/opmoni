@@ -3,11 +3,12 @@ import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 const fileRef = ref<HTMLInputElement>()
+const { user } = useAuth()
 
 const profileSchema = z.object({
-  name: z.string().min(2, 'Too short'),
-  email: z.string().email('Invalid email'),
-  username: z.string().min(2, 'Too short'),
+  name: z.string().min(2, 'Mínimo de 2 caracteres'),
+  email: z.email('E-mail inválido'),
+  username: z.string().min(2, 'Mínimo de 2 caracteres'),
   avatar: z.string().optional(),
   bio: z.string().optional()
 })
@@ -15,21 +16,27 @@ const profileSchema = z.object({
 type ProfileSchema = z.output<typeof profileSchema>
 
 const profile = reactive<Partial<ProfileSchema>>({
-  name: 'Benjamin Canac',
-  email: 'ben@nuxtlabs.com',
-  username: 'benjamincanac',
+  name: user.value?.name ?? '',
+  email: user.value?.email ?? '',
+  username: '',
   avatar: undefined,
   bio: undefined
 })
+
+watch(user, (value) => {
+  if (!value) return
+  if (!profile.name) profile.name = value.name
+  if (!profile.email) profile.email = value.email
+}, { immediate: true })
+
 const toast = useToast()
-async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
+async function onSubmit(_event: FormSubmitEvent<ProfileSchema>) {
   toast.add({
-    title: 'Success',
-    description: 'Your settings have been updated.',
+    title: 'Alterações salvas',
+    description: 'Seu perfil foi atualizado.',
     icon: 'i-lucide-check',
     color: 'success'
   })
-  console.log(event.data)
 }
 
 function onFileChange(e: Event) {
@@ -55,15 +62,15 @@ function onFileClick() {
     @submit="onSubmit"
   >
     <UPageCard
-      title="Profile"
-      description="These informations will be displayed publicly."
+      title="Perfil"
+      description="Informações exibidas na sua conta."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
     >
       <UButton
         form="settings"
-        label="Save changes"
+        label="Salvar alterações"
         color="neutral"
         type="submit"
         class="w-fit lg:ms-auto"
@@ -73,8 +80,8 @@ function onFileClick() {
     <UPageCard variant="subtle">
       <UFormField
         name="name"
-        label="Name"
-        description="Will appear on receipts, invoices, and other communication."
+        label="Nome"
+        description="Aparece em comunicados e no menu da conta."
         required
         class="flex max-sm:flex-col justify-between items-start gap-4"
       >
@@ -86,8 +93,8 @@ function onFileClick() {
       <USeparator />
       <UFormField
         name="email"
-        label="Email"
-        description="Used to sign in, for email receipts and product updates."
+        label="E-mail"
+        description="Usado para entrar e receber avisos da conta."
         required
         class="flex max-sm:flex-col justify-between items-start gap-4"
       >
@@ -100,8 +107,8 @@ function onFileClick() {
       <USeparator />
       <UFormField
         name="username"
-        label="Username"
-        description="Your unique username for logging in and your profile URL."
+        label="Nome de usuário"
+        description="Identificador curto da sua conta."
         required
         class="flex max-sm:flex-col justify-between items-start gap-4"
       >
@@ -115,7 +122,7 @@ function onFileClick() {
       <UFormField
         name="avatar"
         label="Avatar"
-        description="JPG, GIF or PNG. 1MB Max."
+        description="JPG, GIF ou PNG. Máximo 1 MB."
         class="flex max-sm:flex-col justify-between sm:items-center gap-4"
       >
         <div class="flex flex-wrap items-center gap-3">
@@ -125,7 +132,7 @@ function onFileClick() {
             size="lg"
           />
           <UButton
-            label="Choose"
+            label="Escolher"
             color="neutral"
             @click="onFileClick"
           />
@@ -142,7 +149,7 @@ function onFileClick() {
       <UFormField
         name="bio"
         label="Bio"
-        description="Brief description for your profile. URLs are hyperlinked."
+        description="Breve descrição do seu perfil."
         class="flex max-sm:flex-col justify-between items-start gap-4"
         :ui="{ container: 'w-full' }"
       >

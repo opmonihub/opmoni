@@ -7,7 +7,7 @@ definePageMeta({
 })
 
 const toast = useToast()
-const { fetchMe, register, user } = useAuth()
+const { fetchMe, registrationAvailable, register, user } = useAuth()
 
 // Client-only e pós-hydration: evita divergência SSR/cliente
 // e o setup assíncrono (warning do <Suspense>).
@@ -17,6 +17,10 @@ onMounted(async () => {
   }
   if (user.value) {
     await navigateTo('/')
+    return
+  }
+  if (!(await registrationAvailable().catch(() => true))) {
+    await navigateTo('/login')
   }
 })
 
@@ -47,7 +51,7 @@ const formIds = {
 
 const accountSchema = z.object({
   name: z.string('Nome é obrigatório').min(2, 'Mínimo de 2 caracteres'),
-  email: z.email('Email inválido'),
+  email: z.email('E-mail inválido'),
   password: z.string('Senha é obrigatória').min(8, 'Mínimo de 8 caracteres')
 })
 type AccountSchema = z.output<typeof accountSchema>
@@ -138,7 +142,7 @@ async function onSubmit(event: FormSubmitEvent<ReviewSchema>) {
         <UFormField name="name" label="Nome" required>
           <UInput v-model="accountState.name" placeholder="Seu nome" class="w-full" />
         </UFormField>
-        <UFormField name="email" label="Email" required>
+        <UFormField name="email" label="E-mail" required>
           <UInput
             v-model="accountState.email"
             type="email"
@@ -196,7 +200,7 @@ async function onSubmit(event: FormSubmitEvent<ReviewSchema>) {
           </div>
           <div class="flex justify-between gap-4">
             <dt class="text-muted">
-              Email
+              E-mail
             </dt>
             <dd class="font-medium text-default">
               {{ accountState.email }}

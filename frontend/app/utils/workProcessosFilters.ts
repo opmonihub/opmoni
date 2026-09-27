@@ -40,14 +40,15 @@ const STATUS_OPTIONS: DataTableFilterOption[] = ([
 }))
 
 const PROCESS_STATUS_OPTIONS: DataTableFilterOption[] = [
-  { label: 'Aberto', value: 'open', color: 'info' },
-  { label: 'Em andamento', value: 'in_progress', color: 'warning' },
+  { label: 'A fazer', value: 'open', color: 'info' },
+  { label: 'Em progresso', value: 'in_progress', color: 'warning' },
   { label: 'Concluído', value: 'done', color: 'success' }
 ]
 
+// Wording matches the `Cascata` badge in workGroupedTable.cascadeLabel().
 const CASCADE_OPTIONS: DataTableFilterOption[] = [
-  { label: 'Cascata: sim', value: 'true', color: 'warning' },
-  { label: 'Cascata: não', value: 'false', color: 'neutral' }
+  { label: 'Cascata', value: 'true', color: 'warning' },
+  { label: 'Sem cascata', value: 'false', color: 'neutral' }
 ]
 
 function uniqueSorted(values: Iterable<string>): string[] {

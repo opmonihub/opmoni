@@ -3,6 +3,8 @@ import type { WorkTask, WorkTaskStatus } from '~/types/work'
 
 type ColumnKey = WorkTaskStatus
 
+const COLUMN_PAGE = 24
+
 const props = defineProps<{
   tasksByColumn: Record<ColumnKey, WorkTask[]>
   loading?: boolean
@@ -29,9 +31,41 @@ const columns = [
   { key: 'dismissed' as ColumnKey, title: 'Dispensada', icon: 'i-lucide-circle-minus' }
 ]
 
+/** Cap mounted cards per column — full Sep datasets (~600+ todo) freeze the main thread. */
+const visibleLimit = ref<Partial<Record<ColumnKey, number>>>({})
+
 function tasksFor(statusKey: ColumnKey): WorkTask[] {
   return props.tasksByColumn[statusKey] ?? []
 }
+
+function limitFor(key: ColumnKey): number {
+  return visibleLimit.value[key] ?? COLUMN_PAGE
+}
+
+function shownTasks(key: ColumnKey): WorkTask[] {
+  return tasksFor(key).slice(0, limitFor(key))
+}
+
+function remainingCount(key: ColumnKey): number {
+  return Math.max(0, tasksFor(key).length - limitFor(key))
+}
+
+function showMore(key: ColumnKey) {
+  visibleLimit.value = {
+    ...visibleLimit.value,
+    [key]: limitFor(key) + COLUMN_PAGE
+  }
+}
+
+/** Reset paging when column sizes change (filters / status moves), not on object identity. */
+watch(
+  () => (['todo', 'doing', 'done', 'dismissed'] as const)
+    .map(key => `${key}:${(props.tasksByColumn[key] ?? []).length}`)
+    .join('|'),
+  () => {
+    visibleLimit.value = {}
+  }
+)
 </script>
 
 <template>
@@ -85,7 +119,7 @@ function tasksFor(statusKey: ColumnKey): WorkTask[] {
       </p>
 
       <WorkTarefasCard
-        v-for="task in tasksFor(column.key)"
+        v-for="task in shownTasks(column.key)"
         :key="task.id"
         :task="task"
         :can-manage-work="canManageWork"
@@ -99,6 +133,18 @@ function tasksFor(statusKey: ColumnKey): WorkTask[] {
         @move-back="emit('moveBack', task)"
         @dismiss="emit('dismiss', task)"
         @assign="(memberId) => emit('assign', task, memberId)"
+      />
+
+      <UButton
+        v-if="remainingCount(column.key) > 0"
+        :label="`Ver mais (${remainingCount(column.key)})`"
+        icon="i-lucide-chevrons-down"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        block
+        class="mt-1"
+        @click="showMore(column.key)"
       />
     </section>
   </div>

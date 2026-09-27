@@ -3,9 +3,21 @@ export default defineNuxtPlugin((nuxtApp) => {
   const incoming = import.meta.server ? useRequestHeaders(['cookie']) : null
   // Criado no setup do plugin: .value acompanha o cookie após /sanctum/csrf-cookie
   const xsrfToken = useCookie<string | null>('XSRF-TOKEN')
-  const baseURL = import.meta.server
-    ? `${config.apiUrl}/api`
-    : `${config.public.apiUrl}/api`
+  const baseURL = `${apiOrigin()}/api`
+
+  /**
+   * `response.url` is empty on some ofetch errors and relative when a request
+   * never left the client. A bare `new URL()` throws a TypeError there, which
+   * replaced the real HTTP error and skipped the redirect below. Unparseable
+   * means "not the /api/me exemption" — the redirect still runs.
+   */
+  function safePathname(url: string): string {
+    try {
+      return new URL(url).pathname
+    } catch {
+      return ''
+    }
+  }
 
   const api = $fetch.create({
     baseURL,
@@ -31,6 +43,9 @@ export default defineNuxtPlugin((nuxtApp) => {
       // ofetch callbacks perdem o async context do Nuxt — wrap obrigatório.
       // Só sessão inválida/expirada: 403 de Gate/tenant fica para a página
       // (toast, empty state) — redirecionar aqui derruba fluxos legítimos.
+      // /me também é consultado pelas páginas públicas para detectar uma sessão existente.
+      // O middleware auth já trata o 401 de /me nas páginas protegidas.
+      if (response.status === 401 && safePathname(response.url) === '/api/me') return
       if (response.status === 401 || response.status === 419) {
         await nuxtApp.runWithContext(() => navigateTo('/login'))
       }

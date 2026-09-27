@@ -45,11 +45,11 @@ describe('derivedProcessStatusPresentation', () => {
       color: 'neutral'
     })
     assert.deepEqual(derivedProcessStatusPresentation('open'), {
-      label: 'Aberto',
+      label: 'A fazer',
       color: 'info'
     })
     assert.deepEqual(derivedProcessStatusPresentation('in_progress'), {
-      label: 'Em andamento',
+      label: 'Em progresso',
       color: 'warning'
     })
     assert.deepEqual(derivedProcessStatusPresentation('done'), {

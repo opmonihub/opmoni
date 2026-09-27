@@ -2,7 +2,8 @@
 import type { PortfolioAttentionItem } from '~/types/client'
 import { customerListPath } from '~/utils/customerRoutes'
 import { deadlineStatusAppearance, deadlineStatusLabel } from '~/utils/portfolioLabels'
-import { formatDate, formatTaxId } from '~/utils'
+import { formatDate } from '~/utils'
+import { formatTaxId } from '~/utils/taxId'
 
 const props = defineProps<{
   certificate: PortfolioAttentionItem[]
@@ -30,7 +31,7 @@ const poaRows = computed(() => filterItems(props.poa, poaQuery.value))
 <template>
   <div class="grid min-w-0 gap-3 lg:grid-cols-2">
     <UCard
-      class="min-w-0 overflow-hidden shadow-sm"
+      class="min-w-0 overflow-hidden ring ring-default"
       :ui="{
         header: 'border-b border-default bg-elevated/25 px-3 py-3 sm:px-4',
         body: 'p-0 sm:p-0'
@@ -77,13 +78,23 @@ const poaRows = computed(() => filterItems(props.poa, poaQuery.value))
       </div>
 
       <div
-        v-else-if="certificateRows.length === 0"
+        v-else-if="certificate.length === 0"
         class="flex items-center gap-3 px-4 py-8 text-sm text-muted"
       >
         <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
           <UIcon name="i-lucide-circle-check" class="size-4" />
         </span>
         Certificados em dia
+      </div>
+
+      <div
+        v-else-if="certificateRows.length === 0"
+        class="flex items-center gap-3 px-4 py-8 text-sm text-muted"
+      >
+        <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+          <UIcon name="i-lucide-search" class="size-4" />
+        </span>
+        Nenhum resultado
       </div>
 
       <ul v-else class="max-h-64 divide-y divide-default overflow-y-auto">
@@ -112,7 +123,7 @@ const poaRows = computed(() => filterItems(props.poa, poaQuery.value))
     </UCard>
 
     <UCard
-      class="min-w-0 overflow-hidden shadow-sm"
+      class="min-w-0 overflow-hidden ring ring-default"
       :ui="{
         header: 'border-b border-default bg-elevated/25 px-3 py-3 sm:px-4',
         body: 'p-0 sm:p-0'
@@ -159,13 +170,23 @@ const poaRows = computed(() => filterItems(props.poa, poaQuery.value))
       </div>
 
       <div
-        v-else-if="poaRows.length === 0"
+        v-else-if="poa.length === 0"
         class="flex items-center gap-3 px-4 py-8 text-sm text-muted"
       >
         <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
           <UIcon name="i-lucide-circle-check" class="size-4" />
         </span>
         Procurações em dia
+      </div>
+
+      <div
+        v-else-if="poaRows.length === 0"
+        class="flex items-center gap-3 px-4 py-8 text-sm text-muted"
+      >
+        <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+          <UIcon name="i-lucide-search" class="size-4" />
+        </span>
+        Nenhum resultado
       </div>
 
       <ul v-else class="max-h-64 divide-y divide-default overflow-y-auto">

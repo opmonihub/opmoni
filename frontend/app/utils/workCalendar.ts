@@ -1,4 +1,5 @@
-import type { WorkTask, WorkTaskStatus } from '~/types/work'
+import { statusPresentation } from '../composables/useWorkPresentation.ts'
+import type { WorkTask, WorkTaskStatus } from '../types/work.ts'
 
 export type CalendarView = 'month' | 'week' | 'day'
 
@@ -13,20 +14,23 @@ export const statusOrder: Record<WorkTaskStatus, number> = {
 
 export type TaskChipColor = 'info' | 'warning' | 'success' | 'neutral'
 
+const statusDotClass: Record<WorkTaskStatus, string> = {
+  todo: 'bg-info',
+  doing: 'bg-warning',
+  done: 'bg-success',
+  dismissed: 'bg-muted'
+}
+
 export function calendarStatusPresentation(taskStatus: WorkTaskStatus): {
   label: string
   color: TaskChipColor
   dotClass: string
 } {
-  switch (taskStatus) {
-    case 'todo':
-      return { label: 'A fazer', color: 'info', dotClass: 'bg-info' }
-    case 'doing':
-      return { label: 'Em progresso', color: 'warning', dotClass: 'bg-warning' }
-    case 'done':
-      return { label: 'Concluída', color: 'success', dotClass: 'bg-success' }
-    case 'dismissed':
-      return { label: 'Dispensada', color: 'neutral', dotClass: 'bg-muted' }
+  const presentation = statusPresentation(taskStatus)
+  return {
+    label: presentation.label,
+    color: presentation.color,
+    dotClass: statusDotClass[taskStatus]
   }
 }
 
@@ -76,7 +80,14 @@ export function parseDateKey(key: string): { year: number, month: number, day: n
   return { year, month, day }
 }
 
-export function todayKey(timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone) {
+/**
+ * Product calendar timezone (Brazil). Must not depend on process/browser
+ * `resolvedOptions().timeZone` — Docker SSR is often UTC while clients are
+ * America/Sao_Paulo, which flips "today" across midnight and breaks hydration.
+ */
+export const APP_CALENDAR_TIMEZONE = 'America/Sao_Paulo'
+
+export function todayKey(timeZone = APP_CALENDAR_TIMEZONE) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -87,6 +98,11 @@ export function todayKey(timeZone = Intl.DateTimeFormat().resolvedOptions().time
   const month = Number(parts.find(p => p.type === 'month')?.value)
   const day = Number(parts.find(p => p.type === 'day')?.value)
   return toDateKey(year, month, day)
+}
+
+/** Compare a YYYY-MM-DD key to "today" in {@link APP_CALENDAR_TIMEZONE}. */
+export function isCalendarToday(key: string, today = todayKey()) {
+  return key === today
 }
 
 export function firstDayOfMonth(year: number, month: number) {

@@ -1,15 +1,14 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
 import { statusPresentation } from '~/composables/useWorkPresentation'
 import type { WorkTaskStatus } from '~/types/work'
 
 const props = withDefaults(defineProps<{
   status: WorkTaskStatus
   locked?: boolean
-  loading?: boolean
   disabled?: boolean
 }>(), {
   locked: false,
-  loading: false,
   disabled: false
 })
 
@@ -20,40 +19,43 @@ const emit = defineEmits<{
 
 const STATUS_VALUES: WorkTaskStatus[] = ['todo', 'doing', 'done', 'dismissed']
 
-const items = computed(() => STATUS_VALUES.map((value) => {
-  const presentation = statusPresentation(value)
-  const cascadeBlocked = props.locked && value !== 'todo' && value !== props.status
-  return {
-    label: presentation.label,
-    value,
-    color: presentation.color,
-    disabled: cascadeBlocked
-  }
-}))
+const presentation = computed(() => statusPresentation(props.status))
 
-function onUpdate(value: WorkTaskStatus | undefined) {
-  if (!value || value === props.status) return
-  if (value === 'dismissed') {
-    emit('dismiss')
-    return
-  }
-  emit('change', value)
-}
+/** Button+menu stays light when closed; USelect-per-row thrashes large Work tables. */
+const items = computed<DropdownMenuItem[][]>(() => [
+  STATUS_VALUES
+    .filter(value => value !== props.status)
+    .map((value) => {
+      const item = statusPresentation(value)
+      const cascadeBlocked = props.locked && value !== 'todo'
+      return {
+        label: item.label,
+        disabled: cascadeBlocked,
+        onSelect: () => {
+          if (value === 'dismissed') {
+            emit('dismiss')
+            return
+          }
+          emit('change', value)
+        }
+      }
+    })
+])
 </script>
 
 <template>
-  <USelect
-    :model-value="status"
-    :items="items"
-    value-key="value"
-    label-key="label"
-    size="xs"
-    variant="soft"
-    :loading="loading"
-    :disabled="disabled || loading"
-    class="min-w-36"
-    :ui="{ base: 'w-full' }"
-    aria-label="Status da tarefa"
-    @update:model-value="onUpdate"
-  />
+  <UDropdownMenu :items="items" :content="{ align: 'end' }">
+    <UButton
+      size="xs"
+      variant="soft"
+      :color="presentation.color"
+      :disabled="disabled"
+      trailing-icon="i-lucide-chevron-down"
+      class="h-7 min-w-28 justify-between"
+      :ui="{ base: 'w-full max-w-36' }"
+      aria-label="Status da tarefa"
+    >
+      {{ presentation.label }}
+    </UButton>
+  </UDropdownMenu>
 </template>

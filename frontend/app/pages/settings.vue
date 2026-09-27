@@ -1,31 +1,28 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
+definePageMeta({ middleware: 'auth' })
+
 const links = [[{
-  label: 'General',
+  label: 'Geral',
   icon: 'i-lucide-user',
   to: '/settings',
   exact: true
 }, {
-  label: 'Notifications',
+  label: 'Notificações',
   icon: 'i-lucide-bell',
   to: '/settings/notifications'
 }, {
-  label: 'Security',
+  label: 'Segurança',
   icon: 'i-lucide-shield',
   to: '/settings/security'
-}], [{
-  label: 'Documentation',
-  icon: 'i-lucide-book-open',
-  to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
-  target: '_blank'
 }]] satisfies NavigationMenuItem[][]
 </script>
 
 <template>
   <UDashboardPanel id="settings" :ui="{ body: 'lg:py-12' }">
     <template #header>
-      <UDashboardNavbar title="Settings">
+      <UDashboardNavbar title="Configurações">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>

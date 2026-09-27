@@ -10,11 +10,11 @@ definePageMeta({
 const { isNotificationsSlideoverOpen } = useDashboard()
 
 const items = [[{
-  label: 'New mail',
+  label: 'Nova mensagem',
   icon: 'i-lucide-send',
   to: '/inbox'
 }, {
-  label: 'New customer',
+  label: 'Novo cliente',
   icon: 'i-lucide-user-plus',
   to: '/customers'
 }]] satisfies DropdownMenuItem[][]
@@ -29,17 +29,18 @@ const period = ref<Period>('daily')
 <template>
   <UDashboardPanel id="home">
     <template #header>
-      <UDashboardNavbar title="Home" :ui="{ right: 'gap-3' }">
+      <UDashboardNavbar title="Início" :ui="{ right: 'gap-3' }">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
 
         <template #right>
-          <UTooltip text="Notifications" :shortcuts="['N']">
+          <UTooltip text="Notificações" :shortcuts="['N']">
             <UButton
               color="neutral"
               variant="ghost"
               square
+              aria-label="Notificações"
               @click="isNotificationsSlideoverOpen = true"
             >
               <UChip color="error" inset>
@@ -49,7 +50,12 @@ const period = ref<Period>('daily')
           </UTooltip>
 
           <UDropdownMenu :items="items">
-            <UButton icon="i-lucide-plus" size="md" class="rounded-full" />
+            <UButton
+              icon="i-lucide-plus"
+              size="md"
+              class="rounded-full"
+              aria-label="Ações rápidas"
+            />
           </UDropdownMenu>
         </template>
       </UDashboardNavbar>

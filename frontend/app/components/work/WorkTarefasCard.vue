@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
 import { priorityPresentation } from '~/composables/useWorkPresentation'
 import type { WorkTask } from '~/types/work'
 
@@ -32,6 +33,23 @@ const canMoveBack = computed(() => props.task.status === 'doing' || props.task.s
 const canDismiss = computed(() => props.task.status !== 'dismissed')
 
 const advanceLabel = computed(() => props.task.status === 'todo' ? 'Avançar' : 'Concluir')
+
+/** Dropdown stays cheap closed; USelectMenu-per-card was freezing ~700-card boards. */
+const assignItems = computed<DropdownMenuItem[][]>(() => {
+  if (props.membersFailed) {
+    return [[{
+      label: props.membersHint ?? 'Responsáveis indisponíveis',
+      disabled: true
+    }]]
+  }
+  if (!props.assigneeItems.length) {
+    return [[{ label: 'Nenhum responsável disponível', disabled: true }]]
+  }
+  return [props.assigneeItems.map(item => ({
+    label: item.label,
+    onSelect: () => emit('assign', item.value)
+  }))]
+})
 </script>
 
 <template>
@@ -74,18 +92,20 @@ const advanceLabel = computed(() => props.task.status === 'todo' ? 'Avançar' : 
     </div>
 
     <div v-if="canManageWork" class="flex flex-col gap-2 border-t border-default pt-3">
-      <USelectMenu
-        :model-value="task.assignee_member_id"
-        :items="assigneeItems"
-        value-key="value"
-        label-key="label"
-        :placeholder="membersFailed ? (membersHint ?? 'Responsáveis indisponíveis') : 'Atribuir responsável'"
-        :search-input="{ placeholder: 'Buscar membro...' }"
-        :loading="busy"
-        :disabled="busy || membersFailed"
-        class="w-full"
-        @update:model-value="(value: number | null) => emit('assign', value)"
-      />
+      <UDropdownMenu :items="assignItems" :content="{ align: 'start' }">
+        <UButton
+          :label="assigneeLabel"
+          icon="i-lucide-user-round"
+          trailing-icon="i-lucide-chevrons-up-down"
+          color="neutral"
+          variant="outline"
+          size="xs"
+          block
+          class="justify-between"
+          :loading="busy"
+          :disabled="busy || membersFailed"
+        />
+      </UDropdownMenu>
       <p v-if="membersFailed" class="text-xs text-muted">
         {{ membersHint }}
       </p>

@@ -6,6 +6,7 @@ it('refreshes the CSRF cookie before sending an authenticated write', async () =
   const events: string[] = []
 
   Object.assign(globalThis, {
+    apiOrigin: () => 'http://localhost:8000',
     useState: (_key: string, initialize: () => unknown) => ({ value: initialize() }),
     computed: (evaluate: () => unknown) => ({ get value() { return evaluate() } }),
     useRuntimeConfig: () => ({ public: { apiUrl: 'http://localhost:8000' } }),

@@ -49,9 +49,9 @@ const columns: TableColumn<Sale>[] = [
   },
   {
     accessorKey: 'date',
-    header: 'Date',
+    header: 'Data',
     cell: ({ row }) => {
-      return new Date(row.getValue('date')).toLocaleString('en-US', {
+      return new Date(row.getValue('date')).toLocaleString('pt-BR', {
         day: 'numeric',
         month: 'short',
         hour: '2-digit',
@@ -64,33 +64,37 @@ const columns: TableColumn<Sale>[] = [
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => {
+      const status = row.getValue('status') as string
       const color = {
         paid: 'success' as const,
         failed: 'error' as const,
         refunded: 'neutral' as const
-      }[row.getValue('status') as string]
+      }[status]
+      const label = {
+        paid: 'Pago',
+        failed: 'Falhou',
+        refunded: 'Reembolsado'
+      }[status] ?? status
 
-      return h(UBadge, { class: 'capitalize', variant: 'subtle', color }, () =>
-        row.getValue('status')
-      )
+      return h(UBadge, { variant: 'subtle', color }, () => label)
     }
   },
   {
     accessorKey: 'email',
-    header: 'Email'
+    header: 'E-mail'
   },
   {
     accessorKey: 'amount',
-    header: () => h('div', { class: 'text-right' }, 'Amount'),
+    header: () => h('div', { class: 'text-right' }, 'Valor'),
     cell: ({ row }) => {
       const amount = Number.parseFloat(row.getValue('amount'))
 
-      const formatted = new Intl.NumberFormat('en-US', {
+      const formatted = new Intl.NumberFormat('pt-BR', {
         style: 'currency',
-        currency: 'EUR'
+        currency: 'BRL'
       }).format(amount)
 
-      return h('div', { class: 'text-right font-medium' }, formatted)
+      return h('div', { class: 'text-right font-medium tabular-nums' }, formatted)
     }
   }
 ]

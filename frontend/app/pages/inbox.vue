@@ -1,18 +1,33 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { breakpointsTailwind } from '@vueuse/core'
+import { apiStatus } from '~/composables/useApiError'
 import type { Mail } from '~/types'
 
 const tabItems = [{
-  label: 'All',
+  label: 'Todas',
   value: 'all'
 }, {
-  label: 'Unread',
+  label: 'Não lidas',
   value: 'unread'
 }]
 const selectedTab = ref('all')
 
-const { data: mails } = await useFetch<Mail[]>('/api/mails', { default: () => [] })
+const { $api } = useNuxtApp()
+
+// O Laravel ainda não expõe e-mails: 404 entra como lista vazia para a tela não
+// quebrar. O mesmo vale para as notificações do slideover.
+const { data: mails } = await useAsyncData<Mail[]>('inbox-mails', async () => {
+  try {
+    return await $api<Mail[]>('/mails')
+  } catch (error) {
+    if (apiStatus(error) !== 404) {
+      throw error
+    }
+
+    return []
+  }
+}, { default: () => [] })
 
 // Filter mails based on the selected tab
 const filteredMails = computed(() => {
@@ -55,7 +70,7 @@ const isMobile = breakpoints.smaller('lg')
     :max-size="30"
     resizable
   >
-    <UDashboardNavbar title="Inbox">
+    <UDashboardNavbar title="Caixa de entrada">
       <template #leading>
         <UDashboardSidebarCollapse />
       </template>

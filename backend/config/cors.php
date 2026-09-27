@@ -19,7 +19,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:3000'],
+    // A UI e a API saem da mesma origem (nginx :3000 em dev, o domínio em
+    // prod), então não existe CORS: ambos ficam vazios de propósito. Com
+    // supports_credentials ligado, um allowed_origins vago aqui daria acesso
+    // cross-origin com cookie a qualquer origem.
+    'allowed_origins' => [],
 
     'allowed_origins_patterns' => [],
 

@@ -51,6 +51,16 @@ const columns: TableColumn<AdminUser>[] = [
   { accessorKey: 'accounts', header: 'Contas' }
 ]
 
+const roleLabel: Record<string, string> = {
+  admin: 'Admin',
+  operador: 'Operador',
+  user: 'Usuário'
+}
+
+function accountRoleLabel(role: string) {
+  return roleLabel[role] ?? role
+}
+
 const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'type', typeFilter.value))
 
 function load() {
@@ -153,7 +163,7 @@ watch([debouncedQ, typeFilter], () => {
                 color="neutral"
                 variant="subtle"
               >
-                {{ link.account?.name ?? '—' }} · {{ link.role }}
+                {{ link.account?.name ?? '—' }} · {{ accountRoleLabel(link.role) }}
               </UBadge>
             </div>
             <span v-else class="text-muted">—</span>

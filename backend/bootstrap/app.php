@@ -15,6 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Tráfego chega Traefik -> nginx -> PHP-FPM. O nginx repassa os
+        // X-Forwarded-* do Traefik intactos, então confiar em todos os proxies é
+        // o que faz isSecure()/host/port refletirem o HTTPS público
+        // (cookie de sessão secure, URL::current, redirect do Traefik).
+        $middleware->trustProxies(at: '*');
         $middleware->statefulApi();
         $middleware->alias([
             'tenant' => ResolveTenant::class,

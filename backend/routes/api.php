@@ -32,6 +32,7 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/registration-status', [AuthController::class, 'registrationStatus'])->middleware('throttle:30,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');

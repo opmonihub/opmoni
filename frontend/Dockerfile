@@ -29,8 +29,13 @@ CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "3000"]
 # ---------------- prod ----------------
 FROM base AS prod
 
+# HOST/PORT: lidos pelo node-server do Nitro. `nuxt preview --host/--port` não
+# existe no Nuxt 4 (o flag vira rootdir e o preview morre com "Cannot find
+# nitro.json"), então o server sobe direto pelo entry do .output.
 ENV NODE_ENV=production \
-    NUXT_TELEMETRY_DISABLED=1
+    NUXT_TELEMETRY_DISABLED=1 \
+    HOST=0.0.0.0 \
+    PORT=3000
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
@@ -41,4 +46,4 @@ RUN pnpm run postinstall \
 
 EXPOSE 3000
 
-CMD ["pnpm", "preview", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["node", ".output/server/index.mjs"]

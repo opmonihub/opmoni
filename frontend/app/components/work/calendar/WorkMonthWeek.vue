@@ -3,11 +3,12 @@
  * Ported from nuxt-ui-templates/calendar `components/calendar/MonthWeek.vue`.
  * Work tasks are date-only → all-day bars (layoutAllDay), same as template.
  */
-import { addDays, isToday } from 'date-fns'
+import { addDays } from 'date-fns'
 import type { WorkTask } from '~/types/work'
 import { layoutAllDay, type AllDayPositionedEvent } from '~/utils/calendarLayout'
 import { formatShortMonth, isoDate, taskDayBounds } from '~/utils/calendarDates'
 import { accessibleDateLabel } from '~/utils/calendarUi'
+import { isCalendarToday } from '~/utils/workCalendar'
 
 const SLOT_HEIGHT = 22
 const MAX_SLOTS = 4
@@ -150,12 +151,12 @@ function allowDrop(event: DragEvent) {
       :key="`number-${day.getTime()}`"
       type="button"
       class="select-none row-start-1 justify-self-end inline-flex items-center justify-center h-6 min-w-6 m-0.5 px-1 py-1 text-xs font-semibold rounded-full transition-colors focus-visible:outline-3"
-      :class="isToday(day)
+      :class="isCalendarToday(isoDate(day))
         ? 'text-inverted bg-primary active:bg-primary/75 outline-primary/25'
         : 'text-default hover:bg-(--control-bg) active:bg-(--control-bg) outline-inverted/25'"
       :style="{ gridColumn: index + 1 }"
       :aria-label="`Ir para ${accessibleDateLabel(isoDate(day))}`"
-      :aria-current="isToday(day) ? 'date' : undefined"
+      :aria-current="isCalendarToday(isoDate(day)) ? 'date' : undefined"
       @click="emit('select-date', isoDate(day))"
     >
       {{ label(day) }}

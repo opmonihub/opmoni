@@ -4,13 +4,14 @@ import type { Notification } from '~/types'
 
 const { isNotificationsSlideoverOpen } = useDashboard()
 
-const { data: notifications } = await useFetch<Notification[]>('/api/notifications')
+// Sem endpoint de notificações no Laravel, a lista permanece vazia até a API existir.
+const notifications: Notification[] = []
 </script>
 
 <template>
   <USlideover
     v-model:open="isNotificationsSlideoverOpen"
-    title="Notifications"
+    title="Notificações"
   >
     <template #body>
       <NuxtLink

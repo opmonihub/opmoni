@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AccordionItem } from '@nuxt/ui'
 import type { WorkProcessDetail, WorkTask } from '~/types/work'
+import { statusPresentation } from '~/composables/useWorkPresentation'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -35,12 +36,17 @@ const tasks = computed<WorkTask[]>(() => {
 const progress = computed(() => process.value?.progress ?? { total: 0, done: 0, dismissed: 0, open: 0, ratio: 0 })
 const progressPercent = computed(() => Math.round(progress.value.ratio * 100))
 
-function statusPresentation(taskStatus: WorkTask['status']): { label: string, color: 'info' | 'warning' | 'success' | 'neutral', icon: string } {
-  switch (taskStatus) {
-    case 'todo': return { label: 'A fazer', color: 'info', icon: 'i-lucide-circle' }
-    case 'doing': return { label: 'Em progresso', color: 'warning', icon: 'i-lucide-loader' }
-    case 'done': return { label: 'Concluída', color: 'success', icon: 'i-lucide-circle-check' }
-    case 'dismissed': return { label: 'Dispensada', color: 'neutral', icon: 'i-lucide-circle-minus' }
+const statusIcon: Record<WorkTask['status'], string> = {
+  todo: 'i-lucide-circle',
+  doing: 'i-lucide-loader',
+  done: 'i-lucide-circle-check',
+  dismissed: 'i-lucide-circle-minus'
+}
+
+function taskStatusPresentation(taskStatus: WorkTask['status']) {
+  return {
+    ...statusPresentation(taskStatus),
+    icon: statusIcon[taskStatus]
   }
 }
 
@@ -54,8 +60,8 @@ function isLocked(index: number): boolean {
 
 const timelineItems = computed(() => tasks.value.map(task => ({
   title: task.title,
-  description: statusPresentation(task.status).label,
-  icon: statusPresentation(task.status).icon,
+  description: taskStatusPresentation(task.status).label,
+  icon: taskStatusPresentation(task.status).icon,
   date: task.due_on ? new Date(`${task.due_on}T00:00:00`).toLocaleDateString('pt-BR') : undefined
 })))
 
@@ -66,8 +72,8 @@ const stepperValue = ref<string | number | undefined>(undefined)
 const stepperItems = computed(() => tasks.value.map(task => ({
   value: String(task.id),
   title: task.title,
-  description: `${statusPresentation(task.status).label}${task.due_on ? ` · ${new Date(`${task.due_on}T00:00:00`).toLocaleDateString('pt-BR')}` : ''}`,
-  icon: statusPresentation(task.status).icon
+  description: `${taskStatusPresentation(task.status).label}${task.due_on ? ` · ${new Date(`${task.due_on}T00:00:00`).toLocaleDateString('pt-BR')}` : ''}`,
+  icon: taskStatusPresentation(task.status).icon
 })))
 
 type TaskAccordionItem = AccordionItem & { task: WorkTask, locked: boolean }
@@ -238,9 +244,9 @@ watch(error, (value) => {
               <div class="flex min-w-0 flex-col gap-2 px-1 pb-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <UBadge
-                    :color="statusPresentation(item.task.status).color"
+                    :color="taskStatusPresentation(item.task.status).color"
                     variant="subtle"
-                    :label="statusPresentation(item.task.status).label"
+                    :label="taskStatusPresentation(item.task.status).label"
                   />
                   <UBadge
                     v-if="item.locked"

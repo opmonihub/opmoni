@@ -201,23 +201,33 @@ function toggleStatus(key: WorkTaskStatus, on: boolean | 'indeterminate') {
     <!-- Template AppSidebar: separator mt-auto docks mini calendar at the bottom -->
     <USeparator class="mt-auto shrink-0" />
 
+    <!--
+      ClientOnly: Reka CalendarCellTrigger uses isToday(..., getLocalTimeZone()).
+      Docker SSR is UTC while browsers here are America/Sao_Paulo — that flips
+      tabindex/today attrs across midnight and cascades into parentNode errors.
+    -->
     <div class="min-w-0 shrink-0 overflow-hidden pb-1">
-      <UCalendar
-        v-model="miniValue"
-        :week-starts-on="1"
-        :year-controls="false"
-        size="xs"
-        fixed-weeks
-        locale="pt-BR"
-        class="w-full max-w-full"
-        :ui="{
-          root: 'w-full max-w-full',
-          header: 'w-full min-w-0',
-          body: 'w-full min-w-0',
-          grid: 'w-full',
-          gridBody: 'w-full'
-        }"
-      />
+      <ClientOnly>
+        <UCalendar
+          v-model="miniValue"
+          :week-starts-on="1"
+          :year-controls="false"
+          size="xs"
+          fixed-weeks
+          locale="pt-BR"
+          class="w-full max-w-full"
+          :ui="{
+            root: 'w-full max-w-full',
+            header: 'w-full min-w-0',
+            body: 'w-full min-w-0',
+            grid: 'w-full',
+            gridBody: 'w-full'
+          }"
+        />
+        <template #fallback>
+          <div class="h-56 w-full max-w-full" aria-hidden="true" />
+        </template>
+      </ClientOnly>
     </div>
   </aside>
 </template>

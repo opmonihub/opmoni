@@ -26,8 +26,8 @@ export function derivedProcessStatusPresentation(status: DerivedProcessStatus): 
 } {
   switch (status) {
     case 'empty': return { label: 'Sem tarefas', color: 'neutral' }
-    case 'open': return { label: 'Aberto', color: 'info' }
-    case 'in_progress': return { label: 'Em andamento', color: 'warning' }
+    case 'open': return { label: 'A fazer', color: 'info' }
+    case 'in_progress': return { label: 'Em progresso', color: 'warning' }
     case 'done': return { label: 'Concluído', color: 'success' }
   }
 }

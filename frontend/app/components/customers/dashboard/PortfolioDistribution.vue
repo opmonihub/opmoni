@@ -38,18 +38,18 @@ const activityItems = computed(() =>
     -->
     <div class="grid min-w-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-12">
       <BrazilStateHeatmap
-        class="min-w-0 overflow-hidden shadow-sm lg:col-span-5"
+        class="min-w-0 overflow-hidden ring ring-default lg:col-span-5"
         :items="analytics?.by_state ?? []"
         :loading="loading"
       />
       <PortfolioDonutChart
-        class="min-w-0 overflow-hidden shadow-sm lg:col-span-3"
+        class="min-w-0 overflow-hidden ring ring-default lg:col-span-3"
         title="Por região"
         :items="analytics?.by_region ?? []"
         :loading="loading"
       />
       <PortfolioBarList
-        class="min-w-0 overflow-hidden shadow-sm lg:col-span-4"
+        class="min-w-0 overflow-hidden ring ring-default lg:col-span-4"
         title="Por estado"
         :items="(analytics?.by_state ?? []).slice(0, 10)"
         :loading="loading"
@@ -59,28 +59,28 @@ const activityItems = computed(() =>
 
     <div class="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       <PortfolioBarList
-        class="min-w-0 overflow-hidden shadow-sm"
+        class="min-w-0 overflow-hidden ring ring-default"
         title="Por cidade"
         :items="analytics?.by_city ?? []"
         :loading="loading"
         scrollable
       />
       <PortfolioDonutChart
-        class="min-w-0 overflow-hidden shadow-sm"
+        class="min-w-0 overflow-hidden ring ring-default"
         title="Regime tributário"
         :items="analytics?.by_tax_regime ?? []"
         :loading="loading"
         :label-of="regimeLabel"
       />
       <PortfolioBarList
-        class="min-w-0 overflow-hidden shadow-sm"
+        class="min-w-0 overflow-hidden ring ring-default"
         title="Natureza jurídica"
         :items="analytics?.by_legal_nature ?? []"
         :loading="loading"
         scrollable
       />
       <PortfolioBarList
-        class="min-w-0 overflow-hidden shadow-sm"
+        class="min-w-0 overflow-hidden ring ring-default"
         title="Atividade econômica"
         :items="activityItems"
         :loading="loading"
@@ -90,7 +90,7 @@ const activityItems = computed(() =>
     </div>
 
     <PortfolioGrowthChart
-      class="min-w-0 overflow-hidden shadow-sm"
+      class="min-w-0 overflow-hidden ring ring-default"
       :items="analytics?.growth_by_month ?? []"
       :loading="loading"
     />

@@ -1,0 +1,290 @@
+# Stack de produção — `docker stack deploy -c docker-stack.prod.yml opmoni`
+# (o nome do stack vem do comando: o loader do `docker stack deploy` recusa a
+# chave `name:` do compose v2).
+#
+# Fica atrás do Traefik que já roda no Swarm (traefik:v3.6, entrypoints
+# web/websecure, certresolver letsencrypt, rede externa traefik-public). Só o
+# nginx entra na rede do Traefik e é o único serviço com labels — nenhuma porta
+# é publicada no host, nem de banco/cache/mensageria.
+#
+# Imagens: este projeto não tem registry, então as tags são construídas local
+# neste nó (Swarm de um nó só). Cluster com mais nós exige registry.
+#   docker build -t opmoni/backend:prod  --target prod ./backend
+#   docker build -t opmoni/frontend:prod --target prod ./frontend
+#
+# Segredos (APP_KEY, DB_PASSWORD) NÃO estão aqui: exporte antes do deploy, de
+# um arquivo protegido fora do repo, ex.
+#   set -a; . /root/opmoni.prod.env; set +a
+# Migrations rodam uma vez e à parte (serviço `migrate`, replicas 0), nunca no
+# entrypoint do backend nem no worker — ver AGENTS.md.
+
+services:
+  backend:
+    image: opmoni/backend:prod
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: https://app.inovaicontabil.com.br
+      APP_KEY: ${APP_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Log no stderr (não no channel `stack`): o container do FPM roda como
+      # root, mas os workers rodam como www-data (uid 33) — arquivo criado pelo
+      # root não é appendido por eles. No stderr não há arquivo, tudo aparece em
+      # `docker service logs` e o texto não morre com o container.
+      LOG_CHANNEL: stderr
+      LOG_DEPRECATIONS_CHANNEL: "null"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: ${DB_PASSWORD}
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NATS_URL: nats://nats:4222
+      SESSION_LIFETIME: 120
+      # Host-only: SESSION_DOMAIN vazio, o cookie não vaza para subdomínios.
+      SESSION_DOMAIN: ""
+      # TLS termina no Traefik e o X-Forwarded-Proto chega ao Laravel (confia em
+      # proxies em bootstrap/app.php) — o cookie de sessão só volta por HTTPS.
+      SESSION_SECURE_COOKIE: "true"
+      # Prod não tem .env: o que vale é o environment do serviço, então a
+      # criptografia da sessão precisa ligar aqui (o .env.example só vale no dev).
+      SESSION_ENCRYPT: "true"
+      # UI e API na mesma origem: o Sanctum só precisa do domínio público.
+      SANCTUM_STATEFUL_DOMAINS: app.inovaicontabil.com.br
+    healthcheck:
+      test: ["CMD-SHELL", "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    networks:
+      - internal
+
+  # Uma única vez por deploy, na mão:
+  #   docker service scale opmoni_migrate=1 && docker service logs -f opmoni_migrate
+  #   docker service scale opmoni_migrate=0
+  # `condition: none` deixa a task morta depois de sair (sem loop de restart).
+  migrate:
+    image: opmoni/backend:prod
+    command:
+      - sh
+      - -c
+      - |
+        attempt=0
+        until php artisan migrate --force --no-interaction; do
+          attempt=$$((attempt + 1))
+          if [ "$$attempt" -ge 10 ]; then
+            echo "[migrate] falhou apos $$attempt tentativas" >&2
+            exit 1
+          fi
+          echo "[migrate] falhou (tentativa $$attempt) - repetindo em 3s"
+          sleep 3
+        done
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: https://app.inovaicontabil.com.br
+      APP_KEY: ${APP_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Ver `backend`: stderr resolve o root/www-data disputando o
+      # storage/logs/laravel.log e entrega o log em `docker service logs`.
+      LOG_CHANNEL: stderr
+      LOG_DEPRECATIONS_CHANNEL: "null"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: ${DB_PASSWORD}
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
+    networks:
+      - internal
+
+  # Mesma imagem do backend, entrypoint próprio: espera o app ficar utilizável
+  # e sobe o worker. Não instala vendor nem repete migrations.
+  queue:
+    image: opmoni/backend:prod
+    entrypoint: ["queue-entrypoint.sh"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: https://app.inovaicontabil.com.br
+      APP_KEY: ${APP_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Ver `backend`: stderr resolve o root/www-data disputando o
+      # storage/logs/laravel.log e entrega o log em `docker service logs`.
+      LOG_CHANNEL: stderr
+      LOG_DEPRECATIONS_CHANNEL: "null"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: ${DB_PASSWORD}
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NATS_URL: nats://nats:4222
+      # O worker le a sessão no mesmo formato do backend (ver `backend`).
+      SESSION_ENCRYPT: "true"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    # O worker roda queue:work --timeout=120 e recebe SIGTERM no `docker service
+    # update`/scale: o padrão de ~10s mataria o job em voo com SIGKILL. 130s
+    # cobrem o timeout do PHP mais o boot do artisan para o job atual.
+    stop_grace_period: 130s
+    networks:
+      - internal
+
+  frontend:
+    image: opmoni/frontend:prod
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      # Align Node Intl/Date with product calendar (Brazil); avoids SSR UTC vs client day skew.
+      TZ: America/Sao_Paulo
+      NUXT_PUBLIC_SITE_URL: https://app.inovaicontabil.com.br
+      # Browser: mesma origem do site, sem CORS.
+      NUXT_PUBLIC_API_URL: https://app.inovaicontabil.com.br
+      # SSR: mesmo nginx, sem sair pela rede externa.
+      NUXT_API_URL: http://nginx
+      NUXT_TELEMETRY_DISABLED: 1
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # O SSR deste container chama a API por http://nginx: a saude so fecha
+      # quando backend + nginx + banco estao de pe (tudo sobe em paralelo).
+      start_period: 120s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    networks:
+      - internal
+
+  # Único serviço na rede do Traefik: é ele que recebe 80/443 do host.
+  nginx:
+    image: nginx:1.28-alpine
+    volumes:
+      - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      # Exercita o caminho inteiro: nginx -> PHP-FPM -> Laravel -> Postgres.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/up || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        traefik.enable: "true"
+        traefik.swarm.network: traefik-public
+        traefik.http.routers.opmoni.rule: Host(`app.inovaicontabil.com.br`)
+        traefik.http.routers.opmoni.entrypoints: web
+        # Middleware de redirect declarado nas labels do serviço traefik_traefik:
+        # em Swarm o nome carrega o provider e o namespace da stack.
+        traefik.http.routers.opmoni.middlewares: redirect-https@swarm-traefik
+        traefik.http.routers.opmoni.service: opmoni-nginx
+        traefik.http.routers.opmoni-https.rule: Host(`app.inovaicontabil.com.br`)
+        traefik.http.routers.opmoni-https.entrypoints: websecure
+        traefik.http.routers.opmoni-https.tls.certresolver: letsencrypt
+        traefik.http.routers.opmoni-https.service: opmoni-nginx
+        traefik.http.services.opmoni-nginx.loadbalancer.server.port: "80"
+    networks:
+      - internal
+      - traefik-public
+
+  # Serviços de dados exclusivos da produção: volumes separados dos do dev
+  # (docker-compose.yml) e nenhuma porta publicada.
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: opmoni
+      POSTGRES_USER: opmoni
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - prod_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opmoni -d opmoni"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    networks:
+      - internal
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    networks:
+      - internal
+
+  nats:
+    image: nats:2.11-alpine
+    command: ["nats-server", "--jetstream", "--http_port", "8222", "--store_dir", "/data"]
+    volumes:
+      - prod_nats_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: overlay
+  traefik-public:
+    external: true
+
+volumes:
+  prod_postgres_data:
+  prod_redis_data:
+  prod_nats_data:

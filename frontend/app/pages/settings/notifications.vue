@@ -8,38 +8,37 @@ const state = reactive<{ [key: string]: boolean }>({
 })
 
 const sections = [{
-  title: 'Notification channels',
-  description: 'Where can we notify you?',
+  title: 'Canais de notificação',
+  description: 'Por onde você quer ser avisado?',
   fields: [{
     name: 'email',
     label: 'Email',
-    description: 'Receive a daily email digest.'
+    description: 'Receber um resumo diário por email.'
   }, {
     name: 'desktop',
     label: 'Desktop',
-    description: 'Receive desktop notifications.'
+    description: 'Receber notificações no navegador.'
   }]
 }, {
-  title: 'Account updates',
-  description: 'Receive updates about Nuxt UI.',
+  title: 'Atualizações da conta',
+  description: 'Avisos sobre a conta e o produto.',
   fields: [{
     name: 'weekly_digest',
-    label: 'Weekly digest',
-    description: 'Receive a weekly digest of news.'
+    label: 'Resumo semanal',
+    description: 'Receber um resumo semanal por email.'
   }, {
     name: 'product_updates',
-    label: 'Product updates',
-    description: 'Receive a monthly email with all new features and updates.'
+    label: 'Novidades',
+    description: 'Receber um email mensal com novidades.'
   }, {
     name: 'important_updates',
-    label: 'Important updates',
-    description: 'Receive emails about important updates like security fixes, maintenance, etc.'
+    label: 'Avisos importantes',
+    description: 'Receber emails sobre segurança e manutenção.'
   }]
 }]
 
 async function onChange() {
-  // Do something with data
-  console.log(state)
+  // Preferências locais até a API de notificações existir.
 }
 </script>
 

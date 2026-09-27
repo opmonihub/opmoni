@@ -7,7 +7,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   clear: []
   tags: []
-  responsible: []
 }>()
 
 const countLabel = computed(() => new Intl.NumberFormat('pt-BR').format(props.count))
@@ -34,16 +33,6 @@ const noun = computed(() => props.count === 1 ? 'cliente selecionado' : 'cliente
         size="sm"
         :disabled="disabled"
         @click="emit('tags')"
-      />
-      <UButton
-        label="Responsável"
-        icon="i-lucide-user-round"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        class="hidden sm:inline-flex"
-        :disabled="disabled"
-        @click="emit('responsible')"
       />
       <UButton
         icon="i-lucide-x"

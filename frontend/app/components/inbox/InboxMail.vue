@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import type { Mail } from '~/types'
 
 defineProps<{
@@ -9,16 +10,16 @@ defineProps<{
 const emits = defineEmits(['close'])
 
 const dropdownItems = [[{
-  label: 'Mark as unread',
+  label: 'Marcar como não lida',
   icon: 'i-lucide-check-circle'
 }, {
-  label: 'Mark as important',
+  label: 'Marcar como importante',
   icon: 'i-lucide-triangle-alert'
 }], [{
-  label: 'Star thread',
+  label: 'Favoritar conversa',
   icon: 'i-lucide-star'
 }, {
-  label: 'Mute thread',
+  label: 'Silenciar conversa',
   icon: 'i-lucide-circle-pause'
 }]]
 
@@ -34,8 +35,8 @@ function onSubmit() {
     reply.value = ''
 
     toast.add({
-      title: 'Email sent',
-      description: 'Your email has been sent successfully',
+      title: 'Email enviado',
+      description: 'Sua mensagem foi enviada.',
       icon: 'i-lucide-check-circle',
       color: 'success'
     })
@@ -54,21 +55,28 @@ function onSubmit() {
           color="neutral"
           variant="ghost"
           class="-ms-1.5"
+          aria-label="Fechar"
           @click="emits('close')"
         />
       </template>
 
       <template #right>
-        <UTooltip text="Archive">
+        <UTooltip text="Arquivar">
           <UButton
             icon="i-lucide-inbox"
             color="neutral"
             variant="ghost"
+            aria-label="Arquivar"
           />
         </UTooltip>
 
-        <UTooltip text="Reply">
-          <UButton icon="i-lucide-reply" color="neutral" variant="ghost" />
+        <UTooltip text="Responder">
+          <UButton
+            icon="i-lucide-reply"
+            color="neutral"
+            variant="ghost"
+            aria-label="Responder"
+          />
         </UTooltip>
 
         <UDropdownMenu :items="dropdownItems">
@@ -76,6 +84,7 @@ function onSubmit() {
             icon="i-lucide-ellipsis-vertical"
             color="neutral"
             variant="ghost"
+            aria-label="Mais ações"
           />
         </UDropdownMenu>
       </template>
@@ -99,8 +108,8 @@ function onSubmit() {
         </div>
       </div>
 
-      <p class="max-sm:pl-16 text-muted text-sm sm:mt-2">
-        {{ format(new Date(mail.date), 'dd MMM HH:mm') }}
+      <p class="max-sm:pl-16 text-muted text-sm sm:mt-2 tabular-nums">
+        {{ format(new Date(mail.date), 'dd MMM HH:mm', { locale: ptBR }) }}
       </p>
     </div>
 
@@ -116,7 +125,7 @@ function onSubmit() {
           <UIcon name="i-lucide-reply" class="size-5" />
 
           <span class="text-sm truncate">
-            Reply to {{ mail.from.name }} ({{ mail.from.email }})
+            Responder para {{ mail.from.name }} ({{ mail.from.email }})
           </span>
         </template>
 
@@ -127,7 +136,7 @@ function onSubmit() {
             variant="none"
             required
             autoresize
-            placeholder="Write your reply..."
+            placeholder="Escreva sua resposta..."
             :rows="4"
             :disabled="loading"
             class="w-full"
@@ -135,11 +144,12 @@ function onSubmit() {
           />
 
           <div class="flex items-center justify-between">
-            <UTooltip text="Attach file">
+            <UTooltip text="Anexar arquivo">
               <UButton
                 color="neutral"
                 variant="ghost"
                 icon="i-lucide-paperclip"
+                aria-label="Anexar arquivo"
               />
             </UTooltip>
 
@@ -147,13 +157,13 @@ function onSubmit() {
               <UButton
                 color="neutral"
                 variant="ghost"
-                label="Save draft"
+                label="Salvar rascunho"
               />
               <UButton
                 type="submit"
                 color="neutral"
                 :loading="loading"
-                label="Send"
+                label="Enviar"
                 icon="i-lucide-send"
               />
             </div>

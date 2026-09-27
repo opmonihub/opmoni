@@ -3,14 +3,18 @@ import { h, resolveComponent } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import type { SortingState } from '@tanstack/table-core'
 import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
-import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
 import { apiMessage, apiStatus } from '~/composables/useApiError'
+import { workStatusSuccessTitles } from '~/composables/useWorkTaskActions'
 import { priorityPresentation, statusPresentation } from '~/composables/useWorkPresentation'
 import type { WorkGroupedClient, WorkTask, WorkTaskStatus } from '~/types/work'
 import { isCascadeAdvanceLockedInProcess } from '~/utils/workDerivedStatus'
-import { cascadeBadgeColor, cascadeLabel } from '~/utils/workGroupedTable'
+import { cascadeBadgeColor, cascadeLabel, showCascadeBadge, workFlatTableUi } from '~/utils/workGroupedTable'
+import {
+  workAssignMemberItems
+} from '~/utils/workTableFormat'
+import { workSortableHeader as sortableHeader } from '~/utils/workSortableHeader'
 import {
   filterWorkTasks,
   tasksForWorkScope,
@@ -146,6 +150,25 @@ function clearAllFilters() {
 const tableRows = computed(() => tasksToLeaves(filteredTasks.value))
 const allTableRows = computed(() => tasksToLeaves(allTasks.value))
 
+/** Keep table/mobile mounts bounded — hundreds of status controls freeze clicks. */
+const TABLE_PAGE_SIZE = 50
+const tablePage = ref(1)
+const tablePageCount = computed(() => Math.max(1, Math.ceil(tableRows.value.length / TABLE_PAGE_SIZE)))
+/** Filters can shrink the result set under the current page; never slice past the end. */
+const currentTablePage = computed(() => Math.min(tablePage.value, tablePageCount.value))
+const pagedTableRows = computed(() => {
+  const start = (currentTablePage.value - 1) * TABLE_PAGE_SIZE
+  return tableRows.value.slice(start, start + TABLE_PAGE_SIZE)
+})
+const pagedFilteredTasks = computed(() => {
+  const start = (currentTablePage.value - 1) * TABLE_PAGE_SIZE
+  return filteredTasks.value.slice(start, start + TABLE_PAGE_SIZE)
+})
+
+watch([filteredTasks, viewMode, scopeMode], () => {
+  tablePage.value = 1
+})
+
 const tasksByColumn = computed<Record<ColumnKey, WorkTask[]>>(() => {
   const board: Record<ColumnKey, WorkTask[]> = { todo: [], doing: [], done: [], dismissed: [] }
   for (const task of filteredTasks.value) board[task.status].push(task)
@@ -159,14 +182,6 @@ function processLabel(task: WorkTask): string {
 function formatDueOn(value: string | null): string {
   if (!value) return 'Sem vencimento'
   return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR')
-}
-
-function sortableHeader(label: string, column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }) {
-  return h(DataTableSortButton, {
-    label,
-    sorted: column.getIsSorted(),
-    onToggle: () => column.toggleSorting(column.getIsSorted() === 'asc')
-  })
 }
 
 const tableColumns = computed<TableColumn<WorkTarefasLeaf>[]>(() => {
@@ -207,30 +222,30 @@ const tableColumns = computed<TableColumn<WorkTarefasLeaf>[]>(() => {
     {
       accessorKey: 'title',
       header: ({ column }) => sortableHeader('Tarefa', column),
-      meta: { class: { th: 'min-w-40 whitespace-nowrap', td: 'min-w-40' } },
-      cell: ({ row }) => row.original.title
+      meta: { class: { th: 'min-w-40 w-full whitespace-nowrap', td: 'min-w-40 w-full max-w-0' } },
+      cell: ({ row }) => h('span', { class: 'block truncate', title: row.original.title }, row.original.title)
     },
     {
       accessorKey: 'clientName',
       header: ({ column }) => sortableHeader('Cliente', column),
-      meta: { class: { th: 'hidden min-w-36 whitespace-nowrap md:table-cell', td: 'hidden min-w-36 md:table-cell' } },
-      cell: ({ row }) => row.original.clientName || '—'
+      meta: { class: { th: 'hidden w-40 whitespace-nowrap md:table-cell', td: 'hidden w-40 max-w-40 md:table-cell' } },
+      cell: ({ row }) => h('span', { class: 'block truncate', title: row.original.clientName || undefined }, row.original.clientName || '—')
     },
     {
       accessorKey: 'processName',
       header: ({ column }) => sortableHeader('Processo', column),
-      meta: { class: { th: 'hidden min-w-36 whitespace-nowrap lg:table-cell', td: 'hidden min-w-36 lg:table-cell' } },
-      cell: ({ row }) => row.original.processName || '—'
+      meta: { class: { th: 'hidden w-40 whitespace-nowrap lg:table-cell', td: 'hidden w-40 max-w-40 lg:table-cell' } },
+      cell: ({ row }) => h('span', { class: 'block truncate', title: row.original.processName || undefined }, row.original.processName || '—')
     },
     {
       accessorKey: 'status',
       header: ({ column }) => sortableHeader('Status', column),
-      meta: { class: { th: 'min-w-36 whitespace-nowrap', td: 'min-w-40' } }
+      meta: { class: { th: 'w-36 whitespace-nowrap', td: 'w-36' } }
     },
     {
       accessorKey: 'priority',
       header: ({ column }) => sortableHeader('Prioridade', column),
-      meta: { class: { th: 'hidden min-w-32 whitespace-nowrap lg:table-cell', td: 'hidden min-w-32 lg:table-cell' } },
+      meta: { class: { th: 'hidden w-28 whitespace-nowrap lg:table-cell', td: 'hidden w-28 lg:table-cell' } },
       cell: ({ row }) => {
         const presentation = priorityPresentation(row.original.priority)
         return h(UBadge, {
@@ -243,13 +258,13 @@ const tableColumns = computed<TableColumn<WorkTarefasLeaf>[]>(() => {
     {
       accessorKey: 'department',
       header: ({ column }) => sortableHeader('Depto.', column),
-      meta: { class: { th: 'hidden min-w-28 whitespace-nowrap xl:table-cell', td: 'hidden min-w-28 xl:table-cell' } },
-      cell: ({ row }) => row.original.department
+      meta: { class: { th: 'hidden w-28 whitespace-nowrap xl:table-cell', td: 'hidden w-28 xl:table-cell' } },
+      cell: ({ row }) => row.original.department || '—'
     },
     {
       accessorKey: 'due_on',
       header: ({ column }) => sortableHeader('Vencimento', column),
-      meta: { class: { th: 'hidden min-w-36 whitespace-nowrap md:table-cell', td: 'hidden min-w-32 whitespace-nowrap md:table-cell' } },
+      meta: { class: { th: 'hidden w-32 whitespace-nowrap md:table-cell', td: 'hidden w-32 whitespace-nowrap md:table-cell' } },
       sortingFn: (a, b) => {
         const left = a.original.due_on ?? ''
         const right = b.original.due_on ?? ''
@@ -291,10 +306,7 @@ const selectedTasks = computed(() =>
 
 const selectedCount = computed(() => selectedTasks.value.length)
 
-const assigneeItems = computed(() => [
-  { label: 'Sem responsável', value: null as number | null },
-  ...memberOptions.value
-])
+const assigneeItems = computed(() => workAssignMemberItems(memberOptions.value))
 
 const lockedIds = ref<Set<number>>(new Set())
 const busyId = ref<number | null>(null)
@@ -362,12 +374,7 @@ async function setTaskStatus(taskId: number, next: Exclude<WorkTaskStatus, 'dism
     await updateTask(taskId, { status: next })
     clearLocked(taskId)
     await refresh()
-    const titles: Record<Exclude<WorkTaskStatus, 'dismissed'>, string> = {
-      todo: 'Tarefa marcada como A fazer',
-      doing: 'Tarefa em progresso',
-      done: 'Tarefa concluída'
-    }
-    toast.add({ title: titles[next], color: 'success' })
+    toast.add({ title: workStatusSuccessTitles[next], color: 'success' })
   } catch (error: unknown) {
     if (apiStatus(error) === 422) {
       markLocked(taskId)
@@ -726,7 +733,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
         :class="canManageWork && selectedCount ? 'pb-16' : ''"
       >
         <UCard
-          v-for="task in filteredTasks"
+          v-for="task in pagedFilteredTasks"
           :key="task.id"
           variant="subtle"
           :ui="{ body: 'p-3 sm:p-4' }"
@@ -749,7 +756,6 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
                   v-if="canManageWork"
                   :status="task.status"
                   :locked="isWorkTaskCascadeLocked(task)"
-                  :loading="busyId === task.id || bulkBusy"
                   @change="(next) => setTaskStatus(task.id, next)"
                   @dismiss="openDismiss(task)"
                 />
@@ -771,9 +777,11 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
                 />
                 <UBadge color="neutral" variant="outline" :label="task.department" />
                 <UBadge
+                  v-if="showCascadeBadge(task.process?.cascade)"
+                  size="sm"
                   :color="cascadeBadgeColor(task.process?.cascade)"
                   variant="subtle"
-                  :label="cascadeLabel(task.process?.cascade)"
+                  :label="cascadeLabel()"
                 />
                 <span class="inline-flex items-center gap-1 text-xs text-muted">
                   <UIcon name="i-lucide-calendar" class="size-3.5 shrink-0" />
@@ -801,40 +809,55 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
       <UCard
         v-else
         variant="subtle"
-        :ui="{ body: 'p-0 sm:p-0', root: selectedCount ? 'mb-16' : undefined }"
+        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        :class="selectedCount ? 'pb-16' : ''"
+        :ui="{ body: 'flex min-h-0 flex-1 flex-col overflow-auto p-0 sm:p-0', root: 'flex min-h-0 flex-1 flex-col' }"
       >
-        <div class="min-w-0 overflow-x-auto">
-          <UTable
-            v-model:row-selection="rowSelection"
-            v-model:sorting="sorting"
-            :data="tableRows"
-            :columns="tableColumns"
-            :loading="isLoading"
-            :get-row-id="(row: WorkTarefasLeaf) => String(row.id)"
-            :ui="{
-              root: 'min-w-max',
-              th: 'whitespace-nowrap'
-            }"
-          >
-            <template #status-cell="{ row }">
-              <WorkTaskStatusSelect
-                v-if="canManageWork"
-                :status="row.original.status"
-                :locked="isTaskCascadeLocked(row.original)"
-                :loading="busyId === row.original.id || bulkBusy"
-                @change="(next) => setTaskStatus(row.original.id, next)"
-                @dismiss="openDismissForLeaf(row.original)"
-              />
-              <UBadge
-                v-else
-                :color="statusPresentation(row.original.status).color"
-                variant="subtle"
-                :label="statusPresentation(row.original.status).label"
-              />
-            </template>
-          </UTable>
-        </div>
+        <UTable
+          v-model:row-selection="rowSelection"
+          v-model:sorting="sorting"
+          :data="pagedTableRows"
+          :columns="tableColumns"
+          :loading="isLoading"
+          :get-row-id="(row: WorkTarefasLeaf) => String(row.id)"
+          sticky
+          class="min-h-0 flex-1"
+          :ui="workFlatTableUi"
+        >
+          <template #status-cell="{ row }">
+            <WorkTaskStatusSelect
+              v-if="canManageWork"
+              :status="row.original.status"
+              :locked="isTaskCascadeLocked(row.original)"
+              @change="(next) => setTaskStatus(row.original.id, next)"
+              @dismiss="openDismissForLeaf(row.original)"
+            />
+            <UBadge
+              v-else
+              :color="statusPresentation(row.original.status).color"
+              variant="subtle"
+              :label="statusPresentation(row.original.status).label"
+            />
+          </template>
+        </UTable>
       </UCard>
+
+      <div
+        v-if="tablePageCount > 1"
+        class="flex flex-wrap items-center justify-between gap-2"
+      >
+        <p class="text-xs text-muted">
+          {{ filteredTasks.length }} tarefa(s) · página {{ currentTablePage }} de {{ tablePageCount }}
+        </p>
+        <UPagination
+          v-model="tablePage"
+          :total="filteredTasks.length"
+          :items-per-page="TABLE_PAGE_SIZE"
+          :sibling-count="1"
+          show-edges
+          size="sm"
+        />
+      </div>
     </template>
 
     <WorkTarefasBoard
@@ -865,48 +888,21 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
       @dismiss="openBulkDismiss"
     />
 
-    <UModal
+    <WorkDismissModal
       v-model:open="dismissOpen"
+      v-model:reason="dismissReason"
+      :count="dismissBulk ? selectedCount : 1"
       :title="dismissBulk ? 'Dispensar tarefas' : 'Dispensar tarefa'"
       :description="dismissBulk
         ? `Informar o motivo da dispensa de ${selectedCount} tarefa(s)`
         : (dismissTarget ? `Informar o motivo da dispensa de ${dismissTarget.title}` : 'Informar o motivo da dispensa')"
-    >
-      <template #body>
-        <UFormField
-          label="Motivo da dispensa"
-          name="dismissal_reason"
-          required
-          help="O motivo é obrigatório e fica registrado em cada tarefa."
-        >
-          <UTextarea
-            v-model="dismissReason"
-            :rows="4"
-            placeholder="Ex.: sem movimento no mês"
-            class="w-full"
-          />
-        </UFormField>
-      </template>
-
-      <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="subtle"
-            @click="dismissOpen = false"
-          />
-          <UButton
-            label="Dispensar"
-            color="warning"
-            variant="solid"
-            icon="i-lucide-circle-minus"
-            :loading="dismissing || bulkBusy"
-            :disabled="dismissing || bulkBusy || !dismissReason.trim()"
-            @click="onConfirmDismiss"
-          />
-        </div>
-      </template>
-    </UModal>
+      confirm-color="warning"
+      field-label="Motivo da dispensa"
+      field-help="O motivo é obrigatório e fica registrado em cada tarefa."
+      placeholder="Ex.: sem movimento no mês"
+      :rows="4"
+      :loading="dismissing || bulkBusy"
+      @confirm="onConfirmDismiss"
+    />
   </div>
 </template>

@@ -3,14 +3,22 @@ import type { ClientPortfolioSummary } from '~/types/client'
 import { customerListPath } from '~/utils/customerRoutes'
 import { formatPtCount } from '~/utils/portfolioLabels'
 
-defineProps<{
+const props = defineProps<{
   summary: ClientPortfolioSummary | null
   loading?: boolean
 }>()
 
-function attention(summary: ClientPortfolioSummary | null, document: 'certificate' | 'poa') {
-  if (!summary) return 0
-  return summary[document].expired + summary[document].expiring
+function attention(document: 'certificate' | 'poa') {
+  if (!props.summary) return 0
+  return props.summary[document].expired + props.summary[document].expiring
+}
+
+function attentionPath(document: 'certificate' | 'poa') {
+  const summary = props.summary
+  if (!summary) return customerListPath(document, 'expiring')
+  // Preferência pelo vencido: mais urgente quando ambos existem no KPI combinado.
+  if (summary[document].expired > 0) return customerListPath(document, 'expired')
+  return customerListPath(document, 'expiring')
 }
 </script>
 
@@ -34,18 +42,18 @@ function attention(summary: ClientPortfolioSummary | null, document: 'certificat
     <MetricCard
       icon="i-lucide-key-round"
       title="Certificados"
-      :to="customerListPath('certificate', 'expiring')"
+      :to="attentionPath('certificate')"
       :loading="loading"
-      :value="formatPtCount(attention(summary, 'certificate'))"
-      :value-class="attention(summary, 'certificate') > 0 ? 'text-warning' : 'text-highlighted'"
+      :value="formatPtCount(attention('certificate'))"
+      :value-class="attention('certificate') > 0 ? 'text-warning' : 'text-highlighted'"
     />
     <MetricCard
       icon="i-lucide-file-key-2"
       title="Procurações"
-      :to="customerListPath('poa', 'expiring')"
+      :to="attentionPath('poa')"
       :loading="loading"
-      :value="formatPtCount(attention(summary, 'poa'))"
-      :value-class="attention(summary, 'poa') > 0 ? 'text-warning' : 'text-highlighted'"
+      :value="formatPtCount(attention('poa'))"
+      :value-class="attention('poa') > 0 ? 'text-warning' : 'text-highlighted'"
     />
   </UPageGrid>
 </template>

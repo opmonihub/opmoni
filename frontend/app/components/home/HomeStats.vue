@@ -7,29 +7,29 @@ const props = defineProps<{
 }>()
 
 function formatCurrency(value: number): string {
-  return value.toLocaleString('en-US', {
+  return value.toLocaleString('pt-BR', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'BRL',
     maximumFractionDigits: 0
   })
 }
 
 const baseStats = [{
-  title: 'Customers',
+  title: 'Clientes',
   icon: 'i-lucide-users',
   minValue: 400,
   maxValue: 1000,
   minVariation: -15,
   maxVariation: 25
 }, {
-  title: 'Conversions',
+  title: 'Conversões',
   icon: 'i-lucide-chart-pie',
   minValue: 1000,
   maxValue: 2000,
   minVariation: -10,
   maxVariation: 20
 }, {
-  title: 'Revenue',
+  title: 'Receita',
   icon: 'i-lucide-circle-dollar-sign',
   minValue: 200000,
   maxValue: 500000,
@@ -37,7 +37,7 @@ const baseStats = [{
   maxVariation: 30,
   formatter: formatCurrency
 }, {
-  title: 'Orders',
+  title: 'Pedidos',
   icon: 'i-lucide-shopping-cart',
   minValue: 100,
   maxValue: 300,

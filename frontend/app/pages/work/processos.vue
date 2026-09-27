@@ -3,13 +3,12 @@ import type { Row, SortingState } from '@tanstack/table-core'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
 import { h, resolveComponent } from 'vue'
 import type { DataTableFilterModel } from '~/components/data-table/Filter.vue'
-import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import WorkGroupStatusSelect from '~/components/work/WorkGroupStatusSelect.vue'
 import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
-import { apiMessage, apiStatus } from '~/composables/useApiError'
 import { statusPresentation } from '~/composables/useWorkPresentation'
 import type { WorkGroupedClient, WorkTaskStatus } from '~/types/work'
+import { statusOrder } from '~/utils/workCalendar'
 import {
   derivedProcessStatusForGroup,
   isCascadeAdvanceLockedInProcess
@@ -26,7 +25,29 @@ import {
   workProcessosSelectedCount,
   workProcessosTaskIdsFromSelection
 } from '~/utils/workProcessosSelection'
-import { cascadeBadgeColor, cascadeLabel, workGroupedTableOptions } from '~/utils/workGroupedTable'
+import {
+  cascadeBadgeColor,
+  cascadeLabel,
+  showCascadeBadge,
+  workDepthIndentStyle,
+  workExpandedOptions,
+  workGroupExpandButtonClass,
+  workGroupedTableOptions,
+  workItemCellRowClass,
+  workItemEmptyLeafClass,
+  workItemGroupLabelClass,
+  workItemLeafExpandSpacerClass,
+  workItemLeafTitle,
+  workItemLeafTitleClass,
+  workTableUi
+} from '~/utils/workGroupedTable'
+import {
+  formatWorkDueOn as formatDueOn,
+  workAssignMemberItems,
+  workLeafCountLabel as leafCountLabel,
+  workRatioLabel as ratioLabel
+} from '~/utils/workTableFormat'
+import { workSortableHeader as sortableHeader } from '~/utils/workSortableHeader'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -48,7 +69,10 @@ const { data, status, error, refresh } = await useAsyncData<WorkGroupedClient[]>
 
 const groups = computed<WorkGroupedClient[]>(() => data.value ?? [])
 const isLoading = computed(() => status.value === 'pending')
-const desktopTable = useClientMediaQuery('(min-width: 768px)')
+/** Mount only the active viewport tree — CSS `md:hidden` still hydrates ~1k USelects. */
+const showDesktop = useClientMediaQuery('(min-width: 768px)')
+const showMobile = useClientMediaQuery('(max-width: 767px)')
+const desktopTable = showDesktop
 
 /**
  * Leaf = task (or empty placeholder).
@@ -166,6 +190,7 @@ const filterColumns = computed(() =>
 
 const sorting = ref<SortingState>([])
 const rowSelection = ref<Record<string, boolean>>({})
+const expanded = ref<true | Record<string, boolean>>({})
 const groupingOptions = ref(workGroupedTableOptions())
 
 const selectedCount = computed(() => workProcessosSelectedCount(rowSelection.value))
@@ -226,30 +251,8 @@ function setLeafSelected(leafId: string, selected: boolean | 'indeterminate') {
   )
 }
 
-function formatDueOn(value: string | null): string {
-  if (!value) return '—'
-  return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR')
-}
-
-function ratioLabel(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`
-}
-
-function countLeafTasks(row: { getLeafRows: () => { original: ProcessTaskLeaf }[] }): number {
-  return row.getLeafRows().filter(leaf => !leaf.original.empty).length
-}
-
 function uniqueClients(row: { getLeafRows: () => { original: ProcessTaskLeaf }[] }): number {
   return new Set(row.getLeafRows().map(leaf => leaf.original.clientId)).size
-}
-
-function sortableHeader(label: string, column: { getIsSorted: () => false | 'asc' | 'desc', toggleSorting: (desc?: boolean) => void }) {
-  const sorted = column.getIsSorted()
-  return h(DataTableSortButton, {
-    label,
-    sorted: sorted || false,
-    onToggle: () => column.toggleSorting(sorted === 'asc')
-  })
 }
 
 const columns = computed<TableColumn<ProcessTaskLeaf>[]>(() => {
@@ -284,69 +287,49 @@ const columns = computed<TableColumn<ProcessTaskLeaf>[]>(() => {
   cols.push(
     {
       id: 'item',
-      header: 'Item',
-      enableSorting: false,
-      meta: { class: { th: 'min-w-48 whitespace-nowrap', td: 'min-w-48' } }
+      accessorKey: 'title',
+      enableSorting: true,
+      header: ({ column }) => sortableHeader('Item', column),
+      meta: { class: { th: 'min-w-48 w-full whitespace-nowrap', td: 'min-w-48 w-full max-w-0' } },
+      aggregationFn: 'count',
+      sortingFn: (a, b) => {
+        const left = a.original.empty ? Number.POSITIVE_INFINITY : a.original.order
+        const right = b.original.empty ? Number.POSITIVE_INFINITY : b.original.order
+        return left - right
+      }
     },
     { id: 'processKey', accessorKey: 'processKey', enableSorting: false },
     { id: 'clientId', accessorKey: 'clientId', enableSorting: false },
     {
-      accessorKey: 'order',
-      enableSorting: true,
-      header: ({ column }) => sortableHeader('#', column),
-      meta: { class: { th: 'w-14 whitespace-nowrap text-right', td: 'w-14 text-right tabular-nums' } },
-      aggregationFn: 'count',
-      cell: ({ row }) => {
-        if (row.getIsGrouped()) {
-          if (row.groupingColumnId === 'processKey') {
-            return `${uniqueClients(row)} cliente(s) · ${countLeafTasks(row)} tarefa(s)`
-          }
-          return `${countLeafTasks(row)}`
-        }
-        if (row.original.empty) return '—'
-        return String(row.original.order)
-      }
-    },
-    {
-      accessorKey: 'title',
-      enableSorting: true,
-      header: ({ column }) => sortableHeader('Tarefa', column),
-      meta: { class: { th: 'min-w-28 whitespace-nowrap', td: 'min-w-28' } },
-      aggregationFn: 'count',
-      cell: ({ row }) => {
-        if (row.getIsGrouped()) return `${countLeafTasks(row)} tarefa(s)`
-        if (row.original.empty) return 'Nenhuma tarefa neste processo'
-        return row.original.title
-      }
-    },
-    {
       accessorKey: 'status',
       enableSorting: true,
       header: ({ column }) => sortableHeader('Status', column),
-      meta: { class: { th: 'min-w-36 whitespace-nowrap', td: 'min-w-40' } },
+      meta: { class: { th: 'w-36 whitespace-nowrap', td: 'w-36' } },
       sortingFn: (a, b) => {
-        const left = a.original.status ?? ''
-        const right = b.original.status ?? ''
-        return left.localeCompare(right)
+        // Workflow order (todo → doing → done → dismissed), not alphabetical.
+        // Sem status (processo sem tarefa) vai para o fim, como no Item.
+        const left = a.original.status ? statusOrder[a.original.status] : Number.POSITIVE_INFINITY
+        const right = b.original.status ? statusOrder[b.original.status] : Number.POSITIVE_INFINITY
+        return left - right
       }
     },
     {
       accessorKey: 'department',
       enableSorting: true,
       header: ({ column }) => sortableHeader('Depto.', column),
-      meta: { class: { th: 'min-w-28 whitespace-nowrap', td: 'min-w-28' } },
+      meta: { class: { th: 'w-28 whitespace-nowrap', td: 'w-28' } },
       cell: ({ row }) => {
-        if (row.getIsGrouped() || row.original.empty) return null
-        return row.original.department
+        if (row.getIsGrouped() || row.original.empty) return '—'
+        return row.original.department || '—'
       }
     },
     {
       accessorKey: 'due_on',
       enableSorting: true,
       header: ({ column }) => sortableHeader('Vencimento', column),
-      meta: { class: { th: 'min-w-36 whitespace-nowrap', td: 'min-w-32 whitespace-nowrap' } },
+      meta: { class: { th: 'w-32 whitespace-nowrap', td: 'w-32 whitespace-nowrap' } },
       cell: ({ row }) => {
-        if (row.getIsGrouped() || row.original.empty) return null
+        if (row.getIsGrouped() || row.original.empty) return '—'
         return formatDueOn(row.original.due_on)
       }
     },
@@ -430,26 +413,31 @@ const mobileGroups = computed(() => {
   }))
 })
 
-const bulkBusy = ref(false)
-const busyId = ref<number | null>(null)
-const lockedIds = ref<Set<number>>(new Set())
-const dismissOpen = ref(false)
-const dismissReason = ref('')
-const dismissTargetIds = ref<number[] | null>(null)
-
-function markLocked(taskId: number) {
-  lockedIds.value = new Set(lockedIds.value).add(taskId)
-}
-
-function clearLocked(taskId: number) {
-  const next = new Set(lockedIds.value)
-  next.delete(taskId)
-  lockedIds.value = next
-}
+const {
+  bulkBusy,
+  dismissOpen,
+  dismissReason,
+  dismissCount,
+  isTaskIdLocked,
+  setTaskStatus,
+  runBulk,
+  bulkAdvance,
+  bulkAssign,
+  openDismiss,
+  openDismissForTaskIds,
+  confirmDismiss
+} = useWorkTaskActions({
+  updateTask,
+  refresh,
+  clearSelection,
+  leaves: allRows,
+  selectedTaskIds,
+  selectedCount
+})
 
 function isLeafCascadeLocked(leaf: ProcessTaskLeaf): boolean {
   if (!leaf.taskId || !leaf.status) return false
-  return lockedIds.value.has(leaf.taskId)
+  return isTaskIdLocked(leaf.taskId)
     || isCascadeAdvanceLockedInProcess(leaf.cascade, leaf.processId, leaf.order, allRows.value)
 }
 
@@ -488,36 +476,8 @@ function taskIdsFromLeaves(leaves: ProcessTaskLeaf[]): number[] {
 }
 
 async function setLeafStatus(leaf: ProcessTaskLeaf, next: Exclude<WorkTaskStatus, 'dismissed'>) {
-  if (!leaf.taskId || !leaf.status || leaf.status === next) return
-  busyId.value = leaf.taskId
-  try {
-    await updateTask(leaf.taskId, { status: next })
-    clearLocked(leaf.taskId)
-    await refresh()
-    const titles: Record<Exclude<WorkTaskStatus, 'dismissed'>, string> = {
-      todo: 'Tarefa marcada como A fazer',
-      doing: 'Tarefa em progresso',
-      done: 'Tarefa concluída'
-    }
-    toast.add({ title: titles[next], color: 'success' })
-  } catch (err: unknown) {
-    if (apiStatus(err) === 422) {
-      markLocked(leaf.taskId)
-      toast.add({
-        title: 'Avanço bloqueado',
-        description: apiMessage(err) ?? 'Aguardando etapas anteriores.',
-        color: 'warning'
-      })
-    } else {
-      toast.add({
-        title: 'Não foi possível atualizar o status',
-        description: apiMessage(err),
-        color: 'error'
-      })
-    }
-  } finally {
-    busyId.value = null
-  }
+  if (!leaf.taskId || !leaf.status) return
+  await setTaskStatus(leaf.taskId, leaf.status, next)
 }
 
 async function applyGroupStatus(leaves: ProcessTaskLeaf[], next: Exclude<WorkTaskStatus, 'dismissed'>) {
@@ -530,23 +490,14 @@ async function applyGroupStatus(leaves: ProcessTaskLeaf[], next: Exclude<WorkTas
 
 function openDismissForLeaf(leaf: ProcessTaskLeaf) {
   if (!leaf.taskId) return
-  dismissTargetIds.value = [leaf.taskId]
-  dismissReason.value = ''
-  dismissOpen.value = true
+  openDismissForTaskIds([leaf.taskId])
 }
 
 function openDismissForLeaves(leaves: ProcessTaskLeaf[]) {
-  const ids = taskIdsFromLeaves(leaves)
-  if (!ids.length) return
-  dismissTargetIds.value = ids
-  dismissReason.value = ''
-  dismissOpen.value = true
+  openDismissForTaskIds(taskIdsFromLeaves(leaves))
 }
 
-const assignItems = computed(() => [
-  { label: 'Sem responsável', value: null as number | null },
-  ...memberOptions.value.map(option => ({ label: option.label, value: option.value as number | null }))
-])
+const assignItems = computed(() => workAssignMemberItems(memberOptions.value))
 
 const selectionMenu = computed<DropdownMenuItem[][]>(() => [[
   {
@@ -565,7 +516,7 @@ const selectionMenu = computed<DropdownMenuItem[][]>(() => [[
   {
     label: 'Dispensar',
     icon: 'i-lucide-circle-minus',
-    onSelect: openDismiss
+    onSelect: () => openDismiss()
   },
   {
     label: 'Cancelar seleção',
@@ -573,101 +524,6 @@ const selectionMenu = computed<DropdownMenuItem[][]>(() => [[
     onSelect: clearSelection
   }
 ]])
-
-async function runBulk(
-  label: string,
-  bodyFor: (taskId: number, leaf: ProcessTaskLeaf) => { status?: string, dismissal_reason?: string, assignee_member_id?: number | null } | null,
-  ids: number[] = selectedTaskIds.value
-) {
-  if (!ids.length) return
-
-  const byId = new Map(allRows.value.map(leaf => [leaf.taskId, leaf]))
-  bulkBusy.value = true
-  let ok = 0
-  let failed = 0
-  let locked = 0
-
-  try {
-    for (const taskId of ids) {
-      const leaf = byId.get(taskId)
-      if (!leaf) continue
-      const body = bodyFor(taskId, leaf)
-      if (!body) continue
-      try {
-        await updateTask(taskId, body)
-        clearLocked(taskId)
-        ok += 1
-      } catch (err: unknown) {
-        if (apiStatus(err) === 422) {
-          markLocked(taskId)
-          locked += 1
-          toast.add({
-            title: `Bloqueada #${taskId}`,
-            description: apiMessage(err) ?? 'Aguardando etapas anteriores.',
-            color: 'warning'
-          })
-        } else {
-          failed += 1
-          toast.add({
-            title: `Falha em #${taskId}`,
-            description: apiMessage(err) ?? 'Não foi possível atualizar a tarefa.',
-            color: 'error'
-          })
-        }
-      }
-    }
-
-    await refresh()
-    clearSelection()
-
-    if (ok && !failed && !locked) {
-      toast.add({ title: `${label}: ${ok} tarefa(s)`, color: 'success' })
-    } else if (ok) {
-      toast.add({
-        title: `${label}: ${ok} ok${failed ? `, ${failed} erro(s)` : ''}${locked ? `, ${locked} bloqueada(s)` : ''}`,
-        color: 'warning'
-      })
-    } else if (failed || locked) {
-      toast.add({ title: `Nenhuma tarefa atualizada`, color: 'error' })
-    }
-  } finally {
-    bulkBusy.value = false
-  }
-}
-
-async function bulkAdvance() {
-  await runBulk('Status avançado', (_id, leaf) => {
-    if (!leaf.status) return null
-    const next = leaf.status === 'todo' ? 'doing' : leaf.status === 'doing' ? 'done' : null
-    return next ? { status: next } : null
-  })
-}
-
-async function bulkAssign(memberId: number | null) {
-  await runBulk('Responsável atualizado', () => ({ assignee_member_id: memberId }))
-}
-
-async function bulkDismiss() {
-  const reason = dismissReason.value.trim()
-  if (!reason) {
-    toast.add({ title: 'Informe o motivo da dispensa', color: 'error' })
-    return
-  }
-  const ids = dismissTargetIds.value ?? selectedTaskIds.value
-  dismissOpen.value = false
-  dismissTargetIds.value = null
-  await runBulk('Tarefas dispensadas', (_id, leaf) => {
-    if (leaf.status === 'dismissed') return null
-    return { status: 'dismissed', dismissal_reason: reason }
-  }, ids)
-  dismissReason.value = ''
-}
-
-function openDismiss() {
-  dismissTargetIds.value = null
-  dismissReason.value = ''
-  dismissOpen.value = true
-}
 
 async function onRefresh() {
   try {
@@ -687,7 +543,7 @@ watch([filterModels, search, referenceMonth], () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:gap-5 sm:p-4 lg:p-5">
+  <div class="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:gap-4 sm:p-4 lg:p-5">
     <ClientOnly>
       <WorkToolbarTeleport>
         <div class="flex items-center gap-1">
@@ -774,61 +630,71 @@ watch([filterModels, search, referenceMonth], () => {
     />
 
     <template v-else>
-      <!-- Mobile: Processo → Cliente → tarefas -->
+      <!-- Mobile: Processo → Cliente → tarefas (v-if: do not mount alongside desktop) -->
       <div
-        class="flex min-h-0 flex-1 flex-col gap-4 md:hidden"
+        v-if="showMobile"
+        class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto"
         :class="canManageWork && selectedCount ? 'pb-16' : ''"
       >
         <section
           v-for="process in mobileGroups"
           :key="process.processKey"
-          class="space-y-2"
+          class="space-y-1.5"
         >
-          <div class="flex min-w-0 flex-wrap items-center gap-2 px-0.5">
-            <strong class="truncate text-highlighted" :title="process.processName">
+          <div class="flex min-w-0 items-center gap-1.5 overflow-hidden px-0.5">
+            <strong class="min-w-0 truncate text-sm text-highlighted" :title="process.processName">
               {{ process.processName }}
             </strong>
             <UBadge
+              size="sm"
+              color="neutral"
+              variant="subtle"
+              :label="`${process.clients.length} cliente(s)`"
+              class="shrink-0"
+            />
+            <UBadge
+              v-if="showCascadeBadge(process.cascade)"
+              size="sm"
               :color="cascadeBadgeColor(process.cascade)"
               variant="subtle"
-              :label="cascadeLabel(process.cascade)"
+              :label="cascadeLabel()"
+              class="shrink-0"
             />
             <WorkGroupStatusSelect
+              class="shrink-0"
               :derived="derivedStatusForProcessKey(process.processKey)"
               :can-manage="canManageWork"
-              :loading="bulkBusy"
               @change="(next) => applyGroupStatus(leavesForProcessKey(process.processKey), next)"
               @dismiss="openDismissForLeaves(leavesForProcessKey(process.processKey))"
             />
-            <span v-if="process.templateName" class="truncate text-xs text-muted">
-              {{ process.templateName }}
-            </span>
           </div>
 
           <div
             v-for="client in process.clients"
             :key="`${process.processKey}-${client.clientId}`"
-            class="space-y-2"
+            class="space-y-1.5"
           >
-            <div class="flex min-w-0 items-center justify-between gap-2 px-0.5">
-              <div class="flex min-w-0 flex-wrap items-center gap-2">
-                <span class="truncate font-medium text-highlighted" :title="client.clientName">
+            <div class="flex min-w-0 items-center justify-between gap-1.5 px-0.5">
+              <div class="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                <span class="min-w-0 truncate text-sm font-medium text-highlighted" :title="client.clientName">
                   {{ client.clientName }}
                 </span>
                 <UBadge
+                  size="sm"
                   color="primary"
                   variant="subtle"
                   :label="ratioLabel(client.processRatio)"
+                  class="shrink-0"
                 />
                 <WorkGroupStatusSelect
+                  class="shrink-0"
                   :derived="derivedStatusForProcess(client.processId)"
                   :can-manage="canManageWork"
-                  :loading="bulkBusy"
                   @change="(next) => applyGroupStatus(leavesForProcess(client.processId), next)"
                   @dismiss="openDismissForLeaves(leavesForProcess(client.processId))"
                 />
-                <span class="text-xs text-muted">
-                  Prazo {{ formatDueOn(client.processDueOn) }}
+                <span class="shrink-0 text-xs text-muted">
+                  {{ formatDueOn(client.processDueOn) }}
                 </span>
               </div>
               <UButton
@@ -837,6 +703,7 @@ watch([filterModels, search, referenceMonth], () => {
                 variant="ghost"
                 size="xs"
                 icon="i-lucide-arrow-up-right"
+                class="shrink-0"
                 :aria-label="`Abrir processo ${process.processName} · ${client.clientName}`"
               />
             </div>
@@ -845,36 +712,33 @@ watch([filterModels, search, referenceMonth], () => {
               v-for="leaf in client.tasks.filter(isWorkProcessosSelectableLeaf)"
               :key="leaf.id"
               variant="subtle"
-              :ui="{ body: 'p-3' }"
+              :ui="{ body: 'px-2.5 py-2' }"
             >
-              <div class="flex items-start gap-3">
+              <div class="flex items-center gap-2">
                 <UCheckbox
                   v-if="canManageWork"
                   :model-value="!!rowSelection[leaf.id]"
-                  size="lg"
-                  class="mt-0.5"
+                  size="sm"
+                  class="shrink-0"
                   :aria-label="`Selecionar ${leaf.title}`"
                   @update:model-value="setLeafSelected(leaf.id, $event)"
                 />
                 <div class="min-w-0 flex-1">
-                  <div class="flex items-start justify-between gap-2">
-                    <p class="min-w-0 font-medium text-highlighted" :title="leaf.title">
-                      <span class="mr-1.5 text-muted tabular-nums">#{{ leaf.order }}</span>
-                      {{ leaf.title }}
-                    </p>
-                  </div>
-                  <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <p class="min-w-0 truncate text-sm font-medium text-highlighted" :title="workItemLeafTitle(leaf.order, leaf.title)">
+                    <span class="tabular-nums">{{ leaf.order }}.</span>{{ ' ' }}{{ leaf.title }}
+                  </p>
+                  <div class="mt-1 flex flex-wrap items-center gap-1">
                     <WorkTaskStatusSelect
                       v-if="canManageWork && leaf.status"
                       :status="leaf.status"
                       :locked="isLeafCascadeLocked(leaf)"
-                      :loading="busyId === leaf.taskId || bulkBusy"
-                      class="min-w-36"
+                      class="shrink-0"
                       @change="(next) => setLeafStatus(leaf, next)"
                       @dismiss="openDismissForLeaf(leaf)"
                     />
                     <UBadge
                       v-else-if="leaf.status"
+                      size="sm"
                       :color="statusPresentation(leaf.status).color"
                       variant="subtle"
                       :label="statusPresentation(leaf.status).label"
@@ -898,80 +762,119 @@ watch([filterModels, search, referenceMonth], () => {
 
       <!-- Desktop grouped table -->
       <UCard
+        v-else-if="showDesktop"
         variant="subtle"
-        class="hidden min-w-0 md:block"
-        :class="canManageWork && selectedCount ? 'mb-14' : ''"
-        :ui="{ body: 'overflow-x-auto p-0 sm:p-0' }"
+        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        :class="canManageWork && selectedCount ? 'pb-16' : ''"
+        :ui="{ body: 'flex min-h-0 flex-1 flex-col overflow-auto p-0 sm:p-0', root: 'flex min-h-0 flex-1 flex-col' }"
       >
         <UTable
           v-model:sorting="sorting"
+          v-model:row-selection="rowSelection"
+          v-model:expanded="expanded"
           :data="rows"
           :columns="columns"
           :grouping="['processKey', 'clientId']"
           :grouping-options="groupingOptions"
+          :expanded-options="workExpandedOptions"
           :row-selection-options="rowSelectionOptions"
           :loading="isLoading"
           :get-row-id="(row: ProcessTaskLeaf) => row.id"
-          :ui="{
-            root: 'min-w-full overflow-x-auto',
-            base: 'min-w-max',
-            th: 'whitespace-nowrap',
-            td: 'empty:p-0'
-          }"
+          sticky
+          class="min-h-0 flex-1"
+          :ui="workTableUi"
         >
           <template #item-cell="{ row }">
-            <div v-if="row.getIsGrouped()" class="flex items-center">
+            <div v-if="row.getIsGrouped()" :class="workItemCellRowClass">
               <span
-                class="inline-block"
-                :style="{ width: `calc(${row.depth} * 1rem)` }"
+                class="inline-block shrink-0"
+                :style="workDepthIndentStyle(row.depth)"
               />
 
               <UButton
                 variant="outline"
                 color="neutral"
-                class="mr-2"
+                :class="workGroupExpandButtonClass"
                 size="xs"
+                square
                 :icon="row.getIsExpanded() ? 'i-lucide-minus' : 'i-lucide-plus'"
                 :aria-label="row.getIsExpanded() ? 'Recolher' : 'Expandir'"
-                @click="row.toggleExpanded()"
+                @click="(e: Event) => { e.stopPropagation(); row.toggleExpanded() }"
               />
 
               <div
                 v-if="row.groupingColumnId === 'processKey'"
-                class="flex min-w-0 flex-wrap items-center gap-2"
+                class="flex min-w-0 items-center gap-1.5 overflow-hidden"
               >
-                <strong class="truncate text-highlighted" :title="row.original.processName">
+                <strong :class="workItemGroupLabelClass" :title="row.original.processName">
                   {{ row.original.processName }}
                 </strong>
                 <UBadge
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :label="`${uniqueClients(row)} cliente(s)`"
+                  class="shrink-0"
+                />
+                <UBadge
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :label="leafCountLabel(row)"
+                  class="shrink-0"
+                />
+                <UBadge
+                  v-if="showCascadeBadge(row.original.cascade)"
+                  size="sm"
                   :color="cascadeBadgeColor(row.original.cascade)"
                   variant="subtle"
-                  :label="cascadeLabel(row.original.cascade)"
+                  :label="cascadeLabel()"
+                  class="shrink-0"
                 />
-                <span v-if="row.original.templateName" class="truncate text-xs text-muted">
-                  {{ row.original.templateName }}
-                </span>
               </div>
 
               <div
                 v-else-if="row.groupingColumnId === 'clientId'"
-                class="flex min-w-0 flex-wrap items-center gap-2"
+                class="flex min-w-0 items-center gap-1.5 overflow-hidden"
               >
-                <span class="truncate font-medium text-highlighted" :title="row.original.clientName">
+                <strong :class="workItemGroupLabelClass" :title="row.original.clientName">
                   {{ row.original.clientName }}
-                </span>
+                </strong>
                 <UBadge
+                  size="sm"
                   color="primary"
                   variant="subtle"
                   :label="ratioLabel(row.original.processRatio)"
+                  class="shrink-0"
+                />
+                <UBadge
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :label="leafCountLabel(row)"
+                  class="shrink-0"
                 />
               </div>
             </div>
-            <div v-else class="flex items-center">
+            <div v-else :class="workItemCellRowClass">
               <span
-                class="inline-block"
-                :style="{ width: `calc(${row.depth} * 1rem)` }"
+                class="inline-block shrink-0"
+                :style="workDepthIndentStyle(row.depth)"
               />
+              <span :class="workItemLeafExpandSpacerClass" aria-hidden="true" />
+              <span
+                v-if="row.original.empty"
+                :class="workItemEmptyLeafClass"
+              >
+                Nenhuma tarefa neste processo
+              </span>
+              <span
+                v-else
+                :class="workItemLeafTitleClass"
+                :title="workItemLeafTitle(row.original.order, row.original.title)"
+              >
+                <span class="tabular-nums">{{ row.original.order }}.</span>{{ ' ' }}{{ row.original.title }}
+              </span>
             </div>
           </template>
 
@@ -980,7 +883,6 @@ watch([filterModels, search, referenceMonth], () => {
               v-if="row.getIsGrouped()"
               :derived="derivedStatusForGroupedRow(row)"
               :can-manage="canManageWork"
-              :loading="bulkBusy"
               @change="(next) => applyGroupStatus(leavesForGroupedRow(row), next)"
               @dismiss="openDismissForLeaves(leavesForGroupedRow(row))"
             />
@@ -989,7 +891,6 @@ watch([filterModels, search, referenceMonth], () => {
               v-else-if="canManageWork && row.original.status"
               :status="row.original.status"
               :locked="isLeafCascadeLocked(row.original)"
-              :loading="busyId === row.original.taskId || bulkBusy"
               @change="(next) => setLeafStatus(row.original, next)"
               @dismiss="openDismissForLeaf(row.original)"
             />
@@ -1002,6 +903,14 @@ watch([filterModels, search, referenceMonth], () => {
           </template>
         </UTable>
       </UCard>
+
+      <WorkTableSkeleton
+        v-else
+        :columns="5"
+        :rows="8"
+        grouped
+        class="min-h-0 flex-1"
+      />
     </template>
 
     <Transition
@@ -1012,7 +921,7 @@ watch([filterModels, search, referenceMonth], () => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-2 opacity-0"
     >
-      <WorkProcessosSelectionBar
+      <WorkSelectionBar
         v-if="canManageWork && selectedCount"
         class="absolute bottom-3 left-1/2 z-20 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2"
         :count="selectedCount"
@@ -1020,45 +929,17 @@ watch([filterModels, search, referenceMonth], () => {
         :member-items="assignItems"
         @clear="clearSelection"
         @advance="bulkAdvance"
-        @dismiss="openDismiss"
+        @dismiss="openDismiss()"
         @assign="bulkAssign"
       />
     </Transition>
 
-    <UModal
+    <WorkDismissModal
       v-model:open="dismissOpen"
-      :title="(dismissTargetIds?.length ?? 0) === 1 ? 'Dispensar tarefa' : 'Dispensar tarefas'"
-      :description="dismissTargetIds
-        ? `${dismissTargetIds.length} tarefa(s) serão marcadas como dispensadas.`
-        : `${selectedCount} tarefa(s) serão marcadas como dispensadas.`"
-    >
-      <template #body>
-        <UFormField label="Motivo" name="dismissal_reason" required>
-          <UTextarea
-            v-model="dismissReason"
-            :rows="3"
-            autoresize
-            placeholder="Descreva o motivo da dispensa..."
-          />
-        </UFormField>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="ghost"
-            @click="dismissOpen = false"
-          />
-          <UButton
-            label="Dispensar"
-            color="error"
-            :loading="bulkBusy"
-            :disabled="bulkBusy || !dismissReason.trim()"
-            @click="bulkDismiss"
-          />
-        </div>
-      </template>
-    </UModal>
+      v-model:reason="dismissReason"
+      :count="dismissCount"
+      :loading="bulkBusy"
+      @confirm="confirmDismiss"
+    />
   </div>
 </template>
