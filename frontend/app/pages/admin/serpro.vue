@@ -224,7 +224,7 @@ watch(error, (value) => {
       :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
     />
 
-    <UPageSkeleton v-else-if="isLoading" :rows="4" />
+    <USkeleton v-else-if="isLoading" class="h-64 w-full" />
 
     <template v-else>
       <UCard

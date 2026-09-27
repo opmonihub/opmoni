@@ -83,7 +83,7 @@ function attentionFor(obligation: MonitoringObligation) {
       :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
     />
 
-    <UPageSkeleton v-else-if="isLoading && !error" :rows="6" />
+    <USkeleton v-else-if="isLoading && !error" class="h-64 w-full" />
 
     <template v-else>
       <section class="flex flex-col gap-4">

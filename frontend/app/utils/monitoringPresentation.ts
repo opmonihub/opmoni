@@ -39,7 +39,7 @@ export const monitoringStalePresentation: { label: string, color: Tone, icon: st
 
 export const monitoringCounterPresentation: Record<MonitoringCounter, { label: string, color: Tone, icon: string }> = {
   em_dia: { label: 'Em dia', color: 'success', icon: 'i-lucide-circle-check' },
-  processando: { label: 'Processando', color: 'info', icon: 'i-lucide-arrow-repeat' },
+  processando: { label: 'Processando', color: 'info', icon: 'i-lucide-repeat' },
   pendencias: { label: 'Pendências', color: 'warning', icon: 'i-lucide-clock' },
   atencao: { label: 'Atenção', color: 'error', icon: 'i-lucide-circle-alert' }
 }
@@ -127,7 +127,7 @@ export const monitoringPaidPresentation: Record<'paid' | 'unpaid', { label: stri
 
 export const serproRunStatePresentation: Record<SerproSyncRunState, { label: string, color: Tone, icon: string }> = {
   queued: { label: 'Na fila', color: 'neutral', icon: 'i-lucide-clock' },
-  running: { label: 'Em execução', color: 'info', icon: 'i-lucide-arrow-repeat' },
+  running: { label: 'Em execução', color: 'info', icon: 'i-lucide-repeat' },
   completed: { label: 'Concluída', color: 'success', icon: 'i-lucide-circle-check' },
   partial: { label: 'Parcial', color: 'warning', icon: 'i-lucide-triangle-alert' },
   failed: { label: 'Falhou', color: 'error', icon: 'i-lucide-circle-alert' }
