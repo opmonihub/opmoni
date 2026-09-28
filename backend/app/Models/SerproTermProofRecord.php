@@ -67,7 +67,7 @@ class SerproTermProofRecord extends Model
     /**
      * `updated_at` é `null` porque a coluna não existe, e não porque o model
      * decidiu ignorar um valor: o atributo que o Eloquent tentaria gravar em
-     * toda atualização não tem para que ir, e é essa incompatibilidade que
+     * toda atualização não tem para onde ir, e é essa incompatibilidade que
      * torna visível, no stack trace de qualquer tentativa, que a linha não
      * aceita ser atualizada.
      */

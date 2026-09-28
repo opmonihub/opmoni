@@ -895,8 +895,8 @@ final class SerproTermManager
      * mandou" de "a data que o PHP inventou a partir de uma que não existe":
      * o `warning` de transbordo de campo aparece nele mesmo quando a função
      * não lançou. Checá-lo **depois** da conversão, e não antes, é o que cobre
-     * os dois casos — o `catch` continuaexistindo para a entrada que nem
-     * casa, que é a outra metade.
+     * os dois casos — o `catch` continua existindo para a entrada que nem casa
+     * com o formato, que é a outra metade.
      *
      * O resultado é convertido para UTC aqui, porque a coluna é `timestamp` e
      * a leitura dela é feita como UTC.

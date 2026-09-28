@@ -103,19 +103,52 @@ final class SerproTermSigner
      * nenhum número de dias. Os dois exemplos que ela publica duram muito mais
      * que trinta — o de layout vai de `20220614` a `20221231`, **200 dias**, e o
      * do serviço de envio de `20220808` a `20221231`, **145 dias** — e ambos
-     * terminam no mesmo dia, o que é a forma de uma amostra escrita à mão e
-     * não a de uma regra: se o período fosse uma constante de N dias, os dois
-     * exemplos terminariam em dias diferentes.
+     * terminam no mesmo dia.
      *
-     * A constante fica em 30 por duas razões, e nenhuma delas é "o provedor
-     * pediu". A primeira é que 30 é o único cálculo de período em qualquer
-     * material do provedor, e a segunda é que escolher 145 ou 200 seria
-     * promover uma de duas amostras contraditórias a regra, contra um schema
-     * que não está publicado. **O que resolve isto é o teste de contrato de
-     * `tasks.md` 4.6a**, e ele tem de ser pago antes de qualquer prova ser
-     * gravada: a constante entra em `formatDigest()`, então trocá-la reabre o
-     * gate por si — que é o comportamento correto, e também a razão para não
-     * trocá-la no palpite.
+     * **A inferência de que isso prova é mais fraca do que parece, e fica
+     * escrita aqui para ninguém a usar como se fosse mais forte.** "Os dois
+     * exemplos terminam no mesmo dia, logo o período não é uma constante de N
+     * dias" descarta **uma** hipótese — a constante — e não descarta uma regra
+     * **calculada**. O candidato está à vista: **31 de dezembro é o término
+     * natural de um documento fiscal brasileiro**, e os dois exemplos são de
+     * 2022. "Válido até o fim do exercício" explica dois inícios diferentes com
+     * um fim só, tão bem quanto uma constante explicaria, e seria uma convenção
+     * documentada e não coincidência. O que a inferência sustenta, e é o
+     * bastante, é mais fraco que ela: **nem 145 nem 200 são inferíveis**, porque
+     * sob qualquer regra compatível com as amostras os dois números são artefato
+     * da regra e não a regra.
+     *
+     * E o argumento "30 é o único cálculo de período em qualquer material do
+     * provedor" é verdadeiro e **argumenta a favor do modelo de referência** —
+     * o mesmo artefato de terceiro cujas outras duas esquisitices foram
+     * mantidas porque era a única autoridade, e essa autoridade já foi lida e
+     * não confirma 30. O achado de que os dois exemplos duram muito mais que
+     * trinta é um argumento **contra** 30, e precisa ser pesado contra o
+     * argumento a favor em vez de escondido ao lado dele.
+     *
+     * **O argumento que sobrevive ao contato com o provedor real é a
+     * assimetria do risco, e é este: 30 deixa mais espaço para estar errado.**
+     * Se a regra do provedor for mais longa — fim de exercício, digamos —, um
+     * termo de trinta dias é mais curto que o máximo e provavelmente é
+     * aceito, porque um documento que vence satisfaz um prazo maior. Se a
+     * regra for **mais curta** que trinta, o termo é recusado, e essa falha é
+     * **tarde e recuperável**: a renovação diária continua rodando, a recusa
+     * fica gravada como `recusado` e a ação que a linha registra é re-assinar.
+     * O inverso não vale — um termo longo demais falha de imediato contra o
+     * gateway real, e a recusa é o único estado que este produto não desfaz sem
+     * o escritório entregar o e-CNPJ de novo. Com o gate fechado e o item
+     * 4.6a por pagar, **30 é o valor cujo erro custa menos.**
+     *
+     * **O contra-argumento fica declarado, e é ele que o contrato tem de
+     * fechar.** Trinta dias é prazo curto para uma autorização feita para durar
+     * um exercício, e a documentação do provedor — a única coisa que um leitor
+     * não técnico leria — aponta para o fim do ano. Se o teste de contrato
+     * reprovar 30, o valor muda, e a consequência mecânica é uma constante:
+     * `formatDigest()` reabre o gate por si, que é o comportamento correto.
+     * **O que não se pode é trocar 30 por 145 ou por 200** — seriam duas
+     * amostras contraditórias promovidas a regra, contra um schema que não
+     * está publicado. Por isso **4.6a tem de ser pago antes de qualquer prova
+     * ser gravada.**
      */
     public const PERIODO_VIGENCIA_DAYS = 30;
 

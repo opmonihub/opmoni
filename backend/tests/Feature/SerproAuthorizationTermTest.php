@@ -1198,18 +1198,32 @@ class SerproAuthorizationTermTest extends TestCase
     }
 
     /**
-     * O gate fechado **não** pode virar `500` no upload do e-CNPJ.
+     * A emissão com o gate fechado **não levanta**, e é o caso que fixa a
+     * regressão da fila `sync`.
      *
-     * Com `QUEUE_CONNECTION=sync` — que é o da suíte e pode ser o de uma
-     * instalação — o job de emissão roda dentro da transação do upload, e uma
-     * exceção atravessada transformaria o `200` do certificado em erro. Como o
-     * gate está fechado e estar fechado é o estado correto de quem ainda não
-     * tem teste de contrato, **toda** conta que subisse um e-CNPJ receberia um
-     * erro por causa de uma prova que o produto ainda não tem.
+     * **O que este caso afirma, e é o que ele faz:** o `handle()` do
+     * `IssueSerproTermJob` **volta** quando a emissão é recusada, nenhuma linha
+     * de termo é gravada e nada sai para o provedor. Sem `expectException` de
+     * propósito — a exceção escaping é o defeito, e um `expectException` a
+     * transformaria em afirmação.
      *
-     * O caso verifica os três estados que a pessoa ve: o `200` do upload, o
-     * certificado gravado e o termo **ausente** — que é a leitura que diz ao
-     * escritório que ele precisa entregar o e-CNPJ, e não uma tela de erro.
+     * **E o que ele não afirma, porque é o que a docblock anterior afirmava:**
+     * este caso não toca em upload, não grava certificado e não lê o termo
+     * pela rota. Ele chama o job **direto**, e é por isso que ele não depende
+     * de a fila rodar: o `handle()` é chamado aqui, sem `Queue::fake` e sem
+     * depender do `afterCommit`.
+     *
+     * **A docblock que este caso tinha antes afirmava duas coisas que eram do
+     * caso de baixo** — que ele via "o `200` do upload, o certificado gravado e
+     * o termo ausente", e que sob `QUEUE_CONNECTION=sync` a falha atravessada
+     * transformaria o `200` em erro. Nenhuma das duas era deste caso, e a
+     * segunda é pior do que falsa: naquele caso o job **não roda**, porque o
+     * `afterCommit` fica pendurado na transação que o `RefreshDatabase`
+     * substitui — a medida disso é a docblock do caso de baixo. O `200` vinha
+     * desse fato, o `assertNull(...)` era trivialmente verdadeiro, e o caso
+     * passava com e sem o `try`/`catch`, enquanto a regressão que ele fingia
+     * cobrir derrubaria o upload de e-CNPJ de **toda** conta enquanto o gate
+     * estivesse fechado.
      */
     public function test_a_emissao_com_o_gate_fechado_nao_levanta_e_nao_grava_nada(): void
     {
@@ -1233,14 +1247,16 @@ class SerproAuthorizationTermTest extends TestCase
     /**
      * O gate fechado **não** pode virar `500` no upload do e-CNPJ.
      *
-     * **Este é o complemento do caso de cima, e não a prova dele.** Com
+     * **Este é o complemento do caso `test_a_emissao_com_o_gate_fechado_nao_levanta_e_nao_grava_nada`,
+     * e não a prova dele.** Com
      * `QUEUE_CONNECTION=sync` — o do `phpunit.xml` e um dos possíveis em
      * instalação — o `afterCommit` do `IssueSerproTermJob` é registrado no
      * nível de transação que o `RefreshDatabase` substitui, e o nível 0 não é
      * confirmado dentro do teste: o job **não roda**. O `200` deste caso vem
      * desse fato, e o `assertNull(...)` é trivialmente verdadeiro; remover o
      * `try`/`catch` do job não o quebraria. O que o outro caso prova, chamando
-     * o `handle()` de verdade, é que a emissão recusada sobrevive.
+     * o `handle()` de verdade, é que a emissão recusada sobrevive — e é o que
+     * o mutant test dele mede.
      *
      * O que este caso afirma, e é dele: o e-CNPJ do escritório é gravado e a
      * leitura do termo responde `ausente` com o gate fechado — que é a

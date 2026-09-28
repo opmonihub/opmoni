@@ -12,7 +12,7 @@ return new class extends Migration
      *
      * A unicidade por conta é do **banco**, e não da aplicação, e a diferença
      * importa aqui mais do que em `account_certificates`. Lá duas linhas
-     * correntesproduzem um estado silencioso; aqui duas linhas produziriam
+     * correntes produzem um estado silencioso; aqui duas linhas produziriam
      * duas renovações diárias do mesmo documento com dois tokens em jogo, e
      * nada no produto teria como dizer qual dos dois é o bom — a chamada
      * seguinte levaria o token errado e a recusa apareceria como falha do

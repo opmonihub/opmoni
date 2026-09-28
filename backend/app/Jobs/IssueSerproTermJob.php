@@ -93,8 +93,8 @@ final class IssueSerproTermJob implements ShouldQueue
      * são `DoNotRetry`, as duas chegam aqui, e a linha que o operador lê é
      * idêntica nas duas situações — que é a configuração de uma credencial
      * ausente e a ausência de um teste de contrato indistinguíveis **naquele
-     * registro**. A distinguição existe, e é a linha da credencial de
-     * plataforma, que nenhum alerta aponta hoje.
+     * registro**. A distinção existe, e é a linha da credencial de plataforma,
+     * que nenhum alerta aponta hoje.
      */
     public function handle(SerproTermManager $manager): void
     {
