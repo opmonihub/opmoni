@@ -461,6 +461,32 @@ export function attentionGroups(items: readonly FiscalAttentionItem[]): { reason
 }
 
 /**
+ * O aviso de captura enfileirada, e o que ele pode afirmar.
+ *
+ * O detalhe do documento não tem campo de cobertura: ele sabe o cliente e a
+ * distribuição, e nada sobre se aquele cliente tem certificado utilizável agora.
+ * Por isso o texto do toast é o que a casa tem de honesto aqui — ele afirma
+ * **o que o pedido fez** (entrou na fila, para esta distribuição, deste cliente)
+ * e não **o que o lote vai trazer**. A versão anterior fechava com "os
+ * documentos chegam na tabela quando o lote terminar", e para um cliente cujo
+ * motivo de atenção é `certificate_absent` isso é falso: não há certificado para
+ * autenticar a consulta, o lote termina e nada chega. Um toast que promete o
+ * documento é a mesma mentira do cartão de estado, em outra tela.
+ *
+ * Onde o operador descobre se o cliente era capturável é a lista de atenção do
+ * painel, e é para lá que a frase aponta — em vez de inventar o motivo, que o
+ * detalhe não carrega.
+ */
+export function captureQueuedCopy(source: FiscalSource | null): { title: string, description: string } {
+  const fonte = source === null ? '' : ` de ${fiscalSourceLabel(source)}`
+
+  return {
+    title: 'Captura enfileirada',
+    description: `A consulta${fonte} deste cliente entrou na fila. O que o lote encontrar aparece na tabela quando ele terminar — e a lista de atenção do painel diz o que está impedindo a consulta deste cliente, se algo estiver.`
+  }
+}
+
+/**
  * O que o painel diz quando a lista de atenção está vazia.
  *
  * A frase nomeia o que foi conferido e não o que a carteira está fazendo. Um

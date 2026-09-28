@@ -3,6 +3,7 @@ import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiMessage, apiStatus } from '~/composables/useApiError'
 import type { FiscalCaptureBlocked, FiscalDetail } from '~/types/fiscal'
 import {
+  captureQueuedCopy,
   fiscalEventCount,
   fiscalKindLabel,
   fiscalMissingValue,
@@ -206,9 +207,13 @@ async function triggerCapture() {
   capturing.value = true
   try {
     await capture(target.client.id, target.source)
+    // A frase mora no módulo porque é decisão, não marcação: o `.vue` não é
+    // importável pelo runner de teste, e uma decisão que só existe aqui dentro
+    // fica sem guarda. O que ela não faz é prometer documento — o detalhe não
+    // sabe se este cliente é capturável, e dizer que os documentos chegam seria
+    // afirmar o que o payload não sustenta.
     toast.add({
-      title: 'Captura enfileirada',
-      description: `A consulta de ${fiscalSourceLabel(target.source)} do cliente entrou na fila. Os documentos chegam na tabela quando o lote terminar.`,
+      ...captureQueuedCopy(target.source),
       color: 'success'
     })
     refreshRequest.value += 1
