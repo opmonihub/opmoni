@@ -150,11 +150,11 @@ model look like defects: `addChild('finalidade ')` with a trailing space in the 
 argument `date()` does not take, and a digest computed with exclusive `C14N` while the `Reference`
 declares the inclusive `c14n` of REC 2001.
 
-**The trailing space is corrected, because it cannot be preserved: it cannot exist.** This reverses
-an earlier decision in this document, which kept the space on the reasoning that the model is the
-only authority available. That reasoning does not reach this case, and the measurement is
-unambiguous:
-
+**The trailing space is corrected, because it cannot survive into the signed document.** The space
+does exist in the model's own serialised string, so this is not a claim that XML forbids it in
+principle; it is a claim about what reaches the signature. This reverses an earlier decision in this
+document, which kept the space on the reasoning that the model is the only authority available. That
+reasoning does not reach this case, and the measurement is unambiguous:
 - `DOMDocument::createElement('finalidade ')` throws `DOMException: Invalid Character Error` — the
   name cannot be constructed;
 - the model's own path, `SimpleXMLElement::addChild('finalidade ')`, does **not** throw, and that is
@@ -165,11 +165,11 @@ unambiguous:
   term built that way would be signed into `<finalidade texto="…"/>`;
 - a name with a space is unreachable by XPath, where `local-name()='finalidade '` matches zero nodes.
 
-So the space is dropped as **unrepresentable, not unimportant**, and the element is named
-`finalidade`. The distinction is recorded because the failure it invites is a later reader
-"restoring fidelity to the model" and getting a `DOMException`, or worse a document that silently
-never had the space. The name itself is what remains unverified and gated, like the other two.
-
+So the space is dropped because it does not survive signing, **not because it was judged
+unimportant**, and the element is named `finalidade`. The distinction is recorded because the failure
+it invites is a later reader "restoring fidelity to the model" and getting a `DOMException`, or worse
+a document that silently never had the space. The name itself is what remains unverified and gated,
+like the other two.
 **The other two are kept, and the reasoning for both is the one that was right in the first place:
 the official component is the only authority available.** The provider's "Termo de Autorização"
 documentation returns `500` on every plausible URL and ships no XSD, so there is no second source to
@@ -199,20 +199,46 @@ office has already authorized on the strength of them.
 **The gate has a named predicate, so two implementers cannot read it differently.** The proof is
 recorded in the platform connection row, as `serpro_connections.term_format_sha256` and
 `term_format_proven_at`, and issuance is permitted only when `term_format_proven_at` is not null and
-`term_format_sha256` equals `SerproTermSigner::formatDigest()`. The digest identifies the document
-**format**, not an instance: the canonicalized template with per-office values replaced by fixed
-placeholders, so two offices' terms hash alike. It lives in the database rather than in
-`config/integra-contador.php` for D1's reason — it is a fact about the provider that must survive a
-redeploy — and it is written by an operator after running the contract test, never by application
-code, which is what makes it evidence rather than a flag. The digest is what makes the gate
-**self-invalidating**: editing the document builder changes the digest, the comparison stops matching,
-and issuance re-blocks with nobody deciding to block it. A boolean is the obvious cheaper design and
-it is wrong here, because a boolean cannot be invalidated by a change to the format and would keep
-authorizing a document nobody tested.
+`term_format_sha256` equals `SerproTermSigner::formatDigest()`. It lives in the database rather than
+in `config/integra-contador.php` for D1's reason — it is a fact about the provider that must survive
+a redeploy.
 
-The canonicalization decision carries one more safeguard, because it is the only one of the three
-that can drift without anyone touching the code. The two canonicalizations coincide byte for byte
-exactly when the document carries **no namespace declaration at all**, and
+**The digest's input is the template plus the format constants, and a template-only digest is a gate
+that does not gate.** `SerproTermSigner::formatDigest()` hashes the canonicalized template, with
+every per-office and per-term value replaced by a fixed placeholder, **concatenated with the format
+constants**: the validity period length, the canonicalization algorithm, and the
+invisible-Unicode normalization rule. The constants are in there because measurement says the
+template cannot see them. The period never appears in the document — the model writes only the
+computed date, and that date is a per-term placeholder — so moving 30 days to 60 leaves the template
+bytes identical and returns the same digest. The normalization step is a transformation of the
+document, not a mark on the template, so removing it also leaves the template untouched. Two of the
+three values this gate exists to cover are therefore invisible to a template-only digest, and the
+canonicalization algorithm is a third that happens to be harmless: for a document with no namespace
+declaration the exclusive and inclusive forms are byte-identical, so the constant cannot change the
+output at all. An earlier version of this paragraph claimed that "editing the document builder changes
+the digest" and stopped there; that is true only of edits to the template, and the two edits that
+matter most are not template edits. A recorded proof that survives the edit it should have
+invalidated reads as a guarantee, which is worse than having no gate, so the constants are hashed
+rather than trusted to be visible.
+
+The gate is **self-invalidating** for the same reason: change the template or any of the three
+constants and the digest changes, the comparison stops matching, and issuance re-blocks with nobody
+deciding to block it. A boolean is the obvious cheaper design and it is wrong here, because a
+boolean cannot be invalidated by a change to the format and would keep authorizing a document nobody
+tested.
+
+**The proof is written by one command, and that command is the declared exception to its own rule.**
+The columns are written by no request, no job and no scheduler, and are not `Fillable` on the model
+— the same protection the encrypted columns of that table have. The single sanctioned writer is the
+operator-invoked `serpro:record-term-proof`, which writes both columns together and records an audit
+entry naming the digest it stored. Naming it matters more than it looks: the earlier wording, "no
+automated path writes the columns and an operator records the value", left the requirement with no
+satisfiable mechanism — an artisan command *is* application code, and out-of-band SQL through tinker
+leaves no audit trail, which is the opposite of what a proof is for.
+
+The canonicalization decision carries one more safeguard, because it is the only one of the two
+preserved values that can drift without anyone touching the code. The two canonicalizations coincide
+byte for byte exactly when the document carries **no namespace declaration at all**, and
 `SerproSignerProvenanceTest::test_a_divergencia_de_canonicalizacao_do_modelo_nao_altera_o_digest_do_termo`
 proves it by recomputing the digest the way a validator does. The real trigger is wider than "declares
 a prefix of its own": exclusive and inclusive canonicalization diverge as soon as the document
@@ -372,16 +398,17 @@ that accepts everything is not a fix.
   as a decision with a gate rather than tidying it, name them in the spec so a later reader sees a
   decision and not an oversight, and block term issuance until a contract test proves the provider
   accepts the document. A blocked feature is the recoverable failure; rejected terms are not.
-- **The trailing space in `finalidade ` looked like a third verbatim value and is not one, because
-  XML cannot represent it.** A previous decision in this document kept it, on the reasoning that the
-  model is the only authority — a reasoning that does not survive measurement:
+- **The trailing space in `finalidade ` looked like a third verbatim value and is not one, because it
+  does not survive into the signed document.** A previous decision in this document kept it, on the
+  reasoning that the model is the only authority — a reasoning that does not survive measurement:
   `createElement('finalidade ')` throws a `DOMException`, the model's `SimpleXMLElement` path emits a
   string libxml accepts but whose `nodeName` is `finalidade` without the space, and the
   `loadXML`/`saveXML` the signing routine performs drops the space entirely. → Name the element
-  `finalidade`, record the space as unrepresentable rather than unimportant so a later reader does
-  not "restore fidelity to the model" and break the document, and keep the name itself under the same
-  issuance gate as the other two. A requirement that mandates an unrepresentable value is not a
-  conservative choice; it is a guarantee that no implementation can keep.
+  `finalidade`, record the space as one that does not survive signing rather than as one judged
+  unimportant, so a later reader does not "restore fidelity to the model" and break the document, and
+  keep the name itself under the same issuance gate as the other two. A requirement that mandates a
+  value the signing round trip discards is not a conservative choice; it is a guarantee no
+  implementation can keep.
 - **The signature is proven well-formed, not proven accepted.** A local test can show that the
   envelope is correct and that the signature verifies against the certificate's public key; it
   cannot show that the provider's validator accepts it, that the `304` resubmission returns the
