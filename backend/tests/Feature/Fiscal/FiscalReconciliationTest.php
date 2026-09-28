@@ -481,6 +481,49 @@ class FiscalReconciliationTest extends TestCase
         $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
     }
 
+    public function test_lacuna_esgotada_libera_a_posicao_do_cliente(): void
+    {
+        $maximo = (int) config('fiscal.reconcile_max_attempts');
+        $client = $this->tenant();
+
+        $this->createGap($client, 101, ['attempts' => $maximo]);
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            200,
+            true,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
+        ));
+
+        Log::spy();
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // A posição já gastou as tentativas configuradas, e a spec manda parar
+        // depois delas: parar de consultar não pode virar parar de capturar.
+        // Sem esta saída, um "não há documento nesta posição" dito três vezes
+        // deixaria o cliente preso na mesma janela para sempre, reentregando o
+        // mesmo lote de hora em hora e sem documento nenhum a perder — a
+        // posição é imutável e cresce, então a resposta não muda com o tempo.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(200, $cursor->last_nsu);
+        $this->assertNull($cursor->last_error);
+
+        // A linha continua: é o registro do que o fisco respondeu, e apagar a
+        // posição perderia a única evidência de que houve uma pergunta.
+        $gap = $this->gapOf($client, 101);
+        $this->assertSame($maximo, $gap->attempts);
+
+        // E a liberação é avisada, com frase fixa e sem nada do fisco. O `once`
+        // fica de fora porque a entrada ilegível do mesmo lote também avisa, e
+        // o que importa aqui é o conteúdo da linha da liberação.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.capture.lacuna_esgotada'
+                && $context['nsu'] === 101
+                && $context['client_id'] === $client->getKey()
+                && ! str_contains(serialize($context), 'docZip'));
+    }
+
     public function test_o_teto_de_lacunas_por_lote_vem_da_configuracao(): void
     {
         config(['fiscal.batch_limit' => 2]);

@@ -155,6 +155,16 @@ final class FiscalReconciliation
     }
 
     /**
+     * As lacunas devidas, da posição mais antiga para a mais nova, e no máximo o
+     * teto de consultas pontuais da hora.
+     *
+     * Uma lacuna que já gastou as tentativas configuradas não entra: ela continua
+     * na tabela, com a posição, as tentativas e a última vez que foi tentada, e
+     * é o registro do que o fisco respondeu nessa posição. Ela para de ser
+     * consultada, e parou de segurar a posição do cliente também — essa segunda
+     * parte é decidida pela captura, e é o que impede que um "não há documento
+     * nesta posição" dito três vezes vire um cliente que nunca mais puxa lote.
+     *
      * @return Collection<int, FiscalGap>
      */
     private function dueGaps(Client $client, FiscalSource $source): Collection
