@@ -319,15 +319,19 @@ class FiscalContractsTest extends TestCase
         }
     }
 
-    public function test_the_connector_interface_is_pinned_to_three_operations(): void
+    public function test_the_connector_interface_is_pinned_to_four_operations(): void
     {
         // A interface é o que três tarefas depois escrevem em cima dela, então a
         // forma fica fixada aqui: mudar uma assinatura quebraria o conector de
-        // NF-e, o de CT-e e a captura ao mesmo tempo.
+        // NF-e, o de CT-e e a captura ao mesmo tempo. `fetchByNsu` é a consulta
+        // que fecha buraco por posição, e a reconciliação depende dela para
+        // devolver documento — um retorno não anulável diria que a posição não
+        // tem documento, o que o serviço não promete.
         $expected = [
             'source(): '.FiscalSource::class,
             'pull('.Client::class.', int, int): '.PullResult::class,
             'fetchByChave('.Client::class.', string): ?'.PulledDocument::class,
+            'fetchByNsu('.Client::class.', int): ?'.PulledDocument::class,
         ];
 
         $methods = array_map(

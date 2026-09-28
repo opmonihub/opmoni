@@ -920,6 +920,11 @@ class FiscalCaptureServiceTest extends TestCase
             {
                 return null;
             }
+
+            public function fetchByNsu(Client $client, int $nsu): ?PulledDocument
+            {
+                return null;
+            }
         });
     }
 

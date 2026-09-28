@@ -7,11 +7,13 @@ use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Capture\FiscalLookupBudget;
 use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalException;
+use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
 use App\Services\Fiscal\Support\DfeResponse;
 use App\Services\Fiscal\Support\DfeResponseParser;
@@ -21,6 +23,7 @@ use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use App\Services\Fiscal\Support\FiscalXmlValidator;
 use App\Services\Fiscal\Support\XmlQuery;
 use Carbon\CarbonImmutable;
+use Closure;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Http\Client\ConnectionException;
@@ -35,7 +38,7 @@ use RuntimeException;
  * pronto. Não escreve no banco: `FiscalDocumentWriter` é o único caminho de
  * escrita, e é por isso que painel e tabela são escritos uma vez só.
  *
- * Três regras que este arquivo existe para sustentar:
+ * Quatro regras que este arquivo existe para sustentar:
  *
  * 1. **A requisição não é assinada.** O serviço não assina, o XSD rejeita
  *    assinatura injetada com `cStat 215`, e a autenticação é o certificado A1
@@ -47,6 +50,11 @@ use RuntimeException;
  * 3. **Nada é manifestado.** Este conector consulta e lê. O `210200` é um
  *    ato legal que bloquearia o cancelamento do emissor, e nenhum caminho de
  *    código deste módulo o envia.
+ * 4. **Consulta pontual é a cara cara, e ela tem teto.** As duas consultas de
+ *    uma posição só — por chave e por NSU — reservam uma vaga no limite
+ *    horário do CNPJ antes de qualquer byte na rede, e `pull` não gasta dessa
+ *    cota. O fisco bloqueia quem consome de mais, e o laço de reconciliação é
+ *    justamente o que dispararia o bloqueio se ninguém contasse por ele.
  */
 final class NfeDistributionConnector implements FiscalConnector
 {
@@ -89,6 +97,7 @@ final class NfeDistributionConnector implements FiscalConnector
         private FiscalXmlMetadata $metadata,
         private FiscalXmlValidator $validator,
         private ClientCertificateMaterializer $materializer,
+        private FiscalLookupBudget $lookupBudget,
     ) {}
 
     public function source(): FiscalSource
@@ -177,11 +186,52 @@ final class NfeDistributionConnector implements FiscalConnector
             throw new RuntimeException("Chave de acesso inválida: {$chave}.");
         }
 
+        return $this->pointLookup(
+            $client,
+            fn (ClientCertificate $certificate, string $path): Response => $this->sendByChave($certificate, $path, $client, $chave),
+        );
+    }
+
+    /**
+     * A consulta por posição é a outra porta de entrada para fechar buraco, e a
+     * que o fisco nomeia para isso: ele reconhece um NSU faltante e devolve o
+     * documento daquela posição. A chave de acesso é mais precisa, mas nem
+     * sempre é conhecida — o buraco encontrado por quem reconcilia a sequência
+     * é uma posição, não uma chave.
+     *
+     * É a consulta que o teto horário de consultas pontuais existe para
+     * segurar, e por isso ela reserva a vaga antes de qualquer byte na rede.
+     */
+    public function fetchByNsu(Client $client, int $nsu): ?PulledDocument
+    {
+        return $this->pointLookup(
+            $client,
+            fn (ClientCertificate $certificate, string $path): Response => $this->sendByNsu($certificate, $path, $client, $nsu),
+        );
+    }
+
+    /**
+     * O que as duas consultas pontuais têm em comum, e que por isso mora em um
+     * método só: a reserva do teto **antes** de qualquer chamada, a mesma
+     * leitura da resposta e a mesma regra de `null`.
+     *
+     * A reserva vem antes da requisição e não depois de um resultado: o fisco
+     * conta a consulta que saiu, e a que não saiu por falta de teto é
+     * justamente a que ele não pode contar. Adiar é `FiscalLookupDeferred`, e
+     * não retentativa nem silêncio: quem chama decide o que fazer com a posição
+     * que ficou sem resposta.
+     *
+     * @param  Closure(ClientCertificate, string): Response  $call
+     */
+    private function pointLookup(Client $client, Closure $call): ?PulledDocument
+    {
         $certificate = $this->certificateOf($client);
+
+        $this->reserveLookup($client);
 
         $response = $this->materializer->withCertificate(
             $certificate,
-            fn (string $path): Response => $this->sendByChave($certificate, $path, $client, $chave),
+            fn (string $path): Response => $call($certificate, $path),
         );
 
         $parsed = $this->interpret($response);
@@ -205,13 +255,27 @@ final class NfeDistributionConnector implements FiscalConnector
         }
 
         // Uma resposta de "localizado" que não virou documento é conteúdo que
-        // não deu para ler, e isso não é a mesma coisa que o serviço não ter a
-        // chave. Devolver `null` aqui diria que a posição está vazia, e quem
-        // reconcilia contaria a consulta como feita e seguiria para a próxima,
-        // com o buraco intacto e o limite horário de consultas gasto.
+        // não deu para ler, e isso não é a mesma coisa que o serviço não ter
+        // documento naquela posição. Devolver `null` aqui diria que a posição
+        // está vazia, e quem reconcilia contaria a consulta como feita e
+        // seguiria para a próxima, com o buraco intacto e o limite horário de
+        // consultas gasto.
         $refused = $result->failures[0];
 
         throw new RuntimeException("A resposta do serviço traz uma entrada que não pôde ser lida na posição {$refused->nsu}: {$refused->reason}");
+    }
+
+    /**
+     * Teto estourado não é erro do fisco nem do transporte: é uma decisão
+     * nossa de não consultar agora, e a exceção é nomeada para que a
+     * reconciliação adie a posição sem gastar a tentativa de uma consulta que
+     * nunca saiu.
+     */
+    private function reserveLookup(Client $client): void
+    {
+        if (! $this->lookupBudget->reserve($client)) {
+            throw new FiscalLookupDeferred('Limite horário de consultas pontuais atingido.');
+        }
     }
 
     /**
@@ -314,13 +378,35 @@ final class NfeDistributionConnector implements FiscalConnector
 
         $body = $this->lookupOf($this->envelopeFor($endpoint, $client, 0), $chave);
 
-        // O corpo da consulta por chave é o único que sai de uma reescrita de
-        // outro corpo, e é por isso que ele também passa pelo schema local: a
-        // reescrita é exatamente o que o validador existe para pegar. O XSD
-        // aceita `consChNFe` — é uma das três opções do grupo de consulta do
+        // O corpo da consulta por chave sai de uma reescrita de outro corpo, e
+        // é por isso que ele também passa pelo schema local: a reescrita é
+        // exatamente o que o validador existe para pegar. O XSD aceita
+        // `consChNFe` — é uma das três opções do grupo de consulta do
         // `distDFeInt` — então a checagem cobre a posição do `consChNFe`, a
         // versão, a ordem dos elementos e o CNPJ e a UF do próprio pedido, e
         // não só a chave, que `isValidChave()` já conferiu antes de chegar aqui.
+        $this->validator->validate($this->payloadOf($body), 'distDFeInt');
+
+        return $this->request($endpoint, $certificate, $certificatePath, $body);
+    }
+
+    private function sendByNsu(
+        ClientCertificate $certificate,
+        string $certificatePath,
+        Client $client,
+        int $nsu,
+    ): Response {
+        $endpoint = $this->endpoint();
+
+        // O corpo nasce do `build()` com a posição zero — é o grupo de posição
+        // que a conversão troca, e a conversão recusa um corpo que não tem
+        // exatamente um grupo para trocar.
+        $body = $this->envelope->pointNsu($this->envelopeFor($endpoint, $client, 0), $nsu);
+
+        // Mesmo validador dos outros dois caminhos: o `consNSU` é uma das
+        // opções do grupo de consulta do `distDFeInt`, então a checagem cobre a
+        // posição pedida com quinze dígitos, a versão, a ordem dos elementos e o
+        // CNPJ e a UF do próprio pedido.
         $this->validator->validate($this->payloadOf($body), 'distDFeInt');
 
         return $this->request($endpoint, $certificate, $certificatePath, $body);

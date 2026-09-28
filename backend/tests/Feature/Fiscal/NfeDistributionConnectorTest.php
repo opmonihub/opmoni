@@ -10,6 +10,7 @@ use App\Enums\FiscalStage;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Capture\FiscalLookupBudget;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
@@ -825,6 +826,7 @@ class NfeDistributionConnectorTest extends TestCase
             resolve(FiscalXmlMetadata::class),
             resolve(FiscalXmlValidator::class),
             resolve(ClientCertificateMaterializer::class),
+            resolve(FiscalLookupBudget::class),
         );
     }
 
