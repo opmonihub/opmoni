@@ -56,20 +56,19 @@ export function coverageState(summary: Pick<FiscalSummary, 'coverage' | 'documen
   return summary.documents.total === 0 ? 'no_documents' : 'with_documents'
 }
 
+type FiscalStateWithoutDocuments = Exclude<FiscalCoverageState, 'with_documents'>
+
+type StateCopy = { title: string, description: string, icon: string, tone: FiscalTone }
+
 /**
- * A frase de cada estado sem documento.
+ * A frase de cada estado sem documento, no caso em que não há ninguém em
+ * atenção.
  *
- * Só três, porque `with_documents` não tem o que anunciar — e a separação
- * importa mais do que o texto: a frase de `no_capturable` acusa o certificado e
- * a de `no_documents` não pode acusar nada, porque ali a captura está
- * funcionando e o que falta é o tempo, não a configuração.
+ * Só três, porque `with_documents` não tem o que anunciar. `no_clients` fica
+ * igual nos dois casos — sem cliente não há de onde vir atenção, e a frase não
+ * faz nenhuma afirmação que uma lista pudesse contradizer.
  */
-export const fiscalStateCopy: Record<Exclude<FiscalCoverageState, 'with_documents'>, {
-  title: string
-  description: string
-  icon: string
-  tone: FiscalTone
-}> = {
+const stateCopy: Record<FiscalStateWithoutDocuments, StateCopy> = {
   no_clients: {
     title: 'Nenhum cliente na carteira',
     description: 'Não há cliente cadastrado para consultar. A carteira do escritório começa na tela de clientes.',
@@ -88,6 +87,64 @@ export const fiscalStateCopy: Record<Exclude<FiscalCoverageState, 'with_document
     icon: 'i-lucide-inbox',
     tone: 'neutral'
   }
+}
+
+/**
+ * A frase que **exige** haver atenção para ser verdadeira.
+ *
+ * `no_documents` e só ele. O texto de base diz "a captura está no ar… o
+ * primeiro lote aparece na próxima consulta", e com um cliente bloqueado,
+ * interrompido ou em falha na lista de baixo as duas frases se contradiziam na
+ * mesma tela. E a contradição não era um acidente: o estado continua sendo
+ * `no_documents` justamente porque os últimos cinco motivos descrevem clientes
+ * que **contam como capturáveis**. A frase de agora diz o que é verdade nos
+ * dois casos — ainda não há documento — e manda o porquê para a lista.
+ */
+const stateCopyWithAttention: Partial<Record<FiscalStateWithoutDocuments, StateCopy>> = {
+  no_documents: {
+    title: 'Ainda sem documentos capturados',
+    description: 'Nenhum documento foi capturado até agora, e há clientes na lista de atenção abaixo que impedem a consulta de rodar.',
+    icon: 'i-lucide-inbox',
+    tone: 'warning'
+  }
+}
+
+/**
+ * A frase que **exige** não haver atenção para ser verdadeira — o par espelhado
+ * do mapa acima.
+ *
+ * `no_capturable` mandava o operador à lista de atenção. Com a lista vazia, a
+ * tela mostrava "o motivo de cada um está na lista" em cima de "nenhum cliente
+ * precisa de ação", e cada uma das duas frases é falsa diante da outra. A
+ * derivação do backend torna o par impossível hoje — e é por isso que ele
+ * importa: uma tela que só se sustenta porque o dado não pode chegar é uma
+ * tela esperando o dia em que ele mudar. A frase de agora diz as duas metades
+ * da verdade, inclusive a que é um buraco no dado.
+ */
+const stateCopyWithoutAttention: Partial<Record<FiscalStateWithoutDocuments, StateCopy>> = {
+  no_capturable: {
+    title: 'Nenhum cliente capturável',
+    description: 'Nenhum cliente desta carteira tem certificado A1 utilizável hoje, e a lista de atenção abaixo não traz motivo para nenhum deles.',
+    icon: 'i-lucide-shield-off',
+    tone: 'warning'
+  }
+}
+
+/**
+ * A frase do estado, qualificada por haver ou não atenção.
+ *
+ * A decisão continua com quatro valores — é o contrato que a próxima tela usa e
+ * que o resumo entrega. O que muda é que a frase não pode afirmar nada que o
+ * resto do payload contradiga: a lista de atenção é a outra metade da mesma
+ * tela, e duas frases opostas na mesma página é exatamente a ambiguidade que
+ * este painel existe para não ter.
+ *
+ * `with_documents` não entra: não há o que anunciar quando há o que ler, e a
+ * página não desenha esse cartão.
+ */
+export function fiscalStateCopy(state: FiscalStateWithoutDocuments, hasAttention: boolean): StateCopy {
+  if (hasAttention) return stateCopyWithAttention[state] ?? stateCopy[state]
+  return stateCopyWithoutAttention[state] ?? stateCopy[state]
 }
 
 /**

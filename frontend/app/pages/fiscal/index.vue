@@ -114,7 +114,20 @@ const series = computed(() => fiscalMonthSeries(summaryData.value.documents.over
 const groups = computed(() => attentionGroups(summaryData.value.attention))
 const attentionTotal = computed(() => summaryData.value.attention.length)
 const lastCapture = computed(() => lastCaptureOutcome(summaryData.value.last_capture))
-const stateCopy = computed(() => (state.value === 'with_documents' ? null : fiscalStateCopy[state.value]))
+
+/**
+ * A frase do estado, sabendo se há alguém em atenção.
+ *
+ * O sinal vem do payload que a página já tem — `attention.length` — e não de
+ * uma segunda chamada nem de um cálculo novo. Ele importa porque os dois
+ * cartões são a mesma tela: sem ele, `no_documents` diria que a captura está no
+ * ar em cima de uma lista dizendo que o fisco segurou a consulta, e
+ * `no_capturable` mandaria à lista um cartão de lista vazia.
+ */
+const stateCopy = computed(() => {
+  if (state.value === 'with_documents') return null
+  return fiscalStateCopy(state.value, attentionTotal.value > 0)
+})
 
 /** O tempo que falta da janela, para o único motivo que tem hora de fim. */
 function remaining(item: FiscalAttentionItem): string | null {
