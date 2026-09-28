@@ -1005,6 +1005,10 @@ class FiscalDocumentApiTest extends TestCase
             'model' => FiscalModel::Nfe,
             'kind' => FiscalKind::Document,
             'stage' => FiscalStage::Document,
+            // Um valor com centavo que um float não representa: é o caso que
+            // separa o texto do número, e ele só existe porque este documento
+            // recebe `55.55` e não um `randomFloat`.
+            'valor_total' => 55.55,
             'digval_confere' => true,
             'mascarado' => true,
         ]);
@@ -1042,6 +1046,16 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertTrue($porId[$documento->getKey()]['digval_confere']);
         $this->assertTrue($porId[$documento->getKey()]['mascarado']);
         $this->assertNull($porId[$semPar->getKey()]['digval_confere']);
+
+        // O tipo do valor, e não só a existência da chave. `array_keys` acima
+        // prova que `valor_total` está na linha; o que precisa ser provado é que
+        // ele é **texto**: a coluna é `decimal(14,2)` e o cast `decimal:2` existe
+        // porque um float de JSON não representa `0,01`. A lista de asserções de
+        // chave passaria com um `55.55` numérico sem reclamar de nada, e o
+        // frontend não reclamaria também — `formatFiscalAmount` faz parse do
+        // que chegar. O centavo quebraria em silêncio.
+        $this->assertIsString($porId[$documento->getKey()]['valor_total'], 'o valor total voltou como número, e não como texto decimal');
+        $this->assertSame('55.55', $porId[$documento->getKey()]['valor_total']);
 
         // O caminho interno do XML é o segredo desta tabela. As needles são os
         // valores reais das colunas, porque `assertDontSee` com string vazia
