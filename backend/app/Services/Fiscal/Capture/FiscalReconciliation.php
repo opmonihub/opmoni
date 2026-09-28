@@ -2,13 +2,16 @@
 
 namespace App\Services\Fiscal\Capture;
 
+use App\Enums\FiscalFailure;
 use App\Enums\FiscalSource;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalGap;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
+use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -24,17 +27,20 @@ use RuntimeException;
  *    em 300 é a posição que a captura incremental soube alcançar, e uma
  *    recuperação que a alterasse inventaria avanço — e é a idempotência do
  *    módulo inteiro (o lote gravado antes de a posição andar) que segura o
- *    retrabalho. Por isso nada aqui escreve em `fiscal_cursors`: a única
- *    escrita de documento é a do `FiscalDocumentWriter`.
+ *    retrabalho. A única coluna desta tabela que ela escreve é
+ *    `blocked_until`, e só quando o fisco manda parar o CNPJ; a única escrita
+ *    de documento é a do `FiscalDocumentWriter`.
  * 2. **Uma consulta por buraco, e o teto da hora é o teto da execução.** O
  *    fisco conta consulta pontual no mesmo teto por CNPJ, e uma execução que
  *    estudasse mais buracos do que a hora inteira permite gastaria o orçamento
  *    inteiro e ainda assim tentaria a vaga seguinte, que não existe.
- * 3. **Adiar não é falhar.** Teto estourado e trava do próprio CNPJ ocupada
- *    chegam como `FiscalLookupDeferred`, e nenhum dos dois é resposta do
- *    fisco sobre aquela posição: cobrar uma tentativa seria cobrar de uma
- *    consulta que não saiu, e três dessas encerram a lacuna sem nunca ter
- *    perguntado alguma coisa.
+ * 3. **Adiar não é falhar, e parar não é cobrar.** Teto estourado, trava do
+ *    próprio CNPJ ocupada e consumo indevido são condições diferentes com a
+ *    mesma resposta: nenhuma delas é o fisco dizendo algo sobre aquela posição.
+ *    As duas primeiras param a execução sem gastar tentativa, e o consumo
+ *    indevido faz o mesmo e ainda grava a pausa de uma hora — a única coluna de
+ *    `fiscal_cursors` que esta classe escreve, e ela escreve porque
+ *    `blocked_until` é autoritativa para as duas consultas ao mesmo CNPJ.
  * 4. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
  *    posição pedida: o conector devolve o que o serviço mandou, e um documento
@@ -96,7 +102,7 @@ final class FiscalReconciliation
         // A guarda de certificado não é repetida aqui: ela pertence ao serviço
         // de captura, e quem a aplica no ponto da chamada é o conector, que
         // recusa antes de qualquer byte e antes de gastar a vaga do orçamento.
-        // Uma recusa dessas adia a posição em vez de perdê-la.
+        // Uma recusa dessas para a execução sem gastar a tentativa.
         if ($cursor !== null && ($cursor->isBlocked() || $cursor->historyIsInterrupted())) {
             return 0;
         }
@@ -112,6 +118,35 @@ final class FiscalReconciliation
                 // vez de seguir para a próxima — é o que mantém a contagem de
                 // tentativas honesta: a posição adiada nem chegou a ser
                 // consultada.
+                break;
+            } catch (FiscalException $exception) {
+                if ($exception->failure !== FiscalFailure::Blocked) {
+                    // Indisponibilidade, credencial recusada e recusa do schema
+                    // são falhas que adiantam repetir, e nenhuma delas é a
+                    // resposta "não há documento nesta posição".
+                    $this->reportKeptGap($client, $gap, 'consulta sem resposta: '.class_basename($exception));
+                    $this->postpone($gap);
+
+                    continue;
+                }
+
+                // Consumo indevido, e aqui a parada é do CNPJ inteiro: o fisco
+                // mandou que este cliente não seja consultado por uma hora. As
+                // posições que ainda faltam na fila recebem a mesma resposta que
+                // esta, então continuar seria mandar mais `consNSU` para um CNPJ
+                // que acabou de dizer para deixá-lo em paz — é assim que se
+                // bloqueia por consumo indevido, e o fisco zera a contagem se a
+                // volta vier antes da hora.
+                //
+                // Nenhuma tentativa é cobrada: o `656` não diz nada sobre a
+                // posição, diz que o serviço não responde a este CNPJ agora. E
+                // a pausa é gravada, porque a reconciliação é consulta pontual
+                // ao mesmo serviço que a captura usa e a parada é do CNPJ, não
+                // do caminho — devolvê-la em branco deixaria a captura batting
+                // no mesmo bloqueio na mesma noite.
+                $this->reportBlocked($client, $gap);
+                $this->block($cursor);
+
                 break;
             } catch (RuntimeException $exception) {
                 // Indisponibilidade, credencial recusada e recusa do schema são
@@ -206,9 +241,10 @@ final class FiscalReconciliation
     }
 
     /**
-     * O cursor lido, nunca criado: a reconciliação não escreve em
-     * `fiscal_cursors`, e um cliente sem cursor é um cliente que a captura
-     * ainda não rodou — o que é diferente de um cliente bloqueado.
+     * O cursor lido, nunca criado: um cliente sem cursor é um cliente que a
+     * captura ainda não rodou — o que é diferente de um cliente bloqueado. A
+     * reconciliação não anda com a posição dele, e a única coluna que escreve
+     * aqui é `blocked_until`, quando o fisco manda parar o CNPJ.
      */
     private function cursorOf(Client $client, FiscalSource $source): ?FiscalCursor
     {
@@ -218,6 +254,53 @@ final class FiscalReconciliation
             ->where('client_id', $client->getKey())
             ->where('source', $source)
             ->first();
+    }
+
+    /**
+     * A janela de parada do fisco gravada no cursor, e a única coluna que esta
+     * classe escreve.
+     *
+     * Mesma coluna, mesma semântica e mesma configuração que a captura usa
+     * (`fiscal.block_minutes`): `blocked_until` é autoritativa para as duas
+     * consultas, e um CNPJ que a reconciliation descobriu bloqueado e não
+     * registrou seria um CNPJ que a captura volta a consultar na mesma noite.
+     *
+     * A posição, os instantes de execução e o motivo ficam intocados: a
+     * reconciliação não anda com nada disso, e `last_run_at` aqui seria
+     * mentira — nenhuma captura incremental rodou.
+     *
+     * Cliente sem cursor é cliente que a captura ainda não capturou, e o
+     * caminho que descobre o bloqueio é justamente a reconciliação: sem linha
+     * para escrever, a pausa não sobrevive, e o que sobra é o aviso.
+     */
+    private function block(?FiscalCursor $cursor): void
+    {
+        if ($cursor === null) {
+            return;
+        }
+
+        $cursor->forceFill([
+            'blocked_until' => CarbonImmutable::now()->addMinutes((int) config('fiscal.block_minutes', 60)),
+        ])->save();
+    }
+
+    /**
+     * O consumo indevido que interrompeu a execução, com a posição que estava
+     * em consulta e frase fixa.
+     *
+     * O `xMotivo` do fisco e o `docZip` que ele devolveu não entram: o que o
+     * painel precisa ler é que o CNPJ está bloqueado, e o motivo é o mesmo
+     * rótulo fixo que a captura grava.
+     */
+    private function reportBlocked(Client $client, FiscalGap $gap): void
+    {
+        Log::warning('fiscal.reconciliacao.consulta_bloqueada', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'nsu' => (int) $gap->nsu,
+            'tentativas' => (int) $gap->attempts,
+            'reason' => 'consumo indevido: o serviço mandou parar este cliente por uma hora.',
+        ]);
     }
 
     /**

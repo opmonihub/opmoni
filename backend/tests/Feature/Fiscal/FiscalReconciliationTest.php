@@ -268,11 +268,15 @@ class FiscalReconciliationTest extends TestCase
         // A mensagem é escrita pelo serviço, e ela ecoa o `docZip` que o fisco
         // devolveu. A coluna de tentativas e o log recebem a posição e a classe
         // da exceção; o texto do fisco não entra em lugar nenhum.
+        //
+        // Indisponibilidade, e não consumo indevido: as duas são `FiscalException`
+        // e as duas trazem a mensagem do serviço, mas só esta cobra a tentativa —
+        // o bloqueio para a execução e não diz nada sobre a posição.
         $this->bindConnector(
             $this->noPull(),
             fn (): ?PulledDocument => throw new FiscalException(
-                'Rejeicao: Consumo Indevido. detalhe=<docZip>H4sIAAAAAAAA</docZip>',
-                FiscalFailure::Blocked,
+                'Rejeicao: Servico em Manutencao. detalhe=<docZip>H4sIAAAAAAAA</docZip>',
+                FiscalFailure::Upstream,
             ),
         );
 
@@ -296,6 +300,63 @@ class FiscalReconciliationTest extends TestCase
                 // que ele devolveu.
                 && ! str_contains(serialize($context), 'docZip')
                 && ! str_contains(serialize($context), 'H4sIAAAAAAAA'));
+    }
+
+    public function test_consumo_indevido_para_a_execucao_e_grava_a_pausa_sem_cobrar_tentativa(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+        $this->createGap($client, 102);
+
+        // Consumo indevido na primeira consulta por posição. O fisco mandou parar
+        // este CNPJ por uma hora, e a segunda posição não pode virar mais uma
+        // `consNSU` para um CNPJ que acabou de dizer para deixá-lo em paz.
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => throw new FiscalException(
+                'Rejeicao: Consumo Indevido. detalhe=<docZip>H4sIAAAAAAAA</docZip>',
+                FiscalFailure::Blocked,
+            ),
+        );
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        // Uma consulta só: o fisco não respondeu nada sobre a posição 102, e
+        // insistir nela seria a mesma falta de escuta que bloqueou o CNPJ.
+        $this->assertSame([101], $this->lookups);
+
+        // E nenhuma tentativa foi cobrada. O `656` não é resposta sobre a
+        // posição, é recusa do serviço inteiro, e três noites assim esgotavam a
+        // lacuna de um cliente com A1 perfeitamente bom — a liberação disparava e
+        // a posição era abandonada para sempre sem nunca ter sido perguntada.
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+        $this->assertSame(0, $this->gapOf($client, 102)->attempts);
+
+        // A pausa é gravada, e é a mesma coluna, a mesma janela e a mesma
+        // configuração que a captura usa: `blocked_until` é autoritativa para as
+        // duas consultas, e uma reconciliação que discovers o bloqueio e o
+        // devolvesse em branco deixaria a captura prosseguir para o mesmo fisco
+        // bloqueado. A posição, essa, fica como estava.
+        $cursor = $this->cursorOf($client);
+        $this->assertNotNull($cursor->blocked_until);
+        $this->assertTrue($cursor->blocked_until->between(now()->addMinutes(59), now()->addMinutes(61)));
+        $this->assertSame(100, $cursor->last_nsu);
+        $this->assertNull($cursor->last_run_at);
+        $this->assertNull($cursor->last_seen_at);
+        $this->assertNull($cursor->last_success_at);
+
+        // O aviso é o mesmo motivo pela qual a pausa existe: frase fixa e nome da
+        // classe, nunca o `xMotivo` nem o `docZip` que o fisco devolveu.
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.consulta_bloqueada'
+                && $context['nsu'] === 101
+                && $context['client_id'] === $client->getKey()
+                && str_contains($context['reason'], 'consumo indevido')
+                && ! str_contains(serialize($context), 'docZip'));
     }
 
     public function test_cliente_dentro_da_janela_de_bloqueio_nao_e_consultado(): void
