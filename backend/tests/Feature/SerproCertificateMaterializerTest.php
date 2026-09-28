@@ -127,7 +127,11 @@ class SerproCertificateMaterializerTest extends TestCase
 
             $this->fail('Uma gravação que falhou deveria ser SerproException.');
         } catch (SerproException $exception) {
-            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+            // Indeterminado: ninguém descobriu nada sobre a credencial, e a
+            // pasta pode estar gravável na próxima hora. `DoNotRetry` aqui
+            // diria "recadastre a credencial", que é o conserto errado para um
+            // disco cheio.
+            $this->assertSame(SerproFailure::Indeterminate, $exception->failure);
         }
 
         $this->assertIsString($leaked);

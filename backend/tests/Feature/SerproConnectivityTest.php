@@ -12,13 +12,16 @@ use App\Models\User;
 use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
 use Carbon\Carbon;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
+use Mockery;
 use Tests\TestCase;
 
 class SerproConnectivityTest extends TestCase
@@ -131,11 +134,12 @@ class SerproConnectivityTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_certificado_ausente_ou_vencido_e_certificado_sem_chamar_provedor(): void
+    public function test_certificado_ausente_e_certificado_sem_chamar_provedor(): void
     {
-        // A linha da plataforma sem PFX: nada a autenticar, e nenhuma
-        // autenticação recusada para descobrir isso.
-        $connection = SerproConnection::factory()->create(['certificate_encrypted' => null]);
+        // A linha da plataforma sem PFX: nada a materializar e nada a
+        // autenticar. O conserto é gravar o certificado, e não reler a credencial
+        // no SERPRO.
+        SerproConnection::factory()->create(['certificate_encrypted' => null]);
 
         $this->superAdmin();
         $this->postJson('/api/serpro/connectivity')
@@ -143,10 +147,18 @@ class SerproConnectivityTest extends TestCase
             ->assertJsonPath('data.ok', false)
             ->assertJsonPath('data.failed_element', 'certificado');
 
-        $connection->forceFill(['certificate_valid_until' => now()->subDay()])->save();
+        Http::assertNothingSent();
+    }
 
+    public function test_certificado_vencido_e_certificado_sem_chamar_provedor(): void
+    {
         // Certificado guardado e vencido é o mesmo conserto — trocar o
-        // certificado — e não o mesmo conserto de "credencial recusada".
+        // certificado —, e não "credencial recusada". O PFX aqui é um de verdade:
+        // com a coluna do certificado vazia o veredito viria da ausência dele e
+        // não da validade, e o teste não estaria exercising o que diz exercitar.
+        $this->connection(['certificate_valid_until' => now()->subDay()]);
+
+        $this->superAdmin();
         $this->postJson('/api/serpro/connectivity')
             ->assertOk()
             ->assertJsonPath('data.failed_element', 'certificado');
@@ -179,7 +191,10 @@ class SerproConnectivityTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.ok', false)
             ->assertJsonPath('data.failed_element', 'credencial')
-            ->assertJsonPath('data.message', 'O Integra Contador recusou a credencial configurada.');
+            ->assertJsonPath(
+                'data.message',
+                'A credencial configurada não pôde ser usada; reveja a chave de integração, o segredo e o certificado gravados.',
+            );
 
         Http::assertSentCount(1);
     }
@@ -215,7 +230,7 @@ class SerproConnectivityTest extends TestCase
             ->assertJsonPath('data.failed_element', 'provedor')
             ->assertJsonPath(
                 'data.message',
-                'O serviço de autenticação do Integra Contador está indisponível.',
+                'A verificação não pôde ser concluída: o serviço de autenticação do Integra Contador ou a máquina que o executa não respondeu como esperado.',
             );
 
         Http::assertSentCount(1);
@@ -254,6 +269,61 @@ class SerproConnectivityTest extends TestCase
         // transformaria uma ida ao gateway em exceção, mas a contagem diz o
         // que a exceção sozinha não diria.
         Http::assertSentCount(1);
+    }
+
+    public function test_diretorio_temporario_ingravavel_e_provedor_e_nao_certificado(): void
+    {
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $this->connection();
+
+        // O `put()` devolvendo `false` é a pasta efêmera do PFX recusando a
+        // gravação — o FPM roda como root, o worker como `www-data`, e a imagem
+        // de produção não roda `storage:link`. A credencial está inteira e
+        // ninguém provou nada sobre ela: dizer `certificado` aqui mandaria o
+        // operador trocar um certificado bom.
+        $this->tempDirIngravavel();
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.ok', false)
+            ->assertJsonPath('data.failed_element', 'provedor');
+
+        // A gravação falha antes de qualquer requisição, e nenhuma tentativa
+        // chega ao gateway.
+        Http::assertNothingSent();
+    }
+
+    public function test_segredo_guardado_ilegivel_e_credencial_e_nao_500(): void
+    {
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $connection = $this->connection();
+
+        // Chave de aplicação trocada, coluna truncada, restauração de outro
+        // ambiente: o cifrado guardado não abre. Um `500` é a resposta menos
+        // informativa possível a "por que a minha credencial está quebrada?", e
+        // este endpoint existe para nomear o que quebrou.
+        $connection->forceFill(['consumer_secret_encrypted' => 'cifrado-que-nao-abre'])->save();
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.failed_element', 'credencial')
+            ->assertJsonPath(
+                'data.message',
+                'A credencial configurada não pôde ser usada; reveja a chave de integração, o segredo e o certificado gravados.',
+            );
+
+        // O segredo nunca chegou a ser enviado: a falha é de leitura local.
+        Http::assertNothingSent();
     }
 
     public function test_autenticacao_valida_responde_ok_sem_chamar_o_gateway(): void
@@ -381,6 +451,22 @@ class SerproConnectivityTest extends TestCase
         }
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * Simula a pasta efêmera do PFX sem gravação, pelo mesmo caminho do teste do
+     * materializador: o `put()` que devolve `false` é o que ele trata como
+     * falha, e nenhum teste aqui pode fingir uma permissão de disco diferente da
+     * que a máquina de teste tem.
+     */
+    private function tempDirIngravavel(): void
+    {
+        $mock = Mockery::mock(Filesystem::class);
+        $mock->shouldReceive('path')->andReturnUsing(
+            fn (string $path = ''): string => storage_path('app/private/'.ltrim($path, '/')),
+        );
+        $mock->shouldReceive('put')->andReturn(false);
+        Storage::shouldReceive('disk')->andReturn($mock);
     }
 
     /**
