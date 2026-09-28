@@ -13,6 +13,7 @@ use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -36,13 +37,13 @@ use RuntimeException;
  *    estudasse mais buracos do que a hora inteira permite gastaria o orçamento
  *    inteiro e ainda assim tentaria a vaga seguinte, que não existe.
  * 3. **Adiar não é falhar, e parar não é cobrar.** Teto estourado, trava do
- *    próprio CNPJ ocupada, consulta que não chegou a sair e consumo indevido são
- *    condições diferentes com a mesma resposta: nenhuma delas é o fisco dizendo
- *    algo sobre aquela posição. Todas param a execução sem gastar tentativa — a
- *    tentativa é contada de consulta que **saiu** — e o consumo indevido ainda
- *    grava a pausa de uma hora, a única coluna de `fiscal_cursors` que esta
- *    classe escreve, porque `blocked_until` é autoritativa para as duas
- *    consultas ao mesmo CNPJ.
+ *    próprio CNPJ ocupada, consulta que não chegou a sair, consulta que saiu e
+ *    não voltou e consumo indevido são condições diferentes com a mesma
+ *    resposta: nenhuma delas é o fisco dizendo algo sobre aquela posição. Todas
+ *    param a execução sem gastar tentativa — a tentativa é contada de consulta
+ *    que **saiu e respondeu** — e o consumo indevido ainda grava a pausa de uma
+ *    hora, a única coluna de `fiscal_cursors` que esta classe escreve, porque
+ *    `blocked_until` é autoritativa para as duas consultas ao mesmo CNPJ.
  * 4. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
  *    posição pedida: o conector devolve o que o serviço mandou, e um documento
@@ -159,6 +160,22 @@ final class FiscalReconciliation
                 // aqui é o que impede que uma noite de servidor vire uma
                 // tentativa em cada lacuna, e três tentativas esgotam a lacuna.
                 $this->reportNotSent($client, $gap, $exception);
+
+                break;
+            } catch (ConnectionException $exception) {
+                // Timeout, DNS fora, conexão derrubada. A requisição chegou a
+                // sair, mas nada respondeu, e a diferença para a pre-flight é
+                // essa — por isso a linha de log é outra.
+                //
+                // Não ser `RuntimeException` não pode ser o que decide se a
+                // noite continua: ela desce de `HttpClientException`, que é
+                // `Exception`, e escapava do `run()` para dentro de
+                // `failed_jobs`, deixando as lacunas restantes do cliente sem
+                // nenhuma explicação. É a mesma política de "o que a captura faz
+                // com `Throwable`", sem a gravação em `last_error` — a
+                // reconciliação não escreve a posição, e a tentativa também não
+                // é dela para cobrar.
+                $this->reportNoAnswer($client, $gap, $exception);
 
                 break;
             } catch (RuntimeException $exception) {
@@ -334,6 +351,24 @@ final class FiscalReconciliation
             'nsu' => (int) $gap->nsu,
             'tentativas' => (int) $gap->attempts,
             'reason' => 'consulta não enviada: '.class_basename($exception),
+        ]);
+    }
+
+    /**
+     * A consulta que saiu e não voltou, e a posição que ficou sem resposta.
+     *
+     * Mesmo formato da recusa que impede a saída, e a mesma dispensa da
+     * tentativa: o que entra é a posição, a contagem que já tinha e a classe da
+     * exceção — o `faultstring` do transporte e o host não entram.
+     */
+    private function reportNoAnswer(Client $client, FiscalGap $gap, ConnectionException $exception): void
+    {
+        Log::warning('fiscal.reconciliacao.consulta_sem_resposta', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'nsu' => (int) $gap->nsu,
+            'tentativas' => (int) $gap->attempts,
+            'reason' => 'consulta sem resposta: '.class_basename($exception),
         ]);
     }
 

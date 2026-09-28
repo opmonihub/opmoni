@@ -26,6 +26,7 @@ use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -419,6 +420,43 @@ class FiscalReconciliationTest extends TestCase
         // Defeito de cadastro, não de transporte: a requisição também não saiu,
         // e a posição não tem nada a ver com a sigla que o cliente traz.
         $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_falha_de_transporte_para_a_execucao_sem_cobrar_tentativa(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+        $this->createGap($client, 102);
+
+        // Tempo esgotado ou DNS fora. `ConnectionException` desce de
+        // `HttpClientException`, que é `Exception` e não `RuntimeException`:
+        // ela escapava do `run()`, escapava do job e virava linha em
+        // `failed_jobs` — as lacunas restantes do cliente ficavam sem nenhuma
+        // explicação para ninguém.
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => throw new ConnectionException('Connection timed out.'),
+        );
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+
+        // A mesma regra das demais: nada respondeu sobre a posição, e nada é
+        // cobrado. Uma noite de DNS fora seria três tentativas em cada lacuna da
+        // carteira, e três tentativas liberam o cursor.
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+        $this->assertSame(0, $this->gapOf($client, 102)->attempts);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.consulta_sem_resposta'
+                && $context['nsu'] === 101
+                && $context['tentativas'] === 0
+                && str_contains($context['reason'], 'ConnectionException'));
     }
 
     public function test_cliente_dentro_da_janela_de_bloqueio_nao_e_consultado(): void
