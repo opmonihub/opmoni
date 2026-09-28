@@ -15,7 +15,6 @@ Schedule::command('work:generate-recurrences')->daily();
 Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();
 
 /*
-<<<<<<< HEAD
  * A entrada de CT-e é uma segunda decisão, e ela nasce desligada.
  *
  * ⚠️ LIGAR `fiscal.cte_scheduled` PRESUME O CANÁRIO DE UM CLIENTE AUTORIZADO E
