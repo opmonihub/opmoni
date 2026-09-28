@@ -81,7 +81,7 @@ The system SHALL derive the access token and the authorization token together fr
 - **THEN** the system reports the incomplete response and does not issue a request without it, even though the provider's demonstration environment does not demand it
 
 ### Requirement: Certificado do escritório armazenado com disciplina de segredo
-The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL validate that the supplied password opens a parseable certificate, SHALL store an encrypted copy with the same discipline already applied to client certificates, and SHALL NOT return certificate contents, password, storage path or signing material through the API.
+The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL validate that the supplied password opens a parseable certificate, SHALL store the certificate and its password encrypted in the database following the same encrypt-then-base64 convention already applied to other secrets, SHALL NOT keep a filesystem path for it, and SHALL NOT return certificate contents, password, storage path or signing material through the API. Storage in the database is deliberate: the container filesystem is ephemeral in production, so a file-based office certificate would be lost on every deploy and the office would be asked to authorize again.
 
 #### Scenario: Certificado do escritório válido
 - **WHEN** an authorized member uploads a valid certificate for the current Account
@@ -90,6 +90,14 @@ The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL 
 #### Scenario: Senha incorreta
 - **WHEN** the supplied password cannot unlock the uploaded certificate
 - **THEN** the system responds with a validation error and stores neither a record nor a file
+
+#### Scenario: Certificado sobrevive à recriação do container
+- **WHEN** the office certificate is read by a backend instance that did not store it
+- **THEN** the certificate and its password open from the database, with no dependency on a file existing in that instance
+
+#### Scenario: Nenhum caminho de certificado de escritório é mantido
+- **WHEN** an office certificate is stored
+- **THEN** the record carries no filesystem path, and the response exposes no such field
 
 #### Scenario: Substituição do certificado
 - **WHEN** an authorized member uploads a new valid certificate for an office that already has one

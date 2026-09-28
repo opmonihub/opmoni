@@ -90,11 +90,79 @@ the client vault and the new office vault become thin callers. This is the one p
 this change restructures, and the existing certificate tests must keep passing unchanged — that is
 the guard against the refactor silently altering behaviour, not a formality.
 
-Signing is `Serpro.Componentes.AssinadorDigital.php`, vendored into `app/Support/` and wrapped.
-It is wrapped rather than called directly for two reasons that are not stylistic: it is the single
-place invisible Unicode gets stripped, which the provider warns causes
-`AcessoNegado-AUTENTICAPROCURADOR-013`, and it is the single place that keeps the signed document
-out of logs. `git diff composer.json` staying empty is the test.
+**The office certificate is stored encrypted in the database, not on disk, and this replaces the
+earlier `storage_path` decision for the office vault.** The same discipline as the client vault —
+`openssl_pkcs12_read` to validate, `openssl_x509_parse` for non-secret metadata, the repository's
+encrypt-then-base64 convention (`Crypt::encryptString(base64_encode($bytes))` to write,
+`base64_decode(Crypt::decryptString(...), true)` to read) — but the bytes live in
+`account_certificates.certificate_encrypted`, with the password in `password_encrypted` beside it,
+and **there is no path column**. The reason is deployment, not preference: the Laravel container's
+filesystem is ephemeral in production, so a file-based office certificate would vanish on every
+recreate and the office would find itself re-authorizing after a deploy. `ClientCertificateVault`
+keeps its disk because the client certificates that shipped with it are not being moved, and this
+is the one pre-existing file this change restructures. The upload semantics are unchanged by the
+move: one certificate per Account, replaced or removed, with non-secret metadata retained for audit
+and the encrypted contents deleted.
+
+`APP_KEY` is what encrypts these columns, so **no rotation may ever be performed** — same as
+already true for the platform credential.
+
+**Signing is the provider's own component, isolated rather than vendored verbatim, and its
+provenance is recorded because it is third-party code that must not be trusted on its face.**
+
+| | |
+| --- | --- |
+| Source | [modelo de assinador digital PHP](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/modelos/modelo_de_assinador_digital_php/), published by SERPRO |
+| Artifact | `Serpro.Componentes.AssinadorDigital.php.zip`, version `1.0.0` |
+| SHA-256 of the ZIP | `6e139b207527047e9e66e9228c7c1ea6ea444b1b1a936f5f02f4d936a9e0c72b`, reconfirmed 2026-09-28 before integrating |
+| License | MIT (`LICENSE` inside the ZIP, `Copyright (c) 2022 SERPRO`), itself based on `XMLDSIG for PHP` (<https://github.com/selective-php/xmldsig>) |
+
+The SHA is of the ZIP, not of the script: the ZIP is what the documentation links, and it is what
+carries the license. The provider's own note calls the model a basic example to orient an
+implementation and says complete tests are essential before production — which is why the checksum
+is re-verified on the day of integration and why the difference between the reference model and
+the isolated routine is written down rather than assumed away.
+
+**The distributed model is inspected, never executed, and it does not run as shipped.** The script
+does not pass `php -l`: it aborts with `Parse error: Unclosed '{' on line 25 does not match ')' ...
+line 50`, caused by one parêntese too many in the `vigencia` line. It also defines six global
+functions and reads thirteen `$GLOBALS` entries, prints the signed document and its base64 through
+two `echo`, changes the whole process timezone with `date_default_timezone_set('America/Sao_Paulo')`
+on line 2, reads the PFX from a filesystem path, ignores the return of `openssl_pkcs12_read`, calls
+`date()` with three arguments where PHP accepts two, and throws `XmlSignerException` — a class
+**the ZIP never declares**.
+
+So `app/Support/SerproSigner.php` is an independently written routine that ports **only** the
+XMLDSig sequence of the model's `assinar()`, and it is not a copy of the file. Taken unchanged:
+the `C14N` canonicalization, the SHA-256 digest, `SignedInfo`, `Reference URI=""` with the
+`enveloped-signature` transform followed by `c14n`, RSA-SHA256, `KeyInfo/X509Data/X509Certificate`,
+and the order in which the digest is taken before the `Signature` exists. Rewritten or removed:
+every global and `$GLOBALS` read, the timezone mutation, the path-based PFX loading, both `echo`,
+the unverified `loadXML` and `openssl_pkcs12_read` returns, and the undeclared exception class —
+which is now `SerproException` with `SerproFailure::NotSent`, because a signing failure is local and
+nothing was sent. No global function and no `$GLOBALS` entry from the official file reaches the
+application, and the provenance test asserts that those six function names do not exist.
+
+**The term document builder was not vendored, and that is where the remaining defects live** — the
+parse error, `addChild('finalidade ')` with a trailing space in the element name, and
+`date('Ymd', '+30 days', …)` where a timestamp is required. Building the document is
+`SerproTermSigner`'s job, and correcting the format there is what the auditable change means. Two
+divergences from the official example are therefore **not resolved here, and must be decided before
+any term is ever issued**: the digest is computed with exclusive `C14N` while the `Reference`
+declares the inclusive `c14n` of REC 2001, and the corrected document's `finalidade` element name
+and validity date. Neither was "fixed" to match intuition, because each changes bytes the provider
+validates. What *is* proven locally is that for the term document, which declares no namespace of
+its own, both canonicalizations coincide byte for byte — the test recomputes the digest the way a
+validator does and the values match — and that the signature verifies against the public key
+extracted from the signed certificate itself.
+
+**What remains unproven is the interoperability with the provider's validator, the `304`
+resubmission path, and the roles in the term.** None of those can be settled by a local test, and
+this design document does not claim otherwise: the signature is proven to be well-formed and
+cryptographically valid, not proven to be accepted. A real contract test against the provider is
+required before a term is issued, and until it exists the honest statement is that
+`AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, and the `304` token recovery from
+the `ETag`, are documented behaviour that has not been exercised end to end.
 
 ### D3. The term is per office, stored verbatim, and renewed by re-POST
 
@@ -219,8 +287,27 @@ that accepts everything is not a fix.
   the backend, removal deletes the encrypted contents while keeping non-secret metadata for audit.
   A compromised office certificate is a credential incident and is treated as one.
 - **Signing is a correctness surface, not a formatting one.** A subtly wrong enveloped XMLDSig fails
-  at the provider with an opaque code. → Vendor the provider's own component, normalize in one
-  place, assert the generated document's structure locally instead of discovering it at the gateway.
+  at the provider with an opaque code. → Isolate the provider's own signing sequence with its
+  provenance recorded, normalize in one place, and assert the generated document's structure and
+  its cryptographic validity against the certificate's own public key locally, instead of
+  discovering it at the gateway.
+- **The provider's reference model is third-party code that does not run as shipped, and copying it
+  would import its defects.** The distributed script does not parse, defines globals, prints the
+  signed document, and throws an exception class it never declares. → Inspect it, port only the
+  signing sequence into an independently written routine, keep the origin URL, version, SHA-256 and
+  MIT license in the file, and assert in a test that none of its global functions exist. The
+  corrected document format diverges from the example in two places that the provider validates, so
+  those are recorded as open decisions rather than resolved by judgement.
+- **The signature is proven well-formed, not proven accepted.** A local test can show that the
+  envelope is correct and that the signature verifies against the certificate's public key; it
+  cannot show that the provider's validator accepts it, that the `304` resubmission returns the
+  token, or that the term's roles are the ones the gateway expects. → A real contract test against
+  the provider is a precondition for issuing any term, and this change does not claim that
+  precondition is met.
+- **The office certificate in the database raises the cost of an `APP_KEY` loss.** Database-resident
+  ciphertext is recovered by a database backup, but a wrong key destroys every stored certificate
+  and the platform credential irreversibly. → No key rotation, stated as a constraint on operations
+  and already true for the platform credential; the office's remedy is to re-upload its certificate.
 - **The `autorPedidoDados` role assignment is inferred, not documented in one place.** It comes from
   reading `-019` and `-054` together, and it is the difference between a working integration and a
   wall of `403`s. → Isolated in a single function with its own tests; `-019` and `-054` are

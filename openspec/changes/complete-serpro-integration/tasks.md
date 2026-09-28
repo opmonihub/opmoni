@@ -42,15 +42,17 @@ exposta na resposta.
 
 - [ ] 4.1 Extrair de `ClientCertificateVault` a parte de leitura, cifragem e higiene de senha para uma unidade compartilhada, deixando o vault de cliente como chamador enxuto, e verificar que os testes existentes de certificado de cliente continuam passando sem alteração de comportamento
 
-- [ ] 4.2 Gerar migration, model, factory, policy e resource de `account_certificates`, com caminho por `account_id` e metadados não secretos; verificar com `php artisan migrate --force` e `migrate:rollback` que nada existente quebra
+- [ ] 4.2 Gerar migration, model, factory, policy e resource de `account_certificates`, com `certificate_encrypted` e `password_encrypted` em colunas do banco, metadados não secretos e **nenhuma coluna de caminho** — o disco do container é efêmero em produção; verificar com `php artisan migrate --force` e `migrate:rollback` que nada existente quebra
 
-- [ ] 4.3 Implementar o envio do certificado do escritório reaproveitando a unidade compartilhada, com validação de senha, cifragem e remoção em `finally`; verificar com teste que a senha errada não grava registro nem arquivo
+- [ ] 4.3 Implementar o envio do certificado do escritório reaproveitando a unidade compartilhada, com validação de senha, cifragem em `Crypt::encryptString(base64_encode($bytes))` e remoção em `finally`; verificar com teste que a senha errada não grava registro
 
 - [ ] 4.4 Implementar a substituição e a remoção do certificado, preservando metadados históricos e apagando o conteúdo cifrado; verificar com teste
 
-- [ ] 4.5 Vendorizar o componente de assinatura do SERPRO em `app/Support/`, sem alterar `composer.json`, e verificar com `git diff composer.json` que nenhuma dependência foi adicionada
+- [ ] 4.5 Isolar em `app/Support/` a rotina de assinatura do componente publicado pelo SERPRO, portando apenas a sequência XMLDSig de `assinar()` e registrando no arquivo a URL de origem, a versão, o SHA-256 do ZIP e a licença MIT, sem `include` do arquivo oficial e sem alterar `composer.json`; verificar com `git diff composer.json` que nenhuma dependência foi adicionada e com teste que nenhuma das funções globais do modelo existe na aplicação
 
-- [ ] 4.6 Envolver o componente em um único ponto de entrada que monta o documento de autorização com o escritório como destinatário, normaliza caracteres Unicode invisíveis antes de assinar e devolve o documento assinado; verificar com teste que a estrutura do XML gerado é a esperada
+- [ ] 4.6 Montar o documento de autorização em um único ponto de entrada, com o escritório como destinatário, normalizando caracteres Unicode invisíveis **antes** de assinar e passando os bytes à rotina isolada, que devolve o documento assinado sem reserializar; verificar com teste que a estrutura XMLDSig é a esperada e que a assinatura confere com a chave pública do certificado
+
+- [ ] 4.6a **Depende de teste de contrato real com o provedor, ainda não feito.** Confirmar com o ambiente de demonstração que o termo é aceito, que os papéis do documento são os que o gateway espera, que o nome do elemento `finalidade` e a data de vigência corrigidos são os esperados, e que o reenvio de um termo válido responde `304` com o token no `ETag`. Nenhum teste local prova esses quatro pontos; emitir termo sem eles é emitir termo sem prova de aceitação
 
 - [ ] 4.7 Gerar migration, model, factory, policy e resource de `serpro_authorization_terms`, com o documento assinado guardado verbatim, o token, o vencimento e o estado; verificar com rollback
 
