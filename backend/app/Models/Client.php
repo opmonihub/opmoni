@@ -7,6 +7,7 @@ use App\Enums\ClientPersonType;
 use App\Enums\ClientStatus;
 use App\Enums\DeadlineStatus;
 use App\Enums\TaxRegime;
+use App\Services\BrazilianTaxId;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -100,7 +101,7 @@ class Client extends Model
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
         return $query->when($term, function (Builder $query, string $term): Builder {
-            $normalizedTaxId = preg_replace('/\D+/', '', $term);
+            $normalizedTaxId = resolve(BrazilianTaxId::class)->normalize($term);
 
             return $query->where(function (Builder $query) use ($term, $normalizedTaxId): Builder {
                 $query

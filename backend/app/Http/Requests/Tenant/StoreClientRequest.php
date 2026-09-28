@@ -8,6 +8,7 @@ use App\Enums\TaxRegime;
 use App\Models\Client;
 use App\Rules\ValidCnpj;
 use App\Rules\ValidCpf;
+use App\Services\BrazilianTaxId;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,10 @@ class StoreClientRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'tax_id' => $this->digits($this->input('tax_id')),
+            // Normalizado pelo serviço, não por dígitos: o CNPJ alfanumérico
+            // (RFB IN 2.119/2022) tem letras nos doze primeiros caracteres, e
+            // apagá-las aqui faria a validação enxergar um documento menor.
+            'tax_id' => $this->taxId($this->input('tax_id')),
             'postal_code' => $this->digitsOrNull($this->input('postal_code')),
             'phone' => $this->digitsOrNull($this->input('phone')),
         ]);
@@ -69,13 +73,13 @@ class StoreClientRequest extends FormRequest
         ];
     }
 
-    private function digits(mixed $value): mixed
+    private function taxId(mixed $value): mixed
     {
         if (! is_string($value)) {
             return $value;
         }
 
-        return preg_replace('/\D+/', '', $value);
+        return resolve(BrazilianTaxId::class)->normalize($value);
     }
 
     private function digitsOrNull(mixed $value): mixed

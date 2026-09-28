@@ -2,6 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
+import { canLookupCnpj } from '~/utils/taxId'
 
 defineOptions({ inheritAttrs: false })
 
@@ -119,11 +120,7 @@ const personTypeOptions = [
   { label: 'Pessoa física (CPF)', value: 'individual' }
 ]
 
-const canLookup = computed(() =>
-  state.person_type === 'company'
-  && typeof state.tax_id === 'string'
-  && state.tax_id.replace(/\D/g, '').length === 14
-)
+const canLookup = computed(() => state.person_type === 'company' && canLookupCnpj(state.tax_id))
 
 function resetForm() {
   state.person_type = 'company'
@@ -215,7 +212,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         </UFormField>
 
         <template v-if="step === 1 && state.person_type === 'company'">
-          <UFormField label="CNPJ" name="tax_id" help="Somente números">
+          <UFormField label="CNPJ" name="tax_id" help="Letras e números; consulta automática apenas para CNPJ numérico">
             <UInput v-model="state.tax_id" placeholder="00.000.000/0000-00" class="w-full" />
           </UFormField>
           <UButton

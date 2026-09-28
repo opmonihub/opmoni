@@ -95,6 +95,35 @@ class ClientCrudTest extends TestCase
         $this->assertDatabaseHas('clients', ['account_id' => $account->getKey(), 'tax_id' => '27865757000102']);
     }
 
+    public function test_company_create_aceita_cnpj_alfanumerico_e_recusa_verificador_errado(): void
+    {
+        // O documento gravado vem do payload da Receita, então o fixture devolve o
+        // mesmo CNPJ alfanumérico enviado; a consulta pública ainda é só numérica.
+        $fixture = $this->companyFixture();
+        $fixture['estabelecimento']['cnpj'] = '12ABC345000188';
+        Http::fake(['publica.cnpj.ws/*' => Http::response($fixture)]);
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '12.ABC.345/0001-88',
+            'status' => 'active',
+            'tax_regime' => 'actual_profit',
+        ])->assertCreated()->assertJsonPath('data.tax_id', '12ABC345000188');
+
+        $this->assertDatabaseHas('clients', ['account_id' => $account->getKey(), 'tax_id' => '12ABC345000188']);
+
+        $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000189',
+            'status' => 'active',
+            'tax_regime' => 'actual_profit',
+        ])->assertUnprocessable()->assertJsonValidationErrors('tax_id');
+
+        $this->assertSame(1, $account->clients()->count());
+    }
+
     public function test_company_create_ignores_browser_preview_fields_and_forces_mei_regime(): void
     {
         $fixture = $this->companyFixture();
