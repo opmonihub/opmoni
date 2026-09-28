@@ -10,6 +10,15 @@ return [
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*
+     * Quanto tempo vive a trava de captura por cliente e fonte. Derivado do
+     * --timeout=120 do worker (docker/queue-entrypoint.sh) com margem: a
+     * trava precisa vencer DEPOIS do worker poder matar o job, senão a
+     * execução nova começa enquanto a antiga, lenta mas viva, ainda escreve.
+     * É o teste de feature quem amarra este valor ao --timeout do entrypoint.
+     */
+    'lock_ttl' => (int) env('FISCAL_LOCK_TTL', 180),
+
+    /*
      * Quantos documentos o serviço devolve por lote. O fisco não aceita
      * parametrizar; o valor é informativo e usado nos testes.
      */

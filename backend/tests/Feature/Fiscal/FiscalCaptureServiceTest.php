@@ -21,6 +21,7 @@ use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use Carbon\CarbonImmutable;
 use Closure;
+use Illuminate\Cache\ArrayLock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -658,6 +659,38 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertCount(2, $this->pulls);
     }
 
+    public function test_the_lock_outlives_the_worker_timeout(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->bindConnector(fn (): PullResult => $this->batch([], 0, true));
+
+        // A fachada trocada captura o TTL que o serviço passou e devolve a
+        // trava real do mesmo array store: aquisição, execução e liberação
+        // continuam sendo as de produção — o que muda é que o argumento vira
+        // observável.
+        $store = Cache::store();
+        $seconds = null;
+
+        Cache::shouldReceive('lock')->once()->andReturnUsing(
+            function (string $name, int $ttl) use ($store, &$seconds): ArrayLock {
+                $seconds = $ttl;
+
+                return new ArrayLock($store, $name, $ttl);
+            }
+        );
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // O TTL é o da configuração, e ele precisa vencer DEPOIS do
+        // --timeout do worker: um job morto pelo timeout aos 120 segundos
+        // não pode deixar a trava vencida antes, senão a execução seguinte
+        // começa enquanto a antiga ainda escreve — a consulta paralela que
+        // a NT classifica como uso indevido.
+        $this->assertSame((int) config('fiscal.lock_ttl'), $seconds);
+        $this->assertGreaterThan($this->workerTimeout(), $seconds);
+    }
+
     public function test_a_skipped_capture_leaves_the_cursor_without_a_run(): void
     {
         [$client] = $this->tenant(withCertificate: false);
@@ -818,6 +851,23 @@ class FiscalCaptureServiceTest extends TestCase
     private function lockKey(Client $client): string
     {
         return "fiscal:capture:{$client->getKey()}:".FiscalSource::NfeDistribuicao->value;
+    }
+
+    /**
+     * O --timeout do worker, lido do entrypoint que o define: a leitura é a
+     * âncora do teste. Mudar o valor lá sem re-verificar as janelas daqui
+     * precisa quebrar o teste — as duas pontas são o mesmo deploy. Gêmeo do
+     * helper de mesmo nome no `CaptureFiscalDocumentsCommandTest`.
+     */
+    private function workerTimeout(): int
+    {
+        $entrypoint = file_get_contents(dirname(__DIR__, 3).'/docker/queue-entrypoint.sh');
+
+        if ($entrypoint === false || ! preg_match('/--timeout=(\d+)/', $entrypoint, $matches)) {
+            $this->fail('--timeout do worker não encontrado em docker/queue-entrypoint.sh.');
+        }
+
+        return (int) $matches[1];
     }
 
     private function pulled(int $nsu, string $chave): PulledDocument

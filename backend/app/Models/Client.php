@@ -147,6 +147,24 @@ class Client extends Model
         });
     }
 
+    /**
+     * Cliente capturável: certificado atual dentro da validade e com senha
+     * guardada. É o espelho de consulta do `certificateIsUnusable()` do
+     * serviço de captura, com uma diferença que é propósito e não omissão: a
+     * senha indecifrável (APP_KEY rotacionado) não é distinguível em SQL, e
+     * continua sendo guarda do serviço — o único que pode abrir a coluna.
+     *
+     * A validade é comparada por instante, não por dia como o
+     * `applyDocumentStatus` compara: o serviço refuta com `isPast()`, e um
+     * certificado que venceu hoje às 10h já não é capturável às 11h.
+     */
+    public function scopeCapturable(Builder $query): Builder
+    {
+        return $query->whereHas('currentCertificate', fn (Builder $certificates): Builder => $certificates
+            ->whereNotNull('password_encrypted')
+            ->where('valid_until', '>=', now()));
+    }
+
     public function scopeWithPoaStatus(Builder $query, string|array|null $status): Builder
     {
         return $this->whereAnyOf($query, $this->stringList($status), function (Builder $query, string $status): void {

@@ -9,3 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('work:generate-recurrences')->daily();
+
+// `withoutOverlapping` protege a entrada; a trava por cliente e fonte no
+// serviço de captura é quem serializa o mesmo CNPJ entre workers.
+Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();

@@ -65,6 +65,18 @@ final class FiscalCaptureService
         }
     }
 
+    /**
+     * Se a fonte tem conector nesta versão. A pergunta é de quem despacha em
+     * lote — o comando — porque um job de fonte sem conector rodaria o
+     * conector da outra fonte e arquivaria o documento na fonte errada.
+     * Quando o conector do CT-e existir, é a resolução de conector que
+     * cresce; a pergunta continua a mesma.
+     */
+    public function hasConnectorFor(FiscalSource $source): bool
+    {
+        return $this->connector->source() === $source;
+    }
+
     private function run(Client $client, FiscalSource $source): FiscalCaptureOutcome
     {
         $cursor = $this->cursor($client, $source);
@@ -347,14 +359,16 @@ final class FiscalCaptureService
 
     /**
      * O bloqueio é de dono, não de tempo: só quem tomou a chave pode devolver, e
-     * a janela serve para o worker que morreu no meio do lote. Por isso o TTL é
-     * acima do tempo que a chamada pode levar — expirar antes faria a segunda
-     * execução começar enquanto a primeira ainda escreve, que é exatamente a
-     * consulta paralela que a NT classifica como uso indevido.
+     * a janela serve para o worker que morreu no meio do lote. Por isso o TTL
+     * vem do `fiscal.lock_ttl`, acima do --timeout do worker e não do tempo da
+     * chamada: um job morto pelo timeout aos 120 segundos com trava vencida
+     * antes deixa a execução seguinte começar enquanto a antiga ainda escreve,
+     * que é exatamente a consulta paralela que a NT classifica como uso
+     * indevido.
      */
     private function lockSeconds(): int
     {
-        return (int) config('fiscal.timeout', 60) + 30;
+        return (int) config('fiscal.lock_ttl', 180);
     }
 
     private function lockKey(Client $client, FiscalSource $source): string
