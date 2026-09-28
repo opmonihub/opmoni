@@ -52,10 +52,13 @@ describe('apresentação da conectividade', () => {
   })
 
   it('trata `provedor` como recuperável, e é o que o título de terceiro elemento diz', () => {
-    // `provedor` cobre duas causas que o contrato de quatro não separa: o SERPRO
-    // fora do ar e a máquina que não conseguiu rodar a verificação. Um título que
-    // dissesse "o provedor não respondeu" mandaria o operador olhar a página de
-    // status do SERPRO por causa de um disco cheio aqui.
+    // `provedor` cobre mais de uma causa que o contrato de quatro não separa: o
+    // SERPRO fora do ar, a máquina que não conseguiu rodar a verificação e o
+    // limite de tentativas. Nem o elemento nem a `message` dizem qual foi — a
+    // `message` do backend abre uma disjunção entre serviço e máquina e não a
+    // fecha. Um título que dissesse "o provedor não respondeu" mandaria o
+    // operador olhar a página de status do SERPRO por causa de um disco cheio
+    // aqui.
     const provider = result({ failed_element: 'provedor' })
 
     assert.equal(isProviderFailure(provider), true)

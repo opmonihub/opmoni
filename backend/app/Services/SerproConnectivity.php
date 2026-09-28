@@ -12,8 +12,11 @@ use Illuminate\Contracts\Encryption\DecryptException;
  * O teste exercita só a autenticação: nenhum serviço é chamado, nenhum
  * contribuinte é consultado, nenhuma execução é criada. O que ele devolve são os
  * quatro desfechos que exigem ações diferentes de quem vai operar — nada
- * configurado, certificado que não serve, credencial recusada e nada que
- * respondeu — porque um "falhou" só obriga a procurar em quatro lugares.
+ * configurado, certificado que não serve, credencial recusada e uma verificação
+ * que não se completou — porque um "falhou" só obriga a procurar em quatro
+ * lugares. O quarto não é "não respondeu": um provedor que responde recusando por
+ * limite também deixa a verificação sem conclusão, e o operador precisa de uma
+ * frase que valha para os dois.
  *
  * Cada guarda é atribuída ao que ela de fato conferiu, em vez de ser adivinhada
  * a partir do código de uma exceção de outra camada: foi o `status` zero que
@@ -28,10 +31,15 @@ final class SerproConnectivity
      * do segredo enviado ou caminho de arquivo, e nenhum dos três pertence a
      * esta resposta.
      *
-     * Nenhum deles diz quem recusou. Um desfecho nomeia a ação, não o autor: os
-     * quatro chegam por mais de um caminho, e uma frase que atribuísse a recusa
-     * ao SERPRO mandaria o operador procurar do lado errado justamente no
-     * desfecho em que ele menos tem para onde ir.
+     * Nenhum deles diz quem recusou. Um desfecho nomeia a ação, não o autor: uma
+     * frase que atribuísse a recusa ao SERPRO mandaria o operador procurar do
+     * lado errado justamente no desfecho em que ele menos tem para onde ir. É
+     * por isso que a frase de `provedor` abre uma disjunção e não a fecha: ela
+     * aponta o serviço e a máquina e deixa em aberto qual dos dois foi, e um
+     * limite de tentativas — que também cai em `provedor` — não ganha frase
+     * própria porque a ação, esperar, é a mesma. `configuracao` é o único
+     * elemento com um caminho só, e é justamente o que não tem autor para
+     * nomear: ou a credencial não existe, ou existe incompleta.
      */
     private const MESSAGES = [
         'configuracao' => 'A credencial do Integra Contador não está configurada: faltam a chave de integração ou o segredo.',
@@ -111,13 +119,23 @@ final class SerproConnectivity
      * serviço ocupado: com a frase errada e com o tom de erro que a tela
      * reserva para a credencial.
      *
-     * `Indeterminate` e `Throttled` não chegam hoje, e estão aqui de propósito: o
-     * provedor de token classifica `4xx` como `DoNotRetry` e `5xx` como
-     * `Upstream` sem passar por `classify()`, mas um `504` da autenticação é
-     * `Indeterminate` e um `429` é `Throttled` em qualquer outro caminho, e sem
-     * este braço eles cairiam no `default` e virariam `credencial` — mandando o
-     * operador trocar uma credencial boa à espera de um serviço que não
-     * respondeu.
+     * O que chega hoje, sem corrida: `Upstream` de `5xx`, de `ConnectionException`
+     * e de resposta sem os dois tokens; `Throttled` do `429` que
+     * `SerproTokenProvider::refusal()` nomeia; e `NotSent` da pasta temporária
+     * que não aceitou gravação.
+     *
+     * `Indeterminate` **não** chega, e está no braço por decisão, não por
+     * esquecimento. O único produtor dele é `classify()` sobre a resposta do
+     * *gateway*, e um `504` da autenticação é `Upstream` de propósito: a
+     * autenticação não aplica nada, então não há requisição para reconciliar nem
+     * item para deixar indeterminado. Ele fica aqui para o dia em que algum
+     * caminho passar a classificar a resposta de autenticação — sem este braço,
+     * esse dia entregaria `credencial` sem nenhum teste quebrar.
+     *
+     * Pelo mesmo motivo `Reauthenticate` e `ResubmitTerm` também não chegam: são
+     * códigos de envelope do gateway, e o provedor de token responde em OAuth.
+     * Eles estão no `default` porque, se algum dia chegarem, a ação de corrigir a
+     * credencial é a mesma de `DoNotRetry`.
      *
      * O `NotSent` que chega aqui é o da pasta temporária, e só ele. Os outros dois
      * `NotSent` — segredo ilegível e certificado ilegível — são conferidos antes

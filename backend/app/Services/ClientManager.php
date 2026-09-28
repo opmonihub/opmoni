@@ -93,10 +93,12 @@ class ClientManager
         $filtered = Arr::only($data, $allowed);
 
         if ($client->person_type === ClientPersonType::Company && array_key_exists('tax_regime', $filtered)) {
-            // Live lookup enforces the same rule as create (MEI=>mei,
-            // Simples=>simple_national, else only presumed_profit|actual_profit|other).
-            // Official registration fields are NOT overwritten here, only the regime
-            // is validated/coerced.
+            // Mesma regra do cadastro: MEI=>mei, Simples=>simple_national e, no
+            // resto, só os três que a empresa aceita. A consulta só acontece
+            // quando a fonte pública tem o que responder — documento alfanumérico
+            // não é consultado, e o regime escolhido vale o que vale no
+            // cadastro. Os campos oficiais **não** são sobrescritos aqui: só o
+            // regime é validado ou convertido.
             $payload = $this->lookupCompany($client->tax_id);
             $filtered['tax_regime'] = $payload !== null
                 ? $this->resolveCompanyRegime($payload, $filtered['tax_regime'])

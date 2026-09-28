@@ -42,7 +42,12 @@ export function connectivityIcon(result: SerproConnectivityResult | null): strin
  * SERPRO service being down, the machine being unable to run the check at all,
  * the provider throttling us — so a title reading "the provider did not answer"
  * would send an operator to watch a status page for a disk that filled up.
- * `message` is where the backend says which of them it was.
+ *
+ * `message` does not narrow it down either, and this title is written to match
+ * that: the backend's `provedor` sentence opens a disjunction between the
+ * service and the machine and never closes it, deliberately, and a throttle gets
+ * the same sentence because the action is the same. `message` is the action, not
+ * the diagnosis — so the title is an action too, and says only what is true.
  */
 export function connectivityTitle(result: SerproConnectivityResult | null): string {
   if (result?.ok) return 'Conexão autenticada com sucesso'

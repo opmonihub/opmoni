@@ -390,6 +390,31 @@ class ClientCrudTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * A troca de regime passa pela consulta, e a precedência da consulta é a
+     * mesma dos outros dois call sites: documento com dígito verificador errado
+     * é `422`, não "a fonte não conhece". Antes do atalho, um `PATCH` de regime
+     * sobre uma linha dessas caía em `typedCompanyRegime()` e gravava em
+     * silêncio; agora recusa, que é o que o operador precisa.
+     */
+    public function test_troca_de_regime_com_verificador_errado_e_recusa_o_documento_e_nao_a_fonte(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '12ABC345000189',
+            'tax_regime' => 'presumed_profit',
+        ]);
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $this->patchJson("/api/clients/{$client->id}", ['tax_regime' => 'actual_profit'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'CNPJ inválido.');
+
+        $this->assertSame('presumed_profit', $client->fresh()->tax_regime->value);
+        Http::assertNothingSent();
+    }
+
     public function test_company_create_ignores_browser_preview_fields_and_forces_mei_regime(): void
     {
         $fixture = $this->companyFixture();
