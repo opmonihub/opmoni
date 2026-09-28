@@ -19,6 +19,11 @@ namespace App\Enums;
  * é trabalho pendente do escritório e o outro é um defeito que não se resolve
  * tentando de novo.
  *
+ * `pendente` é o intervalo entre o pedido do escritório e a resposta do
+ * provedor, e `vencido` fecha o ciclo: o documento continua no lugar, mas já
+ * não sustenta chamada nenhuma, e a resposta ao escritório passa a ser agir
+ * em vez de esperar.
+ *
  * Este é o termo do **escritório**, não do cliente: um termo serve a carteira
  * inteira e o que individualiza o acesso é a procuração e-CAC, em
  * `SerproPowerOfAttorneyState`.

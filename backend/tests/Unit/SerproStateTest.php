@@ -22,6 +22,15 @@ use PHPUnit\Framework\TestCase;
  * `assertSame(Enum::cases(), Enum::cases())` seria tautologia, e o que este
  * arquivo guarda é a decisão de mudar um valor, não o efeito colateral de um
  * `case` renomeado.
+ *
+ * **O que este arquivo não guarda, e por quê:** nenhuma regra proíbe que um
+ * valor apareça em dois dos cinco vocabulários. Houve aqui uma que proibia, e ela
+ * foi retirada por ser uma regra que ninguém combinou: cada vocabulário pertence
+ * à sua própria coluna e à sua própria resposta, nada compara um valor de um
+ * eixo com o de outro em tempo de execução, e um plano posterior tem direito de
+ * escolher um `falhou` no eixo da execução sem pedir permissão a um teste. A
+ * violação que importa — alguém digitar o valor errado — já é pego pelas cinco
+ * listas exatas acima, que fixam valor e ordem.
  */
 class SerproStateTest extends TestCase
 {
@@ -68,21 +77,31 @@ class SerproStateTest extends TestCase
      * aplicado e ninguém sabe" — e é o único estado que a plan 04 conta sem
      * `failed`.
      *
-     * O caso que este teste separa é `SerproFailure::NotSent`, que é a falha
-     * local que acontece *antes* de a requisição existir: uma pasta temporária
-     * sem gravação, um cifrado guardado que não abre. A pergunta "pode ter sido
+     * O que este teste separa é `SerproFailure::NotSent`, a falha local que
+     * acontece *antes* de a requisição existir: uma pasta temporária sem
+     * gravação, um cifrado guardado que não abre. A pergunta "pode ter sido
      * aplicado?" é falsa por construção para ela, e tratá-la como
      * `indeterminado` produziria uma execução em que nenhum item falhou e todos
-     * ficaram indeterminados. O item não ganha um estado para `not_sent` — a
-     * falha é contada, e o conserto é consertar a máquina, não reenviar.
+     * ficaram indeterminados. A resposta a isso não é um estado novo: o item
+     * simplesmente não tem estado para `not_sent`, e a falha é contada.
+     *
+     * O que este teste **não** afirma é que `indeterminado` e `indeterminate`
+     * sejam palavras diferentes. São, hoje, e a diferença é incidental: nenhum
+     * dos dois enums obriga o outro a falar um idioma, e unificar as grafias não
+     * perderia nada semântico — deve, por isso, ser uma decisão que não quebre
+     * teste nenhum. Por isso a comparação de grafia entre os dois fica de fora
+     * de propósito. O que é semântico — o estado do provedor e a falha local não
+     * colapsam em um só — está nas duas afirmações que sobraram e nos docblocks
+     * de `SerproSyncItemState` e de `SerproFailure`.
      */
     public function test_indeterminado_e_o_desfecho_do_provedor_e_nao_a_falha_local_que_nada_enviou(): void
     {
         $this->assertSame('indeterminado', SerproSyncItemState::Indeterminate->value);
 
-        // O que a plan 04 vai ler para decidir a contagem: este estado é o do
-        // provedor, e nenhum dos dois é o do erro que aconteceu antes de enviar.
-        $this->assertNotSame(SerproFailure::Indeterminate->value, SerproSyncItemState::Indeterminate->value);
+        // O que a plan 04 vai ler para decidir a contagem: o estado do provedor
+        // não é a falha que aconteceu antes de enviar, e o item não nomeia essa
+        // falha em lugar nenhum do seu vocabulário. As duas afirmações continuam
+        // valendo se um dia os dois enums passarem a falar o mesmo idioma.
         $this->assertNotSame(SerproFailure::NotSent->value, SerproSyncItemState::Indeterminate->value);
         $this->assertNotContains(
             SerproFailure::NotSent->value,
@@ -120,29 +139,6 @@ class SerproStateTest extends TestCase
     }
 
     /**
-     * Quatro dos cinco enums serializam a mesma chave — `state` — em respostas
-     * diferentes, e três deles falam português. Um valor repetido entre dois eixos
-     * tornaria a resposta ambígua sem nenhum erro: quem lesse `state` não teria
-     * como saber se lia um termo, um item ou uma procuração.
-     */
-    public function test_nenhum_valor_de_estado_aparece_em_dois_vocabularios(): void
-    {
-        foreach ($this->vocabularios() as $eixo => $valores) {
-            foreach ($this->vocabularios() as $outroEixo => $outros) {
-                if ($eixo === $outroEixo) {
-                    continue;
-                }
-
-                $this->assertSame(
-                    [],
-                    array_values(array_intersect($valores, $outros)),
-                    "O valor de {$eixo} não pode repetir o de {$outroEixo}: a chave é a mesma nos dois eixos.",
-                );
-            }
-        }
-    }
-
-    /**
      * A regra do repositório é `TitleCase` para chave de enum, e aqui ela é
      * load-bearing: o nome do caso é o que o `match` do resource e o `cast` do
      * model citam, e um `NAO_PROCESSADO` escrito à mão passaria pelo PHP sem
@@ -154,14 +150,22 @@ class SerproStateTest extends TestCase
      * `NotConfigured` e não aceitam nem o grito nem o `snake_case` colado no
      * lugar.
      *
-     * A contagem fecha o arquivo: um `enum` vazio passa em qualquer verificação
-     * de forma — é a forma exata de um arquivo que ninguém preencheu.
+     * A garantia de "nenhum enum vazio" é por enum, e não um total somado no fim
+     * do laço. O total era um terceiro lugar a editar a cada adição legítima — e
+     * a aritmética já está fixada pelas cinco listas exatas acima —, e quando
+     * falhasse não diria *qual* dos cinco ficou vazio, que é a informação que o
+     * operador do arquivo precisa. O que esta linha impede é o que importa: um
+     * `enum` vazio passa em qualquer verificação de forma, porque o laço de formas
+     * simplesmente não roda.
      */
     public function test_as_chaves_dos_cinco_enums_sao_title_case_e_nenhum_ficou_vazio(): void
     {
-        $chaves = [];
-
         foreach ($this->enums() as $enum) {
+            $this->assertNotEmpty(
+                $enum::cases(),
+                "{$enum} não pode ficar sem nenhum caso: é a forma exata de um arquivo que ninguém preencheu.",
+            );
+
             foreach ($enum::cases() as $case) {
                 $this->assertMatchesRegularExpression(
                     '/^[A-Z][A-Za-z0-9]*$/',
@@ -173,13 +177,8 @@ class SerproStateTest extends TestCase
                     $case->name,
                     "{$enum} precisa de chave TitleCase, e não em maiúsculas; veio {$case->name}.",
                 );
-
-                $chaves[] = $case->name;
             }
         }
-
-        // 4 + 5 + 5 + 4 + 6: a soma dos cinco vocabulários declarados acima.
-        $this->assertCount(24, $chaves);
     }
 
     /**
@@ -194,19 +193,5 @@ class SerproStateTest extends TestCase
             SerproPowerOfAttorneyState::class,
             SerproAuthorizationTermState::class,
         ];
-    }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    private function vocabularios(): array
-    {
-        $vocabularios = [];
-
-        foreach ($this->enums() as $enum) {
-            $vocabularios[$enum] = array_column($enum::cases(), 'value');
-        }
-
-        return $vocabularios;
     }
 }

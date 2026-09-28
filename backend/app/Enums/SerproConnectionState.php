@@ -18,12 +18,25 @@ namespace App\Enums;
  * `not_configured` é o estado de quem ainda não cadastrou nada, e ele não é
  * `invalid`: uma credencial recusada se corrige, uma credencial ausente se
  * cadastra. O mesmo raciocínio que separa `configuracao` de `credencial` na
- * resposta de conectividade separa os dois casos aqui: o elemento que falhou e o
- * estado da conexão são eixos diferentes e não se convertem um no outro.
+ * resposta de conectividade separa os dois casos aqui.
  *
- * Este enum é o vocabulário; o `failed_element` de quatro valores da
- * verificação de conectividade é outro, e continua por conta própria porque já é
- * o contrato publicado da resposta (`frontend/app/types/serpro.ts`).
+ * A divisão entre este enum e o `failed_element` de quatro valores da verificação
+ * de conectividade é **semântica** e vai nos dois sentidos: `certificado` é o
+ * material A1 do contratante, que este enum nem modela; `credencial` cabe em
+ * `invalid` e também numa falha local em que nenhum provedor participou, que
+ * aqui não tem nome; `provedor` é uma cesta de ação que junta quatro falhas,
+ * enquanto `unavailable` é o sentido mais estreito de "a credencial não foi
+ * julgada"; e `configuracao` cobre "não existe" e "existe incompleta", que são
+ * `not_configured` e um `configured` quebrado. Nenhum dos quatro vira um caso
+ * deste enum sem perder ou inventar informação.
+ *
+ * A **grafia** dos quatro, essa sim, é um problema aberto e não uma decisão
+ * fechada. Hoje `SerproConnectivity` repete `configuracao`, `certificado`,
+ * `credencial` e `provedor` em vários pontos de expressão, e um enum de mesmo
+ * valor — `SerproFailedElement` — tiraria essa repetição sem custo nenhum de
+ * contrato: o `->value` continuaria sendo a string publicada e a união do cliente
+ * (`frontend/app/types/serpro.ts`) não mudaria. Ele não existe porque está fora do
+ * escopo da tarefa que o definiria, e não porque o caminho esteja fechado.
  */
 enum SerproConnectionState: string
 {

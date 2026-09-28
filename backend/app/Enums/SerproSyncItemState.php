@@ -6,13 +6,15 @@ namespace App\Enums;
  * O estado de um cliente dentro de uma execução, e em português porque é o
  * relatório que o operador lê na carteira.
  *
- * Os cinco casos separam três perguntas que um único "não sincronizou" não
- * separa: `ignorado` aconteceu e foi pulado de propósito, `nao_processado`
- * ainda não aconteceu, e `falhou` aconteceu e deu errado. Juntar os dois
- * primeiros apagaria do relatório exatamente o que a execução entregou — um
- * cliente sem procuração não é uma falha, é uma decisão —, e juntar `falhou` com
- * `indeterminado` mentiria sobre a única pergunta que a sincronização faz ao
- * provedor: "isto foi aplicado?".
+ * Os cinco casos separam o que o relatório não pode misturar: `sincronizado` é o
+ * que o cliente entregou, `ignorado` é o que foi pulado de propósito — um cliente
+ * sem procuração não é uma falha, é uma decisão —, `nao_processado` é o que ainda
+ * não aconteceu, e `falhou` é o que aconteceu e deu errado. Um único "não
+ * sincronizou" não separa nada disso: ele apagaria do relatório justamente o que a
+ * execução entregou, e contaria como erro uma decisão.
+ *
+ * Juntar `falhou` com `indeterminado` mentiria sobre a única pergunta que a
+ * sincronização faz ao provedor: "isto foi aplicado?".
  *
  * `indeterminado` é a única resposta a essa pergunta que o provedor não deu: o
  * tempo limite venceu com o identificador de resposta em mãos, e o item pode

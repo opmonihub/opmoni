@@ -7,7 +7,7 @@ namespace App\Enums;
  * clientes foram transmitidos, de quantos foram pedidos.
  *
  * `partial` é o caso que sustenta o resto. Sem ele, uma execução em que cinco
- * clientes entraram e quatro não ficaram obrigadas a mentir: `completed` apagaria
+ * clientes entraram e quatro não ficou obrigada a mentir: `completed` apagaria
  * os quatro, e `failed` contaria como erro uma execução que fez o que pôde. A
  * execução é um Pedido do operador e a resposta honesta é "cinco de nove", e é
  * por isso que `partial` existe em vez de ser lido como sucesso com ressalva.

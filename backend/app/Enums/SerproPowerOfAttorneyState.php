@@ -12,7 +12,10 @@ namespace App\Enums;
  * ela. Confundir os dois eixos apresentaria como "em dia" um cliente que não
  * pode mais ser consultado.
  *
- * `rejected` é o que o provedor respondeu e `expired` é o que o calendário
+ * `pending` é o intervalo antes da resposta do provedor: a procuração foi
+ * pedida e nada mais, e nesse estado o cliente ainda não é elegível — é o
+ * que impede um relatório de dizer "em dia" para quem só tem um pedido em
+ * andamento. `rejected` é o que o provedor respondeu e `expired` é o que o calendário
  * consomme: os dois levam a não consultar o cliente, mas por consertos
  * diferentes, e o operador precisa saber qual dos dois é. Os valores são em
  * inglês porque este é o vocabulário do serviço do provedor, e não o que o
