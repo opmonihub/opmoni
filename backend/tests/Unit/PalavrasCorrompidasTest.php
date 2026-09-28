@@ -62,10 +62,18 @@ final class PalavrasCorrompidasTest extends TestCase
      * verificação é `str_contains` sobre o radical.
      *
      * Os seis primeiros são radicais de palavra **colada** ou em grafia
-     * anglicada. Os dois últimos são palavra inglesa **isolada** que nenhum
-     * comentário deste repositório usa — a extensão que a medição de "detector
-     * de inglês" permite, e que é onde entra a corrupção da forma que o resto
-     * da lista não alcança.
+     * anglicada. Os dois últimos são radical de palavra inglesa **isolada** que
+     * nenhum comentário deste repositório usa — a extensão que a medição de
+     * "detector de inglês" permite, e que é onde entra a corrupção da forma que
+     * o resto da lista não alcança.
+     *
+     * **O radical, e não a palavra, é o que a última entrada é.** `worr` pega
+     * `worrying` e `wrongly`; a palavra `wrongly` pegaria só uma das duas, e é
+     * exatamente o que aconteceu: a lista nasceu com `wrongly` enquanto a
+     * corrupção viva no arquivo era `worrying`, uma letra a um radical de
+     * distância de um falso positivo que ninguém teria por quê pagar. Radical
+     * curto é a regra que este arquivo já segue desde o caso `perfectly`; aqui
+     * ela é o que impede a entrada de nascer inerte.
      *
      * @var array<string, string>
      */
@@ -77,7 +85,7 @@ final class PalavrasCorrompidasTest extends TestCase
         'dedado' => 'colagem de "de" + "dado"',
         'nãosó' => 'colagem de "não" + "só"',
         'suffer' => 'verbo inglês no lugar de um verbo português, que é a forma da corrupção de review anterior',
-        'wrongly' => 'advérbio inglês no lugar de um advérbio português, mesma forma',
+        'worr' => 'radical de "worrying" e "wrongly": os dois entraram em comentário português, e nenhum dos dois é português',
     ];
 
     /**
@@ -89,6 +97,18 @@ final class PalavrasCorrompidasTest extends TestCase
      * passou a garantir: uma lista escrita à mão é vazia para todo arquivo que
      * ninguém lembrou de acrescentar, e esse é o modo de uma guarda sumir sem
      * que nenhum teste fique vermelho.
+     *
+     * **Dois limites conhecidos, e nenhum dos dois é um defeito.** Um: o
+     * iterador não segue link simbólico, então um diretório de código que
+     * apontasse para fora seria pulado em silêncio e a trava de contagem
+     * absorveria a perda — hoje nenhum diretório das seis raízes é link, e o
+     * `FOLLOW_SYMLINKS` é uma linha se um dia algum for. Dois: ficam de fora
+     * arquivos `.php` fora das seis raízes, que hoje são
+     * `resources/views/welcome.blade.php` — a view de boas-vindas do Laravel,
+     * em inglês, e fora do escopo de comentário em português — e
+     * `public/index.php`, que é o bootstrap do front e não tem comentário. Os dois
+     * são anteriores a este arquivo e inofensivos; o que fica escrito é que
+     * eles são **decididos**, e não esquecidos.
      *
      * @var list<string>
      */
@@ -105,7 +125,7 @@ final class PalavrasCorrompidasTest extends TestCase
      * @var list<array{0: string, 1: string}>
      */
     private const EXCLUIDOS = [
-        ['tests/Unit/PalavrasCorrompidasTest.php', 'cita as palavras corrompidas como exemplo, e as cita justamente para poder pegá-las'],
+        ['tests/Unit/PalavrasCorrompidasTest.php', 'contém os radicais de `SUSPEITAS` escritos por extenso, na docblock de cada motivo e no exemplo de palavra colada — é a única razão de este arquivo existir, e tirá-lo da varredura é o que faria ele passar em silêncio sobre a própria corrupção'],
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
@@ -124,7 +144,7 @@ final class PalavrasCorrompidasTest extends TestCase
         foreach ($arquivos as $relativo) {
             foreach (file($relativo) as $numero => $linha) {
                 // Só comentário: código pode ter identificador em inglês por
-                // decisão, e uma palavra english em `$variable` não é defeito.
+                // decisão, e uma palavra inglesa em `$variable` não é defeito.
                 if (! $this->ehComentario($linha)) {
                     continue;
                 }
@@ -220,7 +240,7 @@ final class PalavrasCorrompidasTest extends TestCase
     }
 
     /**
-     * O radical aparece na linha, sem se worrying com fronteira de palavra.
+     * O radical aparece na linha, sem se preocupar com fronteira de palavra.
      *
      * `str_contains` e não expressão regular com fronteira de palavra, e a
      * mudança é deliberada: o defeito que a lista caça é a **grafia** errada, e

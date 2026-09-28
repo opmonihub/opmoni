@@ -173,7 +173,7 @@ The fact that a contract test proved the provider accepts the term document SHAL
 - **THEN** issuance is blocked again without any operator action, and the recorded proof no longer authorizes the new document
 
 #### Scenario: Mudança nas constantes do formato reabre o gate
-- **WHEN** the validity period, the canonicalization algorithm or the normalization rule changes
+- **WHEN** the validity period, the canonicalization algorithm, the normalization rule or the timezone changes
 - **THEN** `SerproTermSigner::formatDigest()` changes with it, and issuance is blocked again without any operator action, because those constants are part of the hashed input and not only of the document
 
 #### Scenario: Prova gravada pelo comando, a partir da medida e não da afirmação
