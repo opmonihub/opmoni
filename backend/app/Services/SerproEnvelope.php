@@ -75,8 +75,8 @@ final class SerproEnvelope
      * Só o payload e a camada atravessam uma passagem. Qualquer outro JSON
      * trocaria o tipo da string em silêncio, e é a mesma perda de todos os
      * jeitos: `'00000000000000'` viraria `0`, um identificador que existe e que
-     * ninguém reconheceria como documento; `'true'` e `'null'` virariam
-     * booleano e nulo, e um `dados` que o serviço mandou como texto chegaria ao
+     * ninguém reconheceria como documento; `'true'` viraria booleano e `'null'`
+     * viraria nulo, e um `dados` que o serviço mandou como texto chegaria ao
      * consumidor como sinal. Nenhum dos três é payload — payload é o objeto ou a
      * lista que o serviço devolve — e quem vem de outra forma volta como string,
      * que é o que foi mandado.
