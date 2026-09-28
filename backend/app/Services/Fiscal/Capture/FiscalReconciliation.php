@@ -53,7 +53,10 @@ use RuntimeException;
  *    qualquer chave, e um job de reconciliação que já estava na fila é o caminho
  *    que a consultaria com as duas chaves desligadas. `fiscal.cte_enabled`
  *    desligada pula as lacunas de CT-e — sem gastar tentativa, com a noite de
- *    NF-e intacta e uma linha de log dizendo por quê. Ver `isPaused()`.
+ *    NF-e intacta e uma linha de log dizendo por quê. Ver `isPaused()` e
+ *    `FiscalCteGate`, que é a resposta única para as duas perguntas que esta chave
+ *    responde: se a reconciliação consulta, e se a lacuna segura a posição
+ *    (`FiscalCaptureService::recordGaps()`).
  * 5. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
  *    posição pedida: o conector devolve o que o serviço mandou, e um documento
@@ -66,6 +69,7 @@ final class FiscalReconciliation
     public function __construct(
         private readonly FiscalConnectorRegistry $connectors,
         private readonly FiscalDocumentWriter $writer,
+        private readonly FiscalCteGate $gate,
     ) {}
 
     /**
@@ -115,14 +119,15 @@ final class FiscalReconciliation
      * A fonte que a instalação pausou.
      *
      * Só CT-e tem porta, e a porta é a mesma da captura manual
-     * (`fiscal.cte_enabled`): as duas são decisões sobre o mesmo serviço. A
-     * agenda (`fiscal.cte_scheduled`) é a terceira decisão e **não** entra aqui
-     * — ela decide se alguém agenda a captura, e uma agenda ligada sem esta
-     * chave ligada deixa a volta atrás parada, que é o lado seguro.
+     * (`fiscal.cte_enabled`). A agenda (`fiscal.cte_scheduled`) é a terceira
+     * decisão e **não** entra aqui — ela decide se alguém agenda a captura, e é
+     * a agenda ligada com esta chave desligada que produz a pausa. A resposta vem
+     * de `FiscalCteGate`, que é o leitor único dessa pergunta e documenta a
+     * diferença entre as três decisões.
      */
     private function isPaused(FiscalSource $source): bool
     {
-        return $source === FiscalSource::CteDistribuicao && ! config('fiscal.cte_enabled', false);
+        return $this->gate->isPaused($source);
     }
 
     private function recover(Client $client, FiscalSource $source): int

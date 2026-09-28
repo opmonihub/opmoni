@@ -13,6 +13,7 @@ use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
+use App\Models\FiscalGap;
 use App\Services\Fiscal\Capture\FiscalCaptureService;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Contracts\FailedEntry;
@@ -69,6 +70,14 @@ class FiscalCaptureServiceTest extends TestCase
      * @var list<array{client: Client, fromNsu: int, limit: int}>
      */
     private array $pulls = [];
+
+    /**
+     * Os conectores falsos já ligados, por fonte, para que a segunda ligação
+     * não apague a primeira.
+     *
+     * @var array<string, FiscalConnector>
+     */
+    private array $ligados = [];
 
     protected function setUp(): void
     {
@@ -630,6 +639,93 @@ class FiscalCaptureServiceTest extends TestCase
     }
 
     /**
+     * Lacuna com a volta atrás de CT-e pausada: a posição **anda**, a lacuna
+     * fica, e a coluna diz que está pausada.
+     *
+     * O que este teste segura é a perda que crescia com a pausa. A lacuna
+     * pausada não é consultada, então `attempts` não sobe e ela fica `pending`
+     * para sempre; se ela contasse como pendente, `mayAdopt()` não adotaria a
+     * posição, a captura reentregaria o mesmo lote a cada hora e **todo
+     * documento atrás da posição ficaria sem entrar**. Permitir o avanço limita
+     * a perda ao documento daquela posição — o mesmo que o esgotamento perderia —
+     * e a linha continua na tabela para a primeira noite em que a chave voltar.
+     */
+    public function test_a_lacuna_com_a_volta_atras_pausada_nao_prende_a_posicao(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->assertFalse(config('fiscal.cte_enabled'), 'A volta atrás de CT-e começa pausada.');
+
+        $this->bindConnector(
+            fn (): PullResult => $this->batch(
+                [$this->pulled(200, self::CHAVE_200)],
+                lastNsu: 200,
+                mayAdoptPosition: false,
+                failures: [new FailedEntry(nsu: 199, schema: 'procCTe_v4.00.xsd', reason: 'raiz fora do catálogo')],
+            ),
+            FiscalSource::CteDistribuicao,
+        );
+
+        $this->service()->capture($client, FiscalSource::CteDistribuicao);
+
+        $cursor = $this->cursor($client, FiscalSource::CteDistribuicao);
+
+        // A posição adopted: o documento de trás entrou e a lacuna não segura o
+        // cliente preso nela.
+        $this->assertSame(200, $cursor->last_nsu);
+
+        // E a lacuna continua lá, com a posição nomeada e sem tentativa — a prova
+        // de que nada foi perdido e de que a volta atrás a encontra depois.
+        $gap = FiscalGap::query()
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::CteDistribuicao)
+            ->where('nsu', 199)
+            ->first();
+
+        $this->assertNotNull($gap, 'A lacuna precisa sobreviver à pausa, com a posição nomeada.');
+        $this->assertSame(0, $gap->attempts, 'Ninguém consultou a posição, e ninguém é cobrado por isso.');
+        $this->assertNull($gap->next_attempt_at, 'Uma lacuna que ninguém consultou não foi adiada.');
+
+        // O token é o estado, e não uma afirmação sobre o fisco: "lote
+        // incompleto" diria que o serviço entregou algo que não entrou, que é
+        // verdade, e esconderia que a causa é uma decisão de instalação.
+        $this->assertSame('gap_paused', $cursor->last_error);
+    }
+
+    /**
+     * NF-e com a chave de CT-e desligada não muda de comportamento nenhum: a
+     * lacuna segura a posição como sempre segurou, e a coluna continua dizendo
+     * "lote incompleto", que é a afirmação do fisco e não a de uma instalação.
+     */
+    public function test_a_desligagem_de_cte_nao_muda_a_conta_das_lacunas_de_nfe(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->assertFalse(config('fiscal.cte_enabled'));
+
+        $this->bindConnector(
+            fn (): PullResult => $this->batch(
+                [$this->pulled(300, self::CHAVE_200)],
+                lastNsu: 300,
+                mayAdoptPosition: false,
+                failures: [new FailedEntry(nsu: 299, schema: 'resNFe_v1.01.xsd', reason: 'raiz fora do catálogo')],
+            ),
+        );
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $cursor = $this->cursor($client, FiscalSource::NfeDistribuicao);
+
+        // A posição **não** anda: a lacuna de NF-e tem a volta atrás rodando, e
+        // segurar a posição é o que a torna recuperável.
+        $this->assertSame(0, $cursor->last_nsu);
+
+        // A coluna continua sendo a frase do fisco, e o total é o número de
+        // posições que o serviço entregou — uma gravada e uma recusada.
+        $this->assertSame('lote incompleto: 1 de 2 posições não gravadas.', $cursor->last_error);
+    }
+
+    /**
      * Uma execução que não aconteceu não deixa a marca de uma: nem `last_run_at`,
      * que o painel publica como "rodou em", nem a linha do cursor que a captura
      * cria na primeira vez.
@@ -992,7 +1088,7 @@ class FiscalCaptureServiceTest extends TestCase
      *
      * @param  Closure(): PullResult  $answer
      */
-    private function bindConnector(Closure $answer): void
+    private function bindConnector(Closure $answer, FiscalSource $source = FiscalSource::NfeDistribuicao): void
     {
         $pull = function (Client $client, int $fromNsu, int $limit) use ($answer): PullResult {
             $this->pulls[] = ['client' => $client, 'fromNsu' => $fromNsu, 'limit' => $limit];
@@ -1000,14 +1096,19 @@ class FiscalCaptureServiceTest extends TestCase
             return $answer();
         };
 
-        $fake = new class($pull) implements FiscalConnector
+        $fake = new class($pull, $source) implements FiscalConnector
         {
-            /** @param  Closure(Client, int, int): PullResult  $pull */
-            public function __construct(private readonly Closure $pull) {}
+            /**
+             * @param  Closure(Client, int, int): PullResult  $pull
+             */
+            public function __construct(
+                private readonly Closure $pull,
+                private readonly FiscalSource $source,
+            ) {}
 
             public function source(): FiscalSource
             {
-                return FiscalSource::NfeDistribuicao;
+                return $this->source;
             }
 
             public function pull(Client $client, int $fromNsu, int $limit): PullResult
@@ -1029,9 +1130,13 @@ class FiscalCaptureServiceTest extends TestCase
         // O dublê entra **pelo registro**, e não por uma ligação da interface
         // `FiscalConnector`: quem fala com o fisco resolve o conector pela fonte,
         // e é o registro que é a fonte dessa resolução.
-        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
-            FiscalSource::NfeDistribuicao->value => $fake,
-        ]));
+        //
+        // O registro é remontado a cada ligação e carrega os dublês anteriores:
+        // um teste que precisa das duas fontes na mesma execução liga as duas, e
+        // o segundo dublê não pode apagar o primeiro.
+        $this->ligados[$source->value] = $fake;
+
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry($this->ligados));
     }
 
     /**

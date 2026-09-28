@@ -162,14 +162,19 @@ class FiscalCoverage
      *    abriu. Só ela sabe; aqui a coluna é conferida, não aberta.
      * 5. `gap_abandoned` — posição que o fisco entregou e ninguém mais vai
      *    buscar, então o documento não existe e nenhuma execução o traz.
-     * 6. `history_interrupted` — o fisco não retroage, e continuar capturando
+     * 6. `gap_paused` — a volta atrás da fonte está desligada por instalação, e
+     *    a posição foi liberada para o cliente não ficar preso nela. Nada está
+     *    perdido ainda: a lacuna continua registrada e é buscada na primeira
+     *    noite em que a chave voltar. É uma decisão nossa, não do fisco, e é por
+     *    isso que não pode sair como `capture_failed`.
+     * 7. `history_interrupted` — o fisco não retroage, e continuar capturando
      *    não devolve o período.
-     * 7. `capture_blocked` — parada que ainda não passou e por isso tem hora
+     * 8. `capture_blocked` — parada que ainda não passou e por isso tem hora
      *    para terminar.
-     * 8. `continuity_warning` — a faixa entre o alerta e a interrupção: ainda
+     * 9. `continuity_warning` — a faixa entre o alerta e a interrupção: ainda
      *    recuperável, ainda quieta demais.
-     * 9. `capture_failed` — qualquer outra mensagem, que a próxima execução
-     *    tenta de novo.
+     * 10. `capture_failed` — qualquer outra mensagem, que a próxima execução
+     *     tenta de novo.
      *
      * @param  list<FiscalCursor>  $cursores
      */
@@ -237,6 +242,10 @@ class FiscalCoverage
             return 'gap_abandoned';
         }
 
+        if ($this->algum($cursores, fn (FiscalCursor $c): bool => $c->last_error === 'gap_paused')) {
+            return 'gap_paused';
+        }
+
         if ($this->algum($cursores, fn (FiscalCursor $c): bool => $c->historyIsInterrupted())) {
             return 'history_interrupted';
         }
@@ -251,8 +260,8 @@ class FiscalCoverage
 
         // Os tokens que sobram aqui são reconhecidos e não viram
         // `capture_failed`: `blocked_consumption` cuja janela já passou é
-        // história, e `certificate_reupload` e `gap_abandoned` já ganharam nome
-        // acima.
+        // história, e `certificate_reupload`, `gap_abandoned` e `gap_paused` já
+        // ganharam nome acima.
         if ($this->algum($cursores, fn (FiscalCursor $c): bool => ! in_array(
             $c->last_error,
             [null, '', 'blocked_consumption'],

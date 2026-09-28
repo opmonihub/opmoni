@@ -296,13 +296,17 @@ export function fiscalSourceLabel(source: FiscalSource | null): string {
 }
 
 /**
- * Os nove motivos, cada um com a ação que o operador tem pela frente.
+ * Os dez motivos, cada um com a ação que o operador tem pela frente.
  *
- * A lista é o que `FiscalAttentionReason` promete: nove, e cada uma nomeando um
+ * A lista é o que `FiscalAttentionReason` promete: dez, e cada uma nomeando um
  * passo diferente. Os quatro primeiros tiram o cliente da cobertura porque sem
- * A1 não existe consulta; os cinco últimos descrevem a operação de um cliente
+ * A1 não existe consulta; os seis últimos descrevem a operação de um cliente
  * que conta como capturável — por isso o rótulo de `capture_blocked` não fala de
  * certificado, e o conserto que o painel ofereceria ali não resolveria nada.
+ *
+ * `gap_abandoned` e `gap_paused` são o par que mais importa depois de
+ * `history_interrupted`: os dois descrevem uma posição que a volta atrás não
+ * buscou, e só um deles a perdeu.
  *
  * `history_interrupted` e `continuity_warning` são o par que mais importa: as
  * duas descrevem uma captura parada, e só uma delas se resolve voltando a
@@ -340,6 +344,17 @@ const attentionCopy: Record<FiscalAttentionReason, AttentionCopy> = {
     description: 'O fisco entregou uma posição e a busca dela acabou. O documento daquela posição não existe aqui e nenhuma captura futura o traz: ele está perdido e o cliente precisa ser avisado.',
     icon: 'i-lucide-file-search',
     tone: 'error'
+  },
+  gap_paused: {
+    label: 'Busca pausada pela instalação',
+    // O oposto de `gap_abandoned`, e a diferença é o que o rótulo tem de dizer:
+    // aqui a posição foi liberada, a lacuna continua registrada e o documento
+    // volta na primeira noite em que a chave for ligada. O que está parado é
+    // uma decisão da instalação, e o conserto é dela — não uma posição perdida e
+    // não um fisco que parou.
+    description: 'Uma posição do fisco ficou sem ser buscada porque a volta atrás desta fonte está desligada nesta instalação. Nada está perdido: o cliente continua capturando, a posição está registrada e volta a ser buscada assim que a chave for ligada.',
+    icon: 'i-lucide-pause-circle',
+    tone: 'warning'
   },
   history_interrupted: {
     label: 'Histórico interrompido',
@@ -391,6 +406,7 @@ const attentionOrder: readonly FiscalAttentionReason[] = [
   'certificate_password_missing',
   'certificate_reupload',
   'gap_abandoned',
+  'gap_paused',
   'history_interrupted',
   'capture_blocked',
   'continuity_warning',

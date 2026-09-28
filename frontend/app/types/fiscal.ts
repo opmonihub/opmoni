@@ -34,12 +34,14 @@ export type FiscalSource = 'nfe_distribuicao' | 'cte_distribuicao'
 /**
  * Por que este cliente precisa de alguém.
  *
- * A lista é fechada de propósito. São nove, e cada uma nomeia um próximo passo
+ * A lista é fechada de propósito. São dez, e cada uma nomeia um próximo passo
  * diferente, não uma nota de gravidade: um A1 vencido se resolve reenviando o
- * certificado, uma consulta parada pelo fisco se resolve esperando, e uma falha
- * qualquer se resolve sozinha na próxima execução. Um décimo motivo aparecer
- * aqui é o sinal de que o painel precisa de um rótulo novo, e não de que o
- * rótulo existente serve para tudo.
+ * certificado, uma consulta parada pelo fisco se resolve esperando, uma falha
+ * qualquer se resolve sozinha na próxima execução, e uma lacuna com a volta
+ * atrás desligada se resolve ligando a chave — que é uma decisão de instalação e
+ * não uma posição perdida. Um décimo primeiro motivo aparecer aqui é o sinal de
+ * que o painel precisa de um rótulo novo, e não de que o rótulo existente
+ * serve para tudo.
  *
  * A ordem em que o backend avalia é a mesma, do que impede a consulta de existir
  * ao que se resolve sozinho — está em `FiscalCoverage::motivo()`.
@@ -50,6 +52,7 @@ export type FiscalAttentionReason
     | 'certificate_password_missing'
     | 'certificate_reupload'
     | 'gap_abandoned'
+    | 'gap_paused'
     | 'history_interrupted'
     | 'capture_blocked'
     | 'continuity_warning'

@@ -308,6 +308,58 @@ class FiscalReconciliationTest extends TestCase
         $this->assertSame(1, FiscalDocument::count());
     }
 
+    /**
+     * A lacuna deixada por uma noite de pausa é buscada na primeira noite em que
+     * a chave volta, e ela é buscada **mesmo estando abaixo do topo**.
+     *
+     * A posição do cursor já passou de 100 quando a volta atrás é religada, e é
+     * por isso que este teste importa: ele confirma, e não assume, o mecanismo de
+     * que o desenho depende. `dueGaps()` filtra por fonte, tentativas e prazo — e
+     * não pelo cursor —, e `fetchByNsu` é uma consulta por posição que não depende
+     * de onde a captura parou. Sem essas duas propriedades, deixar a lacuna
+     * pausada não prender a posição seria perda definitiva em vez de perda
+     * adiada, e a troca seria pior nos dois sentidos.
+     */
+    public function test_a_lacuna_pausada_e_consultada_quando_a_chave_volta_mesmo_abaixo_do_topo(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 200);
+        $this->createGap($client, 100, ['source' => FiscalSource::CteDistribuicao]);
+
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => $this->pulled(100, self::CHAVE_100, FiscalModel::Cte),
+            FiscalSource::CteDistribuicao,
+        );
+
+        $this->assertFalse(config('fiscal.cte_enabled'), 'A volta atrás de CT-e começa pausada.');
+
+        // A lacuna continua exatamente como a pausa a deixou: sem tentativa e sem
+        // prazo, que é o que a torna devida assim que a chave voltar.
+        $pausada = $this->gapOf($client, 100, FiscalSource::CteDistribuicao);
+        $this->assertSame(0, $pausada->attempts);
+        $this->assertNull($pausada->next_attempt_at);
+
+        $this->reconciliation()->run($client, FiscalSource::CteDistribuicao);
+
+        $this->assertSame([], $this->lookups, 'A volta atrás pausada não consulta posição nenhuma.');
+
+        config(['fiscal.cte_enabled' => true]);
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::CteDistribuicao));
+
+        $this->assertSame([100], $this->lookups, 'A lacuna abaixo do topo é consultada assim que a chave volta.');
+        $this->assertDatabaseMissing('fiscal_gaps', [
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::CteDistribuicao->value,
+            'nsu' => 100,
+        ]);
+        $this->assertSame(1, FiscalDocument::query()
+            ->where('source', FiscalSource::CteDistribuicao)
+            ->where('nsu', 100)
+            ->count());
+    }
+
     public function test_consulta_adiada_nao_cobra_tentativa_nem_encerra_a_lacuna(): void
     {
         $client = $this->tenant();

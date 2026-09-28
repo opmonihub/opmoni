@@ -56,6 +56,7 @@ final class FiscalCaptureService
     public function __construct(
         private readonly FiscalConnectorRegistry $connectors,
         private readonly FiscalDocumentWriter $writer,
+        private readonly FiscalCteGate $gate,
     ) {}
 
     public function capture(Client $client, FiscalSource $source): FiscalCaptureOutcome
@@ -182,11 +183,11 @@ final class FiscalCaptureService
      * local não para o fisco de gerar posições, e fingir que parou produziria um
      * histórico interrompido que ninguém teve.
      *
-     * @param  array{pending: int, spent: int}  $gaps  as duas contas da reconciliação, que viajam
-     *                                                 juntas de propósito: são dois inteiros que
-     *                                                 mudam de significado juntos, e separadas em
-     *                                                 dois argumentos uma troca de ordem passaria
-     *                                                 silenciosa
+     * @param  array{pending: int, spent: int, paused: int}  $gaps  as três contas da reconciliação, que viajam
+     *                                                              juntas de propósito: são inteiros que mudam
+     *                                                              de significado juntos, e separados em
+     *                                                              três argumentos uma troca de ordem
+     *                                                              passaria silenciosa
      */
     private function persistAnswer(FiscalCursor $cursor, PullResult $result, array $gaps, int $from): void
     {
@@ -200,12 +201,18 @@ final class FiscalCaptureService
             // Três estados de atenção, uma coluna. O lote incompleto vem
             // primeiro porque ele descreve um buraco que alguém precisa
             // reconciliar; depois, o consumo indevido — que para o fisco e
-            // também é problema do cliente — e a lacuna que esgotou as
-            // tentativas, que é o abandono de uma posição. Os três são palavras
-            // fixas, pelo mesmo motivo de `certificate_reupload` ser uma e não
-            // uma frase: a coluna é lida por painel e classificada por token, e
-            // o texto do fisco nunca entra. O esfriamento de `137` não marca
-            // nada: ele se repete a cada consulta de um cliente saudável.
+            // também é problema do cliente —, a lacuna que esgotou as
+            // tentativas, que é o abandono de uma posição, e a lacuna com a
+            // volta atrás pausada, que é uma decisão de instalação e não uma
+            // posição perdida. Os quatro são palavras fixas, pelo mesmo motivo
+            // de `certificate_reupload` ser uma e não uma frase: a coluna é
+            // lida por painel e classificada por token, e o texto do fisco
+            // nunca entra. O esfriamento de `137` não marca nada: ele se
+            // repete a cada consulta de um cliente saudável.
+            //
+            // A ordem entre os dois últimos é o que impede que o painel diga
+            // "pausado" para um cliente que já perdeu a posição: `gap_abandoned`
+            // é o que não volta, e a pausa ainda volta.
             'last_error' => $pending > 0
                 ? $this->incompleteNote($pending, $positions)
                 : $this->stateNote($result, $gaps),
@@ -251,7 +258,13 @@ final class FiscalCaptureService
      * conquistado. A liberação não alcança esse caso, que é a única coisa que a
      * recusa do conector diz quando não há entrada nenhuma para mirar.
      *
-     * @param  array{pending: int, spent: int}  $gaps
+     * E a liberação alcança a lacuna **pausada**, que não é um terceiro tipo de
+     * lacuna e sim a mesma lacuna com a volta atrás desligada por instalação:
+     * ninguém a vai buscar, e segurar a posição por causa dela faria a captura
+     * repetir o mesmo lote indefinidamente. Ver `recordGaps()`, que é onde a
+     * distinção é feita, e `FiscalCteGate`, que é a resposta.
+     *
+     * @param  array{pending: int, spent: int, paused: int}  $gaps
      */
     private function mayAdopt(PullResult $result, array $gaps): bool
     {
@@ -263,7 +276,8 @@ final class FiscalCaptureService
             return true;
         }
 
-        return $result->failures !== [] && $gaps['spent'] > 0;
+        return $result->failures !== []
+            && ($gaps['spent'] > 0 || $gaps['paused'] > 0);
     }
 
     /**
@@ -343,6 +357,14 @@ final class FiscalCaptureService
      * não são documento nenhum, e cada uma delas custaria uma consulta por hora
      * ao CNPJ só para o fisco responder "não há documento nesta posição".
      *
+     * **A lacuna é gravada nos três casos e contada em três caixas** — pendente,
+     * esgotada e pausada —, e a distinção é sobre quem vai buscá-la. A caixa
+     * `paused` existe porque a volta atrás de CT-e pode estar desligada por
+     * instalação (`FiscalCteGate`): a lacuna é a mesma de sempre, só que
+     * `attempts` não sobe, porque ninguém a consulta. Contá-la como pendente faria
+     * a posição ficar presa nela para sempre, e a perda cresceria com a pausa —
+     * todo documento atrás da posição ficaria sem entrar. Ver `recordGaps()`.
+     *
      * E não é risco teórico. O `design.md` do change nomeia "outro sistema
      * captura o mesmo CNPJ primeiro" como a principal causa de buraco e diz
      * que **não há defesa técnica, só operacional** — a entrega de cada posição
@@ -375,16 +397,17 @@ final class FiscalCaptureService
      * limitado por aquilo que o serviço entregou.
      *
      * @param  list<int>  $nsus  posições que o serviço entregou e que não viraram documento
-     * @return array{pending: int, spent: int} quantas seguem pendentes de
-     *                                         reconciliação e quantas são lacunas que já
-     *                                         esgotaram as tentativas
+     * @return array{pending: int, spent: int, paused: int} quantas seguem pendentes de
+     *                                                      reconciliação, quantas são lacunas
+     *                                                      que já esgotaram as tentativas e
+     *                                                      quantas estão com a volta atrás pausada
      */
     private function recordGaps(Client $client, FiscalSource $source, array $nsus): array
     {
         $nsus = array_values(array_unique($nsus));
 
         if ($nsus === []) {
-            return ['pending' => 0, 'spent' => 0];
+            return ['pending' => 0, 'spent' => 0, 'paused' => 0];
         }
 
         // Uma consulta por lote, e não uma por entrada. O `whereIn` é o que
@@ -403,6 +426,18 @@ final class FiscalCaptureService
 
         $pendentes = 0;
         $esgotadasNoLote = 0;
+        $pausadas = 0;
+
+        // A lacuna é gravada nos três casos e **contada** em três caixas. A
+        // distinção é sobre quem vai buscá-la, e não sobre o que ela é: uma
+        // lacuna pausada é uma lacuna normal cujo `attempts` não sobe porque
+        // ninguém a consulta. Contá-la como pendente faria a posição ficar presa
+        // nela para sempre — a captura repetiria o mesmo lote a cada hora e
+        // nenhum documento atrás da posição entraria, uma perda que cresce com a
+        // pausa. Permitir o avanço limita a perda ao documento daquela posição, o
+        // mesmo que o esgotamento perderia, e a linha continua na tabela para a
+        // primeira noite em que a chave voltar.
+        $pausada = $this->gate->isPaused($source);
 
         foreach ($nsus as $nsu) {
             if (in_array($nsu, $esgotadas, true)) {
@@ -412,11 +447,18 @@ final class FiscalCaptureService
                 continue;
             }
 
-            $pendentes++;
             $this->recordGap($client, $source, $nsu);
+
+            if ($pausada) {
+                $pausadas++;
+
+                continue;
+            }
+
+            $pendentes++;
         }
 
-        return ['pending' => $pendentes, 'spent' => $esgotadasNoLote];
+        return ['pending' => $pendentes, 'spent' => $esgotadasNoLote, 'paused' => $pausadas];
     }
 
     /**
@@ -504,7 +546,12 @@ final class FiscalCaptureService
      * leitor por conta pertence à API, e até lá um token estável é o que torna
      * o estado nomeável — e é nele que o leitor vai se apoiar.
      *
-     * @param  array{pending: int, spent: int}  $gaps
+     * `gap_paused` é o quarto, e ele nomeia o oposto: a posição foi liberada, a
+     * linha da lacuna continua lá e nada foi perdido ainda. Sem ele, o painel
+     * cairia no "lote incompleto" ou no `capture_failed` — que é uma afirmação
+     * sobre o fisco, e a verdade é uma decisão de instalação.
+     *
+     * @param  array{pending: int, spent: int, paused: int}  $gaps
      */
     private function stateNote(PullResult $result, array $gaps): ?string
     {
@@ -512,7 +559,11 @@ final class FiscalCaptureService
             return 'blocked_consumption';
         }
 
-        return $gaps['spent'] > 0 ? 'gap_abandoned' : null;
+        if ($gaps['spent'] > 0) {
+            return 'gap_abandoned';
+        }
+
+        return $gaps['paused'] > 0 ? 'gap_paused' : null;
     }
 
     /**

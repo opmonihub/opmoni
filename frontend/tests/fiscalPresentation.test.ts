@@ -1,6 +1,6 @@
 // tests/fiscalPresentation.test.ts
 //
-// O painel fiscal em quatro estados e nove motivos, testado sem Vue e sem
+// O painel fiscal em quatro estados e dez motivos, testado sem Vue e sem
 // framework: o módulo importa só tipos com `import type` e a extensão
 // explícita, então o runner do Node carrega o arquivo por stripping nativo e
 // nada mais é resolvido.
@@ -43,13 +43,14 @@ import {
   modelVolumes
 } from '../app/utils/fiscalPresentation.ts'
 
-/** Os nove motivos, na precedência que o backend avalia. */
+/** Os dez motivos, na precedência que o backend avalia. */
 const ALL_REASONS = [
   'certificate_absent',
   'certificate_expired',
   'certificate_password_missing',
   'certificate_reupload',
   'gap_abandoned',
+  'gap_paused',
   'history_interrupted',
   'capture_blocked',
   'continuity_warning',
@@ -225,16 +226,26 @@ describe('participação da carteira', () => {
   })
 })
 
-describe('rótulo dos nove motivos', () => {
+describe('rótulo dos dez motivos', () => {
   it('nomeia a ação do reenvio exatamente como o contrato manda', () => {
     assert.equal(attentionLabel('certificate_reupload'), 'Reenvie o certificado')
   })
 
-  it('cobre os nove motivos, cada um com frase própria', () => {
+  it('cobre os dez motivos, cada um com frase própria', () => {
     const labels = ALL_REASONS.map(attentionLabel)
-    assert.equal(labels.length, 9)
+    assert.equal(labels.length, 10)
     for (const label of labels) assert.ok(label.length > 0, 'rótulo vazio')
-    assert.equal(new Set(labels).size, 9, 'dois motivos com o mesmo rótulo')
+    assert.equal(new Set(labels).size, 10, 'dois motivos com o mesmo rótulo')
+  })
+
+  it('distingue a lacuna pausada da lacuna abandonada', () => {
+    // Os dois descrevem uma posição que a volta atrás não buscou, e a diferença
+    // é o conserto: uma se resolve ligando a chave da instalação, a outra não
+    // se resolve. Um rótulo igual aqui seria um conserto que o painel ofereceria
+    // e que não resolveria nada.
+    assert.notEqual(attentionLabel('gap_paused'), attentionLabel('gap_abandoned'))
+    assert.match(attentionDescription('gap_paused'), /desligada nesta instalação/)
+    assert.notEqual(attentionTone('gap_paused'), attentionTone('gap_abandoned'))
   })
 
   it('dá a cada motivo uma frase que diz o que fazer', () => {
@@ -287,7 +298,7 @@ describe('rótulo dos nove motivos', () => {
     // nada em comum. Uma lista de rótulos repetidos ensinaria o escritório a
     // ignorar a lista inteira.
     const descriptions = ALL_REASONS.map(attentionDescription)
-    assert.equal(new Set(descriptions).size, 9, 'dois motivos com a mesma frase')
+    assert.equal(new Set(descriptions).size, 10, 'dois motivos com a mesma frase')
   })
 
   it('diz o contrário no aviso de continuidade, que ainda é recuperável', () => {
@@ -359,9 +370,9 @@ describe('grupos de atenção', () => {
     assert.equal(groups[1]?.items[0]?.client_name, 'Desconhecido')
   })
 
-  it('cria um grupo por motivo, com os nove juntos, uma vez cada', () => {
+  it('cria um grupo por motivo, com os dez juntos, uma vez cada', () => {
     const groups = attentionGroups(ALL_REASONS.map((reason, index) => item(`Cliente ${index}`, reason)))
-    assert.equal(groups.length, 9)
+    assert.equal(groups.length, 10)
     assert.deepEqual(groups.map(group => group.reason), [...ALL_REASONS])
     for (const group of groups) assert.equal(group.items.length, 1)
   })
@@ -630,7 +641,7 @@ describe('última consulta', () => {
 
   it('mostra a frase de erro como ela veio, sem transformá-la em motivo', () => {
     // `last_capture.error` é texto limitado de propósito; `reason` é uma das
-    // nove palavras. Mostrar a frase e dizer ao lado "Captura falhou" seria
+    // dez palavras. Mostrar a frase e dizer ao lado "Captura falhou" seria
     // inventar o motivo que o backend não mandou.
     const outcome = lastCaptureOutcome({ source: 'cte_distribuicao', ran_at: '2026-09-28T14:30:00Z', error: 'NfeCommunicationException' })
     assert.equal(outcome.tone, 'warning')
