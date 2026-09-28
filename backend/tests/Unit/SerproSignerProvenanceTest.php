@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Enums\SerproFailure;
 use App\Services\SerproException;
+use App\Services\SerproTermSigner;
 use App\Support\SerproSigner;
 use DOMDocument;
 use DOMElement;
@@ -86,17 +87,22 @@ class SerproSignerProvenanceTest extends TestCase
     }
 
     /**
-     * O termo sem assinatura, no formato que o `SerproTermSigner` vai montar: um
-     * documento só, sem namespace próprio, o que é o que faz a canonicalização
-     * exclusiva e a inclusiva coincidirem — a divergência que sobrou do modelo
-     * de referência e que está anotada no `SerproSigner`.
+     * O termo sem assinatura **real**, montado pelo `SerproTermSigner` — e não
+     * uma cópia dele.
+     *
+     * Este arquivo nasceu com um termo escrito à mão, no formato que o
+     * `SerproTermSigner` ia montar, e o próprio método dizia que o documento
+     * real ainda não existia. Ele existe: o construtor é o
+     * `SerproTermSigner::template()`, e a cópia foi apagada. A razão de o
+     * arquivo usar o documento de verdade está no caso de divergência de
+     * canonicalização: a coincidência entre a forma exclusiva do modelo e a
+     * inclusiva que a `Reference` declara vale para **aquele** documento, e um
+     * termo que declarasse namespace a faria parar de valer sem que nada
+     * mudasse no cálculo do digest.
      */
     private function unsignedTerm(): string
     {
-        return <<<'XML'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <termoDeAutorizacao><dados><sistema id="API Integra Contador"/><destinatario numero="33683111000107" nome="Escritorio de Teste" tipo="PJ" papel="contratante"/><assinadoPor numero="33683111000107" nome="Escritorio de Teste" tipo="PJ" papel="autor pedido de dados"/></dados></termoDeAutorizacao>
-            XML;
+        return SerproTermSigner::template();
     }
 
     public function test_a_rotina_registra_a_proveniencia_e_a_licenca_do_componente_oficial(): void
@@ -230,9 +236,14 @@ class SerproSignerProvenanceTest extends TestCase
         // valores preservados que pode derivar sem ninguém tocar em código, e é
         // por isso que ele tem teste: um termo que declarasse namespace passaria
         // a divergir, e o digest gravado deixaria de ser o que um validador
-        // recalcula. O documento real ainda não existe: quando o
-        // `SerproTermSigner` montar o seu, é este teste que precisa passar a
-        // exercitá-lo, e ele é o que avisa se a coincidência deixar de valer.
+        // recalcula.
+        //
+        // **O `TODO` de esperar o documento real está cumprido.** O termo
+        // exercitado aqui é `SerproTermSigner::template()`, que é o template do
+        // termo de verdade e não uma transcrição dele: a raiz não declara
+        // namespace, e é por isso que a coincidência abaixo vale. Se um dia o
+        // construtor declarar namespace, esta asserção quebra — que é
+        // exatamente o alarme que se quer.
         $term = $this->parse($this->unsignedTerm());
 
         $exclusive = openssl_digest((string) $term->documentElement?->C14N(true, false), 'sha256', true);

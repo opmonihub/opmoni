@@ -83,10 +83,13 @@ final class PalavrasCorrompidasTest extends TestCase
         'app/Http/Resources/AccountCertificateResource.php',
         'app/Services/AccountCertificateVault.php',
         'app/Services/CertificatePkcs12.php',
+        'app/Services/SerproTermSigner.php',
+        'app/Support/SerproSigner.php',
         'database/factories/AccountCertificateFactory.php',
         'database/migrations/2026_09_28_085929_create_account_certificates_table.php',
         'tests/Feature/SerproAccountCertificateTest.php',
         'tests/Feature/SerproConnectionApiTest.php',
+        'tests/Unit/SerproTermSignerTest.php',
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
