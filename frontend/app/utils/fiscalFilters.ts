@@ -23,6 +23,31 @@ import type {
  * e sem resolver alias. É o mesmo contrato de `fiscalPresentation.ts`.
  */
 
+/**
+ * Os filtros que a URL vai de fato aplicar quando o operador confirma o
+ * rascunho dos campos de escrita livre.
+ *
+ * O rascunho volta pelo **mesmo** caminho da leitura: ele entra como query,
+ * `parseFiscalFilters` decide o que dela sobrevive, e o que sai é serializado de
+ * novo. É a versão que não pode divergir do leitor, porque não tem regra
+ * própria nenhuma — só compõe as duas.
+ *
+ * Sem isso o caminho de escrita era o buraco do módulo: um `-5` digitado no
+ * campo de valor virava `?amount_min=-5` na URL, era descartado na leitura
+ * seguinte, e a barra continuava parecendo aplicada sobre uma consulta sem
+ * filtro nenhum. A URL deixou de poder mentir sobre o que ela filtra — que é a
+ * premissa de ela ser a fonte da verdade.
+ *
+ * Toda chave do rascunho **substitui** o valor atual, e uma chave vazia limpa o
+ * filtro: o campo que o operador esvaziou é o filtro que ele quer tirar.
+ */
+export function appliedFiscalFilters(
+  current: FiscalListFilters,
+  draft: Record<string, unknown>
+): FiscalListFilters {
+  return parseFiscalFilters({ ...fiscalQuery(current), ...draft })
+}
+
 /** O enum do backend, fechado. `model` fora daqui é 422, não "sem filtro". */
 const models: readonly FiscalModel[] = ['nfe', 'nfce', 'cte', 'nfse']
 const kinds: readonly FiscalKind[] = ['document', 'event']

@@ -14,7 +14,7 @@ import type {
   FiscalPerPage,
   FiscalSort
 } from '~/types/fiscal'
-import { availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
+import { appliedFiscalFilters, availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
 import {
   fiscalMissingValue,
   fiscalSourceLabel,
@@ -269,20 +269,41 @@ const rangeCount = computed(() => {
  *
  * Fechar junto é o que diz ao operador que a consulta rodou: o popover aberto de
  * novo sobre a lista já filtrada é o estado em que "não sei se aplicou" aparece.
+ *
+ * O rascunho vai para a URL **pelo mesmo caminho da leitura** — `appliedFiscalFilters`
+ * monta a query e deixa `parseFiscalFilters` decidir o que dela sobrevive. A
+ * versão anterior mandava `Number(...)` direto para a URL, e um `-5` no campo
+ * de valor virava `?amount_min=-5`: a leitura seguinte descartava o filtro, a
+ * resposta vinha sem ele, e a barra continuava parecendo aplicada. `min="0"` num
+ * input de número só vale na validação de formulário, e aqui não há formulário.
  */
 function applyRange() {
   const applied = draft.value
   rangeOpen.value = false
-  return updateFilters({
-    ...filters.value,
-    issuer: applied.issuer.trim() || null,
-    recipient: applied.recipient.trim() || null,
-    issued_from: applied.issued_from || null,
-    issued_to: applied.issued_to || null,
-    amount_min: applied.amount_min === '' ? null : Number(applied.amount_min),
-    amount_max: applied.amount_max === '' ? null : Number(applied.amount_max)
-  })
+  return updateFilters(appliedFiscalFilters(filters.value, applied))
 }
+
+/**
+ * O aviso do campo de valor quando o que o operador digitou não é um valor.
+ *
+ * Só o campo de valor pode perder a entrada inteira: o CNPJ é normalizado
+ * (ponto e barra saem, os dígitos ficam) e a data tem que existir no calendário,
+ * então nesses dois o operador vê o que foi aplicado quando reabre o painel. Um
+ * `-5` e um `1,50` desaparecem — e o campo reabriria vazio, sem nenhuma
+ * explicação do silêncio.
+ */
+const amountDraftError = computed(() => {
+  const typed = draft.value.amount_min.trim() !== '' || draft.value.amount_max.trim() !== ''
+  if (!typed) return undefined
+
+  const applied = appliedFiscalFilters(filters.value, draft.value)
+  const lost = (draft.value.amount_min.trim() !== '' && applied.amount_min === undefined)
+    || (draft.value.amount_max.trim() !== '' && applied.amount_max === undefined)
+
+  return lost
+    ? 'O filtro de valor precisa ser um número maior ou igual a zero, com ponto decimal. O que foi digitado não foi aplicado.'
+    : undefined
+})
 
 function clearRange() {
   rangeOpen.value = false
@@ -673,7 +694,7 @@ async function triggerCapture() {
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
-                  <UFormField label="Valor de" name="amount_min">
+                  <UFormField label="Valor de" name="amount_min" :error="amountDraftError">
                     <UInput
                       v-model="draft.amount_min"
                       type="number"
@@ -683,7 +704,7 @@ async function triggerCapture() {
                       class="w-full"
                     />
                   </UFormField>
-                  <UFormField label="Até" name="amount_max">
+                  <UFormField label="Até" name="amount_max" :error="amountDraftError">
                     <UInput
                       v-model="draft.amount_max"
                       type="number"

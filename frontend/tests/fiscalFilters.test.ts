@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { FiscalListFilters } from '../app/types/fiscal.ts'
 import {
+  appliedFiscalFilters,
   availableFiscalModels,
   fiscalDocumentosPath,
   fiscalQuery,
@@ -127,6 +128,60 @@ describe('a URL da tabela de documentos', () => {
       fiscalDocumentosPath({ model: ['nfe', 'cte'], kind: 'event' }),
       '/fiscal/documentos?model=nfe&model=cte&kind=event'
     )
+  })
+})
+
+describe('a confirmação do rascunho dos filtros', () => {
+  const atual: FiscalListFilters = { page: 1, per_page: 25, sort: 'emissao_at', direction: 'desc' }
+
+  it('não escreve na URL um valor que a consulta não aceitaria', () => {
+    // Estes cinco são os que quebravam: o `-5` e a vírgula iam para a URL como
+    // `-5` e `NaN`, a leitura seguinte descartava os três, e a barra ficava
+    // parecendo aplicada sobre uma consulta sem filtro.
+    const next = appliedFiscalFilters(atual, {
+      amount_min: '-5',
+      amount_max: '1,50',
+      issued_from: '01/09/2026'
+    })
+
+    assert.equal(next.amount_min, undefined)
+    assert.equal(next.amount_max, undefined)
+    assert.equal(next.issued_from, undefined)
+    assert.equal(fiscalQuery(next).amount_min, undefined)
+    assert.equal(fiscalQuery(next).amount_max, undefined)
+  })
+
+  it('limpa o filtro quando o campo volta vazio', () => {
+    const current: FiscalListFilters = { ...atual, issuer: '123', amount_min: 10 }
+    const next = appliedFiscalFilters(current, { issuer: '', amount_min: '' })
+
+    assert.equal(next.issuer, undefined)
+    assert.equal(next.amount_min, undefined)
+    assert.deepEqual(fiscalQuery({ ...next, page: 1 }), {})
+  })
+
+  it('normaliza o CNPJ digitado e corta o que passa do tamanho', () => {
+    // `12.3` no campo é `123` como filtro; o que passa de 14 dígitos é o
+    // suficiente para casar qualquer CNPJ e assim não filtra nada.
+    const next = appliedFiscalFilters(atual, { issuer: '12.345', recipient: '12345678901234567890' })
+
+    assert.equal(next.issuer, '12345')
+    assert.equal(next.recipient, '12345678901234')
+    assert.deepEqual(fiscalQuery(next), { issuer: '12345', recipient: '12345678901234' })
+  })
+
+  it('mantém o que o rascunho não toca e o que ele confirma é o que a URL filtra', () => {
+    const current: FiscalListFilters = { ...atual, model: ['nfe'], client_id: 7, page: 4 }
+    const next = appliedFiscalFilters(current, { issuer: '12345', amount_min: '10' })
+
+    assert.deepEqual(next.model, ['nfe'])
+    assert.equal(next.client_id, 7)
+    assert.deepEqual(fiscalQuery({ ...next, page: 1 }), {
+      model: ['nfe'],
+      client_id: '7',
+      issuer: '12345',
+      amount_min: '10'
+    })
   })
 })
 
