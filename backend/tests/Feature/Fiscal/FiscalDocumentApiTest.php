@@ -1405,7 +1405,7 @@ class FiscalDocumentApiTest extends TestCase
             ->assertDownload($documento->chave_acesso.'.xml');
     }
 
-    public function test_detalhe_de_xml_ausente_mantem_a_linha_e_avisa_na_previa(): void
+    public function test_detalhe_de_xml_ausente_mantem_a_linha_avisa_na_previa_e_registra_a_ausencia(): void
     {
         $account = Account::factory()->create();
         $cliente = $this->clienteComCertificado($account, 'Cliente 1 Sem Arquivo');
@@ -1418,6 +1418,37 @@ class FiscalDocumentApiTest extends TestCase
         // esta linha existe sem ele: o byte sumiu, a linha ficou. O detalhe
         // continua abrindo — com a prévia ausente — e o download é que diz que
         // o arquivo não está mais lá.
+        Log::spy();
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $documento->getKey())
+            ->assertJsonPath('data.xml_preview', null)
+            ->assertJsonPath('data.events', []);
+
+        // O arquivo ausente é o estado **esperado** em produção — o XML mora no
+        // disco efêmero do container e some quando o serviço é recriado — e é
+        // por isso que ele precisa aparecer no canal. Sem esta linha, uma conta
+        // inteira sem prévia respondia 200 em cada documento e a operação não
+        // tinha nenhum sinal de que aquilo era o estado normal e não um erro
+        // pontual.
+        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context) use ($documento, $cliente): bool {
+            return $channel === 'fiscal.leitura.previa_ausente'
+                && $context['reason'] === 'arquivo ausente no disco'
+                && $context['chave_acesso'] === $documento->chave_acesso
+                && $context['account_id'] === $documento->account_id
+                && $context['client_id'] === $cliente->getKey();
+        });
+
+        // E o contexto não carrega nada além do identificador e da frase: nem o
+        // caminho interno do XML, que é o segredo desta seção, nem o byte.
+        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context) use ($documento): bool {
+            return $channel === 'fiscal.leitura.previa_ausente'
+                && ! array_key_exists('storage_path', $context)
+                && ! str_contains(json_encode($context, JSON_THROW_ON_ERROR), (string) $documento->storage_path);
+        });
+
         $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
             ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
             ->assertNotFound();

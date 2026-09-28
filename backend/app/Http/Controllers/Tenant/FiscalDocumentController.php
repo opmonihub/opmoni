@@ -215,12 +215,27 @@ class FiscalDocumentController extends Controller
      *
      * O log da recusa carrega o nome da classe e nada mais: nem o byte, nem a
      * frase da exceção, pelo mesmo motivo de nunca logar XML.
+     *
+     * O arquivo ausente tem a sua própria linha porque é o estado **esperado**
+     * em produção: o XML mora no disco efêmero do container e some quando o
+     * serviço é recriado. Sem o registro, "todo documento histórico abriu sem
+     * prévia" é o estado normal de produção e é invisível para quem opera — a
+     * página responde 200 igual, e só quem abre o detalhe nota. O `reason` aqui
+     * é uma frase fixa e não `class_basename` porque não há exceção para nomear
+     * nesse ramo; quem lê o canal separa os dois casos pelo nome do evento.
      */
     private function previa(FiscalDocument $documento, FiscalXmlEncoding $encoding): ?string
     {
         $caminho = (string) $documento->storage_path;
 
         if ($caminho === '' || Storage::disk('fiscal')->missing($caminho)) {
+            Log::warning('fiscal.leitura.previa_ausente', [
+                'account_id' => (int) $documento->account_id,
+                'client_id' => (int) $documento->client_id,
+                'chave_acesso' => $documento->chave_acesso,
+                'reason' => 'arquivo ausente no disco',
+            ]);
+
             return null;
         }
 
