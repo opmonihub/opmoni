@@ -40,16 +40,23 @@ class SerproConnectionApiTest extends TestCase
     private const SEGREDO = 'segredo-da-plataforma';
 
     /**
-     * Os PFX que subiram por um caminho de **arquivo real**, apagados no fim da
-     * classe.
+     * Os PFX que subiram por um caminho de **arquivo real**, para apagar no fim
+     * da classe.
      *
      * Um `UploadedFile` real tem um caminho em disco e ninguém o apaga por nós:
      * sem esta lista, o helper de PFX real deixaria um certificado — que é
      * material de assinatura, mesmo de descarte — no `/tmp` do CI.
      *
+     * **A lista é `static` porque é `tearDownAfterClass()` que a consome**, e um
+     * método estático não enxerga o estado de instância. Uma lista de instância
+     * pareceria funcionar e não limparia nada — que foi exatamente o que a
+     * primeira versão deste arquivo tinha, e a primeira versão também limpava por
+     * `glob`, o que apagava o PFX de outra execução concorrente na mesma máquina.
+     * Registrar o caminho e apagar o caminho registrado são o mesmo dado.
+     *
      * @var list<string>
      */
-    private array $arquivosTemporarios = [];
+    private static array $arquivosTemporarios = [];
 
     protected function setUp(): void
     {
@@ -63,13 +70,17 @@ class SerproConnectionApiTest extends TestCase
 
     public static function tearDownAfterClass(): void
     {
-        // O `@var` acima não sobrevive entre instâncias, e a limpeza precisa
-        // acontecer mesmo se um teste falhar no meio.
-        foreach (glob(sys_get_temp_dir().'/serpro-p12-*') ?: [] as $arquivo) {
+        // Só os caminhos que esta execução criou. Um `glob` por prefixo
+        // apagaria também os PFX de outra execução desta suíte rodando ao mesmo
+        // tempo na mesma máquina — que é a corrida que o `tempnam` do helper
+        // existe para evitar, e que um `glob` desfaria na limpeza.
+        foreach (self::$arquivosTemporarios as $arquivo) {
             if (is_file($arquivo)) {
                 @unlink($arquivo);
             }
         }
+
+        self::$arquivosTemporarios = [];
 
         parent::tearDownAfterClass();
     }
@@ -970,8 +981,9 @@ class SerproConnectionApiTest extends TestCase
      * O par contra o `pfx()` de cima é o `UploadedFile`: o de lá é um
      * `Illuminate\Http\Testing\File`, que reporta o MIME pelo nome, e o daqui é
      * um `Illuminate\Http\UploadedFile` sobre um caminho de verdade, que obriga o
-     * Symfony a perguntar à libmagic. O arquivo é apagado no fim, e a variável de
-     * instância guarda o caminho para isso.
+     * Symfony a perguntar à libmagic. O caminho é registrado em
+     * `self::$arquivosTemporarios`, e é de lá que `tearDownAfterClass()` apaga o
+     * arquivo.
      *
      * @return array{bytes: string, file: UploadedFile}
      */
@@ -997,13 +1009,14 @@ class SerproConnectionApiTest extends TestCase
 
         // `tempnam` e não um nome montado: o caminho tem de ser único para que
         // dois testes em paralelo não sobrescrevam um ao outro, e tem de caber
-        // no limite do sistema de arquivos. A limpeza é por padrão do nome, em
-        // `tearDownAfterClass()` — que sobrevive à falha de um teste, ao
-        // contrário de um `tearDown()` por instância.
+        // no limite do sistema de arquivos. O caminho é **registrado**, e é o
+        // registro que a limpeza percorre: apagar por padrão de nome desfaria na
+        // limpeza a corrida que o `tempnam` acabou de evitar, porque o `glob`
+        // alcançaria o PFX da outra execução também.
         $caminho = tempnam(sys_get_temp_dir(), 'serpro-p12-');
         $this->assertNotFalse($caminho);
         file_put_contents($caminho, $bytes);
-        $this->arquivosTemporarios[] = $caminho;
+        self::$arquivosTemporarios[] = $caminho;
 
         return [
             'bytes' => $bytes,

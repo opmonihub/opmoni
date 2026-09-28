@@ -917,7 +917,7 @@ class SerproAccountCertificateTest extends TestCase
         $this->assertNotNull($linha);
 
         // O `sha256` é dos bytes que foram enviados, e não de uma releitura: é o
-        // que o `CertificatePkcs12` calcula e é o que o `certificate_bytes()` de
+        // que o `CertificatePkcs12` calcula e é o que o `certificateBytes()` de
         // uma instância nova devolve.
         $this->assertSame(hash('sha256', $bytes), $linha->sha256);
         $this->assertSame($bytes, $linha->certificateBytes());
@@ -950,11 +950,12 @@ class SerproAccountCertificateTest extends TestCase
      * **Uma duplicata faz a remoção responder `204` e não remover nada.**
      *
      * Este caso não é sobre a garantia de "uma linha corrente" — que é da
-     * aplicação e está em `test_a_troca_mantem_uma_linha_corrente`. É sobre o
-     * que acontece quando essa garantia **falha** por fora (restauração, `insert`
-     * manual, um banco copiado de um ambiente com bug), porque o resultado é o
-     * pior dos dois mundos: o escritório recebe a confirmação de que tirou o
-     * certificado e continua podendo assinar com ele.
+     * aplicação e está em
+     * `test_substituicao_marca_a_linha_anterior_e_apaga_somente_o_ciphertext`. É
+     * sobre o que acontece quando essa garantia **falha** por fora (restauração,
+     * `insert` manual, um banco copiado de um ambiente com bug), porque o
+     * resultado é o pior dos dois mundos: o escritório recebe a confirmação de
+     * que tirou o certificado e continua podendo assinar com ele.
      *
      * As três leituras que produzem isso são `latest('id')` — `supersede()`,
      * `remove()` e `currentFor()`. Com A (id menor) e B (id maior) as duas
@@ -977,10 +978,11 @@ class SerproAccountCertificateTest extends TestCase
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
-        // A linha que o upload gravou, e uma duplicata de **menor** `id` — que
-        // é o caso que o `latest('id')` não alcança. A ordem importa: a
-        // duplicata é inserida antes de a original para ficar com id menor, e é
-        // por isso que a construção é nesta ordem e não invertida.
+        // A linha que o upload gravou, e uma duplicata de **maior** `id` — que é
+        // a linha que o `latest('id')` alcança, e portanto a que `remove()` vai
+        // marcar. A duplicata é inserida **depois** da original, e é essa ordem
+        // que produz o estado perigoso: o que sobra corrente é a original, que
+        // é a de **menor** `id` e a que nenhuma troca futura alcança.
         $original = AccountCertificate::currentFor($conta->getKey());
 
         $this->assertNotNull($original);
