@@ -97,11 +97,44 @@ class FiscalXmlValidatorTest extends TestCase
         $this->validate('<distDFeInt><tpAmb>1</distDFeInt>');
     }
 
+    /**
+     * A recusa de XSD ausente é nomeada por serviço, schema, versão e caminho
+     * resolvido — e a mensagem é o que se fixa, não só o tipo da exceção.
+     *
+     * Com três serviços e duas versões por serviço na configuração, "XSD não
+     * encontrado: distDFeInt." é um erro que só quem escreveu o bloco de
+     * endpoint consegue ler; o caminho resolvido é o que fecha a pista, porque
+     * é a diferença entre um serviço escrito errado e uma pasta que não existe.
+     */
     public function test_rejects_an_unknown_schema(): void
     {
-        $this->expectException(RuntimeException::class);
+        try {
+            $this->validate($this->payloadDaConsulta(), schema: 'distDFeIntQueNaoExiste');
 
-        $this->validate($this->payloadDaConsulta(), schema: 'distDFeIntQueNaoExiste');
+            $this->fail('Um schema que não existe precisa ser recusado.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'XSD não encontrado: nfe distDFeIntQueNaoExiste v1.01 ('.resource_path('xsd/nfe/distDFeIntQueNaoExiste_v1.01.xsd').').',
+                $exception->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * A mesma recusa no serviço de CT-e, e com a versão do CT-e: os três
+     * discriminadores aparecem, e um bloco de endpoint com a versão trocada pelo
+     * serviço de NF-e é recusado aqui antes de qualquer byte, e não depois.
+     */
+    public function test_a_recusa_de_xsd_ausente_diz_o_servico_e_a_versao(): void
+    {
+        try {
+            $this->validate($this->payloadDaConsulta(), service: 'cte', version: '9.99');
+
+            $this->fail('Uma versão que não existe precisa ser recusada.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('cte distDFeInt v9.99', $exception->getMessage());
+            $this->assertStringContainsString('xsd/cte/distDFeInt_v9.99.xsd', $exception->getMessage());
+        }
     }
 
     public function test_accepts_the_cte_request_the_envelope_builds(): void

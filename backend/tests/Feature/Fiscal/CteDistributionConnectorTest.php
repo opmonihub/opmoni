@@ -302,6 +302,38 @@ class CteDistributionConnectorTest extends TestCase
     }
 
     /**
+     * Um bloco de endpoint escrito pela metade é recusado **pelo nome do
+     * parâmetro que falta**, e nada sai para a rede.
+     *
+     * O `config` ganhou um segundo serviço, e com ele um segundo degrau de erro:
+     * `endpoint()` já recusa uma fonte que não existe, mas a chave interna do
+     * bloco só aparecia como aviso de chave indefinida — que o Laravel converte
+     * em `ErrorException`, e `ErrorException` não é `RuntimeException`, então
+     * escaparia das guardas da reconciliação. O aviso também não dizia *qual*
+     * chave, e era o operador que teria de adivinhar.
+     */
+    public function test_um_bloco_de_endpoint_sem_um_parametro_e_recusado_pelo_nome(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        $bloco = config('fiscal.endpoints.cte_distribuicao');
+        unset($bloco['xsd_service']);
+        config(['fiscal.endpoints.cte_distribuicao' => $bloco]);
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300), 200)]);
+
+        try {
+            $this->connector()->pull($client, 0, 50);
+
+            $this->fail('Um bloco sem o serviço do XSD precisa ser recusado.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame("Bloco de endpoint sem o parâmetro 'xsd_service'.", $exception->getMessage());
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
+    /**
      * A mesma entrada, agora pela consulta por posição — a que a reconciliação
      * usa — e a resposta é `null`: a posição pedida não tem documento.
      *

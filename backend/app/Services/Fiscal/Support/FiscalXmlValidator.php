@@ -25,7 +25,11 @@ final class FiscalXmlValidator
         $schema = resource_path("xsd/{$service}/{$schemaName}_v{$version}.xsd");
 
         if (! is_file($schema)) {
-            throw new RuntimeException("XSD não encontrado: {$schemaName}.");
+            // Serviço, versão e caminho resolvido: sem eles a recusa não diz o
+            // que fazer. "XSD não encontrado" com três serviços e duas versões
+            // por serviço é um erro que só quem escreveu o `config` consegue
+            // ler, e o caminho resolvido é o que fecha a pista.
+            throw new RuntimeException("XSD não encontrado: {$service} {$schemaName} v{$version} ({$schema}).");
         }
 
         self::rejectUnsupportedEncodingDeclaration($xml);
