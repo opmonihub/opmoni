@@ -32,9 +32,21 @@ return [
      * comentário — e a leitura do texto tem de ser honesta com quem a descobre
      * por aqui. `filter_var(..., FILTER_VALIDATE_BOOL)` é o que faz isso: `false`
      * é `false`, `0` é desligado, vazio é desligado, `off` e `no` são desligados,
-     * e só `true`, `1`, `on` e `yes` ligam. Um `(bool) env(...)` tratava qualquer
-     * palavra fora desse vocabulário como ligada, e quem escrevesse
-     * `FISCAL_CTE_ENABLED=off` para desligar é quem ligaria o serviço.
+     * e só `true`, `1`, `on` e `yes` ligam.
+     *
+     * Uma palavra que **não** está nessa lista é desligada — e essa é a direção
+     * que mudou aqui: com o `(bool) env(...)` anterior, qualquer palavra fora do
+     * vocabulário do `env()` era ligada. Na prática, `FISCAL_CTE_ENABLED=sim`,
+     * que num produto brasileiro é a escrita mais natural que existe, estava
+     * ligado e passou a estar desligado; e `off`, `não` ou `desligado` eram
+     * ligados e passaram a desligar. Se alguém escrever um valor e não ver
+     * efeito nenhum, o valor não estava na lista.
+     *
+     * Isso é deliberado, e é por isso que a chave não volta a um cast frouxo:
+     * o default de desligado é o que segura um valor que ninguém revisou, e o
+     * preço de ligar o serviço sem querer — a rejeição repetida de um pedido
+     * errado, e a hora de cliente que ela custa — é maior do que o de um valor
+     * que ninguém percebeu.
      */
     'cte_enabled' => filter_var(env('FISCAL_CTE_ENABLED', false), FILTER_VALIDATE_BOOL),
 

@@ -162,10 +162,12 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
      * é recusada com a mensagem do registro, o comando devolve `FAILURE` e nada
      * é enfileirado.
      *
-     * Quem recusa é o registro, e é o registro sozinho: nenhuma das duas chaves
-     * de CT-e participa desta conta, então ligar `cte_enabled` ou `cte_scheduled`
-     * não transforma uma fonte sem conector em fonte despachável — a recusa
-     * acontece antes da chave que decide se a fonte entra, e não depois.
+     * Quem recusa é o registro, e é o registro sozinho: depois de perguntar ao
+     * registro se a fonte tem conector, o comando não consulta chave nenhuma —
+     * nem `cte_enabled`, nem `cte_scheduled`, que é o que faz dele o caminho do
+     * canário. Por isso este teste liga as duas antes de rodar: se a recusa
+     * viesse de um estado da instalação, ela mudaria com elas, e o que se prova
+     * é que a recusa é da fonte e não da instalação.
      *
      * As duas fontes têm conector nesta versão, então a recusa é exercitada com
      * um registro que não conhece CT-e: a situação de um comando numa versão em
@@ -403,6 +405,16 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
      * A aplicação nasce de novo porque a configuração é lida no boot; a variável
      * sai no `finally` para não vazar para o teste seguinte, que tem a sua
      * própria aplicação.
+     *
+     * ⚠️ E trocar a aplicação troca o banco junto. `refreshApplication()` é
+     * `$this->app = $this->createApplication()` e nada mais, e o
+     * `RefreshDatabase` só religa o PDO em memória compartilhado no `setUp` de
+     * cada teste — depois daqui a conexão é um `:memory:` novo, vazio e sem
+     * tabela nenhuma. Os dois testes que usam este helper só leem `config()` e
+     * passam; uma afirmação de banco colocada depois da chamada — um
+     * `assertDatabaseCount`, uma factory — morre com "no such table", que parece
+     * migração faltando e não é. Depois do helper, o que dá para afirmar é
+     * configuração.
      */
     private function configFromEnvironment(string $configKey, string $variable, string $value): mixed
     {
