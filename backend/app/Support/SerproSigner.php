@@ -57,20 +57,21 @@ use libxml;
  * preservadas, por decisão.**
  *
  * O `addChild('finalidade ')` é defeito, da mesma família do parêntese a mais
- * da linha 50, e é corrigido: **o espaço no nome não é preservado porque não
- * existe**, não porque tenha sido julgado pouco importante.
+ * da linha 50, e é corrigido: **o espaço no nome não sobrevive à assinatura**,
+ * e a frase é essa de propósito. O espaço **existe** na string que o modelo
+ * serializa — o `SimpleXMLElement` do modelo emite `<finalidade  texto="…"/>`
+ * sem reclamar, e o libxml aceita —, então isto não é uma afirmação de que o
+ * XML proíba o espaço em princípio, é uma afirmação sobre o que chega à
+ * assinatura. Não foi julgado pouco importante: o que não sobrevive é o espaço.
  * `DOMDocument::createElement('finalidade ')` lança `DOMException: Invalid
- * Character Error`; o caminho do próprio modelo,
- * `SimpleXMLElement::addChild('finalidade ')`, não lança, mas emite
- * `<finalidade  texto="…"/>` — e o `nodeName` desse nó é `finalidade`, sem
- * espaço, porque o parser consome o espaço como espaço entre tags. Pior, o
- * `loadXML`/`saveXML` que esta própria rotina faz **apaga** o espaço: um termo
- * assinado carregaria `<finalidade texto="…"/>`. Um nome com espaço também é
- * inalcançável por XPath, onde `local-name()='finalidade '` devolve zero nós.
- * Não há como preservar a fidelidade ao modelo aqui, e quem um dia tentar
- * "restaurar" o espaço vai obter um `DOMException` ou um termo que nunca teve
- * espaço. O **nome** `finalidade` é o que fica, e é ele que permanece não
- * verificado e sob o gate.
+ * Character Error`; o `nodeName` do nó emitido pelo SimpleXML já é
+ * `finalidade` sem o espaço, porque o parser consome o espaço como espaço
+ * entre tags; o `loadXML`/`saveXML` que esta rotina faz **apaga** o espaço, e
+ * um termo assinado carregaria `<finalidade texto="…"/>`; e um nome com espaço
+ * também é inalcançável por XPath, onde `local-name()='finalidade '` devolve
+ * zero nós. Quem um dia tentar "restaurar" a fidelidade ao modelo vai obter um
+ * `DOMException` ou um termo que nunca teve espaço. O **nome** `finalidade` é
+ * o que fica, e é ele que permanece não verificado e sob o gate.
  *
  * A vigência e a canonicalização são preservadas, e a razão é a mesma para as
  * duas: a documentação do termo do provedor responde `500` e não publica XSD,

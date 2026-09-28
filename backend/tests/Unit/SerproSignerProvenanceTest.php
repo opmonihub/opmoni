@@ -38,8 +38,10 @@ use ReflectionClass;
  * que o provedor aceita o termo, que os papéis do documento são os que o
  * gateway espera, nem que o reenvio de um termo válido responde `304` com o
  * token. Dos três pontos do modelo que parecem erro, **um é corrigido** — o
- * espaço no nome `finalidade `, que não pode existir: `createElement` lança
- * `DOMException` e o `loadXML`/`saveXML` da própria assinatura o apagaria — e
+ * espaço no nome `finalidade `, que não sobrevive ao documento assinado:
+ * `createElement` lança `DOMException`, o `nodeName` do nó emitido pelo
+ * SimpleXML já vem sem o espaço, e o `loadXML`/`saveXML` da própria
+ * assinatura o apaga — e
  * **dois foram mantidos verbatim por decisão**, a vigência de 30 dias e a
  * canonicalização exclusiva do digest. O gate vale para os nomes e valores
  * resultantes: **nenhum termo pode ser emitido antes de um teste de contrato
