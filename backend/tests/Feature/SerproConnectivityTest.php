@@ -86,19 +86,22 @@ class SerproConnectivityTest extends TestCase
     {
         // A comparação vive no `tearDown()` para valer mesmo quando o teste
         // falha antes dela; o rollback do `RefreshDatabase` acontece depois, em
-        // `parent::tearDown()`.
-        $this->assertSame(
-            $this->carteira,
-            $this->carteira(),
-            'O teste de conectividade não pode criar, modificar nem apagar dado de cliente.',
-        );
+        // `parent::tearDown()`. O retrato vazio é `setUp()` que não chegou ao
+        // fim — aí a falha que importa é a dele, e compará-lo contra um retrato
+        // vazio só acrescentaria um segundo erro que mascara o primeiro.
+        if ($this->carteira !== []) {
+            $this->assertSame(
+                $this->carteira,
+                $this->carteira(),
+                'O teste de conectividade não pode criar, modificar nem apagar dado de cliente.',
+            );
+        }
 
         parent::tearDown();
     }
 
     public function test_sem_conexao_retorna_configuracao_sem_chamar_provedor(): void
     {
-        Http::preventStrayRequests();
         $antes = now();
         $response = $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
             ->postJson('/api/serpro/connectivity');
@@ -155,7 +158,8 @@ class SerproConnectivityTest extends TestCase
         // Certificado guardado e vencido é o mesmo conserto — trocar o
         // certificado —, e não "credencial recusada". O PFX aqui é um de verdade:
         // com a coluna do certificado vazia o veredito viria da ausência dele e
-        // não da validade, e o teste não estaria exercising o que diz exercitar.
+        // não da validade, e o teste não estaria exercitando o que diz
+        // exercitar.
         $this->connection(['certificate_valid_until' => now()->subDay()]);
 
         $this->superAdmin();
@@ -269,6 +273,41 @@ class SerproConnectivityTest extends TestCase
         // transformaria uma ida ao gateway em exceção, mas a contagem diz o
         // que a exceção sozinha não diria.
         Http::assertSentCount(1);
+    }
+
+    public function test_certificado_guardado_ilegivel_e_certificado_e_nao_500(): void
+    {
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $connection = $this->connection();
+
+        // `APP_KEY` girada, coluna truncada, linha restaurada de outro ambiente:
+        // o cifrado guardado não abre mais. Um `500` é a resposta menos
+        // informativa possível a "por que a minha credencial está quebrada?" — e
+        // o conserto aqui é recadastrar o certificado, não mexer na chave de
+        // integração.
+        $connection->forceFill(['certificate_encrypted' => 'cifrado-que-nao-abre'])->save();
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.failed_element', 'certificado');
+
+        // A senha do PFX é o outro cifrado aberto na mesma leitura, e falha do
+        // mesmo jeito: os dois precisam de veredito, e não de exceção.
+        $connection->forceFill([
+            'certificate_encrypted' => Crypt::encryptString($this->pfx()),
+            'certificate_password_encrypted' => 'cifrado-que-nao-abre',
+        ])->save();
+
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.failed_element', 'certificado');
+
+        Http::assertNothingSent();
     }
 
     public function test_diretorio_temporario_ingravavel_e_provedor_e_nao_certificado(): void
@@ -420,10 +459,15 @@ class SerproConnectivityTest extends TestCase
         $content = (string) $response->getContent();
 
         $response->assertOk()
-            ->assertJsonPath('data.failed_element', 'credencial')
-            ->assertJsonMissingPath('data.provider_message')
-            ->assertJsonMissingPath('data.consumer_secret')
-            ->assertJsonMissingPath('data.certificate');
+            ->assertJsonPath('data.failed_element', 'credencial');
+
+        // O corpo tem exatamente as quatro chaves do contrato: nenhuma chave a
+        // mais por onde um texto do provedor ou um segredo pudessem vazar, e
+        // nenhuma a menos que a tela precise para dizer o que aconteceu.
+        $this->assertSame(
+            ['checked_at', 'failed_element', 'message', 'ok'],
+            $this->sortedKeys($response->json('data')),
+        );
 
         $this->assertStringNotContainsString($textoDoProvedor, $content);
         $this->assertStringNotContainsString(self::SEGREDO, $content);
@@ -467,6 +511,19 @@ class SerproConnectivityTest extends TestCase
         );
         $mock->shouldReceive('put')->andReturn(false);
         Storage::shouldReceive('disk')->andReturn($mock);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sortedKeys(mixed $value): array
+    {
+        $this->assertIsArray($value);
+
+        $keys = array_keys($value);
+        sort($keys);
+
+        return $keys;
     }
 
     /**

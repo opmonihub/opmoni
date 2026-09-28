@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -68,11 +69,36 @@ final class SerproTokenProvider
         );
     }
 
-    private function request(SerproConnection $connection, string $certificatePath): SerproTokenPair
+    /**
+     * O segredo é lido aqui, e não em frente ao `curl`.
+     *
+     * Um cifrado guardado que não abre com a chave de aplicação atual é uma
+     * falha nomeada da credencial, e não um `DecryptException` subindo de dentro
+     * de uma requisição HTTP para virar `500` no consumidor. A mensagem não
+     * repete o erro do OpenSSL nem o valor guardado.
+     *
+     * @throws SerproException
+     */
+    private function secretOf(SerproConnection $connection): string
     {
         try {
+            return $connection->consumerSecret();
+        } catch (DecryptException) {
+            throw new SerproException(
+                'O segredo da credencial guardada não pôde ser lido: o conteúdo guardado não abre com a chave de aplicação atual.',
+                SerproFailure::NotSent,
+                0,
+            );
+        }
+    }
+
+    private function request(SerproConnection $connection, string $certificatePath): SerproTokenPair
+    {
+        $secret = $this->secretOf($connection);
+
+        try {
             $response = Http::asForm()
-                ->withBasicAuth($connection->consumer_key, $connection->consumerSecret())
+                ->withBasicAuth($connection->consumer_key, $secret)
                 ->withHeaders(['Role-Type' => 'TERCEIROS'])
                 ->withOptions(['curl' => [
                     CURLOPT_SSLCERT => $certificatePath,

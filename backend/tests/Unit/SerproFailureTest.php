@@ -49,4 +49,16 @@ class SerproFailureTest extends TestCase
     {
         $this->assertNotSame('', SerproFailure::Indeterminate->label());
     }
+
+    public function test_uma_falha_local_que_nada_enviou_tem_caso_proprio(): void
+    {
+        // `Indeterminate` significa "pode ter sido aplicado e ninguém sabe", e
+        // isso é falso por construção para uma falha que acontece antes de
+        // qualquer requisição existir. O caso novo é o que impede uma pasta
+        // temporária sem gravação de virar uma execução com todo cliente
+        // `indeterminado` e `failed = 0`.
+        $this->assertSame('not_sent', SerproFailure::NotSent->value);
+        $this->assertNotSame('', SerproFailure::NotSent->label());
+        $this->assertContains(SerproFailure::NotSent->value, SerproFailure::values());
+    }
 }

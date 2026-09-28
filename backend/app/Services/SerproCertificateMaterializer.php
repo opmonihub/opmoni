@@ -53,14 +53,13 @@ final class SerproCertificateMaterializer
             @chmod($path, 0600);
 
             if (! $written) {
-                // Indeterminado, e não "não repita": ninguém descobriu nada
-                // sobre a credencial, e a pasta pode estar gravável na próxima
-                // hora. Quem consome esta falha tem de tratar as duas coisas
-                // separadamente — recusa não é, e recadastrar o certificado
-                // também não resolve um disco cheio.
+                // Falha local, e nada foi enviado: `DoNotRetry` diria
+                // "recadastre a credencial" e `Indeterminate` diria "pode ter
+                // sido aplicado e ninguém sabe", e as duas coisas são falsas
+                // para uma pasta que não aceitou gravação.
                 throw new SerproException(
                     'Não foi possível gravar o certificado no diretório temporário.',
-                    SerproFailure::Indeterminate,
+                    SerproFailure::NotSent,
                     0,
                 );
             }

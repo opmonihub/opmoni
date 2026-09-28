@@ -4,6 +4,12 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import { apiMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproConnectionMetadata, SerproConnectivityResult } from '~/types/serpro'
 import { formatMonitoringDate } from '~/utils/monitoringPresentation'
+import {
+  connectivityIcon as serproConnectivityIcon,
+  connectivityTitle as serproConnectivityTitle,
+  connectivityTone as serproConnectivityTone,
+  failedElementName as serproFailedElementName
+} from '~/utils/serproConnectivityPresentation'
 
 /**
  * No `definePageMeta` and no role check on this page. `app/pages/admin.vue`
@@ -97,42 +103,7 @@ const validityWindow = computed(() => {
   return `${formatMonitoringDate(notBefore)} a ${formatMonitoringDate(notAfter)}`
 })
 
-/**
- * What the provider rejected, in the operator's words. An element this client
- * does not know falls back to the code itself: a fault nobody can read is worse
- * than one that is merely untranslated.
- */
-const failedElementLabels: Record<string, string> = {
-  configuracao: 'Configuração',
-  certificado: 'Certificado',
-  credencial: 'Credencial',
-  provedor: 'Provedor'
-}
-
-const failedElementName = computed(() => {
-  const element = connectivity.value?.failed_element
-  if (!element) return null
-  return failedElementLabels[element] ?? element
-})
-
-/** A gateway outage is recoverable and is not an invalid credential. */
-const isProviderFailure = computed(() => connectivity.value?.failed_element === 'provedor')
-
-const connectivityTone = computed(() => {
-  if (connectivity.value?.ok) return 'success' as const
-  return isProviderFailure.value ? 'warning' as const : 'error' as const
-})
-
-const connectivityIcon = computed(() => {
-  if (connectivity.value?.ok) return 'i-lucide-circle-check'
-  return isProviderFailure.value ? 'i-lucide-cloud-off' : 'i-lucide-circle-alert'
-})
-
-const connectivityTitle = computed(() => {
-  if (connectivity.value?.ok) return 'Conexão autenticada com sucesso'
-  if (isProviderFailure.value) return 'O provedor não respondeu'
-  return 'Não foi possível autenticar'
-})
+const failedElementName = computed(() => serproFailedElementName(connectivity.value))
 
 const connectivityDescription = computed(() => {
   const result = connectivity.value
@@ -424,10 +395,10 @@ async function onTestConnectivity() {
 
           <UAlert
             v-if="connectivity"
-            :color="connectivityTone"
+            :color="serproConnectivityTone(connectivity)"
             variant="subtle"
-            :icon="connectivityIcon"
-            :title="connectivityTitle"
+            :icon="serproConnectivityIcon(connectivity)"
+            :title="serproConnectivityTitle(connectivity)"
             :description="connectivityDescription"
           />
         </div>

@@ -12,6 +12,24 @@ enum SerproFailure: string
     case Upstream = 'upstream';
     case Indeterminate = 'indeterminate';
 
+    /**
+     * Falha local, e nada foi enviado.
+     *
+     * Diferente de `Indeterminate`, que responde a uma pergunta sobre o
+     * provedor: "a requisição pode ter sido aplicada e ninguém sabe". Aqui a
+     * pergunta nem chegou a existir — o que falhou aconteceu antes de qualquer
+     * requisição, como uma pasta temporária sem gravação ou um cifrado guardado
+     * que não abre com a chave de aplicação atual.
+     *
+     * A distinção é o que impede a plan 04 de tratar o que é falha nossa como
+     * resultado do provedor: `Indeterminate` alimenta
+     * `SerproSyncItemState::Indeterminate` com `failed = 0`, e uma máquina sem
+     * espaço em disco produzia uma execução em que nenhum item falhou e todos
+     * ficaram indeterminados. Quem consumir este caso conta a falha e não tenta
+     * de novo em seguida — corrigir a máquina é pré-condição, não estratégia.
+     */
+    case NotSent = 'not_sent';
+
     /** @return list<string> */
     public static function values(): array
     {
@@ -28,6 +46,7 @@ enum SerproFailure: string
             self::Throttled => 'Limite do provedor',
             self::Upstream => 'Indisponibilidade do provedor',
             self::Indeterminate => 'Resultado indeterminado',
+            self::NotSent => 'Falha local, nada enviado',
         };
     }
 

@@ -6,6 +6,7 @@ use App\Enums\SerproFailure;
 use App\Services\SerproCertificateIdentity;
 use App\Services\SerproException;
 use Database\Factories\SerproConnectionFactory;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -151,6 +152,17 @@ class SerproConnection extends Model
     }
 
     /**
+     * O documento contratante é lido uma vez por versão do certificado cifrado e
+     * cacheado pelo resto do dia.
+     *
+     * A leitura do cifrado guardado é parte desta responsabilidade, e não um
+     * detalhe dela: `APP_KEY` girada, coluna truncada ou linha restaurada de
+     * outro ambiente deixam o conteúdo ilegível, e o `DecryptException` disso
+     * subia cru para os três consumidores deste método — teste de conectividade,
+     * `SerproClient` e `SerproTokenProvider` — como `500`. Vira aqui uma falha
+     * nomeada, sem o texto do OpenSSL e sem o caminho do certificado, que é a
+     * mesma forma que a identidade ilegível já tinha.
+     *
      * @throws SerproException
      */
     private function cachedDocument(): string
@@ -159,8 +171,18 @@ class SerproConnection extends Model
 
         $document = Cache::remember($cacheKey, now()->addDay(), function (): string {
             try {
-                return resolve(SerproCertificateIdentity::class)
-                    ->document((string) $this->certificateBytes(), (string) $this->certificatePassword());
+                $bytes = (string) $this->certificateBytes();
+                $password = (string) $this->certificatePassword();
+            } catch (DecryptException) {
+                throw new SerproException(
+                    'O certificado do contratante não pôde ser lido: o conteúdo guardado não abre com a chave de aplicação atual.',
+                    SerproFailure::NotSent,
+                    0,
+                );
+            }
+
+            try {
+                return resolve(SerproCertificateIdentity::class)->document($bytes, $password);
             } catch (ValidationException $exception) {
                 throw new SerproException(
                     'O certificado do contratante não pôde ser lido: '.($exception->validator->errors()->first() ?: 'identidade ausente.'),

@@ -166,6 +166,35 @@ class SerproTokenProviderTest extends TestCase
         }
     }
 
+    public function test_um_segredo_ilegivel_vira_falha_nomeada_e_nao_excecao_de_cifra(): void
+    {
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => Http::response([
+                'expires_in' => 2008,
+                'access_token' => 'access-1',
+                'jwt_token' => 'jwt-1',
+            ]),
+        ]);
+
+        $connection = $this->connection();
+
+        // `APP_KEY` girada, coluna truncada, linha restaurada de outro ambiente: o
+        // segredo guardado não abre. Um `DecryptException` subindo de dentro de uma
+        // requisição HTTP chega ao consumidor como `500` — e o consumidor é quem
+        // precisa saber que nada foi enviado e que a correção é na credencial.
+        $connection->forceFill(['consumer_secret_encrypted' => 'cifrado-que-nao-abre'])->save();
+
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('Um segredo ilegível deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::NotSent, $exception->failure);
+            $this->assertStringNotContainsString('cifrado-que-nao-abre', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
     public function test_a_response_without_the_authorization_token_is_refused(): void
     {
         Http::fake([

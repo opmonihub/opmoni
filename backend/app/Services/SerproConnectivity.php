@@ -54,9 +54,9 @@ final class SerproConnectivity
             return $this->failure('configuracao', $checkedAt);
         }
 
-        // `assertIdentity()` volta sem reclamar de um certificado ausente — quem
-        // recusa isso é o materializador, mais adiante, e lá o veredito seria o
-        // de uma credencial recusada. A ausência é conferida aqui.
+        // A ausência do certificado é conferida aqui porque `assertIdentity()`
+        // volta sem reclamar quando não há PFX: quem recusaria isso mais adiante
+        // é o materializador, e lá o veredito seria o de uma credencial recusada.
         if ($connection->certificate_encrypted === null) {
             return $this->failure('certificado', $checkedAt);
         }
@@ -65,20 +65,28 @@ final class SerproConnectivity
             // Vigência e documento do contratante são conferidos aqui, e não só
             // lá dentro de `verify()`: este é o guard que sabe dizer o que
             // falhou, e nenhum `status` de exceção seria verdadeiro sobre ele.
+            // Cifrado ilegível entra por aqui como `NotSent` e vira `certificado`,
+            // porque o que está para ser trocado é o certificado.
             $connection->assertIdentity();
         } catch (SerproException) {
             return $this->failure('certificado', $checkedAt);
         }
 
+        // O segredo guardado abre com a chave de aplicação atual? Uma linha
+        // restaurada de outro ambiente, uma coluna truncada ou uma chave girada
+        // não abrem, e o conserto é recadastrar a credencial, não caçar o
+        // SERPRO. A leitura é descartada de propósito — o `SerproTokenProvider`
+        // abre o mesmo valor de novo logo abaixo, e é lá que a identidade da
+        // falha mora. O que importa aqui é a resposta nomeada no lugar do `500`
+        // que a exceção crua viraria.
+        try {
+            $connection->consumerSecret();
+        } catch (DecryptException) {
+            return $this->failure('credencial', $checkedAt);
+        }
+
         try {
             $this->tokens->verify();
-        } catch (DecryptException) {
-            // O segredo, o certificado ou a senha guardados não abrem com a
-            // chave de aplicação atual: a credencial guardada está ilegível, e
-            // nenhum byte dela — nem a razão da falha — pertence a esta
-            // resposta. Um `500` aqui seria a resposta menos informativa
-            // possível a "por que a minha credencial está quebrada?".
-            return $this->failure('credencial', $checkedAt);
         } catch (SerproException $exception) {
             return $this->failure($this->elementOf($exception), $checkedAt);
         }
@@ -92,24 +100,35 @@ final class SerproConnectivity
     }
 
     /**
-     * Só a taxonomia do provedor decide, e ela é a única fonte: o que não saiu
-     * daqui é o que o provedor respondeu.
+     * Só a taxonomia decide aqui, e o que chega já passou pelas guardas acima.
      *
-     * `Upstream` é quem não deu conta do lado de lá, e `Indeterminate` é quem
-     * deixou ninguém saber — inclusive a pasta efêmera do PFX que não aceitou a
-     * gravação, que é `Indeterminate` pelo mesmo motivo que um gateway em
-     * timeout. Os dois são `provedor` porque a ação é a mesma nos dois casos:
-     * recadastrar a credencial não resolve, e trocar o certificado menos ainda.
+     * `Upstream` é quem não deu conta do lado de lá, e `NotSent` é quem não
+     * chegou a mandar nada: os dois são `provedor` porque a ação é a mesma nos
+     * dois casos, e recadastrar a credencial não resolve nenhum deles — trocar o
+     * certificado ainda menos.
      *
-     * O que sobra é o provedor recusando o que foi enviado, que é `credencial`.
-     * E a única falha local que ainda poderia chegar aqui é o certificado
-     * vencendo no intervalo de milissegundos entre a conferência de cima e a que
-     * `verify()` refaz; ela sai como `credencial` até a próxima verificação.
+     * O `NotSent` que chega aqui é o da pasta temporária, e só ele. Os outros dois
+     * `NotSent` — segredo ilegível e certificado ilegível — são conferidos antes
+     * de `verify()`, por guard que têm nome próprio, e nenhum dos dois é falha de
+     * infraestrutura: os dois precisam de recadastro.
+     *
+     * O braço `default` é a recusa do que foi enviado, e é onde cai também o
+     * resto do que `verify()` sabe fazer: as falhas de identidade que ela
+     * reconfere (`SerproConnection::current()` relê a linha, e
+     * `assertIdentity()` reexamina vigência e documento) e o materializador
+     * achando o certificado ausente. Todas essas são `DoNotRetry` com
+     * `status` zero, e todas deveriam ser `certificado` — troque-se o
+     * certificado, não a credencial.
+     *
+     * Chegam aqui só se a linha mudar entre a conferência desta classe e a
+     * releitura do provider: milissegundos e uma gravação concorrente, com o
+     * guard acima tendo sido verdadeiro para o valor antigo. Fica nomeado em vez
+     * de mascarado por um `status`, e a próxima verificação acerta.
      */
     private function elementOf(SerproException $exception): string
     {
         return match ($exception->failure) {
-            SerproFailure::Upstream, SerproFailure::Indeterminate => 'provedor',
+            SerproFailure::Upstream, SerproFailure::NotSent => 'provedor',
             default => 'credencial',
         };
     }
