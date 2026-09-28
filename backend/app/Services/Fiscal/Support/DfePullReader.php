@@ -41,7 +41,14 @@ use RuntimeException;
  *    significa "o serviço respondeu que não tem documento"; uma resposta de
  *    "localizado" cujo conteúdo não deu para ler é conteúdo que chegou, e volta
  *    como `RuntimeException` nomeada com a posição — devolvê-la como ausência
- *    marcaria a lacuna como resolvida e a contaria como consultada.
+ *    marcaria a lacuna como resolvida e a contaria como consultada. A terceira
+ *    forma é o lote sem documento **e** sem recusa, e ela é ausência de
+ *    verdade: o serviço não entregou nada, ou entregou uma coisa que o parser
+ *    reconheceu e que não é documento a indexar — que o coletor pula de
+ *    propósito, para não prender a posição. Ver `readOne()`, que é o único
+ *    caminho onde as três formas precisam se distinguir, porque a captura recebe
+ *    a diferença dentro do `PullResult` e a consulta por posição a recebe como
+ *    `null`, recusa ou nada.
  */
 final class DfePullReader
 {
@@ -129,6 +136,24 @@ final class DfePullReader
 
         if ($result->documents !== []) {
             return $result->documents[0];
+        }
+
+        // Nem documento nem recusa: não há o que recusar com. Ou o serviço não
+        // entregou entrada nenhuma, ou a que entregou era uma coisa que o parser
+        // reconheceu e que não é documento a indexar — e o coletor pula essa de
+        // propósito, sem deixá-la virar `FailedEntry`, para que ela não prenda a
+        // posição para sempre (`DfeEntryCollector::collect()`).
+        //
+        // Nos dois casos a posição realmente não tem documento, e `null` é a
+        // resposta certa para uma consulta por posição: quem reconcilia segue para
+        // a próxima em vez de reabrir um buraco que não existe. A alternativa —
+        // procurar a recusa que não há — é um aviso de chave indefinida, que
+        // Laravel converte em `ErrorException`, e `ErrorException` não é
+        // `RuntimeException`: ela escaparia das cinco guardas da reconciliação e
+        // abandonaria as lacunas restantes daquele cliente, todas as noites, sem
+        // que nada dissesse por quê.
+        if ($result->failures === []) {
+            return null;
         }
 
         // Regra 4: uma resposta de "localizado" que não virou documento é

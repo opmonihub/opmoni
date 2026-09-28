@@ -302,6 +302,28 @@ class CteDistributionConnectorTest extends TestCase
     }
 
     /**
+     * A mesma entrada, agora pela consulta por posição — a que a reconciliação
+     * usa — e a resposta é `null`: a posição pedida não tem documento.
+     *
+     * O caminho de consulta por posição não tem onde levar uma recusa, porque a
+     * assinatura devolve um documento ou `null`; e o que o lote traz aqui é uma
+     * entrada que o coletor pula de propósito, sem registrá-la como recusa, para
+     * não prender a posição. Um lote sem documento **e** sem recusa é o terceiro
+     * estado, e sem um desfecho definido para ele o leitor buscaria a recusa que
+     * não existe.
+     */
+    public function test_a_consulta_por_posicao_de_uma_entrada_que_nao_e_documento_volta_vazia(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            $this->docZip(300, $this->inut(), 'procInutCTe_v4.00.xsd'),
+        ]), 200)]);
+
+        $this->assertNull($this->connector()->fetchByNsu($client, 300));
+    }
+
+    /**
      * Um `resNFe` entregue ao conector de CT-e é um documento real com etiqueta
      * errada: a chave é de outro documento e entraria na unicidade sem conflito
      * nenhum.
