@@ -4,7 +4,14 @@
 // framework: o módulo importa só tipos com `import type` e a extensão
 // explícita, então o runner do Node carrega o arquivo por stripping nativo e
 // nada mais é resolvido.
+//
+// A última parte do arquivo lê o texto de `app/pages/fiscal/index.vue`, do
+// mesmo jeito que `apiRouting.test.ts` lê os `nginx.conf`. É o precedente deste
+// repositório para o que não tem superfície importável: um `.vue` não é
+// carregável pelo runner do Node, e uma decisão que só existe dentro dele fica
+// sem guarda nenhuma sem uma leitura de fonte.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import type { FiscalAttentionItem, FiscalAttentionReason, FiscalSummary } from '../app/types/fiscal.ts'
 import {
@@ -19,7 +26,6 @@ import {
   fiscalMonthLabel,
   fiscalNoAttention,
   fiscalMonthSeries,
-  fiscalReferenceNow,
   fiscalSourceLabel,
   fiscalStateCopy,
   formatFiscalCount,
@@ -401,9 +407,9 @@ describe('tempo restante do bloqueio', () => {
     // âncoras abaixo saem da mesma resposta do servidor; a última é o que a
     // tela mostra uma hora depois de aberta, sem nenhum clique.
     const until = '2026-10-05T12:00:00Z'
-    const naResposta = blockedRemaining(until, fiscalReferenceNow('2026-10-01T12:00:00Z'))
-    const umaHoraDepois = blockedRemaining(until, fiscalReferenceNow('2026-10-01T13:00:00Z'))
-    const umDiaDepois = blockedRemaining(until, fiscalReferenceNow('2026-10-02T12:00:00Z'))
+    const naResposta = blockedRemaining(until, new Date('2026-10-01T12:00:00Z'))
+    const umaHoraDepois = blockedRemaining(until, new Date('2026-10-01T13:00:00Z'))
+    const umDiaDepois = blockedRemaining(until, new Date('2026-10-02T12:00:00Z'))
 
     assert.equal(naResposta, 'faltam 4 dias')
     assert.equal(umaHoraDepois, 'faltam 3 dias e 23 h')
@@ -416,28 +422,12 @@ describe('tempo restante do bloqueio', () => {
     // horas depois do primeiro render. Contar do relógio antigo daria "faltam
     // 2 dias e 10 h" para uma janela que o servidor, naquele instante, disse
     // que durava 2 dias e 7 h — o painel growria a janela sozinho.
-    const servidorEmT0 = blockedRemaining('2026-10-03T19:00:00Z', fiscalReferenceNow('2026-10-01T12:00:00Z'))
-    const servidorEmT1 = blockedRemaining('2026-10-03T19:00:00Z', fiscalReferenceNow('2026-10-01T15:00:00Z'))
+    const servidorEmT0 = blockedRemaining('2026-10-03T19:00:00Z', new Date('2026-10-01T12:00:00Z'))
+    const servidorEmT1 = blockedRemaining('2026-10-03T19:00:00Z', new Date('2026-10-01T15:00:00Z'))
 
     assert.equal(servidorEmT0, 'faltam 2 dias e 7 h')
     assert.equal(servidorEmT1, 'faltam 2 dias e 4 h')
     assert.notEqual(servidorEmT1, servidorEmT0)
-  })
-
-  it('ancora no instante da resposta, e não em outro relógio qualquer', () => {
-    const ancora = fiscalReferenceNow('2026-10-01T12:00:00Z')
-    assert.equal(ancora.getTime(), new Date('2026-10-01T12:00:00Z').getTime())
-    assert.equal(fiscalReferenceNow(new Date('2026-10-01T12:00:00Z')).getTime(), ancora.getTime())
-  })
-
-  it('ancora em agora quando a resposta não trouxe um instante legível', () => {
-    // Sem âncora não há contagem, e a única resposta segura para um relógio
-    // ilegível é o próprio agora — nunca o relógio de um render anterior, que é
-    // o defeito que esta função existe para impedir.
-    const antes = Date.now()
-    const ancora = fiscalReferenceNow('quinta-feira que vem')
-    assert.ok(ancora.getTime() >= antes)
-    assert.ok(ancora.getTime() <= Date.now())
   })
 })
 
@@ -550,5 +540,70 @@ describe('última consulta', () => {
 describe('contagem em pt-BR', () => {
   it('formata o número como o resto do produto formata', () => {
     assert.equal(formatFiscalCount(1234), '1.234')
+  })
+})
+
+describe('a reancoragem do relógio das janelas', () => {
+  // A aritmética da contagem é pura e está testada acima com um `now` que o
+  // chamador passa. O que não é testável é *onde* a página reancora esse
+  // relógio, porque a linha mora num SFC — e o defeito que ela cobre não muda
+  // assinatura, não quebra tipo e não produz erro: o relógio congela no
+  // primeiro render, a cada recarregamento o servidor traz um `blocked_until`
+  // novo, e o painel conta esse valor novo com o relógio velho, fazendo a janela
+  // crescer sozinha. Nenhum teste de módulo pega isso, e é por isso que esta
+  // parte lê o texto da página.
+
+  const page = readFileSync(new URL('../app/pages/fiscal/index.vue', import.meta.url), 'utf8')
+
+  /**
+   * O corpo do handler que a busca entrega ao `useAsyncData`, por casamento de
+   * chaves. Recortar a chamada inteira não bastaria: um `watch` do botão fica
+   * logo abaixo e passaria, e foi exatamente ali que o defeito nasceu.
+   */
+  function fetchHandler(source: string): string {
+    const call = source.indexOf('useAsyncData<FiscalSummary>(')
+    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
+
+    const open = source.indexOf('{', source.indexOf('async () =>', call))
+    assert.notEqual(open, -1, 'a busca não tem um handler de corpo')
+
+    let depth = 0
+    for (let index = open; index < source.length; index++) {
+      if (source[index] === '{') depth++
+      else if (source[index] === '}') {
+        depth--
+        if (depth === 0) return source.slice(open + 1, index)
+      }
+    }
+
+    return assert.fail('o handler da busca não fecha')
+  }
+
+  it('reancora dentro do handler que traz o resumo, e antes de devolver', () => {
+    // Três coisas precisam ser verdade ao mesmo tempo: o recorte é o handler
+    // que busca, é nele que o relógio é reancorado, e a reancoragem acontece
+    // antes do `return` — depois do `return` a linha é código morto que uma
+    // busca por texto aceitaria sem pestanejar.
+    const handler = fetchHandler(page)
+
+    assert.match(handler, /await summary\(\)/, 'o recorte não é o handler que busca o resumo')
+
+    const reancora = handler.search(/referenceNow\.value\s*=/)
+    assert.notEqual(reancora, -1, 'a reancoragem do relógio não está no handler da busca')
+
+    const devolve = handler.search(/\breturn\b/)
+    assert.notEqual(devolve, -1, 'o handler não devolve nada')
+    assert.ok(reancora < devolve, 'a reancoragem está depois do return, ou seja, nunca roda')
+  })
+
+  it('mantém o relógio em um só lugar, e é o lugar certo', () => {
+    // Se o relógio fosse reancorado em mais de um ponto, o teste acima passaria
+    // mesmo com um deles errado. Uma segunda atribuição é uma decisão — o
+    // temporizador que faz a contagem andar com o tempo é a esperada — e por
+    // isso ela tem que quebrar este teste em vez de passar em silêncio.
+    const atribuicoes = page.match(/referenceNow\.value\s*=/g) ?? []
+
+    assert.equal(atribuicoes.length, 1, 'o relógio passou a ser reancorado em mais de um ponto')
+    assert.match(page, /useState\('fiscal-panel-now'/)
   })
 })

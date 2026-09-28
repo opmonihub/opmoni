@@ -384,28 +384,6 @@ export const fiscalNoAttention: { title: string, description: string, icon: stri
 }
 
 /**
- * O relógio com que uma janela de bloqueio deve ser contada.
- *
- * `blocked_until` é um instante absoluto, e ele só quer dizer alguma coisa
- * contado a partir de um relógio. O painel tem dois: o do instante em que a
- * resposta chegou, e o do relógio do navegador agora — o segundo serve para a
- * contagem andar com o tempo, o primeiro é a âncora de verdade.
- *
- * Esta função existe separada do `blockedRemaining` por um motivo testável: o
- * defeito que ela cobre — continuar contando do relógio do render anterior
- * depois de recarregar — não muda assinatura nenhuma, não quebra tipo nenhum e
- * não produz erro de runtime. Ele apenas faz o número crescer, às vezes em
- * horas, numa tela cuja tese é não pintar número que não foi medido. Como o
- * `.vue` não é importável pelo runner do Node, a decisão precisa morar aqui
- * para poder ser testada, e a página precisa chamá-la a cada resposta.
- */
-export function fiscalReferenceNow(receivedAt: string | Date | null | undefined): Date {
-  if (!receivedAt) return new Date()
-  const date = receivedAt instanceof Date ? receivedAt : new Date(receivedAt)
-  return Number.isNaN(date.getTime()) ? new Date() : date
-}
-
-/**
  * Quanto falta da janela de bloqueio, em português.
  *
  * `null` quando o item não é um bloqueio — o backend manda `blocked_until` só
@@ -414,7 +392,12 @@ export function fiscalReferenceNow(receivedAt: string | Date | null | undefined)
  * "bloqueado" sem dizer até quando deixa o operador adivinhar se pode esperar.
  *
  * O `now` chega por parâmetro e a função não tem relógio próprio, de propósito:
- * quem tem o dado é quem decide a partir de quando ele vale.
+ * quem tem o dado é quem decide a partir de quando ele vale, e a única coisa que
+ * a tela pode fazer de errado com essa data é contar a janela com o relógio
+ * velho. A página reancora esse relógio a cada resposta, dentro do handler da
+ * busca — e `tests/fiscalPresentation.test.ts` lê o texto do SFC para garantir
+ * que a reancoragem continua ali, porque nenhum teste deste arquivo alcançaria
+ * uma linha dentro de um `.vue`.
  */
 export function blockedRemaining(blockedUntil: string | null | undefined, now: Date): string | null {
   if (!blockedUntil) return null

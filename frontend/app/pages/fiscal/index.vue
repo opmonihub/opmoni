@@ -15,7 +15,6 @@ import {
   fiscalMissingValue,
   fiscalMonthSeries,
   fiscalNoAttention,
-  fiscalReferenceNow,
   fiscalStateCopy,
   formatFiscalCount,
   formatFiscalDateTime,
@@ -84,7 +83,7 @@ const { data, status, error, refresh: reload } = await useAsyncData<FiscalSummar
   'fiscal-summary',
   async () => {
     const fresh = await summary()
-    referenceNow.value = fiscalReferenceNow(new Date()).toISOString()
+    referenceNow.value = new Date().toISOString()
     return fresh
   },
   { getCachedData: () => undefined }
