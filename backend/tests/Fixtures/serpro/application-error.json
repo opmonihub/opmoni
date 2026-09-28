@@ -1,0 +1,15 @@
+{
+  "contratante": null,
+  "autorPedidoDados": null,
+  "contribuinte": null,
+  "pedidoDados": null,
+  "status": 403,
+  "responseId": "00000000-0000-0000-0000-000000000000",
+  "dados": null,
+  "mensagens": [
+    {
+      "codigo": "AcessoNegado-ICGERENCIADOR-019",
+      "texto": "O solicitante não é o contratante e o termo de autorização assinado pelo procurador é obrigatório."
+    }
+  ]
+}

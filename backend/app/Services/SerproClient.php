@@ -150,13 +150,14 @@ final class SerproClient
     private function interpret(Response $response, string $tag): SerproResult
     {
         $payload = $response->json();
-        $envelope = $this->envelope->parse(is_array($payload) ? $payload : []);
-        $providerCode = $envelope['mensagens'][0]['codigo'] ?? '';
+        $payload = is_array($payload) ? $payload : [];
+        $envelope = $this->envelope->parse($payload);
+        $providerCode = $this->providerCode($envelope['mensagens'], $payload);
         $failure = SerproException::classify($response->status(), $providerCode);
 
         if ($failure !== SerproFailure::Success) {
             throw new SerproException(
-                $envelope['mensagens'][0]['texto'] ?? $failure->label(),
+                $this->failureMessage($envelope['mensagens'], $failure),
                 $failure,
                 $response->status(),
                 $providerCode === '' ? null : $providerCode,
@@ -171,6 +172,44 @@ final class SerproClient
             $envelope['response_id'],
             $tag,
         );
+    }
+
+    /**
+     * O código da falha, de onde o provedor o*pôde* mandar.
+     *
+     * A falha da aplicação vem em `mensagens`; a do gateway não tem envelope
+     * nenhum e traz só o `code`. O texto que vem junto — `message` e
+     * `description` — é o que o provedor escreveu sobre a requisição que
+     * fizemos, e a requisição carrega o token e o documento do cliente. O que
+     * sobe é o código, que é o que classifica a falha; o texto não sai daqui.
+     *
+     * @param  list<array{codigo: string, texto: string}>  $mensagens
+     * @param  array<string, mixed>  $payload
+     */
+    private function providerCode(array $mensagens, array $payload): string
+    {
+        $codigo = $mensagens[0]['codigo'] ?? '';
+        $gateway = $payload['code'] ?? null;
+
+        if ($codigo !== '') {
+            return $codigo;
+        }
+
+        return is_scalar($gateway) ? (string) $gateway : '';
+    }
+
+    /**
+     * A mensagem da exceção é o texto que o serviço documentou ou o rótulo da
+     * falha — nunca o texto livre do gateway, e nunca vazia, que no log seria
+     * uma `SerproException` sem dizer nada.
+     *
+     * @param  list<array{codigo: string, texto: string}>  $mensagens
+     */
+    private function failureMessage(array $mensagens, SerproFailure $failure): string
+    {
+        $texto = $mensagens[0]['texto'] ?? '';
+
+        return $texto !== '' ? $texto : $failure->label();
     }
 
     private function baseUrl(): string

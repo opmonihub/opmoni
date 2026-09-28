@@ -1,0 +1,17 @@
+{
+  "contratante": { "numero": "00000000000000", "tipo": 2 },
+  "autorPedidoDados": { "numero": "00000000000000", "tipo": 2 },
+  "contribuinte": { "numero": "00000000000000", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "SITFIS",
+    "idServico": "RELATORIOSITFIS92",
+    "versaoSistema": "2.0",
+    "dados": ""
+  },
+  "status": 200,
+  "responseId": "00000000-0000-0000-0000-000000000000",
+  "dados": "\"{\\\"protocolo\\\":\\\"000000000000000\\\"}\"",
+  "mensagens": [
+    { "codigo": "Sucesso-SITFIS", "texto": "Requisição efetuada com sucesso." }
+  ]
+}

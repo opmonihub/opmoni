@@ -47,19 +47,63 @@ final class SerproEnvelope
     }
 
     /**
+     * O envelope da resposta, lido do jeito que o provedor o manda.
+     *
+     * `status` é o status do envelope e não o HTTP: `0` é o valor para "o
+     * provedor não disse", e é o que uma falha do gateway devolve, já que ela
+     * não tem envelope. O que não veio não é preenchido com palpite.
+     *
      * @param  array<string, mixed>  $payload
      * @return array{status: int, response_id: ?string, dados: mixed, mensagens: list<array{codigo: string, texto: string}>}
      */
     public function parse(array $payload): array
     {
-        $raw = $payload['dados'] ?? null;
-
         return [
             'status' => (int) ($payload['status'] ?? 0),
-            'response_id' => isset($payload['responseId']) ? (string) $payload['responseId'] : null,
-            'dados' => is_string($raw) && $raw !== '' ? json_decode($raw, true) : $raw,
+            'response_id' => $this->responseId($payload),
+            'dados' => $this->dados($payload['dados'] ?? null),
             'mensagens' => $this->mensagens($payload['mensagens'] ?? []),
         ];
+    }
+
+    /**
+     * O `dados` volta como a mesma string escapada que a requisição manda e, em
+     * parte dos serviços, como string dentro de string. Duas passagens é o
+     * máximo, e cada uma só acontece quando o texto é JSON; o que sobra é o
+     * que o serviço mandou.
+     *
+     * Um número solto não é payload de serviço. `'00000000000000'` é um
+     * documento com zeros à esquerda, e lido como número vira `0` — um
+     * identificador que existe, que casa com outros e que ninguém reconheceria
+     * como documento. Fica string.
+     */
+    private function dados(mixed $raw): mixed
+    {
+        for ($pass = 0; $pass < 2 && is_string($raw); $pass++) {
+            $decoded = json_decode($raw, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE || is_int($decoded) || is_float($decoded)) {
+                break;
+            }
+
+            $raw = $decoded;
+        }
+
+        return $raw;
+    }
+
+    /**
+     * O `responseId` é o que se cita ao suporte, então um identificador vazio
+     * no registro da chamada é pior do que nenhum: parece quotável e não
+     * resolve nada.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function responseId(array $payload): ?string
+    {
+        $responseId = $this->textoDe($payload, 'responseId');
+
+        return $responseId === '' ? null : $responseId;
     }
 
     /**
@@ -73,11 +117,23 @@ final class SerproEnvelope
 
         return array_values(array_map(
             fn (mixed $mensagem): array => [
-                'codigo' => (string) data_get($mensagem, 'codigo', ''),
-                'texto' => (string) data_get($mensagem, 'texto', ''),
+                'codigo' => $this->textoDe($mensagem, 'codigo'),
+                'texto' => $this->textoDe($mensagem, 'texto'),
             ],
             array_filter($mensagens, is_array(...)),
         ));
+    }
+
+    /**
+     * Texto que veio do corpo da resposta, e só isso: um campo que o provedor
+     * mandou como objeto viraria `"Array"` acompanhado de um aviso, e nenhum
+     * dos dois serve para nada.
+     */
+    private function textoDe(mixed $fonte, string $campo): string
+    {
+        $valor = is_array($fonte) ? ($fonte[$campo] ?? null) : null;
+
+        return is_scalar($valor) ? trim((string) $valor) : '';
     }
 
     /**
