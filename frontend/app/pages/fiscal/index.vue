@@ -415,7 +415,7 @@ function toneClass(tone: FiscalTone): string {
             <template #header>
               <div class="flex min-w-0 items-baseline justify-between gap-3">
                 <span class="truncate text-xs text-muted">
-                  Documentos por mês de emissão
+                  Documentos com data de emissão
                 </span>
                 <span class="shrink-0 text-xs tabular-nums text-muted">
                   {{ seriesHeader.series }} · {{ seriesHeader.stored }}

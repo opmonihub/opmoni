@@ -281,9 +281,9 @@ export function fiscalStageLabel(stage: FiscalStage): string {
 /**
  * A origem de uma distribuição, pelo nome que o fisco usa.
  *
- * Aceita `null` porque o Resource escreve `$this->source?->value`, e o tipo
- * deste contrato espelha a expressão — não a intenção de quem a escreveu. O
- * `null` sai como o traço do valor ausente, e não como `undefined`, que é o que
+ * Aceita `null` porque o Resource escreve `$this->source?->value`, e o contrato
+ * em `types/fiscal.ts` espelha a expressão — não a intenção de quem a escreveu.
+ * O `null` sai como o traço do valor ausente, e não como `undefined`, que é o que
  * um `sourceLabels[null]` devolve e o que a tela pintaria no lugar de uma fonte.
  */
 const sourceLabels: Record<FiscalSource, string> = {
