@@ -19,34 +19,38 @@ use DOMElement;
  * que é invisível e entrega os bytes à rotina de assinatura isolada. Ela não
  * decide se o formato é aceito: essa decisão é do gate de emissão, e o gate só
  * abre depois de um teste de contrato real contra o provedor, que **não existe
- * ainda** — a documentação do termo do provedor responde `500` em toda URL
- * plausível e não publica XSD, então o modelo de referência é a única autoridade
- * disponível e o que ele não resolve continua não resolvido. Um termo emitido
- * por esta classe é um documento bem formado e criptograficamente válido, e
- * **não** é um termo de que se possa afirmar aceitação.
+ * ainda**. A documentação do provedor está viva — lida em 2026-09-28, ela
+ * responde `200` e publica a tabela de layout, inclusive `finalidade` sem o
+ * espaço e a canonicalização inclusiva —, mas ela **não publica XSD** e não
+ * diz se o validador do provedor aceita o nosso documento. Um termo emitido por
+ * esta classe é um documento bem formado e criptograficamente válido, e **não**
+ * é um termo de que se possa afirmar aceitação.
  *
  * **Quem é quem no documento, e de onde vem essa leitura.** O modelo dá ao
  * elemento `destinatario` o papel `contratante` e ao `assinadoPor` o papel
  * `autor pedido de dados`, e o texto do próprio termo diz que o destinatário é
  * a empresa CONTRATANTE a quem o signatário autoriza a executar as requisições.
- * Três coisas do repositório fecham a conta: o `CONTEXT.md` define o
+ * Quatro coisas do repositório fecham a conta: o `CONTEXT.md` define o
  * `contratante` como a plataforma, "nunca a Account que opera o sistema"; o
  * envelope de toda requisição leva `contratante` = `contratante_numero` da
- * credencial de plataforma; e quem assina é o e-CNPJ do escritório, de modo que
- * o escritório é o `assinadoPor` por definição — colocar a plataforma ali seria
- * dizer num documento jurídico que outro sujeito assinou. Logo: `destinatario` é
- * a plataforma, `assinadoPor` é o escritório. **O plano de 02 diz em um trecho
- * "com o escritório como destinatário", e é esse trecho que diverge**: ele
- * briga com o papel `contratante` que o próprio modelo dá ao elemento
- * `destinatario`, e é a leitura do modelo que o código segue.
+ * credencial de plataforma; o exemplo do provedor publica
+ * `destinatario papel="contractante"` com a razão social da CONTRATANTE; e quem
+ * assina é o e-CNPJ do escritório, de modo que o escritório é o `assinadoPor` por
+ * definição — colocar a plataforma ali seria dizer num documento jurídico que
+ * outro sujeito assinou. Logo: `destinatario` é a plataforma, `assinadoPor` é o
+ * escritório. **O plano de 02 diz em um trecho "com o escritório como
+ * destinatário", e é esse trecho que diverge**: ele briga com o papel
+ * `contratante` que o próprio modelo dá ao elemento `destinatario` e com o
+ * exemplo que o provedor publica, e é a leitura do modelo que o código segue.
  *
- * **O par que identifica o contratante é conferido, e não montado.** O número
- * chega por parâmetro — a interface é do plano e o parâmetro fica —, o nome sai
- * do certificado da credencial de plataforma, e as duas fontes são cruzadas uma
- * contra a outra antes de existir qualquer byte do documento. Sem a conferência,
- * um chamador que passasse o CNPJ do escritório produziria um termo que nomeia a
- * plataforma com o número de outra empresa: documento jurídico errado, sem
- * exceção, sem log e sem nada no XML que parecesse fora do lugar.
+ * **O par que identifica o contratante sai de uma linha só, e é por isso que
+ * ele não é conferido.** O número vem de `contratante_numero` e o nome é
+ * cortado de `certificate_subject` — a mesma linha, a que o gate leu —, e o
+ * método não recebe o número por parâmetro, de modo que nenhum chamador
+ * consegue produzir um termo que nomeia a plataforma com o número de outra
+ * empresa. A versão anterior recebia o número e relia a credencial para o nome,
+ * cruzando as duas metades em tempo de execução: a conferência era a defesa de
+ * uma interface que já permitia o defeito, e a interface agora não o permite.
  *
  * **Os bytes são o documento.** A renovação reenvia exatamente os mesmos bytes e
  * o provedor responde `304` com o token no `ETag` sem re-assinar nada. Um termo
@@ -234,37 +238,38 @@ final class SerproTermSigner
     /**
      * O termo do escritório assinado pelo e-CNPJ da conta.
      *
-     * @param  string  $contractingDocument  o documento do **contratante**, que é
-     *                                       o da plataforma e nunca o do
-     *                                       escritório. A interface é do plano e
-     *                                       o parâmetro fica, mas ele não é
-     *                                       aceito por confiança: é conferido
-     *                                       contra `contratante_numero` da
-     *                                       credencial, e um documento que não
-     *                                       bate com ela interrompe a assinatura.
+     * **A credencial de plataforma chega por parâmetro, e é a linha que o gate
+     * liberou.** Ela é quem diz o que o contratante é: o número vem de
+     * `contratante_numero` e o nome é cortado de `certificate_subject`, e as
+     * duas metades saem **da mesma linha**. A versão anterior recebia o número
+     * por parâmetro e relia a credencial para achar o nome — duas leituras, e
+     * duas chances de ver empresas diferentes, que é o desfecho que a
+     * docblock do `SerproTermManager` diz que a emissão tem de impedir: um
+     * `destinatario` que nenhuma prova autorizou.
      *
-     * @throws SerproException quando não há credencial de plataforma, quando o
-     *                         documento recebido não é o dela, ou quando a
-     *                         assinatura falha. Nenhuma das mensagens carrega o
-     *                         termo, o certificado ou a senha.
+     * Por isso não há conferência de número aqui, e a ausência é
+     * estrutural: o número do contratante não é um parâmetro que este método
+     * aceite, de modo que nenhum chamador consegue passar o de outra empresa.
+     * Onde antes havia uma conferência em tempo de execução, há uma interface
+     * que não tem por onde errar.
+     *
+     * @param  SerproConnection  $connection  a credencial de plataforma, já lida
+     *                                        por quem chamou — `SerproTermManager`
+     *                                        é o único chamador, e a lê **antes**
+     *                                        do gate
+     *
+     * @throws SerproException quando a credencial não nomeia o contratante, ou
+     *                         quando a assinatura falha. Nenhuma das mensagens
+     *                         carrega o termo, o certificado ou a senha.
      */
-    public function sign(Account $account, AccountCertificate $certificate, string $contractingDocument): string
+    public function sign(Account $account, AccountCertificate $certificate, SerproConnection $connection): string
     {
-        // A credencial vem antes do documento: ela é quem diz o que o
-        // contratante é, e tanto o número quanto o nome saem dela. Conferir o
-        // número contra ela é o que impede o termo de casar o nome de uma
-        // empresa com o documento de outra.
-        $conexao = SerproConnection::current();
-
-        if ($conexao === null) {
-            throw new SerproException('Não há credencial de plataforma para nomear o contratante do termo.', SerproFailure::NotSent, 0);
-        }
-
-        $this->confirmaContratante($contractingDocument, $conexao);
-
+        // O número e o nome saem da mesma linha, e essa é a metade da garantia:
+        // o número é o que a coluna guarda, e o nome é o que o certificado da
+        // mesma linha carrega.
         $documento = self::document(array_merge([
-            'contratante_numero' => $contractingDocument,
-            'contratante_nome' => $this->nomeDoContratante($conexao),
+            'contratante_numero' => (string) $connection->contratante_numero,
+            'contratante_nome' => $this->nomeDoContratante($connection),
             'autor_numero' => $certificate->document,
             'autor_nome' => $this->nomeDoEscritorio($account),
         ], $this->datas()));
@@ -548,6 +553,12 @@ final class SerproTermSigner
      * social e documento separados por `:` —, e o corte só acontece quando o
      * rabo tem catorze posições de documento, para que uma razão social com dois
      * pontos não seja partida ao meio.
+     *
+     * **A linha vazia é a única recusa aqui, e ela é a que a interface deixou
+     * de proteger.** O número do contratante não vem mais de quem chama, e por
+     * isso não há com o que ele discordar; o que ainda pode faltar é a razão
+     * social, e um `destinatario` sem nome é um termo que não nomeia a parte que
+     * está autorizando.
      */
     private function nomeDoContratante(SerproConnection $conexao): string
     {
@@ -564,55 +575,6 @@ final class SerproTermSigner
         }
 
         return $nome;
-    }
-
-    /**
-     * Confere que o número do contratante é o desta credencial de plataforma.
-     *
-     * **O número e o nome saem de fontes diferentes, e é por isso que o número
-     * é conferido.** O nome vem do `certificate_subject` desta linha, lido e
-     * cortado; o número vem do parâmetro de quem chama. Sem a conferência, um
-     * chamador que passasse o CNPJ do escritório produziria um termo cujo
-     * `destinatario` carregaria **o número de uma empresa com a razão social de
-     * outra** — sem exceção, sem log, e sem nada no documento que parecesse
-     * errado para quem lê. Um termo é documento jurídico, e um documento que
-     * nomeia a parte errada é pior do que um termo que não existe.
-     *
-     * A linha já guarda `contratante_numero`, extraído do próprio certificado da
-     * plataforma no momento em que ele foi enviado — o mesmo lugar de onde vem o
-     * `subject`. A comparação é a que fecha o par: o parâmetro tem de ser o
-     * documento desta credencial, e não o de outra.
-     *
-     * **A comparação é de igualdade e não de não-vazio, e isso é uma escolha
-     * consciente.** A coluna é `NOT NULL` e aceita a string vazia, então uma
-     * linha com `contratante_numero = ''` passaria por aqui com um `sign('')`
-     * que produziria um `destinatario` sem número. A linha é inalcançável: o
-     * `SerproConnectionManager` escreve `contratante_numero` e
-     * `certificate_subject` no mesmo `forceFill`, e os dois saem de um único
-     * `parse()` de um certificado que a identidade só aceita depois de
-     * encontrar um CNPJ que fecha. Guardar contra isso aqui seria uma validação
-     * de uma linha que ninguém consegue construir, e validação que não tem
-     * entrada possível é ruído que a próxima pessoa teria de investigar.
-     *
-     * A mensagem é fixa e não nomeia nem o número recusado nem o esperado: os
-     * dois são documentos de empresa, e o que se precisa dizer é que a credencial
-     * e o termo não falam da mesma empresa — qual dos dois está errado é
-     * informação que só a credencial tem.
-     *
-     * @throws SerproException quando o documento recebido não é o da credencial
-     *                         de plataforma que nomeia o termo.
-     */
-    private function confirmaContratante(string $contractingDocument, SerproConnection $conexao): void
-    {
-        if ($contractingDocument === (string) $conexao->contratante_numero) {
-            return;
-        }
-
-        throw new SerproException(
-            'O documento do contratante não é o da credencial de plataforma: o termo nomearia uma empresa com o nome de outra.',
-            SerproFailure::NotSent,
-            0,
-        );
     }
 
     private function razaoSocial(string $assunto): string

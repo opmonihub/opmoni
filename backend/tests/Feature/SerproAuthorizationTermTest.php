@@ -23,6 +23,7 @@ use App\Tenant\CurrentTenant;
 use Carbon\Carbon;
 use DOMDocument;
 use DOMXPath;
+use Illuminate\Console\Command;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,6 +76,9 @@ class SerproAuthorizationTermTest extends TestCase
     /** O CNPJ da plataforma, o mesmo que a credencial de `serpro_connections` guarda. */
     private const PLATAFORMA = '12345678000195';
 
+    /** A razão social que a credencial ganha quando o caso a rotaciona. */
+    private const OUTRA_PLATAFORMA = 'Outra Empresa de Teste';
+
     private const SENHA = 'senha-de-teste';
 
     private const ROTA = '/api/serpro/authorization-terms';
@@ -101,8 +105,23 @@ class SerproAuthorizationTermTest extends TestCase
     /** O token que a resposta de sucesso traz em `dados`. */
     private const TOKEN = 'b06feea3-1ca8-49f4-bdb4-211ab006cb92';
 
-    /** O `expires` do `304`, no formato de data HTTP que a RFC 7231 define. */
+    /**
+     * O `expires` do `304` **tal como o provedor publica**: o exemplo dele é de
+     * outubro de 2022, e é esse valor que o caso da validade vencida usa — ele
+     * está no passado desde 2022, e é o que prova que a regra trata a data
+     * documentada do provedor como o que ela é.
+     */
     private const EXPIRES_HTTP = 'Sat, 15 Oct 2022 00:00:01 GMT';
+
+    /**
+     * A mesma forma, com a validade no futuro.
+     *
+     * O formato é o que RFC 7231 define e é o que o `etag` documentado vem
+     * acompanhado; só a data anda. Uma validade vencida deixa o termo
+     * `validado` — o estado honesto de quem não tem token em uso —, de modo que
+     * um caso que afirma `autenticado` precisa de uma validade que ainda valha.
+     */
+    private const EXPIRES_HTTP_FUTURO = 'Wed, 15 Mar 2034 00:00:01 GMT';
 
     /**
      * O mesmo token do brief, em maiúsculas, como o provedor pode mandá-lo.
@@ -148,6 +167,21 @@ class SerproAuthorizationTermTest extends TestCase
     /** Se a contagem de leituras está armada para a medição atual. */
     private bool $contando = false;
 
+    /**
+     * A rotação da credencial, armada por um caso e disparada na leitura.
+     *
+     * Trocar `certificate_subject` logo depois da **primeira** leitura da linha
+     * é a rotação de credencial que o argumento da docblock descreve: o gate é
+     * decidido por uma linha e o documento assinado por outra. Só o `subject`
+     * muda — o número do contratante fica — porque é ele que produz o nome do
+     * `destinatario`, e a identidade conferida pelo transporte depende do número
+     * e do certificado, não do nome.
+     */
+    private bool $rotacionando = false;
+
+    /** Se a rotação já aconteceu, para a reentrância do próprio `DB::listen`. */
+    private bool $rotacionado = false;
+
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -169,7 +203,14 @@ class SerproAuthorizationTermTest extends TestCase
          * `SerproAccountCertificateTest`, e pelo mesmo motivo.
          */
         DB::listen(function (QueryExecuted $query): void {
-            if ($this->contando && str_contains($query->sql, 'from "serpro_connections"')) {
+            $leitura = str_contains($query->sql, 'from "serpro_connections"');
+
+            if ($leitura && $this->rotacionando && ! $this->rotacionado) {
+                $this->rotacionado = true;
+                $this->rotacionarCredencial();
+            }
+
+            if ($this->contando && $leitura) {
                 $this->leituras++;
             }
         });
@@ -329,7 +370,7 @@ class SerproAuthorizationTermTest extends TestCase
 
         $this->respondeApoiar(304, '', [
             'ETag' => self::TOKEN_ETAG,
-            'Expires' => self::EXPIRES_HTTP,
+            'Expires' => self::EXPIRES_HTTP_FUTURO,
         ]);
 
         $renovado = $manager->refresh($conta->getKey());
@@ -391,18 +432,18 @@ class SerproAuthorizationTermTest extends TestCase
         $this->respondeApoiar(304, '', [
             'ETag' => self::TOKEN_ETAG_DOCUMENTADO,
             'Cache-Control' => 'termo_autorizacao',
-            'Expires' => self::EXPIRES_HTTP,
+            'Expires' => self::EXPIRES_HTTP_FUTURO,
         ]);
 
         $renovado = $manager->refresh($conta->getKey());
 
         $this->assertNotSame($antes, $renovado->token());
         $this->assertSame(self::TOKEN_ETAG, $renovado->token());
-        // O `expires` do exemplo do provedor é uma data HTTP em GMT, e é lida
-        // como o instante que ela é — o texto do provedor diz "meia-noite de
-        // Brasília" e o exemplo diz outra coisa, e a divergência está escrita
-        // no manager.
-        $this->assertSame('2022-10-15 00:00:01', $renovado->token_expires_at?->format('Y-m-d H:i:s'));
+        $this->assertSame(SerproAuthorizationTermState::Autenticado, $renovado->state);
+        // O `expires` é uma data HTTP em GMT, e é lida como o instante que ela
+        // é — o texto do provedor diz "meia-noite de Brasília" e o exemplo
+        // dele diz outra coisa, e a divergência está escrita no manager.
+        $this->assertSame('2034-03-15 00:00:01', $renovado->token_expires_at?->format('Y-m-d H:i:s'));
     }
 
     /**
@@ -513,9 +554,81 @@ class SerproAuthorizationTermTest extends TestCase
         $renovado = $manager->refresh($conta->getKey());
 
         $this->assertSame(SerproAuthorizationTermState::Validado, $renovado->state);
-        $this->assertStringContainsString('até quando ele vale', (string) $renovado->state_reason);
+        $this->assertStringContainsString('não pode usar', (string) $renovado->state_reason);
         $this->assertStringContainsString('sem token em uso', (string) $renovado->state_reason);
         $this->assertNull($renovado->token_expires_at);
+        $this->assertNull($manager->validToken($conta->getKey()));
+    }
+
+    /**
+     * Uma validade **bem formada e já passada** é o mesmo caso de uma validade
+     * ausente, e a linha não pode dizer que o termo está autenticado.
+     *
+     * **Por que o caso é realista e não um contorno de teste.** O provedor
+     * documenta o `304` como "não modificado, o token estava em cache" — e a
+     * validade de um token em cache é, por construção, a do token **original**,
+     * que é a que já passou. Um `Expires` de ontem é o `Expires` que a renovação
+     * real vai encontrar, e o estado que a versão anterior gravava era
+     * `autenticado` com `validToken()` devolvendo `null`: a tela dizia que a
+     * plataforma fala pelo escritório no mesmo instante em que o sistema se
+     * recusava a falar.
+     *
+     * O caminho do `200` recebe o mesmo tratamento e por metade do motivo: ali a
+     * validade **nem era lida** para decidir o estado — um `200` com token e
+     * `data_hora_expiracao` impossível virava `autenticado` com
+     * `token_expires_at` nulo, que é a mesma mentira com menos informação ainda.
+     */
+    public function test_uma_validade_ja_passada_nao_deixa_o_termo_autenticado(): void
+    {
+        Carbon::setTestNow('2026-03-10 09:30:00');
+
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $manager = resolve(SerproTermManager::class);
+        $manager->issue($conta->getKey());
+
+        // O `304` com a validade de ontem: bem formada, e vencida. O valor
+        // vem do próprio exemplo do provedor, que é de 2022.
+        $this->respondeApoiar(304, '', [
+            'ETag' => self::TOKEN_ETAG,
+            'Expires' => self::EXPIRES_HTTP,
+        ]);
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $this->assertSame(
+            SerproAuthorizationTermState::Validado,
+            $renovado->state,
+            'Uma validade vencida não pode deixar a linha se dizendo autenticado.',
+        );
+        $this->assertStringContainsString('sem token em uso', (string) $renovado->state_reason);
+        $this->assertNull($manager->validToken($conta->getKey()));
+
+        // O instante que o provedor mandou continua gravado: ele é um fato, e
+        // apagá-lo tiraria da linha a única pista de que a validade existiu.
+        $this->assertSame('2022-10-15 00:00:01', $renovado->token_expires_at?->format('Y-m-d H:i:s'));
+
+        // E o caminho do `200`, com a validade vencida em `dados`.
+        $this->respondeApoiar(200, [
+            'status' => 200,
+            'dados' => json_encode([
+                'autenticar_procurador_token' => self::TOKEN,
+                'data_hora_expiracao' => '2026-03-09T00:00:01',
+            ], JSON_THROW_ON_ERROR),
+            'mensagens' => [['codigo' => '200', 'texto' => 'Sucesso na execução.']],
+        ]);
+
+        $emitido = $manager->issue($conta->getKey());
+
+        $this->assertSame(
+            SerproAuthorizationTermState::Validado,
+            $emitido->state,
+            'Um token com validade vencida não autentica o termo.',
+        );
+        $this->assertStringContainsString('sem token em uso', (string) $emitido->state_reason);
         $this->assertNull($manager->validToken($conta->getKey()));
     }
 
@@ -570,6 +683,13 @@ class SerproAuthorizationTermTest extends TestCase
         // `2026-04-10 03:00` em UTC, e é essa a fronteira — declará-lo vencido
         // à meia-noite de Greenwich faria o escritório assinar de novo três
         // horas antes do prazo, todo dia.
+        //
+        // A resposta da renovação é o `304` com validade no futuro, e não a
+        // aceitação: o relógio do caso anda um mês inteiro, e a validade que o
+        // provedor mandou na emissão está vencida há muito tempo — o que é
+        // verdade também no produto, e é o que deixa a linha `validado`.
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG, 'Expires' => self::EXPIRES_HTTP_FUTURO]);
+
         Carbon::setTestNow('2026-04-10 02:59:59');
         $this->assertSame(
             SerproAuthorizationTermState::Autenticado,
@@ -674,6 +794,57 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertSame(SerproAuthorizationTermState::Recusado, $renovado->state);
         $this->assertStringContainsString('assinado de novo', (string) $renovado->state_reason);
         $this->assertNull($manager->validToken($conta->getKey()));
+    }
+
+    /**
+     * Um termo recusado cujo documento também venceu continua recusado, e o
+     * código da recusa sobrevive.
+     *
+     * **Os dois estados mandam o escritório a agir, e é por isso que a ordem
+     * importa.** `vencido` e `recusado` pedem a mesma coisa — um termo novo
+     * assinado —, e por isso a tela não os distingue na ação. O que o operador
+     * distingue é a **causa**, e a causa de um `recusado` é o código que o
+     * provedor devolveu: é o único registro de *por que* aquele documento não
+     * serve, e ele é o que separa "o documento está velho" de "o documento está
+     * errado". Sobrescrever a recusa por `Vencido` apagava o diagnóstico para
+     * ganhar uma distinção que a ação não usa.
+     *
+     * O caso monta as duas condições de uma vez porque é a ordem do código que
+     * decide: o vencimento era conferido primeiro, e a recusa só era lida depois
+     * que o documento já tinha virado `vencido`.
+     */
+    public function test_a_renovacao_de_um_termo_recusado_e_vencido_guarda_o_codigo_da_recusa(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarRecusa('AcessoNegado-ICGERENCIADOR-042', 403);
+
+        $manager = resolve(SerproTermManager::class);
+
+        try {
+            $manager->issue($conta->getKey());
+        } catch (SerproException) {
+            // A recusa da emissão é o que produz o estado recusado; o que este
+            // caso afirma é o que a renovação faz com ele depois.
+        }
+
+        $termo = SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->sole();
+
+        $this->assertSame(SerproAuthorizationTermState::Recusado, $termo->state);
+
+        // O documento vence depois da recusa: os dois estados valem ao mesmo
+        // tempo, e é a ordem das conferências que decide qual fica.
+        $termo->forceFill(['document_expires_on' => now()->subDay()->startOfDay()])->save();
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $this->assertSame(
+            SerproAuthorizationTermState::Recusado,
+            $renovado->state,
+            'A recusa do provedor é o diagnóstico da linha e não pode ser sobrescrita pelo vencimento.',
+        );
+        $this->assertStringContainsString('AcessoNegado-ICGERENCIADOR-042', (string) $renovado->state_reason);
     }
 
     public function test_a_recusa_do_provedor_marca_recusado_sem_logar_o_documento_nem_o_token(): void
@@ -1051,6 +1222,63 @@ class SerproAuthorizationTermTest extends TestCase
         );
     }
 
+    /**
+     * O gestor lê a conta do job, e não a do `queue:work` que ficou.
+     *
+     * O caso acima passa pelo `RenewSerproTermsJob`, que **recarrega** o
+     * singleton antes de chamar o gestor — as duas camadas fecham o mesmo
+     * problema, e por isso ele não veria este defeito. Aqui o gestor é chamado
+     * direto, com um `CurrentTenant` que aponta para outra conta: é o estado em
+     * que o `queue:work` fica depois de um job anterior e antes do próximo.
+     *
+     * **O efeito sem a correção é uma mensagem falsa.** O escopo global de
+     * `BelongsToAccount` filtra a leitura pelo singleton, a linha da conta
+     * pedida desaparece da consulta e o gestor responds que a conta "ainda não
+     * tem termo de autorização emitido" — ou que "ainda não entregou o e-CNPJ",
+     * para o certificado. Nenhuma das duas frases é verdade, e ambas mandam o
+     * escritório fazer o que ele já fez.
+     */
+    public function test_o_gestor_ignora_o_tenant_que_sobrou_e_atende_a_conta_do_job(): void
+    {
+        [$alvo] = $this->escritorio('Escritório Alvo');
+        [$vizinha] = $this->escritorio('Escritório Vizinha');
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $manager = resolve(SerproTermManager::class);
+        $manager->issue($alvo->getKey());
+        $manager->issue($vizinha->getKey());
+
+        // O que sobrou do job anterior, e que ninguém reseta.
+        resolve(CurrentTenant::class)->accountId = $vizinha->getKey();
+
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG, 'Expires' => self::EXPIRES_HTTP]);
+
+        $renovado = $manager->refresh($alvo->getKey());
+
+        $this->assertSame(self::TOKEN_ETAG, $renovado->token());
+        $this->assertSame(
+            self::TOKEN,
+            SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $vizinha->getKey())->sole()->token(),
+            'A conta vizinha não pode ter o token trocado por um job que não é dela.',
+        );
+
+        // E o mesmo para o e-CNPJ, que é a leitura que produz a mensagem mais
+        // enganosa das duas — "o escritório nunca entregou certificado".
+        resolve(CurrentTenant::class)->accountId = $vizinha->getKey();
+
+        $emitido = $manager->issue($alvo->getKey());
+
+        $this->assertSame(
+            $alvo->getKey(),
+            $emitido->account_id,
+            'A emissão é da conta do job, e não da conta que o singleton carrega.',
+        );
+        $this->assertSame(self::TOKEN_ETAG, $emitido->token());
+    }
+
     public function test_o_comando_de_renovacao_despacha_um_job_por_conta_que_ja_tem_termo(): void
     {
         [$alvo] = $this->escritorio('Escritório Alvo');
@@ -1074,6 +1302,182 @@ class SerproAuthorizationTermTest extends TestCase
             fn (RenewSerproTermsJob $job): bool => $job->accountId === $alvo->getKey(),
         );
         Queue::assertPushed(RenewSerproTermsJob::class, 1);
+    }
+
+    /**
+     * A travessia cobre a carteira **inteira** sob `QUEUE_CONNECTION=sync`.
+     *
+     * **Por que este caso existe e o anterior não o substitui.** O caso acima
+     * usa `Queue::fake()` e uma conta só: com a fila dublê, o job não roda, o
+     * `CurrentTenant` não é tocado por ninguém, e uma página só não tem segunda
+     * volta. Sob `sync` — o do `phpunit.xml` e um dos possíveis numa instalação
+     * — o primeiro job executa dentro do `dispatch()` e **carrega o singleton da
+     * conta dele**; a consulta da página seguinte é reavaliada, o escopo global de
+     * `BelongsToAccount` filtra por aquela conta, `id > <último da página>` não
+     * devolve nada, o laço para e o comando anuncia a carteira coberta.
+     *
+     * O defeito é silencioso **e parece sucesso**: a contagem sai menor e o
+     * operador não tem como saber que a última página não foi renewada. Por isso
+     * a afirmação é sobre as **linhas**, e não só sobre a contagem impressa.
+     *
+     * 101 termos é o menor número que produz duas páginas: o `chunkById` pede
+     * 100, e um termo a mais é exatamente a segunda página que a versão
+     * anterior perdia.
+     */
+    public function test_a_travessia_da_renovacao_cobre_a_carteira_inteira_com_despacho_sincrono(): void
+    {
+        $this->assertSame('sync', config('queue.default'), 'O caso mede a travessia sob a fila síncrona.');
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG]);
+
+        $contas = [];
+
+        for ($indice = 0; $indice < 101; $indice++) {
+            $conta = Account::factory()->create(['name' => 'Escritório '.$indice]);
+            $this->termoProntoParaRenovar($conta);
+            $contas[] = $conta->getKey();
+        }
+
+        $this->artisan('serpro:renew-terms')
+            ->expectsOutput('Renovações despachadas: 101')
+            ->assertSuccessful();
+
+        // O carimbo do envio aceito é o sinal: ele só é gravado quando o
+        // provedor aceitou o documento, e a linha nasce sem ele.
+        $renovados = SerproAuthorizationTerm::query()
+            ->withoutGlobalScopes()
+            ->whereIn('account_id', $contas)
+            ->whereNotNull('last_submitted_at')
+            ->count();
+
+        $this->assertSame(
+            101,
+            $renovados,
+            'A travessia anuncieu a carteira coberta e deixou a última página sem renovar: o escopo de conta reavaliou o singleton que o primeiro job carregou.',
+        );
+    }
+
+    /**
+     * Uma falha no meio da travessia deixa o rótulo e a classe, e a agenda de
+     * amanhã cobre quem faltou.
+     *
+     * **O que mudou e o que não.** A versão anterior declarava um `failed()` que
+     * **nada chama** — o framework só o invoca nos jobs enfileirados, e um
+     * comando de agenda não é um — e a docblock prometia um log de rótulo e
+     * classe. O que acontecia de verdade era o `ScheduleRunCommand` capturar a
+     * exceção e chamar `report($e)`: mensagem inteira e stack trace, que é o
+     * oposto do que a frase prometia.
+     *
+     * A correção é a curadoria dentro do próprio `handle()`, e o caso mostra as
+     * duas metades: a linha que entra no log não carrega o documento que a
+     * exceção carregava, e o comando **não** sai com sucesso — uma travessia
+     * interrompida no meio é uma falha da agenda, e dizer que correu bem é a
+     * mesma mentira que a contagem errada da travessia.
+     */
+    public function test_a_falha_no_meio_da_travessia_registra_o_rotulo_e_nao_diz_que_deu_certo(): void
+    {
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG]);
+
+        $primeira = Account::factory()->create(['name' => 'Escritório que renova']);
+        $this->termoProntoParaRenovar($primeira);
+
+        $quebrada = Account::factory()->create(['name' => 'Escritório ilegível']);
+        $this->termoProntoParaRenovar($quebrada)->forceFill(['document_encrypted' => ''])->save();
+
+        $registros = [];
+
+        Log::spy();
+
+        $codigo = $this->artisan('serpro:renew-terms')->run();
+
+        Log::shouldHaveReceived('error')->atLeast()->once()->withArgs(
+            function (string $mensagem, array $contexto) use (&$registros): bool {
+                if (! str_contains($mensagem, 'renovação diária dos termos')) {
+                    return false;
+                }
+
+                $registros[] = $mensagem.json_encode($contexto, JSON_UNESCAPED_UNICODE);
+
+                return true;
+            },
+        );
+
+        $this->assertNotSame([], $registros, 'A falha da travessia não deixou a linha curada que a docblock prometia.');
+
+        foreach ($registros as $registro) {
+            $this->assertStringNotContainsString('<termoDeAutorizacao', $registro);
+            $this->assertStringNotContainsString(self::TOKEN, $registro);
+            $this->assertStringNotContainsString(self::SENHA, $registro);
+        }
+
+        $this->assertSame(
+            Command::FAILURE,
+            $codigo,
+            'Uma travessia interrompida não pode sair com sucesso: é a agenda que precisa saber que a carteira não foi coberta.',
+        );
+
+        // A conta que vinha antes da quebrada foi renovada: a falha interrompe a
+        // travessia, e não desfaz o que a travessia já fez.
+        $this->assertSame(
+            self::TOKEN_ETAG,
+            SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $primeira->getKey())->sole()->token(),
+        );
+    }
+
+    /**
+     * A falha do job de renovação diz **por que**, e só diz quando a frase é
+     * nossa.
+     *
+     * **A indisponibilidade do provedor é o caso que o rótulo sozinho não
+     * explica.** Ela não grava estado nenhum — a linha continua com o token que
+     * valia —, de modo que o único registro da falha é este log, e um log com o
+     * rótulo e a classe da exceção diz "algo falhou" sem dizer o quê. A
+     * `SerproException` do `SerproTermManager` tem a frase certa em cada ponto.
+     *
+     * A segunda metade é a que impede o conserto de virar vazamento: uma
+     * exceção que **não** é `SerproException` pode carregar o texto do OpenSSL
+     * ou o de uma biblioteca, e a frase dela não pode entrar no log. O caso
+     * passa as duas pelo mesmo gancho e exige a diferença.
+     */
+    public function test_a_falha_do_job_de_renovacao_leva_a_frase_nossa_e_nao_a_de_terceiros(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+
+        $comMotivo = [];
+        $semMotivo = '';
+
+        Log::spy();
+
+        (new RenewSerproTermsJob($conta->getKey()))->failed(new SerproException(
+            'O provedor não confirmou o envio do termo de autorização; o estado que a linha já tinha foi preservado.',
+            SerproFailure::Upstream,
+            503,
+        ));
+
+        (new RenewSerproTermsJob($conta->getKey()))->failed(new RuntimeException('error:0909006C:PEM routines:get_name:no start line'));
+
+        Log::shouldHaveReceived('error')->twice()->withArgs(
+            function (string $mensagem, array $contexto) use (&$comMotivo, &$semMotivo): bool {
+                if ($contexto['motivo'] !== null) {
+                    $comMotivo[] = $contexto['motivo'];
+
+                    return true;
+                }
+
+                $semMotivo = $mensagem.json_encode($contexto, JSON_UNESCAPED_UNICODE);
+
+                return true;
+            },
+        );
+
+        $this->assertCount(1, $comMotivo, 'A falha do provedor precisa deixar a frase que o operador vai ler.');
+        $this->assertStringContainsString('não confirmou o envio', $comMotivo[0]);
+        $this->assertStringNotContainsString('PEM routines', $semMotivo, 'A mensagem de uma exceção que não é nossa não pode entrar no log.');
+        $this->assertStringNotContainsString('<Signature', $semMotivo);
     }
 
     public function test_o_upload_do_ecnpj_agenda_a_emissao_depois_do_commit(): void
@@ -1440,16 +1844,22 @@ class SerproAuthorizationTermTest extends TestCase
     /**
      * O **manager** lê a credencial de plataforma uma vez só.
      *
-     * **A medição para no gate, e é por isso que ela é honesta.** Contar a
-     * emissão inteira daria três leituras — o manager, o `SerproClient::submitTerm`
-     * e o `SerproTokenProvider` — e as duas últimas são **deliberadas**: o
-     * transporte relê a linha para conferir a identidade do contratante contra
-     * o certificado que vai materializar, e relê-la na hora do uso é o que
-     * protege contra uma credencial trocada entre a checagem e a chamada. O
-     * defeito que este caso cobre é o do manager, que lia a mesma linha duas
-     * vezes: o gate de uma e o `contratante_numero` da outra, e um operador que
-     * trocasse a credencial no meio veria o gate decidido por uma linha e o
-     * termo assinado com o documento de outra.
+     * **A medição para no gate, e é por isso que ela é honesta.** Uma emissão
+     * completa lê a linha **duas** vezes com o par de tokens em cache — o
+     * manager e o `SerproClient::submitTerm` —, e uma terceira quando o par não
+     * está em cache, porque o `SerproTokenProvider` precisa do `consumer_key` da
+     * credencial para autenticar. As leituras do transporte são **deliberadas**:
+     * ele relê a linha para conferir a identidade do contratante contra o
+     * certificado que vai materializar, e relê-la na hora do uso é o que protege
+     * contra uma credencial trocada entre a checagem e a chamada.
+     *
+     * **Uma quarta leitura existia, e ela é o defeito.** O `SerproTermSigner`
+     * recebia o número do contratante por parâmetro e relia a credencial para
+     * achar o nome — de modo que o `destinatario` do documento vinha de uma
+     * linha diferente da que o gate liberou. A correção foi fazer a linha
+     * viajar para o assinante, e é o caso
+     * `test_o_termo_e_assinado_com_a_credencial_que_o_gate_decidiu` que mede a
+     * consequência; este mede a quantidade no caminho do gate.
      *
      * Com o gate fechado, `issue()` para antes do transporte e a contagem é do
      * manager sozinho — e é exatamente a linha que a versão anterior lia duas
@@ -1475,6 +1885,51 @@ class SerproAuthorizationTermTest extends TestCase
         }
 
         $this->assertSame(1, $this->leituras, 'O manager lê a credencial de plataforma uma vez por emissão.');
+    }
+
+    /**
+     * O termo é assinado com a credencial **que o gate decidiu**, e o caminho
+     * inteiro da emissão confirma isso.
+     *
+     * **O caso mede a consequência, e não a quantidade de leituras.** A
+     * credencial é trocada no instante em que a primeira leitura dela acontece:
+     * a partir daí, quem reler a linha encontra outra empresa. Com a leitura
+     * única, o `destinatario` continua sendo a plataforma que o gate liberou;
+     * com a releitura, o termo sai assinado endereçado a quem entrou no meio —
+     * que é exatamente o desfecho que a docblock do manager diz que impede e que
+     * o `SerproTermSigner` desfazia ao reler a linha para o nome.
+     *
+     * Contar leituras não fecharia o caso: o transporte relê a linha de novo
+     * por decisão própria e legítima, e o número total de leituras de
+     * `serpro_connections` de uma emissão é maior do que um. O que a contagem
+     * do caso acima mede é o **gestor sozinho**, e ela é complemento
+     * deste: uma lê, o outro prova que ler uma vez basta.
+     */
+    public function test_o_termo_e_assinado_com_a_credencial_que_o_gate_decidiu(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $this->rotacionando = true;
+
+        $termo = resolve(SerproTermManager::class)->issue($conta->getKey());
+
+        $this->assertTrue($this->rotacionado, 'A rotação da credencial não disparou: o caso não mediu nada.');
+
+        $documento = $this->documentoDe($termo);
+
+        $this->assertSame(
+            'Plataforma de Teste',
+            $this->atributo($documento, 'destinatario', 'nome'),
+            'O destinatário do termo tem de ser a plataforma que o gate liberou, e não a que entrou na rotação.',
+        );
+        $this->assertNotSame(self::OUTRA_PLATAFORMA, $this->atributo($documento, 'destinatario', 'nome'));
+
+        // E o número continua sendo o da credencial — a conferência de
+        // identidade do transporte a teria reprovado se não fosse.
+        $this->assertSame(self::PLATAFORMA, $this->atributo($documento, 'destinatario', 'numero'));
     }
 
     // ------------------------------------------------------------- o token válido
@@ -1788,6 +2243,46 @@ class SerproAuthorizationTermTest extends TestCase
         return $user->refresh();
     }
 
+    /**
+     * Um termo que a renovação consegue reenviar, escrito pelo caminho que a
+     * emissão escreveria mas sem pagar uma assinatura por conta.
+     *
+     * A renovação não assina e não lê o e-CNPJ do escritório — é a propriedade
+     * que o caso do `304` prova —, e por isso o que ela precisa é de uma linha
+     * com documento cifrado legível, vigência no futuro e token anterior. Sem
+     * assinatura, o caso da travessia inteira custa o que custam as 101 contas.
+     */
+    private function termoProntoParaRenovar(Account $conta): SerproAuthorizationTerm
+    {
+        return SerproAuthorizationTerm::forceCreate([
+            'account_id' => $conta->getKey(),
+            'author_document' => self::ESCRITORIO,
+            'document_encrypted' => Crypt::encryptString('<termoDeAutorizacao><dados><vigencia data="20991231"/></dados></termoDeAutorizacao>'),
+            'token_encrypted' => Crypt::encryptString(self::TOKEN),
+            'document_expires_on' => now()->addDays(10)->startOfDay(),
+            'token_expires_at' => now()->addDay(),
+            'state' => SerproAuthorizationTermState::Autenticado,
+            'state_reason' => null,
+            'signed_at' => now()->subDays(20),
+            'last_submitted_at' => null,
+        ]);
+    }
+
+    /**
+     * A credencial passa a nomear outra empresa, e o documento continua válido.
+     *
+     * O número do contratante **não** muda: a conferência de identidade do
+     * transporte compara o documento com o certificado, e mexer nele faria a
+     * emissão falhar por um motivo que não é o deste caso. O que muda é a razão
+     * social de onde o `destinatario` tira o nome.
+     */
+    private function rotacionarCredencial(): void
+    {
+        SerproConnection::query()->update([
+            'certificate_subject' => 'CN='.self::OUTRA_PLATAFORMA.':'.self::PLATAFORMA,
+        ]);
+    }
+
     private function fakeTokenAutenticado(): void
     {
         Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
@@ -1807,6 +2302,15 @@ class SerproAuthorizationTermTest extends TestCase
     /**
      * A resposta de sucesso, com o corpo no formato que o provedor publica:
      * `dados` como texto escapado, e dentro dele o token e a validade.
+     *
+     * **A validade é a de amanhã, e não uma data fixa.** O provedor promete o
+     * token "até a meia-noite do dia seguinte, horário de Brasília", e é essa
+     * a forma que o dublê tem de reproduzir: meia-noite de São Paulo, com um
+     * segundo de diferença. Uma data escrita à mão seria de uma época que já
+     * passou — e uma validade **vencida** deixa o termo `validado` desde a
+     * correção que trata validade vencida como validade inutilizável, o que
+     * faria este dublê de aceitação parar de aceitar. A data continua visível
+     * no caso que a fixa, com o relógio congelado.
      */
     private function fakeApoiarAceito(): void
     {
@@ -1814,10 +2318,16 @@ class SerproAuthorizationTermTest extends TestCase
             'status' => 200,
             'dados' => json_encode([
                 'autenticar_procurador_token' => self::TOKEN,
-                'data_hora_expiracao' => '2026-03-11T00:00:01',
+                'data_hora_expiracao' => $this->validadeAceita(),
             ], JSON_THROW_ON_ERROR),
             'mensagens' => [['codigo' => '200', 'texto' => 'Sucesso na execução.']],
         ]);
+    }
+
+    /** A meia-noite de São Paulo de amanhã, no formato que o provedor publica. */
+    private function validadeAceita(): string
+    {
+        return Carbon::now(SerproTermSigner::FUSO)->addDay()->startOfDay()->addSecond()->format('Y-m-d\TH:i:s');
     }
 
     /**

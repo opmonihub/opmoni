@@ -55,13 +55,20 @@ use Illuminate\Support\Facades\Crypt;
  *
  * **A tenancy entra por parâmetro, e não pelo singleton.** Os três métodos
  * públicos recebem `int $accountId` e leem por `account_id` explícito, e
- * nenhum deles olha `CurrentTenant`. A razão está no `queue:work`: o
- * singleton é mutável e nunca é resetado, e o valor da execução anterior
- * sobrevive à seguinte, de modo que um job que confiasse nele poderia
- * assinar o termo do escritório errado com o certificado do escritório errado
- * — sem exceção e sem nada no resultado que parecesse errado. Os jobs
- * recarregam o singleton assim mesmo, porque o resto da base o lê, e essa
- * redundância é deliberada: as duas camadas fecham o mesmo problema.
+ * nenhuma das leituras deste arquivo **consulta** `CurrentTenant` — mas
+ * elas também não ficam a serviço do escopo global de `BelongsToAccount`,
+ * que é reavaliado a cada consulta e lê o singleton no momento em que ela é
+ * montada. Um `queue:work` é um processo longo, o singleton é mutável e nunca
+ * é resetado, e o valor da execução anterior sobrevive à seguinte: com o
+ * escopo ativo, a leitura de uma conta cuja linha existe devolvia `null` e o
+ * gestor respondia que o escritório "ainda não tem termo" ou "ainda não
+ * entregou o e-CNPJ" — duas frases falsas que mandam o escritório refazer o
+ * que já fez. Por isso as leituras daqui saem com `withoutGlobalScope`, e a
+ * justificativa é a mesma do `ProcessGenerationService`: a conta chega por
+ * parâmetro, e o escopo só conseguiria esconder a linha dela.
+ *
+ * Os jobs recarregam o singleton assim mesmo, porque o resto da base o lê, e
+ * essa redundância é deliberada: as duas camadas fecham o mesmo problema.
  */
 final class SerproTermManager
 {
@@ -104,15 +111,27 @@ final class SerproTermManager
     private const SEM_TOKEN = 'O provedor aceitou o documento, mas não devolveu token de autorização.';
 
     /**
-     * O provedor devolveu o token em cache e **não** disse até quando ele vale.
+     * O provedor devolveu um token que **não está em uso**, e há duas razões
+     * possíveis: ou ele não disse até quando o token vale, ou disse que a
+     * validade já passou.
      *
      * A distinção de `SEM_TOKEN` é o que a frase faz: o token chegou, e o que
      * falta é a validade. Sem validade `validToken()` recusa servir, e a linha
      * fica `validado` — o estado que não afirma uma autorização que o sistema
      * não está servindo. Dizer aqui que o token faltou seria a leitura errada,
      * e mandaria o operador atrás de uma emissão que já deu certo.
+     *
+     * **A validade vencida é o segundo caso, e ele não é exótico.** O
+     * provedor documenta o `304` como "não modificado, o token estava em
+     * cache", e a validade de um token em cache é a do token **original** — a
+     * que passou. Um `Expires` bem formado e já vencido é, no caminho de
+     * renovação, o caso que mais vai acontecer. Por isso as duas condições
+     * caem no mesmo estado e na mesma frase: para quem lê a linha, "não sei
+     * até quando vale" e "já venceu" produzem a mesma consequência — a
+     * plataforma não fala pelo escritório agora — e a ação que ambas pedem é
+     * a mesma, a renovação.
      */
-    private const SEM_VALIDADE = 'O provedor devolveu o token em cache sem informar até quando ele vale: o termo fica válido, mas sem token em uso.';
+    private const SEM_VALIDADE = 'O provedor devolveu um token que o sistema não pode usar: a validade que ele mandou não diz até quando vale, ou já passou. O termo fica válido, mas sem token em uso.';
 
     /**
      * O motivo do estado `vencido`, e a frase que diz de quem é a ação.
@@ -166,8 +185,9 @@ final class SerproTermManager
          * e o documento ser assinado com o `contratante_numero` de outra — e o
          * termo sairia com uma empresa no `destinatario` que nenhuma prova
          * autorizou. Por isso `assertGate()` recebe a linha em vez de relê-la,
-         * e a docblock de `conexaoDaPlataforma()` diz que ela é lida aqui
-         * **antes** do gate, que é a ordem que a frase descreve.
+         * a docblock de `conexaoDaPlataforma()` diz que ela é lida aqui
+         * **antes** do gate, que é a ordem que a frase descreve, e a linha é
+         * o que viaja para o assinante: o nome do contratante sai dela também.
          */
         $conexao = $this->conexaoDaPlataforma();
 
@@ -183,6 +203,13 @@ final class SerproTermManager
          * chave privada, e o resultado seria gravado cifrado e reenviado nos
          * próximos trinta dias.
          *
+         * **A credencial viaja, e é o que fecha a leitura única.** O assinante
+         * recebe a **linha** — e não o número do contratante e uma releitura
+         * para achar o nome dele —, de modo que o `destinatario` do termo sai
+         * da mesma linha que o gate liberou. A versão anterior passava o
+         * número e deixava o assinante reler a credencial por conta própria,
+         * que é a leitura dupla que a linha acima diz que não pode acontecer.
+         *
          * **O número dos trinta dias é `SerproTermSigner::PERIODO_VIGENCIA_DAYS`,
          * e ele é um valor não confirmado.** A linha acima descreve a
          * constante, não um fato do provedor: por que trinta e não o fim do
@@ -190,7 +217,7 @@ final class SerproTermManager
          * constante. Quem lê esta linha sem ler aquela está lendo mais do que o
          * código sabe.
          */
-        $assinado = $this->signer->sign($conta, $certificado, (string) $conexao->contratante_numero);
+        $assinado = $this->signer->sign($conta, $certificado, $conexao);
 
         $termo = $this->guardar($accountId, $certificado->document, $assinado);
 
@@ -217,6 +244,21 @@ final class SerproTermManager
     {
         $termo = $this->termoDe($accountId);
 
+        /*
+         * **A recusa é conferida antes do vencimento, e a ordem é o ponto.**
+         *
+         * Um termo recusado cujo documento também venceu está nas duas
+         * condições, e os dois estados pedem a mesma ação ao escritório — um
+         * documento novo, assinado. O que o operador distingue é a **causa**,
+         * e a causa de um `recusado` é o código que o provedor devolveu, que
+         * é o único registro de por que aquele documento não serve. Conferir o
+         * vencimento primeiro sobrescrevia esse código por `Vencido` e apagava
+         * o diagnóstico para ganhar uma distinção que a ação não usa.
+         */
+        if ($termo->state === SerproAuthorizationTermState::Recusado) {
+            return $termo;
+        }
+
         if ($this->documentoVencido($termo)) {
             $termo->forceFill([
                 'state' => SerproAuthorizationTermState::Vencido,
@@ -242,10 +284,6 @@ final class SerproTermManager
          * gravado na recusa diz isso, para que a tela não peça "tente de novo"
          * a quem não pode.
          */
-        if ($termo->state === SerproAuthorizationTermState::Recusado) {
-            return $termo;
-        }
-
         // O autor é o documento que **assinou** o termo, e não o do
         // certificado que a conta tem hoje. Trocar o e-CNPJ depois de assinar
         // mudaria para quem o termo é endereçado, e um documento jurídico
@@ -275,10 +313,20 @@ final class SerproTermManager
      * **O que ele devolve é uma credencial de chamada, e é o plano 03 que a
      * pede.** O documento assinado não sai por aqui, e não há caminho público
      * no model que o devolva.
+     *
+     * **A leitura também sai sem o escopo de conta**, e a recusa que daqui
+     * resultaria — `null` — é a mesma que a tela mostra ao escritório, sem
+     * diferença de frase: nenhuma delas diz *por quê*. Um token válido recusado
+     * por um `CurrentTenant` que sobrou seria uma sincronização que falha sem
+     * nenhum estado que a explicasse, que é exatamente o defeito que este
+     * arquivo existe para não produzir.
      */
     public function validToken(int $accountId): ?string
     {
-        $termo = SerproAuthorizationTerm::currentFor($accountId);
+        $termo = SerproAuthorizationTerm::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $accountId)
+            ->first();
 
         if ($termo === null || ! $termo->authorizesGateway()) {
             return null;
@@ -339,6 +387,10 @@ final class SerproTermManager
      * tem é a credencial de plataforma. É essa a ordem que `issue()` segue, e é
      * a leitura que a linha única desta chamada permite.
      *
+     * `SerproConnection` não usa a trait de tenancy, e por isso esta leitura
+     * não tem escopo global nenhum: a credencial é da plataforma e não
+     * pertence a conta nenhuma.
+     *
      * @throws SerproException
      */
     private function conexaoDaPlataforma(): SerproConnection
@@ -367,11 +419,24 @@ final class SerproTermManager
      * de entregue — que é o caso comum, e é o que faria o provedor recusar o
      * termo com um código que nada no produto traduz.
      *
+     * **A leitura é a de `currentFor()` com o escopo de conta desligado.** Com
+     * o escopo ativo e apontando para outra conta — o que um `queue:work` faz
+     * sozinho — a linha do escritório desaparecia da consulta e a recusa abaixo
+     * dizia que o escritório nunca entregou certificado. É a frase mais
+     * enganosa das duas, porque ela pede ao escritório uma entrega que ele já
+     * fez.
+     *
      * @throws SerproException
      */
     private function certificadoCorrente(int $accountId): AccountCertificate
     {
-        $certificado = AccountCertificate::currentFor($accountId);
+        $certificado = AccountCertificate::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $accountId)
+            ->whereNull('replaced_at')
+            ->whereNull('removed_at')
+            ->latest('id')
+            ->first();
 
         if ($certificado === null) {
             throw new SerproException(
@@ -401,11 +466,19 @@ final class SerproTermManager
      * aqui a ausência de termo é um estado conhecido: a emissão é do upload
      * do e-CNPJ, e o comando diário só renova quem já tem linha.
      *
+     * A leitura é a de `currentFor()` com o escopo de conta desligado, e pelo
+     * mesmo motivo do e-CNPJ: o escopo global só conseguiria esconder a linha
+     * da conta que o chamador pediu, e a recusa abaixo passaria a dizer que o
+     * termo não existe quando ele existe.
+     *
      * @throws SerproException
      */
     private function termoDe(int $accountId): SerproAuthorizationTerm
     {
-        $termo = SerproAuthorizationTerm::currentFor($accountId);
+        $termo = SerproAuthorizationTerm::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $accountId)
+            ->first();
 
         if ($termo === null) {
             throw new SerproException(
@@ -454,8 +527,18 @@ final class SerproTermManager
      * e-CNPJ atravessar a lista dele.
      *
      * O índice único de `account_id` continua sendo a garantia de uma linha, e
-     * a leitura é por `account_id` explícito porque o escopo global de
-     * `BelongsToAccount` não filtra nada no console nem na fila.
+     * a leitura é por `account_id` explícito **e sem o escopo global**: o
+     * escopo não filtra nada no console nem na fila — que é o caso comum —, e
+     * no caso raro em que filtra, ele só esconderia a linha da conta que o
+     * chamador pediu.
+     *
+     * **O perdedor de uma emissão concorrente leva um `QueryException`, e isso
+     * é deliberado.** A leitura e a criação aqui não são atômicas: duas emissões
+     * simultâneas da mesma conta podem chegar ao `forceCreate()` sem linha, e
+     * uma delas morre de violação do índice único. Trocar a corrida perdida por
+     * erro de banco é a escolha que a docblock da migração já declara, e a
+     * alternativa — `updateOrCreate` — recusa porque a atribuição em massa
+     * atravessaria uma lista fechada sem o documento cifrado.
      *
      * @throws SerproException
      */
@@ -479,7 +562,10 @@ final class SerproTermManager
             'last_submitted_at' => null,
         ];
 
-        $termo = SerproAuthorizationTerm::query()->where('account_id', $accountId)->first();
+        $termo = SerproAuthorizationTerm::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $accountId)
+            ->first();
 
         if ($termo !== null) {
             $termo->forceFill($attributes)->save();
@@ -596,15 +682,30 @@ final class SerproTermManager
      * o cabeçalho é de um formato que não conhecemos, e recusa-se o
      * cabeçalho em vez do que a linha já tinha.
      *
-     * **Sem `expires` utilizável o estado é `validado`, e não `autenticado`.**
+     * **Sem validade utilizável o estado é `validado`, e não `autenticado`.**
      * O provedor disse que o documento é válido e o token estava em cache, e
-     * nós gravamos o token; o que não temos é a validade dele, e um token sem
-     * validade é um token que `validToken()` recusa servir. Deixar a linha como
-     * `autenticado` faria a **tela** — a única coisa que o escritório vê —
-     * afirmar que a plataforma fala por ele, no mesmo instante em que o sistema
-     * se recusava a falar. `validado` é o estado honesto dos dois casos em que
-     * o provedor aceitou o documento e nós não temos token que valha, e é a
-     * mesma leitura que o `200` sem token já recebia.
+     * nós gravamos o token; o que não temos é uma validade que o sistema possa
+     * servir, e um token sem validade é um token que `validToken()` recusa
+     * servir. Deixar a linha como `autenticado` faria a **tela** — a única coisa
+     * que o escritório vê — afirmar que a plataforma fala por ele, no mesmo
+     * instante em que o sistema se recusava a falar. `validado` é o estado
+     * honesto dos casos em que o provedor aceitou o documento e nós não temos
+     * token que valha, e é a mesma leitura que o `200` sem token já recebia.
+     *
+     * **"Utilizável" inclui a validade vencida, e essa é a metade que faltava.**
+     * A versão anterior decidia o estado por `$validade === null` e gravava
+     * `autenticado` para uma validade **já passada** — que é o caso mais
+     * provável deste caminho, porque o token de um `304` é o token que estava
+     * em cache e a validade que vem nele é a do token original. A linha dizia
+     * que a plataforma fala pelo escritório e `validToken()` devolvia `null`
+     * no mesmo instante. O teste é `validadeUtilizavel()`, e as duas metades
+     * do estado — a que a tela lê e a que `validToken()` obedece — passam a
+     * ser decididas pelo mesmo predicado.
+     *
+     * **O instante que o provedor mandou é gravado mesmo quando está
+     * vencido**, porque ele é um fato sobre a resposta e apagá-lo tiraria da
+     * linha a única pista de que a validade existiu. O que muda é o estado, e
+     * não o dado.
      *
      * **O documento não é tocado, e é a propriedade que este caminho existe
      * para garantir.** Nada aqui escreve em `document_encrypted`, e o
@@ -612,7 +713,7 @@ final class SerproTermManager
      * `signed_at` de hoje diria que o escritório assinou hoje, e o que
      * aconteceu foi que reenviamos o que ele assinou há vinte dias.
      *
-     * @param  array{status: int, etag: ?string, expires: ?string, codigo: ?string, dados: mixed}  $resposta
+     * @param  array{status: int, etag: ?string, expires: ?string, codigo: string, dados: mixed}  $resposta
      *
      * @throws SerproException
      */
@@ -620,14 +721,15 @@ final class SerproTermManager
     {
         $token = $this->tokenDoEtag($resposta['etag']);
         $validade = $this->vencimentoDoHeader($resposta['expires']);
+        $utilizavel = $this->validadeUtilizavel($validade);
 
         $termo->forceFill([
             'token_encrypted' => Crypt::encryptString($token),
             'token_expires_at' => $validade,
-            'state' => $validade === null
-                ? SerproAuthorizationTermState::Validado
-                : SerproAuthorizationTermState::Autenticado,
-            'state_reason' => $validade === null ? self::SEM_VALIDADE : null,
+            'state' => $utilizavel
+                ? SerproAuthorizationTermState::Autenticado
+                : SerproAuthorizationTermState::Validado,
+            'state_reason' => $utilizavel ? null : self::SEM_VALIDADE,
             'last_submitted_at' => now(),
         ])->save();
 
@@ -646,7 +748,14 @@ final class SerproTermManager
      * chamada ao gateway aceitou, e a falha apareceria no meio de uma
      * sincronização, longe da tela que a causou.
      *
-     * @param  array{status: int, etag: ?string, expires: ?string, codigo: ?string, dados: mixed}  $resposta
+     * **A validade também decide aqui, e a versão anterior nem a olhava.** O
+     * estado era função do token sozinho, de modo que um `200` com token e
+     * `data_hora_expiracao` impossível — ou já vencida — virava `autenticado`
+     * com `token_expires_at` nulo: a mesma mentira da tela com menos
+     * informação ainda. As duas metades do estado vêm do mesmo predicado
+     * daqui em diante.
+     *
+     * @param  array{status: int, etag: ?string, expires: ?string, codigo: string, dados: mixed}  $resposta
      *
      * @throws SerproException
      */
@@ -658,19 +767,40 @@ final class SerproTermManager
 
         $dados = is_array($resposta['dados']) ? $resposta['dados'] : [];
         $token = $this->textoDe($dados, 'autenticar_procurador_token');
-        $validade = $this->textoDe($dados, 'data_hora_expiracao');
+        $validade = $this->vencimentoDoProvedor($this->textoDe($dados, 'data_hora_expiracao'));
+        $utilizavel = $token !== '' && $this->validadeUtilizavel($validade);
 
         $termo->forceFill([
             'token_encrypted' => $token === '' ? null : Crypt::encryptString($token),
-            'token_expires_at' => $this->vencimentoDoProvedor($validade),
-            'state' => $token === ''
-                ? SerproAuthorizationTermState::Validado
-                : SerproAuthorizationTermState::Autenticado,
-            'state_reason' => $token === '' ? self::SEM_TOKEN : null,
+            'token_expires_at' => $validade,
+            'state' => $utilizavel
+                ? SerproAuthorizationTermState::Autenticado
+                : SerproAuthorizationTermState::Validado,
+            'state_reason' => $token === '' ? self::SEM_TOKEN : self::SEM_VALIDADE,
             'last_submitted_at' => now(),
         ])->save();
 
         return $termo;
+    }
+
+    /**
+     * A validade que o provedor mandada serve para alguma coisa.
+     *
+     * **Um token só serve com validade no futuro, e é isso que o predicado
+     * diz.** Ele existe para que o estado gravado — o que a **tela** lê — e o
+     * que `validToken()` devolve — o que o **gateway** aceita — sejam decididos
+     * pelo mesmo teste. Divergir entre os dois é a forma mais curta de a linha
+     * dizer uma coisa e o sistema fazer outra, e a tela do termo é a única
+     * coisa que o escritório vê.
+     *
+     * A comparação é com o instante atual, e não com o dia: a validade do token
+     * é um instante (`data_hora_expiracao` e o `expires` do `304` são
+     * data-hora), ao contrário da vigência do documento, que é um dia e tem
+     * comparação própria em `documentoVencido()`.
+     */
+    private function validadeUtilizavel(?Carbon $validade): bool
+    {
+        return $validade !== null && ! $validade->isPast();
     }
 
     /**
@@ -711,7 +841,7 @@ final class SerproTermManager
      * enviado, e a próxima emissão vai assinar um novo — mas apagar o anterior
      * faria a recusa ser indistinguível de "nunca foi enviado".
      *
-     * @param  array{status: int, etag: ?string, expires: ?string, codigo: ?string, dados: mixed}  $resposta
+     * @param  array{status: int, etag: ?string, expires: ?string, codigo: string, dados: mixed}  $resposta
      *
      * @throws SerproException
      */

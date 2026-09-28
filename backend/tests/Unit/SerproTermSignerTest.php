@@ -12,8 +12,10 @@ use Carbon\Carbon;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use OpenSSLAsymmetricKey;
 use RuntimeException;
@@ -613,42 +615,62 @@ class SerproTermSignerTest extends TestCase
     }
 
     /**
-     * O documento do contratante é conferido contra a credencial que o nomeia.
+     * O `destinatario` inteiro sai de uma leitura só, e o assinante não consulta
+     * o banco.
      *
-     * O nome da plataforma vem da linha de `SerproConnection`, e o número vinha
-     * do parâmetro — duas fontes que ninguém ligava uma na outra. Um chamador
-     * que passasse o CNPJ do escritório produzia um termo cujo `destinatario`
-     * carregava **o número de uma empresa com a razão social de outra**, sem
-     * exceção, sem log e sem que nada no documento parecesse errado. A linha da
-     * credencial já guarda `contratante_numero` para isso, e é contra ele que o
-     * termo se confirma.
+     * **O que a versão anterior permitia e esta interface não.** O número do
+     * contratante chegava por parâmetro e o nome era lido da credencial aqui
+     * dentro: duas fontes que ninguém ligava uma na outra, e um chamador podia
+     * passar o CNPJ do escritório — que é um CNPJ válido — e produzir um termo
+     * cujo `destinatario` carregasse **o número de uma empresa com a razão
+     * social de outra**, sem exceção, sem log e sem nada no documento que
+     * parecesse errado. A conferência em tempo de execução era a defesa, e ela
+     * protegia uma interface que permitia o defeito.
+     *
+     * O caso mede as duas metades novas: a linha de onde o número sai é a
+     * mesma linha de onde sai o nome, e o método não emite **nenhuma** consulta
+     * — o que é o que fecha a leitura única que o `SerproTermManager` promete
+     * na docblock dele.
      */
-    public function test_o_documento_do_contratante_tem_de_bater_com_a_credencial_da_plataforma(): void
+    public function test_o_contratante_do_termo_vem_de_uma_leitura_e_o_assinante_nao_consulta_o_banco(): void
     {
         [$conta, $certificado] = $this->escritorio('Escritório de Teste');
 
-        try {
-            // O CNPJ do escritório, que é o número que **não** pode ser o do
-            // contratante — e é o erro que só o cruzamento com a credencial
-            // pega, porque os dois números são CNPJs válidos.
-            $this->assinar($conta, $certificado, self::ESCRITORIO);
-            $this->fail('Um termo cujo contratante é o escritório não deveria ser assinado.');
-        } catch (SerproException $exception) {
-            $this->assertSame(SerproFailure::NotSent, $exception->failure);
-            $this->assertStringNotContainsString('Escritório de Teste', $exception->getMessage());
-            $this->assertStringNotContainsString(self::ESCRITORIO, $exception->getMessage());
-            $this->assertStringNotContainsString(self::PLATAFORMA, $exception->getMessage());
-        }
+        // A credencial é lida **antes** de armar a escuta: o que se mede é o que
+        // o assinante faz, e a leitura da linha é do `setUp` e deste método.
+        $conexao = SerproConnection::current();
+        $this->assertInstanceOf(SerproConnection::class, $conexao);
+
+        $consultas = 0;
+        DB::listen(function (QueryExecuted $query) use (&$consultas): void {
+            $consultas++;
+        });
+
+        $documento = $this->parse(app(SerproTermSigner::class)->sign($conta, $certificado, $conexao));
+
+        $this->assertSame(0, $consultas, 'O assinante não pode consultar o banco: a credencial chega pronta, e relê-la é a leitura dupla que a emissão promete não fazer.');
+
+        $destinatario = $this->elemento($documento, 'destinatario');
+
+        $this->assertSame(self::PLATAFORMA, $destinatario->getAttribute('numero'));
+        $this->assertSame(self::RAZAO_SOCIAL_PLATAFORMA, $destinatario->getAttribute('nome'));
     }
 
-    public function test_sem_credencial_de_plataforma_o_termo_nao_e_assinado(): void
+    /**
+     * Uma credencial que não nomeia o contratante interrompe a assinatura, e a
+     * recusa não diz o nome nem o documento.
+     */
+    public function test_sem_nome_de_contratante_o_termo_nao_e_assinado(): void
     {
-        SerproConnection::query()->delete();
-
         [$conta, $certificado] = $this->escritorio('Escritório de Teste');
 
+        $conexao = SerproConnection::current();
+        $this->assertInstanceOf(SerproConnection::class, $conexao);
+
+        $conexao->forceFill(['certificate_subject' => ''])->save();
+
         try {
-            $this->assinar($conta, $certificado);
+            app(SerproTermSigner::class)->sign($conta, $certificado, $conexao);
             $this->fail('Um termo sem contratante nomeado não deveria ser assinado.');
         } catch (SerproException $exception) {
             $this->assertSame(SerproFailure::NotSent, $exception->failure);
@@ -675,9 +697,22 @@ class SerproTermSignerTest extends TestCase
         return [$conta, $certificado];
     }
 
-    private function assinar(Account $conta, AccountCertificate $certificado, string $contratante = self::PLATAFORMA): string
+    /**
+     * Assina com a credencial de plataforma que o `setUp` gravou.
+     *
+     * O terceiro argumento **é a linha**, e não o número do contratante: é
+     * assim que o `destinatario` inteiro sai de uma leitura só. Por isso o
+     * método de baixo não tem com o que discordar do número — e o caso que
+     * existia para conferir essa concordância foi substituído pelo que mede a
+     * leitura.
+     */
+    private function assinar(Account $conta, AccountCertificate $certificado): string
     {
-        return app(SerproTermSigner::class)->sign($conta, $certificado, $contratante);
+        $conexao = SerproConnection::current();
+
+        $this->assertInstanceOf(SerproConnection::class, $conexao, 'O caso precisa da credencial de plataforma.');
+
+        return app(SerproTermSigner::class)->sign($conta, $certificado, $conexao);
     }
 
     /**

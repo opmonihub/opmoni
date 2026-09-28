@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Account;
+use App\Services\SerproException;
 use App\Services\SerproTermManager;
 use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -73,13 +74,29 @@ final class RenewSerproTermsJob implements ShouldQueue
      * O estado já está na linha quando esta chega, e é o estado certo: uma
      * recusa do provedor está como `recusado` com o código dele, um termo
      * vencido está como `vencido`, e uma indisponibilidade deixou o que já
-     * valia. O log deste nível é o rótulo da falha e a classe da exceção.
+     * valia.
+     *
+     * **O motivo entra, e só quando ele é uma frase nossa.** A `SerproException`
+     * carrega uma mensagem curada em cada ponto que a lança — "o provedor não
+     * respondeu", "o documento guardado não abre com a chave atual" —, e é
+     * exatamente o caso que o operador precisa ler: uma indisponibilidade do
+     * provedor não deixa nenhum estado na linha, e sem a frase o único registro
+     * seria o rótulo e a classe, que dizem "algo falhou" e nada mais. Uma
+     * exceção que não é `SerproException` pode carregar o texto do OpenSSL ou o
+     * de uma biblioteca, e por isso a frase **não** vai para o log: quem não
+     * é nossa não entra. É a mesma regra que o `IssueSerproTermJob` aplica no
+     * `handle()`, e ela é o que separa "a frase é segura" de "a frase está
+     * escrita por nós".
+     *
+     * **Nenhum documento, token ou senha entra**, em nenhum dos dois casos: a
+     * cifra de onde eles sairiam não é alcançável a partir de uma exceção.
      */
     public function failed(\Throwable $exception): void
     {
         Log::error('A renovação do termo de autorização não pôde ser concluída.', [
             'account_id' => $this->accountId,
             'falha' => $exception::class,
+            'motivo' => $exception instanceof SerproException ? $exception->getMessage() : null,
         ]);
     }
 }

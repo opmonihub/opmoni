@@ -324,7 +324,14 @@ final class SerproClient
      * nesta requisição. Fonte: `…/autenticaprocurador/servicos/envio_de_xml_assinado/`,
      * lida em 2026-09-28.
      *
-     * @return array{status: int, etag: ?string, expires: ?string, codigo: ?string, dados: mixed}
+     * **`codigo` é `string` e não `?string`, e a ausência vira string vazia.**
+     * O envelope pode não trazer mensagem nenhuma — o `304` não tem envelope, e
+     * uma resposta de sucesso sem `mensagens` também não —, e o que volta
+     * nesse caso é `''`. Um `null` obrigaria cada leitor a distinguir "não
+     * veio" de "veio vazio" para chegar ao mesmo lugar, e `tratarRecusa()` usa
+     * a string vazia como "não informado" tanto na frase quanto na exceção.
+     *
+     * @return array{status: int, etag: ?string, expires: ?string, codigo: string, dados: mixed}
      *
      * @throws SerproException
      */
