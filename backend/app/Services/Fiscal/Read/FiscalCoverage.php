@@ -338,6 +338,15 @@ class FiscalCoverage
      * fisco não produziu, e a tela que desenha a série precisa poder dizer
      * "ainda não há o que mostrar" em vez de mostrar um zero bonito.
      *
+     * `total` e `over_time` medem coisas diferentes, e é de propósito que não
+     * somem o mesmo número. `emissao_at` é nullable, e um documento sem data de
+     * emissão conta no total e no mapa por modelo — ele existe, a conta o
+     * guarda, e respondê-lo com um total menor seria esconder um documento que
+     * está na tabela. Ele não entra na série, porque não há mês a que atribuí-lo
+     * e um mês inventado seria uma emissão que o fisco não mandou. A
+     * consequência é que `total` pode ser maior que a soma da série, e quem
+     * mostra os dois tem de dizer que são grandezas diferentes.
+     *
      * @return array{total: int, models: array<string, int>, over_time: list<array{month: string, total: int}>}
      */
     private function documentos(int $accountId): array

@@ -302,6 +302,36 @@ class FiscalDocumentApiTest extends TestCase
             ]);
     }
 
+    public function test_resumo_conta_no_total_o_documento_sem_data_de_emissao(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento Sem Data');
+
+        $this->documento($cliente, ['model' => FiscalModel::Nfe, 'emissao_at' => '2026-09-02 10:00:00']);
+        // `emissao_at` é nullable e a coluna aceita `null`: um documento que o
+        // fisco entregou sem data de emissão continua sendo um documento que a
+        // conta guarda. Ele conta no total e no mapa por modelo, e não aparece
+        // em nenhum mês da série — não há mês para ele ser atribuído, e um mês
+        // inventado seria uma emissão que o fisco não mandou.
+        //
+        // A decisão que este teste fixa: `documents.total` conta **todo**
+        // documento guardado, e a série conta os que têm data. São duas
+        // quantidades diferentes por desenho, e é por isso que o painel precisa
+        // dizer qual delas o número do cabeçalho do gráfico é. Um `whereNotNull`
+        // no total apagaria do cartão uma linha que existe na tabela, e um mês
+        // `null` na série colocaria no eixo um mês que ninguém emitiu.
+        $this->documento($cliente, ['model' => FiscalModel::Nfe, 'emissao_at' => null]);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/summary')
+            ->assertOk()
+            ->assertJsonPath('data.documents.total', 2)
+            ->assertJsonPath('data.documents.models', ['nfe' => 2])
+            ->assertJsonPath('data.documents.over_time', [
+                ['month' => '2026-09', 'total' => 1],
+            ]);
+    }
+
     public function test_resumo_sem_documentos_nao_inventa_medida(): void
     {
         $account = Account::factory()->create();

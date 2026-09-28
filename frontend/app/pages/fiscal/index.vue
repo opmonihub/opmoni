@@ -13,6 +13,7 @@ import {
   blockedRemaining,
   coverageShare,
   coverageState,
+  documentsOverTimeHeader,
   fiscalMissingValue,
   fiscalMonthSeries,
   fiscalNoAttention,
@@ -154,6 +155,15 @@ const modelCards = computed(() => models.value.map(model => ({
   to: isFiscalModel(model.model) ? fiscalDocumentosPath({ model: [model.model] }) : undefined
 })))
 const series = computed(() => fiscalMonthSeries(summaryData.value.documents.over_time))
+
+/**
+ * O cabeçalho do gráfico, com os dois números que não são o mesmo número.
+ *
+ * A distinção mora no módulo e não no template porque ela é a mesma do resto do
+ * painel: uma decisão que só existe no `.vue` fica sem guarda, e nenhuma linha
+ * deste arquivo é importável pelo runner de teste.
+ */
+const seriesHeader = computed(() => documentsOverTimeHeader(summaryData.value.documents))
 const groups = computed(() => attentionGroups(summaryData.value.attention))
 const attentionTotal = computed(() => summaryData.value.attention.length)
 const lastCapture = computed(() => lastCaptureOutcome(summaryData.value.last_capture))
@@ -394,15 +404,26 @@ function toneClass(tone: FiscalTone): string {
           </div>
 
           <UCard :ui="{ header: 'px-3 py-2.5 sm:px-4', body: 'px-0! pt-0! pb-2!' }">
+            <!--
+              As duas contas ficam separadas de propósito: o gráfico soma os
+              documentos que têm mês de emissão, e `documents.total` conta
+              também os que não têm. A coluna é nullable, então a diferença
+              existe de verdade — e um cabeçalho que apresentasse o total como
+              soma das barras deixaria o operador somando barras para chegar num
+              número que não é o do canto.
+            -->
             <template #header>
               <div class="flex min-w-0 items-baseline justify-between gap-3">
                 <span class="truncate text-xs text-muted">
-                  Documentos capturados
+                  Documentos por mês de emissão
                 </span>
                 <span class="shrink-0 text-xs tabular-nums text-muted">
-                  {{ formatFiscalCount(summaryData.documents.total) }} no total
+                  {{ seriesHeader.series }} · {{ seriesHeader.stored }}
                 </span>
               </div>
+              <p v-if="seriesHeader.undated" class="mt-1 text-xs text-muted">
+                {{ seriesHeader.undated }}
+              </p>
             </template>
 
             <div v-if="series.length === 0" class="px-3 py-6 text-center text-sm text-muted">

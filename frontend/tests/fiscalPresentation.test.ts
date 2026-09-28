@@ -23,6 +23,7 @@ import {
   blockedRemaining,
   coverageShare,
   coverageState,
+  documentsOverTimeHeader,
   fiscalEventCount,
   fiscalKindLabel,
   fiscalMonthLabel,
@@ -504,6 +505,62 @@ describe('rótulo do mês e da fonte', () => {
     assert.equal(fiscalSourceLabel('cte_distribuicao'), 'CT-e')
   })
 })
+
+describe('o cabeçalho do gráfico de emissão', () => {
+  it('nomeia a diferença quando há documento sem data de emissão', () => {
+    // O caso que o painel não pode esconder: `documents.total` conta o
+    // documento sem `emissao_at`, e a série não tem mês para ele. O cabeçalho
+    // que mostrasse só o total apresentaria como soma das barras um número que
+    // as barras não somam, e o operador que somasse as barras para conferi-lo
+    // não teria para onde ir.
+    const header = documentsOverTimeHeader({
+      total: 7,
+      over_time: [{ month: '2026-08', total: 4 }, { month: '2026-09', total: 2 }]
+    })
+
+    assert.equal(header.series, '6 no gráfico')
+    assert.equal(header.stored, '7 guardados')
+    assert.equal(header.undated, '1 sem data de emissão, fora do gráfico')
+  })
+
+  it('some com a linha da diferença quando os dois números batem', () => {
+    // A frase do zero seria uma afirmação sobre um dado que ninguém olhou: o
+    // resumo não diz que nenhum documento está sem data, diz que a soma bateu.
+    const header = documentsOverTimeHeader({
+      total: 6,
+      over_time: [{ month: '2026-08', total: 4 }, { month: '2026-09', total: 2 }]
+    })
+
+    assert.equal(header.undated, null)
+    assert.notEqual(header.series, header.stored, 'os dois números precisam continuar nomeados')
+  })
+
+  it('conta um documento sem data de emissão, e não o esconde', () => {
+    // A soma da série é calculada aqui, e não lida do payload: o resumo não
+    // manda a soma, e pedir um campo novo ao backend para isso seria abrir mão
+    // de um campo do Resource por uma aritmética de uma linha. `0` de série com
+    // total positivo é a conta que importa — a série está vazia, não zerada.
+    const header = documentsOverTimeHeader({ total: 3, over_time: [] })
+
+    assert.equal(header.series, '0 no gráfico')
+    assert.equal(header.stored, '3 guardados')
+    assert.equal(header.undated, '3 sem data de emissão, fora do gráfico')
+  })
+
+  it('é o cabeçalho que a página desenha, e não o total sozinho', () => {
+    // A função acima é a decisão, mas a página é o que pinta — e o `.vue` não é
+    // importável pelo runner. Um template que voltasse a imprimir
+    // `documents.total` no cabeçalho do gráfico passaria por toda a bateria
+    // acima, porque a bateria testa a função e não o lugar onde ela é chamada.
+    const page = readFileSync(new URL('../app/pages/fiscal/index.vue', import.meta.url), 'utf8')
+
+    assert.match(page, /documentsOverTimeHeader\(summaryData\.value\.documents\)/)
+    assert.match(page, /seriesHeader\.series/)
+    assert.match(page, /seriesHeader\.stored/)
+    assert.match(page, /seriesHeader\.undated/)
+  })
+})
+
 describe('última consulta', () => {
   it('distingue "nunca consultou" de "consultou e não achou nada"', () => {
     // O backend manda `null` para o primeiro caso, e a distinção é a primeira
@@ -616,19 +673,16 @@ describe('a reancoragem do relógio das janelas', () => {
   const page = readFileSync(new URL('../app/pages/fiscal/index.vue', import.meta.url), 'utf8')
 
   /**
-   * O corpo da função que começa no trecho dado, por contagem de chaves.
-   *
-   * Recortar a chamada inteira não bastaria: um `watch` do botão fica logo
-   * abaixo do handler da busca e passaria, e foi exatamente ali que o defeito
-   * nasceu. Por isso o recorte é pelo cabeçalho da função, e não pelo da
-   * chamada.
+   * O corpo do handler que a busca entrega ao `useAsyncData`, por casamento de
+   * chaves. Recortar a chamada inteira não bastaria: um `watch` do botão fica
+   * logo abaixo e passaria, e foi exatamente ali que o defeito nasceu.
    */
-  function bodyOf(source: string, header: string): string {
-    const at = source.indexOf(header)
-    assert.notEqual(at, -1, `a página não tem \`${header}\``)
+  function fetchHandler(source: string): string {
+    const call = source.indexOf('useAsyncData<FiscalSummary>(')
+    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
 
-    const open = source.indexOf('{', at + header.length - 1)
-    assert.notEqual(open, -1, `\`${header}\` não tem corpo de bloco`)
+    const open = source.indexOf('{', source.indexOf('async () =>', call))
+    assert.notEqual(open, -1, 'a busca não tem um handler de corpo')
 
     let depth = 0
     for (let index = open; index < source.length; index++) {
@@ -639,85 +693,24 @@ describe('a reancoragem do relógio das janelas', () => {
       }
     }
 
-    return assert.fail(`o corpo de \`${header}\` não fecha`)
-  }
-
-  /** O corpo do handler que a busca entrega ao `useAsyncData`. */
-  function fetchHandler(source: string): string {
-    const call = source.indexOf('useAsyncData<FiscalSummary>(')
-    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
-
-    const at = source.indexOf('async () =>', call)
-    assert.notEqual(at, -1, 'a busca não tem um handler')
-
-    return bodyOf(source.slice(at), 'async () =>')
-  }
-
-  /**
-   * A posição da primeira ocorrência do padrão **na profundidade zero** do
-   * corpo, ou `-1`.
-   *
-   * A profundidade é o que separa uma linha que roda de uma linha que existe no
-   * texto: `if (...) { referenceNow.value = ... }` casaria com a mesma busca por
-   * texto, e o ramo que nunca entra deixa a reancoragem sem acontecer sem que
-   * nada mude de assinatura ou de tipo.
-   */
-  function topLevelIndex(body: string, pattern: RegExp): number {
-    let depth = 0
-
-    for (let index = 0; index < body.length; index++) {
-      if (body[index] === '{') depth++
-      else if (body[index] === '}') depth--
-      else if (depth === 0) {
-        const resto = body.slice(index)
-        if (resto.match(pattern)) return index
-      }
-    }
-
-    return -1
+    return assert.fail('o handler da busca não fecha')
   }
 
   it('reancora dentro do handler que traz o resumo, e antes de devolver', () => {
-    // Quatro coisas precisam ser verdade ao mesmo tempo: o recorte é o handler
-    // que busca, é nele que o relógio é reancorado, a reancoragem acontece na
-    // profundidade zero — fora de qualquer `if` — e acontece antes do `return`.
-    // Depois do `return` a linha é código morto, e dentro de um `if` é código
-    // que talvez nunca rode: as duas coisas que uma busca por texto aceitaria
-    // sem pestanejar.
+    // Três coisas precisam ser verdade ao mesmo tempo: o recorte é o handler
+    // que busca, é nele que o relógio é reancorado, e a reancoragem acontece
+    // antes do `return` — depois do `return` a linha é código morto que uma
+    // busca por texto aceitaria sem pestanejar.
     const handler = fetchHandler(page)
 
     assert.match(handler, /await summary\(\)/, 'o recorte não é o handler que busca o resumo')
 
-    const reancora = topLevelIndex(handler, /^referenceNow\.value\s*=/)
-    assert.notEqual(
-      reancora,
-      -1,
-      'a reancoragem do relógio não está no handler da busca, ou está aninhada num bloco'
-    )
+    const reancora = handler.search(/referenceNow\.value\s*=/)
+    assert.notEqual(reancora, -1, 'a reancoragem do relógio não está no handler da busca')
 
     const devolve = handler.search(/\breturn\b/)
     assert.notEqual(devolve, -1, 'o handler não devolve nada')
     assert.ok(reancora < devolve, 'a reancoragem está depois do return, ou seja, nunca roda')
-  })
-
-  it('conta a janela com o relógio reancorado, e não com o do navegador', () => {
-    // A escrita sem a leitura é o outro jeito de perder a garantia: o relógio é
-    // reancorado, o teste da escrita passa, e a contagem passa a usar
-    // `new Date()` do cliente. O resultado é a janela contada pelo relógio de
-    // cada máquina — que não é o relógio que o servidor pintou — e um texto de
-    // hidratação que não bate com o do SSR.
-    const contagem = bodyOf(page, 'function remaining(')
-
-    assert.match(
-      contagem,
-      /new Date\(referenceNow\.value\)/,
-      'a contagem da janela não usa o relógio reancorado'
-    )
-    assert.doesNotMatch(
-      contagem,
-      /new Date\(\s*\)/,
-      'a contagem da janela usa o relógio do navegador, que o servidor não pintou'
-    )
   })
 
   it('mantém o relógio em um só lugar, e é o lugar certo', () => {

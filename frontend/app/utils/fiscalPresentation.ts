@@ -535,6 +535,40 @@ export function fiscalMonthSeries(overTime: readonly { month: string, total: num
 }
 
 /**
+ * O cabeçalho do gráfico de emissão, dizendo o que cada número é.
+ *
+ * `documents.total` e a soma de `documents.over_time` não são a mesma grandeza,
+ * e o motivo está no backend: a coluna `emissao_at` é nullable, e um
+ * documento sem data de emissão conta no total e não tem mês na série. Como o
+ * total é verdadeiro e útil — é "quantos documentos a conta guarda" — o que não
+ * pode é o cabeçalho apresentá-lo como a soma do que o gráfico desenha. Um
+ * operador que some as barras e não chega ao número do canto precisa poder ler
+ * na tela por quê.
+ *
+ * Por isso a distinção está escrita, e não inferida: `series` diz quantos
+ * documentos o gráfico soma, `stored` diz quantos a guarda, e `undated` nomeia
+ * a diferença quando ela existe. Quando os dois batem, `undated` é `null` — a
+ * linha some em vez de dizer "0 documentos sem data de emissão", que é uma
+ * afirmação sobre um dado que ninguém olhou.
+ */
+export function documentsOverTimeHeader(documents: Pick<FiscalSummary['documents'], 'total' | 'over_time'>): {
+  series: string
+  stored: string
+  undated: string | null
+} {
+  const naSerie = documents.over_time.reduce((soma, ponto) => soma + ponto.total, 0)
+  const semData = Math.max(0, documents.total - naSerie)
+
+  return {
+    series: `${formatFiscalCount(naSerie)} no gráfico`,
+    stored: `${formatFiscalCount(documents.total)} guardados`,
+    undated: semData === 0
+      ? null
+      : `${formatFiscalCount(semData)} sem data de emissão, fora do gráfico`
+  }
+}
+
+/**
  * A última consulta da conta, em uma leitura.
  *
  * `null` é "a conta nunca consultou" — o backend manda `null` de propósito
