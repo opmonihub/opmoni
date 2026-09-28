@@ -13,14 +13,18 @@ class SerproContractFixtureTest extends TestCase
     private const DIR = __DIR__.'/../Fixtures/serpro';
 
     /**
-     * As fixtures documentais, aqui e dentro do próprio arquivo.
+     * As fixtures documentais: transcritas da documentação, não observadas.
      *
      * O marker `_provenance` é o que acompanha o artefato — o JSON aberto
      * sozinho, colado numa issue ou lido daqui a seis meses precisa dizer que
-     * aquilo não foi observado. Esta lista é o segundo lugar onde isso se diz,
-     * e ela serve a um propósito que o marker não cobre: uma fixture nova não
-     * entra no `payloads()` nem aqui sem que alguém decida, na suíte, de que
+     * aquilo não foi observado. Esta lista é o segundo lugar onde isso se diz, e
+     * ela cobre um propósito que o marker não cobre: uma fixture nova não entra
+     * em `fixturesGravadas()` nem aqui sem que alguém decida, na suíte, de que
      * lado ela está.
+     *
+     * Serve a dois usos, e ambos precisam dela: provider de
+     * `test_a_varredura_aceita_as_fixtures_documentais`, e uma das duas listas
+     * que `test_as_listas_de_fixture_cobrem_o_diretorio()` soma.
      *
      * @return list<array{0: string}>
      */
@@ -33,9 +37,10 @@ class SerproContractFixtureTest extends TestCase
     }
 
     /**
-     * As três respostas gravadas de verdade. As documentais de `documentais()`
-     * não entram aqui, e o teste `test_nenhuma_fixture_tem_documento_ou_credencial`
-     * exige que as duas listas somem o mesmo conjunto que o diretório tem.
+     * As três respostas gravadas de verdade, com o `idServico` de cada uma.
+     * Elas não cobrem o diretório todo: `gateway-429.json` é gravada e não tem
+     * `idServico`, e está em `fixturesGravadas()`, que é a lista que a varredura
+     * e o teste de cobertura usam.
      *
      * @return list<array{0: string, 1: string}>
      */
@@ -188,8 +193,7 @@ class SerproContractFixtureTest extends TestCase
             $nome = basename($arquivo);
             $bruto = (string) file_get_contents($arquivo);
 
-            $this->assertStringNotContainsString('Bearer ', $bruto, $nome);
-            $this->assertStringNotContainsString('eyJ', $bruto, $nome);
+            $this->assertFalse($this->portadorNoCorpo($bruto), $nome);
 
             foreach ($this->violacoes(json_decode($bruto, true)) as $violacao) {
                 $this->fail("{$nome}: {$violacao}");
@@ -231,22 +235,32 @@ class SerproContractFixtureTest extends TestCase
     }
 
     /**
-     * O outro lado da mesma regra: um portador no corpo do arquivo é pego no
-     * texto, porque o valor de um `dados` é uma string de duas camadas e
-     * ninguém vai adivinhar que ali dentro há um JWT.
+     * Os dois mecanismos da varredura, e eles são diferentes de propósito.
+     *
+     * O corpo do arquivo é lido como texto porque é assim que o portador se
+     * esconde: o valor de um `dados` é uma string de duas camadas, e ninguém
+     * vai adivinhar que ali dentro há um JWT. Já `violacoes()` olha a chave e o
+     * valor, e um `eyJ...` sob a chave `dados` não é nem documento nem credencial
+     * — para ele, é um texto qualquer.
+     *
+     * Por isso as duas afirmações apontam em direções opostas: o portador **é**
+     * apontado no texto e **não** é apontado em `violacoes()`. Se um dia as duas
+     * passarem a apontar, este teste diz qual das duas mudou de comportamento.
      */
-    public function test_o_portador_no_corpo_do_arquivo_e_ponto(): void
+    public function test_o_portador_e_ponto_no_texto_e_nao_em_violacoes(): void
     {
         $bruto = (string) json_encode(['dados' => 'eyJhbGciOiJSUzI1NiJ9.assinatura']);
 
-        $this->assertStringContainsString('eyJ', $bruto);
+        $this->assertTrue($this->portadorNoCorpo($bruto));
         $this->assertSame([], $this->violacoes(json_decode($bruto, true)));
     }
 
     /**
-     * Uma fixture gravada de verdade passa na varredura, e é isso que a torna
-     * útil: um guard que reprova o que está certo não protege nada, ele só
-     * cansa. As quatro são as que vieram de resposta observada do provedor.
+     * As quatro fixtures que vieram de resposta observada do provedor.
+     *
+     * É esta lista, e não `payloads()`, que a varredura e o teste de cobertura
+     * somam: `payloads()` carrega o `idServico` de cada resposta e por isso não
+     * tem lugar para `gateway-429.json`, que é do gateway e não de serviço.
      *
      * @return list<array{0: string}>
      */
@@ -265,18 +279,36 @@ class SerproContractFixtureTest extends TestCase
     {
         $bruto = (string) file_get_contents(self::DIR.'/'.$file);
 
-        $this->assertStringNotContainsString('Bearer ', $bruto, $file);
-        $this->assertStringNotContainsString('eyJ', $bruto, $file);
+        $this->assertFalse($this->portadorNoCorpo($bruto), $file);
+        $this->assertSame([], $this->violacoes(json_decode($bruto, true)), $file);
+    }
+
+    /**
+     * O mesmo para as documentais, que também precisam passar: um guard que
+     * reprova o exemplo do SITFIS faria alguém afrouxar o guard inteiro para
+     * accommodate o próprio exemplo.
+     */
+    #[DataProvider('documentais')]
+    public function test_a_varredura_aceita_as_fixtures_documentais(string $file): void
+    {
+        $bruto = (string) file_get_contents(self::DIR.'/'.$file);
+
+        $this->assertFalse($this->portadorNoCorpo($bruto), $file);
         $this->assertSame([], $this->violacoes(json_decode($bruto, true)), $file);
     }
 
     /**
      * As duas listas de fixture e o diretório precisam ser o mesmo conjunto, e
      * é o que impede uma fixture nova de entrar sem alguém decidir, na suíte, de
-     * que lado ela está: `payloads()` para as gravadas, `documentais()` para as
-     * transcritas da documentação. Sem esta afirmação, uma fixture nova
-     * apareceria na varredura e em lugar nenhum, e a distinção que a tarefa 3.3
-     * precisa preservar ficaria só no nome do arquivo.
+     * que lado ela está: `fixturesGravadas()` para as que vieram de resposta
+     * observada, `documentais()` para as transcritas da documentação. Sem esta
+     * afirmação, uma fixture nova apareceria na varredura e em lugar nenhum, e a
+     * distinção que a tarefa 3.3 precisa preservar ficaria só no nome do
+     * arquivo.
+     *
+     * A comparação é de conjunto ordenado e por contagem, então ela também
+     * quebra quando uma fixture é declarada nas duas listas: a soma teria o
+     * nome duas vezes e o diretório uma.
      */
     public function test_as_listas_de_fixture_cobrem_o_diretorio(): void
     {
@@ -286,8 +318,7 @@ class SerproContractFixtureTest extends TestCase
         );
 
         $declaradas = [
-            ...array_column(self::payloads(), 0),
-            'gateway-429.json',
+            ...array_column(self::fixturesGravadas(), 0),
             ...array_column(self::documentais(), 0),
         ];
 
@@ -307,6 +338,18 @@ class SerproContractFixtureTest extends TestCase
         $this->assertIsArray($payload);
 
         return $payload;
+    }
+
+    /**
+     * O portador no corpo do arquivo, lido como texto.
+     *
+     * Ele precisa de um mecanismo só dele, e é o `dados` que mostra por quê: o
+     * valor é uma string de duas camadas, e um JWT dentro dela não aparece nem
+     * como chave nem como valor que `violacoes()` consiga nomear.
+     */
+    private function portadorNoCorpo(string $bruto): bool
+    {
+        return str_contains($bruto, 'Bearer ') || str_contains($bruto, 'eyJ');
     }
 
     /**
