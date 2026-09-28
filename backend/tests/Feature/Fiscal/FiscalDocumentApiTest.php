@@ -613,7 +613,7 @@ class FiscalDocumentApiTest extends TestCase
             'chave_acesso' => $documento->chave_acesso,
             'emissao_at' => '2026-09-11 10:00:00',
         ]);
-        $this->evento($outro, $documento->chave_acesso, '110111', 3001);
+        $eventoDaMesmaChave = $this->evento($outro, $documento->chave_acesso, '110111', 3001);
 
         $linhas = collect(
             $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
@@ -625,10 +625,14 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertSame(2, $linhas[$documento->getKey()]['event_count']);
         $this->assertSame(1, $linhas[$mesmaChave->getKey()]['event_count']);
 
-        // Uma linha de evento não conta a si mesma: ela já está na lista, e
-        // somá-la diria que existe um evento a mais do que existe.
-        $this->assertSame(1, $linhas[$primeiro->getKey()]['event_count']);
-        $this->assertSame(1, $linhas[$segundo->getKey()]['event_count']);
+        // O campo responde "quantos eventos esta chave de acesso tem", e é o
+        // mesmo número em toda linha da chave — inclusive na linha que é um
+        // desses eventos. Uma linha de evento que reportasse N−1 colocaria, na
+        // mesma página e para a mesma chave, dois números diferentes, e o
+        // operador não teria como saber qual dos dois ler.
+        $this->assertSame(2, $linhas[$primeiro->getKey()]['event_count']);
+        $this->assertSame(2, $linhas[$segundo->getKey()]['event_count']);
+        $this->assertSame(1, $linhas[$eventoDaMesmaChave->getKey()]['event_count']);
 
         // Documento sem evento é zero explícito, e não campo vazio: a tela
         // escreve "sem eventos" a partir do número.

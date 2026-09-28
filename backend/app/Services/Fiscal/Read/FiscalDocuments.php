@@ -188,10 +188,11 @@ class FiscalDocuments
      * diferentes conforme a entrega, e uma contagem por NSU contaria cada
      * entrega como um documento diferente.
      *
-     * A linha de evento não conta a si mesma: ela já está na lista, e somá-la
-     * diria que existe um evento a mais do que existe. Para a linha de
-     * documento a subtração é zero, e por isso ela é a mesma conta para as
-     * duas etapas.
+     * O número é o mesmo em toda linha da chave, inclusive na linha que é um
+     * desses eventos: o campo pergunta "quantos eventos esta chave tem", e a
+     * linha de evento é parte da resposta, não uma exceção a ela. Subtrair a
+     * si mesma colocaria dois números diferentes na mesma página para a mesma
+     * chave, e o operador não teria como saber qual ler.
      *
      * @param  LengthAwarePaginator<FiscalDocument>  $pagina
      * @return LengthAwarePaginator<FiscalDocument>
@@ -233,8 +234,7 @@ class FiscalDocuments
         }
 
         foreach ($linhas as $document) {
-            $document->event_count = ($eventos[(int) $document->client_id.'|'.$document->chave_acesso] ?? 0)
-                - ($document->stage === FiscalStage::Event ? 1 : 0);
+            $document->event_count = $eventos[(int) $document->client_id.'|'.$document->chave_acesso] ?? 0;
         }
 
         return $pagina;
