@@ -13,6 +13,11 @@ use App\Models\FiscalDocument;
 use App\Services\Fiscal\Capture\FiscalDocumentWriter;
 use App\Services\Fiscal\Capture\FiscalXmlPath;
 use App\Services\Fiscal\Contracts\PulledDocument;
+use App\Services\Fiscal\Support\DfeEntry;
+use App\Services\Fiscal\Support\DfeEntryCollector;
+use App\Services\Fiscal\Support\DfeResponse;
+use App\Services\Fiscal\Support\DocZipDecoder;
+use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -551,6 +556,106 @@ class FiscalDocumentWriterTest extends TestCase
         $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
 
         return [$account, $client];
+    }
+
+    /**
+     * O último salto do `mascarado`, pelo caminho inteiro e não por um
+     * `PulledDocument` montado à mão.
+     *
+     * O valor é observado no parser, atravessa o contrato e é gravado aqui. São
+     * três lugares, e um teste que cobrisse só os dois primeiros deixaria este
+     * sem cobertura justamente no ponto em que a coluna é escrita — que é o
+     * ponto em que um `false` gravado em silêncio produziria uma linha que diz
+     * que o fisco não mascarou nada. A linha é lida de volta do banco de verdade,
+     * e não do objeto devolvido, para que a asserção seja sobre o que foi
+     * persistido.
+     */
+    public function test_stores_the_masked_flag_the_parser_observed(): void
+    {
+        [, $client] = $this->tenant();
+
+        $mascarado = $this->storeThroughTheParser($client, $this->cteComTransporteZerado());
+        $legivel = $this->storeThroughTheParser($client, $this->cteComTransporteLegivel(), nsu: 201);
+
+        $this->assertTrue($mascarado->mascarado);
+        $this->assertFalse($legivel->mascarado);
+
+        // As duas linhas sobreviveram ao caminho inteiro, e cada uma tem o seu
+        // próprio veredito: marcar os dois ou nenhum seria o mesmo defeito.
+        $this->assertSame(2, FiscalDocument::count());
+        $this->assertSame(
+            [true, false],
+            FiscalDocument::orderBy('nsu')->pluck('mascarado')->map(fn (mixed $v): bool => (bool) $v)->all(),
+        );
+
+        // E o modelo que o parser leu da chave gravou o seu, o que prova que o
+        // documento mascarado atravessou como CT-e OS e não como outra coisa.
+        $this->assertSame(FiscalModel::CteOs, $mascarado->model);
+    }
+
+    /**
+     * O caminho de produção inteiro, do `docZip` comprimido à linha gravada.
+     * Comprimir de verdade porque é o que o serviço entrega.
+     */
+    private function storeThroughTheParser(Client $client, string $xml, int $nsu = 200): FiscalDocument
+    {
+        $result = (new DfeEntryCollector(new DocZipDecoder, new FiscalXmlMetadata))->collect(
+            new DfeResponse(
+                cStat: '138',
+                xMotivo: 'Documento localizado',
+                ultNsu: $nsu,
+                maxNsu: $nsu,
+                entries: [new DfeEntry($nsu, 'procCTeOS_v4.00.xsd', base64_encode(gzcompress($xml)))],
+            ),
+            FiscalModel::Cte,
+        );
+
+        $this->assertSame([], $result->failures, 'a entrada de teste tem de passar pela extração');
+        $this->assertCount(1, $result->documents);
+
+        return $this->writer()->store($client, FiscalSource::CteDistribuicao, $result->documents[0]);
+    }
+
+    /**
+     * O `cte-os.xml` com a chave da NF-e transportada na forma de 44 dígitos
+     * iguais, que é o preenchimento que o fisco usa para uma referência que não
+     * é do consultante. O XML vem do arquivo para que o caminho testado seja o
+     * mesmo que a família de CT-e testa, e não um documento só deste teste.
+     */
+    private function cteComTransporteZerado(): string
+    {
+        return str_replace(
+            '35220999999999999999550010000011081000000006',
+            str_repeat('9', 44),
+            $this->cteOs(),
+        );
+    }
+
+    /**
+     * O par legível do caso acima, e um **outro** CT-e OS, com chave própria
+     * diferente. Não dá para guardar as duas variantes do mesmo documento: a
+     * identidade é `(client_id, chave_acesso, stage, event_id)`, e a segunda
+     * gravação sobrescreveria a primeira — que é o comportamento certo do writer
+     * e não o que este teste quer medir.
+     */
+    private function cteComTransporteLegivel(): string
+    {
+        return str_replace(
+            [
+                '35220999999999999999550010000011081000000006',
+                '35220999999999999999670000000011021000000006',
+            ],
+            [
+                '35220999999999999999550010000011082000000006',
+                '35220999999999999999670000000011081000000000',
+            ],
+            $this->cteOs(),
+        );
+    }
+
+    private function cteOs(): string
+    {
+        return (string) file_get_contents(base_path('tests/Fixtures/fiscal/cte-os.xml'));
     }
 
     /**

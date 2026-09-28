@@ -368,11 +368,13 @@ class CteXmlMetadataTest extends TestCase
         );
     }
 
-    public function test_o_mascarado_atravessa_o_contrato_ate_o_writer(): void
+    public function test_o_mascarado_viaja_do_parser_para_o_documento_puxado(): void
     {
-        // O caminho inteiro: o parser marca, o contrato carrega e o writer
-        // grava a coluna. Sem o último salto o documento entraria no banco
-        // sabendo e sairia de lá sem ter dito.
+        // Parser e contrato, que é tudo que este arquivo é dono: o documento
+        // puxado chega ao writer sabendo que o fisco mascarou as chaves
+        // transportadas. O salto até a coluna gravada é do writer e está em
+        // `FiscalDocumentWriterTest::test_stores_the_masked_flag_the_parser_observed`
+        // — o caminho inteiro, do `docZip` à linha persistida.
         $resultado = (new DfeEntryCollector(new DocZipDecoder, new FiscalXmlMetadata))->collect(
             new DfeResponse(
                 cStat: '138',
