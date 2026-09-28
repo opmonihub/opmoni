@@ -16,6 +16,7 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Testing\File;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -38,6 +39,18 @@ class SerproConnectionApiTest extends TestCase
 
     private const SEGREDO = 'segredo-da-plataforma';
 
+    /**
+     * Os PFX que subiram por um caminho de **arquivo real**, apagados no fim da
+     * classe.
+     *
+     * Um `UploadedFile` real tem um caminho em disco e ninguém o apaga por nós:
+     * sem esta lista, o helper de PFX real deixaria um certificado — que é
+     * material de assinatura, mesmo de descarte — no `/tmp` do CI.
+     *
+     * @var list<string>
+     */
+    private array $arquivosTemporarios = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -46,6 +59,19 @@ class SerproConnectionApiTest extends TestCase
         // configurada aqui e usada em outro processo. Qualquer chamada HTTP
         // seria um desvio de rota, não um efeito colateral tolerável.
         Http::preventStrayRequests();
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        // O `@var` acima não sobrevive entre instâncias, e a limpeza precisa
+        // acontecer mesmo se um teste falhar no meio.
+        foreach (glob(sys_get_temp_dir().'/serpro-p12-*') ?: [] as $arquivo) {
+            if (is_file($arquivo)) {
+                @unlink($arquivo);
+            }
+        }
+
+        parent::tearDownAfterClass();
     }
 
     public function test_apenas_super_admin_salva_conexao_unica(): void
@@ -876,6 +902,113 @@ class SerproConnectionApiTest extends TestCase
         );
         $mock->shouldReceive('put')->andReturn(false);
         Storage::shouldReceive('disk')->andReturn($mock);
+    }
+
+    /**
+     * O upload da credencial da plataforma precisa **não** usar
+     * `UploadedFile::fake()` para provar que o arquivo é aceito.
+     *
+     * O `mimes` do Laravel não compara tipo de mídia: ele chama
+     * `guessExtension()`, que pergunta ao host o que ele adivinha do
+     * **conteúdo** do arquivo. E o `UploadedFile::fake()` deriva o MIME do
+     * **nome** (`Illuminate\Http\Testing\File::getMimeType()` →
+     * `MimeType::from($this->name)`), nunca do conteúdo — então um fake chamado
+     * `plataforma.pfx` se apresenta como `application/pkcs12` e **passa** em
+     * `mimes:pfx,p12` mesmo num host cuja libmagic não conhece PKCS#12.
+     *
+     * Foi por isso que este endpoint aceitou, na suíte inteira, um `mimes` que
+     * recusa o certificado de verdade: os dezoito testes deste arquivo sobem um
+     * PFX de verdade, mas nenhum deles por um caminho que faça o host adivinhar.
+     *
+     * Este caso usa um `UploadedFile` **real**, sobre um arquivo real em disco,
+     * que é o que o PHP-FPM recebe de um upload de verdade. Medido neste host
+     * (`file-5.45`, cuja base mágica não tem PKCS#12):
+     *
+     *     file --mime-type real.p12  ->  application/octet-stream
+     *     guessExtension()          ->  bin
+     *     mimes:pfx,p12              ->  RECUSA
+     *     extensions:pfx,p12         ->  ACEITA
+     *
+     * A asymetria é a do host, e não do formato: um libmagic que conhece PKCS#12
+     * (`MimeTypes` mapeia `'application/pkcs12' => ['p12','pfx']`) adivinha
+     * `p12` e o `mimes` passa. `extensions` não depende de nenhum dos dois — lê
+     * `getClientOriginalExtension()`, o nome que o cliente mandou — e por isso é
+     * a regra determinística, que é o que este teste exige.
+     */
+    public function test_o_upload_da_credencial_aceita_um_p12_de_verdade_como_arquivo_real(): void
+    {
+        ['bytes' => $bytes, 'file' => $real] = $this->pfxReal(self::CNPJ);
+
+        // O arquivo é real e está em disco — não é um `File` de teste, e é isso
+        // que faz `guessExtension()` consultar a libmagic do host.
+        $this->assertNotInstanceOf(File::class, $real);
+        $this->assertFileExists($real->getPathname());
+
+        $super = User::factory()->create(['is_super_admin' => true]);
+
+        $resposta = $this->actingAs($super, 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'certificate' => $real,
+                'password' => self::SENHA,
+            ], $this->jsonHeaders());
+
+        $resposta->assertOk()
+            ->assertJsonPath('data.configured', true)
+            ->assertJsonPath('data.contracting_document', self::CNPJ);
+
+        // E a credencial gravada é a do arquivo que subiu: a prova de que a
+        // requisição não só passou, como que passou com o conteúdo certo.
+        $this->assertSame(self::CNPJ, SerproConnection::sole()->contratante_numero);
+        $this->assertSame($bytes, SerproConnection::sole()->certificateBytes());
+    }
+
+    /**
+     * Um PKCS#12 de verdade, sobre um **arquivo real** em disco.
+     *
+     * O par contra o `pfx()` de cima é o `UploadedFile`: o de lá é um
+     * `Illuminate\Http\Testing\File`, que reporta o MIME pelo nome, e o daqui é
+     * um `Illuminate\Http\UploadedFile` sobre um caminho de verdade, que obriga o
+     * Symfony a perguntar à libmagic. O arquivo é apagado no fim, e a variável de
+     * instância guarda o caminho para isso.
+     *
+     * @return array{bytes: string, file: UploadedFile}
+     */
+    private function pfxReal(string $document): array
+    {
+        $config = $this->opensslConfig();
+        $subject = ['CN' => 'SERPRO PLATAFORMA LTDA:'.$document, 'serialNumber' => $document];
+
+        $key = openssl_pkey_new(array_merge(
+            ['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA],
+            $config,
+        ));
+        $this->assertNotFalse($key);
+
+        $csr = openssl_csr_new($subject, $key, array_merge(['digest_alg' => 'sha256'], $config));
+        $this->assertNotFalse($csr);
+
+        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $this->assertNotFalse($certificate);
+
+        $bytes = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $bytes, $key, self::SENHA));
+
+        // `tempnam` e não um nome montado: o caminho tem de ser único para que
+        // dois testes em paralelo não sobrescrevam um ao outro, e tem de caber
+        // no limite do sistema de arquivos. A limpeza é por padrão do nome, em
+        // `tearDownAfterClass()` — que sobrevive à falha de um teste, ao
+        // contrário de um `tearDown()` por instância.
+        $caminho = tempnam(sys_get_temp_dir(), 'serpro-p12-');
+        $this->assertNotFalse($caminho);
+        file_put_contents($caminho, $bytes);
+        $this->arquivosTemporarios[] = $caminho;
+
+        return [
+            'bytes' => $bytes,
+            'file' => new UploadedFile($caminho, 'plataforma.p12', null, null, true),
+        ];
     }
 
     /**

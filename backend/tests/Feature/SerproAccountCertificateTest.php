@@ -888,8 +888,8 @@ class SerproAccountCertificateTest extends TestCase
     }
 
     /**
-     * O cofre abre o mesmo arquivo duas vezes, e o que se fixa aqui é o que as
-     * duas leituras podemmaker de discordar.
+     * O cofre abre o mesmo arquivo duas vezes, e o que se fixa aqui é aquilo em
+     * que as duas leituras podem divergir.
      *
      * `CertificatePkcs12::inspect()` devolve metadados, e o
      * `SerproCertificateIdentity` reabre os mesmos bytes para extrair o
@@ -944,6 +944,93 @@ class SerproAccountCertificateTest extends TestCase
         // `subject`, e é dele que a linha guarda o valor.
         $this->assertStringContainsString(self::CNPJ, (string) $linha->subject);
         $this->assertSame(self::CNPJ, $linha->document);
+    }
+
+    /**
+     * **Uma duplicata faz a remoção responder `204` e não remover nada.**
+     *
+     * Este caso não é sobre a garantia de "uma linha corrente" — que é da
+     * aplicação e está em `test_a_troca_mantem_uma_linha_corrente`. É sobre o
+     * que acontece quando essa garantia **falha** por fora (restauração, `insert`
+     * manual, um banco copiado de um ambiente com bug), porque o resultado é o
+     * pior dos dois mundos: o escritório recebe a confirmação de que tirou o
+     * certificado e continua podendo assinar com ele.
+     *
+     * As três leituras que produzem isso são `latest('id')` — `supersede()`,
+     * `remove()` e `currentFor()`. Com A (id menor) e B (id maior) as duas
+     * correntes, o DELETE marca **B**, que é a que `latest('id')` devolve, e
+     * A sobra corrente **com o conteúdo cifrado dentro**. O `204` é honesto do
+     * ponto de vista da requisição: uma linha foi marcada.
+     *
+     * O conserto é de inspeção — a linha de **menor** `id` é a que tem de ser
+     * marcada à mão —, e por isso o que este teste deixa explícito é o estado
+     * perigoso, e não uma correção que este código não faz. Um futuro índice
+     * parcial tornaria a duplicata impossível pela entrada, mas não apagaria as
+     * que já existem: a verificação continua sendo de operador.
+     */
+    public function test_duplicata_faz_a_remocao_responder_204_sem_remover_a_linha_que_sobra(): void
+    {
+        $conta = Account::factory()->create();
+        ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        // A linha que o upload gravou, e uma duplicata de **menor** `id` — que
+        // é o caso que o `latest('id')` não alcança. A ordem importa: a
+        // duplicata é inserida antes de a original para ficar com id menor, e é
+        // por isso que a construção é nesta ordem e não invertida.
+        $original = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($original);
+
+        $duplicata = AccountCertificate::factory()->create([
+            'account_id' => $conta->getKey(),
+            'document' => self::CNPJ_ALHEIO,
+            'original_filename' => 'duplicata.p12',
+        ]);
+
+        // Reaproveita o conteúdo cifrado da linha real, para que a duplicata
+        // tenha bytes válidos e a remoção de uma não possa ser confundida com
+        // uma coluna vazia.
+        $duplicata->forceFill([
+            'certificate_encrypted' => $original->certificate_encrypted,
+            'password_encrypted' => $original->password_encrypted,
+        ])->save();
+
+        $menorId = min($duplicata->getKey(), $original->getKey());
+        $maiorId = max($duplicata->getKey(), $original->getKey());
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->deleteJson(self::ROTA)
+            ->assertNoContent();
+
+        // O que `remove()` marcou foi a de **maior** `id` — a única que o
+        // `latest('id')` alcança.
+        $marcada = AccountCertificate::query()->findOrFail($maiorId);
+        $sobrou = AccountCertificate::query()->findOrFail($menorId);
+
+        $this->assertNotNull($marcada->removed_at);
+        $this->assertNull($marcada->certificate_encrypted);
+
+        // E a de **menor** `id` continua corrente, com o conteúdo intacto: o
+        // `204` que o escritório recebeu não corresponde ao estado do banco.
+        $this->assertNull($sobrou->removed_at);
+        $this->assertNull($sobrou->replaced_at);
+        $this->assertNotNull(
+            $sobrou->certificate_encrypted,
+            'A linha que sobrou corrente não tem mais o conteúdo cifrado — a duplicata não produziria o estado perigoso.',
+        );
+
+        // `currentFor()` devolve justamente essa, e a leitura da tela devolve
+        // metadados de um certificado que o operador acabou de remover.
+        $atual = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($atual);
+        $this->assertSame($menorId, $atual->getKey());
+        $this->assertSame($sobrou->certificateBytes(), $atual->certificateBytes());
+        $this->assertTrue($atual->valid_until->isFuture());
     }
 
     public function test_escrita_em_modo_suporte_registra_a_auditoria_sem_segredo(): void

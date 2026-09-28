@@ -236,7 +236,7 @@ final class AccountCertificateVault
      *
      * O nome é o que o cliente digitou, e o cliente não tem teto: um nome de 300
      * caracteres é um `500` de banco de dados no meio de um upload cujo arquivo
-     * está perfectlyamente correto — e um `500` que não se resolve reenviando,
+     * está inteiramente correto — e um `500` que não se resolve reenviando,
      * porque reenviar dá o mesmo nome de novo. O Postgres não trunca `varchar`,
      * ele recusa; o SQLite da suíte aceita em silêncio, o que é parte do motivo
      * de isto ser um teste e não uma confiança no banco.

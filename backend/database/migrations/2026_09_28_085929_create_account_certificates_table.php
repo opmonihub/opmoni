@@ -87,15 +87,27 @@ return new class extends Migration
              *    falhar. O índice não impede o estado ruim; ele transforma um
              *    conflito raro em erro.
              *
-             * E a consequência de uma duplicata **existe**, e é esta:
-             * `supersede()` marca apenas a linha que `first()` devolveu, então a
-             * segunda duplicata fica corrente para sempre — nenhuma troca
-             * futura a marca, porque ela nunca é a primeira. `currentFor()`
-             * degrada para `latest('id')` e passa a devolver a duplicata mais
-             * recente, o que significa um termo de autorização assinado com o
-             * e-CNPJ de um dos dois, e **não** um stack trace. O conserto de uma
-             * duplicata é, portanto, de inspeção: a linha que sobrou corrente é
-             * a que tem de ser marcada à mão.
+             * E a consequência de uma duplicata **existe**, e ela é medida, não
+             * suposta. `supersede()`, `remove()` e `currentFor()` são os três
+             * `latest('id')`, e é essa combinação — não "marcar a primeira" — que
+             * produz o resultado. Com duas linhas correntes, A (id 1) e B (id 2):
+             *
+             * - Um **DELETE** marca **B** (a de maior `id`) e devolve `204`. A
+             *   linha A continua corrente **e com `certificate_encrypted`
+             *   preenchido**, e `currentFor()` passa a devolver A. O escritório
+             *   recebeu a confirmação de que o certificado foi removido e
+             *   continua podendo assinar o termo com ele.
+             * - Um **upload** marca **B** e cria C, que passa a ser a corrente.
+             *   A continua corrente, com o conteúdo dela, e nenhuma troca
+             *   futura a marca: `latest('id')` devolve sempre a de maior `id`
+             *   entre as que faltam marcar, e A é a de menor `id`.
+             *
+             * O sintoma é um termo assinado com um e-CNPJ que o operador já
+             * removeu, e **não** um stack trace — o que é o que torna isto um
+             * estado silencioso. O conserto de uma duplicata é, portanto, de
+             * inspeção: a linha que sobrou corrente — a de **menor** `id` — é a
+             * que tem de ser marcada à mão, e é por `id`, não por posição, que
+             * se procura.
              */
             $table->timestamp('replaced_at')->nullable();
             $table->timestamp('removed_at')->nullable();
