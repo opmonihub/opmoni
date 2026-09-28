@@ -41,5 +41,29 @@ return [
         'RELATORIOSITFIS92' => ['path' => 'Emitir', 'versaoSistema' => '2.0', 'billable' => true],
         'MSGCONTRIBUINTE61' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
         'CONSDECLARACAO13' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * O envio do termo de autorização assinado, que é o serviço **gratuito**
+         * de apoio e o único ponto do gateway que este sistema escreve num
+         * documento. Os três valores são do provedor, e cada um tem uma
+         * leitura diferente:
+         *
+         * - `path = Apoiar` é o mesmo caminho de `SOLICITARPROTOCOLO91`, e é a
+         *   operação que não consome cota do contratante — por isso
+         *   `billable = false`, e é por isso que o termo pode ser emitido sem
+         *   custo para a plataforma.
+         * - `versaoSistema = 1.0` **não** é o `2.0` do outro serviço do mesmo
+         *   `path`. A versão é por serviço e o provedor publica `1.0` para
+         *   este; copiar o do vizinho produziria um envelope recusado sem
+         *   mensagem que dissesse o porquê.
+         * - `idServico` e o `idSistema` ficam em `SerproClient`, porque o
+         *   `idSistema` do termo é `AUTENTICAPROCURADOR` e **não** o nome do
+         *   sistema do serviço — a entrada aqui existe pelo `path` e pela
+         *   versão, e é o mesmo par que as demais chamadas leem.
+         *
+         * Fonte: `…/integra-contador-gerenciador/autenticaprocurador/servicos/envio_de_xml_assinado/`,
+         * lida em 2026-09-28.
+         */
+        'ENVIOXMLASSINADO81' => ['path' => 'Apoiar', 'versaoSistema' => '1.0', 'billable' => false],
     ],
 ];

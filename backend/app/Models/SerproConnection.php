@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Enums\SerproFailure;
+use App\Enums\SerproTermProof;
 use App\Services\SerproCertificateIdentity;
 use App\Services\SerproException;
+use App\Services\SerproTermSigner;
 use Database\Factories\SerproConnectionFactory;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -31,6 +33,16 @@ use Illuminate\Validation\ValidationException;
  * não pode ser preenchida por um corpo de requisição — a request marca
  * `contratante_numero` como `prohibited`, e `contracting_document` no recurso
  * é sempre lido do que o certificado realmente diz.
+ *
+ * **`term_format_sha256` e `term_format_proven_at` também não são `Fillable`,
+ * e por um motivo diferente das colunas cifradas.** Elas não são segredo:
+ * são a prova de que um teste de contrato rodou. A spec declara que nenhuma
+ * requisição, nenhum job e nenhuma agenda escreve estas colunas, e o único
+ * escritor sancionado é o comando `serpro:record-term-proof` — que as grava
+ * com `forceFill`, por ser ele o autor do valor medido. A ausência na lista
+ * abaixo é a garantia que faz essa regra valer no código e não só no texto
+ * da spec, e é a mesma camada que protege o segredo: o `Fillable` é por onde
+ * um `fill($request->validated())` passaria.
  */
 #[Fillable([
     'consumer_key',
@@ -66,7 +78,44 @@ class SerproConnection extends Model
         return [
             'certificate_valid_from' => 'datetime',
             'certificate_valid_until' => 'datetime',
+            'term_format_proven_at' => 'datetime',
         ];
+    }
+
+    /**
+     * O gate de emissão do termo de autorização, lido nas duas colunas que a
+     * spec nomeia e em mais nenhuma parte.
+     *
+     * **Este é o predicado, e ele é escrito uma única vez.** A spec o dá em
+     * duas condições — `term_format_proven_at` não nulo **e**
+     * `term_format_sha256` igual a `SerproTermSigner::formatDigest()` —, e
+     * cada ponto do código que o precisasse reimplementasse o par deixaria
+     * lugar para um deles ler só a primeira condição, que é o estado que
+     * nasce sozinho quando o formato do documento muda depois da prova. Por
+     * isso o método devolve um `SerproTermProof` e não um booleano: quem
+     * recusa a emissão diz **qual** das duas metades faltou, e os dois casos
+     * têm consertos diferentes.
+     *
+     * **A ordem das condições é a da spec e importa.** A primeira é a do
+     * instante; a segunda, a do digest. Sem a prova não há nada a comparar, e
+     * comparar o digest antes diria "divergente" para uma linha que
+     * simplesmente nunca foi gravada — que é o estado de uma instalação nova
+     * e a mensagem errada para o operador que acabou de instalar.
+     *
+     * `formatDigest()` é estático e não toca o banco, o que faz o gate
+     * responder mesmo sem credencial de plataforma configurada: a comparação
+     * com uma linha que não existe é feita pelo `SerproTermManager` antes de
+     * qualquer outra coisa.
+     */
+    public function termProof(): SerproTermProof
+    {
+        if ($this->term_format_proven_at === null) {
+            return SerproTermProof::Ausente;
+        }
+
+        return $this->term_format_sha256 === SerproTermSigner::formatDigest()
+            ? SerproTermProof::Provado
+            : SerproTermProof::Divergente;
     }
 
     /**

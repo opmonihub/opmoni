@@ -24,6 +24,7 @@ use App\Http\Controllers\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
+use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
@@ -81,6 +82,21 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::get('serpro/account-certificate', [AccountCertificateController::class, 'show']);
     Route::post('serpro/account-certificate', [AccountCertificateController::class, 'store']);
     Route::delete('serpro/account-certificate', [AccountCertificateController::class, 'destroy']);
+
+    /*
+     * O termo de autorização do escritório, e **só** a leitura dele.
+     *
+     * Não há rota de escrita, e a ausência é a decisão: o termo é assinado
+     * pelo e-CNPJ que a rota de cima entrega e emitido pela plataforma, e
+     * nenhum Membro tem o que pedir ao provedor em nome do escritório. A
+     * policy nega a escrita para todo mundo pelo mesmo motivo.
+     *
+     * O `200` com `state` = `ausente` para quem não tem termo é o que a
+     * spec chama de "ação pertencente ao escritório" — a tela precisa da
+     * ausência para pedir o certificado, e um `404` seria indistinguível de
+     * rota errada.
+     */
+    Route::get('serpro/authorization-terms', SerproAuthorizationTermController::class);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\IssueSerproTermJob;
 use App\Models\Account;
 use App\Models\AccountCertificate;
 use Carbon\Carbon;
@@ -171,9 +172,35 @@ final class AccountCertificateVault
                 // garantia de que nenhum `fill()` de requisição os alcance. Este
                 // cofre é o autor desses valores — ele os cifrou neste mesmo
                 // passo —, e é por isso que ele, e só ele, atravessa a lista.
-                return AccountCertificate::forceCreate(array_merge($attributes, [
+                $certificado = AccountCertificate::forceCreate(array_merge($attributes, [
                     'account_id' => $locked->getKey(),
                 ]));
+
+                /*
+                 * **A emissão do termo é agendada dentro da transação e
+                 * `afterCommit()`, e é aqui que ela tem de estar.**
+                 *
+                 * Sem o `afterCommit()`, o job sai para a fila ainda dentro
+                 * da transação, e o worker pode executá-lo antes do `commit`:
+                 * ele leria um e-CNPJ que ainda não existe para o resto do
+                 * banco, e a emissão falharia por uma conta que o operador
+                 * acabou de entregar com sucesso. Pior, se a transação
+                 * rollbackasse depois, o job já estaria na fila e tentaria
+                 * emitir para um certificado que ninguém tem.
+                 *
+                 * E o que o job faz com a falha é o que fecha o ciclo: ele
+                 * não registra estado, porque quem escreve estado é o
+                 * `SerproTermManager` e ele sabe a diferença entre recusa do
+                 * provedor e indisponibilidade. E o gate de emissão decide se
+                 * há assinatura a fazer — com a prova de contrato por pagar, o
+                 * job falha com a mensagem que diz que o gate está fechado, e
+                 * o `200` do upload não muda por isso. O que o upload promete
+                 * é que o e-CNPJ foi guardado; o termo é uma etapa seguinte
+                 * que depende de um teste de contrato que ainda não existe.
+                 */
+                IssueSerproTermJob::dispatch($locked->getKey())->afterCommit();
+
+                return $certificado;
             });
         } catch (ValidationException $exception) {
             throw $this->broadeningTheRejection($exception);
