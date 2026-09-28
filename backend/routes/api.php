@@ -71,6 +71,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::apiResource('tasks', TaskController::class)->only(['index', 'show', 'update']);
     Route::get('fiscal/summary', [FiscalDocumentController::class, 'summary']);
     Route::get('fiscal/documents', [FiscalDocumentController::class, 'index']);
+    // As específicas antes da genérica: `fiscal/documents/{fiscalDocument}` é
+    // a rota que engole qualquer coisa abaixo de `fiscal/documents/`, e a
+    // ordem de registro aqui é o que impede o XML de responder JSON.
+    Route::post('fiscal/clients/{client}/capture', [FiscalDocumentController::class, 'capture']);
+    Route::get('fiscal/documents/{fiscalDocument}/xml', [FiscalDocumentController::class, 'download']);
+    Route::get('fiscal/documents/{fiscalDocument}', [FiscalDocumentController::class, 'show']);
     Route::get('work/calendar', [TaskController::class, 'calendar']);
     Route::get('work/grouped', [TaskController::class, 'grouped']);
     Route::get('work/tasks/unscoped', [TaskController::class, 'unscopedForMonth']);

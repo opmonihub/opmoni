@@ -6,6 +6,7 @@ use App\Enums\FiscalStage;
 use App\Models\FiscalDocument;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * A tabela de documentos capturados: a consulta filtrada, a página e os
@@ -260,6 +261,37 @@ class FiscalDocuments
         }
 
         return $pagina;
+    }
+
+    /**
+     * A linha do tempo de uma chave de acesso: os eventos do mesmo cliente, na
+     * ordem em que aconteceram.
+     *
+     * O par cliente + chave é o mesmo que a contagem da lista usa, e pelo mesmo
+     * motivo: o mesmo documento chega em NSUs diferentes conforme a entrega, e
+     * a etapa `event` é o que separa a linha de evento das outras duas. Sem o
+     * cliente na consulta, uma nota emitida a um cliente e recebida por outro
+     * traria os eventos do vizinho para a linha do tempo.
+     *
+     * A ausência de instante é resolvida por expressão explícita, pelo mesmo
+     * motivo da página: os padrões de `NULL` divergem entre SQLite e Postgres,
+     * e a linha do tempo é ordenada no banco.
+     *
+     * @return Collection<int, FiscalDocument>
+     */
+    public function eventsOf(int $accountId, FiscalDocument $document): Collection
+    {
+        $ocorrencia = (new FiscalDocument)->qualifyColumn('evento_ocorrido_em_at');
+
+        return FiscalDocument::query()
+            ->where('account_id', $accountId)
+            ->where('client_id', (int) $document->client_id)
+            ->where('chave_acesso', (string) $document->chave_acesso)
+            ->where('stage', FiscalStage::Event->value)
+            ->orderByRaw("({$ocorrencia} IS NULL) asc")
+            ->orderBy($ocorrencia)
+            ->orderBy((new FiscalDocument)->qualifyColumn('id'))
+            ->get();
     }
 
     /**

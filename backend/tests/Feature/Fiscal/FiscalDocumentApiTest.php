@@ -4,24 +4,31 @@ namespace Tests\Feature\Fiscal;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Http\Controllers\Tenant\FiscalDocumentController;
+use App\Jobs\CaptureFiscalDocumentsJob;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
+use App\Models\SupportAccessLog;
 use App\Models\User;
 use App\Services\Fiscal\Read\FiscalCoverage;
 use App\Services\Fiscal\Read\FiscalDocuments;
+use App\Services\Fiscal\Support\FiscalXmlEncoding;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Database\Factories\ClientCertificateFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -1100,6 +1107,847 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertSame(['nfe'], $page['available_models']);
     }
 
+    public function test_rota_do_xml_vem_antes_da_rota_generica(): void
+    {
+        // A ordem de registro em `routes/api.php` é o que impede a rota
+        // genérica de engolir as específicas, e o sintoma de uma ordem errada
+        // não é erro de sintaxe: é o detalhe respondendo JSON onde o arquivo
+        // era esperado. O teste olha a posição das duas na coleção de rotas em
+        // vez de esperar um 404 que nunca acontece por acidente do segmento.
+        $posicao = function (string $uri): int {
+            $todas = array_values(app('router')->getRoutes()->getRoutes());
+            $achada = array_search($uri, array_map(fn ($route): string => $route->uri(), $todas), true);
+
+            $this->assertIsInt($achada, "a rota {$uri} não está registrada");
+
+            return $achada;
+        };
+
+        $this->assertLessThan(
+            $posicao('api/fiscal/documents/{fiscalDocument}'),
+            $posicao('api/fiscal/documents/{fiscalDocument}/xml')
+        );
+    }
+
+    public function test_detalhe_devolve_a_linha_com_a_linha_do_tempo_em_ordem_cronologica(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Eventos');
+
+        $documento = $this->documento($cliente, [
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Document,
+            'emissao_at' => '2026-09-10 10:00:00',
+        ]);
+
+        // A linha do tempo ordena pelo instante do evento, não pela ordem de
+        // chegada no banco: o evento mais recente é criado primeiro aqui, e o
+        // desempate do mesmo instante é o id. Uma ordenação por id colocaria o
+        // evento de setembro no começo.
+        $tardio = $this->evento($cliente, $documento->chave_acesso, '110112', 2002, [
+            'evento_ocorrido_em_at' => '2026-09-20 15:00:00',
+        ]);
+        $cedo = $this->evento($cliente, $documento->chave_acesso, '110111', 2001, [
+            'evento_ocorrido_em_at' => '2026-09-15 10:00:00',
+        ]);
+        $mesmoInstante = $this->evento($cliente, $documento->chave_acesso, '110113', 2003, [
+            'evento_ocorrido_em_at' => '2026-09-15 10:00:00',
+        ]);
+
+        $membro = $this->membroDe($account, 'user');
+
+        $detalhe = $this->actingAs($membro, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $documento->getKey())
+            ->assertJsonPath('data.chave_acesso', $documento->chave_acesso)
+            ->assertJsonPath('data.client.id', $cliente->getKey())
+            ->assertJsonCount(3, 'data.events');
+
+        $this->assertSame(
+            [$cedo->getKey(), $mesmoInstante->getKey(), $tardio->getKey()],
+            array_column($detalhe->json('data.events'), 'id')
+        );
+        $this->assertSame(
+            ['110111', '110113', '110112'],
+            array_column($detalhe->json('data.events'), 'event_id')
+        );
+        $this->assertSame(
+            ['2026-09-15T10:00:00.000000Z', '2026-09-15T10:00:00.000000Z', '2026-09-20T15:00:00.000000Z'],
+            array_column($detalhe->json('data.events'), 'evento_ocorrido_em_at')
+        );
+        $this->assertSame(
+            ['id', 'event_id', 'evento_ocorrido_em_at', 'captured_at', 'mascarado'],
+            array_keys($detalhe->json('data.events.0'))
+        );
+
+        // O mesmo número de eventos na lista e no detalhe, e o mesmo número na
+        // linha que é um desses eventos. Um `-1` aqui colocaria, na mesma tela,
+        // dois números para a mesma chave de acesso.
+        $linhas = collect(
+            $this->actingAs($membro, 'sanctum')
+                ->getJson('/api/fiscal/documents')
+                ->assertOk()
+                ->json('data')
+        )->keyBy('id');
+
+        $this->assertSame(3, $detalhe->json('data.event_count'));
+        $this->assertSame($detalhe->json('data.event_count'), $linhas[$documento->getKey()]['event_count']);
+        $this->assertSame(3, $linhas[$cedo->getKey()]['event_count']);
+
+        $this->actingAs($membro, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$cedo->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.event_count', 3)
+            ->assertJsonPath('data.event_id', '110111');
+    }
+
+    public function test_detalhe_conta_eventos_da_mesma_chave_e_do_mesmo_cliente(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Eventos');
+        $outro = $this->cliente($account, 'Cliente 2 Sem Eventos');
+
+        $documento = $this->documento($cliente);
+        $evento = $this->evento($cliente, $documento->chave_acesso, '110111', 2001);
+
+        // A outra etapa da mesma chave não é evento: o resumo é a entrega que
+        // traz os campos sem o XML, e ele não entra na linha do tempo.
+        $this->documento($cliente, [
+            'chave_acesso' => $documento->chave_acesso,
+            'stage' => FiscalStage::Summary,
+            'event_id' => '',
+        ]);
+
+        // Mesma chave de acesso em outro cliente da carteira é a outra metade do
+        // par que define a linha do tempo: somar os dois eventos contaria um
+        // evento que não é deste documento.
+        $mesmaChave = $this->documento($outro, ['chave_acesso' => $documento->chave_acesso]);
+        $this->evento($outro, $documento->chave_acesso, '110111', 3001);
+
+        $detalhe = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.events')
+            ->assertJsonPath('data.event_count', 1);
+
+        $this->assertSame([$evento->getKey()], array_column($detalhe->json('data.events'), 'id'));
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$mesmaChave->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.event_count', 1);
+    }
+
+    public function test_detalhe_devolve_a_previa_do_xml_em_utf8_limitada(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml($this->xmlLatin1())->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Document,
+            'digval_confere' => true,
+        ]);
+
+        $previa = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->json('data.xml_preview');
+
+        // A prévia é a projeção em UTF-8 do byte gravado: o acento que estava
+        // em um byte ISO-8859-1 aparece legível, e a declaração reescrita é o
+        // contrato da classe de codificação — um documento que mentisse sobre
+        // a própria codificação abriria errado em qualquer leitor.
+        $this->assertIsString($previa);
+        $this->assertTrue(mb_check_encoding($previa, 'UTF-8'));
+        $this->assertStringContainsString('encoding="UTF-8"', $previa);
+        $this->assertStringContainsString('Padaria São João', $previa);
+        $this->assertStringNotContainsString('ISO-8859-1', $previa);
+
+        // O byte gravado continua intocado: a prévia é projeção, não reescrita.
+        $this->assertSame(
+            $this->xmlLatin1(),
+            Storage::disk('fiscal')->get($documento->storage_path)
+        );
+    }
+
+    public function test_previa_e_limitada_em_bytes_e_nao_em_caracteres(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento Longo');
+
+        // Cada `ã` são dois bytes em UTF-8, então um corte por caractere
+        // entregaria o dobro do teto em bytes — e a resposta cresceria junto com
+        // o documento, que é exatamente o que a tela não precisa.
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<nfeProc><xNome>'.str_repeat("\u{00E3}", 3000).'</xNome></nfeProc>';
+
+        $documento = FiscalDocument::factory()->withStoredXml($xml)->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        $previa = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->json('data.xml_preview');
+
+        $this->assertLessThanOrEqual(4096, strlen($previa));
+        $this->assertTrue(mb_check_encoding($previa, 'UTF-8'), 'o corte não pode quebrar um caractere multibyte');
+        $this->assertStringNotContainsString($xml, $previa);
+    }
+
+    public function test_previa_nao_expande_entidade_externa(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Xml Hostil');
+
+        // Documento que tenta puxar um arquivo do servidor pela entidade. A
+        // prévia é texto: o documento é mostrado como foi gravado, e o que o
+        // arquivo tivesse não entra na resposta — nem por expansão, nem por
+        // leitura.
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<!DOCTYPE nfeProc [<!ENTITY pii SYSTEM "file:///etc/passwd">]>'
+            .'<nfeProc><infCEmit><xNome>&pii;</xNome></infCEmit></nfeProc>';
+
+        $documento = FiscalDocument::factory()->withStoredXml($xml)->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        $previa = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->json('data.xml_preview');
+
+        $this->assertIsString($previa);
+        $this->assertStringContainsString('&pii;', $previa);
+        $this->assertStringNotContainsString('root:', $previa);
+    }
+
+    public function test_previa_recusada_nao_vira_500_nem_derruba_o_detalhe(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Xml Ilegivel');
+        $evento = null;
+
+        // Byte que não é UTF-8 e documento que não autoriza a conversão: a
+        // classe de codificação recusa em vez de adivinhar, e converter
+        // `windows-1252` por heurística trocaria cada byte ímpar por `?` e
+        // mostraria um documento fiscal adulterado sem erro visível.
+        $xml = "<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n<nfeProc><xNome>CONTEUDO-SECRETO \x93\x94</xNome></nfeProc>";
+        $documento = FiscalDocument::factory()->withStoredXml($xml)->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+        $evento = $this->evento($cliente, $documento->chave_acesso, '110111', 2001);
+
+        Log::spy();
+
+        $detalhe = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.xml_preview', null)
+            ->assertJsonCount(1, 'data.events');
+
+        // A linha e a linha do tempo continuam de pé: o que o decodificador
+        // recusou é a prévia, não o documento. E o download segue servindo o
+        // byte bruto, que é o que o operador precisa quando a prévia não
+        // renderiza.
+        $this->assertSame($documento->getKey(), $detalhe->json('data.id'));
+        $this->assertSame([$evento->getKey()], array_column($detalhe->json('data.events'), 'id'));
+
+        // O log carrega o nome da classe e nada mais: nem o byte do documento,
+        // nem a frase da exceção, que é o que a classe de codificação usa para
+        // recusar.
+        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context): bool {
+            return $context['reason'] === 'RuntimeException'
+                && ! str_contains($channel, 'CONTEUDO-SECRETO')
+                && ! str_contains($channel, 'Codificação XML não suportada')
+                && ! str_contains(json_encode($context, JSON_THROW_ON_ERROR), 'CONTEUDO-SECRETO');
+        });
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
+            ->assertOk()
+            ->assertDownload($documento->chave_acesso.'.xml');
+    }
+
+    public function test_detalhe_de_xml_ausente_mantem_a_linha_e_avisa_na_previa(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Sem Arquivo');
+        $documento = FiscalDocument::factory()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        // A factory do documento só grava o arquivo com `withStoredXml()`, e
+        // esta linha existe sem ele: o byte sumiu, a linha ficou. O detalhe
+        // continua abrindo — com a prévia ausente — e o download é que diz que
+        // o arquivo não está mais lá.
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $documento->getKey())
+            ->assertJsonPath('data.xml_preview', null)
+            ->assertJsonPath('data.events', []);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
+            ->assertNotFound();
+    }
+
+    public function test_detalhe_devolve_apenas_as_chaves_declaradas_sem_caminho_do_xml(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+            'digval' => 'ABCDEF0123456789',
+            'digval_confere' => true,
+            'schema' => 'nfeProc',
+        ]);
+
+        $certificado = ClientCertificate::query()->where('client_id', $cliente->getKey())->sole();
+
+        $response = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}");
+
+        $response->assertOk()->assertJsonStructure([
+            'data' => [
+                'id', 'client', 'model', 'kind', 'stage', 'chave_acesso', 'emitente_cnpj',
+                'destinatario_cnpj', 'valor_total', 'emissao_at', 'event_count', 'mascarado',
+                'digval_confere', 'source', 'nsu', 'event_id', 'schema', 'sha256', 'digval',
+                'xml_bytes', 'captured_at', 'evento_ocorrido_em_at', 'events', 'xml_preview',
+            ],
+        ]);
+
+        // O caminho interno do XML é o segredo desta seção, e o detalhe é a
+        // resposta mais longa do módulo: o allowlist é o que impede o campo de
+        // aparecer aqui só porque a linha é maior.
+        $this->assertNotSame('', (string) $documento->storage_path);
+        $response->assertDontSee('storage_path', false)
+            ->assertDontSee((string) $documento->storage_path, false)
+            ->assertDontSee('password_encrypted', false)
+            ->assertDontSee('certificate_password', false)
+            ->assertDontSee((string) $certificado->storage_path, false)
+            ->assertDontSee((string) $certificado->password_encrypted, false);
+    }
+
+    public function test_detalhe_e_download_de_documento_alheio_respondem_404(): void
+    {
+        $account = Account::factory()->create();
+        $documento = $this->documento($this->clienteComCertificado($account, 'Cliente 1 Da Conta Própria'));
+
+        $outra = Account::factory()->create();
+        $alheio = $this->documento($this->clienteComCertificado($outra, 'Empresa Alienada Com Documento'));
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // 404 e não 403: id de outra conta não existe para quem pergunta, e um
+        // 403 confirmaria que aquele id existe em algum lugar.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$alheio->getKey()}")
+            ->assertNotFound()
+            ->assertDontSee('Alienada', false)
+            ->assertDontSee((string) $alheio->chave_acesso, false);
+
+        $this->actingAs($membro, 'sanctum')
+            ->get("/api/fiscal/documents/{$alheio->getKey()}/xml")
+            ->assertNotFound();
+
+        // E o documento da própria conta continua alcançável na mesma sessão,
+        // para que o 404 de cima seja o do id e não o da tela.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $documento->getKey());
+    }
+
+    public function test_detalhe_e_download_de_outra_conta_dependem_do_suporte_ter_entrado(): void
+    {
+        $suporte = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create([
+            'account_id' => $casa->getKey(),
+            'user_id' => $suporte->getKey(),
+            'role' => 'admin',
+        ]);
+        $suporte->forceFill(['current_account_id' => $casa->getKey()])->save();
+
+        $alvo = Account::factory()->create();
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $this->clienteComCertificado($alvo, 'Cliente Da Conta Alvo')->getKey(),
+            'account_id' => $alvo->getKey(),
+        ]);
+
+        $this->actingAs($suporte->refresh(), 'sanctum');
+
+        // Antes de entrar, a conta corrente do super_admin é a dele: o id alheio
+        // é inexistente para ele.
+        $this->getJson("/api/fiscal/documents/{$documento->getKey()}")->assertNotFound();
+        $this->get("/api/fiscal/documents/{$documento->getKey()}/xml")->assertNotFound();
+
+        // Em modo suporte a conta corrente é a alvo, e o documento abre: a
+        // restrição é por conta corrente, não por identidade do operador.
+        $this->postJson("/api/support/accounts/{$alvo->getKey()}/enter")->assertOk();
+
+        $this->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $documento->getKey());
+        $this->get("/api/fiscal/documents/{$documento->getKey()}/xml")->assertOk();
+    }
+
+    public function test_detalhe_e_download_do_xml_sao_da_conta_e_abrem_para_read_only(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml($this->xmlLatin1())->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+        $bruto = Storage::disk('fiscal')->get($documento->storage_path);
+
+        // `user` lê a captura inteira: lista, detalhe e arquivo. Fechar a
+        // leitura para quem só pode ler deixaria o painel fiscal como a única
+        // tela do produto que o membro read-only não alcança.
+        $leitor = $this->membroDe($account, 'user');
+
+        $this->actingAs($leitor, 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+
+        $this->actingAs($leitor, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.chave_acesso', $documento->chave_acesso);
+
+        $download = $this->actingAs($leitor, 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
+            ->assertOk()
+            ->assertHeader('content-type', 'application/xml')
+            ->assertDownload($documento->chave_acesso.'.xml');
+
+        // O arquivo servido é o byte gravado, e não a projeção da prévia: quem
+        // precisa conferir o documento com o fisco não pode receber um texto
+        // reescrito.
+        $this->assertSame($bruto, $download->streamedContent());
+    }
+
+    public function test_download_serve_o_xml_gravado_em_latin1_byte_a_byte(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $xml = $this->xmlLatin1();
+        $documento = FiscalDocument::factory()->withStoredXml($xml)->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        $response = $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
+            ->assertOk()
+            ->assertHeader('content-type', 'application/xml')
+            ->assertDownload($documento->chave_acesso.'.xml');
+
+        $servido = $response->streamedContent();
+
+        $this->assertSame($xml, $servido);
+        $this->assertStringContainsString('encoding="ISO-8859-1"', $servido);
+        $this->assertFalse(mb_check_encoding($servido, 'UTF-8'), 'o download não pode converter o byte gravado');
+    }
+
+    public function test_download_de_xml_ausente_responde_404(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // O mesmo caminho responde 200 com o arquivo antes de ele sumir: é o
+        // que impede este teste de passar por uma rota que não existe.
+        $this->actingAs($membro, 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
+            ->assertOk()
+            ->assertDownload($documento->chave_acesso.'.xml');
+
+        Storage::disk('fiscal')->delete($documento->storage_path);
+
+        // A linha existe e o byte não: 404, e não 500 nem 200 vazio. Um 200
+        // com corpo de tamanho zero teachia o operador que o documento está
+        // íntegro quando o arquivo sumiu.
+        $response = $this->actingAs($membro, 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml");
+
+        $response->assertNotFound();
+        $this->assertNotSame('', (string) $response->getContent());
+    }
+
+    public function test_detalhe_do_cliente_removido_mantem_a_identidade(): void
+    {
+        $account = Account::factory()->create();
+        $removido = $this->clienteComCertificado($account, 'Cliente Removido Com Certificado');
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $removido->getKey(),
+            'account_id' => $removido->account_id,
+        ]);
+        $certificado = ClientCertificate::query()->where('client_id', $removido->getKey())->sole();
+        $removido->delete();
+
+        // A remoção tira o cliente da carteira, não o documento que ele já
+        // capturou: quem abre o detalhe precisa saber de quem a nota é.
+        $response = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}");
+
+        $response->assertOk()
+            ->assertJsonPath('data.client.id', $removido->getKey())
+            ->assertJsonPath('data.client.name', 'Cliente Removido Com Certificado')
+            ->assertJsonPath('data.client.tax_id', $removido->tax_id);
+
+        $response->assertDontSee('password_encrypted', false)
+            ->assertDontSee('storage_path', false)
+            ->assertDontSee((string) $certificado->storage_path, false);
+    }
+
+    public function test_detalhe_exige_sessao(): void
+    {
+        $account = Account::factory()->create();
+        $documento = $this->documento($this->cliente($account, 'Cliente Da Conta Própria'));
+
+        $this->getJson("/api/fiscal/documents/{$documento->getKey()}")
+            ->assertUnauthorized()
+            ->assertJsonMissingPath('data');
+
+        $this->get("/api/fiscal/documents/{$documento->getKey()}/xml")->assertUnauthorized();
+    }
+
+    public function test_membro_read_only_lista_detalha_e_baixa_mas_nao_captura(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+        ]);
+
+        $leitor = $this->membroDe($account, 'user');
+
+        // Ler é leitura de carteira, e a captura é a única escrita do módulo:
+        // os quatro verbos na mesma sessão, para que a matriz de papel não
+        // dependa de um teste por verbos.
+        $this->actingAs($leitor, 'sanctum')->getJson('/api/fiscal/documents')->assertOk();
+        $this->actingAs($leitor, 'sanctum')
+            ->getJson("/api/fiscal/documents/{$documento->getKey()}")->assertOk();
+        $this->actingAs($leitor, 'sanctum')
+            ->get("/api/fiscal/documents/{$documento->getKey()}/xml")->assertOk();
+
+        $this->actingAs($leitor, 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertForbidden();
+
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_o_gate_de_leitura_e_o_que_recusa_quem_nao_e_membro(): void
+    {
+        $account = Account::factory()->create();
+        $documento = $this->documento($this->cliente($account, 'Cliente Da Conta Própria'));
+
+        $outra = Account::factory()->create();
+        $visitante = User::factory()->create();
+        $visitante->forceFill(['current_account_id' => $outra->getKey()])->save();
+
+        resolve(CurrentTenant::class)->accountId = $outra->getKey();
+        $this->actingAs($visitante, 'sanctum');
+
+        $this->assertFalse(
+            Gate::forUser($visitante)->allows('view', $documento),
+            'a conta corrente é a do visitante, que não é membro dela'
+        );
+
+        // O documento vem por parâmetro, então o binding restrito não roda: o
+        // que recusa aqui é o `Gate::authorize` do próprio controller, e é o
+        // único lugar onde ele aparece.
+        $this->expectException(AuthorizationException::class);
+
+        app(FiscalDocumentController::class)->show(
+            $documento,
+            app(FiscalDocuments::class),
+            app(FiscalXmlEncoding::class),
+        );
+    }
+
+    public function test_o_gate_de_captura_e_o_que_recusa_o_membro_read_only(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $leitor = $this->membroDe($account, 'user');
+
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+        $this->actingAs($leitor, 'sanctum');
+
+        $this->assertTrue(
+            Gate::forUser($leitor)->allows('viewAny', FiscalDocument::class),
+            'o mesmo membro lê: a recusa é da escrita, não do membro'
+        );
+        $this->assertFalse(
+            Gate::forUser($leitor)->allows('capture', [FiscalDocument::class, $cliente])
+        );
+
+        // O controller chamado fora do middleware `tenant` — que é o que dá
+        // entrada na ação na rota — é a única forma de ver o `Gate::authorize`
+        // do próprio controller. Se a política fosse removida e o middleware
+        // continuasse recusando, o teste de rota continuaria verde e este
+        // passaria por outro motivo.
+        $this->expectException(AuthorizationException::class);
+
+        app(FiscalDocumentController::class)->capture(
+            Request::create("/api/fiscal/clients/{$cliente->getKey()}/capture", 'POST'),
+            $cliente
+        );
+    }
+
+    public function test_captura_do_admin_e_do_operador_cai_na_fila(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        // 202 e não 200: a resposta é o aceite da fila, não a conclusão da
+        // captura. Em produção a fila é o Redis, então a resposta chega antes
+        // de qualquer chamada ao fisco.
+        foreach (['admin', 'operador'] as $papel) {
+            $this->actingAs($this->membroDe($account, $papel), 'sanctum')
+                ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+                ->assertStatus(202)
+                ->assertJsonPath('data.queued', true)
+                ->assertJsonPath('data.client_id', $cliente->getKey());
+
+            Bus::assertDispatched(CaptureFiscalDocumentsJob::class, function (CaptureFiscalDocumentsJob $job) use ($cliente): bool {
+                return $job->clientId === (int) $cliente->getKey()
+                    && $job->source === FiscalSource::NfeDistribuicao;
+            });
+        }
+
+        // A fonte é explícita quando o pedido diz, e a fonte do CT-e é a mesma
+        // porta: um job de fonte sem conector é decisão do comando, não do
+        // botão da tela.
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
+            ->assertStatus(202);
+
+        Bus::assertDispatched(CaptureFiscalDocumentsJob::class, fn (CaptureFiscalDocumentsJob $job): bool => $job->source === FiscalSource::CteDistribuicao);
+    }
+
+    public function test_captura_devolve_somente_o_roteiro_da_fila(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        $resposta = $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertStatus(202);
+
+        $data = $resposta->json('data');
+
+        // Nenhuma posição e nenhum estado de captura na resposta: a posição só
+        // existe depois que o fisco devolveu, e devolver `nsu` aqui seria
+        // afirmar que a consulta aconteceu.
+        $this->assertSame(['queued', 'client_id'], array_keys($data));
+        $this->assertTrue($data['queued']);
+        $this->assertSame($cliente->getKey(), $data['client_id']);
+        $resposta->assertJsonMissingPath('data.nsu')
+            ->assertJsonMissingPath('data.position')
+            ->assertJsonMissingPath('data.status');
+    }
+
+    public function test_captura_recusa_fonte_desconhecida(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'devedores'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('source');
+
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_captura_de_cliente_bloqueado_responde_409_sem_chamar_o_fisco(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Bloqueado');
+        $ate = now()->addMinutes(42);
+        $this->cursor($cliente, [
+            'last_run_at' => now(),
+            'last_error' => 'blocked_consumption',
+            'blocked_until' => $ate,
+        ]);
+
+        // A recusa vem antes do despacho: um job na fila para um cliente que o
+        // fisco tem parado só gastaria a posição da consulta e reapareceria
+        // como "nada capturado" no painel.
+        $resposta = $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertStatus(409);
+
+        $this->assertNotSame('', (string) $resposta->json('message'));
+        $this->assertSame($ate->toISOString(), $resposta->json('blocked_until'));
+
+        Bus::assertNothingDispatched();
+
+        // A parada é por fonte: o bloqueio do CT-e não impede a consulta de
+        // NF-e, e a outra fonte tem a sua própria posição.
+        $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
+            ->assertStatus(202);
+
+        Bus::assertDispatched(CaptureFiscalDocumentsJob::class, fn (CaptureFiscalDocumentsJob $job): bool => $job->source === FiscalSource::CteDistribuicao);
+    }
+
+    public function test_captura_de_cliente_bloqueado_vencido_vai_para_a_fila(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Bloqueio Vencido');
+        $this->cursor($cliente, [
+            'last_run_at' => now(),
+            'last_error' => 'blocked_consumption',
+            'blocked_until' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertStatus(202);
+
+        Bus::assertDispatched(CaptureFiscalDocumentsJob::class);
+    }
+
+    public function test_captura_de_cliente_alheio_ou_removido_responde_404(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $membro = $this->membroDe($account, 'operador');
+        $daConta = $this->clienteComCertificado($account, 'Cliente 1 Da Conta Própria');
+
+        $outra = Account::factory()->create();
+        $alheio = $this->clienteComCertificado($outra, 'Empresa Alienada Com Certificado');
+
+        // A mesma rota com um cliente da própria conta responde 202, para que o
+        // 404 abaixo seja do id e não da porta.
+        $this->actingAs($membro, 'sanctum')
+            ->postJson("/api/fiscal/clients/{$daConta->getKey()}/capture")
+            ->assertStatus(202);
+
+        $this->actingAs($membro, 'sanctum')
+            ->postJson("/api/fiscal/clients/{$alheio->getKey()}/capture")
+            ->assertNotFound()
+            ->assertDontSee('Alienada', false);
+
+        // Cliente removido da carteira não é capturado: a exclusão é lógica, o
+        // id continua existindo, e um job disparado aqui rodaria para um
+        // cliente que a carteira não tem mais.
+        $removido = $this->clienteComCertificado($account, 'Cliente Removido Com Certificado');
+        $removido->delete();
+
+        $this->actingAs($membro, 'sanctum')
+            ->postJson("/api/fiscal/clients/{$removido->getKey()}/capture")
+            ->assertNotFound();
+
+        // Um despacho só, e é o do cliente da própria conta.
+        Bus::assertDispatchedTimes(CaptureFiscalDocumentsJob::class, 1);
+    }
+
+    public function test_captura_em_modo_suporte_registra_a_escrita(): void
+    {
+        Bus::fake();
+
+        $suporte = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create([
+            'account_id' => $casa->getKey(),
+            'user_id' => $suporte->getKey(),
+            'role' => 'admin',
+        ]);
+        $suporte->forceFill(['current_account_id' => $casa->getKey()])->save();
+
+        $alvo = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($alvo, 'Cliente Da Conta Alvo');
+        $certificado = ClientCertificate::query()->where('client_id', $cliente->getKey())->sole();
+
+        $this->actingAs($suporte->refresh(), 'sanctum')
+            ->postJson("/api/support/accounts/{$alvo->getKey()}/enter")
+            ->assertOk();
+
+        $this->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertStatus(202)
+            ->assertJsonPath('data.client_id', $cliente->getKey());
+
+        // A escrita do super_admin dentro da conta alheia é poder total, e por
+        // isso ela é auditada: a captura é a única escrita do módulo, então é
+        // a única que aparece aqui.
+        $log = SupportAccessLog::query()
+            ->where('super_admin_user_id', $suporte->getKey())
+            ->where('account_id', $alvo->getKey())
+            ->where('action', 'capture')
+            ->sole();
+
+        $this->assertSame('fiscal', $log->metadata['resource']);
+        $this->assertSame($cliente->getKey(), $log->metadata['resource_id']);
+        $this->assertSame('nfe_distribuicao', $log->metadata['source']);
+
+        // Só o id do cliente e a fonte: o material do cofre do cliente não
+        // entra numa auditoria.
+        $this->assertSame(['resource', 'resource_id', 'source'], array_keys($log->metadata));
+        $this->assertStringNotContainsString((string) $certificado->storage_path, json_encode($log->metadata, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('password_encrypted', json_encode($log->metadata, JSON_THROW_ON_ERROR));
+
+        // E a recusa do bloqueio também é registrada, porque ela é a única
+        // pista de que alguém tentou capturar um cliente parado.
+        $this->cursor($cliente, ['last_run_at' => now(), 'blocked_until' => now()->addHour()]);
+        $this->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")->assertStatus(409);
+    }
+
+    public function test_captura_do_membro_da_propria_conta_nao_gera_log_de_suporte(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")
+            ->assertStatus(202);
+
+        // `logWrite` é no-op fora do modo suporte: a auditoria de suporte não é
+        // o log de auditoria da conta, e encher a tabela com a rotina de quem
+        // opera a própria carteira seria ruído.
+        $this->assertSame(0, SupportAccessLog::query()->count());
+    }
+
     private function cliente(Account $account, string $name): Client
     {
         return Client::factory()->company()->create([
@@ -1171,6 +2019,19 @@ class FiscalDocumentApiTest extends TestCase
         $user->forceFill(['current_account_id' => $account->getKey()])->save();
 
         return $user->refresh();
+    }
+
+    /**
+     * NF-e em ISO-8859-1, com acento em um byte só (`\xE3`), gravada como o
+     * fisco mandou. O escape é explícito de propósito: um `ã` escrito no fonte
+     * do teste já estaria em UTF-8, e o teste deixaria de provar a conversão.
+     */
+    private function xmlLatin1(): string
+    {
+        return "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n"
+            ."<nfeProc xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">\n"
+            ."  <NFe><infNFe><emit><xNome>Padaria S\xE3o Jo\xE3o</xNome></emit></infNFe></NFe>\n"
+            .'</nfeProc>';
     }
 
     /**
