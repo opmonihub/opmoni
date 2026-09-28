@@ -61,7 +61,7 @@ class BrazilianTaxIdTest extends TestCase
     {
         // '12.ABC.345-01DE-35' é o exemplo alfanumérico da RFB IN 2.119/2022. Ele só
         // fecha com o valor do caractere igual a `ord($char) - 48`: com a letra contada
-        // como posição no alfabeto (A=10) o primeiro dígito verificador sairia 7.
+        // como posição no alfabeto (A=10) o documento fecharia em 12ABC34501DE45.
         $this->assertTrue((new BrazilianTaxId)->isValidCnpj('12.ABC.345-01DE-35'));
     }
 

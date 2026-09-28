@@ -1,3 +1,5 @@
+const CNPJ_PUNCTUATION = /[./-]/g
+
 export function formatTaxId(value: string | null): string {
   if (!value) return 'Não informado'
   if (value.length === 11) return value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
@@ -11,7 +13,23 @@ export function formatTaxId(value: string | null): string {
  * lookup, porque a fonte pública não o conhece.
  */
 export function canLookupCnpj(value: string): boolean {
-  return /^\d{14}$/.test(value.replace(/[./-]/g, ''))
+  return /^\d{14}$/.test(value.replace(CNPJ_PUNCTUATION, ''))
+}
+
+/** Caminho de entrada do CNPJ de uma empresa: consulta, digitação ou documento incompleto. */
+export type CompanyTaxIdEntry = 'lookup' | 'manual' | 'incomplete'
+
+/**
+ * Decide como o CNPJ de uma empresa entra: `lookup` consulta a Receita, `manual`
+ * segue com a razão social digitada (a fonte pública não conhece documento
+ * alfanumérico) e `incomplete` ainda não é um documento.
+ */
+export function companyTaxIdEntry(value: string): CompanyTaxIdEntry {
+  const normalized = value.replace(CNPJ_PUNCTUATION, '').toUpperCase()
+
+  if (!/^[A-Z0-9]{14}$/.test(normalized)) return 'incomplete'
+
+  return canLookupCnpj(value) ? 'lookup' : 'manual'
 }
 
 export function maskTaxId(value: string | null): string {

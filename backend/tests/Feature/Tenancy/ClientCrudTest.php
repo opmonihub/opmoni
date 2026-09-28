@@ -95,33 +95,142 @@ class ClientCrudTest extends TestCase
         $this->assertDatabaseHas('clients', ['account_id' => $account->getKey(), 'tax_id' => '27865757000102']);
     }
 
-    public function test_company_create_aceita_cnpj_alfanumerico_e_recusa_verificador_errado(): void
+    public function test_company_create_com_cnpj_alfanumerico_usa_o_documento_digitado_quando_a_fonte_nao_conhece_o_documento(): void
     {
-        // O documento gravado vem do payload da Receita, então o fixture devolve o
-        // mesmo CNPJ alfanumérico enviado; a consulta pública ainda é só numérica.
-        $fixture = $this->companyFixture();
-        $fixture['estabelecimento']['cnpj'] = '12ABC345000188';
-        Http::fake(['publica.cnpj.ws/*' => Http::response($fixture)]);
+        // A consulta pública é numérica: para o CNPJ alfanumérico ela responde 404 e o
+        // cadastro segue com o documento e a razão social digitados, sem os campos
+        // oficiais que só a Receita poderia trazer.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
         $this->postJson('/api/clients', [
             'person_type' => 'company',
             'tax_id' => '12.ABC.345/0001-88',
+            'name' => 'Empresa Alfa Ltda',
             'status' => 'active',
             'tax_regime' => 'actual_profit',
-        ])->assertCreated()->assertJsonPath('data.tax_id', '12ABC345000188');
+            'email' => 'contato@alfa.com.br',
+        ])->assertCreated()
+            ->assertJsonPath('data.tax_id', '12ABC345000188')
+            ->assertJsonPath('data.name', 'Empresa Alfa Ltda')
+            ->assertJsonPath('data.email', 'contato@alfa.com.br')
+            ->assertJsonPath('data.registration_status', null)
+            ->assertJsonPath('data.looked_up_at', null);
 
-        $this->assertDatabaseHas('clients', ['account_id' => $account->getKey(), 'tax_id' => '12ABC345000188']);
+        $this->assertDatabaseHas('clients', [
+            'account_id' => $account->getKey(),
+            'tax_id' => '12ABC345000188',
+            'name' => 'Empresa Alfa Ltda',
+        ]);
+    }
+
+    public function test_company_create_recusa_cnpj_alfanumerico_com_verificador_errado(): void
+    {
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
         $this->postJson('/api/clients', [
             'person_type' => 'company',
             'tax_id' => '12ABC345000189',
+            'name' => 'Empresa Alfa Ltda',
             'status' => 'active',
             'tax_regime' => 'actual_profit',
         ])->assertUnprocessable()->assertJsonValidationErrors('tax_id');
 
-        $this->assertSame(1, $account->clients()->count());
+        $this->assertSame(0, $account->clients()->count());
+    }
+
+    public function test_company_create_com_cnpj_numerico_desconhecido_cai_no_cadastro_digitado(): void
+    {
+        // 404 é "a fonte não conhece este documento", não "a fonte quebrou": o mesmo
+        // cadastro manual vale para o CNPJ numérico que o tier público não tem.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
+
+        $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '27.865.757/0001-02',
+            'name' => 'GLOBO COM PARTICIPACOES',
+            'status' => 'active',
+            'tax_regime' => 'presumed_profit',
+        ])->assertCreated()
+            ->assertJsonPath('data.tax_id', '27865757000102')
+            ->assertJsonPath('data.name', 'GLOBO COM PARTICIPACOES')
+            ->assertJsonPath('data.looked_up_at', null);
+    }
+
+    public function test_company_sem_dados_da_receita_exige_razao_social_e_regime_da_empresa(): void
+    {
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
+
+        $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000188',
+            'status' => 'active',
+            'tax_regime' => 'actual_profit',
+        ])->assertUnprocessable()->assertJsonValidationErrors('name');
+
+        // Sem a Receita não há como prometer MEI ou Simples, então o regime escolhido
+        // precisa ser um dos que a empresa aceita.
+        $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000188',
+            'name' => 'Empresa Alfa Ltda',
+            'status' => 'active',
+            'tax_regime' => 'not_applicable',
+        ])->assertUnprocessable()->assertJsonValidationErrors('tax_regime');
+
+        $this->assertDatabaseCount('clients', 0);
+    }
+
+    public function test_company_create_nao_degrada_para_dados_digitados_quando_a_fonte_esta_indisponivel(): void
+    {
+        // Indisponibilidade e limite continuam errando a requisição: um cliente sem os
+        // dados oficiais por causa de queda do provedor é efeito colateral, não decisão
+        // de quem cadastrou.
+        Http::fake(['publica.cnpj.ws/*' => Http::sequence()->push([], 503)->push([], 429)]);
+        $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
+
+        $payload = [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000188',
+            'name' => 'Empresa Alfa Ltda',
+            'status' => 'active',
+            'tax_regime' => 'actual_profit',
+        ];
+
+        $this->postJson('/api/clients', $payload)->assertStatus(503)
+            ->assertJsonPath('message', 'O serviço de consulta de CNPJ está indisponível.');
+        $this->postJson('/api/clients', $payload)->assertStatus(429)
+            ->assertJsonPath('message', 'O provedor limitou temporariamente as consultas.');
+
+        $this->assertDatabaseCount('clients', 0);
+    }
+
+    public function test_company_cadastrado_sem_receita_troca_de_regime_sem_consulta(): void
+    {
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $id = $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000188',
+            'name' => 'Empresa Alfa Ltda',
+            'status' => 'active',
+            'tax_regime' => 'presumed_profit',
+        ])->assertCreated()->json('data.id');
+
+        $this->patchJson("/api/clients/{$id}", ['tax_regime' => 'actual_profit'])->assertOk()
+            ->assertJsonPath('data.tax_regime', 'actual_profit');
+
+        $this->patchJson("/api/clients/{$id}", ['tax_regime' => 'mei'])->assertUnprocessable()
+            ->assertJsonValidationErrors('tax_regime');
+
+        $this->assertSame('actual_profit', Client::findOrFail($id)->tax_regime->value);
     }
 
     public function test_company_create_ignores_browser_preview_fields_and_forces_mei_regime(): void
