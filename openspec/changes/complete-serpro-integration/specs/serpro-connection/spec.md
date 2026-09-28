@@ -142,12 +142,12 @@ The system SHALL build, sign, submit and renew the authorization term on behalf 
 - **WHEN** the provider rejects the generated term
 - **THEN** the system records a non-retryable rejection naming the cause, does not retry automatically, and does not present the office as authorized
 
-### Requirement: Documento do termo reproduz o modelo de referência do provedor
-The system SHALL build the term document reproducing the provider's published reference model verbatim, including the three points of that model that look like typos — the `finalidade ` element name carrying a trailing space, the `+30 days` validity period, and a signature digest computed with exclusive XML canonicalization while the `Reference` declares the inclusive one. The reference model is the only available authority: the provider's term documentation is unreachable and publishes no schema, so tidying any of the three would be a guess about a schema the provider validates. The system SHALL treat each of the three as a decision carrying a gate, and SHALL NOT emit a term until a contract test against the provider has proven that the document is accepted, that the roles are the ones the gateway expects, and that a still-valid term resubmission answers not-modified with the token.
+### Requirement: Documento do termo segue o modelo de referência do provedor
+The system SHALL build the term document following the provider's published reference model, and SHALL record explicitly which of that model's three suspicious points were kept and which was corrected. The corrected one is the `finalidade ` element name: the trailing space **cannot be preserved because it cannot exist**, and the element is named `finalidade`. The model's `SimpleXMLElement::addChild('finalidade ')` does not throw, but it emits `<finalidade  texto="…"/>`, whose `nodeName` is `finalidade` without the space, and the `loadXML`/`saveXML` round trip the signing routine performs removes the space entirely; `DOMDocument::createElement('finalidade ')` refuses outright with a `DOMException`, and a name with a space is unreachable by XPath. The space is therefore dropped as unrepresentable, not judged unimportant, and a later change that tries to restore fidelity to the model SHALL break the document. The two kept points are the `+30 days` validity period and a signature digest computed with exclusive XML canonicalization while the `Reference` declares the inclusive one; the reference model is the only available authority for those, because the provider's term documentation is unreachable and publishes no schema, so tidying either would be a guess about a schema the provider validates. The system SHALL NOT emit a term until a contract test against the provider has proven that the document is accepted, that the roles are the ones the gateway expects, and that a still-valid term resubmission answers not-modified with the token.
 
-#### Scenario: Nome do elemento preservado como o modelo o traz
+#### Scenario: Nome do elemento sem o espaço, porque o espaço não existe
 - **WHEN** the term document is built
-- **THEN** the `finalidade` element is named exactly as the reference model names it, trailing space included, and no cleanup is applied to it
+- **THEN** the element is named `finalidade`, with no trailing space, and the space is absent from the signed document because the parser consumes it and the signing round trip drops it
 
 #### Scenario: Vigência preservada como o modelo a traz
 - **WHEN** the term document is built
@@ -155,15 +155,30 @@ The system SHALL build the term document reproducing the provider's published re
 
 #### Scenario: Canonicalização preservada como o modelo a traz
 - **WHEN** the term document is signed
-- **THEN** the digest is canonicalized the way the reference model canonicalizes it, and the coincidence between the exclusive and inclusive forms is asserted by a test that fails if the term document ever declares a namespace prefix of its own
+- **THEN** the digest is canonicalized the way the reference model canonicalizes it, and the coincidence between the exclusive and inclusive forms is asserted by a test over the real term document; the real trigger of divergence is any namespace declaration at all, used or unused, because exclusive canonicalization renders a declaration on the element that uses it while inclusive renders it where it was declared, so the guarantee is that the term's root element declares no namespace and the term is not nested inside an element that does
 
 #### Scenario: Emissão bloqueada sem prova de contrato
-- **WHEN** issuance of a term is requested and no contract test has proven that the provider accepts the document
+- **WHEN** issuance of a term is requested and the recorded proof does not cover the current document format, as read by the named predicate in the requirement below
 - **THEN** nothing is submitted, the term is reported as blocked pending that proof rather than as authorized, and the office is not reported as authorized
 
 #### Scenario: Emissão liberada pela prova de contrato
-- **WHEN** a contract test has proven that the provider accepts the document with these three values
-- **THEN** issuance proceeds without changing any of the three, so the document the test proved is the document that is sent
+- **WHEN** a contract test has proven that the provider accepts the document with the `finalidade` name without its space, the thirty-day period and the exclusive digest canonicalization
+- **THEN** issuance proceeds without changing any of them, so the document the test proved is the document that is sent
+
+### Requirement: A prova de contrato tem endereço, e é ela que abre o gate
+The fact that a contract test proved the provider accepts the term document SHALL live in exactly one named place, so that the gate has a predicate two implementers cannot read differently: the platform connection row, in `serpro_connections.term_format_sha256` and `serpro_connections.term_format_proven_at`. The digest identifies the document **format**, not an instance: it is the SHA-256 of the canonicalized term template with every per-office value replaced by a fixed placeholder, exposed by `SerproTermSigner::formatDigest()`, so that two offices' terms hash alike and a change to the builder does not. Issuance SHALL be permitted if and only if `term_format_proven_at` is not null **and** `term_format_sha256` equals `SerproTermSigner::formatDigest()`. No automated path SHALL write either column: the proof is recorded by an operator after running the contract test, which is what makes it evidence rather than a flag. The digest is what makes the gate self-invalidating — editing the document builder changes the digest, the comparison stops matching, and issuance re-blocks without anyone deciding to block it. A boolean flag SHALL NOT be used in its place, because a flag cannot be invalidated by a change to the format and would keep authorizing a document nobody tested.
+
+#### Scenario: Gate fechado sem prova
+- **WHEN** issuance is requested and `term_format_proven_at` is null, or `term_format_sha256` differs from `SerproTermSigner::formatDigest()`
+- **THEN** nothing is submitted, the term is reported as blocked pending that proof rather than as authorized, and the office is not reported as authorized
+
+#### Scenario: Mudança no documento reabre o gate sozinho
+- **WHEN** the term document builder is changed, so that `SerproTermSigner::formatDigest()` no longer equals the recorded `term_format_sha256`
+- **THEN** issuance is blocked again without any operator action, and the recorded proof no longer authorizes the new document
+
+#### Scenario: Prova gravada por operador, não pela aplicação
+- **WHEN** a contract test has proven that the provider accepts the document
+- **THEN** an operator records the current `SerproTermSigner::formatDigest()` in `term_format_sha256` and the moment in `term_format_proven_at`, and no code path in the application writes either column
 
 ### Requirement: Procuração e-CAC como condição para agir pelo cliente
 The system SHALL request Serpro data for a client only when that client has, for the service family in question, a procuração currently valid, and SHALL treat a client without a valid procuração as not eligible without issuing any request on its behalf.
