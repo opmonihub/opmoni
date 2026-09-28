@@ -74,12 +74,17 @@ final class FiscalCaptureService
     /**
      * O conector **desta** fonte, e o registro é quem decide.
      *
-     * A resolução é logo depois de `last_run_at` e antes do `pull()` porque é
-     * aí que a fonte é a fonte do lote: um job de fonte sem conector não pode
-     * ser servido pelo conector de outro serviço, e a recusa do registro é
-     * alta, com a fonte nomeada. A resolução vem antes do `try` de propósito —
-     * falta de conector é defeito de versão, e o `last_error` do cursor é o
-     * registro de uma consulta que o fisco não respondeu.
+     * A resolução é a **primeira** coisa que `run()` faz, antes de qualquer
+     * escrita: uma execução que não aconteceu não pode deixar a marca de uma, e
+     * no cursor as marcas são duas — o `last_run_at`, que o painel publica como
+     * "rodou em", e a linha que a leitura do cursor cria na primeira vez. A
+     * norma é a mesma que a reconciliação já escreve no rodapé dela: reconciliação
+     * não mexe em `last_run_at` porque nada foi perguntado, e uma recusa de
+     * registro significa que nada vai ser perguntado.
+     *
+     * A recusa vem antes do `try` que grava `last_error` por um motivo a mais:
+     * falta de conector é defeito de versão, e `last_error` é o registro de uma
+     * consulta que o fisco não respondeu.
      */
     private function connectorFor(FiscalSource $source): FiscalConnector
     {
@@ -88,6 +93,8 @@ final class FiscalCaptureService
 
     private function run(Client $client, FiscalSource $source): FiscalCaptureOutcome
     {
+        $connector = $this->connectorFor($source);
+
         $cursor = $this->cursor($client, $source);
         $from = (int) $cursor->last_nsu;
 
@@ -127,8 +134,6 @@ final class FiscalCaptureService
         // parecendo não vista — é esse o dado que a detecção de histórico
         // interrompido existe para achar.
         $cursor->forceFill(['last_run_at' => now()])->save();
-
-        $connector = $this->connectorFor($source);
 
         try {
             $result = $connector->pull($client, $from, (int) config('fiscal.batch_limit', 50));

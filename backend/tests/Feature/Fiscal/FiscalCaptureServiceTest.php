@@ -28,14 +28,16 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
  * O serviço de captura: quem decide se o cliente é consultável, quem guarda o lote
  * inteiro antes de mexer na posição, e quem para a posição de avançar.
  *
- * Nenhum teste aqui toca a rede: o `FiscalConnector` é um falso ligado no
- * container e `preventStrayRequests` explode se alguma requisição escapar. Nenhum
+ * Nenhum teste aqui toca a rede: o `FiscalConnector` é um falso registrado no
+ * `FiscalConnectorRegistry` e `preventStrayRequests` explode se alguma requisição
+ * escapar. Nenhum
  * mock de writer também — a recusa de gravação é a real, a chave de acesso que
  * não fecha, e é por ela que a captura é exercitada sem simular a gravação.
  */
@@ -627,6 +629,77 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertNotNull($cursor->last_success_at);
     }
 
+    /**
+     * Uma execução que não aconteceu não deixa a marca de uma: nem `last_run_at`,
+     * que o painel publica como "rodou em", nem a linha do cursor que a captura
+     * cria na primeira vez.
+     *
+     * A captura de uma fonte sem conector é a recusa do registro, e ela vem
+     * **antes** de qualquer escrita no cursor: a mesma norma que a reconciliação
+     * já escreve no rodapé dela — reconciliação não mexe em `last_run_at` porque
+     * nada foi perguntado, e aqui a recusa significa que nada vai ser perguntado.
+     */
+    public function test_a_fonte_sem_conetor_nao_deixa_marca_de_execucucao_no_cursor(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // O registro deste teste só tem a fonte de NF-e, então a captura de CT-e
+        // é recusada pelo registro.
+        $this->bindConnector(fn (): PullResult => $this->batch([], 0, false));
+
+        try {
+            $this->service()->capture($client, FiscalSource::CteDistribuicao);
+
+            $this->fail('Uma fonte sem conector deveria ser recusada.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('cte_distribuicao', $exception->getMessage());
+        }
+
+        // Nenhuma linha de cursor criada para o par cliente e fonte: a recusa é
+        // anterior à primeira escrita, e é a leitura do cursor que cria a linha.
+        $this->assertSame(0, FiscalCursor::query()
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::CteDistribuicao)
+            ->count());
+
+        // E nada saiu para o fisco: a recusa é do conector, que nunca foi chamado.
+        $this->assertSame([], $this->pulls);
+    }
+
+    public function test_a_fonte_sem_conetor_nao_altera_o_cursor_que_ja_existe(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // O cursor que importa é o da **fonte recusada** — é nele que a captura
+        // escreveria, e é nele que o painel leria "rodou em".
+        //
+        // `startOfSecond()` porque o banco não guarda microssegundo: sem ele a
+        // comparação seria sobre a precisão e não sobre o instante, que é o que
+        // este teste precisa afirmar.
+        $rodouEm = now()->subDays(3)->startOfSecond();
+        $this->cursor($client, FiscalSource::CteDistribuicao)
+            ->forceFill(['last_run_at' => $rodouEm, 'last_error' => 'blocked_consumption'])
+            ->save();
+
+        $this->bindConnector(fn (): PullResult => $this->batch([], 0, false));
+
+        try {
+            $this->service()->capture($client, FiscalSource::CteDistribuicao);
+
+            $this->fail('Uma fonte sem conector deveria ser recusada.');
+        } catch (RuntimeException) {
+            // esperado: a recusa nomeada do registro
+        }
+
+        // O cursor da fonte recusada continua exatamente como estava:
+        // `last_run_at` não virou "agora", que é o que o painel leria como uma
+        // execução que aconteceu, e a marca de `blocked_consumption` não foi
+        // sobrescrita pelo `last_error` de uma recusa que não é do fisco.
+        $this->assertEquals($rodouEm, $this->cursor($client, FiscalSource::CteDistribuicao)->last_run_at);
+        $this->assertSame('blocked_consumption', $this->cursor($client, FiscalSource::CteDistribuicao)->last_error);
+        $this->assertSame([], $this->pulls);
+    }
+
     public function test_records_the_run_but_not_the_sighting_when_the_call_fails(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -1024,9 +1097,9 @@ class FiscalCaptureServiceTest extends TestCase
         ]);
     }
 
-    private function cursor(Client $client): FiscalCursor
+    private function cursor(Client $client, FiscalSource $source = FiscalSource::NfeDistribuicao): FiscalCursor
     {
-        $cursor = $this->storedCursor($client);
+        $cursor = $this->storedCursor($client, $source);
 
         if ($cursor !== null) {
             return $cursor;
@@ -1034,7 +1107,7 @@ class FiscalCaptureServiceTest extends TestCase
 
         $cursor = new FiscalCursor([
             'client_id' => $client->getKey(),
-            'source' => FiscalSource::NfeDistribuicao,
+            'source' => $source,
             'last_nsu' => 0,
         ]);
 
@@ -1047,11 +1120,11 @@ class FiscalCaptureServiceTest extends TestCase
         return $cursor;
     }
 
-    private function storedCursor(Client $client): ?FiscalCursor
+    private function storedCursor(Client $client, FiscalSource $source = FiscalSource::NfeDistribuicao): ?FiscalCursor
     {
         return FiscalCursor::query()
             ->where('client_id', $client->getKey())
-            ->where('source', FiscalSource::NfeDistribuicao)
+            ->where('source', $source)
             ->first();
     }
 
