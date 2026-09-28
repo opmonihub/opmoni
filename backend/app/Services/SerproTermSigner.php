@@ -90,10 +90,32 @@ final class SerproTermSigner
     /**
      * O período de vigência, em dias.
      *
-     * É o `+30 days` do modelo de referência, e é o único valor que existe
-     * lá. O que se preserva é o **período**, não a chamada `date()` do modelo —
-     * que não roda, porque passa string onde vai timestamp e um terceiro
-     * argumento a uma função de dois. Aqui é aritmética de Carbon.
+     * É o `+30 days` do modelo de referência, e é o **único** cálculo de
+     * período que existe em qualquer material do provedor. O que se preserva é o
+     * **período**, não a chamada `date()` do modelo — que não roda, porque
+     * passa string onde vai timestamp e um terceiro argumento a uma função de
+     * dois. Aqui é aritmética de Carbon.
+     *
+     * **O valor é do modelo de referência, e a documentação do provedor não o
+     * confirma — ela o contradiz sem substituí-lo.** Lida em 2026-09-28, a
+     * página de padrões técnicos declara apenas que `vigencia` é "a data de
+     * validade deste termo de autorização, no formato AAAAMMDD": um formato, e
+     * nenhum número de dias. Os dois exemplos que ela publica duram muito mais
+     * que trinta — o de layout vai de `20220614` a `20221231`, **200 dias**, e o
+     * do serviço de envio de `20220808` a `20221231`, **145 dias** — e ambos
+     * terminam no mesmo dia, o que é a forma de uma amostra escrita à mão e
+     * não a de uma regra: se o período fosse uma constante de N dias, os dois
+     * exemplos terminariam em dias diferentes.
+     *
+     * A constante fica em 30 por duas razões, e nenhuma delas é "o provedor
+     * pediu". A primeira é que 30 é o único cálculo de período em qualquer
+     * material do provedor, e a segunda é que escolher 145 ou 200 seria
+     * promover uma de duas amostras contraditórias a regra, contra um schema
+     * que não está publicado. **O que resolve isto é o teste de contrato de
+     * `tasks.md` 4.6a**, e ele tem de ser pago antes de qualquer prova ser
+     * gravada: a constante entra em `formatDigest()`, então trocá-la reabre o
+     * gate por si — que é o comportamento correto, e também a razão para não
+     * trocá-la no palpite.
      */
     public const PERIODO_VIGENCIA_DAYS = 30;
 

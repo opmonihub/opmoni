@@ -11,6 +11,7 @@ use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproConnection;
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
+use DateTimeImmutable;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -65,22 +66,30 @@ use Illuminate\Support\Facades\Crypt;
 final class SerproTermManager
 {
     /**
-     * O que a spec pede que a recusa do provedor registre.
+     * O que a spec pede que a recusa do provedor registre, e a frase que a
+     * exceção leva quando o provedor recusa sem dizer qual é o código.
      *
      * O texto do provedor **não** entra: a requisição que ele recusou
      * carregava o documento assinado do escritório, e o texto de recusa
      * descreve esse documento. Entra o **código**, que é o que classifica a
-     * falha e o que o suporte pede, e esta frase fica para o caso em que o
-     * provedor recusa sem dizer qual é o código.
+     * falha e o que o suporte pede — e é ele, ou a frase de re-assinar de
+     * `ResubmitTerm`, que a **linha** recebe; a constante abaixo é a da
+     * exceção, que vai para o log.
      */
     private const RECUSA = 'O provedor recusou o termo de autorização enviado.';
 
     /**
-     * A resposta que não é sucesso e também não é recusa.
+     * A resposta que não é sucesso, não é recusa **e não é um pedido de termo
+     * novo**: limite de tentativas, indisponibilidade, resultado indeterminado
+     * ou credencial vencida.
      *
      * A frase diz duas coisas que a pessoa precisa saber: o envio não foi
      * confirmado, e o que a linha já valendo foi preservado. Uma frase que
-     * dissesse só a primeira faria o operador procurar defeito no escritório.
+     * dissesse só a primeira faria o operador procurar defeito no escritório —
+     * e é por isso que esta frase **não** serve para o caso em que o provedor
+     * respondeu "mande outro termo", que tem a sua própria linha em
+     * `tratarRecusa()` e a sua própria frase, porque ali a resposta foi um
+     * veredito e não uma ausência de resposta.
      */
     private const SEM_RESPOSTA = 'O provedor não confirmou o envio do termo de autorização; o estado que a linha já tinha foi preservado.';
 
@@ -93,6 +102,17 @@ final class SerproTermManager
      * sustenta chamada nenhuma.
      */
     private const SEM_TOKEN = 'O provedor aceitou o documento, mas não devolveu token de autorização.';
+
+    /**
+     * O provedor devolveu o token em cache e **não** disse até quando ele vale.
+     *
+     * A distinção de `SEM_TOKEN` é o que a frase faz: o token chegou, e o que
+     * falta é a validade. Sem validade `validToken()` recusa servir, e a linha
+     * fica `validado` — o estado que não afirma uma autorização que o sistema
+     * não está servindo. Dizer aqui que o token faltou seria a leitura errada,
+     * e mandaria o operador atrás de uma emissão que já deu certo.
+     */
+    private const SEM_VALIDADE = 'O provedor devolveu o token em cache sem informar até quando ele vale: o termo fica válido, mas sem token em uso.';
 
     /**
      * O motivo do estado `vencido`, e a frase que diz de quem é a ação.
@@ -138,10 +158,22 @@ final class SerproTermManager
             );
         }
 
-        $this->assertGate();
+        /*
+         * **A credencial é lida uma vez, e o gate é lido dela.**
+         *
+         * Duas leituras seriam duas chances de ver linhas diferentes: se a
+         * credencial mudasse no meio, o gate poderia ser decidido por uma linha
+         * e o documento ser assinado com o `contratante_numero` de outra — e o
+         * termo sairia com uma empresa no `destinatario` que nenhuma prova
+         * autorizou. Por isso `assertGate()` recebe a linha em vez de relê-la,
+         * e a docblock de `conexaoDaPlataforma()` diz que ela é lida aqui
+         * **antes** do gate, que é a ordem que a frase descreve.
+         */
+        $conexao = $this->conexaoDaPlataforma();
+
+        $this->assertGate($conexao);
 
         $certificado = $this->certificadoCorrente($accountId);
-        $conexao = $this->conexaoDaPlataforma();
 
         /*
          * **O assinante é chamado aqui, uma única vez, e o que ele devolve é
@@ -184,6 +216,26 @@ final class SerproTermManager
                 'state_reason' => self::VENCIDO,
             ])->save();
 
+            return $termo;
+        }
+
+        /*
+         * **Um termo recusado não é reenviado.**
+         *
+         * O provedor leu este documento e concluiu que ele não serve; a única
+         * coisa que ele pode ver no reenvio são os mesmos bytes, e a resposta
+         * seria a mesma. Reenviar todo dia por conta transformaria um defeito
+         * permanente em consumo de cota e um registro de log por dia por
+         * escritório, e a linha ia continuar `recusado` durante todo esse
+         * tempo sem que nada tivesse tentado fazer diferente.
+         *
+         * O caminho que resolve é o do **`ResubmitTerm`**: um documento novo,
+         * assinado de novo. E nada no sistema reassina hoje — a única alavanca
+         * é o escritório reentregar o e-CNPJ, que dispara a emissão. O motivo
+         * gravado na recusa diz isso, para que a tela não peça "tente de novo"
+         * a quem não pode.
+         */
+        if ($termo->state === SerproAuthorizationTermState::Recusado) {
             return $termo;
         }
 
@@ -259,9 +311,9 @@ final class SerproTermManager
      *
      * @throws SerproException
      */
-    private function assertGate(): void
+    private function assertGate(SerproConnection $conexao): void
     {
-        $prova = $this->conexaoDaPlataforma()->termProof();
+        $prova = $conexao->termProof();
 
         if ($prova === SerproTermProof::Provado) {
             return;
@@ -273,11 +325,12 @@ final class SerproTermManager
     /**
      * A credencial de plataforma, e ela tem de existir.
      *
-     * **Ela é lida antes do gate, e não depois, porque sem linha não há gate
-     * para ler.** Uma instalação sem credencial tem de dizer que a credencial
-     * falta, e não que a prova falta: a segunda mensagem mandaria o operador
-     * atrás de um documento de teste de contrato quando o que ele não tem é a
-     * credencial de plataforma.
+     * **Quem a chama tem de lê-la antes do gate, e não depois**, porque sem
+     * linha não há gate para ler: uma instalação sem credencial tem de dizer que
+     * a credencial falta, e não que a prova falta — a segunda mensagem mandaria
+     * o operador atrás de um documento de teste de contrato quando o que ele não
+     * tem é a credencial de plataforma. É essa a ordem que `issue()` segue, e é
+     * a leitura que a linha única desta chamada permite.
      *
      * @throws SerproException
      */
@@ -411,7 +464,12 @@ final class SerproTermManager
             'state' => SerproAuthorizationTermState::Pendente,
             'state_reason' => null,
             'signed_at' => now(),
-            'last_submitted_at' => now(),
+            // `null` e não o instante: o documento acabou de ser assinado e
+            // **ainda não foi enviado**. Um termo novo que substitui um antigo
+            // perde aqui a marca do envio anterior, e é o certo — aquele envio
+            // era de um documento que não existe mais, e a coluna responde pelo
+            // documento que está na linha.
+            'last_submitted_at' => null,
         ];
 
         $termo = SerproAuthorizationTerm::query()->where('account_id', $accountId)->first();
@@ -499,8 +557,9 @@ final class SerproTermManager
      * `200` ou `202` é o provedor aceitando o documento e emitindo um token
      * novo. Um `304` é o provedor dizendo que o documento é o mesmo e o token
      * estava em cache — o caminho que existe para que a renovação não assine.
-     * Qualquer outra coisa é recusa ou indisponibilidade, e a diferença entre
-     * as duas é o que a linha guarda.
+     * Qualquer outra coisa é **veredito sobre o documento** — que grava
+     * `recusado` — ou **evento do provedor**, que não grava nada, e a linha que
+     * separa as duas é `tratarRecusa()`.
      *
      * **O `304` não passa por `SerproException`**, e é a razão de
      * `SerproClient::submitTerm()` existir separada de `call()`: `call()`
@@ -530,6 +589,16 @@ final class SerproTermManager
      * o cabeçalho é de um formato que não conhecemos, e recusa-se o
      * cabeçalho em vez do que a linha já tinha.
      *
+     * **Sem `expires` utilizável o estado é `validado`, e não `autenticado`.**
+     * O provedor disse que o documento é válido e o token estava em cache, e
+     * nós gravamos o token; o que não temos é a validade dele, e um token sem
+     * validade é um token que `validToken()` recusa servir. Deixar a linha como
+     * `autenticado` faria a **tela** — a única coisa que o escritório vê —
+     * afirmar que a plataforma fala por ele, no mesmo instante em que o sistema
+     * se recusava a falar. `validado` é o estado honesto dos dois casos em que
+     * o provedor aceitou o documento e nós não temos token que valha, e é a
+     * mesma leitura que o `200` sem token já recebia.
+     *
      * **O documento não é tocado, e é a propriedade que este caminho existe
      * para garantir.** Nada aqui escreve em `document_encrypted`, e o
      * `signed_at` continua o da emissão: um `304` que devolvesse a linha com
@@ -543,12 +612,15 @@ final class SerproTermManager
     private function guardarTokenDoCache(SerproAuthorizationTerm $termo, array $resposta): SerproAuthorizationTerm
     {
         $token = $this->tokenDoEtag($resposta['etag']);
+        $validade = $this->vencimentoDoHeader($resposta['expires']);
 
         $termo->forceFill([
             'token_encrypted' => Crypt::encryptString($token),
-            'token_expires_at' => $this->vencimentoDoHeader($resposta['expires']),
-            'state' => SerproAuthorizationTermState::Autenticado,
-            'state_reason' => null,
+            'token_expires_at' => $validade,
+            'state' => $validade === null
+                ? SerproAuthorizationTermState::Validado
+                : SerproAuthorizationTermState::Autenticado,
+            'state_reason' => $validade === null ? self::SEM_VALIDADE : null,
             'last_submitted_at' => now(),
         ])->save();
 
@@ -597,22 +669,40 @@ final class SerproTermManager
     /**
      * O que a resposta que não é sucesso é, gravado onde for preciso.
      *
-     * **A recusa do provedor grava `recusado`; a indisponibilidade não grava
-     * nada.** A diferença não é de estilo e é o ponto inteiro do método. Uma
-     * recusa é um veredito sobre o documento: o provedor olhou o termo e não o
-     * aceitou, e repetir não muda a resposta. Uma indisponibilidade é evento
-     * do provedor: o documento continua sendo o mesmo, o token que ainda vale
-     * continua valendo, e marcar `recusado` apresentaria ao escritório um
-     * defeito que é nosso e o obrigaria a assinar de novo.
+     * **O provedor respondeu, e a linha registra o veredito — exceto quando ele
+     * não respondeu.** A distinção que importa é entre *recusa* e *falha de
+     * transporte*, e ela é lida em dois grupos:
      *
-     * **O motivo gravado é o código do provedor, e nunca o texto dele.** A
-     * requisição recusada carregava o documento assinado do escritório, e o
-     * texto que o provedor escreve descreve esse documento. O código é o que
-     * classifica a falha e é o que o suporte pede.
+     * - `DoNotRetry` e `ResubmitTerm` são **veredito sobre o documento**. O
+     *   provedor leu o termo e concluiu que este não serve, e repetir não muda
+     *   a resposta. As duas gravam `recusado`.
+     * - `Reauthenticate`, `Throttled`, `Indeterminate` e `Upstream` são
+     *   **evento do provedor**: o documento continua sendo o mesmo, e o token que
+     *   ainda vale continua valendo. Marcar `recusado` apresentaria ao
+     *   escritório um defeito que é nosso, e o obrigaria a assinar de novo.
+     *
+     * **`ResubmitTerm` é veredito, e é o caso em que a versão anterior errava
+     * de forma cara.** `AcessoNegado-ICGERENCIADOR-020` e `-042` significam
+     * "este termo não serve, mande outro"; com elas caindo no ramo de
+     * indisponibilidade, a linha continuava `autenticado` servindo um token que
+     * o provedor não aceita, a renovação diária repetia a mesma recusa para
+     * sempre, e a mensagem dizia que o provedor não confirmou o envio — o
+     * oposto do que aconteceu, porque ele respondeu.
+     *
+     * **A ação que o motivo nomeia é re-assinar, e nada no sistema a faz.**
+     * Um termo recusado precisa de um documento novo assinado, e a única
+     * alavanca que o produto tem hoje é o escritório reentregar o e-CNPJ, que
+     * dispara a emissão. A frase diz isso, e não diz "tente de novo": reenviar
+     * os mesmos bytes ao provedor que já os recusou não pode dar outro
+     * resultado, e é por isso que `refresh()` não reenvia uma linha `recusado`.
+     *
+     * **O motivo gravado é código do provedor ou frase nossa, nunca o texto
+     * dele.** A requisição recusada carregava o documento assinado do
+     * escritório, e o texto que o provedor escreve descreve esse documento.
      *
      * **O documento assinado é preservado.** Ele é a evidência do que foi
-     * enviado, e a próxima emissão vai assinar um novo — mas apagar o
-     * anterior faria a recusa ser indistinguível de "nunca foi enviado".
+     * enviado, e a próxima emissão vai assinar um novo — mas apagar o anterior
+     * faria a recusa ser indistinguível de "nunca foi enviado".
      *
      * @param  array{status: int, etag: ?string, expires: ?string, codigo: ?string, dados: mixed}  $resposta
      *
@@ -623,14 +713,21 @@ final class SerproTermManager
         $codigo = (string) $resposta['codigo'];
         $falha = SerproException::classify($resposta['status'], $codigo);
 
-        if ($falha !== SerproFailure::DoNotRetry) {
+        if (! in_array($falha, [SerproFailure::DoNotRetry, SerproFailure::ResubmitTerm], true)) {
             throw new SerproException(self::SEM_RESPOSTA, $falha, $resposta['status'], $codigo === '' ? null : $codigo);
         }
 
+        $motivo = $falha === SerproFailure::ResubmitTerm
+            ? sprintf('O provedor recusou este termo e pede outro documento assinado de novo (código %s).', $codigo === '' ? 'não informado' : $codigo)
+            : ($codigo === '' ? self::RECUSA : $codigo);
+
         $termo->forceFill([
             'state' => SerproAuthorizationTermState::Recusado,
-            'state_reason' => $codigo === '' ? self::RECUSA : $codigo,
-            'last_submitted_at' => now(),
+            'state_reason' => $motivo,
+            // `last_submitted_at` **não** é carimbado aqui: a resposta é uma
+            // recusa, e carimbá-la faria a linha dizer que o envio foi aceito
+            // há um minuto. Quem grava o carimbo é o caminho do token, que é o
+            // único em que o provedor aceitou o documento.
         ])->save();
 
         throw new SerproException(self::RECUSA, $falha, $resposta['status'], $codigo === '' ? null : $codigo);
@@ -695,6 +792,15 @@ final class SerproTermManager
      * de todos os escritórios em produção; aceitar só a segunda reprovaria a
      * linha do plano.
      *
+     * **O que volta é o valor do provedor, e não uma versão normalizada dele.**
+     * A comparação do UUID é a validação; o token gravado é o que o cabeçalho
+     * trazia, byte a byte. Um `strtolower()` aqui seria reescrever os bytes de
+     * uma credencial que é devolvida ao provedor como cabeçalho `auth` em
+     * toda chamada, e o ganho seria zero — o exemplo que ele publica é
+     * minúsculo, o que torna a normalização invisível no teste e um
+     * `strtoupper()` do provedor, amanhã, um `401` que ninguém atribuiria à
+     * forma do token.
+     *
      * @throws SerproException
      */
     private function tokenDoEtag(?string $etag): string
@@ -714,7 +820,7 @@ final class SerproTermManager
             );
         }
 
-        return strtolower($valor);
+        return $valor;
     }
 
     /**
@@ -731,8 +837,10 @@ final class SerproTermManager
      * e é uma das três coisas que `tasks.md` 4.6a ainda tem por pagar.
      *
      * Sem `expires` utilizável, a validade **não é inventada**: fica `null`, e
-     * um token sem validade não é servido por `validToken()`. O escritório
-     * continua precisando da renovação, que é o conserto seguro.
+     * um token sem validade não é servido por `validToken()` — e a linha passa a
+     * `validado`, que é o estado que não afirma uma autorização que o sistema
+     * não está servindo. O escritório continua precisando da renovação, que é o
+     * conserto seguro.
      */
     private function vencimentoDoHeader(?string $expires): ?Carbon
     {
@@ -742,11 +850,7 @@ final class SerproTermManager
             return null;
         }
 
-        try {
-            return Carbon::createFromFormat(DATE_RFC7231, $bruto, 'UTC')->utc();
-        } catch (InvalidFormatException) {
-            return null;
-        }
+        return $this->instanteOuNulo($bruto, DATE_RFC7231, 'UTC');
     }
 
     /**
@@ -772,11 +876,55 @@ final class SerproTermManager
             return null;
         }
 
+        return $this->instanteOuNulo($bruto, '!Y-m-d\TH:i:s', SerproTermSigner::FUSO);
+    }
+
+    /**
+     * Uma data que o provedor mandou, ou `null` — e o `null` é a resposta certa
+     * para tudo que não é uma data.
+     *
+     * **O `try`/`catch` sozinho não basta, e a razão é medida.**
+     * `Carbon::createFromFormat()` só lança quando a entrada não casa com o
+     * formato; quando casa *e* os campos não formam uma data real, o PHP
+     * **transborda** e devolve um instante: `2026-13-45T99:99:99` vira
+     * `2023-02-18 07:40:39`, que é uma data futura, válida e silenciosamente
+     * errada. Um token com essa validade seria servido por um ano, e a linha
+     * diria que o provedor mandou uma data — o que ele não mandou.
+     *
+     * `DateTime::getLastErrors()` é o que separa "a data que o provedor
+     * mandou" de "a data que o PHP inventou a partir de uma que não existe":
+     * o `warning` de transbordo de campo aparece nele mesmo quando a função
+     * não lançou. Checá-lo **depois** da conversão, e não antes, é o que cobre
+     * os dois casos — o `catch` continuaexistindo para a entrada que nem
+     * casa, que é a outra metade.
+     *
+     * O resultado é convertido para UTC aqui, porque a coluna é `timestamp` e
+     * a leitura dela é feita como UTC.
+     *
+     * @param  string  $formato  o formato que o provedor publica para o campo
+     */
+    private function instanteOuNulo(string $bruto, string $formato, string $fuso): ?Carbon
+    {
         try {
-            return Carbon::createFromFormat('!Y-m-d\TH:i:s', $bruto, SerproTermSigner::FUSO)->utc();
+            $instante = Carbon::createFromFormat($formato, $bruto, $fuso);
         } catch (InvalidFormatException) {
             return null;
         }
+
+        if ($instante === false) {
+            return null;
+        }
+
+        $erros = DateTimeImmutable::getLastErrors();
+
+        // `getLastErrors()` devolve `false` quando não houve nem warning nem
+        // erro — e o PHP 8.2+ mudou isso de "array vazia" para `false`, de modo
+        // que a comparação tem de ser por estrutura, não por contagem.
+        if (is_array($erros) && ($erros['warning_count'] > 0 || $erros['error_count'] > 0)) {
+            return null;
+        }
+
+        return $instante->utc();
     }
 
     /**

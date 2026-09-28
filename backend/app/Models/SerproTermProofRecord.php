@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
@@ -41,22 +42,36 @@ use LogicException;
  * tabela passaria por baixo dele, como passaria por baixo de qualquer
  * verificação em PHP. O que o mecanismo compra é que o caminho normal — o
  * model, o `save()`, o `delete()` — não tem como alterar o registro, e o que
- * sobraria é escrita fora de banda, que é a mesma categoria de acidente que
- * a duplicata de `account_certificates` já nomeia na docblock da migration
+ * sobraria é escrita fora de banda, que é a mesma categoria de acidente que a
+ * duplicata de `account_certificates` já nomeia na docblock da migration
  * dela.
+ *
+ * **A lista de preenchíveis é fechada, e não `$guarded = []`.** A versão
+ * anterior abria atribuição em massa para qualquer coluna do model, e este era
+ * o único model de `app/Models/` na situação — a lista de uma linha de auditoria
+ * que registra "alguém afirmou, com um digest e uma hora, que o provedor aceita
+ * o documento" sendo **mais permissiva** do que a do termo que guarda o
+ * documento assinado é o avesso da ordem de risco que o resto do recurso
+ * sustenta. `id` e `created_at` são do banco e ficam de fora, e o teste
+ * `test_o_registro_da_prova_declara_cada_coluna_gravavel` afirma os dois lados.
  */
+#[Fillable([
+    'term_format_sha256',
+    'recorded_by',
+    'reason',
+    'superseded_sha256',
+    'superseded_at',
+])]
 class SerproTermProofRecord extends Model
 {
     /**
      * `updated_at` é `null` porque a coluna não existe, e não porque o model
      * decidiu ignorar um valor: o atributo que o Eloquent tentaria gravar em
-     * toda atualização não tem para onde ir, e é essa incompatibilidade que
+     * toda atualização não tem para que ir, e é essa incompatibilidade que
      * torna visível, no stack trace de qualquer tentativa, que a linha não
      * aceita ser atualizada.
      */
     public const UPDATED_AT = null;
-
-    protected $guarded = [];
 
     protected function casts(): array
     {

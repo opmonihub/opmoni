@@ -6,11 +6,9 @@ use App\Concerns\BelongsToAccount;
 use App\Enums\SerproAuthorizationTermState;
 use App\Enums\SerproFailure;
 use App\Services\SerproException;
-use Database\Factories\SerproAuthorizationTermFactory;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Crypt;
@@ -36,7 +34,8 @@ use Illuminate\Support\Facades\Crypt;
  * Nenhuma coluna cifrada sai por `toArray()`/`toJson()`: a resource lista o
  * que devolve — `state`, `expires_on`, `signed_at`, `document_present` —, e o
  * `#[Hidden]` abaixo é a segunda rede, caso alguém chegue a serializar a linha
- * inteira, que é o que faria um `return $term` em um controller.
+ * inteira, que é o que faria um `return $term` em um controller. A segunda
+ * rede tem um caso que a afirma, e ele quebra se o `#[Hidden]` sair.
  *
  * **O documento não tem método público que o devolva.** A spec exige que o
  * XML assinado nunca saia do backend, e a forma de garantir isso é não ter
@@ -44,6 +43,14 @@ use Illuminate\Support\Facades\Crypt;
  * é o único que a usa, e o modelo não oferece atalho. O token tem método
  * porque o `SerproTermManager::validToken()` é a porta de entrada do plano 03
  * e o que ele devolve é uma credencial de chamada, não um documento.
+ *
+ * **Este model não tem factory, e isso é uma decisão.** A única forma de
+ * produzir um termo de verdade é `SerproTermManager::issue()`, e ela exige
+ * e-CNPJ gerado em tempo de execução, gate aberto e um dublê do provedor. Uma
+ * factory aqui teria de fabricar um `<termoDeAutorizacao/>` de descarte — uma
+ * segunda e mais fraca maneira de fazer um termo, que nenhum teste exercita e
+ * que a próxima pessoa poderia usar achando que é o caminho real. Os testes
+ * sobem pelo manager, que é o caminho que o produto executa.
  */
 #[Fillable([
     'document_expires_on',
@@ -53,8 +60,7 @@ use Illuminate\Support\Facades\Crypt;
 #[Hidden(['document_encrypted', 'token_encrypted'])]
 class SerproAuthorizationTerm extends Model
 {
-    /** @use HasFactory<SerproAuthorizationTermFactory> */
-    use BelongsToAccount, HasFactory;
+    use BelongsToAccount;
 
     /**
      * A frase única de "o que está guardado não abre", para as duas causas

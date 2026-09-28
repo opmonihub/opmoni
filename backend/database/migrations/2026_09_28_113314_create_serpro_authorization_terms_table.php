@@ -101,10 +101,15 @@ return new class extends Migration
             /*
              * O estado é o que a tela lê, e o enum que o nomeia é
              * `SerproAuthorizationTermState` — o mesmo conjunto que a spec
-             * descreve. O comprimento é o do valor mais longo, que é
-             * `autenticado` com treze posições.
+             * descreve. A largura é a do **valor mais longo** do enum, e
+             * `autenticado` tem onze posições. A versão anterior dizia
+             * "treze" e não era verdade: um número errado no comentário de uma
+             * coluna é a forma mais barata de a próxima pessoa não alargar a
+             * coluna quando o enum ganhar um estado, porque ela lê o
+             * comentário, acredita nele e não confere. Há um teste que amarra a
+             * largura desta linha ao enum, e é ele que avisa.
              */
-            $table->string('state', 13);
+            $table->string('state', 11);
 
             /*
              * O motivo do estado, e ele leva o **código** do provedor ou uma
@@ -118,13 +123,30 @@ return new class extends Migration
             $table->string('state_reason')->nullable();
 
             /*
-             * Quando o documento foi assinado, e quando foi enviado pela
-             * última vez. São coisas diferentes: um termo pode ter sido
-             * assinado há trinta dias e reenviado ontem, e a segunda data é
+             * Quando o documento foi assinado, e quando o provedor aceitou o
+             * envio pela última vez. São coisas diferentes: um termo pode ter
+             * sido assinado há trinta dias e aceito ontem, e a segunda data é
              * a que diz se a integração está viva.
              */
             $table->timestamp('signed_at');
-            $table->timestamp('last_submitted_at');
+
+            /*
+             * Quando o provedor **aceitou** o envio pela última vez, e não
+             * quando ele foi tentado.
+             *
+             * A diferença importa porque a coluna é o que responde "a integração
+             * está viva": uma linha `recusado` com `last_submitted_at` de
+             * agora diria que o envio foi bem-sucedido há um minuto, e é
+             * exatamente o inverso do que o estado ao lado afirma. A coluna é
+             * anulável por isso — um termo recém-assinado ainda não tem envio
+             * aceito, e `null` é a afirmação honesta disso, ao contrário de um
+             * carimbo que mentiria sobre a tentativa que acabou de falhar.
+             *
+             * Ela é carimbada **depois** da resposta do provedor, e não antes:
+             * carimbá-la antes faria a coluna registrar uma intenção.
+             */
+            $table->timestamp('last_submitted_at')->nullable();
+
             $table->timestamps();
         });
     }

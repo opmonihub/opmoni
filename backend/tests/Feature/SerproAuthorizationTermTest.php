@@ -14,6 +14,7 @@ use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproConnection;
 use App\Models\SerproTermProofRecord;
 use App\Models\User;
+use App\Policies\SerproAuthorizationTermPolicy;
 use App\Services\SerproException;
 use App\Services\SerproTermManager;
 use App\Services\SerproTermSigner;
@@ -22,12 +23,15 @@ use App\Tenant\CurrentTenant;
 use Carbon\Carbon;
 use DOMDocument;
 use DOMXPath;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -100,6 +104,27 @@ class SerproAuthorizationTermTest extends TestCase
     /** O `expires` do `304`, no formato de data HTTP que a RFC 7231 define. */
     private const EXPIRES_HTTP = 'Sat, 15 Oct 2022 00:00:01 GMT';
 
+    /**
+     * O mesmo token do brief, em maiúsculas, como o provedor pode mandá-lo.
+     *
+     * Um UUID é escrito por padrão em minúsculas, e o cabeçalho vem de um
+     * serviço de terceiros. Normalizar a credencial para minúsculas "por
+     * segurança" seria mexer nos bytes de um valor que volta para o provedor
+     * como cabeçalho em toda chamada, e o ganho seria zero.
+     */
+    private const TOKEN_ETAG_MAIUSCULO = '"autenticar_procurador_token:8F68D948-1059-4F42-9AA6-2931670B0A80"';
+
+    /**
+     * Uma data que não existe, nos dois formatos que o provedor usa.
+     *
+     * Mês 13 com dia 45 e hora 99:99:99 é a entrada que faz o PHP **transbordar**
+     * os campos em vez de recusá-los: `2026-13-45T99:99:99` vira uma data real e
+     * futura, e um token com essa validade seria servido por um ano.
+     */
+    private const DATA_IMPOSSIVEL = '2026-13-45T99:99:99';
+
+    private const EXPIRES_IMPOSSIVEL = 'quarta-feira, 45 de mes inexistente de 2026';
+
     private static ?string $pfx = null;
 
     /**
@@ -117,6 +142,12 @@ class SerproAuthorizationTermTest extends TestCase
      */
     private array $apoiar = ['status' => 200, 'body' => '', 'headers' => []];
 
+    /** Quantas leituras de `serpro_connections` o caso atual contou. */
+    private int $leituras = 0;
+
+    /** Se a contagem de leituras está armada para a medição atual. */
+    private bool $contando = false;
+
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
@@ -130,6 +161,18 @@ class SerproAuthorizationTermTest extends TestCase
 
         Cache::flush();
         Http::preventStrayRequests();
+
+        /*
+         * A contagem de leituras da credencial é feita por `DB::listen`, que é
+         * global: ela só vale para o caso que a arma, e `$this->contando` é o
+         * que impede o resto do teste de entrar na contagem — o mesmo arranjo de
+         * `SerproAccountCertificateTest`, e pelo mesmo motivo.
+         */
+        DB::listen(function (QueryExecuted $query): void {
+            if ($this->contando && str_contains($query->sql, 'from "serpro_connections"')) {
+                $this->leituras++;
+            }
+        });
 
         Http::fake([
             '*/Apoiar' => fn () => Http::response(
@@ -284,7 +327,10 @@ class SerproAuthorizationTermTest extends TestCase
         // sem ele, então uma renovação que o chamasse não voltaria daqui.
         AccountCertificate::query()->where('account_id', $conta->getKey())->delete();
 
-        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG]);
+        $this->respondeApoiar(304, '', [
+            'ETag' => self::TOKEN_ETAG,
+            'Expires' => self::EXPIRES_HTTP,
+        ]);
 
         $renovado = $manager->refresh($conta->getKey());
 
@@ -364,6 +410,115 @@ class SerproAuthorizationTermTest extends TestCase
      * ela destruiria o token que ainda valia: o `304` diz que nada mudou, e
      * a única coisa que ele traz de novo é o token.
      */
+    /**
+     * O token é guardado **como o provedor o mandou**, e a forma é só conferida.
+     *
+     * A comparação do UUID é a validação; o que volta é o valor original. Um
+     * `strtolower()` aqui seria mexer nos bytes de uma credencial que é
+     * devolvida ao provedor como cabeçalho em toda chamada — e se um dia o
+     * provedor passar a comparar o token que recebeu com o que tem guardado, a
+     * comparação falha por nossa causa, num `401` que ninguém entenderia.
+     */
+    public function test_o_token_do_etag_e_gravado_exatamente_como_o_provedor_o_mandou(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $manager = resolve(SerproTermManager::class);
+        $manager->issue($conta->getKey());
+
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG_MAIUSCULO]);
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $this->assertSame('8F68D948-1059-4F42-9AA6-2931670B0A80', $renovado->token());
+    }
+
+    /**
+     * Uma validade que não existe não pode virar uma validade.
+     *
+     * **O modo como isso falha é medido, e é por transbordo de campos, não por
+     * "agora".** `Carbon::createFromFormat('Y-m-d\TH:i:s', '2026-13-45T99:99:99')`
+     * não lança: o PHP transborda mês 13, dia 45 e hora 99:99:99 e devolve uma
+     * data real, `2023-02-18 07:40:39` em UTC. O efeito seria um token com
+     * validade em fevereiro do ano seguinte — e `validToken()` o servindo,
+     * porque um instante futuro é um instante válido. `DateTime::getLastErrors()`
+     * é o que separa "a data que o provedor mandou" de "a data que o PHP
+     * inventou a partir de uma que não existe".
+     *
+     * Os dois formatos são exercitados, porque a entrada é a mesma e a defesa
+     * precisa estar nos dois: o `expires` do `304` e o `data_hora_expiracao` do
+     * `200`.
+     */
+    public function test_uma_validade_que_nao_existe_nao_vira_instante(): void
+    {
+        Carbon::setTestNow('2026-03-10 09:30:00');
+
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+
+        // O caminho do `200`, com a validade impossível em `dados`.
+        $this->respondeApoiar(200, [
+            'status' => 200,
+            'dados' => json_encode([
+                'autenticar_procurador_token' => self::TOKEN,
+                'data_hora_expiracao' => self::DATA_IMPOSSIVEL,
+            ], JSON_THROW_ON_ERROR),
+            'mensagens' => [['codigo' => '200', 'texto' => 'Sucesso na execução.']],
+        ]);
+
+        $manager = resolve(SerproTermManager::class);
+        $emitido = $manager->issue($conta->getKey());
+
+        $this->assertNull($emitido->token_expires_at, 'Uma data impossível não pode virar um instante.');
+        $this->assertNull($manager->validToken($conta->getKey()));
+
+        // O caminho do `304`, com o `expires` fora do formato de data HTTP.
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG, 'Expires' => self::EXPIRES_IMPOSSIVEL]);
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $this->assertNull($renovado->token_expires_at);
+        $this->assertNull($manager->validToken($conta->getKey()));
+    }
+
+    /**
+     * Um `304` sem validade utilizável **não** deixa o termo se dizendo
+     * autenticado.
+     *
+     * O estado é o que a tela mostra, e `autenticado` afirma ao escritório que
+     * a plataforma fala por ele. Ao mesmo tempo, `validToken()` recusa servir um
+     * token sem validade, então a linha dizia uma coisa e o sistema fazia outra
+     * — e a tela do termo, que é a única que o escritório vê, era a que mentia.
+     *
+     * O estado correto é `validado`: o provedor aceitou o documento, e nós não
+     * temos token que valha. É a mesma leitura que o `200` sem token já recebe,
+     * e a frase do motivo diz que a ausência é da validade, não do documento.
+     */
+    public function test_um_304_sem_validade_utilizavel_nao_deixa_o_termo_autenticado(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $manager = resolve(SerproTermManager::class);
+        $manager->issue($conta->getKey());
+
+        $this->respondeApoiar(304, '', ['ETag' => self::TOKEN_ETAG]);
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $this->assertSame(SerproAuthorizationTermState::Validado, $renovado->state);
+        $this->assertStringContainsString('até quando ele vale', (string) $renovado->state_reason);
+        $this->assertStringContainsString('sem token em uso', (string) $renovado->state_reason);
+        $this->assertNull($renovado->token_expires_at);
+        $this->assertNull($manager->validToken($conta->getKey()));
+    }
+
     public function test_um_etag_que_nao_e_uuid_nao_sobrescreve_o_token_que_ainda_valia(): void
     {
         [$conta] = $this->escritorio('Escritório de Teste');
@@ -435,6 +590,90 @@ class SerproAuthorizationTermTest extends TestCase
         // anterior, e o provedor não recebeu nova requisição nenhuma.
         $chamadas = Http::recorded(fn (Request $request): bool => str_contains($request->url(), '/Apoiar'));
         $this->assertCount(2, $chamadas);
+    }
+
+    /**
+     * **O provedor respondeu, e a resposta é "mande outro termo".**
+     *
+     * `AcessoNegado-ICGERENCIADOR-020` e `-042` classificam como
+     * `SerproFailure::ResubmitTerm`, e é a única resposta do taxonomy em que o
+     * provedor fez o trabalho — leu o documento, o avaliou e concluiu que este
+     * não serve. Tratar isso como indisponibilidade deixava a linha dizendo
+     * `autenticado`, servindo um token que o provedor não aceita, e a renovação
+     * diária repetindo a mesma recusa para sempre, com a mensagem dizendo que o
+     * provedor não confirmou o envio — o oposto do que aconteceu.
+     *
+     * **O motivo tem de dizer a ação, e a ação é re-assinar.** A linha carrega
+     * o código do provedor e a frase que diz o que fazer; o texto que o provedor
+     * escreveu sobre a requisição não entra, pelo mesmo motivo de sempre.
+     */
+    public function test_o_pedido_de_um_termo_novo_e_uma_recusa_que_a_linha_registra(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+
+        $this->fakeApoiarRecusa('AcessoNegado-ICGERENCIADOR-042', 403, 'envie um termo novo assinado.');
+
+        try {
+            resolve(SerproTermManager::class)->issue($conta->getKey());
+            $this->fail('O pedido de um termo novo tem de subir como SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::ResubmitTerm, $exception->failure);
+            $this->assertSame('AcessoNegado-ICGERENCIADOR-042', $exception->providerCode);
+        }
+
+        $termo = SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->sole();
+
+        $this->assertSame(SerproAuthorizationTermState::Recusado, $termo->state);
+        $this->assertStringContainsString('AcessoNegado-ICGERENCIADOR-042', (string) $termo->state_reason);
+        $this->assertStringContainsString('assinado de novo', (string) $termo->state_reason);
+        $this->assertStringNotContainsString('envie um termo novo assinado.', (string) $termo->state_reason);
+
+        // E o token não é servido: a linha recusa, e `validToken()` concorda.
+        $this->assertNull(resolve(SerproTermManager::class)->validToken($conta->getKey()));
+    }
+
+    /**
+     * A renovação **não** reenvia um termo que o provedor já recusou.
+     *
+     * Reenviar o mesmo documento para um provedor que respondeu "este não serve"
+     * não pode dar outro resultado — e a renovação diária rodando uma vez por
+     * dia por conta transformaria um defeito permanente em consumo de cota e um
+     * `log` por dia por escritório. O caminho é o mesmo do termo vencido: a
+     * linha diz o que está errado e nada sai.
+     *
+     * O motivo de o conserto ser o escritório re-assinar, e não a plataforma
+     * reenviar, é que o documento recusado **é** o documento que o provedor
+     * leu e rejeitou: reenviar os mesmos bytes é a única coisa que o provedor
+     * pode ver, e ele já respondeu sobre eles.
+     */
+    public function test_a_renovacao_nao_reenvia_um_termo_que_o_provedor_ja_recusou(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarRecusa('AcessoNegado-ICGERENCIADOR-042', 403);
+
+        $manager = resolve(SerproTermManager::class);
+
+        try {
+            $manager->issue($conta->getKey());
+        } catch (SerproException) {
+            // A recusa da emissão é o que prepara o terreno; o que este caso
+            // afirma é o que a renovação faz depois dela.
+        }
+
+        $antes = count(Http::recorded(fn (Request $request): bool => str_contains($request->url(), '/Apoiar')));
+
+        $renovado = $manager->refresh($conta->getKey());
+
+        $depois = count(Http::recorded(fn (Request $request): bool => str_contains($request->url(), '/Apoiar')));
+
+        $this->assertSame($antes, $depois, 'A renovação de um termo recusado não pode chamar o provedor.');
+        $this->assertSame(SerproAuthorizationTermState::Recusado, $renovado->state);
+        $this->assertStringContainsString('assinado de novo', (string) $renovado->state_reason);
+        $this->assertNull($manager->validToken($conta->getKey()));
     }
 
     public function test_a_recusa_do_provedor_marca_recusado_sem_logar_o_documento_nem_o_token(): void
@@ -582,20 +821,28 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertFalse($conexao->isFillable('term_format_sha256'));
         $this->assertFalse($conexao->isFillable('term_format_proven_at'));
 
-        // E o `fill()` realmente não escreve nada: um `fill` com as duas
-        // colunas e com as do segredo não altera nenhuma delas.
-        $digest = $conexao->getRawOriginal('term_format_sha256');
-        $provaEm = $conexao->getRawOriginal('term_format_proven_at');
-
+        /*
+         * **O `fill()` é conferido com `isDirty`, e não com
+         * `getRawOriginal()`.** A versão anterior lia o valor original depois
+         * do `fill()` e o comparava com ele mesmo: `getRawOriginal()` devolve a
+         * cópia que veio do banco, que um `fill()` — que só toca atributo em
+         * memória — não altera. O caso passaria com as duas colunas no
+         * `#[Fillable]`, e a garantia que ele existe para provar seria a
+         * garantia que ele não prova. `isDirty()` lê o atributo atual contra o
+         * original, e é por isso que ele pega a volta.
+         *
+         * E o `isFillable()` logo acima é a garantia real: `fill()` só recusa o
+         * que não está na lista, e a lista é o que precisa estar ausente.
+         */
         $conexao->fill([
             'term_format_sha256' => hash('sha256', 'preenchido-por-uma-requisição'),
             'term_format_proven_at' => now(),
             'consumer_secret_encrypted' => 'segredo-inventado',
         ]);
 
-        $this->assertSame($digest, $conexao->getRawOriginal('term_format_sha256'));
-        $this->assertSame($provaEm, $conexao->getRawOriginal('term_format_proven_at'));
-        $this->assertNotSame('segredo-inventado', $conexao->getRawOriginal('consumer_secret_encrypted'));
+        $this->assertFalse($conexao->isDirty('term_format_sha256'), 'A prova não pode ser preenchida por atribuição em massa.');
+        $this->assertFalse($conexao->isDirty('term_format_proven_at'), 'A prova não pode ser preenchida por atribuição em massa.');
+        $this->assertFalse($conexao->isDirty('consumer_secret_encrypted'), 'O segredo não pode ser preenchido por atribuição em massa.');
     }
 
     // ---------------------------------------------------------- o comando da prova
@@ -724,6 +971,43 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertSame('Dante de Oliveira', SerproTermProofRecord::query()->sole()->recorded_by);
     }
 
+    /**
+     * O registro da prova declara **o que** é preenchível, e não o contrário.
+     *
+     * O model usava `$guarded = []`, que é atribuição em massa aberta para
+     * qualquer coluna — inclusive `id` e `created_at`, que são do banco. Num
+     * recurso cuja premissa é que o `#[Fillable]` é uma camada de segurança, o
+     * model de auditoria sendo o único mais permissivo de `app/Models/` é o
+     * avesso da ordem de risco: a linha que guarda "alguém afirmou, com um
+     * digest e uma hora, que o provedor aceita o documento" é mais sensível ao
+     * que o modelo de dado do termo, não menos.
+     *
+     * A lista fechada é o que o comando popula, e o que a testagem prova: cada
+     * coluna gravável é preenchível, e `id` e `created_at` não são.
+     */
+    public function test_o_registro_da_prova_declara_cada_coluna_gravavel(): void
+    {
+        foreach ([
+            'term_format_sha256',
+            'recorded_by',
+            'reason',
+            'superseded_sha256',
+            'superseded_at',
+        ] as $coluna) {
+            $this->assertTrue(
+                (new SerproTermProofRecord)->isFillable($coluna),
+                "A coluna {$coluna} é gravada pelo comando e tem de ser preenchível.",
+            );
+        }
+
+        foreach (['id', 'created_at'] as $coluna) {
+            $this->assertFalse(
+                (new SerproTermProofRecord)->isFillable($coluna),
+                "A coluna {$coluna} é do banco e não pode ser preenchida por atribuição em massa.",
+            );
+        }
+    }
+
     // ---------------------------------------------------------------- renovação diária
 
     public function test_a_renovacao_diario_vai_por_conta_explicita_e_nao_pelo_tenant_que_sobrou(): void
@@ -808,6 +1092,83 @@ class SerproAuthorizationTermTest extends TestCase
         Queue::assertPushed(IssueSerproTermJob::class, 1);
     }
 
+    /**
+     * `last_submitted_at` é carimbado **quando o provedor aceita**, e não
+     * quando o envio é tentado.
+     *
+     * A coluna é o que responde "a integração está viva". Carimbá-la antes da
+     * chamada faria a linha registrar uma **intenção**, e no caso da recusa
+     * deixaria `recusado` com um instante de agora — o estado dizendo que o
+     * documento não serve e a coluna dizendo que o envio foi bem-sucedido há um
+     * minuto, no mesmo registro.
+     *
+     * O caso é montado pelo caminho que importa: um termo **já aceito** que é
+     * reenviado e recusado. O carimbo do envio aceito tem de sobreviver à
+     * recusa, porque ele continua dizendo a verdade sobre a última vez que o
+     * provedor aceitou este documento.
+     */
+    public function test_o_carimbo_do_envio_aceito_sobe_e_a_recusa_nao_o_move(): void
+    {
+        Carbon::setTestNow('2026-03-10 09:30:00');
+
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $manager = resolve(SerproTermManager::class);
+        $emitido = $manager->issue($conta->getKey());
+
+        $this->assertNotNull($emitido->last_submitted_at, 'O envio aceito tem de carimbar a coluna.');
+        $aceito = $emitido->last_submitted_at->format('Y-m-d H:i:s');
+
+        // A renovação responde pedindo outro termo, três dias depois.
+        Carbon::setTestNow('2026-03-13 08:00:00');
+        $this->fakeApoiarRecusa('AcessoNegado-ICGERENCIADOR-020', 403);
+
+        try {
+            $manager->refresh($conta->getKey());
+        } catch (SerproException) {
+            // A recusa sobe; o que este caso afirma é o que ela deixou na linha.
+        }
+
+        $recusado = SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->sole();
+
+        $this->assertSame(SerproAuthorizationTermState::Recusado, $recusado->state);
+        $this->assertSame(
+            $aceito,
+            $recusado->last_submitted_at?->format('Y-m-d H:i:s'),
+            'A recusa não pode mover o carimbo do último envio aceito.',
+        );
+    }
+
+    /**
+     * Um termo recusado na **primeira** tentativa não tem carimbo de envio, e é
+     * o que a coluna anulável diz.
+     *
+     * O documento acabou de ser assinado e nenhum envio foi aceito; um carimbo
+     * de agora registraria uma tentativa cujo desfecho é a recusa ao lado, e a
+     * coluna anulável existe exatamente para este estado.
+     */
+    public function test_um_termo_recusado_na_primeira_tentativa_nao_tem_carimbo_de_envio(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarRecusa('AcessoNegado-AUTENTICAPROCURADOR-019', 403);
+
+        try {
+            resolve(SerproTermManager::class)->issue($conta->getKey());
+        } catch (SerproException) {
+            // A recusa sobe; o carimbo é o que este caso mede.
+        }
+
+        $this->assertNull(
+            SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->sole()->last_submitted_at,
+            'Nenhum envio foi aceito, e a coluna diz isso.',
+        );
+    }
+
     public function test_a_falha_da_emissao_registra_estado_sem_expor_material(): void
     {
         [$conta] = $this->escritorio('Escritório de Teste');
@@ -849,6 +1210,41 @@ class SerproAuthorizationTermTest extends TestCase
      * certificado gravado e o termo **ausente** — que é a leitura que diz ao
      * escritório que ele precisa entregar o e-CNPJ, e não uma tela de erro.
      */
+    public function test_a_emissao_com_o_gate_fechado_nao_levanta_e_nao_grava_nada(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+
+        $this->assertSame(SerproTermProof::Ausente, SerproConnection::sole()->termProof());
+
+        // Sem `expectException`: o `handle()` do job tem de **voltar**. É este
+        // o caso que fixa a regressão da fila `sync` — o `try`/`catch` do job,
+        // sem o qual uma emissão recusada atravessaria o upload e o transformaria
+        // em `500`.
+        (new IssueSerproTermJob($conta->getKey()))->handle(resolve(SerproTermManager::class));
+
+        $this->assertDatabaseCount('serpro_authorization_terms', 0);
+        $this->assertNull(
+            SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->first(),
+        );
+        Http::assertNothingSent();
+    }
+
+    /**
+     * O gate fechado **não** pode virar `500` no upload do e-CNPJ.
+     *
+     * **Este é o complemento do caso de cima, e não a prova dele.** Com
+     * `QUEUE_CONNECTION=sync` — o do `phpunit.xml` e um dos possíveis em
+     * instalação — o `afterCommit` do `IssueSerproTermJob` é registrado no
+     * nível de transação que o `RefreshDatabase` substitui, e o nível 0 não é
+     * confirmado dentro do teste: o job **não roda**. O `200` deste caso vem
+     * desse fato, e o `assertNull(...)` é trivialmente verdadeiro; remover o
+     * `try`/`catch` do job não o quebraria. O que o outro caso prova, chamando
+     * o `handle()` de verdade, é que a emissão recusada sobrevive.
+     *
+     * O que este caso afirma, e é dele: o e-CNPJ do escritório é gravado e a
+     * leitura do termo responde `ausente` com o gate fechado — que é a
+     * informação que manda a tela pedir o certificado em vez de mostrar um erro.
+     */
     public function test_o_upload_da_200_mesmo_com_o_gate_da_emissao_fechado(): void
     {
         $conta = Account::factory()->create();
@@ -866,8 +1262,6 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertNotNull(AccountCertificate::currentFor($conta->getKey()));
         $this->assertNull(SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->first());
 
-        // E a leitura do termo diz `ausente`, que é a informação que manda a
-        // tela agir — e não um estado de erro que ela não sabe Translate.
         $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
             ->getJson(self::ROTA)
             ->assertOk()
@@ -998,6 +1392,74 @@ class SerproAuthorizationTermTest extends TestCase
         $this->getJson(self::ROTA)->assertUnauthorized();
     }
 
+    /**
+     * Nenhuma coluna cifrada sai pela serialização da linha inteira.
+     *
+     * A resource lista quatro campos e é a primeira rede; o `#[Hidden]` do
+     * model é a segunda, e ela existe para o caso de alguém serializar a linha
+     * sem passar pela resource — o `return $term` de um controller é o
+     * acidente que ela cobre. Sem este caso o atributo é uma afirmação de
+     * docblock: apagar o `#[Hidden]` deixaria a suíte verde, e o documento
+     * assinado e o token passariam a poder vazar por `toArray()`.
+     */
+    public function test_nenhuma_coluna_cifrada_sai_pela_serializacao_da_linha(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $termo = resolve(SerproTermManager::class)->issue($conta->getKey());
+        $linha = $termo->fresh()->toArray();
+
+        $this->assertArrayNotHasKey('document_encrypted', $linha);
+        $this->assertArrayNotHasKey('token_encrypted', $linha);
+
+        // E o que sai é o metadado, para o teste não passar por uma linha vazia.
+        $this->assertArrayHasKey('account_id', $linha);
+        $this->assertSame($conta->getKey(), $linha['account_id']);
+    }
+
+    /**
+     * O **manager** lê a credencial de plataforma uma vez só.
+     *
+     * **A medição para no gate, e é por isso que ela é honesta.** Contar a
+     * emissão inteira daria três leituras — o manager, o `SerproClient::submitTerm`
+     * e o `SerproTokenProvider` — e as duas últimas são **deliberadas**: o
+     * transporte relê a linha para conferir a identidade do contratante contra
+     * o certificado que vai materializar, e relê-la na hora do uso é o que
+     * protege contra uma credencial trocada entre a checagem e a chamada. O
+     * defeito que este caso cobre é o do manager, que lia a mesma linha duas
+     * vezes: o gate de uma e o `contratante_numero` da outra, e um operador que
+     * trocasse a credencial no meio veria o gate decidido por uma linha e o
+     * termo assinado com o documento de outra.
+     *
+     * Com o gate fechado, `issue()` para antes do transporte e a contagem é do
+     * manager sozinho — e é exatamente a linha que a versão anterior lia duas
+     * vezes.
+     */
+    public function test_o_manager_lua_a_credencial_de_plataforma_uma_vez_so(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+
+        // Gate fechado de propósito: a emissão recusa antes de qualquer
+        // transporte, e a leitura da credencial é a única que o manager faz.
+        $this->assertSame(SerproTermProof::Ausente, SerproConnection::sole()->termProof());
+
+        $this->contando = true;
+        $this->leituras = 0;
+
+        try {
+            resolve(SerproTermManager::class)->issue($conta->getKey());
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+        } finally {
+            $this->contando = false;
+        }
+
+        $this->assertSame(1, $this->leituras, 'O manager lê a credencial de plataforma uma vez por emissão.');
+    }
+
     // ------------------------------------------------------------- o token válido
 
     public function test_o_token_valido_so_sobe_com_o_termo_no_prazo_e_sem_token_vencido(): void
@@ -1047,6 +1509,93 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertNull($manager->validToken($conta->getKey()));
     }
 
+    // ------------------------------------------------------------------ a policy
+
+    /**
+     * A leitura é do Membro da conta, e só dela.
+     *
+     * `HasTenantRole` é o que torna isto uma policy e não um `return true`
+     * embrulhado: sem ele, um usuário sem vínculo com a conta corrente
+     * passaria, e a guarda de tenancy teria de estar em outro lugar — que é o
+     * que a review aponta como a razão de `AccountPolicy` e
+     * `SerproConnectionPolicy` omitirem o trait sem serem um contraexemplo: elas
+     * são de plataforma, e esta é de tenant.
+     */
+    public function test_a_policy_le_o_termo_do_membro_da_conta_e_recusa_quem_nao_e_membro(): void
+    {
+        [$dona] = $this->escritorio('Escritório Dona');
+        [$vizinha] = $this->escritorio('Escritório Vizinha');
+
+        $membroDaConta = $this->membroDe($dona, 'user');
+        $deOutraConta = $this->membroDe($vizinha, 'admin');
+
+        // O tenant corrente é o da dona nos dois lados da comparação: o que muda
+        // é o **vínculo do usuário** com ele, que é o que a policy mede.
+        resolve(CurrentTenant::class)->accountId = $dona->getKey();
+
+        $this->assertTrue(Gate::forUser($membroDaConta)->allows('viewAny', SerproAuthorizationTerm::class));
+
+        // O usuário de outra conta, com a conta da dona como tenant corrente,
+        // não tem vínculo com ela — e é recusado.
+        $this->assertFalse(Gate::forUser($deOutraConta)->allows('viewAny', SerproAuthorizationTerm::class));
+
+        // E um usuário sem nenhuma conta, que é o super_admin fora de qualquer
+        // vínculo também cai fora.
+        $semVinculo = User::factory()->create();
+
+        $this->assertFalse(Gate::forUser($semVinculo)->allows('viewAny', SerproAuthorizationTerm::class));
+    }
+
+    /**
+     * Nenhum Membro escreve o termo, e o que impede não é um `return false`
+     * e sim a **ausência** do verbo.
+     *
+     * O termo é assinado com o e-CNPJ do escritório, que nenhum Membro tem, e
+     * o design diz que a emissão é automática e nunca pede assinatura a
+     * ninguém. Não há rota de escrita, e **método sem rota é método que ninguém
+     * exercita** — a mesma regra que a `AccountCertificatePolicy` escreve na
+     * própria docblock. A garantia é o Gate negando por omissão, e ela só é
+     * verificável se o verbo continuar ausente: um `create` que voltasse
+     * devolveria `false` ainda, mas a policy voltaria a ter um método que
+     * ninguém chama e que o próximo autor pode ler como "escrita permitida para
+     * quem passar por aqui".
+     *
+     * `resolve()` de uma policy inexistente ainda nega, então a ausência de
+     * `create` é o que fixa a **estrutura**, e o `allows(...) === false` fixa o
+     **comportamento** — e o `viewAny` verdadeiro do caso anterior é o que
+     * impede que a policy inteira seja apagada em silêncio.
+     */
+    public function test_a_policy_nao_declara_verbos_de_escrita_e_o_gate_nega_qualquer_membro(): void
+    {
+        $conta = Account::factory()->create();
+        $admin = $this->membroDe($conta, 'admin');
+        $operador = $this->membroDe($conta, 'operador');
+        $leitor = $this->membroDe($conta, 'user');
+
+        foreach (['admin', 'operador', 'user'] as $papel) {
+            $membro = match ($papel) {
+                'admin' => $admin,
+                'operador' => $operador,
+                default => $leitor,
+            };
+
+            $this->assertFalse(
+                Gate::forUser($membro)->allows('create', SerproAuthorizationTerm::class),
+                "O papel {$papel} não pode gravar o termo: a assinatura é do e-CNPJ do escritório, não de um Membro.",
+            );
+        }
+
+        // E a ausência do verbo é estrutural, não uma coincidência de retorno.
+        $policy = new SerproAuthorizationTermPolicy;
+
+        foreach (['create', 'update', 'delete', 'view'] as $verbo) {
+            $this->assertFalse(
+                method_exists($policy, $verbo),
+                "A policy não deve declarar `{$verbo}`: não há rota que o acione, e método sem rota é método que ninguém exercita.",
+            );
+        }
+    }
+
     // -------------------------------------------------------------------- esquema
 
     public function test_as_colunas_das_duas_migracoes_existem_com_o_que_o_uso_delas_pressupoe(): void
@@ -1089,6 +1638,19 @@ class SerproAuthorizationTermTest extends TestCase
             'last_submitted_at' => now(),
         ]);
 
+        $this->assertSame(
+            1,
+            SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->count(),
+            'A primeira inserção tem de existir: é a segunda que o índice único tem de recusar.',
+        );
+
+        /*
+         * A contagem vem **antes** do `expectException` de propósito. Na
+         * versão anterior ela estava depois, e portanto nunca rodava — o
+         * `expectException` transforma o resto do método em código inalcançável
+         * para o PHPUnit, e uma asserção que nunca executa é uma asserção que
+         * não prova nada, por mais escrita que esteja.
+         */
         $this->expectException(QueryException::class);
 
         SerproAuthorizationTerm::forceCreate([
@@ -1100,8 +1662,41 @@ class SerproAuthorizationTermTest extends TestCase
             'signed_at' => now(),
             'last_submitted_at' => now(),
         ]);
+    }
 
-        $this->assertSame(1, SerproAuthorizationTerm::query()->where('account_id', $conta->getKey())->count());
+    /**
+     * A largura declarada da coluna do estado é a do valor mais longo do enum.
+     *
+     * **Por que isto lê a migration e não o `information_schema`.** O
+     * `Schema::getColumns()` deste framework não expõe o comprimento no SQLite —
+     * devolve `varchar` e basta —, e o SQLite **não** recusa nem trunca um
+     * `varchar` estreito. Um teste de ida e volta passaria aqui e reprovaria
+     * só em produção, que é o pior lugar para o descobrir. O que tem de
+     * concordar é a migration com o enum, e os dois são artefatos do
+     * repositório: comparar os dois textos é a checagem que existe, e é a mesma
+     * técnica que `test_o_cofre_extrai_o_documento_do_certificado_que_ja_abriu`
+     * usa para a leitura do e-CNPJ.
+     *
+     * O caso existia porque o comentário da coluna dizia "treze posições" para
+     * um valor que tem onze, e um número errado num comentário de coluna é a
+     * forma mais barata de a próxima pessoa não alargar a coluna quando o enum
+     * ganhar um estado: ela lê o comentário, acredita nele e não confere.
+     */
+    public function test_a_largura_da_coluna_do_estado_e_a_do_valor_mais_longo_do_enum(): void
+    {
+        $maisLongo = collect(SerproAuthorizationTermState::cases())
+            ->map(fn (SerproAuthorizationTermState $caso): int => strlen($caso->value))
+            ->max();
+
+        $migration = file_get_contents(base_path('database/migrations/2026_09_28_113314_create_serpro_authorization_terms_table.php'));
+
+        $this->assertIsString($migration);
+        $this->assertSame(1, preg_match("/\\\$table->string\('state', (\d+)\)/", $migration, $achado), 'A migration declara a largura da coluna do estado.');
+        $this->assertSame(
+            $maisLongo,
+            (int) $achado[1],
+            'O enum ganhou um valor mais longo que a coluna: a migration tem de ser alargada, e o digest do formato recontado com a prova.',
+        );
     }
 
     public function test_as_duas_colunas_do_gate_estao_na_credencial_de_plataforma(): void

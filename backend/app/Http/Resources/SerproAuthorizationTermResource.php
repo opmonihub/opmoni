@@ -19,11 +19,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * serializar a linha inteira, que é o que faria um `return $term` em um
  * controller.
  *
- * **`document_present` é uma afirmação de existência, e é o que substitui o
- * conteúdo.** Ela diz que há documento guardado sem dizer qual é, e é a
- * diferença entre "o escritório já assinou" e "não há termo", que são os
- * dois estados que a tela precisa distinguir para não pedir ao escritório que
- * assine de novo.
+ * **`document_present` afirma que existe documento, e não outra coisa.** A
+ * coluna é `NOT NULL`, então o valor **é `true` em toda linha que existe** e
+ * `false` só no caminho de recurso nulo — o que o torna redundante com
+ * `state != ausente`. O campo fica porque a spec o nomeia e porque ele dá à
+ * tela uma afirmação direta em vez de ela ter de inferir a existência do
+ * documento a partir do estado; o que ele **não** distingue é "há documento mas
+ * está ilegível" de "há documento e está legível", porque essa leitura
+ * exigiria tentar decifrar numa tela de leitura, e decifrar é do
+ * `SerproTermManager`.
  *
  * **Uma conta sem termo tem `state` = `ausente` e não um `404`.** A ausência
  * é um estado do produto e não um recurso inexistente: a tela precisa dele

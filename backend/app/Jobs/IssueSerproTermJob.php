@@ -86,6 +86,15 @@ final class IssueSerproTermJob implements ShouldQueue
      * documento, token nem senha na mensagem — é o que o `SerproClient` e o
      * `SerproTermManager` garantem ao recusar, e é por isso que a frase pode
      * ir para o log sem uma revisão nova a cada chamada.
+     *
+     * **O que o log não distingue, e é a sua falha conhecida.** Sem
+     * `serpro_connections`, a exceção é "Conexão com o Integra Contador não
+     * configurada"; com o gate fechado, é a frase de `SerproTermProof`. As duas
+     * são `DoNotRetry`, as duas chegam aqui, e a linha que o operador lê é
+     * idêntica nas duas situações — que é a configuração de uma credencial
+     * ausente e a ausência de um teste de contrato indistinguíveis **naquele
+     * registro**. A distinguição existe, e é a linha da credencial de
+     * plataforma, que nenhum alerta aponta hoje.
      */
     public function handle(SerproTermManager $manager): void
     {

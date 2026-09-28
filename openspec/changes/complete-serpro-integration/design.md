@@ -170,19 +170,44 @@ unimportant**, and the element is named `finalidade`. The distinction is recorde
 it invites is a later reader "restoring fidelity to the model" and getting a `DOMException`, or worse
 a document that silently never had the space. The name itself is what remains unverified and gated,
 like the other two.
-**The other two are kept, and the reasoning for both is the one that was right in the first place:
-the official component is the only authority available.** The provider's "Termo de Autorização"
-documentation returns `500` on every plausible URL and ships no XSD, so there is no second source to
-check the model against. A different vigência period or a "corrected" canonicalization would each be
-a guess about the provider's schema — and guessing a schema is precisely how a term meets an opaque
-`-019`/`-054` at the gateway. What the model says is what goes in the document, and what is
-unverified is recorded as unverified.
+**The provider's term documentation is reachable, and that changes the record — read on
+2026-09-28.** The statement that it "returns `500` on every plausible URL and ships no XSD" was true
+when this decision was written and **no longer is**: `…/autenticaprocurador/padroes_tecnicos_assinatura_xml/`
+and `…/autenticaprocurador/servicos/envio_de_xml_assinado/` both answer `200` and carry the layout
+table, the technical signature standards, the `304` cache contract and a full request/response
+example. Three of the contested points are therefore **documented rather than inferred**, and the
+code that was already built for them is confirmed rather than changed:
+
+- the layout table names the element **`finalidade`**, with no trailing space — the correction of the
+  model's `finalidade ` is the provider's own, not a tolerance of ours;
+- the `CanonicalizationMethod` and the `c14n` transform are both
+  `http://www.w3.org/TR/2001/REC-xml-c14n-20010315`, the **inclusive** form the `Reference` declares —
+  the divergence with the exclusive digest is preserved because the provider documents the inclusive
+  side and the two coincide for a document that declares no namespace;
+- the published example puts **SERPRO — the contracting platform — in `destinatario`** with the role
+  `contratante`, and the signing office in `assinadoPor`. That is the reading this system builds, and
+  it settles the conflict the plan had with the spec's "with the office as the recipient".
+
+**What the documentation does not settle is the validity period, and this is now the honest
+statement of why the `+30 days` is kept.** The provider declares only that `vigencia` is "a data de
+validade deste termo de autorização, no formato AAAAMMDD" — a format, no number of days, and no XSD.
+Its own two examples run far longer: the layout example spans `20220614` → `20221231` (**200 days**)
+and the service example `20220808` → `20221231` (**145 days**). Both end on the same date, which is
+what samples written by hand look like and not what a rule looks like: if the period were a constant
+of N days, the two examples would end on different dates. So the examples **contradict** 30 days and
+do **not** replace it with a better number. `PERIODO_VIGENCIA_DAYS = 30` stays because it is the only
+arithmetic of a period anywhere in the provider's material — the reference model's `+30 days` — and
+because choosing 145 or 200 would be picking one of two contradictory samples as a rule, against a
+schema we cannot see. It is recorded as **unconfirmed**, and the contract test of `tasks.md` 4.6a is
+what has to settle it before any proof is recorded: the constant is inside `formatDigest()`, so
+changing it re-opens the gate by itself, which is the correct behaviour and also the reason not to
+change it on a guess.
 
 "Verbatim" has a precise meaning for the vigência, and getting it wrong would make the decision
-unimplementable: what is preserved is the **30-day period**, which is the only value that exists and
-is the provider's own. The `date()` call around it is not preserved — it cannot run. It passes a
-string where a timestamp belongs and a third argument to a function that takes two, and it is the
-same line as the parse error. `SerproTermSigner` therefore writes the period as a `Carbon`
+unimplementable: what is preserved is the **period the reference model computes**, not a claim that
+the provider specified thirty days. The `date()` call around it is not preserved — it cannot run. It
+passes a string where a timestamp belongs and a third argument to a function that takes two, and it
+is the same line as the parse error. `SerproTermSigner` therefore writes the period as a `Carbon`
 calculation in `America/Sao_Paulo` and reproduces the model's intent, not its syntax. The same
 "verbatim is not the call" distinction applies to the element name, and it is why the space is
 corrected while the period is kept.
@@ -279,13 +304,22 @@ uses: `SerproTermSigner`'s document does not exist yet, and the moment it is bui
 be pointed at the real document, because a term carrying a declaration would stop the coincidence and
 the digest written into the signature would stop being the one a validator recalculates.
 
-**What remains unproven is the interoperability with the provider's validator, the `304`
-resubmission path, and the roles in the term.** None of those can be settled by a local test, and
-this design document does not claim otherwise: the signature is proven to be well-formed and
-cryptographically valid, not proven to be accepted. Until a contract test exists the honest statement
-is that `AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, the `304` token recovery
-from the `ETag`, and the acceptance of the term document itself are documented behaviour that has
-not been exercised end to end.
+**What remains unproven is the interoperability with the provider's validator and the acceptance of
+the term document.** The `304` resubmission and the roles are no longer in that sentence: the
+provider's cache page (`…/autenticaprocurador/cache/`, read 2026-09-28) documents the whole
+`304` contract — the status, the empty body, `cache-control: termo_autorizacao`, the `etag` carrying
+`autenticar_procurador_token:<uuid>` and the `expires` — and the layout page documents the roles.
+That is **documented, not observed**: no response from the provider has entered this repository, and
+documentation is a claim about behaviour rather than an acceptance of one. None of it can be settled
+by a local test, and this design document does not claim otherwise: the signature is proven to be
+well-formed and cryptographically valid, not proven to be accepted. Until a contract test exists the
+honest statement is that `AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, the `304`
+token recovery from the `ETag`, and the acceptance of the term document itself are documented
+behaviour that has not been exercised end to end. The `expires` is the sharpest case: the page's
+prose says the token lasts "until midnight, Brasília time" while its own example is
+`Sat, 15 Oct 2022 00:00:01 GMT`, which is 21:00 the previous day in Brasília. The two contradict each
+other, the code follows the example rather than reconciling them, and the contract test is what
+settles it.
 
 ### D3. The term is per office, stored verbatim, and renewed by re-POST
 
@@ -419,13 +453,17 @@ that accepts everything is not a fix.
   signed document, and throws an exception class it never declares. → Inspect it, port only the
   signing sequence into an independently written routine, keep the origin URL, version, SHA-256 and
   MIT license in the file, and assert in a test that none of its global functions exist.
-- **Two oddities in the model are kept verbatim because it is the only authority available, and each
-  one is a guess the provider would otherwise have to absorb.** The `+30 days` vigência and the
-  digest's exclusive `C14N` against an inclusive `Reference` look like typos, and the provider's term
-  documentation is unreachable (`500`) with no XSD to check them against. → Preserve each verbatim
-  as a decision with a gate rather than tidying it, name them in the spec so a later reader sees a
-  decision and not an oversight, and block term issuance until a contract test proves the provider
-  accepts the document. A blocked feature is the recoverable failure; rejected terms are not.
+- **Two oddities in the model are kept verbatim, and by 2026-09-28 one of them is confirmed and the
+  other is contradicted by the provider's own examples.** The digest's exclusive `C14N` against an
+  inclusive `Reference` is now documented — the technical page names the inclusive form — and the
+  `+30 days` vigência is not: the provider states only a format for `vigencia`, and its two examples
+  span 200 and 145 days, both ending on the same date. → Preserve each verbatim as a decision with a
+  gate rather than tidying it, name them in the spec so a later reader sees a decision and not an
+  oversight, record the period as **unconfirmed** rather than as the provider's value, and block
+  term issuance until a contract test proves the provider accepts the document. A blocked feature is
+  the recoverable failure; rejected terms are not. The contract test is also what has to settle the
+  period, because the constant is inside `formatDigest()` and changing it re-opens the gate — which
+  is why the period is not moved to match a sample.
 - **The trailing space in `finalidade ` looked like a third verbatim value and is not one, because it
   does not survive into the signed document.** A previous decision in this document kept it, on the
   reasoning that the model is the only authority — a reasoning that does not survive measurement:
