@@ -278,14 +278,21 @@ export function fiscalStageLabel(stage: FiscalStage): string {
   return stageLabels[stage]
 }
 
-/** A origem da última consulta, pelo nome que o fisco usa. */
+/**
+ * A origem de uma distribuição, pelo nome que o fisco usa.
+ *
+ * Aceita `null` porque o Resource escreve `$this->source?->value`, e o tipo
+ * deste contrato espelha a expressão — não a intenção de quem a escreveu. O
+ * `null` sai como o traço do valor ausente, e não como `undefined`, que é o que
+ * um `sourceLabels[null]` devolve e o que a tela pintaria no lugar de uma fonte.
+ */
 const sourceLabels: Record<FiscalSource, string> = {
   nfe_distribuicao: 'NF-e',
   cte_distribuicao: 'CT-e'
 }
 
-export function fiscalSourceLabel(source: FiscalSource): string {
-  return sourceLabels[source]
+export function fiscalSourceLabel(source: FiscalSource | null): string {
+  return source === null ? fiscalMissingValue : sourceLabels[source]
 }
 
 /**
@@ -614,18 +621,22 @@ export function lastCaptureOutcome(last: FiscalLastCapture | null): { title: str
     }
   }
 
-  const source = fiscalSourceLabel(last.source)
+  // A fonte entra na frase só quando o resumo a mandou. Com `null` a frase
+  // continua dizendo o que se sabe — que houve uma consulta e como ela terminou
+  // — em vez de repetir o traço do valor ausente no meio dela ("última consulta
+  // de — concluída"), que é um texto que ninguém consegue ler.
+  const fonte = last.source === null ? '' : ` de ${fiscalSourceLabel(last.source)}`
 
   if (last.error) {
     return {
-      title: `Última consulta de ${source} terminou em erro`,
+      title: `Última consulta${fonte} terminou em erro`,
       description: `Em ${formatFiscalDateTime(last.ran_at)}. O que ficou registrado foi "${last.error}", e a próxima execução tenta de novo.`,
       tone: 'warning'
     }
   }
 
   return {
-    title: `Última consulta de ${source} concluída`,
+    title: `Última consulta${fonte} concluída`,
     description: `Terminou em ${formatFiscalDateTime(last.ran_at)} sem erro.`,
     tone: 'success'
   }

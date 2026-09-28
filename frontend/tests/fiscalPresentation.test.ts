@@ -25,6 +25,7 @@ import {
   coverageState,
   documentsOverTimeHeader,
   fiscalEventCount,
+  fiscalMissingValue,
   fiscalKindLabel,
   fiscalMonthLabel,
   fiscalNoAttention,
@@ -503,6 +504,14 @@ describe('rótulo do mês e da fonte', () => {
   it('nomeia a fonte da última consulta', () => {
     assert.equal(fiscalSourceLabel('nfe_distribuicao'), 'NF-e')
     assert.equal(fiscalSourceLabel('cte_distribuicao'), 'CT-e')
+  })
+
+  it('diz que a fonte não veio, em vez de devolver undefined', () => {
+    // O Resource escreve `?->value`, então `null` é um valor que a API pode
+    // entregar. Um `sourceLabels[null]` devolveria `undefined`, e a tela
+    // pintaria "undefined" onde deveria estar o traço do valor ausente.
+    assert.equal(fiscalSourceLabel(null), fiscalMissingValue)
+    assert.notEqual(fiscalSourceLabel(null), 'undefined')
   })
 })
 

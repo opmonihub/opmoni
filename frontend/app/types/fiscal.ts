@@ -68,23 +68,50 @@ export interface FiscalAttentionItem {
 
 /** Os agregados de documento do resumo, todos contados por conta. */
 export interface FiscalSummaryDocuments {
+  /**
+   * Todo documento guardado na conta, inclusive o que não tem data de emissão.
+   *
+   * A coluna `emissao_at` é nullable e o fisco entrega documento sem ela, e a
+   * resposta honesta para "quantos documentos temos" é contar esse também. O
+   * número **não** é a soma de `over_time`: um documento sem mês de emissão
+   * conta aqui e não tem mês na série. São duas grandezas diferentes, e quem
+   * mostra as duas precisa dizer qual é qual.
+   */
   total: number
   /**
    * Volume por modelo, e só com o modelo que tem documento: um modelo ausente
-   * do mapa é "nada capturado desse modelo ainda", não zero.
+   * do mapa é "nada capturado desse modelo ainda", não zero. O modelo vem
+   * inteiro, sem o mesmo corte de `over_time` — a série é que é por mês.
    */
   models: Record<string, number>
   /**
-   * A série de emissão, em ordem cronológica e só com o mês que teve documento.
-   * Um mês zerado é um dado que o fisco não produziu, e a série precisa poder
-   * dizer "ainda não há o que mostrar" em vez de mostrar um zero bonito.
+   * A série de emissão, em ordem cronológica e só com o mês que teve documento
+   * **com data de emissão**. Um mês zerado é um dado que o fisco não produziu, e
+   * um documento sem data de emissão não tem mês a que ser atribuído — a série
+   * precisa poder dizer "ainda não há o que mostrar" em vez de mostrar um zero
+   * bonito.
    */
   over_time: { month: string, total: number }[]
 }
 
 /** A última consulta que a conta fez, e o que ela deixou na coluna. */
 export interface FiscalLastCapture {
-  source: FiscalSource
+  /**
+   * A distribuição consultada, ou `null`.
+   *
+   * `null` porque é isso que a escrita produz: `FiscalCoverage::ultimaCaptura()`
+   * devolve `$cursor->source?->value`, e o tipo deste arquivo espelha a
+   * expressão. Declarar `FiscalSource` faria o TypeScript prometer um valor que
+   * a expressão pode não entregar, e a falha é silenciosa — o rótulo da tela
+   * vira `undefined` em vez de `—`.
+   *
+   * O que a coluna não garante é o enum, e isso é outro problema:
+   * `fiscal_cursors.source` é `string` sem restrição de banco, e um valor fora
+   * dos dois casos não vira `null` — o cast levanta `ValueError` e a leitura
+   * responde 500. Este campo não resolve isso; ele resolve o que a expressão
+   * realmente devolve.
+   */
+  source: FiscalSource | null
   ran_at: string
   /**
    * Nome de classe, classificação do conector ou frase fixa — nunca a mensagem
@@ -169,7 +196,14 @@ export interface FiscalDocumentEvent {
  * lista mostra.
  */
 export interface FiscalDetail extends FiscalDocumentRow {
-  source: FiscalSource
+  /**
+   * A distribuição que entregou o documento, ou `null` — o mesmo `?->value` do
+   * Resource, pelo mesmo motivo de `FiscalLastCapture.source`. A folha de
+   * detalhe mostra a fonte na linha "Distribuição" e no rótulo do botão de
+   * captura, então o `null` precisa virar o traço do valor ausente e não
+   * `undefined`.
+   */
+  source: FiscalSource | null
   /** A posição interna da distribuição. */
   nsu: number
   /** Vazio quando o documento não é um evento. */

@@ -93,7 +93,12 @@ const detailFacts = computed<MetaListItem[]>(() => {
     { label: 'Valor total', value: formatFiscalAmount(target.valor_total), mono: true },
     { label: 'Emissão', value: formatFiscalDay(target.emissao_at), mono: true },
     { label: 'Capturado em', value: formatFiscalDateTime(target.captured_at), mono: true },
-    { label: 'Distribuição', value: `${fiscalSourceLabel(target.source)} · NSU ${formatFiscalCount(target.nsu)}` },
+    // A distribuição e a posição são duas linhas e não uma composta: com
+    // `source` ausente, a composta viraria "— · NSU 12", que parece um valor
+    // de distribuição. Separadas, o traço marca o que falta e a posição continua
+    // sendo lida.
+    { label: 'Distribuição', value: fiscalSourceLabel(target.source) },
+    { label: 'Posição na distribuição (NSU)', value: formatFiscalCount(target.nsu) },
     { label: 'Código do evento', value: target.event_id || fiscalMissingValue, mono: true },
     { label: 'Eventos', value: fiscalEventCount(target), mono: true },
     { label: 'Layout', value: target.schema ?? fiscalMissingValue, mono: true },
@@ -191,7 +196,12 @@ function blockedRefusal(error: unknown): FiscalCaptureBlocked | null {
 
 async function triggerCapture() {
   const target = detail.value
-  if (!target || capturing.value) return
+  // A fonte é o que o pedido de captura leva, e `FiscalDetail.source` é
+  // nullable pelo mesmo motivo de `FiscalLastCapture.source`. Sem ela não há
+  // distribuição a consultar: o botão nem aparece nesse caso, e a guarda aqui é
+  // a segunda metade do mesmo acordo — o template não é a única coisa que
+  // protege o `capture` de receber uma fonte que não existe.
+  if (!target || !target.source || capturing.value) return
 
   capturing.value = true
   try {
@@ -340,15 +350,21 @@ async function triggerCapture() {
           documentos não precisa dar a quem não pode agir. O `v-if` é lido de
           `useAuth().canManageClients` no script, que é a mesma policy que o
           `capture` do backend autoriza.
+
+          A segunda condição é o `source` do detalhe: o pedido de captura é por
+          distribuição, e sem a fonte o chamador não teria o que mandar. Um
+          botão que enfileiraria a distribuição padrão para um documento cujo
+          `source` o backend não mandou seria a tela escolhendo por conta
+          própria a consulta que o operador não pediu.
         -->
         <UButton
-          v-if="canManageClients && detail"
+          v-if="canManageClients && detail && detail.source"
           label="Capturar agora"
           icon="i-lucide-refresh-cw"
           color="neutral"
           variant="outline"
           :loading="capturing"
-          :title="detail ? `Consulta de ${fiscalSourceLabel(detail.source)} deste cliente` : undefined"
+          :title="detail?.source ? `Consulta de ${fiscalSourceLabel(detail.source)} deste cliente` : undefined"
           @click="triggerCapture"
         />
 
