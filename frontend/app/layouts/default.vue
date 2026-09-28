@@ -2,6 +2,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { adminPages, adminSidebarChildren } from '~/utils/adminNav'
 import { equipeSidebarChildren } from '~/utils/equipeNav'
+import { fiscalSidebarChildren } from '~/utils/fiscalNav'
 import { monitoringSidebarChildren } from '~/utils/monitoringNav'
 import { workSidebarChildren } from '~/utils/workNav'
 
@@ -59,6 +60,14 @@ const links = [[{
   label: 'Monitoramento',
   icon: 'i-lucide-activity',
   to: '/monitoring',
+  type: 'trigger',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
+  label: 'Fiscal',
+  icon: 'i-lucide-receipt-text',
+  to: '/fiscal',
   type: 'trigger',
   onSelect: () => {
     open.value = false
@@ -146,6 +155,16 @@ const navLinks = computed<NavigationMenuItem[][]>(() => {
         ...item,
         defaultOpen: route.path.startsWith('/monitoring'),
         children: monitoringSidebarChildren(route.path).map(child => ({
+          ...child,
+          onSelect: close
+        }))
+      }
+    }
+    if (item.label === 'Fiscal') {
+      return {
+        ...item,
+        defaultOpen: route.path.startsWith('/fiscal'),
+        children: fiscalSidebarChildren(route.path).map(child => ({
           ...child,
           onSelect: close
         }))
