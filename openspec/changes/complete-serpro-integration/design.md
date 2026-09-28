@@ -143,26 +143,56 @@ which is now `SerproException` with `SerproFailure::NotSent`, because a signing 
 nothing was sent. No global function and no `$GLOBALS` entry from the official file reaches the
 application, and the provenance test asserts that those six function names do not exist.
 
-**The term document builder was not vendored, and that is where the remaining defects live** — the
-parse error, `addChild('finalidade ')` with a trailing space in the element name, and
-`date('Ymd', '+30 days', …)` where a timestamp is required. Building the document is
-`SerproTermSigner`'s job, and correcting the format there is what the auditable change means. Two
-divergences from the official example are therefore **not resolved here, and must be decided before
-any term is ever issued**: the digest is computed with exclusive `C14N` while the `Reference`
-declares the inclusive `c14n` of REC 2001, and the corrected document's `finalidade` element name
-and validity date. Neither was "fixed" to match intuition, because each changes bytes the provider
-validates. What *is* proven locally is that for the term document, which declares no namespace of
-its own, both canonicalizations coincide byte for byte — the test recomputes the digest the way a
-validator does and the values match — and that the signature verifies against the public key
-extracted from the signed certificate itself.
+**The term document builder was not vendored, and three of its oddities are kept verbatim on
+purpose.** Building the document is `SerproTermSigner`'s job, and three things in the model look like
+defects: `addChild('finalidade ')` with a trailing space in the element name, `date('Ymd', '+30
+days', …)` where the model passes a string where a timestamp belongs and a third argument `date()`
+does not take, and a digest computed with exclusive `C14N` while the `Reference` declares the
+inclusive `c14n` of REC 2001. **All three are decisions, not oversights, and all three are gated.**
+
+The reasoning is the same for each: **the official component is the only authority available.** The
+provider's "Termo de Autorização" documentation returns `500` on every plausible URL and ships no
+XSD, so there is no second source to check the model against. A tidied-up `finalidade`, a different
+vigência period, or a "corrected" canonicalization would each be a guess about the provider's
+schema — and guessing a schema is precisely how a term meets an opaque `-019`/`-054` at the
+gateway. What the model says is what goes in the document, and what is unverified is recorded as
+unverified.
+
+"Verbatim" has a precise meaning for the vigência, and getting it wrong would make the decision
+unimplementable: what is preserved is the **30-day period**, which is the only value that exists and
+is the provider's own. The `date()` call around it is not preserved — it cannot run. It passes a
+string where a timestamp belongs and a third argument to a function that takes two, and it is the
+same line as the parse error. `SerproTermSigner` therefore writes the period as a `Carbon`
+calculation in `America/Sao_Paulo` and reproduces the model's intent, not its syntax. The same
+distinction applies to the parse error itself, which is a defect and is corrected; only the values
+are kept.
+
+**The gate is term issuance, and it is not advisory.** Nothing may emit a term until a real contract
+test against the provider proves the document is accepted, the roles are the ones the gateway
+expects, and the resubmission of a still-valid term answers `304` with the token in the `ETag`.
+Task 5's automatic issuance is exactly where that gate has to bite, and the spec states it as a
+requirement rather than leaving it to a comment. The failure mode is deliberate: if a preserved
+value turns out to be wrong, the cost is that issuance stays blocked until a human obtains a
+contract test. A blocked feature is recoverable; terms the provider rejects are not, and the office
+has already authorized on the strength of them.
+
+The canonicalization decision carries one more safeguard, because it is the only one of the three
+that can drift without anyone touching the code. For a term document that declares no namespace of
+its own the two canonicalizations coincide byte for byte, and
+`SerproSignerProvenanceTest::test_a_divergencia_de_canonicalizacao_do_modelo_nao_altera_o_digest_do_termo`
+proves it by recomputing the digest the way a validator does. That proof is about the document
+shape the test uses: `SerproTermSigner`'s document does not exist yet, and the moment it is built
+that test has to be pointed at the real document, because a term that declared its own prefix would
+stop the coincidence and the digest written into the signature would stop being the one a validator
+recalculates.
 
 **What remains unproven is the interoperability with the provider's validator, the `304`
 resubmission path, and the roles in the term.** None of those can be settled by a local test, and
 this design document does not claim otherwise: the signature is proven to be well-formed and
-cryptographically valid, not proven to be accepted. A real contract test against the provider is
-required before a term is issued, and until it exists the honest statement is that
-`AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, and the `304` token recovery from
-the `ETag`, are documented behaviour that has not been exercised end to end.
+cryptographically valid, not proven to be accepted. Until a contract test exists the honest statement
+is that `AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, the `304` token recovery
+from the `ETag`, and the acceptance of the term document itself are documented behaviour that has
+not been exercised end to end.
 
 ### D3. The term is per office, stored verbatim, and renewed by re-POST
 
@@ -295,15 +325,21 @@ that accepts everything is not a fix.
   would import its defects.** The distributed script does not parse, defines globals, prints the
   signed document, and throws an exception class it never declares. → Inspect it, port only the
   signing sequence into an independently written routine, keep the origin URL, version, SHA-256 and
-  MIT license in the file, and assert in a test that none of its global functions exist. The
-  corrected document format diverges from the example in two places that the provider validates, so
-  those are recorded as open decisions rather than resolved by judgement.
+  MIT license in the file, and assert in a test that none of its global functions exist.
+- **Three oddities in the model were kept verbatim because it is the only authority available, and
+  each one is a guess the provider would otherwise have to absorb.** The `finalidade ` element name
+  with its trailing space, the `+30 days` vigência, and the digest's exclusive `C14N` against an
+  inclusive `Reference` all look like typos, and the provider's term documentation is unreachable
+  (`500`) with no XSD to check them against. → Preserve each verbatim as a decision with a gate
+  rather than tidying it, name them in the spec so a later reader sees a decision and not an
+  oversight, and block term issuance until a contract test proves the provider accepts the
+  document. A blocked feature is the recoverable failure; rejected terms are not.
 - **The signature is proven well-formed, not proven accepted.** A local test can show that the
   envelope is correct and that the signature verifies against the certificate's public key; it
   cannot show that the provider's validator accepts it, that the `304` resubmission returns the
   token, or that the term's roles are the ones the gateway expects. → A real contract test against
-  the provider is a precondition for issuing any term, and this change does not claim that
-  precondition is met.
+  the provider is a precondition for issuing any term, written as a requirement in the spec, and
+  this change does not claim that precondition is met.
 - **The office certificate in the database raises the cost of an `APP_KEY` loss.** Database-resident
   ciphertext is recovered by a database backup, but a wrong key destroys every stored certificate
   and the platform credential irreversibly. → No key rotation, stated as a constraint on operations

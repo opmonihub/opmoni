@@ -119,7 +119,7 @@ The system SHALL build, sign, submit and renew the authorization term on behalf 
 - **THEN** the system reports the missing certificate as an action belonging to the office, and does not attempt to produce a term
 
 #### Scenario: Emissão automática do termo
-- **WHEN** an office stores a valid certificate
+- **WHEN** an office stores a valid certificate and the provider has proven to accept the term document
 - **THEN** the system builds the authorization document naming the office as the recipient, signs it with that certificate, submits it, and stores the resulting authorization token and its expiry
 
 #### Scenario: Escritório não assina nada
@@ -141,6 +141,29 @@ The system SHALL build, sign, submit and renew the authorization term on behalf 
 #### Scenario: Termo rejeitado
 - **WHEN** the provider rejects the generated term
 - **THEN** the system records a non-retryable rejection naming the cause, does not retry automatically, and does not present the office as authorized
+
+### Requirement: Documento do termo reproduz o modelo de referência do provedor
+The system SHALL build the term document reproducing the provider's published reference model verbatim, including the three points of that model that look like typos — the `finalidade ` element name carrying a trailing space, the `+30 days` validity period, and a signature digest computed with exclusive XML canonicalization while the `Reference` declares the inclusive one. The reference model is the only available authority: the provider's term documentation is unreachable and publishes no schema, so tidying any of the three would be a guess about a schema the provider validates. The system SHALL treat each of the three as a decision carrying a gate, and SHALL NOT emit a term until a contract test against the provider has proven that the document is accepted, that the roles are the ones the gateway expects, and that a still-valid term resubmission answers not-modified with the token.
+
+#### Scenario: Nome do elemento preservado como o modelo o traz
+- **WHEN** the term document is built
+- **THEN** the `finalidade` element is named exactly as the reference model names it, trailing space included, and no cleanup is applied to it
+
+#### Scenario: Vigência preservada como o modelo a traz
+- **WHEN** the term document is built
+- **THEN** the validity period is the reference model's own thirty-day period, computed as a date in `America/Sao_Paulo`, and no other period is substituted for it; what is preserved is the period, not the reference model's `date()` call, which cannot run
+
+#### Scenario: Canonicalização preservada como o modelo a traz
+- **WHEN** the term document is signed
+- **THEN** the digest is canonicalized the way the reference model canonicalizes it, and the coincidence between the exclusive and inclusive forms is asserted by a test that fails if the term document ever declares a namespace prefix of its own
+
+#### Scenario: Emissão bloqueada sem prova de contrato
+- **WHEN** issuance of a term is requested and no contract test has proven that the provider accepts the document
+- **THEN** nothing is submitted, the term is reported as blocked pending that proof rather than as authorized, and the office is not reported as authorized
+
+#### Scenario: Emissão liberada pela prova de contrato
+- **WHEN** a contract test has proven that the provider accepts the document with these three values
+- **THEN** issuance proceeds without changing any of the three, so the document the test proved is the document that is sent
 
 ### Requirement: Procuração e-CAC como condição para agir pelo cliente
 The system SHALL request Serpro data for a client only when that client has, for the service family in question, a procuração currently valid, and SHALL treat a client without a valid procuração as not eligible without issuing any request on its behalf.

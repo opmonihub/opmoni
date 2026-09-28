@@ -52,11 +52,11 @@ exposta na resposta.
 
 - [ ] 4.6 Montar o documento de autorização em um único ponto de entrada, com o escritório como destinatário, normalizando caracteres Unicode invisíveis **antes** de assinar e passando os bytes à rotina isolada, que devolve o documento assinado sem reserializar; verificar com teste que a estrutura XMLDSig é a esperada e que a assinatura confere com a chave pública do certificado
 
-- [ ] 4.6a **Depende de teste de contrato real com o provedor, ainda não feito.** Confirmar com o ambiente de demonstração que o termo é aceito, que os papéis do documento são os que o gateway espera, que o nome do elemento `finalidade` e a data de vigência corrigidos são os esperados, e que o reenvio de um termo válido responde `304` com o token no `ETag`. Nenhum teste local prova esses quatro pontos; emitir termo sem eles é emitir termo sem prova de aceitação
+- [ ] 4.6a **Depende de teste de contrato real com o provedor, ainda não feito, e bloqueia a emissão.** Confirmar com o ambiente de demonstração que o termo é aceito, que os papéis do documento são os que o gateway espera, e que o reenvio de um termo válido responde `304` com o token no `ETag`. Os três pontos que parecem erro no modelo de referência — `finalidade ` com espaço, vigência `+30 days` e a canonicalização exclusiva do digest contra a `Reference` inclusiva — **são decisão de manter verbatim, não a corrigir**: a documentação do termo do provedor responde `500` e não publica XSD, então o modelo é a única autoridade. Nenhum teste local prova aceitação; emitir termo sem isso é emitir termo sem prova de que o provedor o aceita
 
 - [ ] 4.7 Gerar migration, model, factory, policy e resource de `serpro_authorization_terms`, com o documento assinado guardado verbatim, o token, o vencimento e o estado; verificar com rollback
 
-- [ ] 4.8 Implementar a emissão automática do termo quando o certificado é armazenado, submeter ao serviço gratuito de apoio e persistir token e vencimento; verificar com `Http::fake` que a submissão ocorreu e o token foi salvo
+- [ ] 4.8 Implementar a emissão automática do termo quando o certificado é armazenado **e** o teste de contrato do 4.6a tiver provado que o provedor aceita o documento, submeter ao serviço gratuito de apoio e persistir token e vencimento; sem essa prova a emissão fica bloqueada e nada é enviado; verificar com `Http::fake` que a submissão ocorreu e o token foi salvo, e com teste de negação que, sem a prova, nada é submetido
 
 - [ ] 4.9 Implementar a renovação diária por reenvio do mesmo documento, tratando a resposta de não-modificado com o token no `ETag`; verificar com teste que o documento armazenado não é re-assinado nem alterado
 
