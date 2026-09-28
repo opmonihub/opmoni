@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AccountController as AdminAccountController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
+use App\Http\Controllers\Admin\SerproConnectionController as AdminSerproConnectionController;
 use App\Http\Controllers\Admin\SubscriptionController as AdminSubscriptionController;
 use App\Http\Controllers\Admin\SupportLogController as AdminSupportLogController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
+use App\Models\SerproConnection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -86,3 +88,17 @@ Route::middleware(['auth:sanctum', 'super_admin'])
     ->post('support/accounts/{account}/enter', [SupportAccessController::class, 'enter']);
 Route::middleware(['auth:sanctum', 'super_admin'])
     ->post('support/exit', [SupportAccessController::class, 'exit']);
+
+/*
+ * A credencial do Integra Contador é da plataforma: uma linha só, fora de
+ * qualquer conta. Por isso estas rotas ficam fora do grupo `tenant` — a conta
+ * corrente não é a dona da credencial, e dizer o contrário faria a policy
+ * responder pelo vínculo errado.
+ */
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('serpro/connection', [AdminSerproConnectionController::class, 'show'])
+        ->middleware('can:viewAny,'.SerproConnection::class);
+
+    Route::put('serpro/connection', [AdminSerproConnectionController::class, 'update'])
+        ->middleware('super_admin');
+});

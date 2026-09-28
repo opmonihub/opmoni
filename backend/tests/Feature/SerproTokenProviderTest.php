@@ -9,6 +9,7 @@ use App\Services\SerproTokenProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -24,6 +25,40 @@ class SerproTokenProviderTest extends TestCase
         Http::preventStrayRequests();
     }
 
+    private function connection(): SerproConnection
+    {
+        // PFX real, com o mesmo CNPJ da coluna de contratante: a autenticação
+        // confere a identidade antes de sair para a rede, e um certificado de
+        // mentira faria estes testes medirem outra coisa.
+        $config = file_exists('/etc/ssl/openssl.cnf') ? ['config' => '/etc/ssl/openssl.cnf'] : [];
+
+        $key = openssl_pkey_new(array_merge(
+            ['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA],
+            $config,
+        ));
+        $this->assertNotFalse($key);
+
+        $csr = openssl_csr_new(
+            ['CN' => 'SERPRO PLATAFORMA LTDA:12345678000195', 'serialNumber' => '12345678000195'],
+            $key,
+            array_merge(['digest_alg' => 'sha256'], $config),
+        );
+        $this->assertNotFalse($csr);
+
+        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $this->assertNotFalse($certificate);
+
+        $pfx = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $pfx, $key, 'senha'));
+
+        return SerproConnection::factory()->create([
+            'certificate_encrypted' => Crypt::encryptString($pfx),
+            'certificate_password_encrypted' => Crypt::encryptString('senha'),
+            'contratante_numero' => '12345678000195',
+            'certificate_valid_until' => now()->addYear(),
+        ]);
+    }
+
     public function test_it_requests_the_pair_with_the_documented_headers(): void
     {
         Http::fake([
@@ -35,10 +70,7 @@ class SerproTokenProviderTest extends TestCase
             ]),
         ]);
 
-        $connection = SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         $pair = resolve(SerproTokenProvider::class)->pair();
 
@@ -65,10 +97,7 @@ class SerproTokenProviderTest extends TestCase
             ]),
         ]);
 
-        SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         $provider = resolve(SerproTokenProvider::class);
         $provider->pair();
@@ -87,10 +116,7 @@ class SerproTokenProviderTest extends TestCase
             ]),
         ]);
 
-        SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         $provider = resolve(SerproTokenProvider::class);
         $provider->pair();
@@ -108,10 +134,7 @@ class SerproTokenProviderTest extends TestCase
             ], 400),
         ]);
 
-        SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         try {
             resolve(SerproTokenProvider::class)->pair();
@@ -131,10 +154,7 @@ class SerproTokenProviderTest extends TestCase
             ]),
         ]);
 
-        SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         try {
             resolve(SerproTokenProvider::class)->pair();
@@ -149,10 +169,7 @@ class SerproTokenProviderTest extends TestCase
     {
         Http::fake(Http::failedConnection('connection refused'));
 
-        SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
-        ]);
+        $this->connection();
 
         try {
             resolve(SerproTokenProvider::class)->pair();

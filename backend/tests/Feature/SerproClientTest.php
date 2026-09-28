@@ -10,6 +10,7 @@ use App\Services\SerproTokenPair;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -27,12 +28,49 @@ class SerproClientTest extends TestCase
 
     private function connection(): SerproConnection
     {
+        // O PFX é real, e o seu CNPJ é o mesmo que a coluna de contratante:
+        // a chamada passa por `assertIdentity()` antes de qualquer rede, e um
+        // certificado de mentira seria recusado por um motivo que nada tem a ver
+        // com o que estes testes exercitam.
+        $pfx = $this->platformPfx();
+
         return SerproConnection::factory()->create([
-            'certificate_encrypted' => encrypt('pfx'),
-            'certificate_password_encrypted' => encrypt('senha'),
+            'certificate_encrypted' => Crypt::encryptString($pfx),
+            'certificate_password_encrypted' => Crypt::encryptString('senha'),
             'contratante_numero' => '12345678000195',
             'contratante_tipo' => 2,
+            'certificate_valid_until' => now()->addYear(),
         ]);
+    }
+
+    /**
+     * Certificado da plataforma gerado em runtime: `.pfx` é ignorado pelo git,
+     * então um fixture versionado não existe.
+     */
+    private function platformPfx(): string
+    {
+        $config = file_exists('/etc/ssl/openssl.cnf') ? ['config' => '/etc/ssl/openssl.cnf'] : [];
+
+        $key = openssl_pkey_new(array_merge(
+            ['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA],
+            $config,
+        ));
+        $this->assertNotFalse($key);
+
+        $csr = openssl_csr_new(
+            ['CN' => 'SERPRO PLATAFORMA LTDA:12345678000195', 'serialNumber' => '12345678000195'],
+            $key,
+            array_merge(['digest_alg' => 'sha256'], $config),
+        );
+        $this->assertNotFalse($csr);
+
+        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $this->assertNotFalse($certificate);
+
+        $pfx = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $pfx, $key, 'senha'));
+
+        return $pfx;
     }
 
     private function fakeTokens(): void

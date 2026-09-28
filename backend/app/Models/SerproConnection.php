@@ -2,11 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\SerproFailure;
+use App\Services\SerproCertificateIdentity;
+use App\Services\SerproException;
 use Database\Factories\SerproConnectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'consumer_key',
@@ -20,10 +26,26 @@ use Illuminate\Support\Facades\Crypt;
     'contratante_numero',
     'contratante_tipo',
 ])]
+// Nenhuma coluna cifrada pode sair por `toArray()`/`toJson()`: a resource lista
+// o que devolve, e isto é o que garante que uma lista nova não vaze o segredo.
+#[Hidden([
+    'consumer_secret_encrypted',
+    'certificate_encrypted',
+    'certificate_password_encrypted',
+])]
 class SerproConnection extends Model
 {
     /** @use HasFactory<SerproConnectionFactory> */
     use HasFactory;
+
+    /**
+     * A chave da identidade extraída, derivada do texto cifrado do certificado:
+     * trocar o certificado gera outra chave, então o cache não sobrevive à
+     * rotação, e o `v1` invalida o que uma regra de extração anterior tenha
+     * gravado. O que é cacheado é o documento — que a API já publica — e nunca
+     * o segredo, a senha ou os bytes do PFX.
+     */
+    private const IDENTITY_CACHE_PREFIX = 'serpro:identity:v1:';
 
     protected function casts(): array
     {
@@ -39,6 +61,12 @@ class SerproConnection extends Model
     public static function current(): ?self
     {
         return self::query()->first();
+    }
+
+    public function isConfigured(): bool
+    {
+        return (string) $this->consumer_key !== ''
+            && $this->consumer_secret_encrypted !== null;
     }
 
     public function consumerSecret(): string
@@ -61,12 +89,53 @@ class SerproConnection extends Model
     }
 
     /**
+     * Pré-condição da primeira chamada: o CNPJ dentro do certificado guardado
+     * precisa ser o mesmo que a coluna de contratante manda para o envelope.
+     *
+     * Falhar aqui troca o `403` do provedor — que, para uma credencial
+     * compartilhada, não distingue documento errado de senha errada — por uma
+     * falha de configuração nomeada, sem nenhuma ida à rede. A comparação usa
+     * o certificado gravado, não o que o formulário mandou.
+     *
+     * @throws SerproException
+     */
+    public function assertIdentity(): void
+    {
+        if ($this->certificate_encrypted === null) {
+            // Sem certificado não há identidade a conferir; quem recusa a
+            // credencial sem certificado é o materializador, logo em seguida.
+            return;
+        }
+
+        if ($this->certificate_valid_until !== null && $this->certificate_valid_until->isPast()) {
+            throw new SerproException(
+                'O certificado do contratante está vencido.',
+                SerproFailure::DoNotRetry,
+                0,
+            );
+        }
+
+        $document = $this->cachedDocument();
+
+        // Nenhum dos dois é segredo — o documento contratante é publicado pela
+        // API — então a mensagem nomeia os dois: um `403` do provedor sem dizer
+        // qual CNPJ discordou é o defeito que esta guarda existe para evitar.
+        if ($document !== (string) $this->contratante_numero) {
+            throw new SerproException(
+                "O certificado do contratante é do CNPJ {$document}, e não {$this->contratante_numero}.",
+                SerproFailure::DoNotRetry,
+                0,
+            );
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function safeMetadata(): array
     {
         return [
-            'configured' => $this->consumer_key !== '' && $this->consumer_secret_encrypted !== null,
+            'configured' => $this->isConfigured(),
             'certificate_subject' => $this->certificate_subject,
             'certificate_serial_number' => $this->certificate_serial_number,
             'certificate_valid_from' => $this->certificate_valid_from?->toISOString(),
@@ -74,5 +143,28 @@ class SerproConnection extends Model
             'contratante_numero' => $this->contratante_numero,
             'contratante_tipo' => $this->contratante_tipo,
         ];
+    }
+
+    /**
+     * @throws SerproException
+     */
+    private function cachedDocument(): string
+    {
+        $cacheKey = self::IDENTITY_CACHE_PREFIX.hash('sha256', (string) $this->certificate_encrypted);
+
+        $document = Cache::remember($cacheKey, now()->addDay(), function (): string {
+            try {
+                return resolve(SerproCertificateIdentity::class)
+                    ->document((string) $this->certificateBytes(), (string) $this->certificatePassword());
+            } catch (ValidationException $exception) {
+                throw new SerproException(
+                    'O certificado do contratante não pôde ser lido: '.($exception->validator->errors()->first() ?: 'identidade ausente.'),
+                    SerproFailure::DoNotRetry,
+                    0,
+                );
+            }
+        });
+
+        return (string) $document;
     }
 }

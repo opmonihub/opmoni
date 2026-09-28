@@ -42,6 +42,11 @@ final class SerproTokenProvider
             );
         }
 
+        // A identidade é conferida antes de qualquer autenticação: pedir token
+        // com um certificado que não é o do contratante gasta uma chamada
+        // recusada para descobrir o que já se sabe localmente.
+        $connection->assertIdentity();
+
         return $this->materializer->withCertificate(
             $connection,
             fn (string $path): SerproTokenPair => $this->request($connection, $path),

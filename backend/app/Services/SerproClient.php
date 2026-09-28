@@ -39,6 +39,12 @@ final class SerproClient
             );
         }
 
+        // Antes de materializar o PFX e antes de autenticar: o `contratante` do
+        // envelope tem de ser o CNPJ do certificado, e essa é a última hora em
+        // que a divergência é um defeito de configuração nomeado, e não um
+        // `403` do provedor que ninguém consegue distinguir de senha errada.
+        $connection->assertIdentity();
+
         $service = $this->service($idServico);
         $tag = $this->tag->build($autor, $contribuinte, $serviceSequence);
 
