@@ -110,24 +110,46 @@ class FiscalDocuments
     }
 
     /**
-     * Ordem da página, com desempate por id.
+     * Ordem da página, com desempate por id e sem data por último.
      *
      * Sem campo de ordenação, a emissão mais recente vem primeiro — a leitura
      * de quem abre a tabela é "o que aconteceu por último". O desempate é o id
      * na mesma direção, porque duas notas emitidas no mesmo segundo não podem
      * trocar de lugar entre a primeira e a segunda página.
      *
+     * A coluna de emissão é nullable, e a linha sem data de emissão é real: o
+     * resumo da conta já precisa excluí-la da série por não conseguir
+     * colocá-la em um mês. Onde ela cai no `ORDER BY` não pode ser o padrão do
+     * banco, e os padrões divergem — o Postgres põe `NULL` **primeiro** no
+     * `DESC` (e primeiro no `ASC` do SQLite, que põe por último no `DESC`).
+     *
+     * Por isso a ausência é resolvida por uma expressão explícita antes da
+     * direção, e não pela opção óbvia: `nulls last` é sintaxe do Postgres e
+     * quebraria a suíte, que roda em SQLite e é a suíte que precisa continuar
+     * provando isto. `(coluna IS NULL)` vale `0`/`1` nos três dialetos e `0` vem
+     * antes de `1` em todos, então o `asc` põe a linha com valor primeiro em
+     * qualquer direção escolhida. A alternativa portátil seria `CASE WHEN`,
+     * que é a mesma coisa com mais SQL.
+     *
      * @param  array<string, mixed>  $filters
      * @return Builder<FiscalDocument>
      */
     private function sorted(Builder $documents, array $filters): Builder
     {
-        $coluna = $filters['sort'] ?? 'emissao_at';
-        $direcao = $filters['direction'] ?? 'desc';
+        // A coluna e a direção são reescritas para a lista fechada, e não só
+        // validadas no Request: este serviço é público e a direção vai para o
+        // SQL como texto puro.
+        $sorteio = $filters['sort'] ?? null;
+        $coluna = $documents->getModel()->qualifyColumn(
+            in_array($sorteio, self::ORDENS, true) ? $sorteio : 'emissao_at'
+        );
+        $invertida = strtolower((string) ($filters['direction'] ?? 'desc'));
+        $direcao = in_array($invertida, ['asc', 'desc'], true) ? $invertida : 'desc';
 
         return $documents
-            ->orderBy(in_array($coluna, self::ORDENS, true) ? $coluna : 'emissao_at', $direcao)
-            ->orderBy('id', $direcao);
+            ->orderByRaw("({$coluna} IS NULL) asc")
+            ->orderBy($coluna, $direcao)
+            ->orderBy($documents->getModel()->qualifyColumn('id'), $direcao);
     }
 
     /**

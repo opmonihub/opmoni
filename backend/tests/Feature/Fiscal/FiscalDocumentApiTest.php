@@ -20,6 +20,7 @@ use Carbon\CarbonImmutable;
 use Database\Factories\ClientCertificateFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -550,6 +551,56 @@ class FiscalDocumentApiTest extends TestCase
             ->assertJsonPath('data.2.id', $empateAntigo->getKey())
             ->assertJsonPath('data.3.id', $meio->getKey())
             ->assertJsonPath('data.4.id', $antigo->getKey());
+    }
+
+    /**
+     * A ordem da lista principal precisa ser a mesma em toda dialecto, e ela não
+     * é por padrão: o Postgres ordena `NULL` **primeiro** no `DESC` e o SQLite
+     * ordena por último, então a primeira página da tabela seria diferente no
+     * ambiente que roda e no ambiente que testa. Documento sem data de emissão
+     * não é hipótese — o resumo da Task 1 já precisa excluí-lo da série por
+     * não conseguir colocá-lo em um mês.
+     */
+    public function test_lista_ordena_documento_sem_data_por_ultimo_em_todo_dialeto(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documentos');
+
+        $antigo = $this->documento($cliente, ['emissao_at' => '2026-08-01 09:00:00']);
+        $novo = $this->documento($cliente, ['emissao_at' => '2026-09-20 09:00:00']);
+        $semData = $this->documento($cliente, ['emissao_at' => null]);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // A intenção, provada no dialeto que a suíte roda. Ela já valia no
+        // SQLite antes da correção — por isso a asserção de SQL abaixo, e não
+        // esta, é a que pega a regressão.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('data.0.id', $novo->getKey())
+            ->assertJsonPath('data.1.id', $antigo->getKey())
+            ->assertJsonPath('data.2.id', $semData->getKey());
+
+        // O mesmo para o lado ascendente: sem data no fim também, e não no
+        // começo, que é onde o `NULLS FIRST` do Postgres a colocaria.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $antigo->getKey())
+            ->assertJsonPath('data.1.id', $novo->getKey())
+            ->assertJsonPath('data.2.id', $semData->getKey());
+
+        // E o que realmente fecha a porta: a consulta não pode depender do
+        // padrão do dialeto. Ela carrega a expressão explícita que põe o
+        // ausente por último, e não a sintaxe `nulls last` do Postgres — que
+        // quebraria a suíte em SQLite, que é justamente a suíte que precisa
+        // continuar provando isto.
+        $sql = $this->sqlDaLista($membro);
+
+        $this->assertStringContainsString('is null', strtolower($sql));
+        $this->assertStringNotContainsString('nulls last', strtolower($sql));
     }
 
     public function test_lista_ordena_por_valor_e_por_captura_quando_pedido(): void
@@ -1120,6 +1171,34 @@ class FiscalDocumentApiTest extends TestCase
         $user->forceFill(['current_account_id' => $account->getKey()])->save();
 
         return $user->refresh();
+    }
+
+    /**
+     * O SQL da consulta que montou a última página da lista, com a ordenação
+     * inclusa. Existe para o teste de porta fixa poder olhar a consulta
+     * em vez de só o resultado dela: o comportamento do `NULL` neste dialeto já
+     * era o certo antes da correção, e o que podia voltar a quebrar era a
+     * consulta voltar a confiar no padrão do dialeto.     */
+    private function sqlDaLista(User $membro): string
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk();
+
+        $sql = collect(DB::getQueryLog())
+            ->map(fn (array $query): string => strtolower($query['query']))
+            ->first(fn (string $query): bool => str_contains($query, 'from "fiscal_documents"')
+                && str_contains($query, 'order by')
+                && ! str_contains($query, 'count(*)'));
+
+        DB::disableQueryLog();
+
+        $this->assertIsString($sql, 'a consulta da página não foi registrada no log');
+
+        return (string) $sql;
     }
 
     /**
