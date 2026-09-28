@@ -17,8 +17,8 @@ enum SerproFailure: string
      * precisa de outra fonte para saber *o que* houve, e quase sempre não tem
      * essa fonte — por isso ele raramente chega cru ao consumidor.
      *
-     * **Produtores em três famílias, e o `status` é o único que separa duas
-     * delas.**
+     * **Oito produtores em quatro famílias, e o `status` é o único que separa
+     * duas delas.**
      *
      * *Família local — `status` zero, nenhum provedor chegou a ver nada.*
      * Nenhuma delas pede o mesmo conserto:
@@ -38,26 +38,29 @@ enum SerproFailure: string
      *    ausente. O conserto é **trocar o certificado** ou recadastrar a
      *    credencial.
      *
-     * *Família do provedor — `status` real.* `SerproTokenProvider::refusal()`
-     * devolve este caso para todo `4xx` que não seja `429`, sempre com o
-     * `status` que a resposta carregou e nunca zero. O conserto é **revisar
-     * chave, segredo e certificado**, e é o único dos quatro em que houve
-     * resposta de alguém.
+     * *Família do provedor — `status` real.* Dois caminhos distintos chegam
+     * nela, e nenhum deles devolve `status` zero porque a resposta que os
+     * produziu carrega o `status` dela: `SerproTokenProvider::refusal()` para a
+     * autenticação e `SerproException::classify()` para a chamada de serviço,
+     * cada um no seu `4xx` que não seja `429` nem `504`. O conserto é **revisar
+     * chave, segredo e certificado**, e é a única família em que houve resposta
+     * de alguém.
      *
-     * Hoje só o quarto caso é distinguível pelo `status` — e é por isso que
-     * `SerproConnectivity::elementFor()` pode tratar `0` como certificado.
-     * Lá isso vale porque os guard de `check()` responderam **antes** pelos
-     * outros dois casos locais, o que não é verdade de nenhum outro
-     * consumidor: a sincronização da plan 04 não passa por `check()` e vai
-     * receber os três indistinguíveis.
+     * Três famílias locais compartilham a assinatura `DoNotRetry` com `status`
+     * zero, e nenhuma delas é separável da outra por esse campo — e é por isso
+     * que `SerproConnectivity::elementFor()` pode tratar `0` como certificado:
+     * lá os guard de `check()` responderam **antes** por "não existe credencial"
+     * e por "certificado ausente", o que não é verdade de nenhum outro
+     * consumidor. A sincronização da plan 04 não passa por `check()` e vai
+     * receber as três indistinguíveis.
      *
      * **A correção é do consumidor, porque o contexto não viaja na exceção.**
      * Quem chama `SerproClient::call()` sabe se está no meio de uma execução e
      * qual serviço pediu; `SerproException` não sabe. Até existir uma
-     * conferência que distinga as três famílias locais, tratar `DoNotRetry`
-     * como uma coisa só — "não repetir, avisar o operador" — é a leitura
-     * **segura**: nenhum dos casos se resolve com nova tentativa, e é a única
-     * que não inventa um desfecho que ninguém produziu.
+     * conferência que distinga as famílias locais, tratar `DoNotRetry` como uma
+     * coisa só — "não repetir, avisar o operador" — é a leitura **segura**:
+     * nenhum dos casos se resolve com nova tentativa, e é a única que não inventa
+     * um desfecho que ninguém produziu.
      */
     case DoNotRetry = 'do_not_retry';
     case Throttled = 'throttled';

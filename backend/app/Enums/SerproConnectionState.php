@@ -37,6 +37,12 @@ namespace App\Enums;
  * contrato: o `->value` continuaria sendo a string publicada e a união do cliente
  * (`frontend/app/types/serpro.ts`) não mudaria. Ele não existe porque está fora do
  * escopo da tarefa que o definiria, e não porque o caminho esteja fechado.
+ *
+ * A coluna `serpro_connections.state` já existe e é anulável, e nenhum valor
+ * deste enum é gravado: quem escreve o estado é a sincronização, quando a
+ * emissão do token é recusada. Enquanto isso não acontece, `null` é a afirmação
+ * honesta de "ninguém registrou o estado desta credencial", e nenhum leitor
+ * pode tratar `null` como um destes quatro sem saber quem gravou.
  */
 enum SerproConnectionState: string
 {
