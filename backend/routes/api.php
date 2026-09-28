@@ -19,6 +19,7 @@ use App\Http\Controllers\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Tenant\ClientSelectionController;
 use App\Http\Controllers\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\FiscalDocumentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
@@ -68,6 +69,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::get('process-templates/{process_template}/preview', [ProcessTemplateController::class, 'preview']);
     Route::post('process-templates/{process_template}/generate', [ProcessTemplateController::class, 'generate']);
     Route::apiResource('tasks', TaskController::class)->only(['index', 'show', 'update']);
+    Route::get('fiscal/summary', [FiscalDocumentController::class, 'summary']);
     Route::get('work/calendar', [TaskController::class, 'calendar']);
     Route::get('work/grouped', [TaskController::class, 'grouped']);
     Route::get('work/tasks/unscoped', [TaskController::class, 'unscopedForMonth']);
