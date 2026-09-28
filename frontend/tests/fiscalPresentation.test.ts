@@ -504,7 +504,6 @@ describe('rótulo do mês e da fonte', () => {
     assert.equal(fiscalSourceLabel('cte_distribuicao'), 'CT-e')
   })
 })
-
 describe('última consulta', () => {
   it('distingue "nunca consultou" de "consultou e não achou nada"', () => {
     // O backend manda `null` para o primeiro caso, e a distinção é a primeira
@@ -601,20 +600,35 @@ describe('a reancoragem do relógio das janelas', () => {
   // novo, e o painel conta esse valor novo com o relógio velho, fazendo a janela
   // crescer sozinha. Nenhum teste de módulo pega isso, e é por isso que esta
   // parte lê o texto da página.
+  //
+  // O que estas três asserções bloqueiam, uma a uma, e que uma "simplificação"
+  // do `.vue` desfaria sem erro de tipo — nenhuma delas quebra o build, e é por
+  // isso que precisam existir:
+  //
+  // 1. trocar `new Date(referenceNow.value)` por `new Date()` no `remaining` —
+  //    relógio do navegador na contagem e texto de hidratação diferente do SSR;
+  // 2. mover a reancoragem para fora do handler da busca (para um `watch` do
+  //    botão, por exemplo), que é onde o defeito nasceu;
+  // 3. aninhar a reancoragem num `if` dentro do handler, de modo que ela exista
+  //    no texto e nunca rode;
+  // 4. reancorar em dois pontos, aceitando que um deles esteja errado.
 
   const page = readFileSync(new URL('../app/pages/fiscal/index.vue', import.meta.url), 'utf8')
 
   /**
-   * O corpo do handler que a busca entrega ao `useAsyncData`, por casamento de
-   * chaves. Recortar a chamada inteira não bastaria: um `watch` do botão fica
-   * logo abaixo e passaria, e foi exatamente ali que o defeito nasceu.
+   * O corpo da função que começa no trecho dado, por contagem de chaves.
+   *
+   * Recortar a chamada inteira não bastaria: um `watch` do botão fica logo
+   * abaixo do handler da busca e passaria, e foi exatamente ali que o defeito
+   * nasceu. Por isso o recorte é pelo cabeçalho da função, e não pelo da
+   * chamada.
    */
-  function fetchHandler(source: string): string {
-    const call = source.indexOf('useAsyncData<FiscalSummary>(')
-    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
+  function bodyOf(source: string, header: string): string {
+    const at = source.indexOf(header)
+    assert.notEqual(at, -1, `a página não tem \`${header}\``)
 
-    const open = source.indexOf('{', source.indexOf('async () =>', call))
-    assert.notEqual(open, -1, 'a busca não tem um handler de corpo')
+    const open = source.indexOf('{', at + header.length - 1)
+    assert.notEqual(open, -1, `\`${header}\` não tem corpo de bloco`)
 
     let depth = 0
     for (let index = open; index < source.length; index++) {
@@ -625,24 +639,85 @@ describe('a reancoragem do relógio das janelas', () => {
       }
     }
 
-    return assert.fail('o handler da busca não fecha')
+    return assert.fail(`o corpo de \`${header}\` não fecha`)
+  }
+
+  /** O corpo do handler que a busca entrega ao `useAsyncData`. */
+  function fetchHandler(source: string): string {
+    const call = source.indexOf('useAsyncData<FiscalSummary>(')
+    assert.notEqual(call, -1, 'a página não busca o resumo com useAsyncData')
+
+    const at = source.indexOf('async () =>', call)
+    assert.notEqual(at, -1, 'a busca não tem um handler')
+
+    return bodyOf(source.slice(at), 'async () =>')
+  }
+
+  /**
+   * A posição da primeira ocorrência do padrão **na profundidade zero** do
+   * corpo, ou `-1`.
+   *
+   * A profundidade é o que separa uma linha que roda de uma linha que existe no
+   * texto: `if (...) { referenceNow.value = ... }` casaria com a mesma busca por
+   * texto, e o ramo que nunca entra deixa a reancoragem sem acontecer sem que
+   * nada mude de assinatura ou de tipo.
+   */
+  function topLevelIndex(body: string, pattern: RegExp): number {
+    let depth = 0
+
+    for (let index = 0; index < body.length; index++) {
+      if (body[index] === '{') depth++
+      else if (body[index] === '}') depth--
+      else if (depth === 0) {
+        const resto = body.slice(index)
+        if (resto.match(pattern)) return index
+      }
+    }
+
+    return -1
   }
 
   it('reancora dentro do handler que traz o resumo, e antes de devolver', () => {
-    // Três coisas precisam ser verdade ao mesmo tempo: o recorte é o handler
-    // que busca, é nele que o relógio é reancorado, e a reancoragem acontece
-    // antes do `return` — depois do `return` a linha é código morto que uma
-    // busca por texto aceitaria sem pestanejar.
+    // Quatro coisas precisam ser verdade ao mesmo tempo: o recorte é o handler
+    // que busca, é nele que o relógio é reancorado, a reancoragem acontece na
+    // profundidade zero — fora de qualquer `if` — e acontece antes do `return`.
+    // Depois do `return` a linha é código morto, e dentro de um `if` é código
+    // que talvez nunca rode: as duas coisas que uma busca por texto aceitaria
+    // sem pestanejar.
     const handler = fetchHandler(page)
 
     assert.match(handler, /await summary\(\)/, 'o recorte não é o handler que busca o resumo')
 
-    const reancora = handler.search(/referenceNow\.value\s*=/)
-    assert.notEqual(reancora, -1, 'a reancoragem do relógio não está no handler da busca')
+    const reancora = topLevelIndex(handler, /^referenceNow\.value\s*=/)
+    assert.notEqual(
+      reancora,
+      -1,
+      'a reancoragem do relógio não está no handler da busca, ou está aninhada num bloco'
+    )
 
     const devolve = handler.search(/\breturn\b/)
     assert.notEqual(devolve, -1, 'o handler não devolve nada')
     assert.ok(reancora < devolve, 'a reancoragem está depois do return, ou seja, nunca roda')
+  })
+
+  it('conta a janela com o relógio reancorado, e não com o do navegador', () => {
+    // A escrita sem a leitura é o outro jeito de perder a garantia: o relógio é
+    // reancorado, o teste da escrita passa, e a contagem passa a usar
+    // `new Date()` do cliente. O resultado é a janela contada pelo relógio de
+    // cada máquina — que não é o relógio que o servidor pintou — e um texto de
+    // hidratação que não bate com o do SSR.
+    const contagem = bodyOf(page, 'function remaining(')
+
+    assert.match(
+      contagem,
+      /new Date\(referenceNow\.value\)/,
+      'a contagem da janela não usa o relógio reancorado'
+    )
+    assert.doesNotMatch(
+      contagem,
+      /new Date\(\s*\)/,
+      'a contagem da janela usa o relógio do navegador, que o servidor não pintou'
+    )
   })
 
   it('mantém o relógio em um só lugar, e é o lugar certo', () => {
