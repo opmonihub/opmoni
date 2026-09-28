@@ -241,20 +241,41 @@ export function fiscalEventCount(row: { event_count: number }): string {
   return row.event_count === 0 ? 'Sem eventos' : formatFiscalCount(row.event_count)
 }
 
-/** O que a linha é: o documento autorizado ou o evento que o acompanha. */
+/**
+ * O que a linha é: o documento autorizado ou o evento que o acompanha.
+ *
+ * Mapa `Record` sobre o tipo, e não ternário, pelo mesmo motivo de
+ * `attentionCopy`: `FiscalKind` é uma lista fechada, e um membro novo que caísse
+ * num ternário com padrão viraria "Documento" em toda linha nova sem erro de
+ * tipo e sem teste quebrado. O `Record` faz o compilador pedir a palavra.
+ */
+const kindLabels: Record<FiscalKind, string> = {
+  document: 'Documento',
+  event: 'Evento'
+}
+
 export function fiscalKindLabel(kind: FiscalKind): string {
-  return kind === 'event' ? 'Evento' : 'Documento'
+  return kindLabels[kind]
 }
 
 /**
  * A etapa da distribuição que entregou a linha.
  *
- * É vocabulario do fisco, e o operador do escritório não o conhece: o resumo é
+ * É vocabulário do fisco, e o operador do escritório não o conhece: o resumo é
  * o documento autorizado e o evento que o acompanha, e não "stage document".
+ *
+ * `Record` pelo mesmo motivo de `kindLabels`: a etapa é uma união fechada, e o
+ * padrão de um ternário decorava a terceira etapa de "Documento autorizado" sem
+ * que ninguém visse.
  */
+const stageLabels: Record<FiscalStage, string> = {
+  summary: 'Resumo da distribuição',
+  document: 'Documento autorizado',
+  event: 'Evento autorizado'
+}
+
 export function fiscalStageLabel(stage: FiscalStage): string {
-  if (stage === 'event') return 'Evento autorizado'
-  return stage === 'summary' ? 'Resumo da distribuição' : 'Documento autorizado'
+  return stageLabels[stage]
 }
 
 /** A origem da última consulta, pelo nome que o fisco usa. */
