@@ -175,6 +175,32 @@ class SerproEnvelopeTest extends TestCase
     }
 
     /**
+     * A mesma troca de tipo, nos outros dois escalares do JSON. `'true'` virava
+     * booleano e `'null'` virava nulo — e um `dados` que o serviço mandou como
+     * texto chegando como `true` é um payload que o consumidor lê como sinal, não
+     * como conteúdo. Nenhum dos três é objeto ou lista, que é o que o laço
+     * aceita atravessar.
+     */
+    public function test_um_escalar_json_nunca_troca_o_tipo_da_string(): void
+    {
+        $this->assertSame('true', $this->parseDadosString('true'));
+        $this->assertSame('false', $this->parseDadosString('false'));
+        $this->assertSame('null', $this->parseDadosString('null'));
+
+        // Um JSON de string é a única forma que o guard deixa atravessar como
+        // texto, e atravessar é o certo: são duas camadas de aspas, que é o
+        // `dados` duplamente serializado, e o que sai é o conteúdo.
+        $this->assertSame('true', $this->parseDadosString('"true"'));
+
+        // A diferença do `null` para os outros dois escalares não é de grau:
+        // `json_decode` devolve `null` **sem** erro nenhum, então um guard
+        // escrito em cima de `is_scalar` — que é falso justamente para `null` —
+        // deixa este passar. A afirmação é sobre o erro, que precisa vir limpo.
+        $this->assertNull(json_decode('null', true));
+        $this->assertSame(JSON_ERROR_NONE, json_last_error());
+    }
+
+    /**
      * Duas passagens e nem uma a mais. Com três camadas de string, a terceira
      * entregaria o conteúdo e apagaria a prova de que a camada existia, e um
      * `while` "até não dar mais" continua decompondo o que vier depois.

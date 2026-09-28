@@ -72,17 +72,25 @@ final class SerproEnvelope
      * máximo, e cada uma só acontece quando o texto é JSON; o que sobra é o
      * que o serviço mandou.
      *
-     * Um número solto não é payload de serviço. `'00000000000000'` é um
-     * documento com zeros à esquerda, e lido como número vira `0` — um
-     * identificador que existe, que casa com outros e que ninguém reconheceria
-     * como documento. Fica string.
+     * Só o payload e a camada atravessam uma passagem. Qualquer outro JSON
+     * trocaria o tipo da string em silêncio, e é a mesma perda de todos os
+     * jeitos: `'00000000000000'` viraria `0`, um identificador que existe e que
+     * ninguém reconheceria como documento; `'true'` e `'null'` virariam
+     * booleano e nulo, e um `dados` que o serviço mandou como texto chegaria ao
+     * consumidor como sinal. Nenhum dos três é payload — payload é o objeto ou a
+     * lista que o serviço devolve — e quem vem de outra forma volta como string,
+     * que é o que foi mandado.
      */
     private function dados(mixed $raw): mixed
     {
         for ($pass = 0; $pass < 2 && is_string($raw); $pass++) {
             $decoded = json_decode($raw, true);
 
-            if (json_last_error() !== JSON_ERROR_NONE || is_int($decoded) || is_float($decoded)) {
+            // Só lista e string seguem adiante, e a string é justamente o que a
+            // primeira passagem entrega: sem ela a segunda — a que abre o JSON
+            // de dentro — nunca acontece. `null` entra por fora do `is_scalar`,
+            // que é falso para ele, e é o mesmo tipo trocado que o resto.
+            if (json_last_error() !== JSON_ERROR_NONE || (! is_array($decoded) && ! is_string($decoded))) {
                 break;
             }
 
