@@ -157,7 +157,7 @@ class SerproAccountCertificateTest extends TestCase
      * A verificação é por **reflexão sobre os parâmetros**, e não por nome de
      * verbo: `delete` existe aqui sem model, e a forma que a regra proíbe é a
      * assinatura com o segundo parâmetro. Um método novo com model quebraria
-     * este teste mesmo com um nome que ninguém非常大.
+     * este teste mesmo com um nome que ninguém esperaria.
      */
     public function test_a_policy_do_ecnpj_nao_declara_verbos_que_enderecem_a_linha(): void
     {
@@ -876,7 +876,7 @@ class SerproAccountCertificateTest extends TestCase
      * o que a revisão mediu num e-CNPJ G5 real foi **274 caracteres**, e uma
      * razão social de sessenta caracteres leva a forma longa a mais de duzentos
      * e noventa. A coluna é `varchar(255)` e o Postgres **recusa** um valor
-     * maior: um `500` no meio de um upload cujo arquivo está inteiramente
+     * maior: um `500` no meio de um upload cujo arquivo está totalmente
      * correto, para um escritório que **não pode encurtar a própria DN** —
      * ele não escolhe o certificado que a AC emitiu. Diferente do nome do
      * arquivo, para o qual existe o nome completo como conserto, aqui o que

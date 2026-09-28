@@ -25,9 +25,18 @@ return new class extends Migration
              */
             $table->string('document', 14);
 
-            // Metadados não secretos, todos eles declarados pelo certificado e
-            // nunca pelo formulário: é o que sobra da linha depois que o
-            // conteúdo é apagado, e portanto o que faz dela histórico.
+            // Metadados não secretos, todos eles declarados pelo certificado:
+            // é o que sobra da linha depois que o conteúdo é apagado, e
+            // portanto o que faz dela histórico.
+            //
+            // "Nunca pelo formulário" é o que o **cofre** decide, e não o que a
+            // coluna impede: `subject` e `serial_number` estão no `#[Fillable]`
+            // do model, e um teste afirma isso de propósito — a garantia é de que
+            // o `fill()` de uma requisição não os alcance, e o que a impede é a
+            // request de upload marcar `document` como `prohibited` e o cofre ser
+            // o autor dos valores. A coluna aceita o que a AC emitiu; quem decide
+            // o que entra é `AccountCertificateVault`, e ele apara `subject` e
+            // `original_filename` no limite das duas.
             $table->string('subject');
             $table->string('serial_number');
             $table->timestamp('valid_from');
@@ -71,13 +80,18 @@ return new class extends Migration
              * Um índice parcial daria a garantia ao banco, e a sintaxe é
              * `CREATE UNIQUE INDEX … ON account_certificates (account_id) WHERE
              * replaced_at IS NULL AND removed_at IS NULL`. Ela **não** foi usada,
-             * e os dois motivos são reais:
+             * e o motivo que a segura é o da portabilidade entre dialectos, não
+             * o da falta de ferramenta:
              *
-             * 1. O `Schema` do Laravel não a expressa. Índice comum tem
-             *    `Blueprint::index()`; condição no índice exige `rawIndex()` ou
-             *    `DB::statement()` com SQL cru — e uma migração com SQL cru tem
-             *    de ser reescrita à mão em cada dialecto, o que é o custo que o
-             *    schema builder existe para evitar.
+             * 1. **A seção condicional do índice não existe no MySQL.** Um
+             *    índice único parcial é de PostgreSQL e SQLite; o MySQL não tem a
+             *    noção de um índice com `WHERE`. Como a migração roda em todas as
+             *    bases que o produto suporta, ela teria de ser reescrita à mão por
+             *    dialecto — que é o custo que o schema builder existe para
+             *    evitar, e aqui ele não evita. `Blueprint::rawIndex()` existe e
+             *    escreveria o `CREATE UNIQUE INDEX` no Postgres sem problema
+             *    nenhum: o que impede é que a mesma linha de migração não pode
+             *    dizer a mesma coisa nos três dialetos.
              * 2. Um índice único troca uma corrida perdida por **erro de banco**.
              *    Hoje a corrida perdida é resolvida pelo `lockForUpdate()`, que
              *    serializa as duas gravações e faz a segunda ver a linha que a
@@ -85,7 +99,8 @@ return new class extends Migration
              *    delas morre de violação — o que obriga o chamador a tratar uma
              *    exceção de banco numa operação que antes não tinha por que
              *    falhar. O índice não impede o estado ruim; ele transforma um
-             *    conflito raro em erro.
+             *    conflito raro em erro, e é esse o argumento que decide mesmo no
+             *    Postgres, onde o índice seria possível.
              *
              * E a consequência de uma duplicata **existe**, e ela é medida, não
              * suposta. `supersede()`, `remove()` e `currentFor()` são os três
@@ -120,6 +135,13 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
+     *
+     * A tabela cai inteira e não há coluna a desfazer uma a uma, o que é o que
+     * faz este `down()` funcionar igual nos três engines. O `dropColumn` de
+     * outra migração deste diretório tem a outra forma — e a diferença importa
+     * onde ela aparece: o SQLite abaixo de 3.35 **não** apaga coluna e a
+     * instrução vira um no-op silencioso, de modo que um `down()` feito de
+     * `dropColumn` deixa a coluna no lugar e o `up()` seguinte falha.
      */
     public function down(): void
     {

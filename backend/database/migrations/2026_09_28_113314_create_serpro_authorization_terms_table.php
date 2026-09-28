@@ -84,6 +84,14 @@ return new class extends Migration
              * comparação ser "ainda é hoje" em vez de "ainda não passou o
              * meio-dia", que seria a leitura errada de um dia inteiro de
              * validade.
+             *
+             * E a comparação em `SerproTermManager::documentoVencido()` é de
+             * **string**, e não de Carbon: as duas pontas são `Y-m-d`, e para
+             * esse formato a ordem lexicográfica é a ordem do calendário — o
+             * que evita ter de escolher entre dois fusos dentro da mesma
+             * expressão. A coluna ser `date` continua sendo o que garante que o
+             * valor gravado sai de `createFromFormat('!Ymd')->startOfDay()` como
+             * dia inteiro, sem componente de hora.
              */
             $table->date('document_expires_on');
 

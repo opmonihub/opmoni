@@ -125,7 +125,7 @@ final class MedidaDaRegraDeColagemTest extends TestCase
         [$corpus] = $this->medir();
 
         $esperado = [
-            'exatamente' => [10, 51],
+            'exatamente' => [10, 56],
             'corretamente' => [12, 0],
             'separadamente' => [13, 3],
             'realmente' => [9, 5],

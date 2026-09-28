@@ -148,7 +148,7 @@ final class PalavrasCorrompidasTest extends TestCase
      *   `corretamente` (12), `inteiramente` (12), `precisamente` (12),
      *   `separadamente` (13);
      * - **6 das 12 não são hapax**, e o filtro as descarta antes disso:
-     *   `exatamente` (51×), `realmente` (5×), `deliberadamente` (4×),
+     *   `exatamente` (56×), `realmente` (5×), `deliberadamente` (4×),
      *   `separadamente` (3×), `estruturalmente` (2×), `localmente` (2×);
      * - **só 2 são ao mesmo tempo hapax e de 14 ou mais**, e são as duas que a
      *   regra de fato aciona com a lista vazia: `propositalmente` e

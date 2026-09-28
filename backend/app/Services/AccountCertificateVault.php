@@ -274,7 +274,7 @@ final class AccountCertificateVault
      *
      * O nome é o que o cliente digitou, e o cliente não tem teto: um nome de 300
      * caracteres é um `500` de banco de dados no meio de um upload cujo arquivo
-     * está inteiramente correto — e um `500` que não se resolve reenviando,
+     * está totalmente correto — e um `500` que não se resolve reenviando,
      * porque reenviar dá o mesmo nome de novo. O Postgres não trunca `varchar`,
      * ele recusa; o SQLite da suíte aceita em silêncio, o que é parte do motivo
      * de isto ser um teste e não uma confiança no banco.
@@ -317,7 +317,7 @@ final class AccountCertificateVault
      * mediu num e-CNPJ G5 de verdade foi **274 caracteres**, contra os 255 da
      * coluna. Uma razão social de sessenta caracteres leva a forma longa a mais
      * de duzentos e noventa. O Postgres não trunca: recusa, e a recusa é um `500`
-     * no meio de um upload cujo arquivo está inteiramente correto.
+     * no meio de um upload cujo arquivo está totalmente correto.
      *
      * **E aqui a recuperação é pior do que a do nome do arquivo, e é o que
      * decide pelo corte e não pela recusa.** O nome do arquivo é do cliente, e o
