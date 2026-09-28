@@ -103,30 +103,61 @@ class SerproConnectivityTest extends TestCase
     }
 
     /**
-     * A taxonomia precisa ser total e precisa estar testada em um lugar, porque
-     * o erro dela é silencioso: um caso novo cai no braço `default` e vira
-     * `credencial` — "reveja a chave, o segredo e o certificado" — quando a
-     * verdade é outra, e nenhuma tela descobre que mandou o operador para o lado
-     * errado. Hoje o provedor de token classifica `4xx` como `DoNotRetry` e
-     * `5xx` como `Upstream` sem passar por `classify()`, então `Indeterminate` e
-     * `Throttled` não chegam aqui: o teste é o que impede que o dia em que
-     * passarem a passar continuem sem resposta.
+     * A taxonomia precisa declarar o destino de **todo** desfecho, e o teste é o
+     * que a mantém declarada: um caso novo que não apareça na lista abaixo cai no
+     * `default` e vira `credencial` — "reveja a chave, o segredo e o certificado"
+     * — quando a verdade é outra, e nenhuma tela descobre que mandou o operador
+     * para o lado errado.
+     *
+     * `Throttled` é limite do provedor, e limite não é recusa do que foi
+     * enviado: a ação é esperar, exatamente como em `Upstream`. Deixá-lo no
+     * `default` puniria duas vezes quem está apenas com o servidor ocupado —
+     * com a frase errada e com o tom de erro, que
+     * `frontend/app/utils/serproConnectivityPresentation.ts` reserva para a
+     * credencial.
      */
-    public function test_taxonomia_de_elementos_cobre_todo_desfecho_sem_ninguem_cair_no_default(): void
+    public function test_taxonomia_de_elementos_declara_destino_para_todo_desfecho_do_enum(): void
     {
-        // Falha de quem não deu conta, ou de quem não mandou nada: em todos os
-        // três casos a ação é a mesma — esperar, e não digitar nada de novo.
-        foreach ([SerproFailure::Upstream, SerproFailure::NotSent, SerproFailure::Indeterminate] as $falha) {
-            $this->assertSame('provedor', SerproConnectivity::elementFor($falha), "{$falha->value} não pode virar credencial.");
-        }
+        $destinos = [
+            // Quem não deu conta, quem não sabe se deu, quem não mandou nada e
+            // quem limitou: esperar, e não redigitar nada.
+            'provedor' => [
+                SerproFailure::Upstream,
+                SerproFailure::Throttled,
+                SerproFailure::Indeterminate,
+                SerproFailure::NotSent,
+            ],
+            // Recusa do que foi enviado: corrigir a credencial.
+            'credencial' => [
+                SerproFailure::Reauthenticate,
+                SerproFailure::ResubmitTerm,
+                SerproFailure::DoNotRetry,
+                // `Success` nunca chega: `check()` só traduz a exceção de uma
+                // falha. O destino está declarado para o `default` não ser um
+                // buraco em silêncio — e para o dia em que algum chegar, o teste
+                // estar esperando por uma decisão, e não por um accidento.
+                SerproFailure::Success,
+            ],
+        ];
 
-        // Recusa do que foi enviado: corrigir a credencial.
-        foreach ([SerproFailure::DoNotRetry, SerproFailure::Reauthenticate, SerproFailure::ResubmitTerm] as $falha) {
-            $this->assertSame('credencial', SerproConnectivity::elementFor($falha), "{$falha->value} não pode virar provedor.");
-        }
+        // A lista é o contrato: um caso novo no enum tem de aparecer aqui, ou a
+        // contagem falha antes de qualquer mapeamento ser conferido.
+        $declarados = array_merge(...array_values($destinos));
+        $this->assertCount(
+            count(SerproFailure::cases()),
+            $declarados,
+            'Todo desfecho do enum precisa de destino declarado na taxonomia.',
+        );
 
-        // `Success` nunca chega: `check()` só traduz a exceção de uma falha.
-        $this->assertNotSame('', SerproFailure::Success->label());
+        foreach ($destinos as $elemento => $falhas) {
+            foreach ($falhas as $falha) {
+                $this->assertSame(
+                    $elemento,
+                    SerproConnectivity::elementFor($falha),
+                    "{$falha->value} não pode virar o outro elemento.",
+                );
+            }
+        }
     }
 
     public function test_sem_conexao_retorna_configuracao_sem_chamar_provedor(): void

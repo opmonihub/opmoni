@@ -51,6 +51,32 @@ class SerproFailureTest extends TestCase
     }
 
     /**
+     * O vocabulário é o contrato com o consumidor: quem decide o que fazer com
+     * uma falha — a sincronização da plan 04, o relatório de consumo, a fila —
+     * ramifica por estes valores, e um valor renomeado ou removido muda o
+     * comportamento de quem consome sem quebrar quem produz.
+     *
+     * A lista é escrita por extenso, como em `WorkTemplateTest` para
+     * `TaskStatus::values()`: um `assertSame(SerproFailure::values(), [...])`
+     * seria tautologia, e um `assertContains` seria o que o caso já prova. O que
+     * este teste fixa é a lista, para que a mudança de um valor seja uma decisão
+     * e não um efeito colateral de um `case` renomeado.
+     */
+    public function test_values_fixa_o_vocabulario_da_taxonomia_de_falha(): void
+    {
+        $this->assertSame([
+            'success',
+            'reauthenticate',
+            'resubmit_term',
+            'do_not_retry',
+            'throttled',
+            'upstream',
+            'indeterminate',
+            'not_sent',
+        ], SerproFailure::values());
+    }
+
+    /**
      * Este teste só pode provar o vocabulário; a classificação de cada produtor
      * é de `SerproTokenProviderTest`, de `SerproConnectionApiTest` e de
      * `SerproConnectivityTest`, onde a falha é levantada de verdade. O que este

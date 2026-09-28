@@ -40,7 +40,6 @@ class ClientManager
     public function __construct(
         private CnpjWsLookup $lookup,
         private ClientCertificateVault $certificateVault,
-        private BrazilianTaxId $taxId,
     ) {}
 
     /**
@@ -119,13 +118,21 @@ class ClientManager
     }
 
     /**
+     * A pré-visualização e a atualização são ação explícita do operador, e a
+     * resposta honesta para documento que a fonte não indexa continua sendo a
+     * recusa: quem pediu o dado da Receita precisa ouvir que ela não tem. Por
+     * isso estes dois não usam `lookupCompany()` — que trata a mesma ausência
+     * como "cadastro digitado" — e sim `lookupOrFail()`, que recusa o documento
+     * alfanumérico sem gastar uma das três consultas por minuto da conta para
+     * descobrir o que já se sabe.
+     *
      * @return array{current: array<string, mixed>, incoming: array<string, mixed>, changes: array<string, array{from: mixed, to: mixed}>}
      */
     public function previewCompany(Client $client): array
     {
         $this->assertCompany($client);
 
-        $incoming = $this->officialAttributes($this->lookup->lookup($client->tax_id));
+        $incoming = $this->officialAttributes($this->lookup->lookupOrFail($client->tax_id));
         $current = $this->officialAttributes($client->attributesToArray());
 
         return [
@@ -139,7 +146,7 @@ class ClientManager
     {
         $this->assertCompany($client);
 
-        $payload = $this->lookup->lookup($client->tax_id);
+        $payload = $this->lookup->lookupOrFail($client->tax_id);
 
         return DB::transaction(function () use ($client, $payload): Client {
             $client->fill($this->officialAttributes($payload));
@@ -339,10 +346,12 @@ class ClientManager
      * depender de uma fonte pública que não conhece documento alfanumérico
      * (RFB IN 2.119/2022) nem todo CNPJ recém-aberto.
      *
-     * Documento que a fonte não tem como responder nem é consultado: o `404` do
-     * alfanumérico é certo e permanente, não é cacheado, e cada cadastro ou troca
-     * de regime repetiria a chamada — consumindo uma das três consultas por
-     * minuto da conta para competirem com consulta que alguém pediu de verdade.
+     * Documento que a fonte não tem como responder nem é consultado, e isso é
+     * decidido em `CnpjWsLookup::lookupOrFail()` — aqui a mesma ausência chega
+     * como `404` e vira `null`. O `404` do alfanumérico é certo e permanente, não
+     * é cacheado, e cada cadastro ou troca de regime repetiria a chamada —
+     * consumindo uma das três consultas por minuto da conta para competir com
+     * consulta que alguém pediu de verdade.
      *
      * Só o 404 vira cadastro manual. Indisponibilidade (503), limite do provedor
      * (429) e documento recusado (422) continuam errando a requisição: um cliente
@@ -354,12 +363,8 @@ class ClientManager
      */
     private function lookupCompany(string $taxId): ?array
     {
-        if (! $this->taxId->isNumericCnpj($taxId)) {
-            return null;
-        }
-
         try {
-            return $this->lookup->lookup($taxId);
+            return $this->lookup->lookupOrFail($taxId);
         } catch (CnpjLookupException $exception) {
             if ($exception->status === 404) {
                 return null;

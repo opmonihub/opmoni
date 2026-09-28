@@ -29,11 +29,11 @@ final class SerproEnvelope
             ],
             'autorPedidoDados' => [
                 'numero' => $autor,
-                'tipo' => $this->tipo($autor),
+                'tipo' => self::tipo($autor),
             ],
             'contribuinte' => [
                 'numero' => $contribuinte,
-                'tipo' => $this->tipo($contribuinte),
+                'tipo' => self::tipo($contribuinte),
             ],
             'pedidoDados' => [
                 'idSistema' => $idSistema,
@@ -81,12 +81,16 @@ final class SerproEnvelope
     }
 
     /**
-     * O tipo do documento no envelope: `1` é pessoa física e `2` é pessoa
-     * jurídica. É público porque a coluna `contratante_tipo` gravada pela
-     * plataforma é este mesmo número, e derivá-la de outra cópia da regra
-     * deixaria documento e tipo podendo discordar.
+     * O tipo do documento: `1` é pessoa física e `2` é pessoa jurídica.
+     *
+     * É a fonte única do número, e é pública e estática porque três lugares do
+     * protocolo precisam dele: o `autorPedidoDados.tipo` e o `contribuinte.tipo`
+     * que este envelope monta, a coluna `contratante_tipo` que o
+     * `SerproConnectionManager` grava a partir dela, e o `X-Request-Tag` de
+     * `SerproRequestTag`. Cada cópia da regra é uma chance de o documento e o
+     * tipo discordarem, e o provedor nem sempre diz qual dos dois está errado.
      */
-    public function tipo(string $documento): int
+    public static function tipo(string $documento): int
     {
         return strlen($documento) === 11 ? 1 : 2;
     }

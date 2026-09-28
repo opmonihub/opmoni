@@ -12,7 +12,38 @@ final class CnpjWsLookup
 {
     private const CACHE_TTL_SECONDS = 86400;
 
+    /**
+     * A recusa da fonte pública por documento que ela não indexa. É a mesma
+     * frase e o mesmo `status` do `404` do provedor, e é uma constante porque as
+     * duas vias precisam responder igual: quem lê a recusa não tem como saber —
+     * nem precisa saber — se ela veio de uma ida à rede ou do conhecimento do que
+     * a fonte tem.
+     */
+    private const NAO_ENCONTRADO = 'CNPJ não encontrado.';
+
     public function __construct(private BrazilianTaxId $taxId) {}
+
+    /**
+     * O mesmo que `lookup()`, para o chamador que trata "a fonte não conhece este
+     * documento" como recusa em vez de como ausência de dado.
+     *
+     * Documento alfanumérico é recusado sem gastar a consulta: a resposta seria
+     * sempre a mesma, e ela é conhecida. O `404` continua sendo o `404` que o
+     * provedor daria — só não custa uma das três consultas por minuto da conta
+     * para ser descoberto.
+     *
+     * @return array<string, mixed>
+     */
+    public function lookupOrFail(string $cnpj): array
+    {
+        $normalized = $this->taxId->normalize($cnpj);
+
+        if (! $this->taxId->isNumericCnpj($normalized)) {
+            throw new CnpjLookupException(self::NAO_ENCONTRADO, 404);
+        }
+
+        return $this->lookup($normalized);
+    }
 
     /**
      * @return array<string, mixed>
@@ -69,7 +100,7 @@ final class CnpjWsLookup
         }
 
         if ($response->status() === 404) {
-            throw new CnpjLookupException('CNPJ não encontrado.', 404);
+            throw new CnpjLookupException(self::NAO_ENCONTRADO, 404);
         }
 
         if ($response->status() === 429) {

@@ -25,7 +25,6 @@ final class SerproConnectionManager
 {
     public function __construct(
         private SerproCertificateIdentity $identity,
-        private SerproEnvelope $envelope,
         private SerproTokenProvider $tokens,
     ) {}
 
@@ -173,7 +172,7 @@ final class SerproConnectionManager
 
         $attributes = [
             'contratante_numero' => $parsed['document'],
-            'contratante_tipo' => $this->envelope->tipo($parsed['document']),
+            'contratante_tipo' => SerproEnvelope::tipo($parsed['document']),
             'certificate_encrypted' => Crypt::encryptString($bytes),
             'certificate_subject' => $parsed['subject'],
             'certificate_serial_number' => $parsed['serial'],

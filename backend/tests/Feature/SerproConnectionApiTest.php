@@ -653,13 +653,19 @@ class SerproConnectionApiTest extends TestCase
     }
 
     /**
-     * Os três `NotSent` do enum — pasta temporária sem gravação, segredo ilegível
-     * e certificado ilegível — significam "falha nossa, antes de qualquer
-     * requisição", e cada um precisa ser testemunhado no produtor. O veredito do
-     * teste de conectividade não serve: ele fixa `certificado` ou `provedor` no
-     * guard, antes de olhar a falha, e passaria igual com `DoNotRetry`.
+     * Os dois `NotSent` deste arquivo — certificado ilegível e pasta temporária
+     * sem gravação — significam "falha nossa, antes de qualquer requisição", e
+     * cada um precisa ser testemunhado no produtor. O veredito do teste de
+     * conectividade não serve: ele fixa `certificado` ou `provedor` no guard,
+     * antes de olhar a falha, e passaria igual com `DoNotRetry`.
+     *
+     * O terceiro produtor é o segredo ilegível, e o testify está em
+     * `SerproTokenProviderTest::test_um_segredo_ilegivel_vira_falha_nomeada_e_nao_excecao_de_cifra`:
+     * ele mora em outra classe, com outra forma de chegar lá, e este arquivo
+     * não o exercita. O nome do teste diz o que ele cobre, para ninguém ler
+     * "cada falha local" e procurar aqui um terceiro produtor.
      */
-    public function test_cada_falha_local_antes_da_requisicao_e_nomeada_como_nada_enviado(): void
+    public function test_certificado_ilegivel_e_pasta_sem_gravacao_sao_nomeados_como_nada_enviado(): void
     {
         // 1. O certificado guardado não abre com a chave de aplicação atual: nada
         //    foi enviado e recadastrar o certificado é o conserto — não há

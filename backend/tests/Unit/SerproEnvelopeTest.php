@@ -59,6 +59,37 @@ class SerproEnvelopeTest extends TestCase
         $this->assertSame('1', $envelope['pedidoDados']['versaoSistema']);
     }
 
+    /**
+     * A regra 11→1, 14→2 mora aqui e é a fonte única de três lugares: o
+     * `autorPedidoDados.tipo`/`contribuinte.tipo` deste envelope, a coluna
+     * `contratante_tipo` gravada pela plataforma e o `X-Request-Tag` de
+     * `SerproRequestTag`. Nenhuma cópia local dela: documento e tipo discordando
+     * é um `403` que não diz qual dos dois está errado.
+     */
+    public function test_deriva_o_tipo_do_documento_e_nao_o_declara(): void
+    {
+        $this->assertSame(1, SerproEnvelope::tipo('12345678901'));
+        $this->assertSame(2, SerproEnvelope::tipo('33683111000107'));
+        $this->assertSame(2, SerproEnvelope::tipo('12ABC345000188'));
+
+        $envelope = (new SerproEnvelope)->build(
+            '33683111000107',
+            2,
+            '12345678901',
+            '99999999999999',
+            'PROCURACOES',
+            'OBTERPROCURACAO41',
+            '1',
+            [],
+        );
+
+        // O `contratante.tipo` vem pronto do manager, que o derivou do
+        // certificado; os outros dois saem da regra, e é o que este teste segura.
+        $this->assertSame(2, $envelope['contratante']['tipo']);
+        $this->assertSame(1, $envelope['autorPedidoDados']['tipo']);
+        $this->assertSame(2, $envelope['contribuinte']['tipo']);
+    }
+
     public function test_it_decodes_dados_twice(): void
     {
         $result = (new SerproEnvelope)->parse([

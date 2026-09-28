@@ -31,14 +31,19 @@ final class SerproRequestTag
         return str_pad(strtoupper($value), 14, '0');
     }
 
+    /**
+     * O número do tipo vem de `SerproEnvelope::tipo()` — a fonte única da regra
+     * 11→1, 14→2 — e a guarda de comprimento é deste lado: o tag não tem o que
+     * fazer com um documento de outro tamanho, e o envelope, sim.
+     */
     private function tipo(string $value): string
     {
-        $length = strlen(strtoupper($value));
+        $documento = strtoupper($value);
 
-        return match (true) {
-            $length === 11 => '1',
-            $length === 14 => '2',
-            default => throw new InvalidArgumentException('Documento deve ter 11 ou 14 posições.'),
-        };
+        if (strlen($documento) !== 11 && strlen($documento) !== 14) {
+            throw new InvalidArgumentException('Documento deve ter 11 ou 14 posições.');
+        }
+
+        return (string) SerproEnvelope::tipo($documento);
     }
 }

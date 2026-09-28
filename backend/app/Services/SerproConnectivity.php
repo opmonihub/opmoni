@@ -103,14 +103,19 @@ final class SerproConnectivity
      * Só a taxonomia decide aqui, e o que chega já passou pelas guardas acima.
      *
      * `Upstream` é quem não deu conta do lado de lá, `Indeterminate` é quem não
-     * sabe se deu, e `NotSent` é quem não chegou a mandar nada: os três são
-     * `provedor` porque a ação é a mesma nos três casos, e recadastrar a
-     * credencial não resolve nenhum deles — trocar o certificado ainda menos.
+     * sabe se deu, `Throttled` é quem mandou esperar e `NotSent` é quem não
+     * chegou a mandar nada: os quatro são `provedor` porque a ação é a mesma nos
+     * quatro casos, e recadastrar a credencial não resolve nenhum deles — trocar
+     * o certificado ainda menos. Limite do provedor em especial não é recusa do
+     * que foi enviado, e `credencial` puniria duas vezes quem está só com o
+     * serviço ocupado: com a frase errada e com o tom de erro que a tela
+     * reserva para a credencial.
      *
-     * `Indeterminate` não chega hoje, e está aqui de propósito: o provedor de
-     * token classifica `5xx` como `Upstream` sem passar por `classify()`, mas um
-     * `504` da autenticação é `Indeterminate` em qualquer outro caminho, e sem
-     * este braço ele cairia no `default` e viraria `credencial` — mandando o
+     * `Indeterminate` e `Throttled` não chegam hoje, e estão aqui de propósito: o
+     * provedor de token classifica `4xx` como `DoNotRetry` e `5xx` como
+     * `Upstream` sem passar por `classify()`, mas um `504` da autenticação é
+     * `Indeterminate` e um `429` é `Throttled` em qualquer outro caminho, e sem
+     * este braço eles cairiam no `default` e virariam `credencial` — mandando o
      * operador trocar uma credencial boa à espera de um serviço que não
      * respondeu.
      *
@@ -133,13 +138,13 @@ final class SerproConnectivity
      * de mascarado por um `status`, e a próxima verificação acerta.
      *
      * Estático e público para que a taxonomia inteira seja testável: o erro
-     * dela é silencioso, e um caso novo que caia no `default` não quebraria
-     * teste nenhum.
+     * dela é silencioso, e um desfecho sem destino declarado não quebraria teste
+     * nenhum.
      */
     public static function elementFor(SerproFailure $failure): string
     {
         return match ($failure) {
-            SerproFailure::Upstream, SerproFailure::Indeterminate, SerproFailure::NotSent => 'provedor',
+            SerproFailure::Upstream, SerproFailure::Throttled, SerproFailure::Indeterminate, SerproFailure::NotSent => 'provedor',
             default => 'credencial',
         };
     }

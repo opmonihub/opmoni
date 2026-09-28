@@ -97,10 +97,10 @@ class ClientCrudTest extends TestCase
 
     public function test_company_create_com_cnpj_alfanumerico_usa_o_documento_digitado_quando_a_fonte_nao_conhece_o_documento(): void
     {
-        // A consulta pública é numérica: para o CNPJ alfanumérico ela responde 404 e o
+        // A consulta pública é numérica: o CNPJ alfanumérico não é consultado, e o
         // cadastro segue com o documento e a razão social digitados, sem os campos
-        // oficiais que só a Receita poderia trazer.
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        // oficiais que só a Receita poderia trazer. Nenhum `Http::fake()` porque
+        // nenhuma consulta acontece — o `404` que viria dela nunca é perguntado.
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
@@ -123,11 +123,14 @@ class ClientCrudTest extends TestCase
             'tax_id' => '12ABC345000188',
             'name' => 'Empresa Alfa Ltda',
         ]);
+
+        Http::assertNothingSent();
     }
 
     public function test_company_create_recusa_cnpj_alfanumerico_com_verificador_errado(): void
     {
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        // O verificador é conferido antes de qualquer consulta: o documento nem
+        // chega a ser olhado pela fonte, consultável ou não.
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
@@ -140,6 +143,7 @@ class ClientCrudTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('tax_id');
 
         $this->assertSame(0, $account->clients()->count());
+        Http::assertNothingSent();
     }
 
     public function test_company_create_com_cnpj_numerico_desconhecido_cai_no_cadastro_digitado(): void
@@ -163,7 +167,11 @@ class ClientCrudTest extends TestCase
 
     public function test_company_sem_dados_da_receita_exige_razao_social_e_regime_da_empresa(): void
     {
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        // Sem `Http::fake()` de propósito: o documento alfanumérico não é
+        // consultado, e um `404` encenado aqui diria a causa errada — a recusa
+        // não vem da resposta da fonte, vem de a fonte não ter esse documento.
+        // `preventStrayRequests` no `setUp()` e o `assertNothingSent()` no fim
+        // são o que garante que a consulta não aconteceu.
         $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
 
         $this->postJson('/api/clients', [
@@ -184,6 +192,7 @@ class ClientCrudTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('tax_regime');
 
         $this->assertDatabaseCount('clients', 0);
+        Http::assertNothingSent();
     }
 
     public function test_regime_sem_dados_da_receita_diz_qual_regime_a_empresa_aceita(): void
@@ -193,7 +202,6 @@ class ClientCrudTest extends TestCase
         // frase para quem pediu MEI ou Simples mandaria o operador procurar na
         // empresa uma recusa que ninguém fez: a recusa é nossa, por não ter dado
         // para confirmar o regime.
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
         $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
 
         $payload = static fn (string $regime): array => [
@@ -218,15 +226,19 @@ class ClientCrudTest extends TestCase
             ->assertJsonPath('errors.tax_regime.0', 'Empresa não aceita o regime não aplicável.');
 
         $this->assertDatabaseCount('clients', 0);
+
+        // A mensagem vem do atalho do documento alfanumérico, não de um `404`
+        // encenado: nenhuma consulta saiu.
+        Http::assertNothingSent();
     }
 
     public function test_cnpj_alfanumerico_nao_gasta_o_orcamento_de_consulta_da_conta(): void
     {
-        // O tier público é numérico: consultar um documento alfanumérico gasta uma
-        // das três consultas por minuto da conta para receber um 404 que a fonte
-        // não pode evitar. O quarto cadastro alfanumérico dentro do minuto era
-        // então recusado por limite — e disputava orçamento com consulta legítima.
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        // O tier público é numérico: consultar um documento alfanumérico gastaria
+        // uma das três consultas por minuto da conta para receber um 404 que a
+        // fonte não pode evitar. O quarto cadastro alfanumérico dentro do minuto
+        // era então recusado por limite — e disputava orçamento com consulta
+        // legítima. Nenhum `Http::fake()` porque nenhuma consulta acontece.
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
@@ -273,7 +285,9 @@ class ClientCrudTest extends TestCase
 
     public function test_company_cadastrado_sem_receita_troca_de_regime_sem_consulta(): void
     {
-        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        // Trocar o regime de empresa sem dado da Receita não consulta a fonte:
+        // o documento alfanumérico não é consultável, e a troca vale o regime
+        // escolhido. Nenhum `Http::fake()` porque nenhuma consulta acontece.
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
 
@@ -292,6 +306,7 @@ class ClientCrudTest extends TestCase
             ->assertJsonValidationErrors('tax_regime');
 
         $this->assertSame('actual_profit', Client::findOrFail($id)->tax_regime->value);
+        Http::assertNothingSent();
     }
 
     public function test_empresa_sem_receita_troca_de_regime_pelo_cadastro_digitado(): void
@@ -319,6 +334,31 @@ class ClientCrudTest extends TestCase
             ->assertJsonValidationErrors('tax_regime');
 
         $this->assertSame('actual_profit', Client::findOrFail($id)->tax_regime->value);
+    }
+
+    public function test_atualizar_da_receita_de_alfanumerico_diz_que_nao_conhece_sem_gastar_consulta(): void
+    {
+        // A pré-visualização e a atualização são ação explícita do operador, e a
+        // resposta honesta para documento alfanumérico continua sendo a recusa: a
+        // fonte pública não o indexa. A diferença é que a recusa é conhecida — o
+        // `404` seria sempre o mesmo, e gastava uma das três consultas por minuto
+        // da conta para ser descoberto.
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '12ABC345000188',
+        ]);
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $this->postJson("/api/clients/{$client->id}/cnpj-refresh-preview")
+            ->assertNotFound()
+            ->assertJsonPath('message', 'CNPJ não encontrado.');
+
+        $this->postJson("/api/clients/{$client->id}/cnpj-refresh")
+            ->assertNotFound()
+            ->assertJsonPath('message', 'CNPJ não encontrado.');
+
+        Http::assertNothingSent();
     }
 
     public function test_company_create_ignores_browser_preview_fields_and_forces_mei_regime(): void
