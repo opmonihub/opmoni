@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { refDebounced } from '@vueuse/core'
+import { refDebounced, useInfiniteScroll } from '@vueuse/core'
 import type { TableColumn } from '@nuxt/ui'
+import type { ComponentPublicInstance } from 'vue'
 import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
-import { sheetBodyClass, sheetTableUi, sheetToolbarUi } from '~/components/data-table/sheet'
+import type { MetaListItem } from '~/components/data-table/MetaList.vue'
+import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
 import { apiStatus } from '~/composables/useApiError'
 import type { ObligationListParams } from '~/composables/useSerpro'
 import type { MonitoringClient, MonitoringMessageStub, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
 import { monitoringObligationUnserved, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
-  formatMonitoringDate,
   formatMonitoringDueOn,
   isMonitoringSlipColumn,
   latestSlipFor,
+  monitoringActions,
   monitoringAttentionReasonPresentation,
   monitoringCategoryPresentation,
-  monitoringDeadlinePassed,
+  monitoringEmpty,
+  monitoringFilters,
   monitoringMissingValue,
   monitoringProvenance,
   monitoringProvenanceLabels,
@@ -26,6 +29,7 @@ import {
 } from '~/utils/monitoringPresentation'
 import AssociateClientsModal from '~/components/monitoring/AssociateClientsModal.vue'
 import MessageDetail from '~/components/monitoring/MessageDetail.vue'
+import MessageStubSummary from '~/components/monitoring/MessageStubSummary.vue'
 import ObligationCounters from '~/components/monitoring/ObligationCounters.vue'
 
 const props = defineProps<{
@@ -33,15 +37,11 @@ const props = defineProps<{
   situacao: MonitoringSituacao | null
 }>()
 
-const emit = defineEmits<{ refreshed: [] }>()
-
 const toast = useToast()
 const { canManageClients } = useAuth()
 const { listObligation } = useSerpro()
 const { listTags } = useClients()
 
-/** A 404 must never reach the error alert: it is the inert state, not a failure. */
-const failed = ref(false)
 const associateOpen = ref(false)
 
 const search = ref('')
@@ -95,9 +95,12 @@ const listKey = computed(() => `serpro-monitoring-${props.obligation.slug}-${pro
  * the async function, which becomes a rejected promise, and `asyncData.js:368-377`
  * swallows it — `error.value` is set, `data` falls back to the `default`, and
  * setup does not throw, so nothing is logged as a crash. The result is the worst
- * of every state: no request is issued, `data` is `emptySummary()`, `isLoading` is
- * false, and because the throw happens before the `try`, `failed` stays false — a
- * clean, plausible, entirely false "nothing needs anything" with no message at all.
+ * of every state: no request is issued and `data` is `emptySummary()` — a clean,
+ * plausible, entirely false "nothing needs anything", the failure having arrived
+ * before the handler could even reach the `try` that turns a 404 into an empty
+ * envelope. That is also why nothing below may own the failure flag: the
+ * composable that owns it is created after this call, so the handler could only
+ * read it inside that same window.
  *
  * `summary` and `isLoading` stay below: they read `data`, which only exists after
  * the call. TypeScript does not catch the other order — a closure boundary hides
@@ -108,7 +111,7 @@ const category = computed(() => monitoringCategoryPresentation[props.obligation.
 /** What a `derived` obligation projects over; `null` for anything else. */
 const provenance = computed(() => monitoringProvenance(props.obligation))
 
-const { data, status, error, refresh } = await useAsyncData(listKey, async () => {
+const { data, status, error, refresh: reload } = await useAsyncData(listKey, async () => {
   if (isUnserved.value) {
     return { data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }
   }
@@ -119,13 +122,11 @@ const { data, status, error, refresh } = await useAsyncData(listKey, async () =>
     // means "no data", never "wrong URL". Answering with an empty envelope is
     // honest in both worlds — the endpoint not existing yet, or nothing to show.
     if (apiStatus(error) === 404) return { data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }
-    failed.value = true
     throw error
   }
 }, { watch: [params], default: () => ({ data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }) })
 
 const summary = computed(() => data.value?.data ?? emptySummary(props.obligation))
-const isLoading = computed(() => status.value === 'pending')
 
 const rows = ref<MonitoringClient[]>([])
 const total = ref(0)
@@ -165,7 +166,12 @@ async function loadMore() {
   }
 }
 
-const canLoadMore = computed(() => rows.value.length > 0 && rows.value.length < total.value)
+const canLoadMore = computed(() =>
+  status.value !== 'pending'
+  && !loadingMore.value
+  && rows.value.length > 0
+  && rows.value.length < total.value
+)
 
 const { data: tagCatalog } = await useAsyncData('serpro-monitoring-tags', () => listTags())
 
@@ -205,17 +211,39 @@ function clearFilters() {
   tagFilter.value = []
 }
 
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar a lista', color: 'error' })
-  }
-}
+/**
+ * `ignoreStatus: 404` — a 404 must never reach the error alert: it is the inert
+ * state, not a failure, and the loader above already answers it with an empty
+ * envelope.
+ *
+ * `sticky` because the alert is fatal, not a toast over live content: a
+ * `watch: [params]` refilter re-runs the handler, and `useAsyncData` clears
+ * `error` on the next success — without the sticky form the alert would blink out
+ * and the empty summary behind it would flash back as if it had loaded. The
+ * operator clears it by retrying, which is the only thing that proves the load
+ * works.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar a lista',
+  refreshErrorTitle: 'Não foi possível atualizar a lista',
+  ignoreStatus: 404,
+  sticky: true
+})
 
-watch(error, (value) => {
-  if (value && apiStatus(value) !== 404) {
-    toast.add({ title: 'Não foi possível carregar a lista', color: 'error' })
+/**
+ * The navbar buttons live in `pages/monitoring.vue`. Associating is offered
+ * only inside a served obligation and to a role the backend accepts — the shell
+ * hides the button on the same conditions, and this guard keeps a stale request
+ * from opening a picker the page does not mount.
+ */
+useMonitoringActions({
+  refresh,
+  loading: isLoading,
+  associate: () => {
+    if (canManageClients.value && !isUnserved.value) associateOpen.value = true
   }
 })
 
@@ -237,11 +265,30 @@ const columns = computed<TableColumn<MonitoringClient>[]>(() =>
     id: column.id,
     accessorFn: (row: MonitoringClient) => fieldValue(row, column.id),
     header: column.header,
-    meta: { class: column.numeric ? { th: 'text-right', td: 'text-right tabular-nums' } : undefined }
+    meta: {
+      class: column.numeric
+        ? { th: 'whitespace-nowrap text-right', td: 'text-right tabular-nums' }
+        : { th: column.id === 'name' ? 'min-w-64 whitespace-nowrap' : 'whitespace-nowrap', td: '' }
+    }
   }))
 )
 
 const detailFields = computed(() => props.obligation.columns.filter(column => column.id !== 'name' && column.id !== 'situacao'))
+
+/**
+ * The obligation's own declared columns, as facts. Every one of them is a
+ * recorded reading — a value, a period, a status — so every one of them is
+ * tabular and clamps to one line: the card is a summary the office scans, not
+ * the place a long text is read.
+ */
+function detailFacts(row: MonitoringClient): MetaListItem[] {
+  return detailFields.value.map(field => ({
+    label: field.header,
+    value: fieldValue(row, field.id),
+    mono: true,
+    truncate: true
+  }))
+}
 
 function fieldValue(row: MonitoringClient, id: string) {
   if (id === 'name') return row.name
@@ -256,29 +303,18 @@ function fieldValue(row: MonitoringClient, id: string) {
   return value == null || value === '' ? monitoringMissingValue : String(value)
 }
 
-/** The row's situation, refined by its named cause when it is `atencao`. */
-function situacaoLabel(row: MonitoringClient) {
-  if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao].label
-  const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
-  return monitoringAttentionReasonPresentation(row.cause, reason?.label).label
-}
-
 /**
- * The cause's colour, not the aggregate's. A `sem_declaracao` row is an
- * `atencao` counter, so the situation's own colour is `error` — while the label
- * and the icon on the same badge both resolve the cause and say `warning`. One
- * severity per row: whichever of the two the office reads, they have to agree.
+ * The row's situation, refined by its named cause when it is `atencao`.
+ *
+ * The cause's colour and icon too, not the aggregate's. A `sem_declaracao` row
+ * is an `atencao` counter, so the situation's own colour is `error` — while the
+ * label resolves the cause and says `warning`. One severity per row: whichever
+ * of the two the office reads, they have to agree.
  */
-function situacaoColor(row: MonitoringClient) {
-  if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao].color
+function situacaoPresentation(row: MonitoringClient) {
+  if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao]
   const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
-  return monitoringAttentionReasonPresentation(row.cause, reason?.label).color
-}
-
-function situacaoIcon(row: MonitoringClient) {
-  if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao].icon
-  const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
-  return monitoringAttentionReasonPresentation(row.cause, reason?.label).icon
+  return monitoringAttentionReasonPresentation(row.cause, reason?.label)
 }
 
 /**
@@ -294,8 +330,7 @@ function slipPresentation(row: MonitoringClient) {
 async function afterAssociate() {
   // The modal decides whether it closes — a per-row add must not, so the next
   // one is a click away. The counters behind it are stale either way.
-  await onRefresh()
-  emit('refreshed')
+  await refresh()
 }
 
 /**
@@ -314,52 +349,53 @@ function openMessage(row: MonitoringClient) {
   messageOpen.value = true
 }
 
-/** An office that has missed a deadline has to see that it missed one. */
-function prazoPresentation(message: MonitoringMessageStub) {
-  const passed = monitoringDeadlinePassed(message.prazo_limite)
-  return {
-    label: `${passed ? 'Prazo vencido em' : 'Prazo'} ${formatMonitoringDate(message.prazo_limite)}`,
-    class: passed ? 'font-medium text-error' : 'text-muted'
-  }
-}
-
-/** The same wording on both layouts, so a phone does not read as a different act. */
-function messageAction(message: MonitoringMessageStub, clientName: string) {
-  const label = message.ciencia_em ? 'Ver mensagem' : 'Abrir mensagem'
-  return { label, ariaLabel: `${label}: ${message.assunto} (${clientName})` }
-}
-
 /** Reading is done: the row, its unread count and the counters all moved. */
 async function afterRead() {
-  await onRefresh()
+  await refresh()
 }
+
+const table = useTemplateRef<ComponentPublicInstance>('table')
+const mobileList = useTemplateRef<HTMLElement>('mobileList')
+
+onMounted(() => {
+  for (const target of [computed(() => table.value?.$el ?? null), mobileList]) {
+    useInfiniteScroll(target, () => loadMore(), {
+      distance: 200,
+      canLoadMore: () => canLoadMore.value
+    })
+  }
+})
+
+const showCounters = computed(() => !isUnserved.value && !showError.value)
+const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <UDashboardToolbar class="hidden min-w-0 md:flex" :ui="sheetToolbarUi">
-      <template #left>
-        <div class="min-w-0 flex-1">
-          <!--
-            Gated on the real failure, and on nothing else. A 404 is the inert
-            state, so the exemption stays; but under a `500` the alert below
-            announces the failure while these five readings would render
-            `emptySummary`'s zeros — the page would claim nothing needs attention
-            at the same moment as saying it could not load. Same reason the
-            overview hides its whole body behind `showError`.
-          -->
-          <ObligationCounters
-            v-if="!isUnserved && !(error && failed)"
-            :obligation="obligation"
-            :summary="summary"
-            :situacao="situacao"
-            @associate="associateOpen = true"
-          />
-        </div>
-      </template>
-    </UDashboardToolbar>
+    <!--
+      Gated on the real failure, and on nothing else. A 404 is the inert
+      state, so the exemption stays; but under a `500` the alert below
+      announces the failure while these readings would render `emptySummary`'s
+      zeros — the page would claim nothing needs attention at the same moment
+      as saying it could not load.
+    -->
+    <ObligationCounters
+      v-if="showCounters"
+      mode="toolbar"
+      :obligation="obligation"
+      :summary="summary"
+      :situacao="situacao"
+    />
 
     <div :class="sheetBodyClass">
+      <ObligationCounters
+        v-if="showCounters"
+        mode="chips"
+        :obligation="obligation"
+        :summary="summary"
+        :situacao="situacao"
+      />
+
       <!--
         The provenance of a `derived` obligation, above the readings it qualifies.
         Without it the office reads a projection as an independent source, which
@@ -384,39 +420,23 @@ async function afterRead() {
         </span>
       </p>
 
-      <template v-if="isUnserved">
-        <UAlert
-          :color="category.color"
-          variant="subtle"
-          :icon="category.icon"
-          :title="category.label"
-          :description="category.description"
-        />
-      </template>
+      <UAlert
+        v-if="isUnserved"
+        :color="category.color"
+        variant="subtle"
+        :icon="category.icon"
+        :title="category.label"
+        :description="category.description"
+      />
 
       <template v-else>
-        <!-- Same gate as the desktop strip, and it is already inside the served
-             branch, so `isUnserved` is not repeated here. -->
-        <div
-          v-if="!(error && failed)"
-          class="md:hidden"
-        >
-          <ObligationCounters
-            :obligation="obligation"
-            :summary="summary"
-            :situacao="situacao"
-            @associate="associateOpen = true"
-          />
-        </div>
-
         <!--
           Inside the served branch, deliberately, and outside the
           loading/error/table chain below so a refilter cannot unmount an open
           picker. An unserved obligation (`declaracoes/dirf`) has nothing to
           associate clients to, and a picker mounted beside the chain would be
           one edit away from offering to attach clients to an obligation that
-          does not exist. Both triggers for it — the counter strip and the empty
-          state — are in here too, so the mount cannot outlive its own triggers.
+          does not exist.
         -->
         <AssociateClientsModal
           v-if="canManageClients"
@@ -426,228 +446,186 @@ async function afterRead() {
           @associated="afterAssociate"
         />
 
-        <UAlert
-          v-if="error && failed"
-          color="error"
-          variant="subtle"
-          icon="i-lucide-circle-alert"
+        <DataTableFilter
+          :columns="filterColumns"
+          :model-value="filterModels"
+          :disabled="isLoading"
+          class="min-w-0"
+          @update:model-value="onFilters"
+        >
+          <UInput
+            v-model="search"
+            icon="i-lucide-search"
+            :placeholder="monitoringFilters.search"
+            class="min-w-0 flex-1"
+            :disabled="isLoading"
+          />
+        </DataTableFilter>
+
+        <ErrorRetryAlert
+          v-if="showError"
           title="Não foi possível carregar esta obrigação"
-          description="Verifique sua conexão e tente novamente."
-          :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+          @retry="retry"
         />
 
-        <USkeleton v-else-if="isLoading && rows.length === 0" class="h-64 w-full" />
-
         <template v-else>
-          <DataTableFilter
-            :columns="filterColumns"
-            :model-value="filterModels"
-            :disabled="isLoading"
-            class="min-w-0"
-            @update:model-value="onFilters"
+          <!-- Mobile: cards, not windowed — their height varies with the message block. -->
+          <div
+            v-if="isLoading && rows.length === 0"
+            class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:hidden"
           >
-            <UInput
-              v-model="search"
-              icon="i-lucide-search"
-              placeholder="Buscar por nome ou CNPJ"
-              class="min-w-0 flex-1"
-              :disabled="isLoading"
-            />
-          </DataTableFilter>
+            <USkeleton v-for="index in 4" :key="index" class="h-40 w-full rounded-lg" />
+          </div>
+
+          <div
+            v-else-if="rows.length"
+            ref="mobileList"
+            class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:hidden"
+          >
+            <UCard
+              v-for="row in rows"
+              :key="row.client_id"
+              variant="subtle"
+              :ui="{ root: 'overflow-visible', body: 'p-4' }"
+            >
+              <div class="flex items-start gap-3">
+                <DataTableIdentity
+                  class="flex-1"
+                  :title="row.name"
+                  :meta="row.tax_id ?? ''"
+                  :truncate="false"
+                />
+                <div class="flex shrink-0 flex-col items-end gap-1">
+                  <UBadge
+                    variant="subtle"
+                    :color="situacaoPresentation(row).color"
+                    :icon="situacaoPresentation(row).icon"
+                    :label="situacaoPresentation(row).label"
+                  />
+                  <UBadge
+                    v-if="row.stale"
+                    size="sm"
+                    variant="subtle"
+                    :color="monitoringStalePresentation.color"
+                    :icon="monitoringStalePresentation.icon"
+                    :label="monitoringStalePresentation.label"
+                  />
+                </div>
+              </div>
+
+              <template v-if="detailFields.length">
+                <USeparator class="my-3" />
+                <DataTableMetaList :items="detailFacts(row)" columns="grid-cols-2 gap-x-4 gap-y-3" />
+              </template>
+
+              <div
+                v-if="row.message"
+                class="mt-3 rounded-lg bg-default p-3 ring ring-default"
+              >
+                <MessageStubSummary
+                  :message="row.message"
+                  :client-name="row.name"
+                  @open="openMessage(row)"
+                />
+              </div>
+            </UCard>
+
+            <div v-if="loadingMore" class="flex justify-center py-2">
+              <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin text-muted" />
+            </div>
+          </div>
+
+          <!-- Desktop -->
+          <div
+            v-if="rows.length || isLoading"
+            class="hidden min-h-0 min-w-0 flex-1 flex-col md:flex"
+          >
+            <UTable
+              ref="table"
+              sticky
+              :data="rows"
+              :columns="columns"
+              :loading="isLoading || loadingMore"
+              class="h-full min-h-0 w-full flex-1"
+              :ui="sheetTableUi"
+            >
+              <!--
+                The mailbox's one legal act lives in the `name` cell because
+                `name` is the only column every served obligation declares:
+                `ultima` is declared by `caixas-postais/e-cac` alone, so a slot
+                on it would leave the two derived mailbox pages unable to open a
+                message on desktop while the phone card could.
+              -->
+              <template #name-cell="{ row }">
+                <div class="flex min-w-0 flex-col gap-1">
+                  <DataTableIdentity :title="row.original.name" :meta="row.original.tax_id ?? ''" />
+                  <MessageStubSummary
+                    v-if="row.original.message"
+                    :message="row.original.message"
+                    :client-name="row.original.name"
+                    @open="openMessage(row.original)"
+                  />
+                </div>
+              </template>
+
+              <!--
+                The guide carries a severity the plain cell cannot: a slip
+                issued and unpaid is a warning, and a slip paid is not. Read
+                from the row's periods, never from `fields`.
+              -->
+              <template #guia-cell="{ row }">
+                <UBadge
+                  class="max-w-full"
+                  :color="slipPresentation(row.original).color"
+                  :icon="slipPresentation(row.original).icon"
+                  variant="subtle"
+                  :label="slipPresentation(row.original).label"
+                  :ui="{ base: 'max-w-full', label: 'truncate' }"
+                />
+              </template>
+
+              <template #situacao-cell="{ row }">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <UBadge
+                    class="max-w-full"
+                    :color="situacaoPresentation(row.original).color"
+                    :icon="situacaoPresentation(row.original).icon"
+                    variant="subtle"
+                    :label="situacaoPresentation(row.original).label"
+                    :ui="{ base: 'max-w-full', label: 'truncate' }"
+                  />
+                  <UBadge
+                    v-if="row.original.stale"
+                    size="sm"
+                    variant="subtle"
+                    :color="monitoringStalePresentation.color"
+                    :icon="monitoringStalePresentation.icon"
+                    :label="monitoringStalePresentation.label"
+                  />
+                </div>
+              </template>
+            </UTable>
+          </div>
 
           <UEmpty
-            v-if="rows.length === 0 && !hasActiveFilters"
+            v-if="showEmpty && !hasActiveFilters"
             icon="i-lucide-inbox"
-            title="Nenhum cliente nesta obrigação"
-            description="Nenhum cliente da carteira tem registro sincronizado para esta obrigação."
+            :title="monitoringEmpty.noClients"
+            :description="monitoringEmpty.noClientsDescription"
             variant="naked"
             :actions="canManageClients
-              ? [{ label: 'Adicionar clientes', icon: 'i-lucide-user-plus', onClick: () => { associateOpen = true } }]
-              : []"
+              ? [{ label: monitoringActions.associate, icon: 'i-lucide-user-plus', onClick: () => { associateOpen = true } }]
+              : undefined"
           />
 
           <UEmpty
-            v-else-if="rows.length === 0"
+            v-else-if="showEmpty"
             icon="i-lucide-search-x"
-            title="Nenhum resultado com estes filtros"
-            description="Ajuste a busca ou limpe os filtros aplicados."
+            :title="monitoringEmpty.noResults"
+            :description="monitoringEmpty.noResultsDescription"
             variant="naked"
             :actions="[{ label: 'Limpar filtros', color: 'neutral', variant: 'outline', onClick: clearFilters }]"
           />
-
-          <template v-else>
-            <div class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto md:hidden">
-              <UCard v-for="row in rows" :key="row.client_id" :ui="{ body: 'p-3 sm:p-4' }">
-                <div class="flex items-start justify-between gap-3">
-                  <DataTableIdentity :title="row.name" :meta="row.tax_id ?? ''" />
-                  <div class="flex shrink-0 flex-col items-end gap-1">
-                    <UBadge
-                      :color="situacaoColor(row)"
-                      :icon="situacaoIcon(row)"
-                      variant="subtle"
-                      :label="situacaoLabel(row)"
-                    />
-                    <UBadge
-                      v-if="row.stale"
-                      size="sm"
-                      variant="subtle"
-                      :color="monitoringStalePresentation.color"
-                      :icon="monitoringStalePresentation.icon"
-                      :label="monitoringStalePresentation.label"
-                    />
-                  </div>
-                </div>
-                <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                  <div v-for="field in detailFields" :key="field.id" class="min-w-0">
-                    <dt class="text-xs text-muted">
-                      {{ field.header }}
-                    </dt>
-                    <dd class="truncate text-sm text-default tabular-nums">
-                      {{ fieldValue(row, field.id) }}
-                    </dd>
-                  </div>
-                </dl>
-                <div
-                  v-if="row.message"
-                  class="mt-3 flex flex-col gap-2 border-t border-default pt-3"
-                >
-                  <!--
-                    The subject the office is about to consent to. A phone that showed
-                    the action and the dates without naming the message would ask for
-                    the act before showing what the act is about.
-                  -->
-                  <span class="truncate text-xs text-muted" :title="row.message.assunto">
-                    {{ row.message.assunto }}
-                  </span>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="outline"
-                      icon="i-lucide-mail-open"
-                      :label="messageAction(row.message, row.name).label"
-                      :aria-label="messageAction(row.message, row.name).ariaLabel"
-                      @click="openMessage(row)"
-                    />
-                    <span
-                      v-if="row.message.ciencia_em"
-                      class="text-xs text-muted tabular-nums"
-                    >
-                      Ciência {{ formatMonitoringDate(row.message.ciencia_em) }}
-                    </span>
-                    <span
-                      v-if="row.message.prazo_limite"
-                      class="text-xs tabular-nums"
-                      :class="prazoPresentation(row.message).class"
-                    >
-                      {{ prazoPresentation(row.message).label }}
-                    </span>
-                  </div>
-                </div>
-              </UCard>
-            </div>
-
-            <div class="hidden min-h-0 min-w-0 flex-1 flex-col md:flex">
-              <UTable
-                sticky
-                :data="rows"
-                :columns="columns"
-                class="h-full min-h-0 w-full flex-1"
-                :ui="sheetTableUi"
-              >
-                <template #name-cell="{ row }">
-                  <div class="flex min-w-0 flex-col gap-1">
-                    <DataTableIdentity :title="row.original.name" :meta="row.original.tax_id ?? ''" />
-                    <!--
-                      The mailbox's one legal act, and it lives here because `name` is the only
-                      column every served obligation declares: `ultima` is declared by
-                      `caixas-postais/e-cac` alone, so a slot on it would leave the two derived
-                      mailbox pages unable to open a message on desktop while the phone card
-                      could. A cell never reaches the body — the button asks `MessageDetail`
-                      for consent.
-                    -->
-                    <template v-if="row.original.message">
-                      <span class="truncate text-xs text-muted" :title="row.original.message.assunto">
-                        {{ row.original.message.assunto }}
-                      </span>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <UButton
-                          size="xs"
-                          color="neutral"
-                          variant="outline"
-                          icon="i-lucide-mail-open"
-                          :label="messageAction(row.original.message, row.original.name).label"
-                          :aria-label="messageAction(row.original.message, row.original.name).ariaLabel"
-                          @click="openMessage(row.original)"
-                        />
-                        <span
-                          v-if="row.original.message.ciencia_em"
-                          class="text-xs text-muted tabular-nums"
-                        >
-                          Ciência {{ formatMonitoringDate(row.original.message.ciencia_em) }}
-                        </span>
-                        <span
-                          v-if="row.original.message.prazo_limite"
-                          class="text-xs tabular-nums"
-                          :class="prazoPresentation(row.original.message).class"
-                        >
-                          {{ prazoPresentation(row.original.message).label }}
-                        </span>
-                      </div>
-                    </template>
-                  </div>
-                </template>
-
-                <!--
-                  The guide carries a severity the plain cell cannot: a slip
-                  issued and unpaid is a warning, and a slip paid is not. Read
-                  from the row's periods, never from `fields`.
-                -->
-                <template #guia-cell="{ row }">
-                  <UBadge
-                    class="max-w-full"
-                    :color="slipPresentation(row.original).color"
-                    :icon="slipPresentation(row.original).icon"
-                    variant="subtle"
-                    :label="slipPresentation(row.original).label"
-                    :ui="{ base: 'max-w-full', label: 'truncate' }"
-                  />
-                </template>
-
-                <template #situacao-cell="{ row }">
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <UBadge
-                      class="max-w-full"
-                      :color="situacaoColor(row.original)"
-                      :icon="situacaoIcon(row.original)"
-                      variant="subtle"
-                      :label="situacaoLabel(row.original)"
-                      :ui="{ base: 'max-w-full', label: 'truncate' }"
-                    />
-                    <UBadge
-                      v-if="row.original.stale"
-                      size="sm"
-                      variant="subtle"
-                      :color="monitoringStalePresentation.color"
-                      :icon="monitoringStalePresentation.icon"
-                      :label="monitoringStalePresentation.label"
-                    />
-                  </div>
-                </template>
-              </UTable>
-            </div>
-
-            <div v-if="canLoadMore" class="flex justify-center">
-              <UButton
-                label="Carregar mais"
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-chevrons-down"
-                :loading="loadingMore"
-                @click="loadMore"
-              />
-            </div>
-          </template>
         </template>
       </template>
     </div>

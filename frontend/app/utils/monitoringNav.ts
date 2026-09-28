@@ -412,13 +412,88 @@ function obligationActive(path: string, obligation: MonitoringObligation) {
   return path === base || path.startsWith(`${base}/`)
 }
 
+export interface MonitoringPage {
+  label: string
+  icon: string
+  to: string
+}
+
+/**
+ * The module's own destinations — what the navbar tab bar carries.
+ *
+ * Every module in the shell (Admin, Work, Equipe, Clientes) owns a
+ * `UDashboardToolbar` of `UNavigationMenu highlight` tabs listing where the module
+ * can go, and Monitoramento was the one without one: its toolbar was conditional
+ * on being inside a multi-obligation group, so 7 of its 11 destinations
+ * (Painel, Termo, Execuções, the four single-obligation groups) had no module
+ * navigation at all, and the slot was spent on the *second* level.
+ *
+ * The obligations are the second level and stay second: they are reachable from
+ * the sidebar, from the panel, and from the sub-tab row that this leaves free.
+ * Derived from `monitoringIntegrationLinks` so a label or path is spelled once.
+ */
+export const monitoringPages: readonly MonitoringPage[] = [
+  { label: 'Painel', icon: 'i-lucide-layout-dashboard', to: '/monitoring' },
+  ...monitoringIntegrationLinks
+]
+
+/**
+ * The tab bar answers "which part of the module am I in", and the obligations
+ * are part of the panel — `monitoring/index.vue` renders a card per obligation,
+ * each linking to its own screen, so an obligation page is a drill-down from
+ * Painel and Painel stays lit on it, the same relationship Work's tabs have to
+ * `/work/processos/12`. Matching `/monitoring` exactly instead would leave the
+ * module tab bar with nothing lit on 19 of its 21 screens.
+ *
+ * The two integration screens are siblings, not children, so they take the tab
+ * away from Painel along with their own sub-paths.
+ */
+export function monitoringPageActive(path: string, page: MonitoringPage) {
+  if (page.to === '/monitoring') {
+    return !monitoringPages
+      .slice(1)
+      .some(other => path === other.to || path.startsWith(`${other.to}/`))
+  }
+  return path === page.to || path.startsWith(`${page.to}/`)
+}
+
+/**
+ * The sidebar answers "exactly where am I", which is a stricter question than the
+ * tab bar's, so it gets its own rule. The obligations are the sidebar's own
+ * children: inside one, the group is the position and Painel must go dark, or the
+ * rail claims two positions at once.
+ */
+function monitoringSidebarItem(page: MonitoringPage, path: string): NavigationMenuItem {
+  const isIndex = page.to === '/monitoring'
+  return {
+    label: page.label,
+    icon: page.icon,
+    to: page.to,
+    exact: isIndex,
+    active: isIndex ? path === page.to : monitoringPageActive(path, page)
+  }
+}
+
+/** The module tab bar, in the same shape `adminTabs` and the shell expect. */
+export function monitoringTabs(path: string): NavigationMenuItem[][] {
+  return [[
+    ...monitoringPages.map(page => ({
+      label: page.label,
+      icon: page.icon,
+      to: page.to,
+      exact: page.to === '/monitoring',
+      active: monitoringPageActive(path, page)
+    }))
+  ]]
+}
+
 export function monitoringSidebarChildren(path: string): NavigationMenuItem[] {
-  const items: NavigationMenuItem[] = [{
-    label: 'Painel',
-    to: '/monitoring',
-    exact: true,
-    active: path === '/monitoring'
-  }]
+  const [painel, ...integrations] = monitoringPages
+
+  // Painel leads, the obligations follow, and the two screens that are about the
+  // integration rather than an obligation close the list. The obligations stay in
+  // the middle because they are the bulk of the module.
+  const items: NavigationMenuItem[] = painel ? [monitoringSidebarItem(painel, path)] : []
 
   for (const group of monitoringGroups) {
     const first = group.pages[0]
@@ -430,13 +505,8 @@ export function monitoringSidebarChildren(path: string): NavigationMenuItem[] {
     })
   }
 
-  for (const link of monitoringIntegrationLinks) {
-    items.push({
-      label: link.label,
-      icon: link.icon,
-      to: link.to,
-      active: path === link.to || path.startsWith(`${link.to}/`)
-    })
+  for (const page of integrations) {
+    items.push(monitoringSidebarItem(page, path))
   }
 
   return items

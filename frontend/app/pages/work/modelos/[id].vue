@@ -105,8 +105,8 @@ async function load() {
   try {
     syncFromTemplate(await showTemplate(templateId.value as number))
   } catch {
+    // No toast here: the composable below watches `loadError` and owns it.
     loadError.value = true
-    toast.add({ title: 'Não foi possível carregar o modelo', color: 'error' })
   } finally {
     loading.value = false
   }
@@ -115,6 +115,19 @@ async function load() {
 await load()
 
 watch(templateId, () => void load())
+
+/**
+ * `load` is this page's own loader — it resolves (or fails) through
+ * `loadError`/`loading` instead of a `useAsyncData` ref, so the composable is
+ * pointed at those two. `refresh` is the composable's, and the alert's retry
+ * answers through `retry` so a failed retry clears the failure first.
+ */
+const { showError, retry } = useRetryableLoad({
+  refresh: load,
+  error: loadError,
+  loading,
+  loadErrorTitle: 'Não foi possível carregar o modelo'
+})
 
 const { data: tagCatalog } = await useAsyncData<ClientTag[]>(
   'work-model-tags',
@@ -309,14 +322,10 @@ async function onGenerate() {
       />
     </header>
 
-    <UAlert
-      v-if="loadError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
+    <ErrorRetryAlert
+      v-if="showError"
       title="Não foi possível carregar o modelo"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => load() }]"
+      @retry="retry"
     />
 
     <div

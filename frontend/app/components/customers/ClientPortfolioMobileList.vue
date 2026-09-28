@@ -90,15 +90,11 @@ onMounted(() => {
             >
               <CustomersClientTags class="mt-1" :tags="client.tags" />
             </DataTableIdentity>
-            <UDropdownMenu :items="rowActions(client)" :content="{ align: 'end' }">
-              <UButton
-                icon="i-lucide-ellipsis-vertical"
-                color="neutral"
-                variant="ghost"
-                :aria-label="`Ações para ${client.name}`"
-                @click="emit('remember-focus')"
-              />
-            </UDropdownMenu>
+            <DataTableRowActionsMenu
+              :items="rowActions(client)"
+              :label="`Ações para ${client.name}`"
+              @trigger="emit('remember-focus')"
+            />
           </div>
 
           <div class="mt-3 flex items-center justify-between gap-3">

@@ -207,17 +207,12 @@ onMounted(() => {
       </template>
 
       <template #actions-cell="{ row }">
-        <div class="text-right">
-          <UDropdownMenu :items="rowActions(row.original)" :content="{ align: 'end' }">
-            <UButton
-              icon="i-lucide-ellipsis-vertical"
-              color="neutral"
-              variant="ghost"
-              :aria-label="`Ações para ${row.original.name}`"
-              @click="emit('remember-focus')"
-            />
-          </UDropdownMenu>
-        </div>
+        <DataTableRowActionsMenu
+          :items="rowActions(row.original)"
+          :label="`Ações para ${row.original.name}`"
+          flush
+          @trigger="emit('remember-focus')"
+        />
       </template>
     </UTable>
   </div>

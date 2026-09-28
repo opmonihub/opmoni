@@ -199,6 +199,8 @@ Work and Carteira share the panel chrome pattern: `UDashboardNavbar` + `UDashboa
 
 **Carteira:** Status chip rows (`StatusChips`) for document situation filters; document cells use `DocumentStatus` (badge or outline action). Selection uses the same floating bar language as Work.
 
+**Admin / Equipe:** the panel list page — `DataTablePanelList` over `panel.ts` chrome. The header card is a naked horizontal `UPageCard` at `mb-4` with its one action pushed right by `w-fit lg:ms-auto`; the panel body is unpadded by default and the page applies `panelBodyClass`, so a panel that swaps a list for a table (Admin › Suporte) owns its own padding.
+
 **Spacing rhythm:** Tailwind scale; signature densities are the Work table paddings and `gap-1` / `gap-1.5` inside Item cells. Header height token: `--ui-header-height: 4rem`.
 
 ### Named Rules
@@ -263,6 +265,38 @@ Indent spacer → ± expand (groups) → **semibold** group label or `N. Título
 ### Support banner
 Fixed top `UBanner` `color="warning"` while support mode is active; pushes shell with `pt-12`.
 
+### Page shell (roots)
+A dashboard page body has three shapes and no shared name for any of them, so `app/utils/pageShell.ts` names them:
+
+| Token | Shape | Used by |
+|---|---|---|
+| `pageScrollClass` | one scrolling column | Monitoramento, Work › Modelos, Work › Tarefas, Clientes › Painel |
+| `pageTableClass` | scrolling column hosting a table that owns its own scroll; `relative` anchors the floating selection bar | Work › Clientes, Work › Processos |
+| `pageRecordScrollClass` + `pageDetailClass` | centred record page, capped at `max-w-6xl` | Termo de autorização, Execução, Cliente |
+
+`sheetBodyClass` in `components/data-table/sheet.ts` is a fourth, separate token: the windowed data-table sheet.
+
+### Panel list page (signature)
+`DataTablePanelList` + `app/components/data-table/panel.ts`. The bordered-card list page: a naked horizontal header card (title, description, one `#action`) above a `UPageCard` whose header slot is the `#toolbar`. Shared by the six Admin lists and the two Equipe lists.
+
+Chrome lives in `panel.ts` and is imported, never retyped: `panelTableUi`, `panelCardUi`, `panelToolbarClass`, `panelBodyClass`, `panelFooterClass`, `panelFooterCountClass`, `panelPaginationClass`, `panelSelectUi`. `DataTablePanelTableEmpty` is the `#empty` body of a `panelTableUi` table.
+
+`sheetTableUi` and `panelTableUi` are different tokens on purpose: the sheet is a windowed table with `text-sm` cells and its own scroll root, the panel is a bordered card table with hairline row rules.
+
+### ErrorRetryAlert
+`app/components/ErrorRetryAlert.vue`. The one fatal-load surface: `subtle` error alert, what could not be loaded, the recovery sentence, a solid retry action. `v-if` stays with the caller — whether a failure is fatal to the page is a page decision. The recovery wording and the retry label live only here; they had already drifted per page.
+
+`useRetryableLoad` (composable) owns the failure contract around it: the load toast, the refresh toast, `showError`, and `retry` (which clears the failure before re-running). `ignoreStatus: 404` marks "not shipped yet" as inert on the monitoring screens; `sticky: true` keeps a fatal alert up until the operator presses its own retry, which `useAsyncData`'s `error` ref would otherwise clear out from under them.
+
+### MetaList (read-only facts)
+`app/components/data-table/MetaList.vue` + `app/utils/metaList.ts`. Key → value `dl` for recorded facts (vencimento, ciência, série, situação). `layout="grid"` puts the label above the value; `layout="stack"` puts them on one line, label left and value right. Per item: `mono` (tabular figures — dates, counts, ids), `truncate`, `tone`, `when: false` (drop the row instead of an `v-if` at the call site).
+
+### RowActionsMenu
+`app/components/data-table/RowActionsMenu.vue`. The trailing row-overflow menu: end-aligned `UDropdownMenu` behind a neutral ghost ellipsis button. `flush` adds the table-cell wrapper (`div.text-right` + `ml-auto`). `label` is required and must name the row — the trigger was unlabelled at three call sites before this.
+
+### Work facet filters
+`app/utils/workFacetFilters.ts` backs the Clientes and Processos filter bars. A facet is a column: `workFixedFacetColumn` (status, cascata, status do processo — a fixed list narrowed to what the leaves hold) or `workValueFacetColumn` (cliente, departamento, processo — the distinct values in the leaves). `workFacetChoices` never drops a column an operator has already picked from. `workClientesFilters.ts` / `workProcessosFilters.ts` decide *which* facets a table offers and what its search box promises to find; they do not re-derive the plumbing.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -271,6 +305,8 @@ Fixed top `UBanner` `color="warning"` while support mode is active; pushes shell
 - **Do** keep selection bulk actions on the floating bar pattern (`rounded-xl bg-default shadow-lg ring ring-default`).
 - **Do** use Nuxt semantic `color` props for deadlines and priorities (`portfolioLabels`, `priorityPresentation`).
 - **Do** prefer tonal elevation and rings; reserve `shadow-lg` for floating chrome.
+- **Do** import panel/page/meta chrome from `panel.ts`, `pageShell.ts`, `metaList.ts`; a retyped copy is a second thing to keep in sync.
+- **Do** use `DataTableMetaList` for read-only facts and `DataTableRowActionsMenu` for row overflow, so both stay consistent across surfaces.
 
 ### Don't:
 - **Don't** invent a second brand accent or replace Public Sans with a display serif for dashboard surfaces.
@@ -279,3 +315,5 @@ Fixed top `UBanner` `color="warning"` while support mode is active; pushes shell
 - **Don't** reset group expand state on every data refresh (`autoResetExpanded` must stay false).
 - **Don't** extend frosted glass beyond calendar chrome without an explicit product decision.
 - **Don't** treat `.ref/` TaskHub screenshots as copy-paste authority — match incumbent opmoni tokens and patterns first.
+- **Don't** hand-roll a `UAlert` retry block, a `dl` fact grid, a page root, or a panel table's `:ui` — those are the extracted components above.
+- **Don't** leave a `DataTableRowActionsMenu` without a `label`; an unlabelled icon button is announced as "button".

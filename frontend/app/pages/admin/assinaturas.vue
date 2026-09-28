@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
+import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelSelectUi, panelTableUi } from '~/components/data-table/panel'
 import { adminListParams, createLatestRequestRunner, pageWithinLastPage } from '~/utils/adminListFilters'
 
 definePageMeta({
@@ -32,15 +33,6 @@ const STATUS_META: Record<AdminSubscription['status'], { label: string, color: '
   active: { label: 'Ativa', color: 'success' },
   past_due: { label: 'Inadimplente', color: 'warning' },
   canceled: { label: 'Cancelada', color: 'neutral' }
-}
-
-const tableUi = {
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
 }
 
 const { $api } = useNuxtApp()
@@ -148,103 +140,83 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 </script>
 
 <template>
-  <div>
-    <UPageCard
-      title="Assinaturas"
-      description="Plano e status de cada conta."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    />
+  <DataTablePanelList
+    title="Assinaturas"
+    description="Plano e status de cada conta."
+  >
+    <template #toolbar>
+      <UInput
+        v-model="q"
+        class="max-w-sm"
+        icon="i-lucide-search"
+        placeholder="Filtrar por conta ou plano..."
+      />
 
-    <UPageCard
-      variant="subtle"
-      :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch', header: 'p-4 mb-0 border-b border-default' }"
-    >
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-1.5">
-          <UInput
-            v-model="q"
-            class="max-w-sm"
-            icon="i-lucide-search"
-            placeholder="Filtrar por conta ou plano..."
-          />
+      <USelect
+        v-model="statusFilter"
+        :items="[
+          { label: 'Todas', value: 'all' },
+          { label: 'Ativas', value: 'active' },
+          { label: 'Inadimplentes', value: 'past_due' },
+          { label: 'Canceladas', value: 'canceled' }
+        ]"
+        :ui="panelSelectUi"
+        placeholder="Status"
+        class="min-w-36"
+      />
+    </template>
 
-          <USelect
-            v-model="statusFilter"
-            :items="[
-              { label: 'Todas', value: 'all' },
-              { label: 'Ativas', value: 'active' },
-              { label: 'Inadimplentes', value: 'past_due' },
-              { label: 'Canceladas', value: 'canceled' }
-            ]"
-            :ui="{ trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200' }"
-            placeholder="Status"
-            class="min-w-36"
+    <div :class="panelBodyClass">
+      <UTable
+        :data="subscriptions"
+        :columns="columns"
+        :loading="loading"
+        class="shrink-0"
+        :ui="panelTableUi"
+      >
+        <template #account-cell="{ row }">
+          <p class="font-medium text-highlighted">
+            {{ row.original.account?.name ?? `#${row.original.id}` }}
+          </p>
+        </template>
+
+        <template #plan-cell="{ row }">
+          {{ row.original.plan?.name ?? '—' }}
+        </template>
+
+        <template #status-cell="{ row }">
+          <UBadge :color="STATUS_META[row.original.status].color" variant="subtle">
+            {{ STATUS_META[row.original.status].label }}
+          </UBadge>
+        </template>
+
+        <template #actions-cell="{ row }">
+          <DataTableRowActionsMenu
+            :items="subscriptionActions(row.original)"
+            :label="`Ações de ${row.original.account?.name ?? `#${row.original.id}`}`"
+            flush
           />
+        </template>
+
+        <template #empty>
+          <DataTablePanelTableEmpty
+            icon="i-lucide-receipt"
+            label="Nenhuma assinatura encontrada."
+          />
+        </template>
+      </UTable>
+
+      <div :class="panelFooterClass">
+        <div :class="panelFooterCountClass">
+          {{ subscriptions.length }} de {{ total }} assinatura(s)
         </div>
-      </template>
 
-      <div class="flex flex-col gap-4 p-4 sm:p-6">
-        <UTable
-          :data="subscriptions"
-          :columns="columns"
-          :loading="loading"
-          class="shrink-0"
-          :ui="tableUi"
-        >
-          <template #account-cell="{ row }">
-            <p class="font-medium text-highlighted">
-              {{ row.original.account?.name ?? `#${row.original.id}` }}
-            </p>
-          </template>
-
-          <template #plan-cell="{ row }">
-            {{ row.original.plan?.name ?? '—' }}
-          </template>
-
-          <template #status-cell="{ row }">
-            <UBadge :color="STATUS_META[row.original.status].color" variant="subtle">
-              {{ STATUS_META[row.original.status].label }}
-            </UBadge>
-          </template>
-
-          <template #actions-cell="{ row }">
-            <div class="text-right">
-              <UDropdownMenu
-                :items="subscriptionActions(row.original)"
-                :content="{ align: 'end' }"
-              >
-                <UButton
-                  icon="i-lucide-ellipsis-vertical"
-                  color="neutral"
-                  variant="ghost"
-                  class="ml-auto"
-                />
-              </UDropdownMenu>
-            </div>
-          </template>
-
-          <template #empty>
-            <div class="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted">
-              <UIcon name="i-lucide-receipt" class="size-6" />
-              <span>Nenhuma assinatura encontrada.</span>
-            </div>
-          </template>
-        </UTable>
-
-        <div class="flex items-center justify-between gap-3 border-t border-default pt-4">
-          <div class="text-sm text-muted">
-            {{ subscriptions.length }} de {{ total }} assinatura(s)
-          </div>
-
-          <div class="flex items-center gap-1.5">
-            <UPagination v-model:page="page" :total="total" :items-per-page="perPage" />
-          </div>
+        <div :class="panelPaginationClass">
+          <UPagination v-model:page="page" :total="total" :items-per-page="perPage" />
         </div>
       </div>
-    </UPageCard>
-  </div>
+    </div>
+  </DataTablePanelList>
 
   <USlideover
     v-model:open="editOpen"

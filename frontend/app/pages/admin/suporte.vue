@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn, TabsItem } from '@nuxt/ui'
+import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -35,15 +36,6 @@ const ACTION_META: Record<string, { label: string, color: 'info' | 'neutral' | '
   create: { label: 'Criação', color: 'success' },
   update: { label: 'Edição', color: 'warning' },
   delete: { label: 'Exclusão', color: 'error' }
-}
-
-const tableUi = {
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
 }
 
 const { $api } = useNuxtApp()
@@ -168,133 +160,121 @@ function actionMeta(action: string) {
 </script>
 
 <template>
-  <div>
-    <UPageCard
-      title="Suporte"
-      description="Entre numa conta ou consulte a auditoria."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    />
+  <DataTablePanelList
+    title="Suporte"
+    description="Entre numa conta ou consulte a auditoria."
+  >
+    <template #toolbar>
+      <UTabs v-model="tab" :items="tabs" :content="false" />
 
-    <UPageCard
-      variant="subtle"
-      :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch', header: 'p-4 mb-0 border-b border-default' }"
-    >
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-1.5">
-          <UTabs v-model="tab" :items="tabs" :content="false" />
-
-          <div class="flex flex-wrap items-center gap-1.5">
-            <UInput
-              v-if="tab === 'entrar'"
-              v-model="query"
-              class="max-w-sm"
-              icon="i-lucide-search"
-              placeholder="Nome ou ID da conta"
-              @keydown.enter.prevent="search"
-            />
-            <UInput
-              v-else
-              v-model="accountQuery"
-              class="max-w-sm"
-              icon="i-lucide-search"
-              placeholder="Filtrar por ID da conta..."
-            />
-            <UButton
-              v-if="tab === 'entrar'"
-              label="Buscar"
-              color="neutral"
-              :loading="searching"
-              @click="search"
-            />
-          </div>
-        </div>
-      </template>
-
-      <ul v-if="tab === 'entrar' && found.length" role="list" class="divide-y divide-default">
-        <li
-          v-for="account in found"
-          :key="account.id"
-          class="flex items-center justify-between gap-3 py-3 px-4 sm:px-6"
-        >
-          <div class="min-w-0">
-            <p class="font-medium text-highlighted truncate">
-              {{ account.name }}
-            </p>
-            <p class="text-sm text-muted">
-              #{{ account.id }}
-            </p>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <UBadge :color="account.status === 'active' ? 'success' : 'error'" variant="subtle">
-              {{ account.status === 'active' ? 'Ativa' : 'Suspensa' }}
-            </UBadge>
-            <UButton
-              icon="i-lucide-life-buoy"
-              color="neutral"
-              variant="ghost"
-              @click="enterAccount(account)"
-            />
-          </div>
-        </li>
-      </ul>
-      <div v-else-if="tab === 'entrar'" class="flex flex-col items-center justify-center gap-2 py-10 text-sm text-muted">
-        <UIcon name="i-lucide-search" class="size-6" />
-        <span>Busque uma conta pelo nome ou pelo ID para entrar em suporte.</span>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <UInput
+          v-if="tab === 'entrar'"
+          v-model="query"
+          class="max-w-sm"
+          icon="i-lucide-search"
+          placeholder="Nome ou ID da conta"
+          @keydown.enter.prevent="search"
+        />
+        <UInput
+          v-else
+          v-model="accountQuery"
+          class="max-w-sm"
+          icon="i-lucide-search"
+          placeholder="Filtrar por ID da conta..."
+        />
+        <UButton
+          v-if="tab === 'entrar'"
+          label="Buscar"
+          color="neutral"
+          :loading="searching"
+          @click="search"
+        />
       </div>
+    </template>
 
-      <div v-else class="flex flex-col gap-4 p-4 sm:p-6">
-        <UTable
-          :data="logs"
-          :columns="logColumns"
-          :loading="loadingLogs"
-          class="shrink-0"
-          :ui="tableUi"
-        >
-          <template #created-cell="{ row }">
-            {{ new Date(row.original.created_at).toLocaleString('pt-BR') }}
-          </template>
+    <ul v-if="tab === 'entrar' && found.length" role="list" class="divide-y divide-default">
+      <li
+        v-for="account in found"
+        :key="account.id"
+        class="flex items-center justify-between gap-3 py-3 px-4 sm:px-6"
+      >
+        <div class="min-w-0">
+          <p class="font-medium text-highlighted truncate">
+            {{ account.name }}
+          </p>
+          <p class="text-sm text-muted">
+            #{{ account.id }}
+          </p>
+        </div>
 
-          <template #actor-cell="{ row }">
-            <p class="font-medium text-highlighted">
-              {{ row.original.super_admin?.name ?? '—' }}
-            </p>
-          </template>
+        <div class="flex items-center gap-3">
+          <UBadge :color="account.status === 'active' ? 'success' : 'error'" variant="subtle">
+            {{ account.status === 'active' ? 'Ativa' : 'Suspensa' }}
+          </UBadge>
+          <UButton
+            icon="i-lucide-life-buoy"
+            color="neutral"
+            variant="ghost"
+            @click="enterAccount(account)"
+          />
+        </div>
+      </li>
+    </ul>
+    <div v-else-if="tab === 'entrar'" class="flex flex-col items-center justify-center gap-2 py-10 text-sm text-muted">
+      <UIcon name="i-lucide-search" class="size-6" />
+      <span>Busque uma conta pelo nome ou pelo ID para entrar em suporte.</span>
+    </div>
 
-          <template #account-cell="{ row }">
-            {{ row.original.account?.name ?? '—' }}
-          </template>
+    <div v-else :class="panelBodyClass">
+      <UTable
+        :data="logs"
+        :columns="logColumns"
+        :loading="loadingLogs"
+        class="shrink-0"
+        :ui="panelTableUi"
+      >
+        <template #created-cell="{ row }">
+          {{ new Date(row.original.created_at).toLocaleString('pt-BR') }}
+        </template>
 
-          <template #action-cell="{ row }">
-            <UBadge :color="actionMeta(row.original.action).color" variant="subtle">
-              {{ actionMeta(row.original.action).label }}
-            </UBadge>
-          </template>
+        <template #actor-cell="{ row }">
+          <p class="font-medium text-highlighted">
+            {{ row.original.super_admin?.name ?? '—' }}
+          </p>
+        </template>
 
-          <template #ip-cell="{ row }">
-            <span class="text-muted">{{ row.original.ip ?? '—' }}</span>
-          </template>
+        <template #account-cell="{ row }">
+          {{ row.original.account?.name ?? '—' }}
+        </template>
 
-          <template #empty>
-            <div class="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted">
-              <UIcon name="i-lucide-scroll-text" class="size-6" />
-              <span>Nenhum evento encontrado.</span>
-            </div>
-          </template>
-        </UTable>
+        <template #action-cell="{ row }">
+          <UBadge :color="actionMeta(row.original.action).color" variant="subtle">
+            {{ actionMeta(row.original.action).label }}
+          </UBadge>
+        </template>
 
-        <div class="flex items-center justify-between gap-3 border-t border-default pt-4">
-          <div class="text-sm text-muted">
-            {{ logsTotal }} evento(s)
-          </div>
+        <template #ip-cell="{ row }">
+          <span class="text-muted">{{ row.original.ip ?? '—' }}</span>
+        </template>
 
-          <div class="flex items-center gap-1.5">
-            <UPagination v-model:page="logsPage" :total="logsTotal" :items-per-page="logsPerPage" />
-          </div>
+        <template #empty>
+          <DataTablePanelTableEmpty
+            icon="i-lucide-scroll-text"
+            label="Nenhum evento encontrado."
+          />
+        </template>
+      </UTable>
+
+      <div :class="panelFooterClass">
+        <div :class="panelFooterCountClass">
+          {{ logsTotal }} evento(s)
+        </div>
+
+        <div :class="panelPaginationClass">
+          <UPagination v-model:page="logsPage" :total="logsTotal" :items-per-page="logsPerPage" />
         </div>
       </div>
-    </UPageCard>
-  </div>
+    </div>
+  </DataTablePanelList>
 </template>

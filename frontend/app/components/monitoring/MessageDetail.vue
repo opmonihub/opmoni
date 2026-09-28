@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import type { MonitoringMessage, MonitoringMessageStub } from '~/types/serpro'
 import type { MonitoringObligation } from '~/utils/monitoringNav'
 import { formatMonitoringDate, monitoringDeadlinePassed } from '~/utils/monitoringPresentation'
@@ -52,6 +53,22 @@ const stubDeadlinePassed = computed(() => monitoringDeadlinePassed(props.stub.pr
 /** What the provider recorded — the detail is read from the message, not the stub. */
 const deadlinePassed = computed(() => monitoringDeadlinePassed(message.value?.prazo_limite))
 
+/** What the stub already knows, before the office consents to the read. */
+const stubFacts = computed<MetaListItem[]>(() => [
+  { label: 'Recebida em', value: formatMonitoringDate(props.stub.received_at), mono: true, truncate: true },
+  { label: 'Ciência em', value: formatMonitoringDate(props.stub.ciencia_em), mono: true, truncate: true, when: scienceRecorded.value }
+])
+
+/** What the read returned, plus the provider's own code when it sent one. */
+const messageFacts = computed<MetaListItem[]>(() => {
+  if (!message.value) return []
+  return [
+    { label: 'Ciência em', value: formatMonitoringDate(message.value.ciencia_em), mono: true, truncate: true },
+    { label: 'Prazo', value: formatMonitoringDate(message.value.prazo_limite), mono: true, truncate: true },
+    { label: 'Código', value: message.value.codigo ?? '', mono: true, truncate: true, when: !!message.value.codigo }
+  ]
+})
+
 async function confirm() {
   confirmed.value = true
   loading.value = true
@@ -102,24 +119,7 @@ async function confirm() {
           {{ stub.assunto }}
         </p>
 
-        <dl class="grid grid-cols-2 gap-x-3 gap-y-2">
-          <div class="min-w-0">
-            <dt class="text-xs text-muted">
-              Recebida em
-            </dt>
-            <dd class="truncate text-sm text-default tabular-nums">
-              {{ formatMonitoringDate(stub.received_at) }}
-            </dd>
-          </div>
-          <div v-if="scienceRecorded" class="min-w-0">
-            <dt class="text-xs text-muted">
-              Ciência em
-            </dt>
-            <dd class="truncate text-sm text-default tabular-nums">
-              {{ formatMonitoringDate(stub.ciencia_em) }}
-            </dd>
-          </div>
-        </dl>
+        <DataTableMetaList :items="stubFacts" columns="grid-cols-2 gap-x-3 gap-y-2" />
       </div>
 
       <USkeleton v-else-if="loading" class="h-40 w-full" />
@@ -134,32 +134,7 @@ async function confirm() {
           :description="`O prazo do escritório terminou em ${formatMonitoringDate(message.prazo_limite)}.`"
         />
 
-        <dl class="grid grid-cols-2 gap-x-3 gap-y-2">
-          <div class="min-w-0">
-            <dt class="text-xs text-muted">
-              Ciência em
-            </dt>
-            <dd class="truncate text-sm text-default tabular-nums">
-              {{ formatMonitoringDate(message.ciencia_em) }}
-            </dd>
-          </div>
-          <div class="min-w-0">
-            <dt class="text-xs text-muted">
-              Prazo
-            </dt>
-            <dd class="truncate text-sm text-default tabular-nums">
-              {{ formatMonitoringDate(message.prazo_limite) }}
-            </dd>
-          </div>
-          <div v-if="message.codigo" class="min-w-0">
-            <dt class="text-xs text-muted">
-              Código
-            </dt>
-            <dd class="truncate text-sm text-default tabular-nums">
-              {{ message.codigo }}
-            </dd>
-          </div>
-        </dl>
+        <DataTableMetaList :items="messageFacts" columns="grid-cols-2 gap-x-3 gap-y-2" />
 
         <!-- `whitespace-pre-wrap`: the provider sends plain text and its own line
              breaks are part of what the office is being shown. -->

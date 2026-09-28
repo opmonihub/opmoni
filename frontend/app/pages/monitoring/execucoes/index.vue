@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useInfiniteScroll } from '@vueuse/core'
 import type { TableColumn } from '@nuxt/ui'
-import { sheetTableUi } from '~/components/data-table/sheet'
+import type { ComponentPublicInstance } from 'vue'
+import type { MetaListItem } from '~/components/data-table/MetaList.vue'
+import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
 import { apiStatus } from '~/composables/useApiError'
 import type { SerproSyncRun } from '~/types/serpro'
 import {
@@ -11,6 +14,8 @@ import {
 
 definePageMeta({ middleware: 'auth' })
 
+type RunsPage = Awaited<ReturnType<ReturnType<typeof useSerpro>['syncRuns']>>
+
 const toast = useToast()
 const { syncRuns } = useSerpro()
 
@@ -19,7 +24,7 @@ const { syncRuns } = useSerpro()
  * finished a minute ago would otherwise keep showing the history as it stood
  * before it, which is the one thing this screen exists to report.
  */
-const { data, status, error, refresh } = await useAsyncData<{ data: SerproSyncRun[] }>(
+const { data, status, error, refresh: reload } = await useAsyncData<RunsPage>(
   'serpro-sync-runs',
   async () => {
     try {
@@ -34,114 +39,229 @@ const { data, status, error, refresh } = await useAsyncData<{ data: SerproSyncRu
   { default: () => ({ data: [] as SerproSyncRun[] }), getCachedData: () => undefined }
 )
 
-const isLoading = computed(() => status.value === 'pending')
-const runs = computed(() => data.value?.data ?? [])
+/**
+ * `ignoreStatus: 404` — the loader above already answers a 404 with an empty
+ * history, so nothing reaches here as one; the exemption keeps the alert on the
+ * same footing as the loader rather than re-deriving the status at the call site.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar as execuções',
+  refreshErrorTitle: 'Não foi possível atualizar as execuções',
+  ignoreStatus: 404
+})
 
-async function onRefresh() {
+const runs = ref<SerproSyncRun[]>([])
+const page = ref(1)
+const lastPage = ref(1)
+const loadingMore = ref(false)
+let generation = 0
+
+watch(data, (value) => {
+  generation += 1
+  runs.value = value?.data ?? []
+  page.value = value?.meta?.current_page ?? 1
+  lastPage.value = value?.meta?.last_page ?? 1
+}, { immediate: true })
+
+const canLoadMore = computed(() => !isLoading.value && !loadingMore.value && page.value < lastPage.value)
+
+async function loadMore() {
+  if (!canLoadMore.value) return
+  const seen = generation
+  const nextPage = page.value + 1
+  loadingMore.value = true
   try {
-    await refresh()
+    const response = await syncRuns({ page: nextPage })
+    if (seen !== generation) return
+    const known = new Set(runs.value.map(run => run.id))
+    runs.value = [...runs.value, ...response.data.filter(run => !known.has(run.id))]
+    page.value = response.meta?.current_page ?? nextPage
+    lastPage.value = response.meta?.last_page ?? page.value
   } catch {
-    toast.add({ title: 'Não foi possível atualizar as execuções', color: 'error' })
+    toast.add({ title: 'Não foi possível carregar mais execuções', color: 'error' })
+  } finally {
+    loadingMore.value = false
   }
 }
 
-watch(error, (value) => {
-  if (value && apiStatus(value) !== 404) {
-    toast.add({ title: 'Não foi possível carregar as execuções', color: 'error' })
-  }
-})
+/** The four counts of one run, in the order the table declares them. */
+function runCounters(run: SerproSyncRun): MetaListItem[] {
+  return [
+    { label: 'Total', value: formatMonitoringCount(run.total), mono: true },
+    { label: 'Sincr.', value: formatMonitoringCount(run.synchronized), mono: true },
+    { label: 'Ignor.', value: formatMonitoringCount(run.skipped), mono: true },
+    { label: 'Falhos', value: formatMonitoringCount(run.failed), mono: true, tone: run.failed > 0 ? 'error' : 'default' }
+  ]
+}
 
-const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
+useMonitoringActions({ refresh, loading: isLoading })
 
-const countClass = { th: 'text-right', td: 'text-right tabular-nums' }
+const countClass = { th: 'whitespace-nowrap text-right', td: 'text-right tabular-nums' }
 
 const columns: TableColumn<SerproSyncRun>[] = [
-  { id: 'id', header: 'Execução' },
-  { id: 'state', header: 'Estado' },
+  { id: 'id', header: 'Execução', meta: { class: { th: 'w-28 whitespace-nowrap', td: '' } } },
+  { id: 'state', header: 'Estado', meta: { class: { th: 'min-w-32 whitespace-nowrap', td: '' } } },
   { id: 'total', header: 'Total', meta: { class: countClass } },
   { id: 'synchronized', header: 'Sincronizados', meta: { class: countClass } },
   { id: 'skipped', header: 'Ignorados', meta: { class: countClass } },
   { id: 'failed', header: 'Falhos', meta: { class: countClass } },
-  { id: 'finished_at', header: 'Concluída em' }
+  { id: 'started_at', header: 'Iniciada em', meta: { class: { th: 'whitespace-nowrap', td: 'tabular-nums' } } },
+  { id: 'finished_at', header: 'Concluída em', meta: { class: { th: 'whitespace-nowrap', td: 'tabular-nums' } } },
+  { id: 'actions', meta: { class: { th: 'w-12', td: 'w-12' } } }
 ]
+
+function runPath(run: SerproSyncRun) {
+  return `/monitoring/execucoes/${run.id}`
+}
+
+const table = useTemplateRef<ComponentPublicInstance>('table')
+const mobileList = useTemplateRef<HTMLElement>('mobileList')
+
+onMounted(() => {
+  for (const target of [computed(() => table.value?.$el ?? null), mobileList]) {
+    useInfiniteScroll(target, () => loadMore(), {
+      distance: 200,
+      canLoadMore: () => canLoadMore.value
+    })
+  }
+})
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-6">
-    <div>
-      <h2 class="text-lg font-semibold text-highlighted">
-        Execuções de sincronização
-      </h2>
-      <p class="text-sm text-muted">
-        Cada execução fica registrada com o que o provedor respondeu para cada cliente da carteira. Reenviar uma execução é uma ação à parte.
-      </p>
+  <div class="flex min-h-0 flex-1 flex-col">
+    <div :class="sheetBodyClass">
+      <ErrorRetryAlert
+        v-if="showError"
+        title="Não foi possível carregar as execuções"
+        @retry="retry"
+      />
+
+      <UEmpty
+        v-else-if="!isLoading && runs.length === 0"
+        icon="i-lucide-refresh-cw"
+        title="Nenhuma execução registrada"
+        description="Nenhuma sincronização foi disparada para este escritório."
+        variant="naked"
+      />
+
+      <template v-else>
+        <!-- Mobile -->
+        <div
+          v-if="isLoading && runs.length === 0"
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:hidden"
+        >
+          <USkeleton v-for="index in 4" :key="index" class="h-32 w-full rounded-lg" />
+        </div>
+
+        <div
+          v-else
+          ref="mobileList"
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:hidden"
+        >
+          <UCard
+            v-for="run in runs"
+            :key="run.id"
+            variant="subtle"
+            :ui="{ body: 'p-0 sm:p-0' }"
+          >
+            <NuxtLink :to="runPath(run)" class="block p-4">
+              <div class="flex items-start justify-between gap-3">
+                <DataTableIdentity
+                  :title="`Execução #${run.id}`"
+                  :meta="`Concluída em ${formatMonitoringDate(run.finished_at)}`"
+                />
+                <UBadge
+                  class="shrink-0"
+                  variant="subtle"
+                  :color="serproRunStatePresentation[run.state].color"
+                  :icon="serproRunStatePresentation[run.state].icon"
+                  :label="serproRunStatePresentation[run.state].label"
+                />
+              </div>
+              <USeparator class="my-3" />
+              <DataTableMetaList :items="runCounters(run)" columns="grid-cols-4 gap-x-3 text-xs" />
+            </NuxtLink>
+          </UCard>
+
+          <div v-if="loadingMore" class="flex justify-center py-2">
+            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin text-muted" />
+          </div>
+        </div>
+
+        <!-- Desktop -->
+        <div class="hidden min-h-0 min-w-0 flex-1 flex-col md:flex">
+          <UTable
+            ref="table"
+            sticky
+            :data="runs"
+            :columns="columns"
+            :loading="isLoading || loadingMore"
+            class="h-full min-h-0 w-full flex-1"
+            :ui="sheetTableUi"
+          >
+            <template #id-cell="{ row }">
+              <NuxtLink
+                :to="runPath(row.original)"
+                class="font-medium text-highlighted tabular-nums hover:text-primary"
+              >
+                #{{ row.original.id }}
+              </NuxtLink>
+            </template>
+
+            <template #state-cell="{ row }">
+              <UBadge
+                class="max-w-full"
+                :color="serproRunStatePresentation[row.original.state].color"
+                :icon="serproRunStatePresentation[row.original.state].icon"
+                variant="subtle"
+                :label="serproRunStatePresentation[row.original.state].label"
+                :ui="{ base: 'max-w-full', label: 'truncate' }"
+              />
+            </template>
+
+            <template #total-cell="{ row }">
+              {{ formatMonitoringCount(row.original.total) }}
+            </template>
+
+            <template #synchronized-cell="{ row }">
+              {{ formatMonitoringCount(row.original.synchronized) }}
+            </template>
+
+            <template #skipped-cell="{ row }">
+              {{ formatMonitoringCount(row.original.skipped) }}
+            </template>
+
+            <template #failed-cell="{ row }">
+              <span :class="row.original.failed > 0 ? 'text-error' : undefined">
+                {{ formatMonitoringCount(row.original.failed) }}
+              </span>
+            </template>
+
+            <template #started_at-cell="{ row }">
+              {{ formatMonitoringDate(row.original.started_at) }}
+            </template>
+
+            <template #finished_at-cell="{ row }">
+              {{ formatMonitoringDate(row.original.finished_at) }}
+            </template>
+
+            <template #actions-cell="{ row }">
+              <div class="text-right">
+                <UButton
+                  :to="runPath(row.original)"
+                  icon="i-lucide-chevron-right"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`Ver execução #${row.original.id}`"
+                />
+              </div>
+            </template>
+          </UTable>
+        </div>
+      </template>
     </div>
-
-    <UAlert
-      v-if="showError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Não foi possível carregar as execuções"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
-    />
-
-    <USkeleton v-else-if="isLoading" class="h-64 w-full" />
-
-    <UEmpty
-      v-else-if="runs.length === 0"
-      icon="i-lucide-refresh-cw"
-      title="Nenhuma execução registrada"
-      description="Nenhuma sincronização foi disparada para este escritório."
-      variant="naked"
-    />
-
-    <UTable
-      v-else
-      :data="runs"
-      :columns="columns"
-      :ui="sheetTableUi"
-    >
-      <template #id-cell="{ row }">
-        <UButton
-          :to="`/monitoring/execucoes/${row.original.id}`"
-          :label="`#${row.original.id}`"
-          color="primary"
-          variant="ghost"
-          size="xs"
-          class="font-medium tabular-nums"
-        />
-      </template>
-
-      <template #state-cell="{ row }">
-        <UBadge
-          :color="serproRunStatePresentation[row.original.state].color"
-          :icon="serproRunStatePresentation[row.original.state].icon"
-          variant="subtle"
-          :label="serproRunStatePresentation[row.original.state].label"
-        />
-      </template>
-
-      <template #total-cell="{ row }">
-        {{ formatMonitoringCount(row.original.total) }}
-      </template>
-
-      <template #synchronized-cell="{ row }">
-        {{ formatMonitoringCount(row.original.synchronized) }}
-      </template>
-
-      <template #skipped-cell="{ row }">
-        {{ formatMonitoringCount(row.original.skipped) }}
-      </template>
-
-      <template #failed-cell="{ row }">
-        {{ formatMonitoringCount(row.original.failed) }}
-      </template>
-
-      <template #finished_at-cell="{ row }">
-        <span class="tabular-nums">{{ formatMonitoringDate(row.original.finished_at) }}</span>
-      </template>
-    </UTable>
   </div>
 </template>

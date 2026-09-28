@@ -34,7 +34,7 @@ const editing = ref(false)
 const connectivity = ref<SerproConnectivityResult | null>(null)
 
 /**
- * The first rung of the ladder, 404-exempt like the other monitoring screens:
+ * The first rung of the ladder: a 404 answers `null` rather than throwing, so
  * the read endpoint not having shipped yet is the inert state — an empty form
  * and no invented credential — not a failure worth shouting about.
  */
@@ -51,8 +51,20 @@ const { data: metadata, status, error, refresh } = await useAsyncData<SerproConn
   { default: () => null, getCachedData: () => undefined }
 )
 
-const isLoading = computed(() => status.value === 'pending')
-const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
+/**
+ * 404-exempt like the other monitoring screens, and `sticky` is deliberately
+ * left off: this alert is a sibling of the skeleton and the form, not the `v-else`
+ * of a list, so it only has to hold while `error` itself holds. The second toast
+ * is the manual retry, which is why it is worded apart from the load failure.
+ */
+const { isLoading, showError, retry } = useRetryableLoad({
+  refresh,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar a conexão',
+  refreshErrorTitle: 'Não foi possível atualizar a conexão',
+  ignoreStatus: 404
+})
 
 /** The metadata only ever renders for a credential the API says is configured. */
 const configuredCredential = computed(() => (metadata.value?.configured ? metadata.value : null))
@@ -187,20 +199,6 @@ async function onTestConnectivity() {
     testing.value = false
   }
 }
-
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar a conexão', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  if (value && apiStatus(value) !== 404) {
-    toast.add({ title: 'Não foi possível carregar a conexão', color: 'error' })
-  }
-})
 </script>
 
 <template>
@@ -214,14 +212,10 @@ watch(error, (value) => {
       </p>
     </div>
 
-    <UAlert
+    <ErrorRetryAlert
       v-if="showError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
       title="Não foi possível carregar a conexão"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
     <USkeleton v-else-if="isLoading" class="h-64 w-full" />

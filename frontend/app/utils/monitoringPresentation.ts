@@ -15,8 +15,38 @@ import type {
 
 type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error'
 
+/**
+ * The colour a status tab's icon takes, and the tinted box a header icon sits
+ * in. Kept here so a template never spells a severity as a Tailwind class.
+ */
+export const monitoringTone: Record<Tone, { icon: string, box: string }> = {
+  neutral: { icon: 'text-muted', box: 'bg-elevated text-muted ring-default' },
+  info: { icon: 'text-info', box: 'bg-info/10 text-info ring-info/20' },
+  success: { icon: 'text-success', box: 'bg-success/10 text-success ring-success/20' },
+  warning: { icon: 'text-warning', box: 'bg-warning/10 text-warning ring-warning/20' },
+  error: { icon: 'text-error', box: 'bg-error/10 text-error ring-error/20' }
+}
+
 /** The counter row's own label — the fifth reading, which is not a state. */
 export const monitoringTotalLabel = 'Total'
+
+export const monitoringTotalIcon = 'i-lucide-users'
+
+export const monitoringActions = {
+  associate: 'Adicionar clientes',
+  refresh: 'Atualizar'
+} as const
+
+export const monitoringFilters = {
+  search: 'Buscar por nome ou CNPJ'
+} as const
+
+export const monitoringEmpty = {
+  noClients: 'Nenhum cliente nesta obrigação',
+  noClientsDescription: 'Nenhum cliente da carteira tem registro sincronizado para esta obrigação.',
+  noResults: 'Nenhum resultado com estes filtros',
+  noResultsDescription: 'Ajuste a busca ou limpe os filtros aplicados.'
+} as const
 
 /**
  * What a reading the source did not supply is drawn as. Named rather than

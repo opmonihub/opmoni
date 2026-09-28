@@ -11,6 +11,7 @@ import { priorityPresentation, statusPresentation } from '~/composables/useWorkP
 import type { WorkGroupedClient, WorkTask, WorkTaskStatus } from '~/types/work'
 import { isCascadeAdvanceLockedInProcess } from '~/utils/workDerivedStatus'
 import { cascadeBadgeColor, cascadeLabel, showCascadeBadge, workFlatTableUi } from '~/utils/workGroupedTable'
+import { pageScrollClass } from '~/utils/pageShell'
 import {
   workAssignMemberItems
 } from '~/utils/workTableFormat'
@@ -48,7 +49,7 @@ const sorting = ref<SortingState>([])
 const rowSelection = ref<Record<string, boolean>>({})
 const isDesktop = useClientMediaQuery('(min-width: 768px)')
 
-const { data, status, error, refresh } = await useAsyncData<{
+const { data, status, error, refresh: reload } = await useAsyncData<{
   groups: WorkGroupedClient[]
   unscoped: WorkTask[]
 }>(
@@ -69,7 +70,21 @@ const allTasks = computed(() => tasksForWorkScope(
   data.value?.unscoped ?? [],
   scopeMode.value
 ))
-const isLoading = computed(() => status.value === 'pending')
+
+/**
+ * The `refresh` below is the composable's, not `reload`'s: the toolbar button and
+ * the empty-state action answer through it, so a failed manual refresh toasts
+ * "Não foi possível atualizar as tarefas" instead of going quiet. Every mutation
+ * (status, dispensa, atribuição, massa) keeps calling `reload` inside its own
+ * try/catch, so those still report through their own message.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar as tarefas',
+  refreshErrorTitle: 'Não foi possível atualizar as tarefas'
+})
 
 const { data: departments } = await useAsyncData(
   'work-departments',
@@ -373,7 +388,7 @@ async function setTaskStatus(taskId: number, next: Exclude<WorkTaskStatus, 'dism
   try {
     await updateTask(taskId, { status: next })
     clearLocked(taskId)
-    await refresh()
+    await reload()
     toast.add({ title: workStatusSuccessTitles[next], color: 'success' })
   } catch (error: unknown) {
     if (apiStatus(error) === 422) {
@@ -448,7 +463,7 @@ async function onConfirmDismiss() {
       await dismissWithReason(dismissTarget.value, dismissReason.value)
       dismissOpen.value = false
       dismissTarget.value = null
-      await refresh()
+      await reload()
       toast.add({ title: 'Tarefa dispensada', color: 'success' })
     }
   } catch (error: unknown) {
@@ -463,7 +478,7 @@ async function assign(task: WorkTask, memberId: number | null) {
   busyId.value = task.id
   try {
     await updateTask(task.id, { assignee_member_id: memberId })
-    await refresh()
+    await reload()
     toast.add({ title: memberId === null ? 'Responsável removido' : 'Responsável atualizado', color: 'success' })
   } catch (error: unknown) {
     toast.add({ title: 'Não foi possível atribuir o responsável', description: apiMessage(error), color: 'error' })
@@ -497,7 +512,7 @@ async function runBulk(
         }
       }
     }
-    await refresh()
+    await reload()
     if (failed === 0 && blocked === 0) {
       toast.add({ title: `${label}: ${ok} atualizada(s)`, color: 'success' })
     } else {
@@ -531,18 +546,6 @@ async function onBulkStatus(next: 'todo' | 'doing' | 'done') {
   clearSelection()
 }
 
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar as tarefas', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  if (value) toast.add({ title: 'Não foi possível carregar as tarefas', color: 'error' })
-})
-
 watch(membersError, (value) => {
   if (value) toast.add(membersWarning())
 }, { immediate: true })
@@ -563,7 +566,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:gap-5 sm:p-4 lg:p-5">
+  <div :class="pageScrollClass">
     <ClientOnly>
       <WorkToolbarTeleport>
         <div class="flex items-center gap-1">
@@ -591,7 +594,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
             variant="ghost"
             aria-label="Atualizar tarefas"
             :loading="isLoading"
-            @click="onRefresh"
+            @click="refresh"
           />
         </div>
       </WorkToolbarTeleport>
@@ -679,14 +682,10 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
       </template>
     </DataTableFilter>
 
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
+    <ErrorRetryAlert
+      v-if="showError"
       title="Não foi possível carregar as tarefas"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
     <WorkTableSkeleton
@@ -722,7 +721,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
       variant="naked"
       :actions="hasActiveFilters
         ? [{ label: 'Limpar filtros', icon: 'i-lucide-filter-x', color: 'neutral', variant: 'outline', onClick: clearAllFilters }]
-        : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => onRefresh() }]"
+        : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />
 
     <template v-else-if="viewMode === 'table'">

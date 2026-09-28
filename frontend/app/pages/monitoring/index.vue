@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { apiStatus } from '~/composables/useApiError'
 import type { MonitoringOverview } from '~/types/serpro'
 import {
   monitoringGroups,
@@ -10,10 +9,10 @@ import {
   type MonitoringObligation
 } from '~/utils/monitoringNav'
 import { formatMonitoringCount, monitoringCategoryPresentation, monitoringMissingValue } from '~/utils/monitoringPresentation'
+import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
-const toast = useToast()
 const { overview } = useSerpro()
 
 /**
@@ -22,7 +21,7 @@ const { overview } = useSerpro()
  * that finished a minute ago would keep showing the counters from before it —
  * the spec scenario "Atualização após sincronização" fails.
  */
-const { data, status, error, refresh } = await useAsyncData<MonitoringOverview>(
+const { data, status, error, refresh: reload } = await useAsyncData<MonitoringOverview>(
   'serpro-monitoring-overview',
   () => overview(),
   {
@@ -31,31 +30,45 @@ const { data, status, error, refresh } = await useAsyncData<MonitoringOverview>(
   }
 )
 
-const isLoading = computed(() => status.value === 'pending')
-
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar o painel', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  // A 404 means the read API is not there yet, which is the inert state, not
-  // a failure worth shouting about. Anything else is.
-  if (value && apiStatus(value) !== 404) {
-    toast.add({ title: 'Não foi possível carregar o monitoramento', color: 'error' })
-  }
+/**
+ * `ignoreStatus: 404` — a 404 means the read API is not there yet, which is the
+ * inert state, not a failure worth shouting about. Anything else is.
+ *
+ * The same exemption the toast applies is applied to the template, because the
+ * composable derives both from one check. Guarding only the toast would leave the
+ * page shouting "Não foi possível carregar" over a backend that simply has not
+ * shipped the endpoint yet — and `tasks.md` 10.3 requires these screens to sit in
+ * an empty state in that situation.
+ *
+ * The `refresh` below is the composable's, not `reload`'s: the navbar button
+ * answers through it so a failed manual refresh toasts instead of going quiet.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar o monitoramento',
+  refreshErrorTitle: 'Não foi possível atualizar o painel',
+  ignoreStatus: 404
 })
 
-/**
- * The same exemption the toast applies, applied to the template. Guarding only
- * the toast would leave the page shouting "Não foi possível carregar" over a
- * backend that simply has not shipped the endpoint yet — and `tasks.md` 10.3
- * requires these screens to sit in an empty state in that situation.
- */
-const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
+useMonitoringActions({ refresh, loading: isLoading })
+
+/** How many obligations have at least one client needing attention. */
+const obligationsWithAttention = computed(() =>
+  monitoringObligations.filter(obligation => !monitoringObligationUnserved(obligation) && (data.value.attention[obligation.slug] ?? 0) > 0).length
+)
+
+const attentionTotal = computed(() =>
+  monitoringObligations.reduce((sum, obligation) => monitoringObligationUnserved(obligation) ? sum : sum + (data.value.attention[obligation.slug] ?? 0), 0)
+)
+
+const servedCount = computed(() => monitoringObligations.filter(obligation => !monitoringObligationUnserved(obligation)).length)
+
+function attentionClass(obligation: MonitoringObligation) {
+  if (monitoringObligationUnserved(obligation)) return 'text-dimmed'
+  return (data.value.attention[obligation.slug] ?? 0) > 0 ? 'text-warning' : 'text-highlighted'
+}
 
 /**
  * The dash, not a zero, for an obligation the provider does not serve. `0` would
@@ -72,61 +85,79 @@ function attentionFor(obligation: MonitoringObligation) {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-4 sm:p-6">
-    <UAlert
+  <div :class="pageScrollClass">
+    <header class="flex min-w-0 items-center">
+      <div class="flex min-w-0 items-center gap-2.5">
+        <UIcon name="i-lucide-activity" class="size-5 shrink-0 text-primary" />
+        <h2 class="truncate text-base font-semibold tracking-tight text-highlighted sm:text-lg">
+          Painel do monitoramento
+        </h2>
+      </div>
+    </header>
+
+    <ErrorRetryAlert
       v-if="showError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
       title="Não foi possível carregar o monitoramento"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
-    <USkeleton v-else-if="isLoading && !error" class="h-64 w-full" />
-
     <template v-else>
-      <section class="flex flex-col gap-4">
-        <div>
-          <h2 class="text-lg font-semibold text-highlighted">
-            Carteira
-          </h2>
-          <p class="text-sm text-muted">
-            Clientes com registros sincronizados. Pessoa física não entra: a integração só age para pessoa jurídica.
-          </p>
+      <UPageGrid class="gap-3 sm:gap-3 lg:grid-cols-4 lg:gap-px">
+        <MetricCard
+          icon="i-lucide-building-2"
+          title="Na carteira"
+          :to="monitoringObligations[0] ? monitoringListPath(monitoringObligations[0]) : undefined"
+          :loading="isLoading"
+          :value="formatMonitoringCount(data.portfolio_total)"
+        />
+        <MetricCard
+          icon="i-lucide-circle-alert"
+          title="Clientes em atenção"
+          :loading="isLoading"
+          :value="formatMonitoringCount(attentionTotal)"
+          :value-class="attentionTotal > 0 ? 'text-warning' : 'text-highlighted'"
+        />
+        <MetricCard
+          icon="i-lucide-list-checks"
+          title="Obrigações com atenção"
+          :loading="isLoading"
+          :value="formatMonitoringCount(obligationsWithAttention)"
+          :value-class="obligationsWithAttention > 0 ? 'text-warning' : 'text-highlighted'"
+        />
+        <MetricCard
+          icon="i-lucide-plug"
+          title="Obrigações servidas"
+          :loading="isLoading"
+          :value="`${formatMonitoringCount(servedCount)} de ${formatMonitoringCount(monitoringObligations.length)}`"
+        />
+      </UPageGrid>
+
+      <p class="-mt-1 text-xs text-muted sm:-mt-2">
+        Clientes com registros sincronizados. Pessoa física não entra: a integração só age para pessoa jurídica.
+      </p>
+
+      <section
+        v-for="group in monitoringGroups"
+        :key="group.label"
+        class="flex min-w-0 flex-col gap-3 pt-1"
+      >
+        <div class="flex min-w-0 items-center gap-2">
+          <UIcon :name="group.icon" class="size-4 shrink-0 text-muted" />
+          <h3 class="text-sm font-semibold text-highlighted">
+            {{ group.label }}
+          </h3>
+          <span class="hidden truncate text-xs text-muted sm:inline">
+            {{ group.description }}
+          </span>
         </div>
 
-        <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
-          <MetricCard
-            icon="i-lucide-building-2"
-            title="Na carteira"
-            :to="monitoringObligations[0] ? monitoringListPath(monitoringObligations[0]) : undefined"
-            :value="formatMonitoringCount(data.portfolio_total)"
-          />
-        </UPageGrid>
-      </section>
-
-      <section v-for="group in monitoringGroups" :key="group.label" class="flex flex-col gap-4">
-        <div class="flex items-start gap-3">
-          <UIcon :name="group.icon" class="mt-0.5 size-5 text-muted" />
-          <div>
-            <h2 class="text-lg font-semibold text-highlighted">
-              {{ group.label }}
-            </h2>
-            <p class="text-sm text-muted">
-              {{ group.description }}
-            </p>
-          </div>
-        </div>
-
-        <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
+        <UPageGrid class="gap-3 sm:gap-3 lg:grid-cols-4 lg:gap-px">
           <!--
-            The default slot, as `HomeStats` uses it, so a `derived` obligation
-            can carry its classification on the card. The office has to be able
-            to see that a projection is a projection *before* clicking into it —
-            the badge is the difference between "Certidões shows no problems"
-            and "Certidões is a filter over the SITFIS report". The value lives
-            in the slot for every obligation, so the cards stay one row.
+            The default slot, so a `derived` obligation can carry its
+            classification on the card. The office has to be able to see that a
+            projection is a projection *before* clicking into it — the badge is
+            the difference between "Certidões shows no problems" and "Certidões
+            is a filter over the SITFIS report".
           -->
           <MetricCard
             v-for="obligation in group.pages"
@@ -136,7 +167,12 @@ function attentionFor(obligation: MonitoringObligation) {
             :to="monitoringListPath(obligation)"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <span class="text-2xl font-semibold tabular-nums text-highlighted">
+              <USkeleton v-if="isLoading" class="h-8 w-12" />
+              <span
+                v-else
+                class="text-2xl font-semibold tabular-nums"
+                :class="attentionClass(obligation)"
+              >
                 {{ attentionFor(obligation) }}
               </span>
               <UBadge
@@ -152,26 +188,38 @@ function attentionFor(obligation: MonitoringObligation) {
         </UPageGrid>
       </section>
 
-      <section class="flex flex-col gap-4">
-        <div>
-          <h2 class="text-lg font-semibold text-highlighted">
+      <section class="flex min-w-0 flex-col gap-3 pt-1">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-cable" class="size-4 shrink-0 text-muted" />
+          <h3 class="text-sm font-semibold text-highlighted">
             Integração
-          </h2>
-          <p class="text-sm text-muted">
+          </h3>
+          <span class="hidden truncate text-xs text-muted sm:inline">
             Termo do escritório e histórico de sincronizações.
-          </p>
+          </span>
         </div>
 
-        <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
-          <MetricCard
+        <div class="grid gap-3 sm:grid-cols-2">
+          <UCard
             v-for="link in monitoringIntegrationLinks"
             :key="link.to"
-            :icon="link.icon"
-            :title="link.label"
-            :to="link.to"
-            value="&rarr;"
-          />
-        </UPageGrid>
+            class="min-w-0"
+            :ui="{ body: 'p-0 sm:p-0' }"
+          >
+            <NuxtLink
+              :to="link.to"
+              class="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-elevated/50 sm:p-4"
+            >
+              <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring ring-inset ring-primary/20">
+                <UIcon :name="link.icon" class="size-4" />
+              </span>
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-highlighted">
+                {{ link.label }}
+              </span>
+              <UIcon name="i-lucide-arrow-up-right" class="size-4 shrink-0 text-muted" />
+            </NuxtLink>
+          </UCard>
+        </div>
       </section>
     </template>
   </div>

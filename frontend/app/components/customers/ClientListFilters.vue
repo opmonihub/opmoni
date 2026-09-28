@@ -56,28 +56,14 @@ const tagMenuItems = [[{
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="flex items-start gap-2 md:hidden">
-      <DataTableStatusChips class="flex-1" :items="mobileStatusItems" :active="documentStatus" />
-      <CustomersSavedFilters
-        v-if="documentStatus === 'all'"
-        compact
-        :search="search"
-        :filters="filterModels"
-        @apply="emit('apply-saved-filter', $event)"
-      />
-      <UDropdownMenu
-        v-if="canManageClients"
-        :items="tagMenuItems"
-        :content="{ align: 'end' }"
-      >
-        <UButton
-          icon="i-lucide-tags"
-          color="neutral"
-          variant="outline"
-          aria-label="Opções de tags"
-        />
-      </UDropdownMenu>
-    </div>
+    <!-- Mobile only: the counters are one scrolling line, and the two auxiliary
+         actions moved down to the search row so they stop taking the width the
+         counters need. From `md` the list toolbar carries them instead. -->
+    <DataTableStatusChips
+      class="md:hidden"
+      :items="mobileStatusItems"
+      :active="documentStatus"
+    />
 
     <DataTableFilter
       :columns="filterColumns"
@@ -95,6 +81,28 @@ const tagMenuItems = [[{
       />
       <template #trailing>
         <div class="ml-auto flex shrink-0 items-center gap-1.5">
+          <CustomersSavedFilters
+            v-if="documentStatus === 'all'"
+            compact
+            class="md:hidden"
+            :search="search"
+            :filters="filterModels"
+            @apply="emit('apply-saved-filter', $event)"
+          />
+          <UDropdownMenu
+            v-if="canManageClients"
+            :items="tagMenuItems"
+            :content="{ align: 'end' }"
+          >
+            <UButton
+              icon="i-lucide-tags"
+              color="neutral"
+              variant="outline"
+              class="shrink-0 md:hidden"
+              aria-label="Opções de tags"
+            />
+          </UDropdownMenu>
+
           <UDropdownMenu
             v-if="selectedCount"
             :items="selectionMenu"
@@ -125,7 +133,12 @@ const tagMenuItems = [[{
             @click="emit('export')"
           />
 
-          <DataTableColumnMenu v-model="columnVisibilityModel" :columns="hideableColumns" />
+          <!-- The mobile list is cards, so there are no columns to hide. -->
+          <DataTableColumnMenu
+            v-model="columnVisibilityModel"
+            :columns="hideableColumns"
+            class="hidden md:flex"
+          />
         </div>
       </template>
     </DataTableFilter>

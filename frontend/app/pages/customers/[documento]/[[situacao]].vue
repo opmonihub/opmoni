@@ -420,13 +420,10 @@ const canLoadMore = computed(() =>
         @export="exportClients(false)"
       />
 
-      <UAlert
+      <ErrorRetryAlert
         v-if="error"
-        color="error"
-        variant="subtle"
         title="Não foi possível carregar a carteira"
-        description="Verifique sua conexão e tente novamente."
-        :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => refresh() }]"
+        @retry="refresh"
       />
 
       <template v-else>

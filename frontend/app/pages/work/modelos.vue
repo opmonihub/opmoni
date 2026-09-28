@@ -2,21 +2,33 @@
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import type { WorkTemplate } from '~/types/work'
 import { taxRegimeLabel } from '~/utils/portfolioLabels'
+import { pageScrollClass } from '~/utils/pageShell'
 import type { TaxRegime } from '~/types/client'
 
 definePageMeta({ middleware: 'auth' })
 
-const toast = useToast()
 const { canManageWork } = useAuth()
 const { listTemplates } = useWork()
 
-const { data, status, error, refresh } = await useAsyncData<WorkTemplate[]>(
+const { data, status, error, refresh: reload } = await useAsyncData<WorkTemplate[]>(
   'work-modelos',
   () => listTemplates()
 )
 
 const templates = computed<WorkTemplate[]>(() => data.value ?? [])
-const isLoading = computed(() => status.value === 'pending')
+
+/**
+ * The `refresh` below is the composable's, not `reload`'s: the toolbar button and
+ * the empty-state action answer through it, so a failed manual refresh toasts
+ * "Não foi possível atualizar os modelos" instead of going quiet.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar os modelos',
+  refreshErrorTitle: 'Não foi possível atualizar os modelos'
+})
 
 function regimeBadges(template: WorkTemplate): string[] {
   if (!template.regimes || template.regimes.length === 0) return ['Todos']
@@ -45,22 +57,10 @@ function clientSummary(template: WorkTemplate): string {
   if (removed > 0) parts.push(`-${removed} excluído(s)`)
   return parts.join(' · ')
 }
-
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar os modelos', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  if (value) toast.add({ title: 'Não foi possível carregar os modelos', color: 'error' })
-})
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:gap-5 sm:p-4 lg:p-5">
+  <div :class="pageScrollClass">
     <ClientOnly>
       <WorkToolbarTeleport>
         <div class="flex items-center gap-1">
@@ -78,20 +78,16 @@ watch(error, (value) => {
             variant="ghost"
             aria-label="Atualizar modelos"
             :loading="isLoading"
-            @click="onRefresh"
+            @click="refresh"
           />
         </div>
       </WorkToolbarTeleport>
     </ClientOnly>
 
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
+    <ErrorRetryAlert
+      v-if="showError"
       title="Não foi possível carregar os modelos"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
     <WorkTableSkeleton
@@ -107,7 +103,7 @@ watch(error, (value) => {
       title="Nenhum modelo cadastrado"
       description="Os modelos definem as rotinas mensais que geram um processo por cliente."
       variant="naked"
-      :actions="canManageWork ? [{ label: 'Criar modelo', icon: 'i-lucide-plus', to: '/work/modelos/novo' }] : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => onRefresh() }]"
+      :actions="canManageWork ? [{ label: 'Criar modelo', icon: 'i-lucide-plus', to: '/work/modelos/novo' }] : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />
 
     <UCard v-else variant="subtle" :ui="{ body: 'p-0 sm:p-0' }">

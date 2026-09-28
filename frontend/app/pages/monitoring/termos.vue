@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiStatus } from '~/composables/useApiError'
 import type { SerproAuthorizationTerm } from '~/types/serpro'
 import { formatMonitoringDate, serproTermGuidance, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { pageDetailClass, pageRecordScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
-const toast = useToast()
 const { authorizationTerm } = useSerpro()
 
 /**
@@ -16,7 +17,7 @@ const { authorizationTerm } = useSerpro()
  * `getCachedData: () => undefined` for the same reason as the overview — a term
  * renewed minutes ago must never be read from the SSR payload.
  */
-const { data, status, error, refresh } = await useAsyncData<SerproAuthorizationTerm | null>(
+const { data, status, error, refresh: reload } = await useAsyncData<SerproAuthorizationTerm | null>(
   'serpro-authorization-term',
   async () => {
     try {
@@ -32,7 +33,6 @@ const { data, status, error, refresh } = await useAsyncData<SerproAuthorizationT
   { default: () => null, getCachedData: () => undefined }
 )
 
-const isLoading = computed(() => status.value === 'pending')
 const term = computed(() => data.value)
 /**
  * The badge below lives inside `v-else-if="term"`, so the no-term case is the
@@ -42,85 +42,110 @@ const term = computed(() => data.value)
  */
 const presentation = computed(() => serproTermStatePresentation[term.value!.state])
 
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar o termo', color: 'error' })
-  }
-}
+/** Renewal is the office's own act only in these two states; the rest is the platform's. */
+const needsAction = computed(() => term.value?.state === 'vencido' || term.value?.state === 'recusado')
 
-watch(error, (value) => {
-  if (value && apiStatus(value) !== 404) {
-    toast.add({ title: 'Não foi possível carregar o termo', color: 'error' })
-  }
+/** The three recorded facts of the term, read by the card below them. */
+const termFacts = computed<MetaListItem[]>(() => {
+  if (!term.value) return []
+  return [
+    { label: 'Estado', value: presentation.value.label },
+    { label: 'Vencimento', value: formatMonitoringDate(term.value.expires_on), mono: true },
+    { label: 'Assinatura', value: 'Do escritório' }
+  ]
 })
 
-const showError = computed(() => !!error.value && apiStatus(error.value) !== 404)
+/**
+ * `ignoreStatus: 404` keeps the same exemption the loader above already applied
+ * by answering `null`: the term screen sits in its "ainda não tem termo" state
+ * rather than shouting over an endpoint that has not shipped.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar o termo',
+  refreshErrorTitle: 'Não foi possível atualizar o termo',
+  ignoreStatus: 404
+})
+
+useMonitoringActions({ refresh, loading: isLoading })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-6">
-    <div>
-      <h2 class="text-lg font-semibold text-highlighted">
-        Termo de autorização
-      </h2>
-      <p class="text-sm text-muted">
-        O termo é do escritório, não de cada cliente: a plataforma monta, assina e submete uma vez, com o e-CNPJ do próprio escritório.
-      </p>
+  <div :class="pageRecordScrollClass">
+    <div :class="pageDetailClass">
+      <ErrorRetryAlert
+        v-if="showError"
+        title="Não foi possível carregar o termo"
+        @retry="retry"
+      />
+
+      <template v-else-if="isLoading">
+        <USkeleton class="h-28 w-full rounded-xl" />
+        <USkeleton class="h-40 w-full rounded-xl" />
+      </template>
+
+      <template v-else-if="term">
+        <UCard :ui="{ body: 'p-3 sm:p-4' }">
+          <div class="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20"
+            >
+              <UIcon name="i-lucide-file-signature" class="size-5" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">
+                Termo do escritório
+              </h1>
+              <p class="text-xs text-muted">
+                A plataforma monta, assina e submete uma vez, com o e-CNPJ do próprio escritório.
+              </p>
+              <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                <UBadge
+                  :color="presentation.color"
+                  :icon="presentation.icon"
+                  variant="subtle"
+                  size="sm"
+                  :label="presentation.label"
+                />
+              </div>
+            </div>
+          </div>
+        </UCard>
+
+        <UAlert
+          v-if="needsAction"
+          :color="presentation.color"
+          variant="subtle"
+          :icon="presentation.icon"
+          :title="presentation.label"
+          :description="serproTermGuidance[term.state]"
+        />
+
+        <UCard :ui="{ body: 'p-3 sm:p-4' }">
+          <h2 class="mb-3 text-sm font-semibold text-highlighted">
+            Dados do termo
+          </h2>
+          <DataTableMetaList :items="termFacts" />
+          <template v-if="!needsAction">
+            <USeparator class="my-3" />
+            <p class="text-xs text-muted">
+              {{ serproTermGuidance[term.state] }}
+            </p>
+          </template>
+        </UCard>
+      </template>
+
+      <UAlert
+        v-else
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-file-x"
+        title="O escritório ainda não tem termo"
+        description="Sem o certificado do escritório não há termo, e sem termo a integração não fala com o provedor em nome dos clientes."
+      />
     </div>
-
-    <UAlert
-      v-if="showError"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
-      title="Não foi possível carregar o termo"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
-    />
-
-    <USkeleton v-else-if="isLoading" class="h-32 w-full" />
-
-    <UCard v-else-if="term" :ui="{ body: 'p-4 sm:p-5 flex flex-col gap-4' }">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-sm text-muted">
-            Estado
-          </p>
-          <UBadge
-            :color="presentation.color"
-            :icon="presentation.icon"
-            variant="subtle"
-            :label="presentation.label"
-            size="lg"
-          />
-        </div>
-        <div class="text-right">
-          <p class="text-sm text-muted">
-            Vencimento
-          </p>
-          <p class="text-sm font-medium text-default tabular-nums">
-            {{ formatMonitoringDate(term.expires_on) }}
-          </p>
-        </div>
-      </div>
-
-      <p class="text-sm text-muted">
-        A assinatura é do escritório.
-      </p>
-      <p class="text-sm text-muted">
-        {{ serproTermGuidance[term.state] }}
-      </p>
-    </UCard>
-
-    <UAlert
-      v-else
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-file-x"
-      title="O escritório ainda não tem termo"
-      description="Sem o certificado do escritório não há termo, e sem termo a integração não fala com o provedor em nome dos clientes."
-    />
   </div>
 </template>

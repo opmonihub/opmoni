@@ -2,6 +2,7 @@
 import { refDebounced } from '@vueuse/core'
 import type { ClientSheet } from '~/types/client'
 import type { MonitoringObligation } from '~/utils/monitoringNav'
+import { monitoringFilters } from '~/utils/monitoringPresentation'
 import { clientSheetTaxIdLabel } from '~/utils/portfolioLabels'
 
 const props = defineProps<{
@@ -131,7 +132,7 @@ async function associate(ids: number[], keepOpen: boolean) {
         <UInput
           v-model="search"
           icon="i-lucide-search"
-          placeholder="Buscar por nome ou CNPJ"
+          :placeholder="monitoringFilters.search"
           aria-label="Buscar clientes para associar"
         />
 

@@ -7,6 +7,10 @@ import {
   monitoringListPath,
   monitoringObligations,
   monitoringObligationUnserved,
+  monitoringPageActive,
+  monitoringPages,
+  monitoringSidebarChildren,
+  monitoringTabs,
   parseMonitoringSlug
 } from '../app/utils/monitoringNav.ts'
 import { isMonitoringSlipColumn, monitoringSlipColumns } from '../app/utils/monitoringPresentation.ts'
@@ -145,5 +149,99 @@ describe('the obligation registry', () => {
     assert.ok(simples)
     assert.equal(monitoringListPath(simples), '/monitoring/simples-nacional')
     assert.equal(monitoringListPath(simples, 'atencao'), '/monitoring/simples-nacional/atencao')
+  })
+})
+
+describe('the module navigation', () => {
+  it('offers Painel and the two integration screens as the module tabs', () => {
+    assert.deepEqual(monitoringPages.map(page => page.to), [
+      '/monitoring',
+      '/monitoring/termos',
+      '/monitoring/execucoes'
+    ])
+  })
+
+  it('spells an integration screen once, deriving the tabs from the panel links', () => {
+    // The panel's link cards and the module tab bar are the same two screens;
+    // two lists of them is how "Termo de autorização" becomes "Termos de autorização".
+    for (const link of monitoringIntegrationLinks) {
+      assert.ok(
+        monitoringPages.some(page => page.to === link.to && page.label === link.label),
+        `${link.to} is spelled differently in the tabs`
+      )
+    }
+  })
+
+  it('lights exactly one tab per destination', () => {
+    for (const path of [
+      '/monitoring',
+      '/monitoring/termos',
+      '/monitoring/execucoes',
+      '/monitoring/execucoes/12',
+      '/monitoring/simples-nacional',
+      '/monitoring/declaracoes/pgdas',
+      '/monitoring/declaracoes/pgdas/atencao'
+    ]) {
+      const [group] = monitoringTabs(path)
+      const active = group.filter(item => item.active)
+      assert.equal(active.length, 1, `${path} lights ${active.map(i => i.label).join(', ') || 'nothing'}`)
+    }
+  })
+
+  it('lights every obligation under Painel, the screen that indexes them', () => {
+    // A tab bar with nothing lit on 19 of the module's 21 screens is the defect
+    // this rule exists to prevent, so it is asserted over the whole registry
+    // rather than on a sample.
+    for (const obligation of monitoringObligations) {
+      const [group] = monitoringTabs(monitoringListPath(obligation))
+      const active = group.filter(item => item.active)
+      assert.equal(active.length, 1, `${obligation.slug} lights ${active.length} tabs`)
+      assert.equal(active[0]?.label, 'Painel')
+    }
+  })
+
+  it('takes the tab away from Painel for the integration screens', () => {
+    for (const link of monitoringIntegrationLinks) {
+      assert.equal(monitoringPageActive(link.to, monitoringPages[0]!), false)
+      assert.equal(monitoringPageActive(`${link.to}/12`, monitoringPages[0]!), false)
+    }
+  })
+
+  it('keeps a run record under its own screen, not the module index', () => {
+    const execucoes = monitoringPages.find(page => page.to === '/monitoring/execucoes')!
+    assert.equal(monitoringPageActive('/monitoring/execucoes/12', execucoes), true)
+  })
+
+  it('lists the sidebar in the same order as the tabs, obligations in between', () => {
+    const children = monitoringSidebarChildren('/monitoring')
+    assert.equal(children[0]?.label, 'Painel')
+    assert.equal(children[children.length - 2]?.label, 'Termo de autorização')
+    assert.equal(children[children.length - 1]?.label, 'Execuções de sincronização')
+    // Painel + eight groups + two integration screens.
+    assert.equal(children.length, monitoringPages.length + monitoringGroups.length)
+  })
+
+  it('names exactly one position in the sidebar, on every screen', () => {
+    // The tab bar answers "which part of the module"; the rail answers "exactly
+    // where am I". Inside an obligation the group is the position, so Painel has
+    // to go dark there — the two rules are deliberately different.
+    const paths = [
+      '/monitoring',
+      '/monitoring/termos',
+      '/monitoring/execucoes',
+      '/monitoring/execucoes/12',
+      ...monitoringObligations.map(item => monitoringListPath(item)),
+      ...monitoringObligations.map(item => `${monitoringListPath(item)}/atencao`)
+    ]
+    for (const path of paths) {
+      const active = monitoringSidebarChildren(path).filter(child => child.active)
+      assert.equal(active.length, 1, `${path} lights ${active.map(i => i.label).join(', ') || 'nothing'}`)
+    }
+  })
+
+  it('hands the position to the group inside an obligation, not to Painel', () => {
+    const children = monitoringSidebarChildren('/monitoring/declaracoes/pgdas')
+    assert.equal(children.find(child => child.label === 'Declarações')?.active, true)
+    assert.equal(children.find(child => child.label === 'Painel')?.active, false)
   })
 })

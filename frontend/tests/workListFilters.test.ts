@@ -3,6 +3,10 @@ import { describe, it } from 'node:test'
 import type { DataTableFilterModel } from '../app/components/data-table/filter-model.ts'
 import type { WorkGroupedClient, WorkTask } from '../app/types/work.ts'
 import {
+  filterWorkClientesLeaves,
+  workClientesFilterColumns
+} from '../app/utils/workClientesFilters.ts'
+import {
   filterWorkProcessosLeaves,
   workProcessosFilterColumns
 } from '../app/utils/workProcessosFilters.ts'
@@ -127,5 +131,100 @@ describe('Work process filters', () => {
       filterWorkProcessosLeaves(leaves, filters, '').map(leaf => leaf.id),
       ['1']
     )
+  })
+})
+
+describe('Work client filters', () => {
+  const leaves = [
+    {
+      id: '1',
+      clientId: 1,
+      clientName: 'Alpha',
+      processId: 101,
+      processName: 'Folha',
+      processRatio: 0.5,
+      cascade: true,
+      order: 1,
+      title: 'Conferir folha',
+      status: 'todo' as const,
+      department: 'Pessoal',
+      due_on: '2026-09-10',
+      empty: false,
+      taskId: 1
+    },
+    {
+      id: '2',
+      clientId: 2,
+      clientName: 'Beta',
+      processId: 202,
+      processName: 'Fiscal',
+      processRatio: 0,
+      cascade: false,
+      order: 1,
+      title: 'Transmitir obrigação',
+      status: 'done' as const,
+      department: 'Fiscal',
+      due_on: '2026-09-18',
+      empty: false,
+      taskId: 2
+    }
+  ]
+
+  it('offers the four shared Work facets in bar order', () => {
+    assert.deepEqual(
+      workClientesFilterColumns(leaves, []).map(column => column.id),
+      ['status', 'department', 'cascade', 'client']
+    )
+  })
+
+  it('keeps a fixed facet an operator already picked even when no leaf holds it', () => {
+    const filters: DataTableFilterModel[] = [
+      { columnId: 'status', type: 'option', operator: 'is', values: ['dismissed'] }
+    ]
+
+    assert.deepEqual(
+      workClientesFilterColumns(leaves, filters).find(column => column.id === 'status')?.options?.map(option => option.value),
+      ['todo', 'doing', 'done', 'dismissed']
+    )
+  })
+
+  it('keeps a client filter column while leaves still carry a name to narrow', () => {
+    const filters: DataTableFilterModel[] = [
+      { columnId: 'client', type: 'option', operator: 'is', values: ['Gamma'] }
+    ]
+
+    assert.deepEqual(
+      workClientesFilterColumns(leaves, filters).find(column => column.id === 'client')?.options?.map(option => option.value),
+      ['Alpha', 'Beta']
+    )
+    assert.deepEqual(filterWorkClientesLeaves(leaves, filters, ''), [])
+  })
+
+  it('narrows cascade and status to the values the leaves actually hold', () => {
+    const columns = workClientesFilterColumns(leaves, [])
+
+    assert.deepEqual(
+      columns.find(column => column.id === 'cascade')?.options?.map(option => option.value),
+      ['true', 'false']
+    )
+    assert.deepEqual(
+      columns.find(column => column.id === 'status')?.options?.map(option => option.label),
+      ['A fazer', 'Concluída']
+    )
+  })
+
+  it('searches across cliente, processo, tarefa and departamento', () => {
+    assert.deepEqual(filterWorkClientesLeaves(leaves, [], 'beta').map(leaf => leaf.id), ['2'])
+    assert.deepEqual(filterWorkClientesLeaves(leaves, [], 'folha').map(leaf => leaf.id), ['1'])
+    assert.deepEqual(filterWorkClientesLeaves(leaves, [], 'fiscal').map(leaf => leaf.id), ['2'])
+  })
+
+  it('combines a facet filter with the search term', () => {
+    const filters: DataTableFilterModel[] = [
+      { columnId: 'department', type: 'option', operator: 'is', values: ['Pessoal'] }
+    ]
+
+    assert.deepEqual(filterWorkClientesLeaves(leaves, filters, '').map(leaf => leaf.id), ['1'])
+    assert.deepEqual(filterWorkClientesLeaves(leaves, filters, 'beta'), [])
   })
 })

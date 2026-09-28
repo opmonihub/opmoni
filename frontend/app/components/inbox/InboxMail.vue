@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import type { RowActionsItems } from '~/components/data-table/RowActionsMenu.vue'
 import type { Mail } from '~/types'
 
 defineProps<{
@@ -9,7 +10,13 @@ defineProps<{
 
 const emits = defineEmits(['close'])
 
-const dropdownItems = [[{
+/**
+ * Two groups, not four flat items: the menu breaks between the message actions
+ * and the conversation actions, and the break is drawn from the nesting itself —
+ * `UDropdownMenu`'s viewport is `divide-y` over its groups and each group carries
+ * its own `p-1`. Flattening would drop the break and the items' side inset.
+ */
+const dropdownItems: RowActionsItems = [[{
   label: 'Marcar como não lida',
   icon: 'i-lucide-check-circle'
 }, {
@@ -79,14 +86,10 @@ function onSubmit() {
           />
         </UTooltip>
 
-        <UDropdownMenu :items="dropdownItems">
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            aria-label="Mais ações"
-          />
-        </UDropdownMenu>
+        <DataTableRowActionsMenu
+          :items="dropdownItems"
+          label="Mais ações"
+        />
       </template>
     </UDashboardNavbar>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import { panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -49,15 +50,6 @@ const columns: TableColumn<SupportLog>[] = [
   { accessorKey: 'account', header: 'Conta' }
 ]
 
-const tableUi = {
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
-}
-
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
@@ -105,17 +97,9 @@ onMounted(load)
     </UPageGrid>
 
     <div>
-      <UPageCard
+      <DataTablePanelList
         title="Acessos de suporte recentes"
         description="Últimos eventos registrados na auditoria."
-        variant="naked"
-        orientation="horizontal"
-        class="mb-4"
-      />
-
-      <UPageCard
-        variant="subtle"
-        :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch' }"
       >
         <div class="p-4 sm:p-6">
           <UTable
@@ -123,7 +107,7 @@ onMounted(load)
             :columns="columns"
             :loading="loading"
             class="shrink-0"
-            :ui="tableUi"
+            :ui="panelTableUi"
           >
             <template #created_at-cell="{ row }">
               {{ new Date(row.original.created_at).toLocaleString('pt-BR') }}
@@ -144,14 +128,14 @@ onMounted(load)
             </template>
 
             <template #empty>
-              <div class="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted">
-                <UIcon name="i-lucide-scroll-text" class="size-6" />
-                <span>Nenhum acesso de suporte registrado ainda.</span>
-              </div>
+              <DataTablePanelTableEmpty
+                icon="i-lucide-scroll-text"
+                label="Nenhum acesso de suporte registrado ainda."
+              />
             </template>
           </UTable>
         </div>
-      </UPageCard>
+      </DataTablePanelList>
     </div>
   </div>
 </template>

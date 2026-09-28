@@ -31,25 +31,23 @@ const roleItems: { label: string, value: AccountMemberRole }[] = [
   { label: 'Usuário', value: 'user' }
 ]
 
-const { data, status, error, refresh } = await useAsyncData('equipe-directory', async () => {
+const { data, status, error, refresh: reload } = await useAsyncData('equipe-directory', async () => {
   const [members, departments] = await Promise.all([listDirectory(), list()])
   return { members, departments }
 })
 
-const loading = computed(() => status.value === 'pending')
-const failed = ref(false)
-
-watch(error, (value) => {
-  if (value) {
-    failed.value = true
-    toast.add({ title: 'Não foi possível carregar a equipe', color: 'error' })
-  }
+/**
+ * `sticky`: the alert is fatal to this page — it is `v-else-if` of the list — so a
+ * failed load has to survive the next `useAsyncData` run, which clears `error`
+ * and would otherwise flash the alert away and the stale content back in.
+ */
+const { isLoading, showError, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar a equipe',
+  sticky: true
 })
-
-async function retry() {
-  failed.value = false
-  await refresh()
-}
 
 const members = computed<MemberDirectoryEntry[]>(() => data.value?.members ?? [])
 
@@ -98,7 +96,7 @@ async function submitInvite() {
     await create({ name, email, password, role: inviteRole.value })
     toast.add({ title: 'Membro convidado', color: 'success' })
     inviteOpen.value = false
-    await refresh()
+    await reload()
   } catch {
     toast.add({ title: 'Não foi possível convidar o membro', color: 'error' })
   } finally {
@@ -111,7 +109,7 @@ async function onRoleUpdate(member: MemberDirectoryEntry, role: AccountMemberRol
   try {
     await update(member.id, { role })
     toast.add({ title: 'Papel atualizado', color: 'success' })
-    await refresh()
+    await reload()
   } catch {
     toast.add({ title: 'Não foi possível atualizar o papel', color: 'error' })
   }
@@ -130,7 +128,7 @@ async function confirmRemove() {
     toast.add({ title: 'Membro removido', color: 'success' })
     removeOpen.value = false
     pendingRemove.value = null
-    await refresh()
+    await reload()
   } catch {
     toast.add({ title: 'Não foi possível remover o membro', color: 'error' })
   } finally {
@@ -140,184 +138,171 @@ async function confirmRemove() {
 </script>
 
 <template>
-  <div>
-    <UPageCard
-      title="Membros"
-      description="Convide novos membros por e-mail."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
+  <DataTablePanelList
+    title="Membros"
+    description="Convide novos membros por e-mail."
+  >
+    <template #action>
       <UButton
         v-if="canManageMembers"
         label="Convidar"
         color="neutral"
         class="w-fit lg:ms-auto"
-        :disabled="loading"
+        :disabled="isLoading"
         @click="openInvite"
       />
-    </UPageCard>
+    </template>
 
-    <UPageCard
-      variant="subtle"
-      :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch', header: 'p-4 mb-0 border-b border-default' }"
+    <template #toolbar>
+      <UInput
+        v-model="search"
+        icon="i-lucide-search"
+        placeholder="Buscar membros"
+        autofocus
+        class="min-w-0 flex-1"
+        :disabled="isLoading"
+      />
+      <USelectMenu
+        v-model="departmentFilter"
+        :items="departmentOptions"
+        value-key="value"
+        label-key="label"
+        placeholder="Filtrar por departamento"
+        clear
+        class="w-full sm:w-64"
+        :disabled="isLoading"
+      />
+    </template>
+
+    <div
+      v-if="isLoading"
+      class="divide-y divide-default"
+      aria-busy="true"
+      aria-label="Carregando equipe"
     >
-      <template #header>
-        <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-          <UInput
-            v-model="search"
-            icon="i-lucide-search"
-            placeholder="Buscar membros"
-            autofocus
-            class="min-w-0 flex-1"
-            :disabled="loading"
-          />
-          <USelectMenu
-            v-model="departmentFilter"
-            :items="departmentOptions"
-            value-key="value"
-            label-key="label"
-            placeholder="Filtrar por departamento"
-            clear
-            class="w-full sm:w-64"
-            :disabled="loading"
-          />
-        </div>
-      </template>
-
       <div
-        v-if="loading"
-        class="divide-y divide-default"
-        aria-busy="true"
-        aria-label="Carregando equipe"
+        v-for="index in 5"
+        :key="index"
+        class="flex items-center justify-between gap-3 px-4 py-3 sm:px-6"
       >
-        <div
-          v-for="index in 5"
-          :key="index"
-          class="flex items-center justify-between gap-3 px-4 py-3 sm:px-6"
-        >
-          <div class="flex min-w-0 flex-1 items-center gap-3">
-            <USkeleton class="size-10 shrink-0 rounded-full" />
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <USkeleton class="h-4 w-36 max-w-full" />
-              <USkeleton class="h-3 w-24 max-w-full" />
-            </div>
+        <div class="flex min-w-0 flex-1 items-center gap-3">
+          <USkeleton class="size-10 shrink-0 rounded-full" />
+          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+            <USkeleton class="h-4 w-36 max-w-full" />
+            <USkeleton class="h-3 w-24 max-w-full" />
           </div>
-          <USkeleton class="hidden h-8 w-28 shrink-0 rounded-md sm:block" />
         </div>
+        <USkeleton class="hidden h-8 w-28 shrink-0 rounded-md sm:block" />
       </div>
+    </div>
 
-      <UAlert
-        v-else-if="failed || error"
-        class="m-4"
-        color="error"
-        variant="subtle"
-        title="Não foi possível carregar a equipe"
-        description="Verifique sua conexão e tente novamente."
-        :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => retry() }]"
+    <ErrorRetryAlert
+      v-else-if="showError"
+      class="m-4"
+      title="Não foi possível carregar a equipe"
+      @retry="retry"
+    />
+
+    <template v-else>
+      <UEmpty
+        v-if="!members.length"
+        class="py-10"
+        icon="i-lucide-users"
+        title="Nenhum membro na equipe"
+        description="Os membros da conta aparecem aqui automaticamente."
+        variant="naked"
+        :actions="canManageMembers ? [{ label: 'Convidar', onClick: openInvite }] : undefined"
       />
 
-      <template v-else>
-        <UEmpty
-          v-if="!members.length"
-          class="py-10"
-          icon="i-lucide-users"
-          title="Nenhum membro na equipe"
-          description="Os membros da conta aparecem aqui automaticamente."
-          variant="naked"
-          :actions="canManageMembers ? [{ label: 'Convidar', onClick: openInvite }] : undefined"
-        />
+      <UEmpty
+        v-else-if="!visibleMembers.length"
+        class="py-10"
+        icon="i-lucide-search-x"
+        title="Nenhum membro encontrado"
+        description="Ajuste a busca ou limpe o filtro de departamento."
+        variant="naked"
+        :actions="hasActiveFilters ? [{ label: 'Limpar filtros', color: 'neutral', variant: 'outline', onClick: clearFilters }] : undefined"
+      />
 
-        <UEmpty
-          v-else-if="!visibleMembers.length"
-          class="py-10"
-          icon="i-lucide-search-x"
-          title="Nenhum membro encontrado"
-          description="Ajuste a busca ou limpe o filtro de departamento."
-          variant="naked"
-          :actions="hasActiveFilters ? [{ label: 'Limpar filtros', color: 'neutral', variant: 'outline', onClick: clearFilters }] : undefined"
-        />
+      <EquipeMembersList
+        v-else
+        :members="visibleMembers"
+        :can-manage="canManageMembers"
+        @update:role="onRoleUpdate"
+        @remove="askRemove"
+      />
+    </template>
+  </DataTablePanelList>
 
-        <EquipeMembersList
-          v-else
-          :members="visibleMembers"
-          :can-manage="canManageMembers"
-          @update:role="onRoleUpdate"
-          @remove="askRemove"
-        />
-      </template>
-    </UPageCard>
+  <UModal
+    v-if="canManageMembers"
+    v-model:open="inviteOpen"
+    title="Convidar membro"
+    description="Crie o acesso com nome, e-mail, senha e papel na conta."
+  >
+    <template #body>
+      <form id="invite-member-form" class="space-y-4" @submit.prevent="submitInvite">
+        <UFormField label="Nome" name="name" required>
+          <UInput v-model="inviteName" class="w-full" autofocus />
+        </UFormField>
+        <UFormField label="E-mail" name="email" required>
+          <UInput v-model="inviteEmail" type="email" class="w-full" />
+        </UFormField>
+        <UFormField
+          label="Senha"
+          name="password"
+          required
+          description="Mínimo de 8 caracteres."
+        >
+          <UInput v-model="invitePassword" type="password" class="w-full" />
+        </UFormField>
+        <UFormField label="Papel" name="role" required>
+          <USelect
+            v-model="inviteRole"
+            :items="roleItems"
+            value-key="value"
+            label-key="label"
+            class="w-full"
+          />
+        </UFormField>
+      </form>
+    </template>
+    <template #footer="{ close }">
+      <UButton
+        label="Cancelar"
+        color="neutral"
+        variant="outline"
+        @click="close"
+      />
+      <UButton
+        type="submit"
+        form="invite-member-form"
+        label="Convidar"
+        :loading="inviting"
+        :disabled="!inviteName.trim() || !inviteEmail.trim() || invitePassword.length < 8"
+      />
+    </template>
+  </UModal>
 
-    <UModal
-      v-if="canManageMembers"
-      v-model:open="inviteOpen"
-      title="Convidar membro"
-      description="Crie o acesso com nome, e-mail, senha e papel na conta."
-    >
-      <template #body>
-        <form id="invite-member-form" class="space-y-4" @submit.prevent="submitInvite">
-          <UFormField label="Nome" name="name" required>
-            <UInput v-model="inviteName" class="w-full" autofocus />
-          </UFormField>
-          <UFormField label="E-mail" name="email" required>
-            <UInput v-model="inviteEmail" type="email" class="w-full" />
-          </UFormField>
-          <UFormField
-            label="Senha"
-            name="password"
-            required
-            description="Mínimo de 8 caracteres."
-          >
-            <UInput v-model="invitePassword" type="password" class="w-full" />
-          </UFormField>
-          <UFormField label="Papel" name="role" required>
-            <USelect
-              v-model="inviteRole"
-              :items="roleItems"
-              value-key="value"
-              label-key="label"
-              class="w-full"
-            />
-          </UFormField>
-        </form>
-      </template>
-      <template #footer="{ close }">
-        <UButton
-          label="Cancelar"
-          color="neutral"
-          variant="outline"
-          @click="close"
-        />
-        <UButton
-          type="submit"
-          form="invite-member-form"
-          label="Convidar"
-          :loading="inviting"
-          :disabled="!inviteName.trim() || !inviteEmail.trim() || invitePassword.length < 8"
-        />
-      </template>
-    </UModal>
-
-    <UModal
-      v-if="canManageMembers"
-      v-model:open="removeOpen"
-      title="Remover membro"
-      :description="pendingRemove ? `Remover ${pendingRemove.name} desta conta? Essa ação não pode ser desfeita.` : 'Remover membro.'"
-    >
-      <template #footer="{ close }">
-        <UButton
-          label="Cancelar"
-          color="neutral"
-          variant="outline"
-          @click="close"
-        />
-        <UButton
-          label="Remover"
-          color="error"
-          :loading="removing"
-          @click="confirmRemove"
-        />
-      </template>
-    </UModal>
-  </div>
+  <UModal
+    v-if="canManageMembers"
+    v-model:open="removeOpen"
+    title="Remover membro"
+    :description="pendingRemove ? `Remover ${pendingRemove.name} desta conta? Essa ação não pode ser desfeita.` : 'Remover membro.'"
+  >
+    <template #footer="{ close }">
+      <UButton
+        label="Cancelar"
+        color="neutral"
+        variant="outline"
+        @click="close"
+      />
+      <UButton
+        label="Remover"
+        color="error"
+        :loading="removing"
+        @click="confirmRemove"
+      />
+    </template>
+  </UModal>
 </template>

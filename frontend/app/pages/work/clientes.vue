@@ -9,6 +9,7 @@ import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
 import { statusPresentation } from '~/composables/useWorkPresentation'
 import type { WorkGroupedClient, WorkTaskStatus } from '~/types/work'
 import { statusOrder } from '~/utils/workCalendar'
+import { pageTableClass } from '~/utils/pageShell'
 import {
   derivedProcessStatusForGroup,
   isCascadeAdvanceLockedInProcess
@@ -61,14 +62,29 @@ const UBadge = resolveComponent('UBadge')
 const UButton = resolveComponent('UButton')
 const UCheckbox = resolveComponent('UCheckbox')
 
-const { data, status, error, refresh } = await useAsyncData<WorkGroupedClient[]>(
+const { data, status, error, refresh: reload } = await useAsyncData<WorkGroupedClient[]>(
   'work-clientes',
   () => grouped(referenceMonth.value),
   { watch: [referenceMonth] }
 )
 
 const groups = computed<WorkGroupedClient[]>(() => data.value ?? [])
-const isLoading = computed(() => status.value === 'pending')
+
+/**
+ * The `refresh` below is the composable's, not `reload`'s: the toolbar button and
+ * both empty-state actions answer through it, so a failed manual refresh toasts
+ * "Não foi possível atualizar a visão de clientes" instead of going quiet.
+ * `useWorkTaskActions` below keeps the raw `reload`, because it awaits the
+ * refresh inside its own try/catch and has to keep reporting through that.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar os clientes',
+  refreshErrorTitle: 'Não foi possível atualizar a visão de clientes'
+})
+
 /** Mount only the active viewport tree — CSS `md:hidden` still hydrates ~1k USelects. */
 const showDesktop = useClientMediaQuery('(min-width: 768px)')
 const showMobile = useClientMediaQuery('(max-width: 767px)')
@@ -370,7 +386,7 @@ const {
   confirmDismiss
 } = useWorkTaskActions({
   updateTask,
-  refresh,
+  refresh: reload,
   clearSelection,
   leaves: rows,
   selectedTaskIds,
@@ -441,18 +457,6 @@ function openDismissForLeaves(leaves: ClientTaskLeaf[]) {
   openDismissForTaskIds(taskIdsFromLeaves(leaves))
 }
 
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar a visão de clientes', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  if (value) toast.add({ title: 'Não foi possível carregar os clientes', color: 'error' })
-})
-
 watch(membersError, (value) => {
   if (value) {
     toast.add({
@@ -469,7 +473,7 @@ watch([filterModels, search, referenceMonth], () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:gap-4 sm:p-4 lg:p-5">
+  <div :class="pageTableClass">
     <ClientOnly>
       <WorkToolbarTeleport>
         <UButton
@@ -478,7 +482,7 @@ watch([filterModels, search, referenceMonth], () => {
           variant="ghost"
           aria-label="Atualizar clientes"
           :loading="isLoading"
-          @click="onRefresh"
+          @click="refresh"
         />
       </WorkToolbarTeleport>
     </ClientOnly>
@@ -499,14 +503,10 @@ watch([filterModels, search, referenceMonth], () => {
       />
     </DataTableFilter>
 
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
+    <ErrorRetryAlert
+      v-if="showError"
       title="Não foi possível carregar os clientes"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
     <WorkTableSkeleton
@@ -523,7 +523,7 @@ watch([filterModels, search, referenceMonth], () => {
       title="Nenhum cliente com rotinas neste mês"
       description="Quando houver processos gerados, eles aparecem aqui agrupados por cliente."
       variant="naked"
-      :actions="[{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => onRefresh() }]"
+      :actions="[{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />
 
     <UEmpty
@@ -534,7 +534,7 @@ watch([filterModels, search, referenceMonth], () => {
       variant="naked"
       :actions="hasActiveFilters
         ? [{ label: 'Limpar filtros', icon: 'i-lucide-filter-x', color: 'neutral', variant: 'outline', onClick: () => clearFilters() }]
-        : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => onRefresh() }]"
+        : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />
 
     <template v-else>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
+import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -11,15 +12,6 @@ interface AdminPlan {
   slug: string
   name: string
   limits?: Record<string, number> | null
-}
-
-const tableUi = {
-  base: 'table-fixed border-separate border-spacing-0',
-  thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-  tbody: '[&>tr]:last:[&>td]:border-b-0',
-  th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-  td: 'border-b border-default',
-  separator: 'h-0'
 }
 
 const { $api } = useNuxtApp()
@@ -117,118 +109,100 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 </script>
 
 <template>
-  <div>
-    <UPageCard
-      title="Planos"
-      description="Limites de usuários, clientes e monitoramentos."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    />
+  <DataTablePanelList
+    title="Planos"
+    description="Limites de usuários, clientes e monitoramentos."
+  >
+    <template #toolbar>
+      <UInput
+        v-model="q"
+        class="max-w-sm"
+        icon="i-lucide-search"
+        placeholder="Filtrar por nome ou slug..."
+      />
+    </template>
 
-    <UPageCard
-      variant="subtle"
-      :ui="{ container: 'p-0 sm:p-0 gap-y-0', wrapper: 'items-stretch', header: 'p-4 mb-0 border-b border-default' }"
-    >
-      <template #header>
-        <UInput
-          v-model="q"
-          class="max-w-sm"
-          icon="i-lucide-search"
-          placeholder="Filtrar por nome ou slug..."
-        />
-      </template>
+    <div :class="panelBodyClass">
+      <UTable
+        :data="rows"
+        :columns="columns"
+        :loading="loading"
+        class="shrink-0"
+        :ui="panelTableUi"
+      >
+        <template #name-cell="{ row }">
+          <p class="font-medium text-highlighted">
+            {{ row.original.name }}
+          </p>
+          <p class="text-muted">
+            {{ row.original.slug }}
+          </p>
+        </template>
 
-      <div class="flex flex-col gap-4 p-4 sm:p-6">
-        <UTable
-          :data="rows"
-          :columns="columns"
-          :loading="loading"
-          class="shrink-0"
-          :ui="tableUi"
-        >
-          <template #name-cell="{ row }">
-            <p class="font-medium text-highlighted">
-              {{ row.original.name }}
-            </p>
-            <p class="text-muted">
-              {{ row.original.slug }}
-            </p>
-          </template>
-
-          <template #users-header>
-            <div class="text-right">
-              Usuários
-            </div>
-          </template>
-          <template #clients-header>
-            <div class="text-right">
-              Clientes
-            </div>
-          </template>
-          <template #monitorings-header>
-            <div class="text-right">
-              Monitoramentos
-            </div>
-          </template>
-
-          <template #users-cell="{ row }">
-            <div class="text-right">
-              <UBadge v-if="limitValue(row.original, 'users') === null" color="neutral" variant="subtle">
-                Ilimitado
-              </UBadge>
-              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'users') }}</span>
-            </div>
-          </template>
-          <template #clients-cell="{ row }">
-            <div class="text-right">
-              <UBadge v-if="limitValue(row.original, 'clients') === null" color="neutral" variant="subtle">
-                Ilimitado
-              </UBadge>
-              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'clients') }}</span>
-            </div>
-          </template>
-          <template #monitorings-cell="{ row }">
-            <div class="text-right">
-              <UBadge v-if="limitValue(row.original, 'monitorings') === null" color="neutral" variant="subtle">
-                Ilimitado
-              </UBadge>
-              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'monitorings') }}</span>
-            </div>
-          </template>
-
-          <template #actions-cell="{ row }">
-            <div class="text-right">
-              <UDropdownMenu
-                :items="planActions(row.original)"
-                :content="{ align: 'end' }"
-              >
-                <UButton
-                  icon="i-lucide-ellipsis-vertical"
-                  color="neutral"
-                  variant="ghost"
-                  class="ml-auto"
-                />
-              </UDropdownMenu>
-            </div>
-          </template>
-
-          <template #empty>
-            <div class="flex flex-col items-center justify-center gap-2 py-8 text-sm text-muted">
-              <UIcon name="i-lucide-layers" class="size-6" />
-              <span>Nenhum plano encontrado.</span>
-            </div>
-          </template>
-        </UTable>
-
-        <div class="flex items-center justify-between gap-3 border-t border-default pt-4">
-          <div class="text-sm text-muted">
-            {{ rows.length }} de {{ plans.length }} plano(s)
+        <template #users-header>
+          <div class="text-right">
+            Usuários
           </div>
+        </template>
+        <template #clients-header>
+          <div class="text-right">
+            Clientes
+          </div>
+        </template>
+        <template #monitorings-header>
+          <div class="text-right">
+            Monitoramentos
+          </div>
+        </template>
+
+        <template #users-cell="{ row }">
+          <div class="text-right">
+            <UBadge v-if="limitValue(row.original, 'users') === null" color="neutral" variant="subtle">
+              Ilimitado
+            </UBadge>
+            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'users') }}</span>
+          </div>
+        </template>
+        <template #clients-cell="{ row }">
+          <div class="text-right">
+            <UBadge v-if="limitValue(row.original, 'clients') === null" color="neutral" variant="subtle">
+              Ilimitado
+            </UBadge>
+            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'clients') }}</span>
+          </div>
+        </template>
+        <template #monitorings-cell="{ row }">
+          <div class="text-right">
+            <UBadge v-if="limitValue(row.original, 'monitorings') === null" color="neutral" variant="subtle">
+              Ilimitado
+            </UBadge>
+            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'monitorings') }}</span>
+          </div>
+        </template>
+
+        <template #actions-cell="{ row }">
+          <DataTableRowActionsMenu
+            :items="planActions(row.original)"
+            :label="`Ações de ${row.original.name}`"
+            flush
+          />
+        </template>
+
+        <template #empty>
+          <DataTablePanelTableEmpty
+            icon="i-lucide-layers"
+            label="Nenhum plano encontrado."
+          />
+        </template>
+      </UTable>
+
+      <div :class="panelFooterClass">
+        <div :class="panelFooterCountClass">
+          {{ rows.length }} de {{ plans.length }} plano(s)
         </div>
       </div>
-    </UPageCard>
-  </div>
+    </div>
+  </DataTablePanelList>
 
   <USlideover
     v-model:open="editOpen"

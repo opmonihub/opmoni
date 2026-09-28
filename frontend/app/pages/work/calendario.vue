@@ -53,7 +53,7 @@ const rangeKey = computed(() => JSON.stringify([
   priority.value
 ]))
 
-const { data, status, error, refresh } = await useAsyncData(
+const { data, status, error, refresh: reload } = await useAsyncData(
   'work-calendar',
   () => calendar(range.value.from, range.value.to, {
     process_id: processId.value ?? undefined,
@@ -66,7 +66,21 @@ const { data, status, error, refresh } = await useAsyncData(
 )
 
 const tasks = computed<WorkTask[]>(() => data.value ?? [])
-const isLoading = computed(() => status.value === 'pending')
+
+/**
+ * The `refresh` below is the composable's, not `reload`'s: the header button and
+ * the alert answer through it, so a failed manual refresh toasts "Não foi possível
+ * atualizar o calendário" instead of going quiet. The task mutations below keep
+ * calling `reload` inside their own try/catch, so those still report through
+ * their own message.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar o calendário',
+  refreshErrorTitle: 'Não foi possível atualizar o calendário'
+})
 
 const filteredTasks = computed(() => tasks.value.filter(task => statusVisible.value[task.status]))
 const tasksByDay = computed(() => groupTasksByDay(filteredTasks.value))
@@ -190,18 +204,6 @@ const departmentOptions = computed(() => (filterSources.value?.departments ?? []
   value: d.name
 })))
 
-watch(error, (value) => {
-  if (value) toast.add({ title: 'Não foi possível carregar o calendário', color: 'error' })
-})
-
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar o calendário', color: 'error' })
-  }
-}
-
 function apiMessage(error: unknown): string | undefined {
   if (!error || typeof error !== 'object') return undefined
   const data = (error as { data?: { message?: string }, response?: { _data?: { message?: string } } }).data
@@ -256,7 +258,7 @@ async function advance(task: WorkTask) {
   busyId.value = task.id
   try {
     await updateTask(task.id, { status: next })
-    await refresh()
+    await reload()
     toast.add({ title: next === 'done' ? 'Tarefa concluída' : 'Tarefa em progresso', color: 'success' })
   } catch (error: unknown) {
     if (apiStatus(error) === 422) {
@@ -275,7 +277,7 @@ async function moveBack(task: WorkTask) {
   busyId.value = task.id
   try {
     await updateTask(task.id, { status: previous })
-    await refresh()
+    await reload()
     toast.add({ title: 'Tarefa retornada', color: 'success' })
   } catch (error: unknown) {
     toast.add({ title: 'Não foi possível retornar a tarefa', description: apiMessage(error), color: 'error' })
@@ -288,7 +290,7 @@ async function assign(task: WorkTask, memberId: number | null) {
   busyId.value = task.id
   try {
     await updateTask(task.id, { assignee_member_id: memberId })
-    await refresh()
+    await reload()
     toast.add({ title: memberId === null ? 'Responsável removido' : 'Responsável atualizado', color: 'success' })
   } catch (error: unknown) {
     toast.add({ title: 'Não foi possível atribuir o responsável', description: apiMessage(error), color: 'error' })
@@ -302,7 +304,7 @@ async function dismiss(task: WorkTask, reason: string) {
   try {
     await updateTask(task.id, { status: 'dismissed', dismissal_reason: reason })
     popoverOpen.value = false
-    await refresh()
+    await reload()
     toast.add({ title: 'Tarefa dispensada', color: 'success' })
   } catch (error: unknown) {
     toast.add({ title: 'Não foi possível dispensar a tarefa', description: apiMessage(error), color: 'error' })
@@ -325,7 +327,7 @@ async function onDrop(taskId: number, targetDay: string) {
 
   try {
     await updateTask(taskId, { due_on: targetDay })
-    await refresh()
+    await reload()
   } catch (error: unknown) {
     toast.add({
       title: 'Não foi possível reagendar',
@@ -505,7 +507,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 aria-label="Atualizar calendário"
                 class="rounded-full"
                 :loading="isLoading"
-                @click="onRefresh"
+                @click="refresh"
               />
             </UTooltip>
           </div>
@@ -513,14 +515,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       </header>
 
       <div class="flex min-h-0 flex-1 flex-col">
-        <UAlert
-          v-if="error"
+        <ErrorRetryAlert
+          v-if="showError"
           class="relative z-20 m-3 mt-[calc(var(--ui-header-height,4rem)+1rem)]"
-          color="error"
-          variant="subtle"
           title="Não foi possível carregar o calendário"
-          description="Verifique a conexão e tente novamente."
-          :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+          @retry="retry"
         />
 
         <UEmpty

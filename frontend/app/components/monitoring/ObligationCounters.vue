@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useAuth } from '~/composables/useAuth'
+import type { NavigationMenuItem } from '@nuxt/ui'
+import { sheetToolbarUi } from '~/components/data-table/sheet'
 import type { MonitoringCounter, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
 import { monitoringListPath, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
@@ -8,100 +9,147 @@ import {
   monitoringCounterPresentation,
   monitoringProgressPresentation,
   monitoringSituacaoPresentation,
+  monitoringTone,
+  monitoringTotalIcon,
   monitoringTotalLabel
 } from '~/utils/monitoringPresentation'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   obligation: MonitoringObligation
   summary: MonitoringObligationSummary
   situacao: MonitoringSituacao | null
-}>()
-
-const emit = defineEmits<{ associate: [] }>()
-
-/** Associating is an Account-level act — admin or operador, never a plain user. */
-const { canManageClients } = useAuth()
+  /** `toolbar` is the desktop status bar; `chips` is the phone's scrolling line. */
+  mode?: 'toolbar' | 'chips'
+}>(), {
+  mode: 'toolbar'
+})
 
 const counters: readonly MonitoringCounter[] = ['em_dia', 'processando', 'pendencias', 'atencao']
+
+/** The unfiltered list. The situation vocabulary has no "all" member. */
+const ALL = 'all'
+
+/**
+ * Five readings: the total plus the four counters. Each is a link, because the
+ * situation is a route segment and a restricted list has to reproduce for
+ * whoever follows it. `encerrado` is not one of them — see the footnote.
+ */
+const readings = computed(() => [
+  {
+    value: ALL,
+    label: monitoringTotalLabel,
+    icon: monitoringTotalIcon,
+    iconClass: undefined as string | undefined,
+    to: monitoringListPath(props.obligation),
+    count: props.summary.total
+  },
+  ...counters.map(counter => ({
+    value: counter,
+    label: monitoringCounterPresentation[counter].label,
+    icon: monitoringCounterPresentation[counter].icon,
+    iconClass: monitoringTone[monitoringCounterPresentation[counter].color].icon,
+    to: monitoringListPath(props.obligation, counter),
+    count: props.summary[counter]
+  }))
+])
+
+const active = computed(() => props.situacao ?? ALL)
+
+const tabs = computed<NavigationMenuItem[][]>(() => [readings.value.map(reading => ({
+  label: reading.label,
+  icon: reading.icon,
+  iconClass: reading.iconClass,
+  to: reading.to,
+  exact: true,
+  active: active.value === reading.value,
+  badge: formatMonitoringCount(reading.count)
+}))])
+
+const chips = computed(() => readings.value.map(reading => ({
+  label: reading.label,
+  value: reading.value,
+  to: reading.to,
+  count: reading.count
+})))
+
+/**
+ * The synchronization's own axis, outside the four and never a link: it says
+ * how far the transmission got, not which clients need what. Absent while the
+ * backend does not report the pair — no reading is not a reading of zero.
+ */
+const progressSentence = computed(() => formatMonitoringProgress(props.summary.progress))
+const progressLabel = computed(() => {
+  const progress = props.summary.progress
+  if (!progress) return null
+  return `${monitoringProgressPresentation.label} ${formatMonitoringCount(progress.transmitted)} de ${formatMonitoringCount(progress.requested)}`
+})
+
+/** `encerrado` is a row state, not a fifth counter: folding it in would let a closed obligation inflate a state that requires action. */
+const closedLabel = computed(() => `${formatMonitoringCount(props.summary.encerrado)} ${monitoringSituacaoPresentation.encerrado.label}`)
+const closedHint = 'Fora dos quatro contadores e do total.'
 </script>
 
 <template>
-  <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between gap-3">
-      <UPageGrid class="grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 flex-1">
-        <UButton
-          :to="monitoringListPath(obligation)"
-          :color="situacao === null ? 'primary' : 'neutral'"
-          :variant="situacao === null ? 'soft' : 'outline'"
-          :ui="{ base: 'h-auto w-full items-center justify-between gap-2 p-3' }"
-        >
-          <span class="flex min-w-0 items-center gap-1.5 text-sm">
-            <UIcon name="i-lucide-users" class="shrink-0" />
-            <span class="truncate">{{ monitoringTotalLabel }}</span>
-          </span>
-          <UKbd class="shrink-0">
-            {{ formatMonitoringCount(summary.total) }}
-          </UKbd>
-        </UButton>
+  <UDashboardToolbar
+    v-if="mode === 'toolbar'"
+    class="hidden min-w-0 md:flex"
+    :ui="sheetToolbarUi"
+  >
+    <template #left>
+      <UNavigationMenu
+        :items="tabs"
+        highlight
+        class="-mx-1 min-w-0 flex-1"
+        :ui="{ root: 'min-w-0', list: 'min-w-0' }"
+      >
+        <template #item-leading="{ item }">
+          <UIcon
+            v-if="item.icon"
+            :name="item.icon"
+            class="size-5 shrink-0"
+            :class="item.iconClass"
+          />
+        </template>
+      </UNavigationMenu>
+    </template>
 
-        <UButton
-          v-for="counter in counters"
-          :key="counter"
-          :to="monitoringListPath(obligation, counter)"
-          :color="situacao === counter ? 'primary' : 'neutral'"
-          :variant="situacao === counter ? 'soft' : 'outline'"
-          :ui="{ base: 'h-auto w-full items-center justify-between gap-2 p-3' }"
-        >
-          <span class="flex min-w-0 items-center gap-1.5 text-sm">
-            <UIcon :name="monitoringCounterPresentation[counter].icon" class="shrink-0" />
-            <span class="truncate">{{ monitoringCounterPresentation[counter].label }}</span>
-          </span>
-          <UKbd class="shrink-0">
-            {{ formatMonitoringCount(summary[counter]) }}
-          </UKbd>
-        </UButton>
-      </UPageGrid>
+    <template #right>
+      <div class="flex items-center gap-1.5">
+        <UTooltip v-if="progressLabel" :text="progressSentence ?? undefined">
+          <UBadge
+            size="sm"
+            variant="subtle"
+            :color="monitoringProgressPresentation.color"
+            :icon="monitoringProgressPresentation.icon"
+            :label="progressLabel"
+            class="tabular-nums"
+          />
+        </UTooltip>
+        <UTooltip :text="closedHint">
+          <UBadge
+            size="sm"
+            variant="subtle"
+            :color="monitoringSituacaoPresentation.encerrado.color"
+            :icon="monitoringSituacaoPresentation.encerrado.icon"
+            :label="closedLabel"
+            class="tabular-nums"
+          />
+        </UTooltip>
+      </div>
+    </template>
+  </UDashboardToolbar>
 
-      <UButton
-        v-if="canManageClients"
-        icon="i-lucide-user-plus"
-        color="neutral"
-        variant="outline"
-        label="Adicionar clientes"
-        class="shrink-0 self-center"
-        @click="emit('associate')"
-      />
+  <div v-else class="flex min-w-0 flex-col gap-2 md:hidden">
+    <DataTableStatusChips :items="chips" :active="active" />
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+      <span v-if="progressSentence" class="inline-flex items-center gap-1">
+        <UIcon :name="monitoringProgressPresentation.icon" class="size-3.5 shrink-0" />
+        {{ progressLabel }}
+      </span>
+      <span class="inline-flex items-center gap-1">
+        <UIcon :name="monitoringSituacaoPresentation.encerrado.icon" class="size-3.5 shrink-0" />
+        {{ closedLabel }} · {{ closedHint.toLowerCase() }}
+      </span>
     </div>
-
-    <!-- `encerrado` is a row state, not a fifth counter: folding it in would
-         let a closed obligation inflate a state that requires action. -->
-    <p class="flex items-center gap-1.5 text-xs text-muted">
-      <UBadge
-        size="sm"
-        variant="subtle"
-        :color="monitoringSituacaoPresentation.encerrado.color"
-        :icon="monitoringSituacaoPresentation.encerrado.icon"
-        :label="`${formatMonitoringCount(summary.encerrado)} ${monitoringSituacaoPresentation.encerrado.label}`"
-      />
-      <span>fora dos quatro contadores acima.</span>
-    </p>
-
-    <!--
-      The synchronization's own axis, beside the counters and outside them. Not
-      a sixth reading of a client: it says how far the transmission got, so it
-      is plain text, it is not a link into a filtered list, and it renders only
-      when the backend reports the pair — an absent reading is not a reading of
-      zero transmitted.
-    -->
-    <p
-      v-if="formatMonitoringProgress(summary.progress)"
-      class="flex items-center gap-1.5 text-xs text-muted"
-    >
-      <UIcon
-        :name="monitoringProgressPresentation.icon"
-        class="shrink-0"
-      />
-      <span>{{ formatMonitoringProgress(summary.progress) }}</span>
-    </p>
   </div>
 </template>

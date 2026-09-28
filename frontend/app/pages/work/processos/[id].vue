@@ -6,7 +6,6 @@ import { statusPresentation } from '~/composables/useWorkPresentation'
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const toast = useToast()
 const { showProcess } = useWork()
 
 const processId = computed(() => {
@@ -15,14 +14,26 @@ const processId = computed(() => {
   return id
 })
 
-const { data, status, error, refresh } = await useAsyncData<WorkProcessDetail>(
+const { data, status, error, refresh: reload } = await useAsyncData<WorkProcessDetail>(
   'work-processo-detalhe',
   () => showProcess(processId.value),
   { watch: [processId] }
 )
 
 const process = computed(() => data.value ?? null)
-const isLoading = computed(() => status.value === 'pending')
+
+/**
+ * The `refresh` below is the composable's, not `reload`'s: the header button and
+ * the alert answer through it, so a failed manual refresh toasts "Não foi possível
+ * atualizar o processo" instead of going quiet.
+ */
+const { isLoading, showError, refresh, retry } = useRetryableLoad({
+  refresh: reload,
+  error,
+  loading: computed(() => status.value === 'pending'),
+  loadErrorTitle: 'Não foi possível carregar o processo',
+  refreshErrorTitle: 'Não foi possível atualizar o processo'
+})
 
 const tasks = computed<WorkTask[]>(() => {
   return [...(data.value?.tasks ?? [])].sort((a, b) => {
@@ -85,18 +96,6 @@ const accordionItems = computed<TaskAccordionItem[]>(() => tasks.value.map((task
   task,
   locked: isLocked(index)
 })))
-
-async function onRefresh() {
-  try {
-    await refresh()
-  } catch {
-    toast.add({ title: 'Não foi possível atualizar o processo', color: 'error' })
-  }
-}
-
-watch(error, (value) => {
-  if (value) toast.add({ title: 'Não foi possível carregar o processo', color: 'error' })
-})
 </script>
 
 <template>
@@ -121,18 +120,14 @@ watch(error, (value) => {
         variant="ghost"
         aria-label="Atualizar processo"
         :loading="isLoading"
-        @click="onRefresh"
+        @click="refresh"
       />
     </header>
 
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-circle-alert"
+    <ErrorRetryAlert
+      v-if="showError"
       title="Não foi possível carregar o processo"
-      description="Verifique sua conexão e tente novamente."
-      :actions="[{ label: 'Tentar novamente', color: 'error', variant: 'solid', onClick: () => onRefresh() }]"
+      @retry="retry"
     />
 
     <div

@@ -31,7 +31,7 @@ function roleOf(member: MemberDirectoryEntry) {
   return rolePresentation[member.role] ?? { label: member.role, color: 'neutral' as const, icon: 'i-lucide-user' }
 }
 
-function menuItems(member: MemberDirectoryEntry): DropdownMenuItem[] {
+function memberActions(member: MemberDirectoryEntry): DropdownMenuItem[] {
   return [{
     label: 'Remover membro',
     icon: 'i-lucide-trash',
@@ -95,18 +95,11 @@ function onRoleChange(member: MemberDirectoryEntry, role: AccountMemberRole) {
           variant="subtle"
         />
 
-        <UDropdownMenu
+        <DataTableRowActionsMenu
           v-if="canManage"
-          :items="menuItems(member)"
-          :content="{ align: 'end' }"
-        >
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            :aria-label="`Ações de ${member.name}`"
-          />
-        </UDropdownMenu>
+          :items="memberActions(member)"
+          :label="`Ações de ${member.name}`"
+        />
       </div>
     </li>
   </ul>
