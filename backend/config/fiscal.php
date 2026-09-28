@@ -7,6 +7,26 @@ return [
      */
     'environment' => env('FISCAL_ENVIRONMENT', 'producao'),
 
+    /*
+     * A captura de CT-e por comando do operador — o botão da tela e o
+     * `POST /api/fiscal/clients/{id}/capture` — nasce desligada, e é a chave que
+     * o canário liga.
+     *
+     * Ela é diferente de `fiscal.cte_scheduled`, que é a entrada de agenda: o
+     * canário é rodado à mão, em um cliente só, e ele precisa poder rodar antes
+     * de a agenda existir — essa é a ordem que o gate de liberação exige. Uma
+     * chave só para as duas coisas obrigaria a ligar a agenda para rodar o
+     * canário, que é o oposto do que se quer.
+     *
+     * O motivo de a chave existir: os parâmetros do serviço de CT-e (URL, ação
+     * SOAP, namespace, versão) foram transcritos de um exemplo de terceiro e
+     * nunca verificados deste checkout, e a rejeição repetida de um pedido errado
+     * é o que produz o `656` — o bloqueio de consumo indevido que custa uma hora
+     * daquele cliente. Ligar isto é ato de quem autorizou o canário, e não
+     * DEFAULT de deployment.
+     */
+    'cte_enabled' => (bool) env('FISCAL_CTE_ENABLED', false),
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*

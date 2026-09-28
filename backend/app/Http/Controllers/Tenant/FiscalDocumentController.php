@@ -11,6 +11,7 @@ use App\Jobs\CaptureFiscalDocumentsJob;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Read\FiscalCoverage;
 use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Services\Fiscal\Support\FiscalXmlEncoding;
@@ -152,8 +153,15 @@ class FiscalDocumentController extends Controller
      * O bloqueio é recusado antes do despacho, e pelo mesmo motivo do job: um
      * job na fila para um cliente que o fisco tem parado só gastaria a
      * posição da consulta e voltaria ao painel como "nada capturado".
+     *
+     * E a fonte é recusada antes do bloqueio, porque é a resposta mais
+     * fundamental das duas: não há nada para esperar quando o pedido não pode
+     * existir. A captura de CT-e nasce desligada — os parâmetros daquele
+     * serviço não foram verificados deste checkout —, e a recusa diz o que
+     * está desligado, porque "não aconteceu nada" sem nome é a ambiguidade
+     * que este módulo não aceita.
      */
-    public function capture(Request $request, Client $client): JsonResponse
+    public function capture(Request $request, Client $client, FiscalConnectorRegistry $connectors): JsonResponse
     {
         Gate::authorize('capture', [FiscalDocument::class, $client]);
 
@@ -161,6 +169,12 @@ class FiscalDocumentController extends Controller
             'source' => ['sometimes', Rule::in(array_column(FiscalSource::cases(), 'value'))],
         ]);
         $source = FiscalSource::from($validated['source'] ?? FiscalSource::NfeDistribuicao->value);
+
+        $recusa = $this->recusaDeFonte($connectors, $source);
+
+        if ($recusa !== null) {
+            return response()->json(['message' => $recusa], 409);
+        }
 
         $bloqueio = $this->bloqueioDe($client, $source);
 
@@ -181,6 +195,42 @@ class FiscalDocumentController extends Controller
         return response()->json([
             'data' => ['queued' => true, 'client_id' => $client->getKey()],
         ], 202);
+    }
+
+    /**
+     * A fonte que esta instalação não captura agora, e a frase que o operador lê
+     * quando a captura não foi enfileirada.
+     *
+     * São duas recusas e elas não são a mesma coisa:
+     *
+     * - **Fonte sem conector** é defeito de versão. Quem responde é o registro,
+     *   e a frase é a mesma que o comando imprime — uma fonte que o registro
+     *   não serve não entra por esta porta, e também não entra por nenhuma outra.
+     * - **CT-e com a chave desligada** é decisão de instalação. Os parâmetros do
+     *   serviço de CT-e não foram verificados deste checkout (o bloco em
+     *   `config/fiscal.php` diz isso), então um clique aqui mandaria um pedido
+     *   montado com valores transcritos ao serviço nacional de produção, e a
+     *   rejeição repetida desse pedido é o que produz o bloqueio de consumo
+     *   indevido. A chave existe para o canário rodar quando — e só quando — for
+     *   autorizado.
+     *
+     * A recusa é 409 **sem** `blocked_until`, de propósito: o painel tem um
+     * caminho que transforma a espera do fisco num aviso com horário, e
+     * reaproveitar esse corpo aqui faria o operador ler "o fisco parou este
+     * cliente" quando a verdade é outra coisa. Sem o campo, a resposta cai no
+     * aviso genérico de "não foi possível enfileirar", com a frase de baixo.
+     */
+    private function recusaDeFonte(FiscalConnectorRegistry $connectors, FiscalSource $source): ?string
+    {
+        if (! $connectors->has($source)) {
+            return "A fonte {$source->label()} não tem conector nesta versão.";
+        }
+
+        if ($source === FiscalSource::CteDistribuicao && ! config('fiscal.cte_enabled', false)) {
+            return 'A captura de CT-e está desligada nesta instalação (fiscal.cte_enabled). Nada foi enfileirado.';
+        }
+
+        return null;
     }
 
     /**

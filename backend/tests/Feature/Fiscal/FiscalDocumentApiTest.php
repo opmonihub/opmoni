@@ -16,6 +16,8 @@ use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Models\SupportAccessLog;
 use App\Models\User;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
+use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Services\Fiscal\Read\FiscalCoverage;
 use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Services\Fiscal\Support\FiscalXmlEncoding;
@@ -1812,7 +1814,8 @@ class FiscalDocumentApiTest extends TestCase
 
         app(FiscalDocumentController::class)->capture(
             Request::create("/api/fiscal/clients/{$cliente->getKey()}/capture", 'POST'),
-            $cliente
+            $cliente,
+            resolve(FiscalConnectorRegistry::class),
         );
     }
 
@@ -1840,8 +1843,11 @@ class FiscalDocumentApiTest extends TestCase
         }
 
         // A fonte é explícita quando o pedido diz, e a fonte do CT-e é a mesma
-        // porta: um job de fonte sem conector é decisão do comando, não do
-        // botão da tela.
+        // porta depois de ligada: quem liga a chave é quem pode rodar o canário
+        // pela tela, e o que a chave desligada faz com o mesmo pedido tem teste
+        // próprio.
+        config(['fiscal.cte_enabled' => true]);
+
         $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
             ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
             ->assertStatus(202);
@@ -1888,6 +1894,120 @@ class FiscalDocumentApiTest extends TestCase
         Bus::assertNothingDispatched();
     }
 
+    /**
+     * A captura de CT-e é desligada por padrão, e o botão existe na tela de
+     * qualquer documento.
+     *
+     * Os parâmetros do serviço de CT-e foram transcritos de um exemplo de
+     * terceiro e nunca foram verificados deste checkout (o cabeçalho do bloco em
+     * `config/fiscal.php` diz isso), então um clique aqui mandaria um corpo
+     * montado com URL, ação SOAP e versão `1.00` não confirmadas para o serviço
+     * nacional de produção — e a rejeição repetida é o que produz o `656`, o
+     * bloqueio de consumo indevido que custa uma hora daquele cliente.
+     *
+     * A resposta diz o que está desligado: "não aconteceu nada" sem nome é a
+     * ambiguidade que esta recusa existe para eliminar.
+     */
+    public function test_captura_de_cte_recusa_enquanto_a_captura_de_cte_esta_desligada(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        $this->assertFalse(config('fiscal.cte_enabled'), 'A captura de CT-e precisa nascer desligada.');
+
+        $resposta = $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
+            ->assertStatus(409);
+
+        $message = (string) $resposta->json('message');
+
+        // A recusa nomeia o que está desligado, e não devolve a forma da espera
+        // do fisco: um corpo com `blocked_until` aqui faria o painel dizer que o
+        // fisco parou o cliente, que é uma afirmação falsa sobre outra coisa.
+        $this->assertStringContainsString('CT-e', $message);
+        $this->assertStringContainsString('cte_enabled', $message);
+        $this->assertNull($resposta->json('blocked_until'));
+
+        Bus::assertNothingDispatched();
+    }
+
+    /**
+     * O mesmo pedido com a porta ligada: a recusa é do estado da instalação, e
+     * não uma fonte proibida — o que prova que a porta é a mesma que o canário
+     * vai usar, e a mesma que a agenda vai usar depois.
+     */
+    public function test_captura_de_cte_vai_para_a_fila_quando_a_captura_de_cte_esta_ligada(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        config(['fiscal.cte_enabled' => true]);
+
+        $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
+            ->assertStatus(202)
+            ->assertJsonPath('data.queued', true);
+
+        Bus::assertDispatched(
+            CaptureFiscalDocumentsJob::class,
+            fn (CaptureFiscalDocumentsJob $job): bool => $job->source === FiscalSource::CteDistribuicao,
+        );
+    }
+
+    /**
+     * A chave liga a captura de CT-e e **não** a recusa de fonte sem conector:
+     * as duas coisas são diferentes e a segunda não tem chave. Um registro sem a
+     * fonte de CT-e recusa com a mensagem do registro, e com a chave ligada.
+     */
+    public function test_fonte_sem_conector_continua_recusada_mesmo_com_a_captura_de_cte_ligada(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        config(['fiscal.cte_enabled' => true]);
+
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
+            FiscalSource::NfeDistribuicao->value => NfeDistributionConnector::class,
+        ]));
+
+        $resposta = $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
+            ->assertStatus(409);
+
+        $this->assertStringContainsString('conector', (string) $resposta->json('message'));
+
+        Bus::assertNothingDispatched();
+    }
+
+    /**
+     * A chave é da fonte de CT-e e não de NF-e: com a porta de CT-e desligada,
+     * a captura de NF-e — o caminho de produção — continua enfileirando.
+     */
+    public function test_a_captura_de_nfe_continua_enfileirando_com_a_captura_de_cte_desligada(): void
+    {
+        Bus::fake();
+
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Certificado');
+
+        $this->assertFalse(config('fiscal.cte_enabled'));
+
+        $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
+            ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'nfe_distribuicao'])
+            ->assertStatus(202);
+
+        Bus::assertDispatched(
+            CaptureFiscalDocumentsJob::class,
+            fn (CaptureFiscalDocumentsJob $job): bool => $job->source === FiscalSource::NfeDistribuicao,
+        );
+    }
+
     public function test_captura_de_cliente_bloqueado_responde_409_sem_chamar_o_fisco(): void
     {
         Bus::fake();
@@ -1914,7 +2034,11 @@ class FiscalDocumentApiTest extends TestCase
         Bus::assertNothingDispatched();
 
         // A parada é por fonte: o bloqueio do CT-e não impede a consulta de
-        // NF-e, e a outra fonte tem a sua própria posição.
+        // NF-e, e a outra fonte tem a sua própria posição. A chave da captura de
+        // CT-e entra aqui só para que a afirmação seja sobre a parada, e não
+        // sobre a chave.
+        config(['fiscal.cte_enabled' => true]);
+
         $this->actingAs($this->membroDe($account, 'admin'), 'sanctum')
             ->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture", ['source' => 'cte_distribuicao'])
             ->assertStatus(202);
