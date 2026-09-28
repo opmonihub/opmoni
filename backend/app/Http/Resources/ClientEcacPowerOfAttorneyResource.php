@@ -21,6 +21,8 @@ class ClientEcacPowerOfAttorneyResource extends JsonResource
             'expires_at' => $this->expires_at->toDateString(),
             'notes' => $this->notes,
             'status' => resolve(DeadlineState::class)->for($this->expires_at)->value,
+            'serpro_code' => $this->serpro_code,
+            'integration_state' => $this->integration_state?->value,
         ];
     }
 }
