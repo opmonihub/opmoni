@@ -2,18 +2,23 @@
 <!--
   FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
 
-  Raiz `cteOSProc`, a família de CT-e OS (outros serviços), modelo `67` na
-  chave de acesso. A raiz e a presença de `protCTe` foram conferidas contra o
-  `procCTeOS_v4.00.xsd` publicado no pacote `PRCTE` do SVRS; o corpo foi
-  reduzido ao mínimo que o módulo lê.
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e: não existe `.ref/` e nenhum XSD de CT-e está
+  versionado aqui (os dois XSD versionados são de NF-e, e o
+  `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A verificação
+  abaixo foi feita **fora do checkout**, contra o pacote `PRCTE` publicado do
+  SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional:
 
-  `infDoc/infNFe/chave` traz a chave de uma NF-e transportada com o DV válido,
-  o que é o caso comum: o cliente consultou por `autXML` e o fisco entrega a
-  referência legível. O nome do elemento é `chave`, não `chNFe` — é o que o
-  `cteTiposBasico_v4.00.xsd` publicado traz em `infDoc/infNFe` ("Chave de acesso
-  da NF-e"). A chave alheia é a isca do caso mascarado: ela aparece no
-  documento antes de qualquer `chCTe` em ordem de percurso, e não é a identidade
-  deste CT-e OS.
+  - VERIFICADO fora do checkout: a raiz é `cteOSProc`, elemento raiz de
+    `procCTeOS_v4.00.xsd`, com `CTeOS` e `protCTe` como os dois filhos.
+  - VERIFICADO fora do checkout: em `infDoc/infNFe` o elemento é `chave`, e não
+    `chNFe` — `cteTiposBasico_v4.00.xsd` o documenta como "Chave de acesso da
+    NF-e". A chave alheia que está aqui é a isca do caso mascarado: aparece no
+    documento antes de qualquer `chCTe` em ordem de percurso, e não é a
+    identidade deste CT-e OS.
+  - MODELADO, não verificado: todo o resto do corpo. Os campos foram reduzidos
+    ao mínimo que o módulo lê, e o módulo não valida o XML contra schema em
+    nenhum ponto. Se uma prova local existir algum dia, é aqui que ela entra.
 -->
 <cteOSProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <CTeOS>

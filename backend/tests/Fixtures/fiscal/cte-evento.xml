@@ -2,14 +2,24 @@
 <!--
   FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
 
-  Raiz `procEventoCTe`, a família de evento. A raiz foi conferida contra o
-  `procEventoCTe_v4.00.xsd` e a ordem dos campos de `infEvento` contra o
-  `eventoCTeTiposBasico_v4.00.xsd`, ambos publicados no pacote `PRCTE` do SVRS:
-  `cOrgao`, `tpAmb`, `CNPJ`, `chCTe`, `dhEvento`, `tpEvento`, `nSeqEvento`.
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A
+  verificação abaixo foi feita **fora do checkout**, contra o pacote `PRCTE`
+  publicado do SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional.
 
-  O evento traz a chave do CT-e em DOIS lugares, como o schema prevê: o
-  atributo `Id` e o elemento `infEvento/chCTe`. A chave do `Id` é a mesma, e é
-  o que a extração tem de extrair sem depender da posição de um dos dois.
+  - VERIFICADO fora do checkout: a raiz é `procEventoCTe`
+    (`procEventoCTe_v4.00.xsd`).
+  - VERIFICADO fora do checkout: a ordem dos campos de `infEvento` é `cOrgao`,
+    `tpAmb`, `CNPJ`, `chCTe`, `dhEvento`, `tpEvento`, `nSeqEvento`
+    (`eventoCTeTiposBasico_v4.00.xsd`) — e `chCTe` é elemento de `infEvento`,
+    "Chave de acesso do CT-e vinculado ao evento".
+  - MODELADO, não verificado: o envelope `eventoCTe` sob a raiz e o valor do
+    atributo `Id`. Se uma prova local existir algum dia, é aqui que ela entra.
+
+  O evento traz a chave do CT-e em DOIS lugares, como o schema prevê: o atributo
+  `Id` e o elemento `infEvento/chCTe`. É a mesma chave nos dois, e é o que a
+  extração tem de extrair sem depender da posição de um dos dois.
 -->
 <procEventoCTe versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <eventoCTe versao="4.00">

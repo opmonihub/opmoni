@@ -113,7 +113,7 @@ class CteXmlMetadataTest extends TestCase
         // regra aceita 44 dígitos iguais, e não um dígito só, porque é essa a
         // forma que o fisco usa.
         $result = (new FiscalXmlMetadata)->extract(
-            $this->cteOsComTransporteZerado(),
+            $this->cteOsComTransporte(str_repeat('9', 44)),
             FiscalModel::Cte,
         );
 
@@ -136,6 +136,69 @@ class CteXmlMetadataTest extends TestCase
         );
 
         $this->assertFalse($result->mascarado);
+    }
+
+    public function test_nao_marca_como_mascarado_uma_referencia_corrompida_que_nao_e_o_preenchimento_do_fisco(): void
+    {
+        // O caso que separa a regra escolhida da regra descartada, no sentido em
+        // que as duas divergem para os dois lados.
+        //
+        // Uma referência transportada cujo DV está trocado **não** é
+        // mascaramento: é um defeito no documento, e o painel precisa poder dizer
+        // as duas coisas. A regra do DV leria `true` aqui, o que trocaria
+        // "o fisco não disse quais notas são" por "o documento está
+        // corrompido" — e nenhuma das duas é o achado.
+        $result = (new FiscalXmlMetadata)->extract(
+            $this->cteOsComTransporte('35220999998999999999550010000110821000000001'),
+            FiscalModel::Cte,
+        );
+
+        $this->assertFalse($result->mascarado);
+
+        // A própria chave continua válida e a identidade continua a do CT-e OS:
+        // a corrupção está na referência transportada, e ela não é a identidade
+        // de documento nenhum.
+        $this->assertSame('35220999999999999999670000000011021000000006', $result->chave);
+        $this->assertTrue(FiscalXmlMetadata::isValidChave($result->chave));
+    }
+
+    public function test_marca_como_mascarado_a_forma_de_quarenta_e_quatro_zeros(): void
+    {
+        // A outra direção da divergência, e a forma que a palavra do `design.md`
+        // aponta: "as chaves das NF-e transportadas **zeradas**". É também o
+        // caso em que a regra do DV erra por completo, porque 44 zeros é a
+        // única das dez repetições que **fecha** o módulo 11 — a regra do DV
+        // leria "não é mascarado" para o preenchimento mais óbvio do fisco.
+        $result = (new FiscalXmlMetadata)->extract(
+            $this->cteOsComTransporte(str_repeat('0', 44)),
+            FiscalModel::Cte,
+        );
+
+        $this->assertTrue($result->mascarado);
+        $this->assertSame('35220999999999999999670000000011021000000006', $result->chave);
+    }
+
+    public function test_a_regra_do_mascaramento_so_olha_o_preenchimento_repetido(): void
+    {
+        // As quatro referências, e o veredito de cada uma sob a regra que está no
+        // código. As duas últimas linhas são o que impede a "simplificação" para
+        // a regra do DV: sem elas, trocar uma pela outra deixa tudo verde.
+        $casos = [
+            // Rotulo                            referência                          mascarado
+            'legível, DV válido' => ['35220999999999999999550010000110821000000001', false],
+            'corrompida, DV inválido, não repetida' => ['35220999998999999999550010000110821000000001', false],
+            'preenchimento de 44 noves' => [str_repeat('9', 44), true],
+            'preenchimento de 44 zeros' => [str_repeat('0', 44), true],
+        ];
+
+        foreach ($casos as $rotulo => [$referencia, $esperado]) {
+            $result = (new FiscalXmlMetadata)->extract(
+                $this->cteOsComTransporte($referencia),
+                FiscalModel::Cte,
+            );
+
+            $this->assertSame($esperado, $result->mascarado, $rotulo);
+        }
     }
 
     public function test_um_documento_sem_nenhuma_chave_de_transporte_nao_e_mascarado(): void
@@ -384,7 +447,7 @@ class CteXmlMetadataTest extends TestCase
                 entries: [new DfeEntry(
                     nsu: 1,
                     schema: 'procCTeOS_v4.00.xsd',
-                    payload: base64_encode(gzcompress($this->cteOsComTransporteZerado())),
+                    payload: base64_encode(gzcompress($this->cteOsComTransporte(str_repeat('9', 44)))),
                 )],
             ),
             FiscalModel::Cte,
@@ -396,16 +459,18 @@ class CteXmlMetadataTest extends TestCase
     }
 
     /**
-     * O `cte-os.xml` com a chave da NF-e transportada trocada pela forma de 44
-     * dígitos iguais. Montado aqui — e não em arquivo — porque é o `cte-os.xml`
-     * com um valor trocado, e um segundo arquivo que só difere em 44 dígitos
-     * seria uma fonte de verdade a mais para divergir.
+     * O `cte-os.xml` com a chave da NF-e transportada trocada pela referência
+     * dada. Montado aqui — e não em arquivo — porque é o `cte-os.xml` com um
+     * valor trocado, e um arquivo por valor seria uma fonte de verdade a mais
+     * para divergir. `str_repeat('9', 44)` é o preenchimento do plano; o
+     * preenchimento de zeros é o que a palavra do `design.md` nomeia, e os dois
+     * caem na mesma regra.
      */
-    private function cteOsComTransporteZerado(): string
+    private function cteOsComTransporte(string $referencia): string
     {
         return str_replace(
             '35220999999999999999550010000011081000000006',
-            str_repeat('9', 44),
+            $referencia,
             file_get_contents(base_path('tests/Fixtures/fiscal/cte-os.xml')),
         );
     }

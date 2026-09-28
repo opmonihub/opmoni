@@ -2,12 +2,20 @@
 <!--
   FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
 
-  Raiz `GTVeProc`, a família GTV-e, modelo `64` na chave de acesso. O nome da
-  raiz é `GTVeProc` e não `procGTVe`, que é o nome do arquivo: os dois foram
-  conferidos contra o `procGTVe_v4.00.xsd` publicado no pacote `PRCTE` do SVRS,
-  onde `xs:element name="GTVeProc"` é a raiz e `protCTe` o protocolo, o mesmo
-  das demais famílias processadas. O corpo foi reduzido ao mínimo que o módulo
-  lê.
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A
+  verificação abaixo foi feita **fora do checkout**, contra o pacote `PRCTE`
+  publicado do SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional.
+
+  - VERIFICADO fora do checkout: a raiz é `GTVeProc`, elemento raiz de
+    `procGTVe_v4.00.xsd` — e **não** `procGTVe`, que é o nome do *arquivo*. Os
+    dois não são o mesmo nome, e o que o payload carrega é o elemento.
+  - VERIFICADO fora do checkout: `GTVe` e `protCTe` são os dois filhos, o mesmo
+    das demais famílias processadas.
+  - MODELADO, não verificado: todo o corpo. Reduzido ao mínimo que o módulo lê;
+    o módulo não valida o XML contra schema em nenhum ponto. Se uma prova local
+    existir algum dia, é aqui que ela entra.
 -->
 <GTVeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <GTVe>

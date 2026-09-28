@@ -2,11 +2,19 @@
 <!--
   FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
 
-  Raiz `cteProc`, a família de CT-e regular, modelo `57`. O `protCTe` foi
-  acrescentado nesta tarefa: um `cteProc` de distribuição sempre o traz — o
-  `procCTe_v4.00.xsd` publicado no pacote `PRCTE` do SVRS tem `CTe` e `protCTe`
-  como os dois filhos da raiz — e sem ele o fixture era classificado como
-  "resumo", que é a etapa errada para um documento processado.
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum).
+
+  - VERIFICADO fora do checkout: a raiz é `cteProc` e os dois filhos são `CTe` e
+    `protCTe` (`procCTe_v4.00.xsd`).
+  - MODELADO, não verificado: todo o corpo.
+
+  O `protCTe` foi acrescentado nesta tarefa. Um `cteProc` de distribuição sempre
+  o traz, e sem ele o fixture era classificado como "resumo" — a etapa errada
+  para um documento processado. Nada mais neste arquivo mudou: as cinco
+  asserções que já existiam sobre ele (modelo, chave, CNPJ do emitente, CNPJ do
+  tomador, valor) continuam valendo sem alteração.
 -->
 <cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <CTe>

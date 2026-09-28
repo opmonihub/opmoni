@@ -270,12 +270,17 @@ final class FiscalXmlMetadata
      * caem na mesma regra, e a regra é o preenchimento repetido — que nenhuma
      * chave real tem, porque nenhum dos 44 dígitos de uma chave real é livre.
      *
-     * A regra é o preenchimento repetido e não "a chave não fecha o DV", porque
-     * estas são coisas diferentes e a segunda seria uma leitura errada de uma
-     * corrupção: uma referência transportada com o DV trocado é um defeito no
-     * documento, não o mascaramento que o fisco aplica. E nenhuma das duas
-     * coisas muda a identidade — `chave` é a do próprio documento, lida antes
-     * daqui e por outro caminho.
+     * A regra é o preenchimento repetido e não "a chave não fecha o DV", e a
+     * escolha está pinsada em `CteXmlMetadataTest`: as duas regras divergem nos
+     * dois sentidos e a suíte pega as duas. Uma referência transportada com o DV
+     * trocado e 44 dígitos não repetidos **não** é mascaramento — é um defeito
+     * no documento, e o painel precisa poder dizer as duas coisas. E 44 zeros,
+     * a forma que a palavra do `design.md` aponta, **é** mascaramento mesmo
+     * fechando o DV, porque é a única das dez repetições que fecha. Trocar esta
+     * regra pela do DV deixa os testes verdes só se os dois casos sumirem junto.
+     *
+     * E nenhuma das duas coisas muda a identidade: `chave` é a do próprio
+     * documento, lida antes daqui e por outro caminho.
      */
     private function isMascarado(DOMXPath $xpath): bool
     {

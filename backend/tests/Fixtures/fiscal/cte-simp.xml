@@ -2,11 +2,20 @@
 <!--
   FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
 
-  Raiz `cteSimpProc`, a família de CT-e Simplificado, que é modelo `57` na
-  chave de acesso — o mesmo modelo do CT-e regular, e é por isso que o modelo
-  não pode ser deduzido do nome da raiz. A raiz e a presença de `protCTe` foram
-  conferidas contra o `procCTeSimp_v4.00.xsd` publicado no pacote `PRCTE` do
-  SVRS; o corpo foi reduzido ao mínimo que o módulo lê.
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A
+  verificação abaixo foi feita **fora do checkout**, contra o pacote `PRCTE`
+  publicado do SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional.
+
+  - VERIFICADO fora do checkout: a raiz é `cteSimpProc`, elemento raiz de
+    `procCTeSimp_v4.00.xsd`, com `CTeSimp` e `protCTe` como os dois filhos.
+  - MODELADO, não verificado: todo o corpo. Reduzido ao mínimo que o módulo lê;
+    o módulo não valida o XML contra schema em nenhum ponto. Se uma prova local
+    existir algum dia, é aqui que ela entra.
+
+  O CT-e simplificado é modelo `57` na chave de acesso, o mesmo do CT-e regular,
+  e é por isso que o modelo não pode sair do nome da raiz.
 -->
 <cteSimpProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <CTeSimp>
