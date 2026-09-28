@@ -38,8 +38,9 @@ final class SerproConnectivity
      * aponta o serviço e a máquina e deixa em aberto qual dos dois foi, e um
      * limite de tentativas — que também cai em `provedor` — não ganha frase
      * própria porque a ação, esperar, é a mesma. `configuracao` é o único
-     * elemento com um caminho só, e é justamente o que não tem autor para
-     * nomear: ou a credencial não existe, ou existe incompleta.
+     * elemento que nunca vem da taxonomia — os guard de `certificado` e de
+     * `credencial` respondem antes —, e é justamente o desfecho que não tem autor
+     * para nomear: ou a credencial não existe, ou existe incompleta.
      */
     private const MESSAGES = [
         'configuracao' => 'A credencial do Integra Contador não está configurada: faltam a chave de integração ou o segredo.',
@@ -96,7 +97,7 @@ final class SerproConnectivity
         try {
             $this->tokens->verify();
         } catch (SerproException $exception) {
-            return $this->failure(self::elementFor($exception->failure), $checkedAt);
+            return $this->failure(self::elementFor($exception->failure, $exception->status), $checkedAt);
         }
 
         return [
@@ -134,35 +135,50 @@ final class SerproConnectivity
      *
      * Pelo mesmo motivo `Reauthenticate` e `ResubmitTerm` também não chegam: são
      * códigos de envelope do gateway, e o provedor de token responde em OAuth.
-     * Eles estão no `default` porque, se algum dia chegarem, a ação de corrigir a
-     * credencial é a mesma de `DoNotRetry`.
+     * `Success` também não chega — `check()` só traduz a exceção de uma falha, e
+     * sucesso não é falha.
      *
      * O `NotSent` que chega aqui é o da pasta temporária, e só ele. Os outros dois
      * `NotSent` — segredo ilegível e certificado ilegível — são conferidos antes
      * de `verify()`, por guard que têm nome próprio, e nenhum dos dois é falha de
      * infraestrutura: os dois precisam de recadastro.
      *
-     * O braço `default` é a recusa do que foi enviado, e é onde cai também o
-     * resto do que `verify()` sabe fazer: as falhas de identidade que ela
-     * reconfere (`SerproConnection::current()` relê a linha, e
-     * `assertIdentity()` reexamina vigência e documento) e o materializador
-     * achando o certificado ausente. Todas essas são `DoNotRetry` com
-     * `status` zero, e todas deveriam ser `certificado` — troque-se o
-     * certificado, não a credencial.
+     * O braço `default` é a recusa do que foi enviado, e o que cai nele é
+     * exatamente a lista de quem não chega: `Reauthenticate`, `ResubmitTerm` e
+     * `Success`. Se algum dia algum deles chegar, a tela recebe `credencial` e o
+     * teste que declara o destino de cada desfecho avisa.
      *
-     * Chegam aqui só se a linha mudar entre a conferência desta classe e a
-     * releitura do provider: milissegundos e uma gravação concorrente, com o
-     * guard acima tendo sido verdadeiro para o valor antigo. Fica nomeado em vez
-     * de mascarado por um `status`, e a próxima verificação acerta.
+     * As falhas de identidade que `verify()` reconfere — `SerproConnection::current()`
+     * relê a linha, e `assertIdentity()` reexamina vigência e documento — e o
+     * materializador achando o certificado ausente **não** caem no `default`:
+     * são `DoNotRetry` com `status` zero, e o braço de `DoNotRetry` as manda para
+     * `certificado`, que é o conserto certo. Elas chegam aqui só se a linha mudar
+     * entre a conferência desta classe e a releitura do provider: milissegundos e
+     * uma gravação concorrente, com o guard acima tendo sido verdadeiro para o
+     * valor antigo.
      *
      * Estático e público para que a taxonomia inteira seja testável: o erro
      * dela é silencioso, e um desfecho sem destino declarado não quebraria teste
      * nenhum.
+     *
+     * @param  int  $status  O `status` que a falha carrega, e é o que separa duas
+     *                       falhas de rótulo igual e conserto oposto. `0` é
+     *                       conferência local — nenhum provedor chegou a ver
+     *                       nada —, e um `status` real é recusa do que foi
+     *                       enviado.
      */
-    public static function elementFor(SerproFailure $failure): string
+    public static function elementFor(SerproFailure $failure, int $status = 0): string
     {
         return match ($failure) {
             SerproFailure::Upstream, SerproFailure::Throttled, SerproFailure::Indeterminate, SerproFailure::NotSent => 'provedor',
+            // `DoNotRetry` são dois defeitos de mesmo rótulo e consertos
+            // opostos, e o `status` é o que os separa. Com `0` é uma
+            // conferência que o provedor nunca viu — identidade re-conferida
+            // (vencido, divergente, ilegível) e materializador sem certificado:
+            // o que está para ser trocado é o certificado. Com `status` real é
+            // recusa do que foi enviado, e `SerproTokenProvider::refusal()`
+            // sempre repassa o da resposta, nunca zero.
+            SerproFailure::DoNotRetry => $status > 0 ? 'credencial' : 'certificado',
             default => 'credencial',
         };
     }

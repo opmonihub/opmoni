@@ -15,6 +15,7 @@ use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
 use Carbon\Carbon;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
@@ -115,6 +116,12 @@ class SerproConnectivityTest extends TestCase
      * com a frase errada e com o tom de erro, que
      * `frontend/app/utils/serproConnectivityPresentation.ts` reserva para a
      * credencial.
+     *
+     * A lista carrega o `status` porque `DoNotRetry` tem dois destinos legítimos
+     * e o que os separa é ele: `0` é conferência local — identidade re-conferida
+     * e materializador sem certificado — e um `status` real é recusa do que o
+     * provedor viu. O `status` zero nunca é o de uma recusa:
+     * `SerproTokenProvider::refusal()` sempre repassa o da resposta.
      */
     public function test_taxonomia_de_elementos_declara_destino_para_todo_desfecho_do_enum(): void
     {
@@ -122,46 +129,119 @@ class SerproConnectivityTest extends TestCase
             // Quem não deu conta, quem não sabe se deu, quem não mandou nada e
             // quem limitou: esperar, e não redigitar nada.
             'provedor' => [
-                SerproFailure::Upstream,
-                SerproFailure::Throttled,
-                SerproFailure::Indeterminate,
-                SerproFailure::NotSent,
+                [SerproFailure::Upstream, 503],
+                [SerproFailure::Throttled, 429],
+                [SerproFailure::Indeterminate, 504],
+                [SerproFailure::NotSent, 0],
+            ],
+            // Conferência local que o provedor nunca chegou a ver: certificado
+            // vencido, documento divergente, identidade ilegível, certificado
+            // ausente. Troque-se o certificado, não a credencial.
+            'certificado' => [
+                [SerproFailure::DoNotRetry, 0],
             ],
             // Recusa do que foi enviado: corrigir a credencial.
             'credencial' => [
-                SerproFailure::Reauthenticate,
-                SerproFailure::ResubmitTerm,
-                SerproFailure::DoNotRetry,
+                [SerproFailure::Reauthenticate, 401],
+                [SerproFailure::ResubmitTerm, 403],
+                [SerproFailure::DoNotRetry, 400],
+                [SerproFailure::DoNotRetry, 401],
                 // `Success` nunca chega: `check()` só traduz a exceção de uma
                 // falha. O destino está declarado para o `default` não ser um
                 // buraco em silêncio — e para o dia em que algum chegar, o teste
                 // estar esperando por uma decisão, e não por um accidento.
-                SerproFailure::Success,
+                [SerproFailure::Success, 0],
             ],
         ];
 
         $declarados = array_merge(...array_values($destinos));
 
         // A lista é o contrato: um `case` novo que não apareça aqui precisa
-        // falhar, e uma vírgula a mais não pode tapar um `case` que sumiu. A
-        // comparação é de multiconjuntos — ordenar e comparar os valores, não
-        // só a contagem, porque contar não distingue `8 = 8 casos todos
-        // declarados` de `8 = 7 casos e um declarado duas vezes`.
+        // falhar, e um `case` declarado duas vezes não pode tapar outro que
+        // sumiu. A comparação é de conjuntos — ordenar e comparar os valores
+        // únicos, porque contar não distingue "todos declarados" de "um
+        // declarado no lugar de outro".
         $this->assertEqualsCanonicalizing(
             array_map(fn (SerproFailure $falha): string => $falha->value, SerproFailure::cases()),
-            array_map(fn (SerproFailure $falha): string => $falha->value, $declarados),
-            'Todo desfecho do enum precisa de destino declarado na taxonomia, uma vez só.',
+            array_values(array_unique(array_map(
+                fn (array $declarado): string => $declarado[0]->value,
+                $declarados,
+            ))),
+            'Todo desfecho do enum precisa de destino declarado na taxonomia.',
         );
 
         foreach ($destinos as $elemento => $falhas) {
-            foreach ($falhas as $falha) {
+            foreach ($falhas as [$falha, $status]) {
                 $this->assertSame(
                     $elemento,
-                    SerproConnectivity::elementFor($falha),
-                    "{$falha->value} não pode virar o outro elemento.",
+                    SerproConnectivity::elementFor($falha, $status),
+                    "{$falha->value} com status {$status} não pode virar o outro elemento.",
                 );
             }
         }
+    }
+
+    /**
+     * `DoNotRetry` é o caso que os dois lados precisam distinguir, e o que os
+     * separa não é o rótulo: é o `status`. `0` é uma conferência que o
+     * provedor nunca viu — o conserto é o certificado. Um `status` real é
+     * recusa do que o provedor recebeu — o conserto é a credencial.
+     */
+    public function test_do_not_retry_separa_conferencia_local_de_recusa_pelo_status(): void
+    {
+        $this->assertSame('certificado', SerproConnectivity::elementFor(SerproFailure::DoNotRetry, 0));
+        $this->assertSame('credencial', SerproConnectivity::elementFor(SerproFailure::DoNotRetry, 400));
+        $this->assertSame('credencial', SerproConnectivity::elementFor(SerproFailure::DoNotRetry, 401));
+        $this->assertSame('credencial', SerproConnectivity::elementFor(SerproFailure::DoNotRetry, 403));
+    }
+
+    public function test_certificado_que_deriva_no_meio_da_verificacao_e_certificado_e_nao_credencial(): void
+    {
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $this->connection();
+
+        // A única janela em que a falha de identidade chega à taxonomia: os
+        // guard acima conferiram o certificado, e ele ficou vencido entre essa
+        // conferência e a releitura que `authenticate()` faz logo depois. O
+        // operador que receber `credencial` aqui é mandado refazer chave, segredo
+        // e certificado — e o certificado não é o culpado: ele é o que mudou.
+        $deriva = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$deriva): void {
+            if ($deriva || ! str_contains($query->sql, 'from "serpro_connections"')) {
+                return;
+            }
+
+            $deriva = true;
+
+            // A releitura que este `listen` alcança é a de `authenticate()`: o
+            // evento dispara depois do `select` e antes de a `SerproConnection`
+            // ser montada, de modo que a credencial já conferida por `check()`
+            // continua válida e a seguinte já nasce vencida.
+            DB::table('serpro_connections')->update([
+                'certificate_valid_until' => now()->subDay(),
+            ]);
+        });
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.ok', false)
+            ->assertJsonPath('data.failed_element', 'certificado')
+            ->assertJsonPath(
+                'data.message',
+                'O certificado do contratante não está configurado, ou não serve para esta credencial.',
+            );
+
+        $this->assertTrue($deriva, 'O certificado precisa ter derivado no meio da verificação.');
+
+        // Nenhuma autenticação foi gasta descobrindo que o certificado mudou: a
+        // identidade é conferida antes de qualquer requisição.
+        Http::assertNothingSent();
     }
 
     public function test_sem_conexao_retorna_configuracao_sem_chamar_provedor(): void

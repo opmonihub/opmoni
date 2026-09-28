@@ -393,9 +393,14 @@ class ClientCrudTest extends TestCase
     /**
      * A troca de regime passa pela consulta, e a precedência da consulta é a
      * mesma dos outros dois call sites: documento com dígito verificador errado
-     * é `422`, não "a fonte não conhece". Antes do atalho, um `PATCH` de regime
-     * sobre uma linha dessas caía em `typedCompanyRegime()` e gravava em
-     * silêncio; agora recusa, que é o que o operador precisa.
+     * é `422`, não "a fonte não conhece".
+     *
+     * Foi o **atalho** que inverteu isso, não a ausência dele: sem o atalho,
+     * `lookupCompany()` chegava a `lookup()`, que confere a validade primeiro e
+     * respondia `422`. Com o atalho na ordem invertida, um `PATCH` de regime sobre
+     * uma linha dessas caía em `typedCompanyRegime()` e gravava em silêncio — que
+     * é o que os dois testes de precedência, este e o de
+     * `atualizar_da_receita`, fecham.
      */
     public function test_troca_de_regime_com_verificador_errado_e_recusa_o_documento_e_nao_a_fonte(): void
     {

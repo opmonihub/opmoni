@@ -49,8 +49,9 @@ class ClientManager
     {
         PlanLimits::assertCanCreate($account, 'clients');
 
-        // Outbound lookup BEFORE opening the transaction so no row lock is held
-        // while waiting on the provider; failures leave no partial write behind.
+        // A consulta à Receita sai antes de abrir a transação: nenhuma trava de
+        // linha fica presa enquanto o provedor responde, e uma falha não deixa
+        // escrita nenhuma pela metade.
         $companyPayload = $data['person_type'] === ClientPersonType::Company->value
             ? $this->lookupCompany($data['tax_id'])
             : null;
@@ -164,7 +165,7 @@ class ClientManager
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  array<string, mixed>  $payload  Live lookup result (fetched before the transaction).
+     * @param  array<string, mixed>  $payload  Dados da Receita, buscados antes da transação.
      * @return array<string, mixed>
      */
     private function companyAttributes(array $data, array $payload): array
