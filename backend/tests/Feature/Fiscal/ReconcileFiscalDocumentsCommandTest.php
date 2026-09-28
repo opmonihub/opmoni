@@ -38,8 +38,8 @@ use Tests\TestCase;
  * `Bus::fake()` de propósito: o que se verifica no comando é o despacho, nunca
  * a fila. Rodar o job aqui seria repetir o `FiscalReconciliationTest` — com a
  * exceção dos caminhos que só o job tem, que são o cliente apagado entre o
- * despacho e a execução e a conta corrente que o worker deixou resíduo da noite
- * anterior, e é por isso que eles são testados chamando o `handle()` direto.
+ * despacho e a execução e a conta corrente que o worker herda do job anterior,
+ * e é por isso que eles são testados chamando o `handle()` direto.
  */
 class ReconcileFiscalDocumentsCommandTest extends TestCase
 {
@@ -272,12 +272,38 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
         $this->assertSame([101], $connector->lookups);
         $this->assertSame(1, $this->gapOf($client, 101)->attempts);
 
-        // E a conta corrente virou a conta do cliente, e não ficou na conta
-        // alheia: é isso que torna coerente o resto do caminho — o cursor e as
-        // lacunas lidas — com o cliente que este job está reconciliando.
+        // Durante a reconciliação a conta corrente é a do cliente: é isso que
+        // torna coerente o resto do caminho — o cursor e as lacunas lidas — com o
+        // cliente que este job está reconciliando.
+        $this->assertSame([$contaDoCliente->getKey()], $connector->tenants);
+    }
+
+    public function test_o_job_devolve_a_conta_corrente_que_encontrou(): void
+    {
+        $contaDoCliente = Account::factory()->create();
+        $outraConta = Account::factory()->create();
+
+        $client = $this->clientWithGap($contaDoCliente, 101);
+        $this->cursor($client);
+
+        resolve(CurrentTenant::class)->accountId = $outraConta->getKey();
+
+        $connector = $this->bindConnector();
+
+        $this->runJob((int) $client->getKey(), FiscalSource::NfeDistribuicao);
+
+        // O job fez o trabalho…
+        $this->assertSame([101], $connector->lookups);
+
+        // …e não deixou a conta do cliente para trás. O `queue:work` é longo e o
+        // `CurrentTenant` é um singleton que ninguém zera entre jobs: deixar a
+        // conta aqui faria o próximo job que não adota conta própria não achar o
+        // cliente dele e encerrar em silêncio, todas as noites, até o worker
+        // reiniciar. A captura é um desses jobs.
         $this->assertSame(
-            $contaDoCliente->getKey(),
+            $outraConta->getKey(),
             resolve(CurrentTenant::class)->accountId,
+            'O job tem de devolver a conta corrente que encontrou, e não a do cliente.',
         );
     }
 
@@ -435,6 +461,15 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
              */
             public array $lookups = [];
 
+            /**
+             * A conta corrente no momento de cada consulta. É a única forma de
+             * observar a conta de **durante** a execução, já que o fim do job a
+             * devolve ao valor que encontrou.
+             *
+             * @var list<?int>
+             */
+            public array $tenants = [];
+
             public function __construct(private readonly FiscalSource $served) {}
 
             public function source(): FiscalSource
@@ -462,6 +497,7 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
             public function fetchByNsu(Client $client, int $nsu): ?PulledDocument
             {
                 $this->lookups[] = $nsu;
+                $this->tenants[] = resolve(CurrentTenant::class)->accountId;
 
                 return null;
             }

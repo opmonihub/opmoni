@@ -21,6 +21,12 @@ use Illuminate\Support\Facades\Log;
  * `CaptureFiscalDocumentsJob`, e a mesma trava por cliente e fonte: uma chave só
  * para captura e para reconciliação, senão as duas consultam o mesmo CNPJ ao
  * mesmo tempo, que é o uso indevido que a NT classifica.
+ *
+ * Ele adota a conta do cliente enquanto roda e devolve a conta corrente que
+ * encontrou ao fim, e essa devolução é parte do contrato: o `queue:work` é longo
+ * e o `CurrentTenant` é um singleton que ninguém zera entre jobs, então um job
+ * que deixa a conta do cliente atrás desliga silenciosamente o próximo job que
+ * não adota conta própria.
  */
 final class ReconcileFiscalDocumentsJob implements ShouldQueue
 {
@@ -73,17 +79,31 @@ final class ReconcileFiscalDocumentsJob implements ShouldQueue
             return;
         }
 
-        // A conta do cliente passa a ser a conta corrente pelo resto da
-        // execução, e não só para esta consulta. É o mesmo gesto de
-        // `ClientTagAssigner::apply()` e de `ProcessGenerationService::eligibleClients()`:
-        // quem trabalha para uma conta a torna a conta corrente, e o resto do
-        // caminho — o cursor lido e as lacunas lidas — fica coerente com o
-        // cliente, em vez de cada consulta ter de repetir um `where('account_id')`
-        // embaixo de uma conta alheia. E o job seguinte, quando chegar, escreve
-        // a conta dele em cima desta.
-        resolve(CurrentTenant::class)->accountId = (int) $client->account_id;
+        // A conta do cliente passa a ser a conta corrente **por esta execução**,
+        // e volta ao que era ao fim dela.
+        //
+        // Adotar é o que torna coerente o resto do caminho — o cursor lido e as
+        // lacunas lidas — com o cliente que este job está reconciliando, em vez
+        // de cada consulta repetir um `where('account_id')` embaixo de uma conta
+        // alheia. O caminho abaixo roda sem o middleware de tenant, que é o worker
+        // de fila, e a conta tem de vir do cliente justamente por isso.
+        //
+        // Devolver em `finally` é o que impede a adoção de virar resíduo: o
+        // `queue:work` é longo e o singleton não é zerado entre jobs, então
+        // deixar a conta do cliente aqui faria o próximo job que não adota conta
+        // própria — a captura é um deles — não achar o próprio cliente e encerrar
+        // em silêncio. O job seguinte começa do estado que esperava, e não do
+        // que este deixou.
+        $tenant = resolve(CurrentTenant::class);
+        $previous = $tenant->accountId;
 
-        $reconciliation->run($client, $this->source);
+        try {
+            $tenant->accountId = (int) $client->account_id;
+
+            $reconciliation->run($client, $this->source);
+        } finally {
+            $tenant->accountId = $previous;
+        }
     }
 
     /**
