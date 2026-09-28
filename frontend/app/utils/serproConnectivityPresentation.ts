@@ -48,10 +48,19 @@ export function connectivityIcon(result: SerproConnectivityResult | null): strin
  * service and the machine and never closes it, deliberately, and a throttle gets
  * the same sentence because the action is the same. `message` is the action, not
  * the diagnosis — so the title is an action too, and says only what is true.
+ *
+ * `certificado` is the one element whose action is known exactly, and the title
+ * has to follow it: o certificado do contratante está ausente, não bate com o
+ * documento gravado ou está vencido, e o conserto é conferir **esse**
+ * certificado. Um título que falasse em autenticação mandava o operador mexer na
+ * chave de integração e no segredo, que estão bons e continuam bons depois da
+ * troca. O contrato de quatro elementos não muda: a função continua lendo só o
+ * elemento que já recebia.
  */
 export function connectivityTitle(result: SerproConnectivityResult | null): string {
   if (result?.ok) return 'Conexão autenticada com sucesso'
   if (isProviderFailure(result)) return 'A verificação não pôde ser concluída'
+  if (result?.failed_element === 'certificado') return 'Não foi possível autenticar com este certificado'
   return 'Não foi possível autenticar'
 }
 

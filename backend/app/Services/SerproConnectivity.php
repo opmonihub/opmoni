@@ -59,13 +59,17 @@ final class SerproConnectivity
         $checkedAt = now()->toISOString();
         $connection = SerproConnection::current();
 
-        if ($connection === null || ! $connection->isConfigured()) {
+        if (! $this->isConfigured($connection)) {
             return $this->failure('configuracao', $checkedAt);
         }
 
         // A ausência do certificado é conferida aqui porque `assertIdentity()`
-        // volta sem reclamar quando não há PFX: quem recusaria isso mais adiante
-        // é o materializador, e lá o veredito seria o de uma credencial recusada.
+        // volta sem reclamar quando não há PFX, e quem recusa isso mais adiante é
+        // o materializador — depois de `verify()` ter descartado o par de token em
+        // cache e de a credencial ter sido relida. A resposta seria a mesma, por
+        // um caminho mais longo e depois de trabalho inútil: um teste que
+        // descobre que o certificado sumiu não deve invalidar o token que estava
+        // bom.
         if ($connection->certificate_encrypted === null) {
             return $this->failure('certificado', $checkedAt);
         }
@@ -97,6 +101,22 @@ final class SerproConnectivity
         try {
             $this->tokens->verify();
         } catch (SerproException $exception) {
+            // A credencial ausente é o **único** desfecho local que esta classe
+            // não produziu: os guard acima já responderam `certificado` e
+            // `credencial`, e o provedor de token é quem relê a linha antes de
+            // autenticar — uma releitura que pode não encontrar nada, porque a
+            // credencial foi apagada ou esvaziada no intervalo. Sem esta
+            // conferência, a taxonomia leria "não configurada" pelo `status` zero,
+            // que é a assinatura de uma falha de certificado, e mandaria o
+            // operador trocar um certificado de uma credencial que não existe.
+            //
+            // O `status` zero é o filtro porque a falha de quem não tem linha é
+            // sempre local: nenhum provedor respondeu, e por isso nenhum status
+            // de provedor a acompanha.
+            if ($exception->status === 0 && ! $this->isConfigured(SerproConnection::current())) {
+                return $this->failure('configuracao', $checkedAt);
+            }
+
             return $this->failure(self::elementFor($exception->failure, $exception->status), $checkedAt);
         }
 
@@ -106,6 +126,21 @@ final class SerproConnectivity
             'message' => null,
             'checked_at' => $checkedAt,
         ];
+    }
+
+    /**
+     * O que responde `configuracao`, em um lugar só: não há linha, ou a linha não
+     * tem chave nem segredo guardado.
+     *
+     * Os dois pontos de uso são o guard do começo de `check()` e a releitura
+     * depois de `verify()`, e eles compartilham esta definição de propósito: são
+     * a mesma pergunta feita em dois instantes, e um desfecho de "não
+     * configurado" que aparecesse num deles e não no outro seria um `403` do
+     * gateway ou uma troca de certificado sem causa.
+     */
+    private function isConfigured(?SerproConnection $connection): bool
+    {
+        return $connection !== null && $connection->isConfigured();
     }
 
     /**
@@ -157,15 +192,25 @@ final class SerproConnectivity
      * uma gravação concorrente, com o guard acima tendo sido verdadeiro para o
      * valor antigo.
      *
+     * O que chega com `DoNotRetry` e `status` zero é, portanto, sempre
+     * certificado: o único desfeço local de mesma assinatura que **não** é
+     * — a credencial ausente — é respondido por `check()` antes de chegar aqui,
+     * porque quem o produz é a releitura do provedor de token e quem tem a linha
+     * na mão é `check()`. É por isso que esta função não recebe a linha e não
+     * pergunta nada: o discriminador do que mudou entre as duas conferências é
+     * do guard que as fez, não do rótulo.
+     *
      * Estático e público para que a taxonomia inteira seja testável: o erro
      * dela é silencioso, e um desfecho sem destino declarado não quebraria teste
      * nenhum.
      *
      * @param  int  $status  O `status` que a falha carrega, e é o que separa duas
      *                       falhas de rótulo igual e conserto oposto. `0` é
-     *                       conferência local — nenhum provedor chegou a ver
-     *                       nada —, e um `status` real é recusa do que foi
-     *                       enviado.
+     *                       conferência local de certificado — nenhum provedor
+     *                       chegou a ver nada —, e um `status` real é recusa do que
+     *                       foi enviado. A credencial ausente também é de
+     *                       `status` zero, e `check()` a responde antes de chegar
+     *                       aqui.
      */
     public static function elementFor(SerproFailure $failure, int $status = 0): string
     {

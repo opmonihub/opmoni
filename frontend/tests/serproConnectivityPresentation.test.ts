@@ -68,6 +68,19 @@ describe('apresentação da conectividade', () => {
     assert.doesNotMatch(connectivityTitle(provider), /provedor/i)
   })
 
+  it('nomeia o desfecho do certificado como problema de certificado, não de autenticação', () => {
+    // `certificado` significa que o certificado do contratante está ausente,
+    // divergente ou vencido. O conserto é conferir o certificado, e um título que
+    // falasse em autenticação mandaria o operador mexer na chave de integração e
+    // no segredo — que estão bons, e continuam bons depois da troca.
+    const certificado = result({ failed_element: 'certificado' })
+
+    assert.equal(connectivityTitle(certificado), 'Não foi possível autenticar com este certificado')
+    assert.notEqual(connectivityTitle(certificado), connectivityTitle(result()))
+    assert.equal(connectivityTone(certificado), 'error')
+    assert.equal(failedElementName(certificado), 'Certificado')
+  })
+
   it('sem veredito nenhum, nenhum título afirma o que aconteceu', () => {
     // Ainda não rodada: nada rodou, então nada pode ser dito sobre a credencial.
     assert.equal(failedElementName(null), null)

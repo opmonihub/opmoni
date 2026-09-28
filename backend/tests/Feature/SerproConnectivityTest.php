@@ -118,10 +118,12 @@ class SerproConnectivityTest extends TestCase
      * credencial.
      *
      * A lista carrega o `status` porque `DoNotRetry` tem dois destinos legítimos
-     * e o que os separa é ele: `0` é conferência local — identidade re-conferida
-     * e materializador sem certificado — e um `status` real é recusa do que o
-     * provedor viu. O `status` zero nunca é o de uma recusa:
-     * `SerproTokenProvider::refusal()` sempre repassa o da resposta.
+     * e o que os separa é ele: `0` é conferência local de certificado — identidade
+     * re-conferida e materializador sem certificado — e um `status` real é recusa do
+     * que o provedor viu. O `status` zero nunca é o de uma recusa:
+     * `SerproTokenProvider::refusal()` sempre repassa o da resposta. A credencial
+     * ausente é `status` zero e **não** é certificado, mas ela não chega aqui: a
+     * resposta com a releitura está em `test_credencial_apagada_no_meio_da_verificacao_e_configuracao_e_nao_certificado`.
      */
     public function test_taxonomia_de_elementos_declara_destino_para_todo_desfecho_do_enum(): void
     {
@@ -241,6 +243,47 @@ class SerproConnectivityTest extends TestCase
 
         // Nenhuma autenticação foi gasta descobrindo que o certificado mudou: a
         // identidade é conferida antes de qualquer requisição.
+        Http::assertNothingSent();
+    }
+
+    public function test_credencial_apagada_no_meio_da_verificacao_e_configuracao_e_nao_certificado(): void
+    {
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $this->connection();
+
+        // A outra ponta da mesma janela. Aqui a linha é apagada entre a
+        // conferência do começo e a releitura que a autenticação faz, e o provedor
+        // de token responde "não configurada" — que é um `DoNotRetry` de `status`
+        // zero, a mesma assinatura da falha de certificado. Ler só o `status`
+        // mandaria o operador trocar o certificado de uma credencial que não
+        // existe mais.
+        $apagada = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$apagada): void {
+            if ($apagada || ! str_contains($query->sql, 'from "serpro_connections"')) {
+                return;
+            }
+
+            $apagada = true;
+            DB::table('serpro_connections')->delete();
+        });
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.ok', false)
+            ->assertJsonPath('data.failed_element', 'configuracao')
+            ->assertJsonPath(
+                'data.message',
+                'A credencial do Integra Contador não está configurada: faltam a chave de integração ou o segredo.',
+            );
+
+        $this->assertTrue($apagada, 'A credencial precisa ter sido apagada no meio da verificação.');
+
         Http::assertNothingSent();
     }
 
