@@ -19,13 +19,22 @@ use RuntimeException;
  * consulta SOAP com o certificado do cliente no transporte, a checagem do corpo
  * contra o XSD local e a leitura da resposta em `DfeResponse`.
  *
- * A classe é sem estado e não sabe a qual serviço está falando. O `endpoint`
+ * A classe é sem estado e não monta corpo nem escolhe serviço. O `endpoint`
  * chega pronto de quem chamou — namespace, versão, método e ação SOAP são
  * parâmetros do serviço, não da chamada — e o corpo chega montado, porque o
  * corpo também é o que distingue um serviço do outro. O que é comum vive
  * aqui, e é o que permite ao conector de CT-e falar com o fisco pelo mesmo
  * caminho, pelas mesmas duas portas (`distNSU` e `consNSU`) e com a mesma
  * autenticação.
+ *
+ * **O que ela fixa, e é uma exceção, não agnosticismo:** o elemento do payload
+ * é `distDFeInt` e é ele que o schema local valida (`PAYLOAD_ELEMENT`, usado em
+ * dois lugares abaixo). Os dois serviços de distribuição deste módulo — NF-e e
+ * CT-e — nomeiam o payload igual, e é por isso que a constante serve aos dois;
+ * a resposta também é `retDistDFeInt` nos dois, e é o que o parser encontra por
+ * nome local. Um terceiro serviço com outro nome de payload não é coberto por
+ * esta classe, e precisaria do nome como parâmetro, do mesmo modo que o serviço
+ * e a versão do schema já são.
  *
  * Quatro regras que este arquivo carrega desde o conector de NF-e:
  *
@@ -52,6 +61,14 @@ final class DfeTransport
      * resto do lote.
      */
     private const CONNECT_TIMEOUT_SECONDS = 15;
+
+    /**
+     * O elemento que embrulha o payload dentro do envelope, e o nome do schema
+     * local que valida esse payload. Os dois serviços de distribuição deste
+     * módulo usam o mesmo nome, e o cabeçalho da classe diz por que isso é uma
+     * exceção declarada e não um esquecimento.
+     */
+    private const PAYLOAD_ELEMENT = 'distDFeInt';
 
     /**
      * O que o serviço diz sobre a própria falha, e o máximo que vai para a
@@ -85,7 +102,12 @@ final class DfeTransport
         $response = $this->materializer->withCertificate(
             $certificate,
             function (string $path) use ($certificate, $endpoint, $body): Response {
-                $this->validator->validate($this->payloadOf($body), 'distDFeInt');
+                $this->validator->validate(
+                    $this->payloadOf($body),
+                    self::PAYLOAD_ELEMENT,
+                    $endpoint['xsd_service'],
+                    $endpoint['version'],
+                );
 
                 return $this->send($endpoint, $certificate, $path, $body);
             },
@@ -264,7 +286,7 @@ final class DfeTransport
             throw new RuntimeException('O envelope montado não é um XML legível.');
         }
 
-        $payload = XmlQuery::first(new DOMXPath($dom), 'distDFeInt');
+        $payload = XmlQuery::first(new DOMXPath($dom), self::PAYLOAD_ELEMENT);
 
         if ($payload === null) {
             throw new RuntimeException('Envelope sem payload distDFeInt.');

@@ -9,10 +9,12 @@ use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Models\FiscalGap;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Capture\FiscalReconciliation;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
+use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Tenant\CurrentTenant;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,10 +32,10 @@ use Tests\TestCase;
  * por dia, às duas da manhã no fuso configurado, e é ela que não espera a
  * carteira inteira. Um job por cliente e por fonte, porque um lote de consulta
  * por posição não cabe na janela do worker. Nenhum job para uma fonte que o
- * conector ligado não serve, porque o job de uma fonte sem conector rodaria a
- * consulta da outra e arquivaria o documento na fonte errada. E a parada do
- * fisco continua valendo: um cliente bloqueado não é consultado, mesmo com a
- * agenda disparando.
+ * registro de conector não serve, porque o job de uma fonte sem conector
+ * rodaria a consulta da outra e arquivaria o documento na fonte errada. E a
+ * parada do fisco continua valendo: um cliente bloqueado não é consultado, mesmo
+ * com a agenda disparando.
  *
  * `Bus::fake()` de propósito: o que se verifica no comando é o despacho, nunca
  * a fila. Rodar o job aqui seria repetir o `FiscalReconciliationTest` — com a
@@ -124,8 +126,12 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
 
     public function test_recusa_uma_fonte_sem_conector(): void
     {
-        // O conector ligado é o da NF-e. Um job de CT-e aqui rodaria a consulta
-        // da NF-e com fonte de CT-e, e o documento entraria na fonte errada.
+        // As duas fontes têm conector nesta versão, então a recusa é exercitada
+        // com um registro que não conhece a fonte de CT-e — que é a situação de
+        // um job que entrou na fila antes de o conector existir, ou de um
+        // registro configurado sem aquela fonte.
+        $this->bindRegistry([FiscalSource::NfeDistribuicao->value => NfeDistributionConnector::class]);
+
         $this->artisan('fiscal:reconcile', ['--source' => 'cte_distribuicao'])
             ->expectsOutputToContain('não tem conector')
             ->assertFailed();
@@ -188,19 +194,20 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
         $this->assertSame('America/Sao_Paulo', (string) config('fiscal.reconcile_timezone'));
     }
 
-    public function test_o_job_recusa_a_fonte_que_o_conector_ligado_nao_serve(): void
+    public function test_o_job_recusa_a_fonte_que_o_registro_nao_serve(): void
     {
         $account = Account::factory()->create();
         $client = $this->clientWithGap($account, 101, FiscalSource::CteDistribuicao);
 
+        // Registro sem a fonte de CT-e, e o conector de NF-e registrado: a
+        // lacuna é de CT-e e não há conector para ela, então consultar seria
+        // pedir a posição de um serviço pelo outro.
         $connector = $this->bindConnector(FiscalSource::NfeDistribuicao);
 
         $this->runJob((int) $client->getKey(), FiscalSource::CteDistribuicao);
 
-        // A lacuna é de CT-e e o conector ligado é o da NF-e: consultar seria
-        // pedir a posição de um serviço pelo outro e arquivar a resposta na
-        // fonte errada. A lacuna fica pendente e sem contagem, que é o que
-        // acontece com uma posição que ninguém perguntou.
+        // A lacuna fica pendente e sem contagem, que é o que acontece com uma
+        // posição que ninguém perguntou.
         $this->assertSame([], $connector->lookups);
         $this->assertSame(0, FiscalDocument::count());
         $this->assertSame(0, $this->gapOf($client, 101)->attempts);
@@ -447,6 +454,10 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
      * Um conector que registra as consultas por posição e responde sempre que
      * não há documento — a resposta do fisco que conta uma tentativa e adia a
      * próxima, e é o que torna a execução observável sem tocar a rede.
+     *
+     * Ele é registrado no `FiscalConnectorRegistry`, e não por uma ligação da
+     * interface `FiscalConnector`: quem fala com o fisco resolve o conector pela
+     * fonte, e o registro é a fonte dessa resolução.
      */
     private function bindConnector(FiscalSource $served = FiscalSource::NfeDistribuicao): FiscalConnector
     {
@@ -503,9 +514,21 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
             }
         };
 
-        $this->app->instance(FiscalConnector::class, $connector);
+        $this->bindRegistry([$served->value => $connector]);
 
         return $connector;
+    }
+
+    /**
+     * Um registro com exatamente estas fontes. Um registro sem a fonte pedida é a
+     * situação de um job que entrou na fila antes de o conector da fonte existir:
+     * a fonte é conhecida, o conector não.
+     *
+     * @param  array<string, class-string<FiscalConnector>|FiscalConnector>  $connectors
+     */
+    private function bindRegistry(array $connectors): void
+    {
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry($connectors));
     }
 
     private function redisRetryAfter(): int

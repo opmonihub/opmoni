@@ -14,9 +14,9 @@ final class DfeSoapEnvelope
      * assinatura do schema proíbe.
      *
      * `holder` é o elemento que embrulha o payload (`nfeDadosMsg` na NF-e,
-     * `dfeDadosMsg` no CT-e) e vem da configuração pelo mesmo caminho das
-     * demais diferenças entre os dois serviços, para que nenhum conector
-     * precise editar esta classe.
+     * `cteDadosMsg` no CT-e) e vem da configuração pelo mesmo caminho das
+     * demais diferenças entre os serviços, para que nenhum conector precise
+     * editar esta classe.
      */
     public function build(
         string $serviceNamespace,

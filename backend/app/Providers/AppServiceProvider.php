@@ -19,8 +19,7 @@ use App\Policies\ProcessPolicy;
 use App\Policies\ProcessTemplatePolicy;
 use App\Policies\SerproMonitoringPolicy;
 use App\Policies\TaskPolicy;
-use App\Services\Fiscal\Contracts\FiscalConnector;
-use App\Services\Fiscal\Nfe\NfeDistributionConnector;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Support\Facades\Gate;
@@ -35,10 +34,24 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CurrentTenant::class);
 
-        // O contrato resolve para o conector do serviço de Distribution DF-e da
-        // NF-e, que é a única fonte habilitada nesta versão. `bind` e não
-        // `singleton`: o conector é sem estado e quem chama é a fila.
-        $this->app->bind(FiscalConnector::class, NfeDistributionConnector::class);
+        // O catálogo de conector é o único lugar que sabe qual conector serve
+        // cada fonte. `bind` e não `singleton`: o registro é sem estado e quem
+        // chama é a fila.
+        $this->app->bind(FiscalConnectorRegistry::class);
+
+        // ⚠️ `FiscalConnector` **não** é ligado a nada, de propósito.
+        //
+        // Com dois serviços de distribuição, uma ligação da interface para "o
+        // conector" é a armadilha: qualquer código que tipasse a interface e
+        // chamasse `source()` receberia NF-e, e a fonte de CT-e passaria a ser
+        // consultada pelo `.asmx` da NF-e sem que nada gritasse. Todo caminho
+        // que fala com o fisco resolve pelo `FiscalConnectorRegistry`, que não
+        // devolve conector para fonte sem conector — e um código novo que pedir
+        // a interface recebe "Target [App\Services\Fiscal\Contracts\FiscalConnector]
+        // is not instantiable" no lugar do silêncio.
+        //
+        // O teste `test_o_contrato_do_conector_nao_resolve_para_nenhum_conector`
+        // é o que trava esta linha.
     }
 
     /**

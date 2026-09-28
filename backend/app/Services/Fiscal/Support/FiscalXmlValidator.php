@@ -12,12 +12,17 @@ final class FiscalXmlValidator
      * remove a classe inteira de rejeições de forma (schema, versão, cursor,
      * assinatura injetada) sem ida à rede.
      *
-     * A versão mora no nome do arquivo (`distDFeInt_v1.01.xsd`): uma versão
-     * por diretório de serviço, junto dos `xs:include` que ela puxa.
+     * O serviço e a versão moram no nome do arquivo
+     * (`nfe/distDFeInt_v1.01.xsd`, `cte/distDFeInt_v1.00.xsd`): uma versão por
+     * diretório de serviço, junto dos `xs:include` que ela puxa. A versão chega
+     * como argumento e não é escrita aqui de propósito — é a mesma que vai no
+     * atributo `versao` do corpo, e as duas não podem divergir. Um XSD de outra
+     * versão aceitaria um corpo que o serviço rejeitaria, que é a rejeição mais
+     * cara de evitar.
      */
-    public function validate(string $xml, string $schemaName): void
+    public function validate(string $xml, string $schemaName, string $service, string $version): void
     {
-        $schema = resource_path("xsd/nfe/{$schemaName}_v1.01.xsd");
+        $schema = resource_path("xsd/{$service}/{$schemaName}_v{$version}.xsd");
 
         if (! is_file($schema)) {
             throw new RuntimeException("XSD não encontrado: {$schemaName}.");

@@ -110,6 +110,8 @@ class FiscalPointLookupTest extends TestCase
             (new FiscalXmlValidator)->validate(
                 $dom->saveXML(XmlQuery::first(new DOMXPath($dom), 'distDFeInt')),
                 'distDFeInt',
+                'nfe',
+                '1.01',
             );
 
             return true;

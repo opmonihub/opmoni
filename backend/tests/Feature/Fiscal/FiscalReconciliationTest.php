@@ -14,6 +14,7 @@ use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Models\FiscalGap;
 use App\Services\Fiscal\Capture\FiscalCaptureService;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Capture\FiscalReconciliation;
 use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
@@ -917,7 +918,8 @@ class FiscalReconciliationTest extends TestCase
 
     /**
      * Liga um conector falso que registra as consultas por posição em
-     * `$this->lookups` e devolve — ou levanta — o que o teste preparou.
+     * `$this->lookups` e devolve — ou levanta — o que o teste preparou. O
+     * registro fica só com a fonte de NF-e, que é a fonte destes testes.
      *
      * @param  Closure(): PullResult  $pull
      * @param  Closure(Client, int): ?PulledDocument|null  $fetchByNsu  quando
@@ -933,7 +935,7 @@ class FiscalReconciliationTest extends TestCase
             return $answer($client, $nsu);
         };
 
-        $this->app->instance(FiscalConnector::class, new class($pull, $lookup) implements FiscalConnector
+        $fake = new class($pull, $lookup) implements FiscalConnector
         {
             /**
              * @param  Closure(): PullResult  $pull
@@ -963,7 +965,14 @@ class FiscalReconciliationTest extends TestCase
             {
                 return ($this->fetchByNsu)($client, $nsu);
             }
-        });
+        };
+
+        // O dublê entra pelo registro, e não por uma ligação da interface
+        // `FiscalConnector`: quem fala com o fisco resolve o conector pela fonte,
+        // e é o registro que é a fonte dessa resolução.
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
+            FiscalSource::NfeDistribuicao->value => $fake,
+        ]));
     }
 
     /**

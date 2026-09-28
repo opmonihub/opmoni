@@ -2,7 +2,6 @@
 
 namespace App\Services\Fiscal\Nfe;
 
-use App\Enums\FiscalFailure;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Models\Client;
@@ -10,15 +9,13 @@ use App\Services\Fiscal\Capture\FiscalLookupBudget;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
-use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
-use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
-use App\Services\Fiscal\Support\DfeEntryCollector;
+use App\Services\Fiscal\Support\ClientStateCode;
+use App\Services\Fiscal\Support\DfePullReader;
 use App\Services\Fiscal\Support\DfeResponse;
 use App\Services\Fiscal\Support\DfeSoapEnvelope;
 use App\Services\Fiscal\Support\DfeTransport;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
-use Carbon\CarbonImmutable;
 use Closure;
 use RuntimeException;
 
@@ -27,9 +24,10 @@ use RuntimeException;
  *
  * Fala com um serviço só e devolve documento pronto. O que é comum aos serviços
  * de DF-e — a chamada SOAP com o certificado do cliente, a leitura da resposta,
- * a conversão das entradas em documentos — mora em `DfeTransport` e
- * `DfeEntryCollector`; aqui fica o que é da NF-e: os parâmetros do serviço, a
- * UF do interessado, a consulta por chave e a leitura da rejeição.
+ * a conversão das entradas em documentos, a leitura da rejeição e a tabela de
+ * UFs — mora em `DfeTransport`, `DfeEntryCollector`, `DfePullReader` e
+ * `ClientStateCode`; aqui fica o que é da NF-e: os parâmetros do serviço e a
+ * consulta por chave, que é a porta que o serviço de CT-e não tem.
  *
  * Não escreve no banco: `FiscalDocumentWriter` é o único caminho de
  * escrita, e é por isso que painel e tabela são escritos uma vez só.
@@ -55,43 +53,19 @@ use RuntimeException;
 final class NfeDistributionConnector implements FiscalConnector
 {
     /**
-     * Códigos IBGE das UFs, de `config('fiscal.environment')` para longe:
-     * `cUFAutor` é a UF do interessado — o cliente — e não a do serviço.
-     *
-     * Sigla fora desta tabela não vira São Paulo. O serviço aceita qualquer
-     * código válido da tabela e `35` é um deles, então um valor inventado
-     * passaria pela validação do XSD e seria aceito: uma afirmação falsa
-     * sobre quem pergunta, sem nada para denunciá-la.
-     */
-    private const UF_CODES = [
-        'AC' => 12, 'AL' => 27, 'AP' => 16, 'AM' => 13, 'BA' => 29, 'CE' => 23,
-        'DF' => 53, 'ES' => 32, 'GO' => 52, 'MA' => 21, 'MT' => 51, 'MS' => 50,
-        'MG' => 31, 'PA' => 15, 'PB' => 25, 'PR' => 41, 'PE' => 26, 'PI' => 22,
-        'RJ' => 33, 'RN' => 24, 'RS' => 43, 'RO' => 11, 'RR' => 14, 'SC' => 42,
-        'SP' => 35, 'SE' => 28, 'TO' => 17,
-    ];
-
-    /**
      * O documento que este conector traz: a chave de acesso carrega `55` nos
      * dois dígitos do modelo, e a extração de metadados recusa tudo que não for.
-     * A regra é a do par (conector, modelo) e não uma conclusão da entrada — é o
-     * coletor que compara.
+     * A regra é da família do modelo pedido, e não uma conclusão da entrada — é
+     * o coletor que compara. A família da NF-e é unitária: NFC-e tem serviço de
+     * distribuição próprio.
      */
     private const MODEL = FiscalModel::Nfe;
-
-    /**
-     * O status que a taxonomia recebe daqui é sempre o mesmo, e ele é inerte:
-     * o transporte já recusou toda resposta fora do `2xx` — cada uma delas com o
-     * status real dentro da exceção —, então o `classify()` deste arquivo só
-     * decide pelo `cStat`, e o ramo que olha o status (`0` ou `5xx`, que é
-     * "não houve resposta") já foi tomado no transporte, com o status verdadeiro.
-     */
-    private const HTTP_OK = 200;
 
     public function __construct(
         private DfeSoapEnvelope $envelope,
         private DfeTransport $transport,
-        private DfeEntryCollector $collector,
+        private DfePullReader $reader,
+        private ClientStateCode $stateCode,
         private FiscalLookupBudget $lookupBudget,
     ) {}
 
@@ -103,6 +77,9 @@ final class NfeDistributionConnector implements FiscalConnector
     /**
      * `$limit` é informativo: o serviço não aceita parametrizar o tamanho do
      * lote, e quem chama já leu `config('fiscal.batch_limit')`.
+     *
+     * O que a resposta significa — lote, pausa de uma hora ou recusa — é regra do
+     * `DfePullReader`, e é a mesma para os dois serviços deste módulo.
      */
     public function pull(Client $client, int $fromNsu, int $limit): PullResult
     {
@@ -110,49 +87,7 @@ final class NfeDistributionConnector implements FiscalConnector
         // sem A1 não produz envelope, não passa pelo XSD e não gasta banda.
         $this->transport->requireCertificate($client);
 
-        $parsed = $this->send($client, $fromNsu);
-
-        // O status HTTP real entrou na classificação dentro do transporte, que
-        // é quem recusa o que não for `2xx` — com o status verdadeiro, e não
-        // com o `cStat` de um corpo que esse status não traz. O que sobra para
-        // aqui é o `cStat`, e `self::HTTP_OK` diz o que ele é.
-        $failure = FiscalFailure::classify(self::HTTP_OK, $parsed->cStat);
-
-        if ($failure === FiscalFailure::DocumentsFound) {
-            return $this->collect($parsed);
-        }
-
-        // `137` e a rejeição de consumo indevido são a mesma regra — parar uma
-        // hora — e o eixo mora no enum, não neste `match`. Uma indisponibilidade
-        // do serviço não entra aqui: ela adianta repetir, e um retry não pode
-        // virar uma hora de silêncio por cliente.
-        if ($failure->blocksForAnHour()) {
-            return new PullResult(
-                documents: [],
-                lastNsu: $parsed->ultNsu,
-                maxNsu: $parsed->maxNsu,
-                more: false,
-                blockedUntil: $this->blockUntil(),
-                // "Nenhum documento localizado" e "consumo indevido" bloqueiam
-                // igual e discordam sobre a posição. A primeira não entrega
-                // nada, e o que devolve é o eco da posição pedida: a posição
-                // armazenada fica intacta. A segunda entrega a posição correta
-                // dentro do próprio corpo da rejeição, e é a única alavanca de
-                // recuperação que o serviço oferece — descartá-la custaria
-                // recomeçar do começo.
-                mayAdoptPosition: $failure !== FiscalFailure::NoDocuments,
-                // A pausa é a mesma nas duas, então o rótulo é o que separa o
-                // esfriamento normal do bloqueio que é problema do cliente. É a
-                // palavra da taxonomia, nunca o `xMotivo`: a coluna que a
-                // recebe é lida pelo painel e não carrega texto do fisco.
-                failure: $failure,
-            );
-        }
-
-        throw new FiscalException(
-            $parsed->xMotivo === '' ? 'O serviço de distribuição rejeitou a consulta.' : $parsed->xMotivo,
-            $failure,
-        );
+        return $this->reader->read($this->send($client, $fromNsu), self::MODEL);
     }
 
     /**
@@ -199,14 +134,17 @@ final class NfeDistributionConnector implements FiscalConnector
 
     /**
      * O que as duas consultas pontuais têm em comum, e que por isso mora em um
-     * método só: a reserva do teto **antes** de qualquer chamada, a mesma
-     * leitura da resposta e a mesma regra de `null`.
+     * método só: a reserva do teto **antes** de qualquer chamada e a mesma leitura
+     * da resposta.
      *
      * A reserva vem antes da requisição e não depois de um resultado: o fisco
      * conta a consulta que saiu, e a que não saiu por falta de teto é
      * justamente a que ele não pode contar. Adiar é `FiscalLookupDeferred`, e
      * não retentativa nem silêncio: quem chama decide o que fazer com a posição
      * que ficou sem resposta.
+     *
+     * A leitura — inclusive a regra de `null` e a recusa de entrada ilegível — é
+     * do `DfePullReader`, e é a mesma para os dois serviços deste módulo.
      *
      * @param  Closure(): DfeResponse  $ask
      */
@@ -219,36 +157,7 @@ final class NfeDistributionConnector implements FiscalConnector
 
         $this->reserveLookup($client);
 
-        $parsed = $ask();
-
-        $failure = FiscalFailure::classify(self::HTTP_OK, $parsed->cStat);
-
-        if ($failure === FiscalFailure::NoDocuments) {
-            return null;
-        }
-
-        if ($failure !== FiscalFailure::DocumentsFound) {
-            throw new FiscalException(
-                $parsed->xMotivo === '' ? 'O serviço de distribuição rejeitou a consulta.' : $parsed->xMotivo,
-                $failure,
-            );
-        }
-
-        $result = $this->collect($parsed);
-
-        if ($result->documents !== []) {
-            return $result->documents[0];
-        }
-
-        // Uma resposta de "localizado" que não virou documento é conteúdo que
-        // não deu para ler, e isso não é a mesma coisa que o serviço não ter
-        // documento naquela posição. Devolver `null` aqui diria que a posição
-        // está vazia, e quem reconcilia contaria a consulta como feita e
-        // seguiria para a próxima, com o buraco intacto e o limite horário de
-        // consultas gasto.
-        $refused = $result->failures[0];
-
-        throw new RuntimeException("A resposta do serviço traz uma entrada que não pôde ser lida na posição {$refused->nsu}: {$refused->reason}");
+        return $this->reader->readOne($ask(), self::MODEL);
     }
 
     /**
@@ -262,11 +171,6 @@ final class NfeDistributionConnector implements FiscalConnector
         if (! $this->lookupBudget->reserve($client)) {
             throw new FiscalLookupDeferred('Limite horário de consultas pontuais atingido.');
         }
-    }
-
-    private function collect(DfeResponse $parsed): PullResult
-    {
-        return $this->collector->collect($parsed, self::MODEL);
     }
 
     private function send(Client $client, int $fromNsu): DfeResponse
@@ -315,7 +219,8 @@ final class NfeDistributionConnector implements FiscalConnector
     /**
      * Todas as diferenças entre os dois serviços do módulo — namespace, versão,
      * método e o elemento que embrulha o payload — vêm da configuração, então
-     * nenhum conector precisa editar o envelope.
+     * nenhum conector precisa editar o envelope. A tabela de UFs também é
+     * comum (`ClientStateCode`).
      *
      * @param  array<string, string>  $endpoint
      */
@@ -326,7 +231,7 @@ final class NfeDistributionConnector implements FiscalConnector
             payloadNamespace: $endpoint['payload_namespace'],
             version: $endpoint['version'],
             cnpj: (string) $client->tax_id,
-            cUf: $this->ufCodeOf($client),
+            cUf: $this->stateCode->of($client),
             fromNsu: $fromNsu,
             method: $endpoint['method'],
             holder: $endpoint['holder'],
@@ -358,23 +263,6 @@ final class NfeDistributionConnector implements FiscalConnector
     }
 
     /**
-     * A UF que não está na tabela é defeito de cadastro, e a consulta também não
-     * sai por causa disso — a classe é a da família, com nome próprio para que o
-     * log diga qual das duas recusas aconteceu.
-     */
-    private function ufCodeOf(Client $client): string
-    {
-        $acronym = strtoupper(trim((string) $client->state));
-        $code = self::UF_CODES[$acronym] ?? null;
-
-        if ($code === null) {
-            throw new FiscalClientStateUnknown("UF do cliente {$client->tax_id} não está na tabela de UFs: '{$client->state}'.");
-        }
-
-        return (string) $code;
-    }
-
-    /**
      * @return array<string, string>
      */
     private function endpoint(): array
@@ -387,10 +275,5 @@ final class NfeDistributionConnector implements FiscalConnector
         }
 
         return $endpoints[$this->source()->value];
-    }
-
-    private function blockUntil(): CarbonImmutable
-    {
-        return CarbonImmutable::now()->addMinutes((int) config('fiscal.block_minutes', 60));
     }
 }

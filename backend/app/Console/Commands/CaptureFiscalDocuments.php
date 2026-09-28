@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\FiscalSource;
 use App\Jobs\CaptureFiscalDocumentsJob;
 use App\Models\Client;
-use App\Services\Fiscal\Capture\FiscalCaptureService;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use Illuminate\Console\Command;
 
 final class CaptureFiscalDocuments extends Command
@@ -14,7 +14,7 @@ final class CaptureFiscalDocuments extends Command
 
     protected $description = 'Dispara a captura de documentos fiscais por cliente';
 
-    public function handle(FiscalCaptureService $capture): int
+    public function handle(FiscalConnectorRegistry $connectors): int
     {
         $source = FiscalSource::tryFrom((string) $this->option('source'));
 
@@ -24,10 +24,11 @@ final class CaptureFiscalDocuments extends Command
             return self::FAILURE;
         }
 
-        // Perguntado ao serviço, e não resolvido aqui: quando o conector do
-        // CT-e existir, é a resolução de conector dele que cresce — o comando
-        // continua despachando só o que tem conector.
-        if (! $capture->hasConnectorFor($source)) {
+        // A pergunta vai ao registro, que é o único lugar que sabe qual conector
+        // serve a fonte. Um job de fonte sem conector rodaria o conector de outro
+        // serviço e arquivaria o documento na fonte errada, então o comando
+        // continua despachando só o que o registro serve.
+        if (! $connectors->has($source)) {
             $this->error("A fonte {$source->label()} não tem conector nesta versão.");
 
             return self::FAILURE;

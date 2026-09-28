@@ -54,7 +54,7 @@ final class FiscalCaptureService
     private const REASON_LIMIT = 200;
 
     public function __construct(
-        private readonly FiscalConnector $connector,
+        private readonly FiscalConnectorRegistry $connectors,
         private readonly FiscalDocumentWriter $writer,
     ) {}
 
@@ -72,15 +72,18 @@ final class FiscalCaptureService
     }
 
     /**
-     * Se a fonte tem conector nesta versão. A pergunta é de quem despacha em
-     * lote — o comando — porque um job de fonte sem conector rodaria o
-     * conector da outra fonte e arquivaria o documento na fonte errada.
-     * Quando o conector do CT-e existir, é a resolução de conector que
-     * cresce; a pergunta continua a mesma.
+     * O conector **desta** fonte, e o registro é quem decide.
+     *
+     * A resolução é logo depois de `last_run_at` e antes do `pull()` porque é
+     * aí que a fonte é a fonte do lote: um job de fonte sem conector não pode
+     * ser servido pelo conector de outro serviço, e a recusa do registro é
+     * alta, com a fonte nomeada. A resolução vem antes do `try` de propósito —
+     * falta de conector é defeito de versão, e o `last_error` do cursor é o
+     * registro de uma consulta que o fisco não respondeu.
      */
-    public function hasConnectorFor(FiscalSource $source): bool
+    private function connectorFor(FiscalSource $source): FiscalConnector
     {
-        return $this->connector->source() === $source;
+        return $this->connectors->for($source);
     }
 
     private function run(Client $client, FiscalSource $source): FiscalCaptureOutcome
@@ -125,8 +128,10 @@ final class FiscalCaptureService
         // interrompido existe para achar.
         $cursor->forceFill(['last_run_at' => now()])->save();
 
+        $connector = $this->connectorFor($source);
+
         try {
-            $result = $this->connector->pull($client, $from, (int) config('fiscal.batch_limit', 50));
+            $result = $connector->pull($client, $from, (int) config('fiscal.batch_limit', 50));
         } catch (Throwable $exception) {
             $this->persistFailure($cursor, $exception);
 

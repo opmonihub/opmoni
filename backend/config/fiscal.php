@@ -67,6 +67,18 @@ return [
 
     'reconcile_timezone' => 'America/Sao_Paulo',
 
+    /*
+     * Um bloco por serviço de distribuição, e as chaves são todas parâmetros do
+     * serviço: namespace do WSDL, namespace e versão do payload, método, ação
+     * SOAP e o elemento que embrulha o payload (`nfeDadosMsg`, `cteDadosMsg`).
+     * Nenhum conector monta corpo — ele lê o bloco dele e entrega ao envelope.
+     *
+     * `xsd_service` é o diretório dos schemas locais em `resources/xsd/`, e a
+     * versão vem da chave `version` acima de propósito: a versão do XSD que
+     * valida o corpo é a mesma que vai no atributo `versao` dele, então as duas
+     * não podem divergir. Um XSD de outra versão aceitaria um corpo que o
+     * serviço rejeitaria, que é a rejeição mais cara de evitar.
+     */
     'endpoints' => [
         'nfe_distribuicao' => [
             'producao' => 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',
@@ -77,6 +89,38 @@ return [
             'method' => 'nfeDistDFeInteresse',
             'soap_action' => 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse',
             'holder' => 'nfeDadosMsg',
+            'xsd_service' => 'nfe',
+        ],
+
+        /*
+         * ⚠️ ESTE BLOCO NÃO FOI VERIFICADO DESTE CHECKOUT.
+         *
+         * URL de produção, URL de homologação, ação SOAP, método, namespace do
+         * payload e versão `1.00` foram **transcritos de um exemplo de terceiro
+         * testado em produção**, e não de uma chamada feita a partir daqui: este
+         * repositório não falou com o serviço de CT-e uma vez sequer. O manual
+         * publicado descreve `consNSU` e a existência de `consChCTe` não é o que
+         * este código assume (ver `CteDistributionConnector::fetchByChave()`), e
+         * o pacote oficial de schemas do CT-e (`PL_CTeDistDFe_100`) também não
+         * está versionado aqui — o XSD local do CT-e é uma redução transcrita, e
+         * o cabeçalho dele diz o mesmo.
+         *
+         * Uma entrada de configuração que parece fato verificado é uma mentira
+         * que vai parar num serviço nacional. Antes de qualquer uso em produção
+         * esses valores precisam de um canário de um único cliente, com
+         * autorização manual, conferindo o `cStat` da resposta e sem expor
+         * material de certificado.
+         */
+        'cte_distribuicao' => [
+            'producao' => 'https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx',
+            'homologacao' => 'https://hom1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx',
+            'namespace' => 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe',
+            'payload_namespace' => 'http://www.portalfiscal.inf.br/cte',
+            'version' => '1.00',
+            'method' => 'cteDistDFeInteresse',
+            'soap_action' => 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse',
+            'holder' => 'cteDadosMsg',
+            'xsd_service' => 'cte',
         ],
     ],
 

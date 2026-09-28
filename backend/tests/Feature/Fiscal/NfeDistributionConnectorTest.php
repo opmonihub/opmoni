@@ -10,13 +10,14 @@ use App\Enums\FiscalStage;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Capture\FiscalLookupBudget;
-use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
-use App\Services\Fiscal\Support\DfeEntryCollector;
+use App\Services\Fiscal\Support\ClientStateCode;
+use App\Services\Fiscal\Support\DfePullReader;
 use App\Services\Fiscal\Support\DfeSoapEnvelope;
 use App\Services\Fiscal\Support\DfeTransport;
 use App\Services\Fiscal\Support\FiscalXmlValidator;
@@ -62,9 +63,18 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame(FiscalSource::NfeDistribuicao, $this->connector()->source());
     }
 
-    public function test_o_contrato_resolve_para_o_conector_de_nfe(): void
+    /**
+     * O conector de NF-e é o que o registro dá para a fonte de NF-e, e a fonte
+     * é o único caminho: com dois serviços de distribuição, um código que pegasse
+     * "o conector" em vez de "o conector desta fonte" falaria com CT-e no
+     * `.asmx` da NF-e, sem nada reclamar.
+     */
+    public function test_o_registro_resolve_o_conector_de_nfe_para_a_fonte_de_nfe(): void
     {
-        $this->assertInstanceOf(NfeDistributionConnector::class, resolve(FiscalConnector::class));
+        $registry = resolve(FiscalConnectorRegistry::class);
+
+        $this->assertInstanceOf(NfeDistributionConnector::class, $registry->for(FiscalSource::NfeDistribuicao));
+        $this->assertSame(FiscalSource::NfeDistribuicao, $registry->for(FiscalSource::NfeDistribuicao)->source());
     }
 
     public function test_pull_traz_o_documento_e_adota_a_posicao_da_resposta(): void
@@ -652,6 +662,8 @@ class NfeDistributionConnectorTest extends TestCase
             (new FiscalXmlValidator)->validate(
                 $dom->saveXML(XmlQuery::first(new DOMXPath($dom), 'distDFeInt')),
                 'distDFeInt',
+                'nfe',
+                '1.01',
             );
 
             return true;
@@ -948,7 +960,8 @@ class NfeDistributionConnectorTest extends TestCase
         return new NfeDistributionConnector(
             resolve(DfeSoapEnvelope::class),
             resolve(DfeTransport::class),
-            resolve(DfeEntryCollector::class),
+            resolve(DfePullReader::class),
+            resolve(ClientStateCode::class),
             resolve(FiscalLookupBudget::class),
         );
     }

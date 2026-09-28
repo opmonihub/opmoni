@@ -8,6 +8,8 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Services\Fiscal\Capture\FiscalCaptureService;
+use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
+use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -115,8 +117,13 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
 
     public function test_rejects_a_source_no_connector_serves(): void
     {
-        // O conector ligado é o da NF-e. Um CT-e aqui rodaria a consulta da
-        // NF-e com fonte de CT-e, e o documento entraria na fonte errada.
+        // As duas fontes têm conector nesta versão, então a recusa é exercitada
+        // com um registro que não conhece a fonte de CT-e — que é a situação de
+        // um comando numa versão em que o conector daquela fonte não existe.
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
+            FiscalSource::NfeDistribuicao->value => NfeDistributionConnector::class,
+        ]));
+
         $this->artisan('fiscal:capture', ['--source' => 'cte_distribuicao'])
             ->expectsOutputToContain('não tem conector')
             ->assertFailed();
