@@ -200,6 +200,25 @@ export interface SerproAuthorizationTerm {
   document_present: boolean
 }
 
+/**
+ * The office's e-CNPJ as the API publishes it: metadata, and nothing else.
+ *
+ * The encrypted copy, the password and any file path are absent by construction —
+ * `AccountCertificateResource` lists the fields and the model hides the rest, so
+ * there is no key here for a screen to reach for. `document` is the CNPJ read out
+ * of the certificate itself, never a number the form supplied.
+ */
+export interface SerproAccountCertificate {
+  id: number
+  document: string
+  subject: string
+  serial_number: string
+  valid_from: string
+  valid_until: string
+  original_filename: string
+  uploaded_at: string | null
+}
+
 export interface SerproSyncRun {
   id: number
   state: SerproSyncRunState
