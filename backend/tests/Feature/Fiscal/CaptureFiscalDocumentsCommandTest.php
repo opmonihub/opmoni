@@ -128,8 +128,10 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
      *
      * O comando **não** consulta `fiscal.cte_enabled` — a chave é do botão da
      * tela, e o comando é o caminho do canário, que precisa rodar antes de a
-     * agenda existir. A afirmação logo abaixo é o que fixa isso: se um dia
-     * alguém colocar a chave do botão no comando, este teste quebra.
+     * agenda existir. O que fixa isso são as duas afirmações de despacho do
+     * fim do teste: o job sai com a chave da tela desligada, e um gate
+     * acrescentado ao comando as deixariam vermelhas. A linha que confere o
+     * padrão da chave é contexto do cenário, não a prova de nada.
      */
     public function test_despacha_um_job_de_cte_para_o_cliente_pedido(): void
     {
@@ -156,18 +158,28 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
     }
 
     /**
-     * A recusa de uma fonte que o registro não serve continua de pé, e ela é do
-     * registro e não da fonte: as duas têm conector nesta versão, então a
-     * recusa é exercitada com um registro sem CT-e — a situação de um comando
-     * numa versão em que o conector daquela fonte não existe. O que mudou desde
-     * que esta recusa nasceu é que CT-e deixou de ser a fonte proibida: hoje ela
-     * é uma fonte servida, e quem é proibida é a fonte que ninguém cadastrou.
+     * O que este teste garante: uma fonte que o registro de conectores não serve
+     * é recusada com a mensagem do registro, o comando devolve `FAILURE` e nada
+     * é enfileirado.
+     *
+     * Quem recusa é o registro, e é o registro sozinho: nenhuma das duas chaves
+     * de CT-e participa desta conta, então ligar `cte_enabled` ou `cte_scheduled`
+     * não transforma uma fonte sem conector em fonte despachável — a recusa
+     * acontece antes da chave que decide se a fonte entra, e não depois.
+     *
+     * As duas fontes têm conector nesta versão, então a recusa é exercitada com
+     * um registro que não conhece CT-e: a situação de um comando numa versão em
+     * que o conector daquela fonte não existe.
      */
     public function test_rejects_a_source_no_connector_serves(): void
     {
         $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
             FiscalSource::NfeDistribuicao->value => NfeDistributionConnector::class,
         ]));
+
+        // Ligadas de propósito, para que a recusa não possa ser confundida com
+        // uma chave desligada: o que recusa aqui é a fonte, não a instalação.
+        config(['fiscal.cte_enabled' => true, 'fiscal.cte_scheduled' => true]);
 
         $this->artisan('fiscal:capture', ['--source' => 'cte_distribuicao'])
             ->expectsOutputToContain('não tem conector')
