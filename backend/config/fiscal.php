@@ -16,7 +16,9 @@ return [
      * canário é rodado à mão, em um cliente só, e ele precisa poder rodar antes
      * de a agenda existir — essa é a ordem que o gate de liberação exige. Uma
      * chave só para as duas coisas obrigaria a ligar a agenda para rodar o
-     * canário, que é o oposto do que se quer.
+     * canário, que é o oposto do que se quer. E a agenda **não** consulta esta
+     * chave: quem registra a entrada é `routes/console.php`, e o comando e o job
+     * nunca chegam aqui.
      *
      * O motivo de a chave existir: os parâmetros do serviço de CT-e (URL, ação
      * SOAP, namespace, versão) foram transcritos de um exemplo de terceiro e
@@ -26,6 +28,37 @@ return [
      * DEFAULT de deployment.
      */
     'cte_enabled' => (bool) env('FISCAL_CTE_ENABLED', false),
+
+    /*
+     * A entrada de agenda da captura de CT-e — `FISCAL_CTE_SCHEDULED`, lida em
+     * `routes/console.php` — é uma segunda chave, separada de `cte_enabled`, e
+     * não é um filtro dela.
+     *
+     * ⚠️ LIGAR ESTA CHAVE PRESUME O CANÁRIO DE UM CLIENTE AUTORIZADO E APROVADO.
+     *
+     * A diferença entre as duas chaves é a diferença entre um pedido e uma
+     * hora: `cte_enabled` libera um clique, `cte_scheduled` faz o servidor
+     * mandar um pedido por cliente, de hora em hora, sozinho, contra o serviço
+     * nacional de produção. É esta que liga tráfego de verdade, e ela nasce
+     * desligada por isso. O gate de liberação do plano manda canariar um
+     * cliente só, conferindo o `cStat` e sem expor material de certificado, e a
+     * ordem é o canário primeiro: a agenda vem depois do canário, nunca antes.
+     *
+     * E a chave é o registro de uma decisão, não um mecanismo de segurança: ela
+     * não impede ninguém, ela apenas deixa escrito que alguém ligou. A proteção
+     * deste caminho é a autorização do canário; o que protege o resto do código
+     * é a entrada de agenda não existir enquanto ela não foi ligada. Uma terceira
+     * chave aqui seria mais uma posição para alguém errar e nenhuma proteção a
+     * mais.
+     *
+     * As duas chaves **não são conferidas juntas**: `CaptureFiscalDocumentsJob`
+     * e `FiscalCaptureService` perguntam ao registro de conectores, nunca a
+     * `cte_enabled`, então registrar esta agenda começa tráfego sem consultar a
+     * outra chave. Isso é um furo conhecido e não um descuido — a revisão que
+     * fechou a porta do botão deixou o gate na fronteira HTTP e nomeou isto como
+     * acompanhamento.
+     */
+    'cte_scheduled' => (bool) env('FISCAL_CTE_SCHEDULED', false),
 
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 

@@ -14,6 +14,20 @@ final class CaptureFiscalDocuments extends Command
 
     protected $description = 'Dispara a captura de documentos fiscais por cliente';
 
+    /**
+     * A porta de entrada da carteira na fila: um job por cliente capturável e
+     * por fonte pedida.
+     *
+     * Este comando **não** consulta `fiscal.cte_enabled`, e é de propósito: a
+     * chave é da porta HTTP, e o comando é o caminho do canário — rodado à mão,
+     * em um cliente só, conferindo o `cStat` do serviço de CT-e antes de existir
+     * agenda. Quem tem shell no servidor é a mesma autoridade que liga as
+     * chaves, então a checagem aqui não acrescentaria nada e atrapalharia o
+     * gate de liberação, que é o canário antes da agenda. A agenda de CT-e
+     * (`fiscal.cte_scheduled`, em `routes/console.php`) é a decisão seguinte, e
+     * ela também não é conferida junto com a outra: as duas chaves são separadas
+     * de propósito.
+     */
     public function handle(FiscalConnectorRegistry $connectors): int
     {
         $source = FiscalSource::tryFrom((string) $this->option('source'));
