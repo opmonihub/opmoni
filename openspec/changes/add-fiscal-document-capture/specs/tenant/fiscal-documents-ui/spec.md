@@ -65,7 +65,7 @@ The system SHALL allow filtering the documents table by model, client, issuer, r
 
 #### Scenario: Filtro por modelo
 - **WHEN** a member filters by one or more models
-- **THEN** only documents of those models are listed and the model filter offers only values present in the result
+- **THEN** only documents of those models are listed and the model filter offers the values present in the filtered result plus the currently selected ones, so a filter that matches nothing can still be removed
 
 #### Scenario: Filtro preservado
 - **WHEN** a member reloads a filtered view or opens it in another tab
