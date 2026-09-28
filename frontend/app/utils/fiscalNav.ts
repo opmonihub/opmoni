@@ -57,9 +57,11 @@ function marking(path: string, item: FiscalNavItem): Pick<NavigationMenuItem, 'e
 /**
  * Os filhos da lateral do módulo, com a rota atual marcada.
  *
- * O prefixo continua sendo o que segura o rail aceso embaixo do item: o detalhe
- * de um documento mora em `/fiscal/documentos/<id>`, e essa tela ainda não
- * existe — quando existir, é este prefixo que a mantém acesa.
+ * O prefixo continua sendo o que segura o rail aceso embaixo do item: a regra é
+ * para qualquer rota filha do módulo, e não só para as duas que existem hoje.
+ * O detalhe de um documento é uma folha sobre a tabela — não é uma tela com
+ * rota — mas qualquer rota filha que o módulo ganhe depois vai precisar do mesmo
+ * prefixo, e é ele que decide se o rail acende.
  */
 export function fiscalSidebarChildren(path: string): NavigationMenuItem[] {
   return fiscalNav.map(item => ({ label: item.label, to: item.to, ...marking(path, item) }))

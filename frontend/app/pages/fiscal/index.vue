@@ -59,9 +59,18 @@ const EMPTY_SUMMARY: FiscalSummary = {
  * `blocked_until` novo do servidor e, se o relógio ficasse no primeiro render,
  * a mesma janela apareceria mais longa a cada clique — três horas depois, um
  * "2 dias e 10 h" para um bloqueio que o servidor disse durar 2 dias e 7 h.
- * A aritmética e a âncora moram em `fiscalPresentation.ts` porque o `.vue` não
- * é importável pelo runner de teste, e essa decisão sem teste é exatamente a
- * que ninguém acha para cair.
+ * A âncora mora aqui, e não no módulo de apresentação, porque ela tem de estar
+ * na linha que traz a resposta: o defeito nasceu num `watch` do botão, que
+ * reancorava tarde demais, e um helper que a página chamasse ainda poderia ser
+ * chamado do lugar errado. A aritmética — o que sobra da contagem — é que
+ * desce para `fiscalPresentation.ts`, porque ela é pura e testável ali.
+ *
+ * E o fato de esta decisão viver num SFC não a deixa sem guarda: o `.vue` não é
+ * importável pelo runner de teste, então `tests/fiscalPresentation.test.ts` lê o
+ * texto desta página e afirma que a reancoragem está no handler da busca, antes
+ * do `return`, e que a contagem lê o relógio reancorado. É a leitura de fonte
+ * que substitui o import, e é ela que faz a âncora importada de volta do módulo
+ * quebrar um teste em vez de passar em silêncio.
  */
 const referenceNow = useState('fiscal-panel-now', () => new Date().toISOString())
 

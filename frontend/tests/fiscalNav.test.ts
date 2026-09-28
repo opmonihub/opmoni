@@ -20,11 +20,13 @@ describe('fiscal sidebar navigation', () => {
     assert.deepEqual(fiscalSidebarChildren('/fiscal/documentos').map(item => item.active), [false, true])
   })
 
-  it('keeps Documentos active on a document detail route', () => {
-    // O detalhe de um documento mora em `/fiscal/documentos/<id>`, e essa tela
-    // ainda não existe. Sem o prefixo, a tela de detalhe abriria com o rail
-    // inteiro apagado.
+  it('keeps Documentos active on any child route under the module', () => {
+    // A regra é do prefixo, e vale para qualquer rota filha do módulo — não
+    // para uma tela de detalhe que exista: o detalhe de um documento é uma
+    // folha sobre a tabela, sem rota. O caminho abaixo é um caso da regra, e é
+    // o que impede uma rota filha futura de abrir com o rail inteiro apagado.
     assert.deepEqual(fiscalSidebarChildren('/fiscal/documentos/123').map(item => item.active), [false, true])
+    assert.deepEqual(fiscalSidebarChildren('/fiscal/documentos/123/eventos').map(item => item.active), [false, true])
   })
 
   it('marks the ancestor exact so the menu does not relight it by prefix', () => {
