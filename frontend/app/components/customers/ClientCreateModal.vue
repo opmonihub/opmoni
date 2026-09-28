@@ -2,6 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
+import { companyTaxIdEntry, canRegisterTypedCnpj, taxIdEditInvalidatesLookup } from '~/utils/taxId'
 
 defineOptions({ inheritAttrs: false })
 
@@ -25,6 +26,8 @@ const toast = useToast()
 const companySchema = z.object({
   person_type: z.literal('company'),
   tax_id: z.string().min(14, 'Informe um CNPJ válido'),
+  name: z.string().max(255, 'Nome muito longo')
+    .refine(value => !requiresTypedName.value || value.trim().length >= 2, { message: 'Informe a razão social' }),
   status: z.enum(['active', 'inactive']),
   tax_regime: z.enum(['mei', 'simple_national', 'presumed_profit', 'actual_profit', 'other']),
   email: z.email('Email inválido').or(z.literal('')).optional(),
@@ -119,11 +122,19 @@ const personTypeOptions = [
   { label: 'Pessoa física (CPF)', value: 'individual' }
 ]
 
-const canLookup = computed(() =>
-  state.person_type === 'company'
-  && typeof state.tax_id === 'string'
-  && state.tax_id.replace(/\D/g, '').length === 14
-)
+const entry = computed(() => companyTaxIdEntry(state.tax_id))
+// A razão social é digitada quando não há consulta para trazer: a fonte pública não
+// conhece documento alfanumérico, e o passo 2 só existe depois de uma escolha.
+const typedName = ref(false)
+// Uma única afirmação para as duas metades da mesma garantia: sem consulta
+// bem-sucedida, o nome vem digitado. O schema exige a razão social exatamente
+// quando o campo existe — as duas expressões eram o mesmo fato escrito duas
+// vezes, e uma edição futura em uma delas podia devolver um erro de validação
+// sem campo para ele aparecer.
+const typedNameRequired = computed(() => state.person_type === 'company' && preview.value === null)
+const requiresTypedName = computed(() => typedName.value && typedNameRequired.value)
+const canLookup = computed(() => state.person_type === 'company' && entry.value === 'lookup')
+const canRegisterTyped = computed(() => state.person_type === 'company' && canRegisterTypedCnpj(state.tax_id))
 
 function resetForm() {
   state.person_type = 'company'
@@ -143,6 +154,7 @@ function resetForm() {
   state.state = ''
   step.value = 1
   preview.value = null
+  typedName.value = false
 }
 
 watch(() => props.open, () => {
@@ -150,6 +162,8 @@ watch(() => props.open, () => {
 })
 
 watch(() => state.person_type, (type) => {
+  typedName.value = false
+
   if (type === 'individual') {
     state.tax_regime = 'not_applicable'
     step.value = 2
@@ -161,12 +175,27 @@ watch(() => state.person_type, (type) => {
   }
 })
 
+// `preview`, `step` e `typedName` descrevem um documento consultado, e não o
+// campo. Editar o campo para outro documento e continuar no passo 2 fazia o
+// cadastro enviar o nome, o email e o regime do documento consultado sob o número
+// do novo — e nada na tela denunciava, porque `typedNameRequired` esconde a razão
+// social justamente quando existe `preview`. A comparação é sobre o documento
+// normalizado, então reformatar o campo não joga fora uma consulta que ainda vale.
+watch(() => state.tax_id, (next, previous) => {
+  if (!taxIdEditInvalidatesLookup(previous ?? '', next)) return
+
+  preview.value = null
+  step.value = state.person_type === 'company' ? 1 : 2
+  typedName.value = false
+})
+
 async function onLookup() {
   if (typeof state.tax_id !== 'string') return
   lookingUp.value = true
   try {
     const data = await lookupCnpj(state.tax_id)
     preview.value = data
+    typedName.value = false
     const locked = data.mei ? 'mei' : data.simple_national ? 'simple_national' : null
     state.tax_regime = locked ?? 'presumed_profit'
     state.email = data.email ?? state.email
@@ -178,6 +207,12 @@ async function onLookup() {
   } finally {
     lookingUp.value = false
   }
+}
+
+function onRegisterTyped() {
+  typedName.value = true
+  preview.value = null
+  step.value = 2
 }
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
@@ -215,16 +250,36 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         </UFormField>
 
         <template v-if="step === 1 && state.person_type === 'company'">
-          <UFormField label="CNPJ" name="tax_id" help="Somente números">
+          <UFormField label="CNPJ" name="tax_id" help="Letras e números; consulta automática apenas para CNPJ numérico">
             <UInput v-model="state.tax_id" placeholder="00.000.000/0000-00" class="w-full" />
           </UFormField>
-          <UButton
-            label="Consultar CNPJ"
-            icon="i-lucide-search"
-            color="primary"
-            :loading="lookingUp"
-            :disabled="!canLookup"
-            @click="onLookup"
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              label="Consultar CNPJ"
+              icon="i-lucide-search"
+              color="primary"
+              :loading="lookingUp"
+              :disabled="!canLookup"
+              @click="onLookup"
+            />
+            <UButton
+              v-if="canRegisterTyped"
+              label="Cadastrar sem consulta"
+              icon="i-lucide-pencil"
+              color="neutral"
+              variant="outline"
+              :disabled="lookingUp"
+              @click="onRegisterTyped"
+            />
+          </div>
+          <UAlert
+            v-if="canRegisterTyped"
+            color="neutral"
+            variant="subtle"
+            title="A consulta pública pode não conhecer este CNPJ"
+            :description="entry === 'manual'
+              ? 'A fonte pública não consulta CNPJ alfanumérico. Cadastre com a razão social digitada; os dados públicos do CNPJ ficam vazios.'
+              : 'Se a consulta não trouxer nada, cadastre com a razão social digitada; os dados públicos do CNPJ ficam vazios.'"
           />
         </template>
 
@@ -292,6 +347,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             class="space-y-4"
             @submit="onSubmit"
           >
+            <UFormField
+              v-if="typedNameRequired"
+              label="Razão social"
+              name="name"
+              help="A consulta não trouxe os dados: informe a razão social"
+            >
+              <UInput v-model="state.name" placeholder="Nome da empresa" class="w-full" />
+            </UFormField>
+
             <UFormField
               v-if="state.person_type === 'individual'"
               label="CPF"

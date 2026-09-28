@@ -37,7 +37,10 @@ class ClientManager
         'email',
     ];
 
-    public function __construct(private CnpjWsLookup $lookup, private ClientCertificateVault $certificateVault) {}
+    public function __construct(
+        private CnpjWsLookup $lookup,
+        private ClientCertificateVault $certificateVault,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -46,10 +49,11 @@ class ClientManager
     {
         PlanLimits::assertCanCreate($account, 'clients');
 
-        // Outbound lookup BEFORE opening the transaction so no row lock is held
-        // while waiting on the provider; failures leave no partial write behind.
+        // A consulta à Receita sai antes de abrir a transação: nenhuma trava de
+        // linha fica presa enquanto o provedor responde, e uma falha não deixa
+        // escrita nenhuma pela metade.
         $companyPayload = $data['person_type'] === ClientPersonType::Company->value
-            ? $this->lookup->lookup($data['tax_id'])
+            ? $this->lookupCompany($data['tax_id'])
             : null;
 
         return DB::transaction(function () use ($account, $data, $companyPayload): Client {
@@ -60,9 +64,7 @@ class ClientManager
                 ->lockForUpdate()
                 ->first();
 
-            $attributes = $companyPayload !== null
-                ? $this->companyAttributes($data, $companyPayload)
-                : $this->individualAttributes($data);
+            $attributes = $this->attributesFor($data, $companyPayload);
 
             if ($existing !== null && ! $existing->trashed()) {
                 throw ValidationException::withMessages(['tax_id' => 'Este CPF/CNPJ já está cadastrado nesta carteira.']);
@@ -92,12 +94,16 @@ class ClientManager
         $filtered = Arr::only($data, $allowed);
 
         if ($client->person_type === ClientPersonType::Company && array_key_exists('tax_regime', $filtered)) {
-            // Live lookup enforces the same rule as create (MEI=>mei,
-            // Simples=>simple_national, else only presumed_profit|actual_profit|other).
-            // Official registration fields are NOT overwritten here, only the regime
-            // is validated/coerced.
-            $payload = $this->lookup->lookup($client->tax_id);
-            $filtered['tax_regime'] = $this->resolveCompanyRegime($payload, $filtered['tax_regime']);
+            // Mesma regra do cadastro: MEI=>mei, Simples=>simple_national e, no
+            // resto, só os três que a empresa aceita. A consulta só acontece
+            // quando a fonte pública tem o que responder — documento alfanumérico
+            // não é consultado, e o regime escolhido vale o que vale no
+            // cadastro. Os campos oficiais **não** são sobrescritos aqui: só o
+            // regime é validado ou convertido.
+            $payload = $this->lookupCompany($client->tax_id);
+            $filtered['tax_regime'] = $payload !== null
+                ? $this->resolveCompanyRegime($payload, $filtered['tax_regime'])
+                : $this->typedCompanyRegime($filtered['tax_regime']);
         }
 
         $client->fill($filtered)->save();
@@ -115,13 +121,21 @@ class ClientManager
     }
 
     /**
+     * A pré-visualização e a atualização são ação explícita do operador, e a
+     * resposta honesta para documento que a fonte não indexa continua sendo a
+     * recusa: quem pediu o dado da Receita precisa ouvir que ela não tem. Por
+     * isso estes dois não usam `lookupCompany()` — que trata a mesma ausência
+     * como "cadastro digitado" — e sim `lookupOrFail()`, que recusa o documento
+     * alfanumérico sem gastar uma das três consultas por minuto da conta para
+     * descobrir o que já se sabe.
+     *
      * @return array{current: array<string, mixed>, incoming: array<string, mixed>, changes: array<string, array{from: mixed, to: mixed}>}
      */
     public function previewCompany(Client $client): array
     {
         $this->assertCompany($client);
 
-        $incoming = $this->officialAttributes($this->lookup->lookup($client->tax_id));
+        $incoming = $this->officialAttributes($this->lookup->lookupOrFail($client->tax_id));
         $current = $this->officialAttributes($client->attributesToArray());
 
         return [
@@ -135,7 +149,7 @@ class ClientManager
     {
         $this->assertCompany($client);
 
-        $payload = $this->lookup->lookup($client->tax_id);
+        $payload = $this->lookup->lookupOrFail($client->tax_id);
 
         return DB::transaction(function () use ($client, $payload): Client {
             $client->fill($this->officialAttributes($payload));
@@ -151,7 +165,7 @@ class ClientManager
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  array<string, mixed>  $payload  Live lookup result (fetched before the transaction).
+     * @param  array<string, mixed>  $payload  Dados da Receita, buscados antes da transação.
      * @return array<string, mixed>
      */
     private function companyAttributes(array $data, array $payload): array
@@ -173,6 +187,75 @@ class ClientManager
             'tax_regime' => $this->resolveCompanyRegime($payload, $data['tax_regime'] ?? null),
             'source_updated_at' => $payload['source_updated_at'],
             'looked_up_at' => $payload['looked_up_at'],
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|null  $companyPayload
+     * @return array<string, mixed>
+     */
+    private function attributesFor(array $data, ?array $companyPayload): array
+    {
+        if ($companyPayload !== null) {
+            return $this->companyAttributes($data, $companyPayload);
+        }
+
+        return $data['person_type'] === ClientPersonType::Company->value
+            ? $this->typedCompanyAttributes($data)
+            : $this->individualAttributes($data);
+    }
+
+    /**
+     * Empresa que a consulta pública não conhece: entra o que o usuário digitou.
+     *
+     * Os campos oficiais ficam de fora de propósito — um cliente novo fica sem dado
+     * da Receita até a primeira consulta bem-sucedida, e um cliente apagado e
+     * recadastrado por aqui conserva os dados oficiais que já tinha, com o
+     * `looked_up_at` de quando foram lidos.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function typedCompanyAttributes(array $data): array
+    {
+        $name = is_string($data['name'] ?? null) ? trim($data['name']) : '';
+
+        if ($name === '') {
+            throw ValidationException::withMessages(['name' => 'Informe a razão social do cliente.']);
+        }
+
+        return [
+            'person_type' => ClientPersonType::Company->value,
+            'tax_id' => $data['tax_id'],
+            'name' => $name,
+            'trade_name' => null,
+            'status' => $data['status'],
+            'tax_regime' => $this->typedCompanyRegime($data['tax_regime'] ?? null),
+            'email' => $data['email'] ?? null,
+            'phone' => $data['phone'] ?? null,
+        ];
+    }
+
+    /**
+     * Sem a Receita não há como prometer MEI ou Simples, então vale o regime escolhido
+     * desde que a empresa o aceite.
+     */
+    private function typedCompanyRegime(mixed $requested): string
+    {
+        if (in_array($requested, [TaxRegime::PresumedProfit->value, TaxRegime::ActualProfit->value, TaxRegime::Other->value], true)) {
+            return $requested;
+        }
+
+        if ($requested === TaxRegime::NotApplicable->value) {
+            throw ValidationException::withMessages(['tax_regime' => 'Empresa não aceita o regime não aplicável.']);
+        }
+
+        // A recusa é nossa e é sobre o nosso conhecimento, não sobre o que a
+        // empresa aceita: dizer a frase do `not_applicable` para quem pediu MEI
+        // mandaria o operador procurar na empresa uma recusa que ninguém fez.
+        throw ValidationException::withMessages([
+            'tax_regime' => 'Sem os dados da Receita não é possível confirmar MEI ou Simples Nacional: informe o regime que a empresa aceita.',
         ]);
     }
 
@@ -259,6 +342,39 @@ class ClientManager
         }
 
         throw ValidationException::withMessages(['tax_regime' => 'Regime tributário incompatível com os dados da Receita.']);
+    }
+
+    /**
+     * A consulta à Receita é enriquecimento, não requisito: o cadastro não pode
+     * depender de uma fonte pública que não conhece documento alfanumérico
+     * (RFB IN 2.119/2022) nem todo CNPJ recém-aberto.
+     *
+     * Documento que a fonte não tem como responder nem é consultado, e isso é
+     * decidido em `CnpjWsLookup::lookupOrFail()` — aqui a mesma ausência chega
+     * como `404` e vira `null`. O `404` do alfanumérico é certo e permanente, não
+     * é cacheado, e cada cadastro ou troca de regime repetiria a chamada —
+     * consumindo uma das três consultas por minuto da conta para competir com
+     * consulta que alguém pediu de verdade.
+     *
+     * Só o 404 vira cadastro manual. Indisponibilidade (503), limite do provedor
+     * (429) e documento recusado (422) continuam errando a requisição: um cliente
+     * sem os dados oficiais por causa de uma queda de rede é efeito colateral de
+     * quem não deu origem à queda, e o operador precisa ver a falha em vez de um
+     * cadastro mais pobre do que a empresa é de verdade.
+     *
+     * @return array<string, mixed>|null `null` quando a fonte não conhece o documento.
+     */
+    private function lookupCompany(string $taxId): ?array
+    {
+        try {
+            return $this->lookup->lookupOrFail($taxId);
+        } catch (CnpjLookupException $exception) {
+            if ($exception->status === 404) {
+                return null;
+            }
+
+            throw $exception;
+        }
     }
 
     private function assertCompany(Client $client): void

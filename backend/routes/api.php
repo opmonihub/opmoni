@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\Admin\AccountController as AdminAccountController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
+use App\Http\Controllers\Admin\SerproConnectionController as AdminSerproConnectionController;
+use App\Http\Controllers\Admin\SerproConnectivityController as AdminSerproConnectivityController;
 use App\Http\Controllers\Admin\SubscriptionController as AdminSubscriptionController;
 use App\Http\Controllers\Admin\SupportLogController as AdminSupportLogController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\SupportAccessController;
+use App\Http\Controllers\Tenant\AccountCertificateController;
 use App\Http\Controllers\Tenant\AccountMemberController;
 use App\Http\Controllers\Tenant\AccountSwitchController;
 use App\Http\Controllers\Tenant\ClientBulkDeletionController;
@@ -22,9 +25,11 @@ use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\FiscalDocumentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
+use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
+use App\Models\SerproConnection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -63,6 +68,50 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::delete('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'destroy']);
     Route::apiResource('clients', ClientController::class);
     Route::apiResource('monitorings', SerproMonitoringController::class);
+    /*
+     * O e-CNPJ do escritório é **da conta**, e por isso estas rotas ficam no
+     * grupo `tenant` — ao contrário de `serpro/connection` mais abaixo, que é a
+     * credencial da plataforma e por isso responde pela policy de outra conta.
+     *
+     * As três rotas não endereçam linha nenhuma: o certificado do escritório é
+     * um por conta, e o upload substitui o que estava valendo e a remoção apaga
+     * o que estava valendo. O `404` da leitura é o de "esta conta não tem
+     * certificado", e por construção é também o de "o certificado é de outra
+     * conta" — a busca é por `account_id` explícito, nunca pelo escopo global
+     * do tenant.
+     *
+     * **O upload é limitado, e pelo mesmo motivo do diagnóstico mais
+     * abaixo.** Cada envio aceito agenda a emissão do termo, e a emissão é um
+     * `submitTerm` de verdade contra o provedor, com `tries = 1` e sem
+     * unicidade: um `admin` ou `operador` que chame a rota em laço gasta a cota
+     * **do escritório dele**, que é a cota de um parceiro do SERPRO. Seis por
+     * minuto é folgado para o uso real — o e-CNPJ se entrega uma vez, e a
+     * reentrega é rara — e curto o bastante para que a cota gasta por uma
+     * sessão de teste seja irrelevante.
+     */
+    Route::get('serpro/account-certificate', [AccountCertificateController::class, 'show']);
+    Route::post('serpro/account-certificate', [AccountCertificateController::class, 'store'])
+        ->middleware('throttle:6,1');
+    Route::delete('serpro/account-certificate', [AccountCertificateController::class, 'destroy']);
+
+    /*
+     * O termo de autorização do escritório, e **só** a leitura dele.
+     *
+     * Não há rota de escrita, e a ausência é a decisão: o termo é assinado
+     * pelo e-CNPJ que a rota de cima entrega e emitido pela plataforma, e
+     * nenhum Membro tem o que pedir ao provedor em nome do escritório. A
+     * policy nega a escrita para todo mundo pelo mesmo motivo, e o que
+     * segura as duas coisas é a ausência do verbo nela **e** a ausência da
+     * rota aqui: um `Route::post` que chamasse o `SerproTermManager`
+     * diretamente passaria pelo `Gate` sem nunca chegar à policy, e é por
+     * isso que o teste que afirma a ausência de rota existe.
+     *
+     * O `200` com `state` = `ausente` para quem não tem termo é o que a
+     * spec chama de "ação pertencente ao escritório" — a tela precisa da
+     * ausência para pedir o certificado, e um `404` seria indistinguível de
+     * rota errada.
+     */
+    Route::get('serpro/authorization-terms', SerproAuthorizationTermController::class);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);
@@ -95,3 +144,37 @@ Route::middleware(['auth:sanctum', 'super_admin'])
     ->post('support/accounts/{account}/enter', [SupportAccessController::class, 'enter']);
 Route::middleware(['auth:sanctum', 'super_admin'])
     ->post('support/exit', [SupportAccessController::class, 'exit']);
+
+/*
+ * A credencial do Integra Contador é da plataforma: uma linha só, fora de
+ * qualquer conta. Por isso estas rotas ficam fora do grupo `tenant` — a conta
+ * corrente não é a dona da credencial, e dizer o contrário faria a policy
+ * responder pelo vínculo errado.
+ */
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('serpro/connection', [AdminSerproConnectionController::class, 'show'])
+        ->middleware('can:viewAny,'.SerproConnection::class);
+
+    Route::put('serpro/connection', [AdminSerproConnectionController::class, 'update'])
+        ->middleware('super_admin');
+
+    /*
+     * O teste de conectividade exercita a autenticação da credencial da
+     * plataforma, sem consultar nenhum contribuinte: quem opera a integração é
+     * o super_admin, e um Membro da conta não tem o que fazer aqui.
+     *
+     * O limite vai junto porque cada chamada **custa uma emissão de token de
+     * verdade** — mTLS com o A1 do contratante e `client_credentials` —, e a
+     * credencial é uma só para a plataforma inteira. O token que fica em cache
+     * não protege esta rota: a pergunta é "está funcionando agora?", e por
+     * definição ela não aceita a resposta de meia hora atrás. Sem limite, um
+     * duplo clique ou um laço de retry no botão gasta a cota do SERPRO, e o
+     * `429` que volta apareceria como `provedor` para **toda** conta ao mesmo
+     * tempo — um botão de diagnóstico de uma conta derrubando a integração das
+     * outras. Seis por minuto é folgado para o uso real (um diagnóstico são
+     * algumas cliques com tempo de leitura entre elas) e curto o bastante para
+     * que a cota gasto por uma sessão de teste seja irrelevante.
+     */
+    Route::post('serpro/connectivity', AdminSerproConnectivityController::class)
+        ->middleware(['super_admin', 'throttle:6,1']);
+});

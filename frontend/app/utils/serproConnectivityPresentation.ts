@@ -1,0 +1,71 @@
+import type { SerproConnectivityResult } from '~/types/serpro'
+
+type Tone = 'success' | 'warning' | 'error'
+
+/**
+ * What the provider rejected, in the operator's words. An element this client
+ * does not know falls back to the code itself: a fault nobody can read is worse
+ * than one that is merely untranslated.
+ */
+export const failedElementLabels: Record<string, string> = {
+  configuracao: 'Configuração',
+  certificado: 'Certificado',
+  credencial: 'Credencial',
+  provedor: 'Provedor'
+}
+
+/**
+ * A failure that is not the operator's credential to fix. The backend maps every
+ * "wait" verdict to `provedor` — the provider being out of reach, the machine
+ * running the check being unable to run it, and the provider throttling the
+ * authentication — because the action is the same in all of them: wait, and do
+ * not re-enter any data.
+ */
+export function isProviderFailure(result: SerproConnectivityResult | null): boolean {
+  return result?.failed_element === 'provedor'
+}
+
+export function connectivityTone(result: SerproConnectivityResult | null): Tone {
+  if (result?.ok) return 'success'
+  return isProviderFailure(result) ? 'warning' : 'error'
+}
+
+export function connectivityIcon(result: SerproConnectivityResult | null): string {
+  if (result?.ok) return 'i-lucide-circle-check'
+  return isProviderFailure(result) ? 'i-lucide-cloud-off' : 'i-lucide-circle-alert'
+}
+
+/**
+ * The title never names a culprit.
+ *
+ * The four-element contract cannot tell the causes of `provedor` apart — the
+ * SERPRO service being down, the machine being unable to run the check at all,
+ * the provider throttling us — so a title reading "the provider did not answer"
+ * would send an operator to watch a status page for a disk that filled up.
+ *
+ * `message` does not narrow it down either, and this title is written to match
+ * that: the backend's `provedor` sentence opens a disjunction between the
+ * service and the machine and never closes it, deliberately, and a throttle gets
+ * the same sentence because the action is the same. `message` is the action, not
+ * the diagnosis — so the title is an action too, and says only what is true.
+ *
+ * `certificado` is the one element whose action is known exactly, and the title
+ * has to follow it: o certificado do contratante está ausente, não bate com o
+ * documento gravado ou está vencido, e o conserto é conferir **esse**
+ * certificado. Um título que falasse em autenticação mandava o operador mexer na
+ * chave de integração e no segredo, que estão bons e continuam bons depois da
+ * troca. O contrato de quatro elementos não muda: a função continua lendo só o
+ * elemento que já recebia.
+ */
+export function connectivityTitle(result: SerproConnectivityResult | null): string {
+  if (result?.ok) return 'Conexão autenticada com sucesso'
+  if (isProviderFailure(result)) return 'A verificação não pôde ser concluída'
+  if (result?.failed_element === 'certificado') return 'Não foi possível autenticar com este certificado'
+  return 'Não foi possível autenticar'
+}
+
+export function failedElementName(result: SerproConnectivityResult | null): string | null {
+  const element = result?.failed_element
+  if (!element) return null
+  return failedElementLabels[element] ?? element
+}

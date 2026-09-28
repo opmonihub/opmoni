@@ -3,20 +3,24 @@
 namespace App\Providers;
 
 use App\Models\Account;
+use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\Department;
 use App\Models\FiscalDocument;
 use App\Models\Process;
 use App\Models\ProcessTemplate;
+use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproMonitoring;
 use App\Models\Task;
 use App\Observers\AccountObserver;
+use App\Policies\AccountCertificatePolicy;
 use App\Policies\AccountPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\DepartmentPolicy;
 use App\Policies\FiscalDocumentPolicy;
 use App\Policies\ProcessPolicy;
 use App\Policies\ProcessTemplatePolicy;
+use App\Policies\SerproAuthorizationTermPolicy;
 use App\Policies\SerproMonitoringPolicy;
 use App\Policies\TaskPolicy;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
@@ -86,9 +90,11 @@ class AppServiceProvider extends ServiceProvider
         Account::observe(AccountObserver::class);
 
         Gate::policy(Account::class, AccountPolicy::class);
+        Gate::policy(AccountCertificate::class, AccountCertificatePolicy::class);
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(Department::class, DepartmentPolicy::class);
         Gate::policy(FiscalDocument::class, FiscalDocumentPolicy::class);
+        Gate::policy(SerproAuthorizationTerm::class, SerproAuthorizationTermPolicy::class);
         Gate::policy(SerproMonitoring::class, SerproMonitoringPolicy::class);
         Gate::policy(Process::class, ProcessPolicy::class);
         Gate::policy(ProcessTemplate::class, ProcessTemplatePolicy::class);

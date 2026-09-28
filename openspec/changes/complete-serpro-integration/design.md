@@ -90,11 +90,256 @@ the client vault and the new office vault become thin callers. This is the one p
 this change restructures, and the existing certificate tests must keep passing unchanged — that is
 the guard against the refactor silently altering behaviour, not a formality.
 
-Signing is `Serpro.Componentes.AssinadorDigital.php`, vendored into `app/Support/` and wrapped.
-It is wrapped rather than called directly for two reasons that are not stylistic: it is the single
-place invisible Unicode gets stripped, which the provider warns causes
-`AcessoNegado-AUTENTICAPROCURADOR-013`, and it is the single place that keeps the signed document
-out of logs. `git diff composer.json` staying empty is the test.
+**The office certificate is stored encrypted in the database, not on disk, and this replaces the
+earlier `storage_path` decision for the office vault.** The same discipline as the client vault —
+`openssl_pkcs12_read` to validate, `openssl_x509_parse` for non-secret metadata, the repository's
+encrypt-then-base64 convention (`Crypt::encryptString(base64_encode($bytes))` to write,
+`base64_decode(Crypt::decryptString(...), true)` to read) — but the bytes live in
+`account_certificates.certificate_encrypted`, with the password in `password_encrypted` beside it,
+and **there is no path column**. The reason is deployment, not preference: the Laravel container's
+filesystem is ephemeral in production, so a file-based office certificate would vanish on every
+recreate and the office would find itself re-authorizing after a deploy. `ClientCertificateVault`
+keeps its disk because the client certificates that shipped with it are not being moved, and this
+is the one pre-existing file this change restructures. The upload semantics are unchanged by the
+move: one certificate per Account, replaced or removed, with non-secret metadata retained for audit
+and the encrypted contents deleted.
+
+`APP_KEY` is what encrypts these columns, so **no rotation may ever be performed** — same as
+already true for the platform credential.
+
+**Signing is the provider's own component, isolated rather than vendored verbatim, and its
+provenance is recorded because it is third-party code that must not be trusted on its face.**
+
+| | |
+| --- | --- |
+| Source | [modelo de assinador digital PHP](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/modelos/modelo_de_assinador_digital_php/), published by SERPRO |
+| Artifact | `Serpro.Componentes.AssinadorDigital.php.zip`, version `1.0.0` |
+| SHA-256 of the ZIP | `6e139b207527047e9e66e9228c7c1ea6ea444b1b1a936f5f02f4d936a9e0c72b`, reconfirmed 2026-09-28 before integrating |
+| License | MIT (`LICENSE` inside the ZIP, `Copyright (c) 2022 SERPRO`), itself based on `XMLDSIG for PHP` (<https://github.com/selective-php/xmldsig>) |
+
+The SHA is of the ZIP, not of the script: the ZIP is what the documentation links, and it is what
+carries the license. The provider's own note calls the model a basic example to orient an
+implementation and says complete tests are essential before production — which is why the checksum
+is re-verified on the day of integration and why the difference between the reference model and
+the isolated routine is written down rather than assumed away.
+
+**The distributed model is inspected, never executed, and it does not run as shipped.** The script
+does not pass `php -l`: it aborts with `Parse error: Unclosed '{' on line 25 does not match ')' ...
+line 50`, caused by one parêntese too many in the `vigencia` line. It also defines six global
+functions and reads thirteen `$GLOBALS` entries, prints the signed document and its base64 through
+two `echo`, changes the whole process timezone with `date_default_timezone_set('America/Sao_Paulo')`
+on line 2, reads the PFX from a filesystem path, ignores the return of `openssl_pkcs12_read`, calls
+`date()` with three arguments where PHP accepts two, and throws `XmlSignerException` — a class
+**the ZIP never declares**.
+
+So `app/Support/SerproSigner.php` is an independently written routine that ports **only** the
+XMLDSig sequence of the model's `assinar()`, and it is not a copy of the file. Taken unchanged:
+the `C14N` canonicalization, the SHA-256 digest, `SignedInfo`, `Reference URI=""` with the
+`enveloped-signature` transform followed by `c14n`, RSA-SHA256, `KeyInfo/X509Data/X509Certificate`,
+and the order in which the digest is taken before the `Signature` exists. Rewritten or removed:
+every global and `$GLOBALS` read, the timezone mutation, the path-based PFX loading, both `echo`,
+the unverified `loadXML` and `openssl_pkcs12_read` returns, and the undeclared exception class —
+which is now `SerproException` with `SerproFailure::NotSent`, because a signing failure is local and
+nothing was sent. No global function and no `$GLOBALS` entry from the official file reaches the
+application, and the provenance test asserts that those six function names do not exist.
+
+**The term document builder was not vendored, and of its three oddities one is corrected and two
+are kept on purpose.** Building the document is `SerproTermSigner`'s job, and three things in the
+model look like defects: `addChild('finalidade ')` with a trailing space in the element name,
+`date('Ymd', '+30 days', …)` where the model passes a string where a timestamp belongs and a third
+argument `date()` does not take, and a digest computed with exclusive `C14N` while the `Reference`
+declares the inclusive `c14n` of REC 2001.
+
+**The trailing space is corrected, because it cannot survive into the signed document.** The space
+does exist in the model's own serialised string, so this is not a claim that XML forbids it in
+principle; it is a claim about what reaches the signature. This reverses an earlier decision in this
+document, which kept the space on the reasoning that the model is the only authority available. That
+reasoning does not reach this case, and the measurement is unambiguous:
+- `DOMDocument::createElement('finalidade ')` throws `DOMException: Invalid Character Error` — the
+  name cannot be constructed;
+- the model's own path, `SimpleXMLElement::addChild('finalidade ')`, does **not** throw, and that is
+  what makes the case worth stating: it emits `<finalidade  texto="…"/>` with the space, and libxml
+  accepts that string, so it looks like the space survived. It did not. The resulting `nodeName` is
+  `finalidade` without the space, because the parser consumes it as inter-tag whitespace;
+- the `loadXML`/`saveXML` pair that the signing routine itself performs **removes** the space, so a
+  term built that way would be signed into `<finalidade texto="…"/>`;
+- a name with a space is unreachable by XPath, where `local-name()='finalidade '` matches zero nodes.
+
+So the space is dropped because it does not survive signing, **not because it was judged
+unimportant**, and the element is named `finalidade`. The distinction is recorded because the failure
+it invites is a later reader "restoring fidelity to the model" and getting a `DOMException`, or worse
+a document that silently never had the space. The name itself is what remains unverified and gated,
+like the other two.
+**The provider's term documentation is reachable, and that changes the record — read on
+2026-09-28.** The statement that it "returns `500` on every plausible URL and ships no XSD" was true
+when this decision was written and **no longer is**: `…/autenticaprocurador/padroes_tecnicos_assinatura_xml/`
+and `…/autenticaprocurador/servicos/envio_de_xml_assinado/` both answer `200` and carry the layout
+table, the technical signature standards, the `304` cache contract and a full request/response
+example. Three of the contested points are therefore **documented rather than inferred**, and the
+code that was already built for them is confirmed rather than changed:
+
+- the layout table names the element **`finalidade`**, with no trailing space — the correction of the
+  model's `finalidade ` is the provider's own, not a tolerance of ours;
+- the `CanonicalizationMethod` and the `c14n` transform are both
+  `http://www.w3.org/TR/2001/REC-xml-c14n-20010315`, the **inclusive** form the `Reference` declares —
+  the divergence with the exclusive digest is preserved because the provider documents the inclusive
+  side and the two coincide for a document that declares no namespace;
+- the published example puts **SERPRO — the contracting platform — in `destinatario`** with the role
+  `contratante`, and the signing office in `assinadoPor`. That is the reading this system builds, and
+  it settles the conflict the plan had with the spec's "with the office as the recipient".
+
+**What the documentation does not settle is the validity period, and this is the argument for keeping
+`+30 days`.** The provider declares only that `vigencia` is "a data de validade deste termo de
+autorização, no formato AAAAMMDD" — a format, no number of days, and no XSD. Its own two examples run
+far longer: the layout example spans `20220614` → `20221231` (**200 days**) and the service example
+`20220808` → `20221231` (**145 days**). The examples therefore **contradict** 30 days, and they do
+**not** replace it with a better number.
+
+**What the shared end date does and does not prove, stated precisely because an earlier draft of this
+paragraph got it wrong.** "Both examples end on the same date, so the period is not a constant of N
+days" rules out exactly one hypothesis: a fixed count. It says nothing about a **computed** period, and
+the obvious computed period is in plain sight — **31 December is the natural terminus of a Brazilian
+fiscal document**, and both examples are from 2022. "Valid through the end of the exercise year"
+explains two different start dates and one shared end date perfectly, and would be a documented
+convention rather than a coincidence. The inference the shared end date *does* support is weaker and is
+what the decision rests on: **neither 145 nor 200 is inferable**, because under any rule consistent
+with the samples both numbers are artefacts of the rule rather than the rule.
+
+**So `PERIODO_VIGENCIA_DAYS = 30` is the risk-asymmetric choice, and that is the whole argument.** If
+the provider's real rule is *longer* than thirty days — year-end, say — a thirty-day term is shorter
+than the maximum and is very likely still accepted, because a document that expires does satisfy a
+longer deadline. If the rule is *shorter* than thirty, the term is rejected, and **that failure is late
+and recoverable**: the daily refresh still runs, the rejection is recorded as `recusado`, and the
+recorded action is to re-sign. A long period fails immediately against a real gateway instead, and a
+rejected term is the one state this product cannot undo without the office delivering its e-CNPJ again.
+With the gate closed and `tasks.md` 4.6a unpaid, **30 is the value whose error costs least.**
+
+**The counter-argument belongs next to the conclusion, not in a footnote.** Thirty days is a short
+term for an authorization meant to last an exercise, and the provider's own documentation — the only
+thing a non-technical reader would look at — points towards the end of the year. If the contract test
+rejects 30, the value changes, and the mechanical consequence is one constant: `formatDigest()`
+re-opens the gate by itself, which is the correct behaviour. What cannot be done is *substituting* 145
+or 200 for 30, which would be promoting one of two contradictory samples to a rule against a schema we
+cannot see. The value is recorded as **unconfirmed**, and the contract test of `tasks.md` 4.6a is what
+has to settle it before any proof is recorded.
+
+"Verbatim" has a precise meaning for the vigência, and getting it wrong would make the decision
+unimplementable: what is preserved is the **period the reference model computes**, not a claim that
+the provider specified thirty days. The `date()` call around it is not preserved — it cannot run. It
+passes a string where a timestamp belongs and a third argument to a function that takes two, and it
+is the same line as the parse error. `SerproTermSigner` therefore writes the period as a `Carbon`
+calculation in `America/Sao_Paulo` and reproduces the model's intent, not its syntax. The same
+"verbatim is not the call" distinction applies to the element name, and it is why the space is
+corrected while the period is kept.
+
+**The gate is term issuance, and it is not advisory.** Nothing may emit a term until a real contract
+test against the provider proves the document is accepted, the roles are the ones the gateway
+expects, and the resubmission of a still-valid term answers `304` with the token in the `ETag`. In
+`tasks.md` that gate is **item 4.8**, the automatic issuance, which is where it has to bite; the
+spec states it as a requirement rather than leaving it to a comment. The failure mode is deliberate:
+if a kept value turns out to be wrong, the cost is that issuance stays blocked until a human obtains
+a contract test. A blocked feature is recoverable; terms the provider rejects are not, and the
+office has already authorized on the strength of them.
+
+**The gate has a named predicate, so two implementers cannot read it differently.** The proof is
+recorded in the platform connection row, as `serpro_connections.term_format_sha256` and
+`term_format_proven_at`, and issuance is permitted only when `term_format_proven_at` is not null and
+`term_format_sha256` equals `SerproTermSigner::formatDigest()`. It lives in the database rather than
+in `config/integra-contador.php` for D1's reason — it is a fact about the provider that must survive
+a redeploy.
+
+**The digest's input is the template plus the format constants, and a template-only digest is a gate
+that does not gate.** `SerproTermSigner::formatDigest()` hashes the canonicalized template, with
+every per-office and per-term value replaced by a **fixed plain-ASCII** placeholder, **concatenated
+with the format constants**: the validity period length, the canonicalization algorithm, the
+invisible-Unicode normalization rule, and the timezone the term's dates are written in. The join
+carries a separator or a length prefix that cannot occur in either part, because "concatenated in a
+stable order" on its own leaves a template ending in the same bytes a constant begins with
+ambiguous. The placeholder is ASCII for a reason that is easy to get backwards: if a template
+carried invisible characters, the normalization step would change its bytes, and the digest would be
+sensitive to that step for the wrong reason — the constant would appear to be covered by the
+template when it is the constant that covers it. The constants are in there because measurement says
+the template cannot see them. The period never appears in the document — the model writes only the
+computed date, and that date is a per-term placeholder — so moving 30 days to 60 leaves the template
+bytes identical and returns the same digest. The normalization step is a transformation of the
+document, not a mark on the template, so removing it also leaves the template untouched. The
+timezone does not appear in the document at all, and it decides something: near midnight the
+calendar day `dataAssinatura` falls on is the one the timezone says it is, so changing it changes
+the document the provider receives while the template stays byte-identical. Three of the four values
+this gate exists to cover are therefore invisible to a template-only digest, and the
+canonicalization algorithm is a fourth that happens to be harmless: for a document with no namespace
+declaration the exclusive and inclusive forms are byte-identical, so the constant cannot change the
+output at all. An earlier version of this paragraph claimed that "editing the document builder
+changes the digest" and stopped there; that is true only of edits to the template, and the edits
+that matter most are not template edits. A recorded proof that survives the edit it should have
+invalidated reads as a guarantee, which is worse than having no gate, so the constants are hashed
+rather than trusted to be visible.
+
+The gate is **self-invalidating** for the same reason: change the template or any of the four
+constants and the digest changes, the comparison stops matching, and issuance re-blocks with nobody
+deciding to block it. A boolean is the obvious cheaper design and it is wrong here, because a
+boolean cannot be invalidated by a change to the format and would keep authorizing a document nobody
+tested.
+
+**What the gate does not cover is the signature envelope, and saying so is part of the decision.** The
+digest sees the term template and four constants. The provider validates the *signed* document, so a
+change to the transform list, to the `Reference` URI, to the signature algorithm, or to
+`SerproSigner` itself changes the bytes the provider sees and leaves `formatDigest()` untouched — the
+gate re-opens for nobody. That is a real hole and it is not this gate's to close: the envelope is
+covered by the provenance tests, which assert its structure and verify the signature against the
+certificate's own public key. Those are a different kind of evidence — a measurement, where a contract
+test is an acceptance — and conflating them is how a reader ends up believing the gate covers the
+whole document when it covers the part that carries the office's data.
+
+**The proof is written by one command, and that command is the declared exception to its own rule.**
+The columns are written by no request, no job and no scheduler, and are not `Fillable` on the model
+— the same protection the encrypted columns of that table have. The single sanctioned writer is the
+operator-invoked `serpro:record-term-proof`, which writes both columns together and records an audit
+entry naming the digest it stored. **It takes no digest as input**: the value written is the one
+`formatDigest()` computes at that moment, and an operator who disagrees with it has a bug to fix, not
+a flag to set. A proof that recorded the operator's assertion rather than a measurement would prove
+nothing, and would in fact be worse than no gate, because it would read as evidence.
+
+Naming the command matters more than it looks, and so does how the rule is scoped. The earlier
+wording, "no automated path writes the columns and an operator records the value", left the
+requirement with no satisfiable mechanism: an artisan command *is* application code, and out-of-band
+SQL through tinker leaves no audit trail. The rule that dissolves it is the narrower one the spec now
+states — **no request, no job, no scheduler** — because those are the paths that would write the
+columns on their own initiative. A rule phrased as "no code path" would have to except the very thing
+it forbids, and `tasks.md` briefly restated it that way before this round put it back in step with
+the spec.
+
+The canonicalization decision carries one more safeguard, because it is the only one of the two
+preserved values that can drift without anyone touching the code. The two canonicalizations coincide
+byte for byte exactly when the document carries **no namespace declaration at all**, and
+`SerproSignerProvenanceTest::test_a_divergencia_de_canonicalizacao_do_modelo_nao_altera_o_digest_do_termo`
+proves it by recomputing the digest the way a validator does. The real trigger is wider than "declares
+a prefix of its own": exclusive and inclusive canonicalization diverge as soon as the document
+carries **any** namespace declaration, used or unused, because the exclusive form renders a
+declaration on the element that uses it and the inclusive form renders it where it was declared —
+`<termoDeAutorizacao xmlns:ns1="urn:x"><ns1:dados/></termoDeAutorizacao>` canonicalizes
+differently under the two. So the guarantee is: **the term's root element declares no namespace, and
+the term is not nested inside an element that does.** That proof is about the document shape the test
+uses: `SerproTermSigner`'s document does not exist yet, and the moment it is built that test has to
+be pointed at the real document, because a term carrying a declaration would stop the coincidence and
+the digest written into the signature would stop being the one a validator recalculates.
+
+**What remains unproven is the interoperability with the provider's validator and the acceptance of
+the term document.** The `304` resubmission and the roles are no longer in that sentence: the
+provider's cache page (`…/autenticaprocurador/cache/`, read 2026-09-28) documents the whole
+`304` contract — the status, the empty body, `cache-control: termo_autorizacao`, the `etag` carrying
+`autenticar_procurador_token:<uuid>` and the `expires` — and the layout page documents the roles.
+That is **documented, not observed**: no response from the provider has entered this repository, and
+documentation is a claim about behaviour rather than an acceptance of one. None of it can be settled
+by a local test, and this design document does not claim otherwise: the signature is proven to be
+well-formed and cryptographically valid, not proven to be accepted. Until a contract test exists the
+honest statement is that `AcessoNegado-AUTENTICAPROCURADOR-013` from invisible Unicode, the `304`
+token recovery from the `ETag`, and the acceptance of the term document itself are documented
+behaviour that has not been exercised end to end. The `expires` is the sharpest case: the page's
+prose says the token lasts "until midnight, Brasília time" while its own example is
+`Sat, 15 Oct 2022 00:00:01 GMT`, which is 21:00 the previous day in Brasília. The two contradict each
+other, the code follows the example rather than reconciling them, and the contract test is what
+settles it.
 
 ### D3. The term is per office, stored verbatim, and renewed by re-POST
 
@@ -219,8 +464,47 @@ that accepts everything is not a fix.
   the backend, removal deletes the encrypted contents while keeping non-secret metadata for audit.
   A compromised office certificate is a credential incident and is treated as one.
 - **Signing is a correctness surface, not a formatting one.** A subtly wrong enveloped XMLDSig fails
-  at the provider with an opaque code. → Vendor the provider's own component, normalize in one
-  place, assert the generated document's structure locally instead of discovering it at the gateway.
+  at the provider with an opaque code. → Isolate the provider's own signing sequence with its
+  provenance recorded, normalize in one place, and assert the generated document's structure and
+  its cryptographic validity against the certificate's own public key locally, instead of
+  discovering it at the gateway.
+- **The provider's reference model is third-party code that does not run as shipped, and copying it
+  would import its defects.** The distributed script does not parse, defines globals, prints the
+  signed document, and throws an exception class it never declares. → Inspect it, port only the
+  signing sequence into an independently written routine, keep the origin URL, version, SHA-256 and
+  MIT license in the file, and assert in a test that none of its global functions exist.
+- **Two oddities in the model are kept verbatim, and by 2026-09-28 one of them is confirmed and the
+  other is contradicted by the provider's own examples.** The digest's exclusive `C14N` against an
+  inclusive `Reference` is now documented — the technical page names the inclusive form — and the
+  `+30 days` vigência is not: the provider states only a format for `vigencia`, and its two examples
+  span 200 and 145 days, both ending on the same date. → Preserve each verbatim as a decision with a
+  gate rather than tidying it, name them in the spec so a later reader sees a decision and not an
+  oversight, record the period as **unconfirmed** rather than as the provider's value, and block
+  term issuance until a contract test proves the provider accepts the document. A blocked feature is
+  the recoverable failure; rejected terms are not. The contract test is also what has to settle the
+  period, because the constant is inside `formatDigest()` and changing it re-opens the gate — which
+  is why the period is not moved to match a sample.
+- **The trailing space in `finalidade ` looked like a third verbatim value and is not one, because it
+  does not survive into the signed document.** A previous decision in this document kept it, on the
+  reasoning that the model is the only authority — a reasoning that does not survive measurement:
+  `createElement('finalidade ')` throws a `DOMException`, the model's `SimpleXMLElement` path emits a
+  string libxml accepts but whose `nodeName` is `finalidade` without the space, and the
+  `loadXML`/`saveXML` the signing routine performs drops the space entirely. → Name the element
+  `finalidade`, record the space as one that does not survive signing rather than as one judged
+  unimportant, so a later reader does not "restore fidelity to the model" and break the document, and
+  keep the name itself under the same issuance gate as the other two. A requirement that mandates a
+  value the signing round trip discards is not a conservative choice; it is a guarantee no
+  implementation can keep.
+- **The signature is proven well-formed, not proven accepted.** A local test can show that the
+  envelope is correct and that the signature verifies against the certificate's public key; it
+  cannot show that the provider's validator accepts it, that the `304` resubmission returns the
+  token, or that the term's roles are the ones the gateway expects. → A real contract test against
+  the provider is a precondition for issuing any term, written as a requirement in the spec, and
+  this change does not claim that precondition is met.
+- **The office certificate in the database raises the cost of an `APP_KEY` loss.** Database-resident
+  ciphertext is recovered by a database backup, but a wrong key destroys every stored certificate
+  and the platform credential irreversibly. → No key rotation, stated as a constraint on operations
+  and already true for the platform credential; the office's remedy is to re-upload its certificate.
 - **The `autorPedidoDados` role assignment is inferred, not documented in one place.** It comes from
   reading `-019` and `-054` together, and it is the difference between a working integration and a
   wall of `403`s. → Isolated in a single function with its own tests; `-019` and `-054` are

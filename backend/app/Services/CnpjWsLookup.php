@@ -12,17 +12,79 @@ final class CnpjWsLookup
 {
     private const CACHE_TTL_SECONDS = 86400;
 
+    /**
+     * A recusa da fonte pública por documento que ela não indexa. É a mesma
+     * frase e o mesmo `status` do `404` do provedor, e é uma constante porque as
+     * duas vias precisam responder igual: quem lê a recusa não tem como saber —
+     * nem precisa saber — se ela veio de uma ida à rede ou do conhecimento do que
+     * a fonte tem.
+     */
+    private const NAO_ENCONTRADO = 'CNPJ não encontrado.';
+
+    /**
+     * A recusa de documento malformado, e é a mesma frase em `lookup()` e em
+     * `lookupOrFail()`: a validação não tem dois caminhos, e a diferença entre
+     * as duas respostas — `422` aqui, `404` para o alfanumérico válido que a
+     * fonte não tem — é a parte que `lookupOrFail()` decide.
+     */
+    private const INVALIDO = 'CNPJ inválido.';
+
     public function __construct(private BrazilianTaxId $taxId) {}
 
     /**
+     * O mesmo que `lookup()`, para o chamador que trata "a fonte não conhece este
+     * documento" como recusa em vez de como ausência de dado. `lookup()` é
+     * privado, e é o que garante que só este método decide o que é recusa e o
+     * que é dado ausente: a ordem validade-depois-capacidade abaixo é uma
+     * decisão, e uma segunda porta de entrada a desfaz.
+     *
+     * Documento alfanumérico é recusado sem gastar a consulta: a resposta seria
+     * sempre a mesma, e ela é conhecida. O `404` continua sendo o `404` que o
+     * provedor daria — só não custa uma das três consultas por minuto da conta
+     * para ser descoberto.
+     *
+     * **A validade vem antes da capacidade, e é uma decisão, não uma
+     * conveniência.** Um CNPJ com dígito verificador errado é malformado para
+     * qualquer fonte, e "a fonte não conhece este documento" é uma afirmação
+     * sobre o conteúdo dela que seria falsa: quem tem o erro é quem mandou, e a
+     * resposta precisa dizer isso. O inverso também importaria: um documento
+     * válido que a fonte não tem é `404` mesmo assim, e não uma falha de
+     * validação. A ordem é validade, depois capacidade, e cada uma tem a sua
+     * recusa.
+     *
      * @return array<string, mixed>
      */
-    public function lookup(string $cnpj): array
+    public function lookupOrFail(string $cnpj): array
     {
         $normalized = $this->taxId->normalize($cnpj);
 
         if (! $this->taxId->isValidCnpj($normalized)) {
-            throw new CnpjLookupException('CNPJ inválido.', 422);
+            throw new CnpjLookupException(self::INVALIDO, 422);
+        }
+
+        if (! $this->taxId->isNumericCnpj($normalized)) {
+            throw new CnpjLookupException(self::NAO_ENCONTRADO, 404);
+        }
+
+        return $this->lookup($normalized);
+    }
+
+    /**
+     * A consulta de fato, e ela **não** é porta de entrada: quem chega aqui já
+     * passou por `lookupOrFail()`, e a revalidação de `isValidCnpj()` abaixo é o
+     * que fecha a porta para quem tentar usá-la direto. Sem ela, `lookup()`
+     * aceitaria o mesmo CNPJ de uma segunda forma pública, e a ordem
+     * validade-depois-capacidade — que o chamador público garante e que o
+     * chamador privado não — passaria a depender de quem chamou.
+     *
+     * @return array<string, mixed>
+     */
+    private function lookup(string $cnpj): array
+    {
+        $normalized = $this->taxId->normalize($cnpj);
+
+        if (! $this->taxId->isValidCnpj($normalized)) {
+            throw new CnpjLookupException(self::INVALIDO, 422);
         }
 
         $accountId = resolve(CurrentTenant::class)->accountId;
@@ -69,7 +131,7 @@ final class CnpjWsLookup
         }
 
         if ($response->status() === 404) {
-            throw new CnpjLookupException('CNPJ não encontrado.', 404);
+            throw new CnpjLookupException(self::NAO_ENCONTRADO, 404);
         }
 
         if ($response->status() === 429) {

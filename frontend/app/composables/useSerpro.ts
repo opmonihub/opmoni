@@ -4,6 +4,7 @@ import type {
   MonitoringObligationSummary,
   MonitoringOverview,
   MonitoringSituacao,
+  SerproAccountCertificate,
   SerproAssociateResult,
   SerproAuthorizationTerm,
   SerproConnectivityResult,
@@ -94,6 +95,48 @@ export function useSerpro() {
     return res.data
   }
 
+  /**
+   * The e-CNPJ the office has delivered, or a throw on `404` — which is this
+   * route's ordinary answer for an office that has delivered none, and is left to
+   * the caller to read, because the endpoint deliberately does not answer `200`
+   * with an empty object.
+   *
+   * The upload is the office's one and only participation, and it is not a
+   * signature: what comes back is metadata, and the term that is built from it is
+   * signed, submitted and renewed by the platform.
+   */
+  async function accountCertificate() {
+    const res = await $api<{ data: SerproAccountCertificate }>('/serpro/account-certificate')
+    return res.data
+  }
+
+  /**
+   * `FormData`, like `useClients().uploadCertificate`, and **no `Content-Type`
+   * set by hand**: the boundary is what delimits the parts, and a hand-written
+   * header drops it, which is a `400` the operator cannot act on.
+   *
+   * The password is sent as a field, never as a query parameter, so it does not
+   * reach an access log, a `Referer` or the browser history. It is not kept
+   * anywhere on this side either: the composable hands it to `FormData` and
+   * forgets it, and the caller clears its own copy.
+   */
+  async function uploadAccountCertificate(file: File, password: string) {
+    const body = new FormData()
+    body.append('certificate', file)
+    body.append('password', password)
+    const res = await $api<{ data: SerproAccountCertificate }>('/serpro/account-certificate', { method: 'POST', body })
+    return res.data
+  }
+
+  /**
+   * Removal is not a row deletion the office can undo from the UI, so the
+   * confirmation belongs to the screen. The endpoint answers `204` whether or not
+   * there was anything to remove.
+   */
+  async function removeAccountCertificate() {
+    await $api('/serpro/account-certificate', { method: 'DELETE' })
+  }
+
   async function syncRuns(params: { page?: number } = {}) {
     return $api<{ data: SerproSyncRun[], meta?: { total: number, current_page?: number, last_page?: number } }>(
       '/serpro/sync-runs',
@@ -120,6 +163,9 @@ export function useSerpro() {
     saveConnection,
     testConnectivity,
     authorizationTerm,
+    accountCertificate,
+    uploadAccountCertificate,
+    removeAccountCertificate,
     syncRuns,
     showSyncRun,
     resyncRun

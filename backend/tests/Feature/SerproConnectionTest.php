@@ -19,21 +19,25 @@ class SerproConnectionTest extends TestCase
 
         $this->assertNotSame('super-secret', $connection->getRawOriginal('consumer_secret_encrypted'));
         $this->assertSame('super-secret', $connection->consumerSecret());
-        $this->assertArrayNotHasKey('consumer_secret', $connection->safeMetadata());
-        $this->assertArrayNotHasKey('certificate_encrypted', $connection->safeMetadata());
-        $this->assertArrayNotHasKey('certificate_password_encrypted', $connection->safeMetadata());
+
+        // A garantia quem dá é o `$hidden` do modelo, não um método auxiliar de
+        // metadados: serializar a linha inteira não pode devolver nenhuma das
+        // colunas cifradas, e a resource lista o que devolve por cima disso.
+        foreach (['consumer_secret_encrypted', 'certificate_encrypted', 'certificate_password_encrypted'] as $column) {
+            $this->assertArrayNotHasKey($column, $connection->toArray());
+        }
     }
 
-    public function test_safe_metadata_reports_configured_state(): void
+    public function test_current_reports_a_configuracao_pela_chave_e_pelo_segredo(): void
     {
+        // Sem chave ou sem segredo não existe credencial utilizável, e quem
+        // responde por isso — a resource e o teste de conectividade — precisa da
+        // mesma resposta que o provedor daria.
         SerproConnection::factory()->create();
+        $this->assertTrue(SerproConnection::current()?->isConfigured());
 
-        $metadata = SerproConnection::current()->fresh()->safeMetadata();
-
-        $this->assertTrue($metadata['configured']);
-        $this->assertSame('12345678000195', $metadata['contratante_numero']);
-        $this->assertIsString($metadata['certificate_valid_from']);
-        $this->assertIsString($metadata['certificate_valid_until']);
+        SerproConnection::query()->update(['consumer_key' => '']);
+        $this->assertFalse(SerproConnection::current()?->isConfigured());
     }
 
     public function test_current_returns_null_when_absent(): void

@@ -15,6 +15,7 @@ Schedule::command('work:generate-recurrences')->daily();
 Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();
 
 /*
+<<<<<<< HEAD
  * A entrada de CT-e é uma segunda decisão, e ela nasce desligada.
  *
  * ⚠️ LIGAR `fiscal.cte_scheduled` PRESUME O CANÁRIO DE UM CLIENTE AUTORIZADO E
@@ -69,4 +70,30 @@ if (config('fiscal.cte_scheduled', false)) {
 Schedule::command('fiscal:reconcile')
     ->dailyAt(sprintf('%02d:00', (int) config('fiscal.reconcile_hour')))
     ->timezone((string) config('fiscal.reconcile_timezone'))
+    ->withoutOverlapping();
+
+/*
+ * A renovação do termo de autorização, uma vez por dia, à uma da manhã no
+ * fuso de Brasília.
+ *
+ * **A hora é a de Brasília e não a do servidor, e isso não é detalhe.** O
+ * provedor documenta que o token de autorização fica válido "até a meia-noite
+ * do dia seguinte, horário de Brasília": um servidor em UTC rodando `dailyAt`
+ * sem fuso dispararia às 22h do dia anterior, renovando um token que ainda
+ * valeria por mais duas horas e gastando uma chamada do provedor sem
+ * necessidade. Logo depois da meia-noite é a primeira janela em que a
+ * renovação é útil de verdade.
+ *
+ * O `timezone()` vai na cadeia e não em `config('app.timezone')` pelo mesmo
+ * motivo: a validade do token é um fato do provedor, e um sistema pode mudar
+ * de fuso sem que a janela de renovação mude de hora.
+ *
+ * `withoutOverlapping` porque a travessia despacha um job por conta, e duas
+ * passadas sobrepostas fariam o mesmo documento ser reenviado duas vezes
+ * com dois tokens em jogo — o que o índice único de `account_id` impede que
+ * vire duas linhas, mas não impede que a segunda gravação vença a primeira.
+ */
+Schedule::command('serpro:renew-terms')
+    ->dailyAt('01:00')
+    ->timezone('America/Sao_Paulo')
     ->withoutOverlapping();

@@ -32,4 +32,62 @@ class BrazilianTaxIdTest extends TestCase
         $this->assertFalse($service->isValidCnpj('27865757000103'));
         $this->assertFalse($service->isValidCnpj('00000000000000'));
     }
+
+    public function test_aceita_cnpj_alfanumerico_com_digito_verificador_oficial(): void
+    {
+        $service = new BrazilianTaxId;
+        $base = '12ABC3450001';
+
+        // Dígito verificador alfanumérico oficial (RFB IN 2.119/2022): cada caractere
+        // vale `ord($char) - 48` — 'A' vale 17, 'B' 18, 'C' 19 — e o resto segue módulo 11.
+        $digit = static function (string $number, array $weights): int {
+            $sum = 0;
+            foreach (str_split($number) as $index => $char) {
+                $sum += (ord($char) - 48) * $weights[$index];
+            }
+
+            return ($sum % 11) < 2 ? 0 : 11 - ($sum % 11);
+        };
+        $first = $digit($base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        $valid = $base.$first.$digit($base.$first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+        $this->assertSame('12ABC345000188', $valid);
+        $this->assertSame('12ABC345000188', $service->normalize('12.ABC.345/0001-88'));
+        $this->assertTrue($service->isValidCnpj($valid));
+        $this->assertFalse($service->isValidCnpj(substr($valid, 0, -1).(((int) substr($valid, -1) + 1) % 10)));
+    }
+
+    public function test_aceita_o_cnpj_alfanumerico_publicado_na_instrucao_normativa(): void
+    {
+        // '12.ABC.345-01DE-35' é o exemplo alfanumérico da RFB IN 2.119/2022. Ele só
+        // fecha com o valor do caractere igual a `ord($char) - 48`: com a letra contada
+        // como posição no alfabeto (A=10) o documento fecharia em 12ABC34501DE45.
+        $this->assertTrue((new BrazilianTaxId)->isValidCnpj('12.ABC.345-01DE-35'));
+    }
+
+    public function test_sabe_dizer_se_o_cnpj_pode_ser_consultado_na_fonte_publica(): void
+    {
+        $service = new BrazilianTaxId;
+
+        // O tier público do `cnpj.ws` é numérico: o CNPJ alfanumérico é documento
+        // válido e documento que aquela fonte não tem como responder.
+        $this->assertTrue($service->isNumericCnpj('27.865.757/0001-02'));
+        $this->assertTrue($service->isNumericCnpj('27865757000102'));
+        $this->assertFalse($service->isNumericCnpj('12ABC345000188'));
+        $this->assertFalse($service->isNumericCnpj('12.ABC.345/0001-88'));
+        $this->assertFalse($service->isNumericCnpj('52998224725'));
+        $this->assertFalse($service->isNumericCnpj(''));
+    }
+
+    public function test_cpf_continua_numerico_e_rejeita_letra(): void
+    {
+        $service = new BrazilianTaxId;
+
+        $this->assertTrue($service->isValidCpf('52998224725'));
+        $this->assertFalse($service->isValidCpf('529ABC24725'));
+        // '10000003700' é um CPF válido; com os dois dígitos trocados por 'A', o
+        // `(int) 'A'` do cálculo valeria zero e o documento passaria sem `ctype_digit`.
+        $this->assertTrue($service->isValidCpf('10000003700'));
+        $this->assertFalse($service->isValidCpf('100000037AA'));
+    }
 }

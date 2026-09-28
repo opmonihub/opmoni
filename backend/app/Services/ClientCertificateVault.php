@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Tenant\CurrentTenant;
-use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -15,31 +14,27 @@ use Illuminate\Validation\ValidationException;
 
 class ClientCertificateVault
 {
+    /**
+     * O padrão no parâmetro existe por causa de um teste: `new ClientCertificateVault`
+     * sem argumento é a forma com que `ClientCertificateVaultLegacyPfxTest` — o
+     * teste que prova que esta extração não mudou nada — monta o cofre. A unidade
+     * de leitura não tem dependência nenhuma, então o padrão não esconde
+     * nenhuma: ele só mantém a construção sem argumento possível.
+     */
+    public function __construct(private CertificatePkcs12 $pkcs12 = new CertificatePkcs12) {}
+
     public function replace(Client $client, UploadedFile $file, string $password): ClientCertificate
     {
         $contents = $file->get();
-        $parsed = [];
         $ciphertext = null;
         $path = null;
         $committed = false;
 
         try {
-            $this->flushOpenSslErrors();
-
-            if (! openssl_pkcs12_read($contents, $parsed, $password) || ! isset($parsed['cert'])) {
-                if ($this->failedBecauseOfLegacyRc2($contents)) {
-                    throw ValidationException::withMessages([
-                        'certificate' => sprintf('O certificado do cliente %s usa criptografia legada RC2 e precisa ser exportado novamente sem a opção legacy.', $client->name),
-                    ]);
-                }
-
-                throw ValidationException::withMessages(['password' => 'Não foi possível abrir o certificado com a senha informada.']);
-            }
-
-            $metadata = openssl_x509_parse($parsed['cert']);
-
-            if (! is_array($metadata) || ! isset($metadata['validFrom_time_t'], $metadata['validTo_time_t'])) {
-                throw ValidationException::withMessages(['certificate' => 'O certificado não contém metadados válidos.']);
+            try {
+                $inspected = $this->pkcs12->inspect($contents, $password);
+            } catch (LegacyPkcs12Ciphertext $exception) {
+                throw $this->namingTheClient($exception, $client);
             }
 
             $path = sprintf('%d/%d/%s.enc', $client->account_id, $client->getKey(), (string) Str::uuid());
@@ -47,13 +42,13 @@ class ClientCertificateVault
             Storage::disk('certificates')->put($path, $ciphertext);
 
             $attributes = [
-                'subject' => $this->subject($metadata),
-                'serial_number' => $this->serial($metadata),
-                'valid_from' => Carbon::createFromTimestamp((int) $metadata['validFrom_time_t']),
-                'valid_until' => Carbon::createFromTimestamp((int) $metadata['validTo_time_t']),
+                'subject' => $inspected['subject'],
+                'serial_number' => $inspected['serial'],
+                'valid_from' => $inspected['valid_from'],
+                'valid_until' => $inspected['valid_until'],
                 'original_filename' => $file->getClientOriginalName(),
                 'storage_path' => $path,
-                'sha256' => hash('sha256', $contents),
+                'sha256' => $inspected['sha256'],
                 'password_encrypted' => Crypt::encryptString($password),
             ];
 
@@ -105,9 +100,8 @@ class ClientCertificateVault
         } finally {
             $password = '';
             $contents = '';
-            $parsed = [];
             $ciphertext = null;
-            unset($password, $contents, $parsed, $ciphertext);
+            unset($password, $contents, $ciphertext);
         }
     }
 
@@ -143,83 +137,23 @@ class ClientCertificateVault
     }
 
     /**
-     * @param  array<string, mixed>  $metadata
+     * O erro de RC2 da leitura compartilhada fala do certificado, e quem sabe de
+     * quem é o certificado é o cofre — a leitura não conhece cliente nem
+     * escritório, e é por isso que ela devolve uma `LegacyPkcs12Ciphertext` em vez
+     * de uma `ValidationException` qualquer.
+     *
+     * A troca do sujeito é feita pela própria exceção, que é quem tem a frase e o
+     * predicado sobre o que a frase começa a dizer. Este cofre só acrescenta
+     * **de quem** é o certificado; cortar a frase aqui por conta própria faria
+     * uma reescrita de texto na unidade compartilhada virar lixo para o cliente
+     * sem nenhum teste reclamar.
+     *
+     * RC2 é a única mensagem que nomeia alguém porque é a única em que o
+     * operador precisa saber de qual cliente é o arquivo para refazer o export
+     * certo.
      */
-    private function subject(array $metadata): string
+    private function namingTheClient(LegacyPkcs12Ciphertext $exception, Client $client): ValidationException
     {
-        if (is_string($metadata['name'] ?? null) && $metadata['name'] !== '') {
-            return $metadata['name'];
-        }
-
-        $subject = $metadata['subject'] ?? null;
-
-        if (is_array($subject)) {
-            $parts = [];
-
-            foreach ($subject as $key => $value) {
-                $parts[] = is_array($value) ? "{$key}=".implode(',', $value) : "{$key}={$value}";
-            }
-
-            if ($parts !== []) {
-                return '/'.implode('/', $parts);
-            }
-        }
-
-        return 'desconhecido';
-    }
-
-    /**
-     * @param  array<string, mixed>  $metadata
-     */
-    private function serial(array $metadata): string
-    {
-        foreach (['serialNumber', 'serialNumberHex'] as $key) {
-            if (is_string($metadata[$key] ?? null) && $metadata[$key] !== '') {
-                return $metadata[$key];
-            }
-        }
-
-        return 'desconhecido';
-    }
-
-    private function flushOpenSslErrors(): void
-    {
-        while (openssl_error_string() !== false) {
-            // OpenSSL keeps a per-thread error queue; clear stale failures before reading this PFX.
-        }
-    }
-
-    private function failedBecauseOfLegacyRc2(string $contents): bool
-    {
-        $unsupportedAlgorithm = false;
-
-        while (($error = openssl_error_string()) !== false) {
-            $normalized = strtolower($error);
-
-            if (str_contains($normalized, 'rc2')) {
-                return true;
-            }
-
-            if (str_contains($normalized, 'unsupported')) {
-                $unsupportedAlgorithm = true;
-            }
-        }
-
-        return $unsupportedAlgorithm && $this->containsLegacyRc2Identifier($contents);
-    }
-
-    private function containsLegacyRc2Identifier(string $contents): bool
-    {
-        foreach ([
-            hex2bin('060a2a864886f70d010c0105'),
-            hex2bin('060a2a864886f70d010c0106'),
-            hex2bin('06082a864886f70d0302'),
-        ] as $identifier) {
-            if ($identifier !== false && str_contains($contents, $identifier)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $exception->withSubject(sprintf('O certificado do cliente %s', $client->name));
     }
 }

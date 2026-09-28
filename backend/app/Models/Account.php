@@ -83,6 +83,19 @@ class Account extends Model
         return $this->hasMany(SerproMonitoring::class);
     }
 
+    /**
+     * O e-CNPJ do escritório e o histórico do que ele teve.
+     *
+     * A relação traz todas as linhas, correntes e fora de vigência: quem pergunta
+     * pelo certificado de hoje usa `AccountCertificate::currentFor()`, que
+     * precisa do `account_id` explícito justamente porque roda fora do escopo
+     * do tenant — na fila e no console o escopo global não filtra nada.
+     */
+    public function accountCertificates(): HasMany
+    {
+        return $this->hasMany(AccountCertificate::class);
+    }
+
     public function processes(): HasMany
     {
         return $this->hasMany(Process::class);
