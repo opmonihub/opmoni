@@ -52,37 +52,60 @@ use libxml;
  * `SerproException`, que existe e sabe dizer que nada foi enviado.
  *
  * **O que não foi vendorizado, e por quê.** O construtor do documento do termo
- * (`montarTermoAutorizacao()`) não veio. Ele é do `SerproTermSigner`, e é o
- * lugar de um defeito real do modelo — o parêntese a mais da linha 50, que é o
- * que faz o arquivo nem fazer parse. Os outros dois pontos que parecem erro
- * naquela função, o `addChild('finalidade ')` com espaço no nome e o
- * `date('Ymd', '+30 days', …)`, **não são corrigidos aqui**: ver a decisão de
- * canonicalização abaixo, que vale pelos mesmos motivos para os três. Com
- * uma ressalva que importa para quem for implementar: o que se preserva é o
- * **período de 30 dias**, que é o único valor que existe. A chamada `date()`
- * em volta dele não se preserva, porque não roda — e é a mesma linha do erro de
- * parse. O `SerproTermSigner` escreve o período como cálculo de `Carbon` em
- * `America/Sao_Paulo`, reproduzindo a intenção do modelo e não a sintaxe.
+ * (`montarTermoAutorizacao()`) não veio. Ele é do `SerproTermSigner`, e traz
+ * três coisas que parecem erro. **Uma é defeito e é corrigida; duas são
+ * preservadas, por decisão.**
+ *
+ * O `addChild('finalidade ')` é defeito, da mesma família do parêntese a mais
+ * da linha 50, e é corrigido: **o espaço no nome não é preservado porque não
+ * existe**, não porque tenha sido julgado pouco importante.
+ * `DOMDocument::createElement('finalidade ')` lança `DOMException: Invalid
+ * Character Error`; o caminho do próprio modelo,
+ * `SimpleXMLElement::addChild('finalidade ')`, não lança, mas emite
+ * `<finalidade  texto="…"/>` — e o `nodeName` desse nó é `finalidade`, sem
+ * espaço, porque o parser consome o espaço como espaço entre tags. Pior, o
+ * `loadXML`/`saveXML` que esta própria rotina faz **apaga** o espaço: um termo
+ * assinado carregaria `<finalidade texto="…"/>`. Um nome com espaço também é
+ * inalcançável por XPath, onde `local-name()='finalidade '` devolve zero nós.
+ * Não há como preservar a fidelidade ao modelo aqui, e quem um dia tentar
+ * "restaurar" o espaço vai obter um `DOMException` ou um termo que nunca teve
+ * espaço. O **nome** `finalidade` é o que fica, e é ele que permanece não
+ * verificado e sob o gate.
+ *
+ * A vigência e a canonicalização são preservadas, e a razão é a mesma para as
+ * duas: a documentação do termo do provedor responde `500` e não publica XSD,
+ * então o modelo é a única autoridade e "arrumar" seria adivinhar o schema que
+ * o provedor valida. Com uma ressalva que importa para quem for implementar: o
+ * que se preserva da vigência é o **período de 30 dias**, que é o único valor
+ * que existe. A chamada `date()` em volta dele não se preserva, porque não roda
+ * — passa string onde vai timestamp e um terceiro argumento a uma função de
+ * dois, e é a mesma linha do erro de parse. O `SerproTermSigner` escreve o
+ * período como cálculo de `Carbon` em `America/Sao_Paulo`, reproduzindo a
+ * intenção do modelo e não a sintaxe.
  *
  * **A decisão de canonicalização, e o que dela se provou.** O modelo calcula o
  * digest com `C14N` **exclusiva** e declara na `Reference` a `c14n` **inclusiva**
  * da REC 2001. A rotina mantém a exclusiva **por decisão, não por descuido**:
- * corrigir mudaria os bytes de `DigestValue` em relação ao exemplo oficial, e o
- * modelo é a única autoridade disponível — a documentação do termo do provedor
- * responde `500` e não publica XSD, então "arrumar" seria adivinhar o schema que
- * o provedor valida. A decisão está registrada em `design.md` (D2) e na spec, com
+ * corrigir mudaria os bytes de `DigestValue` em relação ao exemplo oficial. A
+ * decisão está registrada em `design.md` (D2) e na spec, com
  * o gate: **nenhum termo pode ser emitido antes de um teste de contrato provar
  * que o provedor aceita o documento.**
  *
  * O que o teste de proveniência demonstra é a coincidência das duas
- * canonicalizações para o formato de termo que ele exercita — que não declara
- * namespace próprio além do da própria `Signature` —, porque ele refaz o digest
- * do jeito que um validador confere (tira a `Signature`, canonicaliza em
- * inclusiva) e o valor bate com o que a rotina gravou. O documento real ainda
- * não existe: quando o `SerproTermSigner` montar o seu, é esse teste que precisa
- * passar a exercê-lo, porque um termo que declarasse prefixo próprio pararia de
- * coincidir. O que continua **não** provado é a interoperabilidade com o
- * validador do provedor, que é do contrato real.
+ * canonicalizações para o formato de termo que ele exercita, porque ele refaz o
+ * digest do jeito que um validador confere (tira a `Signature`, canonicaliza em
+ * inclusiva) e o valor bate com o que a rotina gravou. **O gatilho real da
+ * divergência é mais largo do que "declarar prefixo próprio":** exclusiva e
+ * inclusiva divergem assim que o documento carrega **qualquer** declaração de
+ * namespace, usada ou não, porque a exclusiva renderiza a declaração no elemento
+ * que a usa e a inclusiva renderiza onde ela foi declarada — em
+ * `<termoDeAutorizacao xmlns:ns1="urn:x"><ns1:dados/></termoDeAutorizacao>` as
+ * duas produzem bytes diferentes. A garantia, portanto, é: **o elemento raiz do
+ * termo não declara namespace algum, e o termo não é aninhado em um elemento que
+ * declare.** O documento real ainda não existe: quando o `SerproTermSigner`
+ * montar o seu, é esse teste que precisa passar a exercitá-lo. O que continua
+ * **não** provado é a interoperabilidade com o validador do provedor, que é do
+ * contrato real.
  *
  * **Sigilo.** A classe não registra nada: nem o documento assinado, nem o
  * certificado, nem a senha. Ela também não tenta apagar a senha da memória,

@@ -37,12 +37,15 @@ use ReflectionClass;
  * prova que a assinatura é bem-formada e criptograficamente válida. Não prova
  * que o provedor aceita o termo, que os papéis do documento são os que o
  * gateway espera, nem que o reenvio de um termo válido responde `304` com o
- * token. Três pontos do modelo que parecem erro — `finalidade ` com espaço, a
- * vigência `+30 days` e a canonicalização exclusiva do digest — foram mantidos
- * verbatim por decisão, e o gate é que **nenhum termo pode ser emitido antes de
- * um teste de contrato provar a aceitação**. A decisão e o gate estão em
- * `design.md` (D2) e na spec; aqui o que cabe é provar a coincidência da
- * canonicalização e falhar se ela deixar de valer.
+ * token. Dos três pontos do modelo que parecem erro, **um é corrigido** — o
+ * espaço no nome `finalidade `, que não pode existir: `createElement` lança
+ * `DOMException` e o `loadXML`/`saveXML` da própria assinatura o apagaria — e
+ * **dois foram mantidos verbatim por decisão**, a vigência de 30 dias e a
+ * canonicalização exclusiva do digest. O gate vale para os nomes e valores
+ * resultantes: **nenhum termo pode ser emitido antes de um teste de contrato
+ * provar a aceitação**. A decisão e o gate estão em `design.md` (D2) e na spec;
+ * aqui o que cabe é provar a coincidência da canonicalização e falhar se ela
+ * deixar de valer.
  *
  * O certificado é gerado em tempo de execução e não é versionado: `*.pfx` está
  * no `.gitignore` da raiz, e a regra é do arquivo inteiro, não do caso. Para
@@ -205,19 +208,29 @@ class SerproSignerProvenanceTest extends TestCase
         // A pergunta que este teste responde é deliberada: para o formato de
         // termo que ele exercita, as duas canonicalizações coincidem?
         //
-        // A resposta é sim, e a razão é estrutural: o termo não declara
-        // namespace próprio, e a única declaração da árvore é a da própria
-        // `Signature`, que o transform `enveloped-signature` manda retirar antes
-        // da conta. A diferença entre exclusiva e inclusiva é a declaração de
-        // namespaces que não estão em uso, e aqui não há nenhuma.
+        // A resposta é sim, e a razão é estrutural: a única declaração de
+        // namespace da árvore é a da própria `Signature`, que o transform
+        // `enveloped-signature` manda retirar antes da conta, e o elemento raiz
+        // do termo não declara namespace algum.
         //
-        // Este é o único dos três valores preservados que pode derivar sem
-        // ninguém tocar em código, e é por isso que ele tem teste. Um termo que
-        // passasse a declarar prefixo próprio deixaria de coincidir, e o digest
-        // gravado deixaria de ser o que um validador recalcula. O documento real
-        // ainda não existe: quando o `SerproTermSigner` montar o seu, é este
-        // teste que precisa passar a exercê-lo, e ele é o que avisa se a
-        // coincidência deixar de valer.
+        // **O gatilho da divergência é mais largo do que parece, e este comentário
+        // é a medida dele.** exclusiva e inclusiva divergem assim que o
+        // documento carrega qualquer declaração de namespace, usada ou não: a
+        // exclusiva renderiza a declaração no elemento que a usa, a inclusiva
+        // renderiza onde ela foi declarada, e em
+        // `<termoDeAutorizacao xmlns:ns1="urn:x"><ns1:dados/></termoDeAutorizacao>`
+        // as duas produzem bytes diferentes. Dizer apenas "não declarar prefixo
+        // próprio" seria mais fraco do que a verdade e deixaria de fora o termo
+        // aninhado em um elemento que declara.
+        //
+        // Por isso a garantia é a que está escrita: **o elemento raiz do termo não
+        // declara namespace algum, e o termo não é aninhado.** É o único dos
+        // valores preservados que pode derivar sem ninguém tocar em código, e é
+        // por isso que ele tem teste: um termo que declarasse namespace passaria
+        // a divergir, e o digest gravado deixaria de ser o que um validador
+        // recalcula. O documento real ainda não existe: quando o
+        // `SerproTermSigner` montar o seu, é este teste que precisa passar a
+        // exercitá-lo, e ele é o que avisa se a coincidência deixar de valer.
         $term = $this->parse($this->unsignedTerm());
 
         $exclusive = openssl_digest((string) $term->documentElement?->C14N(true, false), 'sha256', true);
