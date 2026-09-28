@@ -150,7 +150,7 @@ final class FiscalReconciliation
                 // posição, diz que o serviço não responde a este CNPJ agora. E
                 // a pausa é gravada, porque a reconciliação é consulta pontual
                 // ao mesmo serviço que a captura usa e a parada é do CNPJ, não
-                // do caminho — devolvê-la em branco deixaria a captura batting
+                // do caminho — devolvê-la em branco deixaria a captura batendo
                 // no mesmo bloqueio na mesma noite.
                 $this->reportBlocked($client, $gap);
                 $this->block($cursor);

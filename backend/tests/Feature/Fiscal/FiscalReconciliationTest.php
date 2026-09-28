@@ -339,7 +339,7 @@ class FiscalReconciliationTest extends TestCase
 
         // A pausa é gravada, e é a mesma coluna, a mesma janela e a mesma
         // configuração que a captura usa: `blocked_until` é autoritativa para as
-        // duas consultas, e uma reconciliação que discovers o bloqueio e o
+        // duas consultas, e uma reconciliação que descobre o bloqueio e o
         // devolvesse em branco deixaria a captura prosseguir para o mesmo fisco
         // bloqueado. A posição, essa, fica como estava.
         $cursor = $this->cursorOf($client);
