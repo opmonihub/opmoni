@@ -6,38 +6,32 @@ use App\Enums\FiscalFailure;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Models\Client;
-use App\Models\ClientCertificate;
 use App\Services\Fiscal\Capture\FiscalLookupBudget;
-use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
-use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
-use App\Services\Fiscal\Support\ClientCertificateMaterializer;
+use App\Services\Fiscal\Support\DfeEntryCollector;
 use App\Services\Fiscal\Support\DfeResponse;
-use App\Services\Fiscal\Support\DfeResponseParser;
 use App\Services\Fiscal\Support\DfeSoapEnvelope;
-use App\Services\Fiscal\Support\DocZipDecoder;
+use App\Services\Fiscal\Support\DfeTransport;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
-use App\Services\Fiscal\Support\FiscalXmlValidator;
-use App\Services\Fiscal\Support\XmlQuery;
 use Carbon\CarbonImmutable;
 use Closure;
-use DOMDocument;
-use DOMXPath;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
  * Conector do serviço de Distribution DF-e da NF-e.
  *
- * Fala com um serviço só, faz o parse do envelope dele e devolve documento
- * pronto. Não escreve no banco: `FiscalDocumentWriter` é o único caminho de
+ * Fala com um serviço só e devolve documento pronto. O que é comum aos serviços
+ * de DF-e — a chamada SOAP com o certificado do cliente, a leitura da resposta,
+ * a conversão das entradas em documentos — mora em `DfeTransport` e
+ * `DfeEntryCollector`; aqui fica o que é da NF-e: os parâmetros do serviço, a
+ * UF do interessado, a consulta por chave e a leitura da rejeição.
+ *
+ * Não escreve no banco: `FiscalDocumentWriter` é o único caminho de
  * escrita, e é por isso que painel e tabela são escritos uma vez só.
  *
  * Quatro regras que este arquivo existe para sustentar:
@@ -78,27 +72,26 @@ final class NfeDistributionConnector implements FiscalConnector
     ];
 
     /**
-     * Tempo de conexão é o do transporte, não o do fisco: um lote de 50
-     * documentos leva de 1 a 3 MB com mTLS, e a janela do worker é de 120
-     * segundos. Esperar mais que isso por um TCP handshake só rouba o tempo do
-     * resto do lote.
+     * O documento que este conector traz: a chave de acesso carrega `55` nos
+     * dois dígitos do modelo, e a extração de metadados recusa tudo que não for.
+     * A regra é a do par (conector, modelo) e não uma conclusão da entrada — é o
+     * coletor que compara.
      */
-    private const CONNECT_TIMEOUT_SECONDS = 15;
+    private const MODEL = FiscalModel::Nfe;
 
     /**
-     * O que o serviço diz sobre a própria falha, e o máximo que vai para a
-     * mensagem. A condição cabe em uma linha; um `faultstring` de serviço em
-     * manutenção é o que estoura isso.
+     * O status que a taxonomia recebe daqui é sempre o mesmo, e ele é inerte:
+     * o transporte já recusou toda resposta fora do `2xx` — cada uma delas com o
+     * status real dentro da exceção —, então o `classify()` deste arquivo só
+     * decide pelo `cStat`, e o ramo que olha o status (`0` ou `5xx`, que é
+     * "não houve resposta") já foi tomado no transporte, com o status verdadeiro.
      */
-    private const FAULT_TEXT_LIMIT = 300;
+    private const HTTP_OK = 200;
 
     public function __construct(
         private DfeSoapEnvelope $envelope,
-        private DfeResponseParser $parser,
-        private DocZipDecoder $decoder,
-        private FiscalXmlMetadata $metadata,
-        private FiscalXmlValidator $validator,
-        private ClientCertificateMaterializer $materializer,
+        private DfeTransport $transport,
+        private DfeEntryCollector $collector,
         private FiscalLookupBudget $lookupBudget,
     ) {}
 
@@ -113,19 +106,17 @@ final class NfeDistributionConnector implements FiscalConnector
      */
     public function pull(Client $client, int $fromNsu, int $limit): PullResult
     {
-        $certificate = $this->certificateOf($client);
+        // O veredito do certificado vem antes de qualquer montagem: um cliente
+        // sem A1 não produz envelope, não passa pelo XSD e não gasta banda.
+        $this->transport->requireCertificate($client);
 
-        $response = $this->materializer->withCertificate(
-            $certificate,
-            fn (string $path): Response => $this->send($certificate, $path, $client, $fromNsu),
-        );
+        $parsed = $this->send($client, $fromNsu);
 
-        $parsed = $this->interpret($response);
-
-        // O status HTTP real entra na classificação: só um `2xx` faria o
-        // default de `classify()` recair em `Rejected` para o que é
-        // indisponibilidade do serviço.
-        $failure = FiscalFailure::classify($response->status(), $parsed->cStat);
+        // O status HTTP real entrou na classificação dentro do transporte, que
+        // é quem recusa o que não for `2xx` — com o status verdadeiro, e não
+        // com o `cStat` de um corpo que esse status não traz. O que sobra para
+        // aqui é o `cStat`, e `self::HTTP_OK` diz o que ele é.
+        $failure = FiscalFailure::classify(self::HTTP_OK, $parsed->cStat);
 
         if ($failure === FiscalFailure::DocumentsFound) {
             return $this->collect($parsed);
@@ -188,10 +179,7 @@ final class NfeDistributionConnector implements FiscalConnector
             throw new RuntimeException("Chave de acesso inválida: {$chave}.");
         }
 
-        return $this->pointLookup(
-            $client,
-            fn (ClientCertificate $certificate, string $path): Response => $this->sendByChave($certificate, $path, $client, $chave),
-        );
+        return $this->pointLookup($client, fn (): DfeResponse => $this->sendByChave($client, $chave));
     }
 
     /**
@@ -206,10 +194,7 @@ final class NfeDistributionConnector implements FiscalConnector
      */
     public function fetchByNsu(Client $client, int $nsu): ?PulledDocument
     {
-        return $this->pointLookup(
-            $client,
-            fn (ClientCertificate $certificate, string $path): Response => $this->sendByNsu($certificate, $path, $client, $nsu),
-        );
+        return $this->pointLookup($client, fn (): DfeResponse => $this->sendByNsu($client, $nsu));
     }
 
     /**
@@ -223,21 +208,20 @@ final class NfeDistributionConnector implements FiscalConnector
      * não retentativa nem silêncio: quem chama decide o que fazer com a posição
      * que ficou sem resposta.
      *
-     * @param  Closure(ClientCertificate, string): Response  $call
+     * @param  Closure(): DfeResponse  $ask
      */
-    private function pointLookup(Client $client, Closure $call): ?PulledDocument
+    private function pointLookup(Client $client, Closure $ask): ?PulledDocument
     {
-        $certificate = $this->certificateOf($client);
+        // O veredito do certificado vem antes da reserva: uma consulta que não
+        // chegou a existir não pode ser cobrada como consulta que saiu, e é a
+        // vaga do teto que se cobra aqui.
+        $this->transport->requireCertificate($client);
 
         $this->reserveLookup($client);
 
-        $response = $this->materializer->withCertificate(
-            $certificate,
-            fn (string $path): Response => $call($certificate, $path),
-        );
+        $parsed = $ask();
 
-        $parsed = $this->interpret($response);
-        $failure = FiscalFailure::classify($response->status(), $parsed->cStat);
+        $failure = FiscalFailure::classify(self::HTTP_OK, $parsed->cStat);
 
         if ($failure === FiscalFailure::NoDocuments) {
             return null;
@@ -280,105 +264,21 @@ final class NfeDistributionConnector implements FiscalConnector
         }
     }
 
-    /**
-     * Lê o lote entrada a entrada, e uma entrada que não vira documento não
-     * interrompe as outras: o serviço entrega posições, e uma posição ilegível
-     * é um buraco a reconciliar, não o fim da fila. O que decide o cursor é
-     * `mayAdoptPosition`, e é por isso que a recusa de uma entrada tem de
-     * aparecer no resultado em vez de sumir.
-     *
-     * Cada `try` envolve uma única chamada, então o `RuntimeException` capturado
-     * só pode ter vindo dela — `DocZipDecoder` e `FiscalXmlMetadata` lançam
-     * `RuntimeException` e não existe tipo mais estreito para pegar.
-     */
     private function collect(DfeResponse $parsed): PullResult
     {
-        $documents = [];
-        $failures = [];
-
-        foreach ($parsed->entries as $entry) {
-            try {
-                $xml = $this->decoder->decode($entry->payload);
-            } catch (RuntimeException) {
-                $failures[] = new FailedEntry(
-                    nsu: $entry->nsu,
-                    schema: $entry->schema,
-                    reason: 'DocZipDecoder não decodificou o payload comprimido.',
-                );
-
-                continue;
-            }
-
-            try {
-                $extracted = $this->metadata->extract($xml, FiscalModel::Nfe);
-            } catch (RuntimeException) {
-                // A chave com dígito verificador inválido, o modelo que não é o
-                // do serviço e o XML ilegível chegam todos aqui, e em nenhum
-                // deles houve o suficiente para guardar o documento.
-                $failures[] = new FailedEntry(
-                    nsu: $entry->nsu,
-                    schema: $entry->schema,
-                    reason: 'FiscalXmlMetadata rejeitou o documento decodificado.',
-                );
-
-                continue;
-            }
-
-            $documents[] = new PulledDocument(
-                model: $extracted->model,
-                kind: $extracted->kind,
-                stage: $extracted->stage,
-                chave: $extracted->chave,
-                eventId: $extracted->eventId,
-                emitenteCnpj: $extracted->emitenteCnpj,
-                destinatarioCnpj: $extracted->destinatarioCnpj,
-                valorTotal: $extracted->valorTotal,
-                digVal: $extracted->digVal,
-                nsu: $entry->nsu,
-                schema: $entry->schema,
-                emissaoAt: $extracted->emissaoAt,
-                eventoOcorridoEmAt: $extracted->eventoOcorridoEmAt,
-                xml: $xml,
-            );
-        }
-
-        return new PullResult(
-            documents: $documents,
-            lastNsu: $parsed->ultNsu,
-            maxNsu: $parsed->maxNsu,
-            more: $parsed->maxNsu !== null && $parsed->ultNsu < $parsed->maxNsu,
-            blockedUntil: null,
-            // Havendo buraco, a posição não é adotada: a próxima consulta volta
-            // a pedir a partir da posição anterior e tenta ler a entrada de novo.
-            mayAdoptPosition: $failures === [],
-            failures: $failures,
-        );
+        return $this->collector->collect($parsed, self::MODEL);
     }
 
-    private function send(
-        ClientCertificate $certificate,
-        string $certificatePath,
-        Client $client,
-        int $fromNsu,
-    ): Response {
+    private function send(Client $client, int $fromNsu): DfeResponse
+    {
         $endpoint = $this->endpoint();
 
-        $body = $this->envelopeFor($endpoint, $client, $fromNsu);
-
-        $this->validator->validate($this->payloadOf($body), 'distDFeInt');
-
-        return $this->request($endpoint, $certificate, $certificatePath, $body);
+        return $this->transport->request($client, $endpoint, $this->envelopeFor($endpoint, $client, $fromNsu));
     }
 
-    private function sendByChave(
-        ClientCertificate $certificate,
-        string $certificatePath,
-        Client $client,
-        string $chave,
-    ): Response {
+    private function sendByChave(Client $client, string $chave): DfeResponse
+    {
         $endpoint = $this->endpoint();
-
-        $body = $this->lookupOf($this->envelopeFor($endpoint, $client, 0), $chave);
 
         // O corpo da consulta por chave sai de uma reescrita de outro corpo, e
         // é por isso que ele também passa pelo schema local: a reescrita é
@@ -387,31 +287,29 @@ final class NfeDistributionConnector implements FiscalConnector
         // `distDFeInt` — então a checagem cobre a posição do `consChNFe`, a
         // versão, a ordem dos elementos e o CNPJ e a UF do próprio pedido, e
         // não só a chave, que `isValidChave()` já conferiu antes de chegar aqui.
-        $this->validator->validate($this->payloadOf($body), 'distDFeInt');
-
-        return $this->request($endpoint, $certificate, $certificatePath, $body);
+        return $this->transport->request(
+            $client,
+            $endpoint,
+            $this->lookupOf($this->envelopeFor($endpoint, $client, 0), $chave),
+        );
     }
 
-    private function sendByNsu(
-        ClientCertificate $certificate,
-        string $certificatePath,
-        Client $client,
-        int $nsu,
-    ): Response {
+    private function sendByNsu(Client $client, int $nsu): DfeResponse
+    {
         $endpoint = $this->endpoint();
 
         // O corpo nasce do `build()` com a posição zero — é o grupo de posição
         // que a conversão troca, e a conversão recusa um corpo que não tem
-        // exatamente um grupo para trocar.
-        $body = $this->envelope->pointNsu($this->envelopeFor($endpoint, $client, 0), $nsu);
-
-        // Mesmo validador dos outros dois caminhos: o `consNSU` é uma das
-        // opções do grupo de consulta do `distDFeInt`, então a checagem cobre a
-        // posição pedida com quinze dígitos, a versão, a ordem dos elementos e o
-        // CNPJ e a UF do próprio pedido.
-        $this->validator->validate($this->payloadOf($body), 'distDFeInt');
-
-        return $this->request($endpoint, $certificate, $certificatePath, $body);
+        // exatamente um grupo para trocar. Mesmo validador dos outros dois
+        // caminhos: o `consNSU` é uma das opções do grupo de consulta do
+        // `distDFeInt`, então a checagem cobre a posição pedida com quinze
+        // dígitos, a versão, a ordem dos elementos e o CNPJ e a UF do próprio
+        // pedido.
+        return $this->transport->request(
+            $client,
+            $endpoint,
+            $this->envelope->pointNsu($this->envelopeFor($endpoint, $client, 0), $nsu),
+        );
     }
 
     /**
@@ -460,209 +358,6 @@ final class NfeDistributionConnector implements FiscalConnector
     }
 
     /**
-     * @param  array<string, string>  $endpoint
-     */
-    private function request(
-        array $endpoint,
-        ClientCertificate $certificate,
-        string $certificatePath,
-        string $body,
-    ): Response {
-        // Ambiente desconhecido cai em homologação, que é o lado que não
-        // produz efeito legal: errar o `FISCAL_ENVIRONMENT` não pode escrever
-        // no ambiente de produção.
-        $environment = config('fiscal.environment') === 'producao' ? 'producao' : 'homologacao';
-
-        try {
-            return Http::withOptions([
-                // `verify` apontando para o bundle versionado: a verificação do
-                // servidor continua ligada, e a cadeia é a da ICP-Brasil do
-                // repositório, não o trust store da máquina.
-                'verify' => config('fiscal.ca_bundle'),
-                'curl' => [
-                    CURLOPT_SSLCERT => $certificatePath,
-                    CURLOPT_SSLCERTTYPE => 'P12',
-                    // O `libcurl` só recebe caminho para o certificado e a senha
-                    // pelo option: sem ela um PKCS#12 cifrado não abre, e a
-                    // autenticação é justamente esse certificado. O
-                    // materializador já recusou o caso de senha ausente antes
-                    // de chegar aqui, então nunca é string vazia.
-                    CURLOPT_SSLCERTPASSWD => $certificate->certificatePassword() ?? '',
-                    CURLOPT_SSLVERSION => CURL_SSLVERSION_TLSv1_2,
-                ],
-            ])
-                ->timeout((int) config('fiscal.timeout', 60))
-                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
-                // A ação SOAP viaja no `Content-Type`, e é o `withBody` que
-                // escreve esse cabeçalho: montá-lo em `withHeaders` antes
-                // seria apagado na linha seguinte.
-                ->withBody($body, $this->contentTypeOf($endpoint))
-                ->post($endpoint[$environment]);
-        } catch (ConnectionException) {
-            // Sem resposta não há status HTTP para classificar, e `0` é a forma
-            // que a taxonomia reserva para "não houve resposta": `Upstream`,
-            // que adianta repetir. A exceção do transporte é substituída pela
-            // nossa porque a mensagem dela carrega o caminho do PFX efêmero.
-            throw new FiscalException(
-                'O serviço de distribuição está inacessível.',
-                FiscalFailure::classify(0, ''),
-            );
-        }
-    }
-
-    /**
-     * O corpo que a taxonomia classifica. Uma resposta que o serviço não
-     * escreveu no contrato dele — página de erro do proxy, `502` do
-     * balanceador — não tem `cStat` para classificar, e quem decide é o status
-     * HTTP que ela realmente teve.
-     *
-     * O fault é conferido **antes** do parser, e não depois: ele vem no mesmo
-     * envelope e no mesmo `2xx`, então o parser o leria como "não contém
-     * `retDistDFeInt`" — a exceção de parse de uma condição que o serviço
-     * esperava que aparecesse, e que nada no resultado permitiria distinguir de
-     * um defeito nosso. O caso do parser continua significando o que
-     * significava: um `2xx` cujo corpo não é a resposta do serviço.
-     */
-    private function interpret(Response $response): DfeResponse
-    {
-        if (! $response->successful()) {
-            throw new FiscalException(
-                'O serviço de distribuição respondeu fora do contrato do serviço.',
-                FiscalFailure::classify($response->status(), ''),
-            );
-        }
-
-        $body = $response->body();
-        $fault = $this->faultOf($body);
-
-        if ($fault !== null) {
-            // `classify()` lê status HTTP e `cStat`, e um fault de `2xx` não
-            // tem nenhum dos dois. `Upstream` é a escolha porque o fisco está
-            // recusando de processar, não recusando o pedido: retentável é o que
-            // "tente mais tarde" significa aqui. Isso não vira laço porque quem
-            // aciona a captura tem os guardas — uma tentativa por execução, o
-            // limite horário de consultas e a janela de bloqueio.
-            throw new FiscalException(
-                'O serviço de distribuição recusou a chamada: '.($fault === '' ? 'fault sem descrição.' : $fault),
-                FiscalFailure::Upstream,
-            );
-        }
-
-        return $this->parser->parse($body);
-    }
-
-    /**
-     * O texto do fault, ou `null` quando a resposta não é um fault — a string
-     * vazia é um fault que não descreve a condição.
-     *
-     * O `faultstring` (SOAP 1.1, o que um endpoint `.asmx` devolve) e o
-     * `Reason/Text` (SOAP 1.2) são as duas formas do mesmo texto. O `detail`
-     * fica de fora: é onde um serviço ecoa o pedido, e o corpo da requisição é
-     * uma das coisas que o módulo não registra.
-     *
-     * Custa um `loadXML` a mais por resposta, e é deliberado: o `DOMDocument`
-     * é local deste método e some com ele, então o pico de memória não muda, e
-     * o caminho já estava esperando uma chamada de rede.
-     */
-    private function faultOf(string $body): ?string
-    {
-        $dom = new DOMDocument;
-        $dom->preserveWhiteSpace = false;
-
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadXML($body);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (! $loaded) {
-            return null;
-        }
-
-        $xpath = new DOMXPath($dom);
-
-        // O fault é filho do corpo SOAP, e é por nome local porque o prefixo
-        // varia entre o que o serviço declara e o que a gente esperaria.
-        $fault = XmlQuery::first($xpath, 'Body/Fault');
-
-        if ($fault === null) {
-            return null;
-        }
-
-        $text = XmlQuery::first($xpath, 'faultstring', $fault)
-            ?? XmlQuery::first($xpath, 'Reason/Text', $fault);
-
-        return $text === null ? '' : $this->condense($text->textContent);
-    }
-
-    /**
-     * Texto do fisco, do mesmo jeito que `FailedEntry::reason` é uma frase
-     * fixa: cabe numa linha de log. O serviço escreve sobre o pedido que
-     * recebeu, e o pedido não tem nada que este módulo não registre em outro
-     * lugar — mas o tamanho da resposta não pode ser o tamanho do registro, e um
-     * `faultstring` longo é o caso comum de serviço em manutenção.
-     */
-    private function condense(string $text): string
-    {
-        $condensed = trim(preg_replace('/\s+/', ' ', $text) ?? '');
-
-        return mb_strlen($condensed) > self::FAULT_TEXT_LIMIT
-            ? mb_substr($condensed, 0, self::FAULT_TEXT_LIMIT).'…'
-            : $condensed;
-    }
-
-    /**
-     * O XSD valida o payload, não o envelope SOAP que o embrulha, e o payload
-     * sai daqui pelo mesmo caminho de nome local que os dois parsers do módulo
-     * usam — a posição da substring não é um contrato.
-     */
-    private function payloadOf(string $body): string
-    {
-        $dom = new DOMDocument;
-        $dom->preserveWhiteSpace = false;
-
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadXML($body);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (! $loaded) {
-            throw new RuntimeException('O envelope montado não é um XML legível.');
-        }
-
-        $payload = XmlQuery::first(new DOMXPath($dom), 'distDFeInt');
-
-        if ($payload === null) {
-            throw new RuntimeException('Envelope sem payload distDFeInt.');
-        }
-
-        // `saveXML` com um nó deste documento não falha; e se falhasse, o
-        // validador rejeita o que vier logo abaixo com erro nomeado.
-        return $dom->saveXML($payload);
-    }
-
-    /**
-     * Sem certificado não há mTLS, e mTLS é a autenticação: o serviço nunca
-     * chega a ver a consulta. A recusa é um erro comum, e não uma
-     * `FiscalException`, porque a taxonomia descreve o que o *serviço*
-     * respondeu e aqui ninguém perguntou nada. Quem decide se o cliente é
-     * capturável é a captura, antes de chamar o conector.
-     *
-     * É `FiscalRequestNotSent` e não `RuntimeException` porque essa diferença
-     * é o que impede a reconciliação de cobrar uma tentativa de uma consulta que
-     * não chegou a existir.
-     */
-    private function certificateOf(Client $client): ClientCertificate
-    {
-        $certificate = $client->currentCertificate;
-
-        if ($certificate === null) {
-            throw new FiscalRequestNotSent('Cliente sem certificado A1 vigente.');
-        }
-
-        return $certificate;
-    }
-
-    /**
      * A UF que não está na tabela é defeito de cadastro, e a consulta também não
      * sai por causa disso — a classe é a da família, com nome próprio para que o
      * log diga qual das duas recusas aconteceu.
@@ -692,14 +387,6 @@ final class NfeDistributionConnector implements FiscalConnector
         }
 
         return $endpoints[$this->source()->value];
-    }
-
-    /**
-     * @param  array<string, string>  $endpoint
-     */
-    private function contentTypeOf(array $endpoint): string
-    {
-        return 'application/soap+xml; charset=utf-8; action="'.$endpoint['soap_action'].'"';
     }
 
     private function blockUntil(): CarbonImmutable

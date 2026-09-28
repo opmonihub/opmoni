@@ -16,11 +16,9 @@ use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
-use App\Services\Fiscal\Support\ClientCertificateMaterializer;
-use App\Services\Fiscal\Support\DfeResponseParser;
+use App\Services\Fiscal\Support\DfeEntryCollector;
 use App\Services\Fiscal\Support\DfeSoapEnvelope;
-use App\Services\Fiscal\Support\DocZipDecoder;
-use App\Services\Fiscal\Support\FiscalXmlMetadata;
+use App\Services\Fiscal\Support\DfeTransport;
 use App\Services\Fiscal\Support\FiscalXmlValidator;
 use App\Services\Fiscal\Support\XmlQuery;
 use DOMDocument;
@@ -100,6 +98,67 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame(200, $result->maxNsu);
         $this->assertNull($result->blockedUntil);
         $this->assertFalse($result->more);
+    }
+
+    /**
+     * O contrato do lote íntegro, escrito de uma vez: a fonte, o documento
+     * parseado, a posição e a requisição. É o teste que fecha a extração da
+     * mecânica compartilhada — se um campo, uma posição ou um cabeçalho mudar
+     * no caminho, é aqui que muda.
+     */
+    public function test_o_lote_integro_entrega_documento_posicao_e_acao_soap_da_nfe(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertSame(FiscalSource::NfeDistribuicao, $this->connector()->source());
+
+        $this->assertCount(1, $result->documents);
+
+        $document = $result->documents[0];
+
+        $this->assertSame(FiscalModel::Nfe, $document->model);
+        $this->assertSame(FiscalKind::Document, $document->kind);
+        $this->assertSame(FiscalStage::Summary, $document->stage);
+        $this->assertSame(self::CHAVE, $document->chave);
+        $this->assertSame('', $document->eventId);
+        $this->assertSame('99999999999999', $document->emitenteCnpj);
+        $this->assertNull($document->destinatarioCnpj);
+        $this->assertSame('710.00', $document->valorTotal);
+        $this->assertSame('i2rqNaD6rqmCfhXHyTBf4xe1ImQ=', $document->digVal);
+        $this->assertSame(200, $document->nsu);
+        $this->assertSame('resNFe_v1.01.xsd', $document->schema);
+        $this->assertSame('2022-04-04T11:54:49-03:00', $document->emissaoAt?->toIso8601String());
+        $this->assertNull($document->eventoOcorridoEmAt);
+        $this->assertStringContainsString('<chNFe>'.self::CHAVE.'</chNFe>', $document->xml);
+
+        // A posição é a que a resposta devolveu, e o lote inteiro autoriza
+        // adotá-la: `lastNsu` é 200 e não 201, e nada sobrou para recusar.
+        $this->assertSame(200, $result->lastNsu);
+        $this->assertSame(200, $result->maxNsu);
+        $this->assertTrue($result->mayAdoptPosition);
+        $this->assertSame([], $result->failures);
+        $this->assertNull($result->blockedUntil);
+        $this->assertNull($result->failure);
+        $this->assertFalse($result->more);
+
+        Http::assertSent(function (Request $request): bool {
+            // A ação SOAP viaja no `Content-Type`, e é ela que diz a qual
+            // serviço a consulta foi dirigida.
+            $this->assertSame(
+                'application/soap+xml; charset=utf-8; action="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse"',
+                $request->header('Content-Type')[0]
+            );
+
+            // E a posição pedida vai com quinze dígitos, sem nenhuma soma.
+            $this->assertStringContainsString('<ultNSU>'.str_pad('0', 15, '0', STR_PAD_LEFT).'</ultNSU>', $request->body());
+            $this->assertStringNotContainsString('<ultNSU>000000000000001</ultNSU>', $request->body());
+
+            return true;
+        });
     }
 
     public function test_a_posicao_viaia_com_quinze_digitos_e_nunca_e_incrementada(): void
@@ -326,6 +385,50 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertCount(1, $result->failures);
         $this->assertSame('resCTe_v1.00.xsd', $result->failures[0]->schema);
         $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $result->failures[0]->reason);
+    }
+
+    /**
+     * O contrato do lote com recusa: a entrada que não vira documento é
+     * registrada com a frase da etapa que a recusou, a posição não é adotada e
+     * a posição devolvida continua sendo a da resposta. É a segunda metade do
+     * contrato acima, e a que a extração da coleta de entradas não pode mudar
+     * em silêncio.
+     */
+    public function test_uma_entrada_que_nao_vira_documento_e_registrada_sem_adotar_a_posicao(): void
+    {
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            $this->docZip(298, $this->resNFe()),
+            // Base64 que não é nenhum dos três containers aceitos: nem ZIP, nem
+            // gZip, nem zlib.
+            $this->docZipPayload(299, base64_encode('isto nao e um container comprimido')),
+            $this->docZip(300, $this->resNFe()),
+            // Chave com dígito verificador inválido: o payload abre, e é a
+            // extração de metadados que recusa.
+            $this->docZip(301, $this->resNFe('35220499999999999999550010020000001240556603')),
+        ]), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        // As duas entradas boas em volta das duas recusadas continuam legíveis:
+        // uma posição ilegível é um buraco a reconciliar, não o fim da fila.
+        $this->assertSame([298, 300], array_column($result->documents, 'nsu'));
+
+        // Cada recusa nomeia a etapa que recusou, e a frase é a mesma em
+        // qualquer conector: é o que o painel mostra e o que o log registra.
+        $this->assertCount(2, $result->failures);
+        $this->assertSame([299, 301], array_column($result->failures, 'nsu'));
+        $this->assertSame('resNFe_v1.01.xsd', $result->failures[0]->schema);
+        $this->assertSame('DocZipDecoder não decodificou o payload comprimido.', $result->failures[0]->reason);
+        $this->assertSame('resNFe_v1.01.xsd', $result->failures[1]->schema);
+        $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $result->failures[1]->reason);
+
+        // A posição devolvida é a da resposta, e ela não é adotada: avançar
+        // depois de uma entrada recusada perderia documento em silêncio na
+        // consulta seguinte.
+        $this->assertSame(300, $result->lastNsu);
+        $this->assertFalse($result->mayAdoptPosition);
     }
 
     public function test_a_requisicao_nao_carrega_assinatura(): void
@@ -823,11 +926,8 @@ class NfeDistributionConnectorTest extends TestCase
     {
         return new NfeDistributionConnector(
             resolve(DfeSoapEnvelope::class),
-            resolve(DfeResponseParser::class),
-            resolve(DocZipDecoder::class),
-            resolve(FiscalXmlMetadata::class),
-            resolve(FiscalXmlValidator::class),
-            resolve(ClientCertificateMaterializer::class),
+            resolve(DfeTransport::class),
+            resolve(DfeEntryCollector::class),
             resolve(FiscalLookupBudget::class),
         );
     }
