@@ -291,16 +291,17 @@ final class FiscalCaptureService
      * vez que foi tentada, porque é o histórico do que o fisco respondeu. Mas
      * ela não segura mais a posição do cliente: a spec manda parar depois da
      * contagem configurada, e parar de consultar não pode virar parar de
-     * capturar — senão um "não há documento nesta posição" dito três vezes
-     * deixaria o cliente travado na mesma janela para sempre, sem nenhum
-     * documento a perder. A posição é imutável e cresce, então a resposta não
-     * muda com o tempo.
+     * capturar. A posição é imutável e cresce, então a resposta não muda com o
+     * tempo.
      *
-     * O teto de `fiscal.batch_limit` limita as linhas gravadas, não a conta. A
-     * conta é o número de posições que o serviço entregou e que não entraram, e
-     * é ela que segura a posição do cliente: um lote não traz mais entradas do
-     * que o tamanho do lote, então o teto não morde, e se morresse o corte seria
-     * do registro de recuperação, nunca da integridade do cursor.
+     * **Não há teto de lacunas por lote.** Havia um, e ele existia para conter
+     * as posições que a varredura de sequência fabricava — perigo que a regra de
+     * cima eliminou. Sobrou um teto sem nada para segurar, e ele fazia o
+     * contrário do que o nome sugere: uma posição pendente sem linha não tem
+     * como esgotar as tentativas, porque esgotar é propriedade da linha, e uma
+     * posição sem linha é um travamento que nenhuma liberação apaga. O número
+     * de posições que entram aqui é o que o serviço entregou, e ele é
+     * limitado por aquilo que o serviço entregou.
      *
      * @param  list<int>  $nsus  posições que o serviço entregou e que não viraram documento
      * @return int quantas delas continuam pendentes de reconciliação
@@ -313,21 +314,20 @@ final class FiscalCaptureService
             return 0;
         }
 
-        // Uma consulta por lote, e não uma por entrada: a lista de posições que
-        // já esgotaram as tentativas é do cliente e da fonte, e resolver isso
-        // aqui deixa a conta decideda antes de percorrer as entradas. O `intval`
-        // é o que garante a comparação estrita adiante: `bigint` volta do
-        // Postgres como string em geral, e "101" !== 101 silenciosamente
-        // contaria uma lacuna esgotada como pendente.
+        // Uma consulta por lote, e não uma por entrada. O `whereIn` é o que
+        // mantém a leitura no tamanho do lote: as linhas esgotadas do cliente
+        // nunca são apagadas, e carregar todas para cruzar em PHP faria a
+        // consulta crescer com o histórico inteiro. O `intval` é o que garante a
+        // comparação estrita adiante: `bigint` volta do Postgres como string em
+        // geral, e "101" !== 101 contaria uma lacuna esgotada como pendente.
         $esgotadas = FiscalGap::query()
             ->forClientSource($client, $source)
             ->where('attempts', '>=', (int) config('fiscal.reconcile_max_attempts', 3))
+            ->whereIn('nsu', $nsus)
             ->pluck('nsu')
             ->map(fn ($nsu): int => (int) $nsu)
             ->all();
 
-        $cap = (int) config('fiscal.batch_limit', 50);
-        $gravadas = 0;
         $pendentes = 0;
 
         foreach ($nsus as $nsu) {
@@ -338,11 +338,7 @@ final class FiscalCaptureService
             }
 
             $pendentes++;
-
-            if ($gravadas < $cap) {
-                $this->recordGap($client, $source, $nsu);
-                $gravadas++;
-            }
+            $this->recordGap($client, $source, $nsu);
         }
 
         return $pendentes;
