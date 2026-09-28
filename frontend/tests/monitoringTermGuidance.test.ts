@@ -5,6 +5,7 @@ import {
   serproCertificateAsk,
   serproCertificateMissingNotice,
   serproCertificateRemoval,
+  serproCertificateRemovalText,
   serproCertificateReplacement,
   serproTermGuidance,
   serproTermRequest,
@@ -20,16 +21,29 @@ import type { SerproAuthorizationTermState } from '../app/types/serpro.ts'
  * novamente" passaria com "assine o termo de novo", "reassine o documento",
  * "é preciso assinar o termo" e "a assinatura tem de ser manual" — que são o
  * mesmo defeito com outras palavras, e reformular é exatamente o que acontece
- * quando alguém reescreve a frase. O padrão pega as formas verbais (`assine`,
- * `assinar`, `reassine`, `reassinar`, `assando`, `assinaram`) e as duas maneiras
- * de dizer "sem a plataforma" — "à mão" e "manualmente".
+ * quando alguém reescreve a frase.
+ *
+ * **As três families, e o que cada uma deixa passar.** A lista cobre as formas
+ * verbais do verbo (`assine`, `assinar`, `reassine`, `reassinar`, `assando`,
+ * `assinaram`, `assinei`), as duas maneiras de dizer "sem a plataforma" ("à
+ * mão", "manualmente") e o substantivo **quando ele vem como pedido** — "precisa
+ * de assinatura digital do escritório" é o mesmo defeito dito com substantivo.
+ * O substantivo sozinho não é defeito: "Assinatura digital: feita pela
+ * plataforma" é a verdade do produto, e o último caso deste arquivo prova que
+ * ela passa.
  *
  * **O que ele não pega é "a plataforma assina", e essa exclusão é o motivo de a
  * lista ser de formas verbais e não de `assin\w+`.** A assinatura acontece — pelo
  * backend, com o e-CNPJ que o escritório entregou — e uma frase honesta pode
  * dizer isso; o defeito é pedir a alguém, não nomear o ato.
  */
-const pedidoDeAssinatura = /\b(?:re)?assin(?:e|ar|ou|ando|aram|amento|ou-se)\b|à mão|manualmente/i
+const pedidoDeAssinatura = new RegExp([
+  /\b(?:re)?assin(?:e|ei|i|ar|ou|ando|aram|amento|ou-se)\b/.source,
+  '|à mão',
+  '|manualmente',
+  '|',
+  /(?:\b(?:precisa|precisam|precisar|exige|exigem|pede|pedem|requer|requerem|necessita|necessitam)\s+(?:d[eoa]\s+)?(?:uma\s+)?assinatura)/i.source
+].join(''), 'i')
 
 /** O e-CNPJ entregue, que é a segunda leitura da tela e vale para qualquer estado. */
 const COM_CERTIFICADO = true
@@ -44,12 +58,19 @@ describe('o que a tela do termo pede ao escritório', () => {
     // disparada pelo upload, e sem upload não há o que assinar. O pedido é do
     // certificado — nunca do termo, que ninguém da conta assina.
     assert.equal(serproTermRequest('ausente', SEM_CERTIFICADO), 'certificado')
-    assert.match(serproTermGuidance.ausente, /certificado/i)
 
     const ask = serproCertificateAsk('ausente', SEM_CERTIFICADO)
     assert.ok(ask, 'o estado ausente sem certificado tem de ter o que pedir')
     assert.match(ask.title, /certificado/i)
     assert.doesNotMatch(`${ask.title} ${ask.description} ${ask.label}`, pedidoDeAssinatura)
+  })
+
+  it('o texto do termo ausente sem certificado não diz que nada está sendo pedido', () => {
+    // O oposto do caso de baixo: aqui a conta **não** entregou nada e a
+    // plataforma está esperando o e-CNPJ. Dizer "nada está sendo pedido" aqui
+    // seria a frase de quem já entregado aplicada a quem não entregou.
+    assert.doesNotMatch(serproTermGuidance('ausente', SEM_CERTIFICADO), /nada está sendo pedido|não há nada a fazer/i)
+    assert.match(serproTermGuidance('ausente', SEM_CERTIFICADO), /plataforma/i)
   })
 
   it('um termo ausente com certificado já entregue não pede nada ao escritório', () => {
@@ -64,6 +85,37 @@ describe('o que a tela do termo pede ao escritório', () => {
     assert.equal(serproCertificateAsk('ausente', COM_CERTIFICADO), null)
   })
 
+  it('o texto do termo ausente com certificado diz quem tem o termo e que nada é pedido', () => {
+    // **Este é o estado em que todo escritório real está hoje**, porque o gate de
+    // emissão está fechado: o e-CNPJ foi entregue, o termo não existe, e a única
+    // ação possível é nenhuma. O texto precisa dizer as duas coisas — o
+    // certificado está com a plataforma e nada está sendo pedido — porque um
+    // badge de aviso sozinho lê como defeito do escritório.
+    const guidance = serproTermGuidance('ausente', COM_CERTIFICADO)
+
+    assert.match(guidance, /certificado/i)
+    assert.match(guidance, /plataforma/i)
+    assert.match(guidance, /nada está sendo pedido|não há nada a fazer/i)
+  })
+
+  it('o texto do termo pendente sem certificado não afirma que o e-CNPJ foi entregue', () => {
+    // **A remoção produz este par**: o botão de remoção aparece sempre que há
+    // certificado, sem filtro de estado, e `serproTermRequest('pendente', false)`
+    // é `'nenhuma'` — então "pendente sem certificado" é um estado alcançável e
+    // tratado. Dizer que o e-CNPJ "já foi entregue" nesse estado é afirmar o
+    // contrário do que a tela mostra logo acima, onde não há certificado.
+    const guidance = serproTermGuidance('pendente', SEM_CERTIFICADO)
+
+    assert.doesNotMatch(guidance, /e-CNPJ/i)
+    assert.doesNotMatch(guidance, /já foi entregue/i)
+    assert.doesNotMatch(guidance, /já está com a plataforma/i)
+    assert.match(guidance, /não há nada a fazer/i)
+  })
+
+  it('o texto do termo pendente com certificado diz que ele está com a plataforma', () => {
+    assert.match(serproTermGuidance('pendente', COM_CERTIFICADO), /já está com a plataforma/i)
+  })
+
   it('um termo pendente é processo em curso, e não erro nem pedido', () => {
     for (const temCertificado of [COM_CERTIFICADO, SEM_CERTIFICADO]) {
       assert.equal(serproTermRequest('pendente', temCertificado), 'nenhuma')
@@ -72,10 +124,13 @@ describe('o que a tela do termo pede ao escritório', () => {
 
     // A cor é a mesma afirmação que o texto: um estado que não pede nada não
     // aparece em vermelho na tela de um escritório cujo termo está aguardando o
-    // provedor.
+    // provedor. E o rótulo do badge não afirma que alguém está validando o
+    // termo: `pendente` também é o estado em que o envio falhou e ninguém nunca
+    // respondeu, e "Em validação" descreve um trabalho que não está acontecendo.
     assert.equal(serproTermStatePresentation.pendente.color, 'info')
-    assert.match(serproTermGuidance.pendente, /não há nada a fazer/i)
-    assert.doesNotMatch(serproTermGuidance.pendente, pedidoDeAssinatura)
+    assert.doesNotMatch(serproTermStatePresentation.pendente.label, /valida/i)
+    assert.doesNotMatch(serproTermGuidance('pendente', COM_CERTIFICADO), pedidoDeAssinatura)
+    assert.doesNotMatch(serproTermGuidance('pendente', SEM_CERTIFICADO), pedidoDeAssinatura)
   })
 
   it('um termo vencido devolve a ação ao escritório, e o que ele precisa é o certificado', () => {
@@ -88,8 +143,10 @@ describe('o que a tela do termo pede ao escritório', () => {
     assert.equal(serproTermRequest('vencido', COM_CERTIFICADO), 'certificado')
 
     // De quem é a ação, dito no texto da tela e não só na cor do badge.
-    assert.match(serproTermGuidance.vencido, /escritório/i)
-    assert.doesNotMatch(serproTermGuidance.vencido, /nada a fazer|sem nenhuma ação/i)
+    for (const temCertificado of [SEM_CERTIFICADO, COM_CERTIFICADO]) {
+      assert.match(serproTermGuidance('vencido', temCertificado), /escritório/i)
+      assert.doesNotMatch(serproTermGuidance('vencido', temCertificado), /nada a fazer|sem nenhuma ação/i)
+    }
 
     const ask = serproCertificateAsk('vencido', COM_CERTIFICADO)
     assert.ok(ask, 'o termo vencido tem de dizer o que o escritório entrega')
@@ -103,7 +160,7 @@ describe('o que a tela do termo pede ao escritório', () => {
     // ele não pode fazer.
     assert.equal(serproTermRequest('recusado', SEM_CERTIFICADO), 'certificado')
     assert.equal(serproTermRequest('recusado', COM_CERTIFICADO), 'certificado')
-    assert.match(serproTermGuidance.recusado, /escritório/i)
+    assert.match(serproTermGuidance('recusado', COM_CERTIFICADO), /escritório/i)
 
     const ask = serproCertificateAsk('recusado', COM_CERTIFICADO)
     assert.ok(ask, 'o termo recusado tem de dizer o que o escritório entrega')
@@ -113,30 +170,49 @@ describe('o que a tela do termo pede ao escritório', () => {
   it('termo válido não pede nova assinatura ao Account', () => {
     // A frase do plano, e o padrão largo logo abaixo: o `assert` do roteiro casa
     // com um defeito específico, e a linha seguinte cobre os outros.
-    assert.doesNotMatch(serproTermGuidance.autenticado, /assine novamente/i)
+    assert.doesNotMatch(serproTermGuidance('autenticado', COM_CERTIFICADO), /assine novamente/i)
 
     for (const estado of ['pendente', 'validado', 'autenticado'] as const) {
       assert.equal(serproTermRequest(estado, COM_CERTIFICADO), 'nenhuma')
       assert.equal(serproTermRequest(estado, SEM_CERTIFICADO), 'nenhuma')
       assert.equal(serproCertificateAsk(estado, COM_CERTIFICADO), null)
-      assert.doesNotMatch(serproTermGuidance[estado], pedidoDeAssinatura)
+      for (const temCertificado of [COM_CERTIFICADO, SEM_CERTIFICADO]) {
+        assert.doesNotMatch(serproTermGuidance(estado, temCertificado), pedidoDeAssinatura)
+      }
     }
+  })
+
+  it('o termo validado é distinguido do autenticado pelo token, e não só pela cor', () => {
+    // **A spec separa os dois estados, e a distinção é o token.** `validado` é o
+    // provedor ter aceitado o documento sem devolver token que valha — sem token,
+    // ou sem a validade dele — e `authorizesGateway()` só aceita `validado` e
+    // `autenticado` com token em uso. As duas palavras eram idênticas na tela, e
+    // a diferença que importa (a integração fala ou não com o provedor) não
+    // aparecia em lugar nenhum.
+    const validado = serproTermGuidance('validado', COM_CERTIFICADO)
+    const autenticado = serproTermGuidance('autenticado', COM_CERTIFICADO)
+
+    assert.notEqual(validado, autenticado)
+    assert.match(validado, /token/i)
+    assert.match(validado, /plataforma/i)
+    assert.match(autenticado, /autoriz/i)
   })
 
   it('um termo validado ou autenticado não pede certificado, e diz quem renova', () => {
     // A tela que diz "nada a fazer" precisa dizer de quem é a renovação, ou o
     // escritório não sabe se pode esquecer do assunto.
     for (const estado of ['validado', 'autenticado'] as const) {
-      assert.match(serproTermGuidance[estado], /plataforma/i)
-      assert.doesNotMatch(serproTermGuidance[estado], /certificado/i)
+      assert.match(serproTermGuidance(estado, COM_CERTIFICADO), /plataforma/i)
+      assert.doesNotMatch(serproTermGuidance(estado, COM_CERTIFICADO), /certificado/i)
     }
   })
 
-  it('todo estado tem guidance e o pedido nunca discorda do que ele diz', () => {
+  it('todo estado tem guidance nos dois pares, e nenhum deles discorda do pedido', () => {
     for (const estado of ESTADOS) {
-      assert.ok(serproTermGuidance[estado].length > 0, `${estado} não tem guidance`)
-
       for (const temCertificado of [SEM_CERTIFICADO, COM_CERTIFICADO]) {
+        const guidance = serproTermGuidance(estado, temCertificado)
+        assert.ok(guidance.length > 0, `${estado}/${temCertificado} não tem guidance`)
+
         const pedido = serproTermRequest(estado, temCertificado)
         const ask = serproCertificateAsk(estado, temCertificado)
 
@@ -148,42 +224,82 @@ describe('o que a tela do termo pede ao escritório', () => {
           assert.ok(ask.title.length > 0 && ask.description.length > 0 && ask.label.length > 0)
           assert.doesNotMatch(`${ask.title} ${ask.description} ${ask.label}`, pedidoDeAssinatura)
         }
+
+        // O texto do certificado gravado só entra no texto do termo quando o
+        // certificado está gravado, e nunca o contrário.
+        if (temCertificado && guidance.includes('já está com a plataforma')) {
+          assert.notEqual(estado, 'validado')
+          assert.notEqual(estado, 'autenticado')
+        }
       }
     }
   })
 })
 
 describe('o cartão do certificado sem e-CNPJ guardado', () => {
-  it('sem termo nenhum, o texto é o de quem ainda não entregou nada', () => {
-    const notice = serproCertificateMissingNotice('ausente')
-
-    assert.match(notice.title, /certificado/i)
-    assert.match(notice.description, /e-CNPJ/i)
-    // Ainda não existe termo, e a consequência que é verdadeira aqui é a única
-    // que este texto pode afirmar: a integração não chega ao provedor. O outro
-    // texto diz o contrário, porque com o termo assinado ela chega.
-    assert.match(notice.description, /não fala com o provedor/i)
-    assert.doesNotMatch(`${notice.title} ${notice.description}`, pedidoDeAssinatura)
-  })
-
-  it('com termo assinado e certificado removido, o texto não chama isso de integração quebrada', () => {
-    // **A remoção não revoga o termo.** `refresh()` reenvia o documento
-    // guardado e não recebe certificado nenhum, e `validToken()` serve o token
-    // enquanto ele valer: o que se perde é a emissão de um termo novo, e nada
-    // mais. Um texto que dissesse que a integração parou seria uma afirmação
-    // falsa sobre um escritório cujo termo continua valendo — e foi por isso que
-    // a confirmação da remoção promete exatamente o que acontece.
-    for (const estado of ['pendente', 'validado', 'autenticado'] as const) {
-      const notice = serproCertificateMissingNotice(estado)
-
-      assert.match(notice.description, /termo novo/i)
-      assert.doesNotMatch(notice.description, /não fala com o provedor|não tem com o que/i)
-      assert.doesNotMatch(`${notice.title} ${notice.description}`, pedidoDeAssinatura)
+  it('a nota some quando há certificado guardado', () => {
+    // A função devolve `null` em vez de um texto: com o e-CNPJ gravado não há
+    // "certificado que falta" para dizer, e uma nota de ausência aqui mostraria
+    // ao escritório uma falta que não existe.
+    for (const estado of ESTADOS) {
+      assert.equal(serproCertificateMissingNotice(estado, COM_CERTIFICADO), null, `${estado} com certificado`)
     }
   })
 
-  it('os dois textos são distintos, porque a situação é', () => {
-    assert.notEqual(serproCertificateMissingNotice('ausente').description, serproCertificateMissingNotice('validado').description)
+  it('a nota é do pedido quando o escritório tem algo a entregar', () => {
+    // `ausente`, `vencido` e `recusado` sem certificado são pedido de entrega, e
+    // quem fala nesses três é o `ask` — com o texto que diz o que entregar e o
+    // que a plataforma faz depois. A nota de "certificates removido" não entra
+    // aí, e o seu texto sobre termo assinado seria falso em `vencido`.
+    for (const estado of ['ausente', 'vencido', 'recusado'] as const) {
+      assert.equal(serproCertificateMissingNotice(estado, SEM_CERTIFICADO), null, estado)
+    }
+  })
+
+  it('a consequência de não ter certificado mora no texto do pedido, não numa nota morta', () => {
+    // Uma conta sem certificado e sem termo é o caso do `ask`, e é o único texto
+    // que ela lê. A consequência — sem termo não há conversa com o provedor —
+    // precisa estar **nesse** texto: a nota de "certificado removido" devolveria
+    // `null` aqui, e o que se perderia é a informação de que a integração está
+    // parada, não a de que falta o certificado.
+    const ask = serproCertificateAsk('ausente', SEM_CERTIFICADO)
+
+    assert.ok(ask)
+    assert.match(ask.description, /não fala com o provedor/i)
+    assert.doesNotMatch(`${ask.title} ${ask.description} ${ask.label}`, pedidoDeAssinatura)
+  })
+
+  it('com termo pendente e certificado removido, o texto não diz que o termo continua valendo', () => {
+    // **O que é falso aqui é "continua valendo", não "está assinado".** Um termo
+    // `pendente` tem o documento assinado e gravado — `SerproTermManager::guardar()`
+    // grava o XML e o estado `Pendente` na mesma escrita, e é por isso que
+    // `document_present` é verdadeiro — mas `authorizesGateway()` só aceita
+    // `validado` e `autenticado`: ele não autoriza nenhuma chamada. A nota dizia
+    // que ele continuava valendo, e é isso que a tela não pode afirmar.
+    const notice = serproCertificateMissingNotice('pendente', SEM_CERTIFICADO)
+
+    assert.doesNotMatch(notice.description, /continua valendo/i)
+    assert.doesNotMatch(notice.description, /não fala com o provedor|não tem com o que/i)
+    assert.match(notice.description, /ainda não respondeu|aguardando/i)
+    assert.match(notice.description, /termo novo/i)
+    assert.doesNotMatch(`${notice.title} ${notice.description}`, pedidoDeAssinatura)
+  })
+
+  it('com termo validado e certificado removido, o texto diz que ele continua valendo', () => {
+    // O contrário do caso de cima, e a diferença entre os dois textos é o que
+    // prova que nenhum deles é uma frase única jogada nos dois lugares.
+    const notice = serproCertificateMissingNotice('validado', SEM_CERTIFICADO)
+
+    assert.match(notice.description, /continua valendo/i)
+    assert.doesNotMatch(notice.description, /não fala com o provedor|não tem com o que/i)
+    assert.doesNotMatch(`${notice.title} ${notice.description}`, pedidoDeAssinatura)
+  })
+
+  it('as notas de pendente e de validado não são a mesma frase', () => {
+    const pendente = serproCertificateMissingNotice('pendente', SEM_CERTIFICADO)
+    const validado = serproCertificateMissingNotice('validado', SEM_CERTIFICADO)
+
+    assert.notEqual(pendente.description, validado.description)
   })
 
   it('sem certificado guardado, o botão nunca promete substituir', () => {
@@ -191,7 +307,8 @@ describe('o cartão do certificado sem e-CNPJ guardado', () => {
     // que diz o que o botão diz: nesta conta não há certificado nenhum, e
     // "substituir" seria uma afirmação falsa sobre o que está gravado.
     for (const estado of ESTADOS) {
-      const notice = serproCertificateMissingNotice(estado)
+      const notice = serproCertificateMissingNotice(estado, SEM_CERTIFICADO)
+      if (!notice) continue
       assert.match(notice.label, /entregar/i)
       assert.doesNotMatch(notice.label, /substituir|trocar/i)
     }
@@ -223,11 +340,34 @@ describe('a entrega voluntária e a remoção do certificado', () => {
     // temer um corte de serviço que não existe — e faria a tela mentir sobre a
     // posição dele. O que a remoção tira é o conteúdo cifrado e a emissão de um
     // termo novo.
-    const { title, description } = serproCertificateRemoval
+    const texto = serproCertificateRemovalText('validado', COM_CERTIFICADO)
 
-    assert.match(description, /não revoga o termo/i)
-    assert.doesNotMatch(description, /integração para|interrompe|derruba/i)
-    assert.doesNotMatch(`${title} ${description}`, pedidoDeAssinatura)
+    assert.match(texto, /não revoga o termo/i)
+    assert.doesNotMatch(texto, /integração para|interrompe|derruba/i)
+    assert.doesNotMatch(`${serproCertificateRemoval.title} ${texto}`, pedidoDeAssinatura)
+  })
+
+  it('a confirmação da remoção sem termo assinado não fala de documento assinado', () => {
+    // **O botão de remover aparece sempre que há certificado, sem filtro de
+    // estado** — e o gate de emissão fechado significa que "há certificado e não
+    // há termo" é o estado mais comum que existe. Dizer ali que "o documento já
+    // assinado continua gravado" descreve um documento que ninguém tem.
+    const texto = serproCertificateRemovalText('ausente', COM_CERTIFICADO)
+
+    assert.doesNotMatch(texto, /não revoga o termo/i)
+    assert.doesNotMatch(texto, /documento já assinado|continua sendo enviado/i)
+    assert.match(texto, /ainda não há termo/i)
+    assert.doesNotMatch(texto, pedidoDeAssinatura)
+  })
+
+  it('a confirmação da remoção sem certificado nenhum não promete apagar nada', () => {
+    // O par completo: sem certificado, `AccountCertificateVault::remove()` não
+    // encontra linha e devolve `204` sem apagar nada. Dizer que o conteúdo foi
+    // apagado seria afirmar sobre um certificado que não existe.
+    const texto = serproCertificateRemovalText('ausente', SEM_CERTIFICADO)
+
+    assert.doesNotMatch(texto, /é apagado/i)
+    assert.match(texto, /nada a remover|não há o que remover/i)
   })
 })
 
@@ -238,17 +378,23 @@ describe('o guarda de "ninguém assina"', () => {
     // é o mesmo que não ter guarda.
     assert.match('Assine o termo novamente', pedidoDeAssinatura)
     assert.match('Assine o termo de novo', pedidoDeAssinatura)
+    assert.match('Assinei o termo de novo', pedidoDeAssinatura)
     assert.match('É preciso reassinar o documento', pedidoDeAssinatura)
     assert.match('O escritório precisa assinar o termo', pedidoDeAssinatura)
     assert.match('A assinatura tem de ser feita manualmente', pedidoDeAssinatura)
     assert.match('O termo precisa ser assinado à mão', pedidoDeAssinatura)
     assert.match('Reenvie o e-CNPJ para a plataforma assinar de novo', pedidoDeAssinatura)
+    // O substantivo como pedido: a mesma frase, dita com substantivo.
+    assert.match('O escritório precisa de assinatura digital do escritório', pedidoDeAssinatura)
+    assert.match('Esta tela exige uma assinatura digital do escritório', pedidoDeAssinatura)
   })
 
   it('o padrão deixa passar a assinatura que é da plataforma', () => {
     // A assinatura acontece — com o e-CNPJ do escritório, pelo backend — e uma
-    // frase honesta pode dizer isso. O defeito é pedir a alguém.
+    // frase honesta pode dizer isso. O defeito é pedir a alguém, e é por isso que
+    // o substantivo só entra no padrão acompanhado de um verbo de exigência.
     assert.doesNotMatch('A plataforma assina e renova o termo sozinha', pedidoDeAssinatura)
     assert.doesNotMatch('O e-CNPJ do escritório assina o termo de autorização', pedidoDeAssinatura)
+    assert.doesNotMatch('Assinatura digital: feita pela plataforma, com o e-CNPJ do escritório', pedidoDeAssinatura)
   })
 })

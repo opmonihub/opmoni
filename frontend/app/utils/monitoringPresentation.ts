@@ -173,7 +173,15 @@ export const serproRunItemStatePresentation: Record<SerproRunItemState, { label:
 
 export const serproTermStatePresentation: Record<SerproAuthorizationTermState, { label: string, color: Tone, icon: string }> = {
   ausente: { label: 'Termo não emitido', color: 'warning', icon: 'i-lucide-file-x' },
-  pendente: { label: 'Em validação', color: 'info', icon: 'i-lucide-clock' },
+  /*
+   * `Aguardando o provedor`, e não "Em validação": `pendente` é gravado antes do
+   * envio e continua valendo quando o envio falha, e nesse caso ninguém está
+   * validando nada — é o mesmo estado, com o provedor calado. Um rótulo que
+   * descreve um trabalho em andamento afirma uma atividade que o backend não
+   * relata, e o texto do estado, logo abaixo, é quem diz o que está de fato
+   * acontecendo.
+   */
+  pendente: { label: 'Aguardando o provedor', color: 'info', icon: 'i-lucide-clock' },
   validado: { label: 'Validado', color: 'success', icon: 'i-lucide-circle-check' },
   autenticado: { label: 'Autenticado', color: 'success', icon: 'i-lucide-shield-check' },
   vencido: { label: 'Vencido', color: 'error', icon: 'i-lucide-circle-alert' },
@@ -188,12 +196,12 @@ export const serproTermStatePresentation: Record<SerproAuthorizationTermState, {
 export type SerproTermRequest = 'nenhuma' | 'certificado'
 
 /**
- * What the office is expected to do about a term in each state. The wording
- * lives here rather than in a template because it is state-conditional and a
- * single sentence that is true for a valid term is false for an expired one:
- * `tasks.md` 4.11 makes renewal the office's own action when the term lapses,
- * so a page that says "nothing to do" above an expired badge is telling the
- * office something false about its own position.
+ * What the state alone says, and it is what the screen shows above every
+ * certificate delivery form. The wording lives here rather than in a template
+ * because it is state-conditional and a single sentence that is true for a valid
+ * term is false for an expired one: `tasks.md` 4.11 makes renewal the office's own
+ * action when the term lapses, so a page that says "nothing to do" above an
+ * expired badge is telling the office something false about its own position.
  *
  * **No state here asks anyone to sign.** The office delivers its e-CNPJ once and
  * that is the whole of its participation: the signature is the platform's, made
@@ -203,20 +211,57 @@ export type SerproTermRequest = 'nenhuma' | 'certificado'
  * `tests/monitoringTermGuidance.test.ts` fails the record if one appears under
  * any reword.
  *
- * **`ausente` is worded to stay true with or without a stored certificate.** The
- * sentence says what the term *is* and where the signing material comes from; the
- * request itself is `serproTermRequest` below, which knows whether the office has
- * already handed the certificate over. A sentence here that said "deliver your
- * certificate" would be a lie on the screen of an office that already delivered
- * it and is waiting on a gate this product has not opened yet.
+ * **Every sentence here is true whether or not the certificate is on file.** The
+ * pair-dependent half is `serproTermComCertificado` below, and a sentence that
+ * mentioned the certificate here would be a lie on the screen of an office that
+ * had just removed it — which is a state the product produces itself, with its
+ * own remove button and no state gate on it.
  */
-export const serproTermGuidance: Record<SerproAuthorizationTermState, string> = {
-  ausente: 'O escritório ainda não tem termo. Quem o emite é a plataforma, a partir do certificado digital (e-CNPJ) que o escritório entrega uma vez.',
-  pendente: 'O e-CNPJ já foi entregue e o termo está com a plataforma, aguardando o provedor. Não há nada a fazer.',
-  validado: 'O termo vale e a renovação é feita pela plataforma, sem nenhuma ação do escritório.',
-  autenticado: 'O termo vale e a renovação é feita pela plataforma, sem nenhuma ação do escritório.',
+const serproTermGuidanceByState: Record<SerproAuthorizationTermState, string> = {
+  ausente: 'O escritório ainda não tem termo, e o termo é emissão da plataforma: o escritório não assina nada.',
+  pendente: 'A resposta do provedor ainda não chegou. Não há nada a fazer.',
+  validado: 'O provedor aceitou o documento do termo, mas o token que autoriza as chamadas do escritório ainda não está disponível. A renovação diária é quem resolve, e é da plataforma: não há nada a fazer.',
+  autenticado: 'O termo está autorizado e a plataforma fala com o provedor em nome do escritório. A renovação é feita sozinha, sem nenhuma ação do escritório.',
   vencido: 'A vigência do termo acabou. Emitir outro é do escritório e depende de um certificado digital vigente — a plataforma não o faz sozinha.',
   recusado: 'O provedor recusou o termo. Para sair disso o escritório precisa entregar um certificado digital vigente, e a plataforma emite outro.'
+}
+
+/**
+ * The one sentence that only exists when the e-CNPJ is on file, and `null` in the
+ * four states where the state sentence already says everything that is true.
+ *
+ * **`ausente` is the one that matters today.** With the issuance gate closed,
+ * every office that delivered its certificate reads back as `ausente` with the
+ * certificate stored, and without this line that office sees a warning-coloured
+ * "Termo não emitido" badge with nothing that says the certificate is already
+ * with us and nothing is being asked — the reading that turns a product fact into
+ * an office's homework. `pendente` gets the short version, and it is the only
+ * other state where the stored certificate changes what the term card should say.
+ */
+const serproTermComCertificado: Record<SerproAuthorizationTermState, string | null> = {
+  ausente: 'O certificado do escritório já está com a plataforma, e nada está sendo pedido ao escritório agora.',
+  pendente: 'O e-CNPJ já está com a plataforma.',
+  validado: null,
+  autenticado: null,
+  vencido: null,
+  recusado: null
+}
+
+/**
+ * The term screen's sentence, for the state **and** whether the e-CNPJ is stored.
+ *
+ * The pair and not the state, because the certificate's presence is what the
+ * removal button changes and what the two reachable `ausente` readings differ by:
+ * an office that never delivered one is waiting for it, and an office that
+ * delivered one and lost the term is not. A function of the state alone has to
+ * pick one of those sentences and be wrong in the other — which is how this
+ * screen came to tell an office that had just removed its certificate that the
+ * e-CNPJ "had already been delivered".
+ */
+export function serproTermGuidance(state: SerproAuthorizationTermState, hasCertificate: boolean): string {
+  const entrega = hasCertificate ? serproTermComCertificado[state] : null
+
+  return entrega ? `${entrega} ${serproTermGuidanceByState[state]}` : serproTermGuidanceByState[state]
 }
 
 /**
@@ -302,7 +347,19 @@ export function serproCertificateAsk(state: SerproAuthorizationTermState, hasCer
   if (!hasCertificate) {
     return {
       title: 'Entregar o certificado do escritório',
-      description: 'É o certificado digital do escritório (e-CNPJ, arquivo .pfx ou .p12) e a senha que o abre, uma única vez. A partir dele a plataforma monta, assina e renova o termo de autorização — e ninguém da conta assina nada.',
+      /*
+       * A consequência entra aqui e não numa nota separada de "certificado
+       * ausente" porque este é o único texto que uma conta sem certificado e sem
+       * termo vai ler: sem ele, a frase anterior diz como entregar e a nova diz o
+       * que a entrega destrava — e o que a conta perde enquanto ela não
+       * acontece.
+       *
+       * A segunda frase **descreve quem emite** e não promete que a emissão
+       * acontece hoje: o gate de emissão está fechado, a API não publica se está
+       * ou não, e uma tela que prometesse um termo emitido estaria mentindo para
+       * todo escritório que entregou o e-CNPJ hoje.
+       */
+      description: 'É o certificado digital do escritório (e-CNPJ, arquivo .pfx ou .p12) e a senha que o abre, uma única vez. A partir dele quem monta, assina e renova o termo de autorização é a plataforma — e ninguém da conta assina nada. Sem ele não há termo, e sem termo a integração não fala com o provedor em nome de nenhum cliente.',
       label: 'Entregar certificado',
       color: 'warning',
       icon: 'i-lucide-upload'
@@ -311,7 +368,7 @@ export function serproCertificateAsk(state: SerproAuthorizationTermState, hasCer
 
   return {
     title: 'Entregar o certificado de novo',
-    description: 'O termo guardado não serve mais para a plataforma: o provedor ou a vigência o encerraram, e nenhum dos dois se resolve com o documento que já está gravado. Reenvie o e-CNPJ — pode ser o mesmo arquivo — e a plataforma assina e envia um termo novo por conta própria.',
+    description: 'O termo guardado não serve mais para a plataforma: o provedor ou a vigência o encerraram, e nenhum dos dois se resolve com o documento que já está gravado. Reenvie o e-CNPJ — pode ser o mesmo arquivo — e é a plataforma que monta e envia o termo novo, sozinha.',
     label: 'Enviar o certificado de novo',
     color: 'warning',
     icon: 'i-lucide-upload'
@@ -319,28 +376,74 @@ export function serproCertificateAsk(state: SerproAuthorizationTermState, hasCer
 }
 
 /**
- * The certificate card's notice when there is no certificate on file and no
- * request to make — which is the office that delivered one, got a term, and then
- * removed the certificate.
+ * Whether the platform holds a signed document for this state, keyed by state and
+ * exhaustive on purpose: it is the fact that decides what the note below is
+ * allowed to talk about, and a state added without an entry here would inherit a
+ * sentence about a document nobody has.
  *
- * **The two wordings exist because the two consequences are different, and only
- * one of them is a broken integration.** Without a term there is nothing to
- * renew and no document to sign, and the provider is unreachable for the whole
- * office. With a term already signed, `refresh()` resubmits the stored document
- * without ever asking for a certificate and `validToken()` serves the token while
- * it lasts: what the office lost is the ability to have a *new* term issued, and
- * nothing else. One sentence covering both would tell an office with a valid term
- * that its integration is down, which is false, and it would also make the
- * removal confirmation — which promises exactly this — look like a lie.
+ * **`pendente` is `true`, and that is the subtle one.** `SerproTermManager::guardar()`
+ * writes the signed XML and the `Pendente` state in the same statement, and it
+ * runs before the submission — which is why `document_present` is true for every
+ * existing term — so a `pendente` term is signed and held by the platform while
+ * the provider has not answered. What it is not is *in force*:
+ * `authorizesGateway()` accepts only `validado` and `autenticado`, so a `pendente`
+ * term authorises no call. A sentence about a `pendente` term that said it
+ * "continued in force" would be the false claim; one that said it was unsigned
+ * would be false too.
  */
-export function serproCertificateMissingNotice(state: SerproAuthorizationTermState): SerproCertificateNotice {
-  if (state === 'ausente') {
+const serproTermDocumentoGravado: Record<SerproAuthorizationTermState, boolean> = {
+  ausente: false,
+  pendente: true,
+  validado: true,
+  autenticado: true,
+  vencido: true,
+  recusado: true
+}
+
+/**
+ * The certificate card's notice when there is no certificate on file and nothing
+ * is being asked about it — which is the office that delivered one, got a term,
+ * and then removed the certificate, a state the product produces itself.
+ *
+ * **`null` in every case where this has no business speaking.** With a
+ * certificate on file there is no missing certificate to describe; and in
+ * `ausente`, `vencido` and `recusado` the office is being asked to deliver one,
+ * which is `serproCertificateAsk`'s text and not this one's. Returning `null`
+ * instead of a sentence is what makes the note impossible to point at a state it
+ * knows nothing true about — `ausente` without a certificate used to get its own
+ * wording here, unreachable behind the `ask` that the card renders first.
+ *
+ * **The two wordings that are left exist because the two consequences are
+ * different, and only one of them is a broken integration.** With a term the
+ * provider has not answered, the platform holds a signed document that
+ * authorises nothing yet; with a term in force, `refresh()` resubmits that
+ * document without ever asking for a certificate and `validToken()` serves the
+ * token while it lasts. What the office lost either way is the ability to have a
+ * *new* term issued, and nothing else. One sentence covering both would tell an
+ * office whose term is still in flight that its term is in force — which is
+ * false, and which is what this function used to say.
+ */
+export function serproCertificateMissingNotice(
+  state: SerproAuthorizationTermState,
+  hasCertificate: boolean
+): SerproCertificateNotice | null {
+  if (hasCertificate) return null
+  if (serproTermRequest(state, hasCertificate) !== 'nenhuma') return null
+
+  if (!serproTermDocumentoGravado[state]) {
+    // A guarda que um estado novo tem de passar para chegar às frases de baixo:
+    // as duas falam do documento que a plataforma guarda, e um estado sem
+    // documento guardado não pode receber nenhuma delas.
+    return null
+  }
+
+  if (state === 'pendente') {
     return {
-      title: 'O escritório ainda não entregou o certificado digital',
-      description: 'Sem o e-CNPJ do escritório a plataforma não emite termo de autorização, e sem termo a integração não fala com o provedor em nome de nenhum cliente.',
+      title: 'O certificado do escritório não está mais guardado',
+      description: 'O termo já está assinado e na mão da plataforma, mas o provedor ainda não respondeu e ele ainda não autoriza nenhuma chamada. A plataforma continua cuidando dele; o que a remoção tira é a emissão de um termo novo.',
       label: 'Entregar certificado',
-      color: 'warning',
-      icon: 'i-lucide-file-x'
+      color: 'neutral',
+      icon: 'i-lucide-shield-off'
     }
   }
 
@@ -360,25 +463,56 @@ export function serproCertificateMissingNotice(state: SerproAuthorizationTermSta
 }
 
 /**
- * The confirmation in front of a removal.
- *
- * **It says what the removal does not do, and that is the sentence that matters.**
- * An office that removes a compromised certificate reasonably expects the
- * integration to stop; it does not stop, and a confirmation that implied it would
- * leave the office believing it was protected when it is not. The vault blanks the
- * two encrypted columns and keeps the metadata, `refresh()` goes on resubmitting the
- * document already on file, and what is really lost is the ability to issue a new
- * term. Stated here so the wording is testable — a template string is the one
- * place in this screen that could quietly start making a promise the backend does
- * not keep.
+ * The buttons in front of a removal. The sentence that carries the promise is
+ * {@link serproCertificateRemovalText}, and it is a function because the promise
+ * depends on whether a term was ever signed.
  */
 export const serproCertificateRemoval = {
   action: 'Remover certificado',
   title: 'Remover o certificado do escritório?',
-  description: 'O conteúdo cifrado do e-CNPJ é apagado e fica só o metadado. A remoção não revoga o termo: o documento já assinado continua gravado e continua sendo enviado pela plataforma, e o que ela perde é a capacidade de emitir um termo novo.',
   keep: 'Manter certificado',
   confirm: 'Confirmar remoção'
 } as const
+
+/**
+ * The confirmation's text, and it says what the removal does **not** do — that is
+ * the sentence that matters. An office that removes a compromised certificate
+ * reasonably expects the integration to stop; it does not stop, and a
+ * confirmation that implied it would leave the office believing it is protected
+ * when it is not. The vault blanks the two encrypted columns and keeps the
+ * metadata, `refresh()` goes on resubmitting the document already on file, and
+ * what is really lost is the ability to issue a new term.
+ *
+ * **`hasCertificate` does not change the sentence about the term, and that is
+ * deliberate.** With a certificate on file, both sentences are about the term
+ * rather than about the certificate; what varies there is whether a signed
+ * document exists, and that is `serproTermDocumentoGravado`. The argument does
+ * change the *first* branch, because without a certificate there is no row to
+ * mark as removed and the confirmation must not claim that anything was erased.
+ *
+ * **The `ausente` wording is the one that was false.** The remove button appears
+ * whenever a certificate exists, with no state gate on it, and with the issuance
+ * gate closed "certificate delivered, no term yet" is the commonest state this
+ * product has. Telling that office that the "already-signed document keeps being
+ * sent" describes a document nobody has.
+ */
+export function serproCertificateRemovalText(state: SerproAuthorizationTermState, hasCertificate: boolean): string {
+  if (!hasCertificate) {
+    // O par inteiro, e não um atalho: sem certificado não há linha para marcar
+    // como removida, e `AccountCertificateVault::remove()` devolve `null` num
+    // `204` que não apagou nada. Uma confirmação dizendo que o conteúdo foi
+    // apagado descreveria um certificado que não existe.
+    return 'Nenhum certificado está guardado nesta conta, e não há termo assinado. Não há o que remover.'
+  }
+
+  const abertura = 'O conteúdo cifrado do e-CNPJ é apagado e fica só o metadado.'
+
+  if (!serproTermDocumentoGravado[state]) {
+    return `${abertura} Ainda não há termo assinado: o que a remoção tira é a capacidade de a plataforma emitir um, e não havia nada em vigor para ser interrompido.`
+  }
+
+  return `${abertura} A remoção não revoga o termo: o documento já assinado continua gravado e continua sendo enviado pela plataforma, e o que ela perde é a capacidade de emitir um termo novo.`
+}
 
 /**
  * The delivery form when there is nothing to ask for — a valid term with a
@@ -395,7 +529,7 @@ export const serproCertificateRemoval = {
  */
 export const serproCertificateReplacement = {
   title: 'Substituir o certificado do escritório',
-  description: 'O e-CNPJ do escritório expira, e é ele que assina o termo. Entregue o novo antes de o antigo expirar: a plataforma assina e envia um termo novo por conta própria, e a integração não fica para trás.',
+  description: 'O e-CNPJ do escritório expira, e é ele que assina o termo. Entregue o novo antes de o antigo expirar: quem monta, assina e renova o termo é a plataforma, e a integração não fica para trás.',
   label: 'Substituir certificado'
 } as const
 

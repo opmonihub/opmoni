@@ -186,14 +186,18 @@ describe('run and term vocabulary', () => {
   })
 
   it('names the office as the actor for a lapsed or refused term', () => {
-    assert.doesNotMatch(serproTermGuidance.vencido, /sem nenhuma ação sua|não há nada a fazer/i)
-    assert.doesNotMatch(serproTermGuidance.recusado, /sem nenhuma ação sua|não há nada a fazer/i)
-    assert.match(serproTermGuidance.vencido, /escritório/i)
+    for (const hasCertificate of [false, true]) {
+      assert.doesNotMatch(serproTermGuidance('vencido', hasCertificate), /sem nenhuma ação sua|não há nada a fazer/i)
+      assert.doesNotMatch(serproTermGuidance('recusado', hasCertificate), /sem nenhuma ação sua|não há nada a fazer/i)
+    }
+    assert.match(serproTermGuidance('vencido', false), /escritório/i)
   })
 
-  it('gives guidance for every term state', () => {
+  it('gives guidance for every term state, with and without a stored certificate', () => {
     for (const state of ['ausente', 'pendente', 'validado', 'autenticado', 'vencido', 'recusado'] as const) {
-      assert.ok(serproTermGuidance[state].length > 0, `${state} has no guidance`)
+      for (const hasCertificate of [false, true]) {
+        assert.ok(serproTermGuidance(state, hasCertificate).length > 0, `${state}/${hasCertificate} has no guidance`)
+      }
     }
   })
 })

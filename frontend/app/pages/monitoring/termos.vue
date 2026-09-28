@@ -2,7 +2,7 @@
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproAccountCertificate, SerproAuthorizationTerm } from '~/types/serpro'
-import { formatMonitoringDate, serproCertificateAsk, serproCertificateMissingNotice, serproCertificateRemoval, serproCertificateReplacement, serproTermGuidance, serproTermRequest, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { formatMonitoringDate, serproCertificateAsk, serproCertificateMissingNotice, serproCertificateRemoval, serproCertificateRemovalText, serproCertificateReplacement, serproTermGuidance, serproTermRequest, serproTermStatePresentation } from '~/utils/monitoringPresentation'
 import { pageDetailClass, pageRecordScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
@@ -39,9 +39,10 @@ const { data: term, status: termStatus, error: termError, refresh: reloadTerm } 
 
 /**
  * O certificado que o escritório já entregou, e `null` quando não entregou
- * nenhum — que é a resposta normal desta rota, não uma falha. Sem ele a tela não
- * consegue distinguir "ainda não entregou" de "entregou e o termo está em
- * emissão", e as duas precisam de textos opostos.
+ * nenhum — que é a resposta normal desta rota, não uma falha. Sem esta segunda
+ * leitura a tela não distingue "ainda não entregou nada" de "entregou e o termo é
+ * emissão da plataforma", e são dois textos opostos: um pede a entrega, o outro
+ * diz que nada está sendo pedido.
  */
 const { data: certificate, status: certificateStatus, error: certificateError, refresh: reloadCertificate } = await useAsyncData<SerproAccountCertificate | null>(
   'serpro-account-certificate',
@@ -62,9 +63,11 @@ const termState = computed(() => term.value?.state ?? 'ausente')
 /**
  * O que a tela pede ao escritório, e a decisão que impede a tela de virar tarefa
  * recorrente. Sem certificado, o pedido é o certificado; com o certificado já
- * entregue, o pedido só existe em `vencido` e `recusado`, e é a **reentrega** —
- * inclusive no `ausente` que o gate de emissão ainda fechado produz, que é um
- * estado real do produto e não um atraso que alguém da conta possa resolver.
+ * entregue, o pedido só existe em `vencido` e `recusado`, e é a **reentrega**.
+ *
+ * O `ausente` com certificado é o par que o gate de emissão fechado produz para
+ * todo escritório que entregou o e-CNPJ hoje, e nele o pedido é `'nenhuma'`:
+ * um estado real do produto, não um atraso que alguém da conta possa resolver.
  */
 const request = computed(() => serproTermRequest(termState.value, hasCertificate.value))
 const ask = computed(() => serproCertificateAsk(termState.value, hasCertificate.value))
@@ -73,10 +76,19 @@ const ask = computed(() => serproCertificateAsk(termState.value, hasCertificate.
  * O que o cartão do certificado diz quando há pedido, e o que ele diz quando não
  * há certificado e também não há pedido. São textos diferentes porque as
  * consequências são diferentes — o texto que diz "a integração parou" acima de um
- * termo válido seria mentira, e é a remoção que produz essa situação.
+ * termo válido seria mentira, e é a remoção que produz essa situação. A função
+ * devolve `null` nos estados em que quem fala é o pedido, o que faz desta
+ * leitura e do `ask` mutuamente exclusivos.
  */
 const certificateNotice = computed(() => (ask.value
-  ?? (hasCertificate.value ? null : serproCertificateMissingNotice(termState.value))))
+  ?? serproCertificateMissingNotice(termState.value, hasCertificate.value)))
+
+/**
+ * O que a remoção promete, e a promessa muda com o termo: sem documento assinado
+ * não há o que continuar sendo enviado, e a confirmação que falasse disso
+ * descreveria um documento que ninguém tem.
+ */
+const removalText = computed(() => serproCertificateRemovalText(termState.value, hasCertificate.value))
 
 /**
  * Os rótulos do formulário. `substituir` é mentira numa conta que nunca entregou
@@ -88,6 +100,9 @@ const fileLabel = computed(() => (isReplacing.value ? 'Selecionar novo arquivo' 
 const submitLabel = computed(() => ask.value?.label
   ?? certificateNotice.value?.label
   ?? serproCertificateReplacement.label)
+
+/** O texto do termo para o par (estado, certificado), e o par é o que ele diz. */
+const termGuidance = computed(() => serproTermGuidance(termState.value, hasCertificate.value))
 
 /**
  * O badge fica dentro de `v-if="term"`, e o caso sem termo não desenha badge
@@ -111,10 +126,12 @@ const termFacts = computed<MetaListItem[]>(() => {
     { label: 'Vencimento', value: formatMonitoringDate(term.value.expires_on), mono: true },
     { label: 'Assinado em', value: formatMonitoringDate(term.value.signed_at), mono: true },
     /*
-     * Quem assina é a plataforma, com o e-CNPJ do escritório. Escrever "do
-     * escritório" na linha da assinatura sugeriria um documento assinado à mão
-     * por alguém da conta, que é exatamente o que o produto não faz e não deve
-     * parecer que faz.
+     * Quem assina é a plataforma, com o e-CNPJ do escritório — e a linha
+     * descreve o mecanismo, não uma assinatura que aconteceu: no estado
+     * `ausente` o termo ainda não existe, e o que a linha diz é de quem seria a
+     * assinatura quando ele existir. Escrever "do escritório" aqui sugeriria um
+     * documento assinado à mão por alguém da conta, que é exatamente o que o
+     * produto não faz e não deve parecer que faz.
      */
     { label: 'Assinatura', value: 'Pela plataforma, com o e-CNPJ do escritório' },
     /*
@@ -179,9 +196,11 @@ async function submitCertificate() {
     await uploadAccountCertificate(file.value, password.value)
     toast.add({ title: 'Certificado do escritório entregue', color: 'success' })
     // As duas leituras são refeitas porque a entrega muda as duas: o certificado
-    // passa a existir e o termo é reemitido. Com o gate de emissão ainda fechado
-    // ele volta como `ausente`, e essa é a leitura honesta — o escritório não
-    // pode resolver um gate que é do produto, e a tela não pinta isso de erro.
+    // passa a existir, e o termo é relido porque é o que a entrega agenda
+    // emitir. Com o gate de emissão fechado essa emissão não sai, e o termo volta
+    // como `ausente` — que é a leitura honesta: o escritório não pode resolver um
+    // gate que é do produto, e a tela não pinta isso de erro nem de aviso de que
+    // algo está sendo pedido.
     await Promise.all([reloadCertificate(), reloadTerm()])
   } catch (err) {
     // A recusa nomeada do `POST` — a senha que não abre o e-CNPJ, o arquivo que
@@ -201,6 +220,11 @@ async function submitCertificate() {
 }
 
 async function confirmRemove() {
+  // A guarda está no código e não só no `v-if` do botão: `submitCertificate`
+  // também tem, e uma remoção sem ela passaria pela `AccountCertificatePolicy`
+  // como um `403` que a tela transformaria em recusa anônima. Um `v-if` é uma
+  // convenção que só a revisão humana fiscaliza; a linha abaixo é o contrato.
+  if (!canWriteCertificate.value) return
   removing.value = true
   try {
     await removeAccountCertificate()
@@ -249,6 +273,15 @@ async function confirmRemove() {
               <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">
                 Termo do escritório
               </h1>
+              <!--
+                A frase que carrega a promessa mais forte da tela mora aqui e
+                **não tem guarda nenhuma**: `node --test` não importa `.vue`, e
+                um stub seria uma mentira sobre cobertura. O que a guarda de
+                "ninguém assina" protege é o outro texto — o de cada estado do
+                termo, em `monitoringPresentation.ts`. Se esta frase mudar, ela
+                muda sem teste, e é por isso que ela repete o que o resto da tela
+                já diz em vez de acrescentar uma promessa nova.
+              -->
               <p class="text-xs text-muted">
                 A plataforma monta, assina, envia e renova o termo sozinha, com o e-CNPJ do próprio escritório. Ninguém da conta assina o termo.
               </p>
@@ -274,7 +307,7 @@ async function confirmRemove() {
           variant="subtle"
           :icon="presentation.icon"
           :title="presentation.label"
-          :description="serproTermGuidance[term.state]"
+          :description="termGuidance"
         />
 
         <UCard
@@ -288,7 +321,7 @@ async function confirmRemove() {
           <template v-if="request === 'nenhuma'">
             <USeparator class="my-3" />
             <p class="text-xs text-muted">
-              {{ serproTermGuidance[term.state] }}
+              {{ termGuidance }}
             </p>
           </template>
         </UCard>
@@ -337,7 +370,7 @@ async function confirmRemove() {
               variant="subtle"
               icon="i-lucide-trash-2"
               :title="serproCertificateRemoval.title"
-              :description="serproCertificateRemoval.description"
+              :description="removalText"
             />
             <div
               v-if="confirmingRemove"
