@@ -26,8 +26,17 @@ return [
      * é o que produz o `656` — o bloqueio de consumo indevido que custa uma hora
      * daquele cliente. Ligar isto é ato de quem autorizou o canário, e não
      * DEFAULT de deployment.
+     *
+     * A chave está fora do `.env.example` (é regra do repositório que nenhuma
+     * `FISCAL_*` apareça lá), então a única documentação de que ela existe é este
+     * comentário — e a leitura do texto tem de ser honesta com quem a descobre
+     * por aqui. `filter_var(..., FILTER_VALIDATE_BOOL)` é o que faz isso: `false`
+     * é `false`, `0` é desligado, vazio é desligado, `off` e `no` são desligados,
+     * e só `true`, `1`, `on` e `yes` ligam. Um `(bool) env(...)` tratava qualquer
+     * palavra fora desse vocabulário como ligada, e quem escrevesse
+     * `FISCAL_CTE_ENABLED=off` para desligar é quem ligaria o serviço.
      */
-    'cte_enabled' => (bool) env('FISCAL_CTE_ENABLED', false),
+    'cte_enabled' => filter_var(env('FISCAL_CTE_ENABLED', false), FILTER_VALIDATE_BOOL),
 
     /*
      * A entrada de agenda da captura de CT-e — `FISCAL_CTE_SCHEDULED`, lida em
@@ -65,8 +74,12 @@ return [
      * outra chave. Isso é um furo conhecido e não um descuido — a revisão que
      * fechou a porta do botão deixou o gate na fronteira HTTP e nomeou isto como
      * acompanhamento.
+     *
+     * A leitura do texto é a mesma da chave de cima, e pelo mesmo motivo: a
+     * entrada existe ou não existe a partir de uma palavra que alguém escreveu,
+     * e essa palavra precisa ser lida como quem a escreveu a quis.
      */
-    'cte_scheduled' => (bool) env('FISCAL_CTE_SCHEDULED', false),
+    'cte_scheduled' => filter_var(env('FISCAL_CTE_SCHEDULED', false), FILTER_VALIDATE_BOOL),
 
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 

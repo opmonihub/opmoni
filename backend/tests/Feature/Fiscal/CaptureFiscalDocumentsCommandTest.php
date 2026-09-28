@@ -318,6 +318,93 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
         }
     }
 
+    /**
+     * A leitura do texto da variável de ambiente, nas duas portas.
+     *
+     * As duas chaves estão fora do `.env.example` de propósito, então a única
+     * documentação de que elas existem é `config/fiscal.php` — e `VAR=false` é a
+     * linha mais natural que alguém escreve para desligar. O `env()` sozinho já
+     * reconhece esse texto; o que quebrava era o cast, que tratava **qualquer
+     * palavra fora do vocabulário reservado** como ligado: `off`, `no`,
+     * `disabled` viravam `true`, e a pessoa que achou que estava desligando era
+     * quem ligava tráfego de hora em hora para a carteira inteira.
+     *
+     * `filter_var(..., FILTER_VALIDATE_BOOL)` fecha isso: desligado é ausente,
+     * `false`, `0`, vazio, `off` e `no`; ligado é `true`, `1`, `on` e `yes`. O
+     * que a agenda faz com o valor é assunto de outro teste — aqui o que está em
+     * jogo é a leitura.
+     */
+    public function test_a_chave_da_agenda_e_lida_do_ambiente_nas_duas_direcoes(): void
+    {
+        $this->assertFalse(
+            $this->configFromEnvironment('fiscal.cte_scheduled', 'FISCAL_CTE_SCHEDULED', 'false'),
+            'FISCAL_CTE_SCHEDULED=false tem de desligar a agenda.',
+        );
+        $this->assertTrue(
+            $this->configFromEnvironment('fiscal.cte_scheduled', 'FISCAL_CTE_SCHEDULED', 'true'),
+            'FISCAL_CTE_SCHEDULED=true tem de ligar a agenda.',
+        );
+
+        // A palavra que o cast antigo tratava como ligada: a mesma armadilha na
+        // porta da tela, que é onde a recusa de 409 é escrita.
+        $this->assertFalse(
+            $this->configFromEnvironment('fiscal.cte_scheduled', 'FISCAL_CTE_SCHEDULED', 'off'),
+            'FISCAL_CTE_SCHEDULED=off tem de desligar a agenda.',
+        );
+        $this->assertTrue(
+            $this->configFromEnvironment('fiscal.cte_scheduled', 'FISCAL_CTE_SCHEDULED', '1'),
+            'FISCAL_CTE_SCHEDULED=1 tem de ligar a agenda.',
+        );
+    }
+
+    /**
+     * A mesma leitura na porta da tela, que é a outra das duas chaves que este
+     * branch introduziu. `cte_enabled` decide se um clique vira fila, e o valor
+     * chega pela mesma função quebrada — por isso ela é corrigida junto, e por
+     * isso a direção do "desligado" é verificada aqui também.
+     */
+    public function test_a_chave_da_captura_pela_tela_e_lida_do_ambiente_nas_duas_direcoes(): void
+    {
+        $this->assertFalse(
+            $this->configFromEnvironment('fiscal.cte_enabled', 'FISCAL_CTE_ENABLED', 'false'),
+            'FISCAL_CTE_ENABLED=false tem de manter a captura de CT-e desligada.',
+        );
+        $this->assertTrue(
+            $this->configFromEnvironment('fiscal.cte_enabled', 'FISCAL_CTE_ENABLED', 'true'),
+            'FISCAL_CTE_ENABLED=true tem de ligar a captura de CT-e.',
+        );
+        $this->assertFalse(
+            $this->configFromEnvironment('fiscal.cte_enabled', 'FISCAL_CTE_ENABLED', 'no'),
+            'FISCAL_CTE_ENABLED=no tem de manter a captura de CT-e desligada.',
+        );
+        $this->assertTrue(
+            $this->configFromEnvironment('fiscal.cte_enabled', 'FISCAL_CTE_ENABLED', '1'),
+            'FISCAL_CTE_ENABLED=1 tem de ligar a captura de CT-e.',
+        );
+    }
+
+    /**
+     * O valor que uma chave de `config/fiscal.php` recebe de uma variável de
+     * ambiente escrita como texto — que é o caminho da instalação, e o único
+     * jeito de provar que o `env()` e o cast são lidos, e não só o `config()`.
+     *
+     * A aplicação nasce de novo porque a configuração é lida no boot; a variável
+     * sai no `finally` para não vazar para o teste seguinte, que tem a sua
+     * própria aplicação.
+     */
+    private function configFromEnvironment(string $configKey, string $variable, string $value): mixed
+    {
+        $_SERVER[$variable] = $value;
+
+        try {
+            $this->refreshApplication();
+
+            return config($configKey);
+        } finally {
+            unset($_SERVER[$variable]);
+        }
+    }
+
     private function capturableClient(Account $account): Client
     {
         $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
