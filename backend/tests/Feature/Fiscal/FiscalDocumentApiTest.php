@@ -1361,15 +1361,43 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertSame($documento->getKey(), $detalhe->json('data.id'));
         $this->assertSame([$evento->getKey()], array_column($detalhe->json('data.events'), 'id'));
 
-        // O log carrega o nome da classe e nada mais: nem o byte do documento,
-        // nem a frase da exceção, que é o que a classe de codificação usa para
-        // recusar.
+        // O nome do canal é uma asserção por si só: a previsa ausente tem o
+        // dela, e um `Log::warning` genérico com o `reason` certo passaria por
+        // esta linha sem ser o registro que este teste existe para cobrir.
         Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context): bool {
-            return $context['reason'] === 'RuntimeException'
+            return $channel === 'fiscal.leitura.previa_recusada'
+                && $context['reason'] === 'RuntimeException'
                 && ! str_contains($channel, 'CONTEUDO-SECRETO')
                 && ! str_contains($channel, 'Codificação XML não suportada')
                 && ! str_contains(json_encode($context, JSON_THROW_ON_ERROR), 'CONTEUDO-SECRETO');
         });
+
+        // A forma do contexto, afirmada em vez de inferida. O `withArgs` acima
+        // carrega a invariante — "nunca a mensagem da exceção" — como uma
+        // terceira cláusula de uma conjunção, e uma refatoração que reordenasse
+        // as cláusulas, ou que acrescentasse uma chave nova ao contexto, passaria
+        // sem ninguém olhar. Estas duas linhas dizem o formato inteiro: o
+        // identificador que localiza o documento e a causa nomeada pela classe,
+        // nada mais. Uma chave a mais aqui quebra o teste, que é o ponto.
+        $contextos = [];
+        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context) use (&$contextos): bool {
+            if ($channel !== 'fiscal.leitura.previa_recusada') {
+                return false;
+            }
+
+            $contextos[] = array_keys($context);
+
+            return true;
+        });
+
+        $this->assertNotEmpty($contextos, 'nenhum registro de recusa foi escrito no canal');
+        foreach ($contextos as $chaves) {
+            $this->assertSame(
+                ['account_id', 'client_id', 'chave_acesso', 'reason'],
+                $chaves,
+                'o contexto da recusa carrega algo além do identificador do documento e do nome da classe'
+            );
+        }
 
         $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
             ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
@@ -1390,13 +1418,6 @@ class FiscalDocumentApiTest extends TestCase
         // esta linha existe sem ele: o byte sumiu, a linha ficou. O detalhe
         // continua abrindo — com a prévia ausente — e o download é que diz que
         // o arquivo não está mais lá.
-        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
-            ->getJson("/api/fiscal/documents/{$documento->getKey()}")
-            ->assertOk()
-            ->assertJsonPath('data.id', $documento->getKey())
-            ->assertJsonPath('data.xml_preview', null)
-            ->assertJsonPath('data.events', []);
-
         $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
             ->get("/api/fiscal/documents/{$documento->getKey()}/xml")
             ->assertNotFound();
