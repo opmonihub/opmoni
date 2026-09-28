@@ -36,13 +36,18 @@ use RuntimeException;
  *    fisco conta consulta pontual no mesmo teto por CNPJ, e uma execução que
  *    estudasse mais buracos do que a hora inteira permite gastaria o orçamento
  *    inteiro e ainda assim tentaria a vaga seguinte, que não existe.
- * 3. **Adiar não é falhar, e parar não é cobrar.** Teto estourado, trava do
- *    próprio CNPJ ocupada, consulta que não chegou a sair, consulta que saiu e
- *    não voltou e consumo indevido são condições diferentes com a mesma
- *    resposta: nenhuma delas é o fisco dizendo algo sobre aquela posição. Todas
- *    param a execução sem gastar tentativa — a tentativa é contada de consulta
- *    que **saiu e respondeu** — e o consumo indevido ainda grava a pausa de uma
- *    hora, a única coluna de `fiscal_cursors` que esta classe escreve, porque
+ * 3. **Adiar não é falhar, e parar não é cobrar.** Cinco condições param a
+ *    execução sem gastar tentativa — teto estourado, trava do próprio CNPJ
+ *    ocupada, consulta que não chegou a sair, consulta que saiu e não voltou e
+ *    consumo indevido — e nenhuma delas é o fisco respondendo sobre aquela
+ *    posição. Cobrar delas seria fabricar um veredito: três noites de um A1
+ *    inutilizável, ou de um disco cheio que é do servidor, esgotariam a lacuna e
+ *    a liberação abandonaria um documento que estava lá o tempo todo. O que
+ *    cobra é o resto, que é o fisco falando: `137`, recusa de schema, posição
+ *    que veio errada e documento que o writer não gravou.
+ *
+ *    O consumo indevido faz ainda mais que parar: grava a pausa de uma hora, a
+ *    única coluna de `fiscal_cursors` que esta classe escreve, porque
  *    `blocked_until` é autoritativa para as duas consultas ao mesmo CNPJ.
  * 4. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
@@ -299,9 +304,9 @@ final class FiscalReconciliation
      * reconciliação não anda com nada disso, e `last_run_at` aqui seria
      * mentira — nenhuma captura incremental rodou.
      *
-     * Cliente sem cursor é cliente que a captura ainda não capturou, e o
-     * caminho que descobre o bloqueio é justamente a reconciliação: sem linha
-     * para escrever, a pausa não sobrevive, e o que sobra é o aviso.
+     * Cliente sem cursor é cliente que a captura ainda não rodou, e o caminho
+     * que descobre o bloqueio é justamente a reconciliação: sem linha para
+     * escrever, a pausa não sobrevive, e o que sobra é o aviso.
      */
     private function block(?FiscalCursor $cursor): void
     {
