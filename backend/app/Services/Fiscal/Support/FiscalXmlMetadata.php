@@ -211,11 +211,29 @@ final class FiscalXmlMetadata
      * O conector em que uma raiz fora do catálogo é **recusa**, e não apenas uma
      * classificação que não encontrou o caminho da chave.
      *
-     * É o conector de CT-e porque é o único em que recusar o que não se
-     * consegue classificar não tranca ninguém: ele ainda não tem posição de
-     * cliente em jogo. No NF-e, que está em produção, a mesma recusa viraria uma
-     * trava permanente para quem a encontrasse — e o checkout não tem schema que
-     * sustente a recusa. Ver `pathsOf()` e `CHAVE_NA_RAIZ_DESCONHECIDA`.
+     * É o conector de CT-e porque recusar é a escolha honesta onde ainda não há
+     * tráfego: o catálogo foi escrito contra o pacote publicado do CT-e, e uma
+     * recusa é a afirmação de que existe uma raiz que este código não conhece —
+     * o que é verdade. No NF-e, que está em produção, a mesma recusa viraria uma
+     * trava permanente para quem a encontrasse, e o checkout não tem schema que
+     * a sustente. Ver `pathsOf()` e `CHAVE_NA_RAIZ_DESCONHECIDA`.
+     *
+     * ⚠️ A justificativa de que a recusa "não tranca ninguém" **não** é mais o
+     * que segura esta escolha, e quem a lê para decidir se o catálogo deve
+     * crescer precisa saber disso. O que é verdade hoje é mais estreito: o CT-e
+     * não está em produção, e é por isso que um cliente real ainda não tem
+     * posição em jogo. No instante em que o canário é autorizado — que é o
+     * primeiro passo do gate de liberação — essa frase deixa de valer, e o
+     * binding é do gate, não de um comentário.
+     *
+     * O que a recusa compra, e o que ela custa, estão no caminho do
+     * esgotamento da lacuna: recusar mantém a evidência (a linha em
+     * `fiscal_gaps`, o `attempts`, o `last_error` que vira `gap_abandoned`) e
+     * custa três ciclos de consulta; ao fim deles a posição anda por cima da
+     * posição recusada, como a rejeição faria. Ou seja: recusar deixa **mais**
+     * para trás, e pular e avançar deixaria nada. Nenhum dos dois desfechos
+     * recupera o documento, e a diferença entre eles é a única coisa que este
+     * catálogo tem a oferecer hoje.
      */
     private const RAIZ_E_RECUSA = FiscalModel::Cte;
 
@@ -229,8 +247,12 @@ final class FiscalXmlMetadata
      *
      * - **No CT-e, que não está em produção**, a raiz desconhecida é recusa. O
      *   catálogo foi escrito contra o pacote publicado do CT-e, recusar o que não
-     *   se consegue classificar é a escolha honesta, e a recusa aqui não tranca
-     *   ninguém porque ainda não há posição de cliente em jogo.
+     *   se consegue classificar é a escolha honesta, e a recusa mantém a
+     *   evidência da posição enquanto custa três ciclos de consulta — ao fim dos
+     *   quais a posição anda do mesmo jeito que andaria com a rejeição. O que a
+     *   recusa compra e o que ela custa estão em `RAIZ_E_RECUSA`, inclusive o
+     *   fato de que a justificativa "ninguém tem posição em jogo" vale só
+     *   enquanto o canário não for autorizado.
      * - **No NF-e, que está em produção**, a raiz desconhecida não recusa: o
      *   comportamento de antes do catálogo é preservado. Este checkout não tem
      *   schema que enumere as raízes que a distribuição de NF-e entrega, então uma

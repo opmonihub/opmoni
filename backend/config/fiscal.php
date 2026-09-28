@@ -80,6 +80,26 @@ return [
      * prática, canariar a carteira inteira de uma vez, e a rejeição repetida é o
      * que produz o `656`.
      *
+     * ⚠️ O CANÁRIO PASSA COM OS TRÊS, E O `cStat` SOZINHO NÃO É UM DELES.
+     * O plano define sucesso como "conferir o `cStat` da resposta", e essa
+     * definição passa com um `138` de lote cheio de resumos de CT-e: o serviço
+     * acha que localizou, o catálogo não conhece a raiz do resumo
+     * (`<proc><procComp/><CTe>`), a posição vira lacuna, e depois de
+     * `reconcile_max_attempts` a lacuna é esgotada e a posição passa por cima
+     * dela com `last_error` em `gap_abandoned`. O operador veria um `138` certo,
+     * um cursor que avança e um `cStat` que nunca reclama — e o documento nunca
+     * entraria. Um canário passa, portanto, só quando, no cliente escolhido:
+     *
+     * 1. nenhum `last_error` de `gap_abandoned` e nenhuma linha em
+     *    `fiscal_gaps` para aquele cliente e aquela fonte;
+     * 2. documentos entraram de verdade — `fiscal_documents` com `source` de
+     *    CT-e, e não só um cursor que andou.
+     *
+     * Os dois são a mesma verificação por lados diferentes, e os dois juntos são o
+     * que distingue "o serviço responde como esperamos" de "nós entendemos o que
+     * ele respondeu". Um `138` sem nenhum dos dois é, na prática, um catálogo
+     * errado — que é o que se está testando.
+     *
      * E a chave é o registro de uma decisão, não um mecanismo de segurança: ela
      * não impede ninguém, ela apenas deixa escrito que alguém ligou. A proteção
      * deste caminho é a autorização do canário; o que protege o resto do código
