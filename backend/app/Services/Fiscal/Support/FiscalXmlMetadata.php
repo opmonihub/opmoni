@@ -28,6 +28,67 @@ final class FiscalXmlMetadata
      */
     private const ID_SEQUENCE_MAX_LENGTH = 10;
 
+    /**
+     * As raízes de documento que a distribuição entrega, e o **caminho da chave
+     * de acesso do próprio documento** em cada uma.
+     *
+     * A raiz é conferida, e não o `schema` que o serviço declarou no `docZip`:
+     * esse atributo é texto do fisco que não fez validação de nada, e aceitar
+     * um `schema` como classificação trocaria "o serviço disse que é isso" por
+     * "isto é o que o XML é". Os dois podem divergir — o `leiauteDistCTe`
+     * publicado mostra entradas com `procComp` e sem ele na mesma lista — e só
+     * a raiz descreve a forma do payload.
+     *
+     * Nenhum caminho aqui atravessa `infDoc` ou `infDocAnt`, que é onde vivem as
+     * chaves das NF-e transportadas e dos CT-e anteriores. Isso não é
+     * coincidência de ordenação de nós: um documento de transporte tem a chave
+     * alheia antes da própria em ordem de percurso, e uma extração que
+     * procurasse "a primeira `chave` que aparecer" pegaria a referência de outro
+     * documento — que é a identidade de um documento que não é este.
+     *
+     * Os nomes de raiz são os dos XSDs publicados do pacote `PRCTE`, mais o
+     * `resCTe`, que é o nome de resumo da distribuição nacional de CT-e. O
+     * `GTVeProc` é o elemento raiz de `procGTVe_v4.00.xsd` — nome de arquivo e
+     * nome de raiz não são o mesmo nome, e aqui importa o segundo.
+     *
+     * @var array<string, list<string>>
+     */
+    private const CHAVE_PROPRIA = [
+        // NF-e e NFC-e: mesma raiz, chaves de modelo `55` e `65`.
+        'resNFe' => ['chNFe'],
+        'procNFe' => ['infNFe/chNFe', 'protNFe/infProt/chNFe'],
+        'procEventoNFe' => ['infEvento/chNFe', 'protNFe/infProt/chNFe'],
+        // CT-e: três famílias processadas, resumo e evento. `cteSimpProc` é
+        // modelo `57` como o CT-e regular, e é por isso que o modelo não pode
+        // sair do nome da raiz.
+        'resCTe' => ['chCTe'],
+        'cteProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
+        'cteSimpProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
+        'cteOSProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
+        'GTVeProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
+        'procEventoCTe' => ['infEvento/chCTe'],
+    ];
+
+    /**
+     * Onde a chave de um **documento transportado** aparece no CT-e, e por que
+     * ela é lida mesmo sem ser usada como identidade.
+     *
+     * `infDoc/infNFe/chave` e `infDocAnt/infNFeTranspParcial/chNFe` são as duas
+     * posições do schema publicado (`cteTiposBasico_v4.00.xsd`), e o nome do
+     * elemento difere entre elas — o que é uma razão a mais para a detecção de
+     * mascaramento não depender de um único caminho.
+     *
+     * Ler essas chaves é o que permite dizer que o documento é **mascarado**:
+     * quem consulta por `autXML` recebe as referências de NF-e transportada
+     * substituídas por uma forma que não é chave de acesso nenhuma, e a
+     * deduplicação por `chave_acesso` colidiria se elas fossem indexadas.
+     */
+    private const CHAVES_TRANSPORTADAS = [
+        'infDoc/infNFe/chave',
+        'infDocAnt/infNFeTranspParcial/chNFe',
+        'infDocAnt/infNFeTranspParcial/chave',
+    ];
+
     public function extract(string $xml, FiscalModel $model): FiscalXmlMetadataResult
     {
         $dom = new DOMDocument;
@@ -43,12 +104,24 @@ final class FiscalXmlMetadata
         }
 
         $xpath = new DOMXPath($dom);
+
+        // O nome do elemento raiz, que é o `schema` que a coluna vai guardar e
+        // também o que classifica a forma do payload.
         $schema = $this->schemaOf($dom);
+
+        // Raiz fora do catálogo é recusa antes de qualquer leitura de campo. Um
+        // XML que o módulo não conhece seria classificado por um `chCTe`
+        // qualquer que ele achasse em qualquer lugar — e um lote com a chave de
+        // um documento real, embrulhada num XML que não é um documento, é
+        // exatamente o que a deduplicação por `chave_acesso` não impede,
+        // porque a chave entraria sem conflito.
+        $paths = self::CHAVE_PROPRIA[$schema]
+            ?? throw new RuntimeException("Raiz de documento fora do catálogo: {$schema}.");
 
         $tpEvento = $this->firstText($xpath, ['tpEvento']);
         $nSeqEvento = $this->firstText($xpath, ['nSeqEvento']);
 
-        $chave = $this->firstText($xpath, ['chNFe', 'chCTe'])
+        $chave = $this->firstText($xpath, $paths)
             ?? $this->chaveFromId($xpath, $nSeqEvento)
             ?? throw new RuntimeException('O documento capturado não expõe chave de acesso.');
 
@@ -56,7 +129,11 @@ final class FiscalXmlMetadata
             throw new RuntimeException("Chave de acesso com dígito verificador inválido: {$chave}.");
         }
 
-        $this->guardModel($chave, $model);
+        // O modelo que volta é o da chave do próprio documento, e não o que o
+        // conector pediu: o conector de CT-e entrega três modelos no mesmo lote
+        // — CT-e regular e simplificado (`57`), CT-e OS (`67`) e GTV-e (`64`) —
+        // e o que os distingue é a chave, não a pergunta.
+        $model = $this->guardModel($chave, $model);
 
         $isEvent = $tpEvento !== null;
 
@@ -78,7 +155,50 @@ final class FiscalXmlMetadata
             digVal: $this->firstText($xpath, ['protNFe/infProt/digVal', 'protCTe/infProt/digVal', 'digVal']),
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
+            mascarado: $this->isMascarado($xpath),
         );
+    }
+
+    /**
+     * O documento chegou com as chaves dos documentos que ele transporta
+     * substituídas por uma forma que não é chave de acesso de ninguém.
+     *
+     * A forma é 44 dígitos iguais: é assim que o fisco diz "esta referência não
+     * é sua" para quem consulta por `autXML`, e é a mesma que a rejeição 933 da
+     * NT de CT-e 2025.001 mostra para uma `chCTe` indisponível. O `design.md`
+     * chama de "zeradas" e o fixture do plano escreve noves; as duas formas
+     * caem na mesma regra, e a regra é o preenchimento repetido — que nenhuma
+     * chave real tem, porque nenhum dos 44 dígitos de uma chave real é livre.
+     *
+     * A regra é o preenchimento repetido e não "a chave não fecha o DV", porque
+     * estas são coisas diferentes e a segunda seria uma leitura errada de uma
+     * corrupção: uma referência transportada com o DV trocado é um defeito no
+     * documento, não o mascaramento que o fisco aplica. E nenhuma das duas
+     * coisas muda a identidade — `chave` é a do próprio documento, lida antes
+     * daqui e por outro caminho.
+     */
+    private function isMascarado(DOMXPath $xpath): bool
+    {
+        foreach (self::CHAVES_TRANSPORTADAS as $path) {
+            $value = $this->firstText($xpath, [$path]);
+
+            if ($value !== null && self::isRepeatedDigits($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 44 dígitos iguais — a largura de uma chave de acesso e a forma de
+     * preenchimento do fisco. A largura entra na regra porque é ela que separa
+     * isto de qualquer trecho curto de dígitos iguais, que o documento tem em
+     * série, número e código aleatório, e que não é preenchimento do fisco.
+     */
+    private static function isRepeatedDigits(string $value): bool
+    {
+        return preg_match('/^(\d)\1{43}$/', $value) === 1;
     }
 
     /**
@@ -104,14 +224,25 @@ final class FiscalXmlMetadata
 
     /**
      * A chave carrega o modelo do documento nas posições 21-22, então ele sai
-     * dali e não de quem chamou. Um `resCTe` entregue ao conector da NF-e é
-     * um documento real e uma etiqueta errada: a unicidade de
-     * `(client_id, chave_acesso, event_id)` não o protegeria, porque a chave é
-     * de outro documento e entraria sem conflito. Recusar aqui é o que impede
-     * que ele seja gravado; a decisão de pular o documento em vez de falhar o
-     * lote é do conector, e este erro é nomeado para que ele possa classificá-lo.
+     * dali e não de quem chamou — e é o que volta para o chamador. Um `resCTe`
+     * entregue ao conector da NF-e é um documento real e uma etiqueta errada: a
+     * unicidade de `(client_id, chave_acesso, event_id)` não o protegeria, porque
+     * a chave é de outro documento e entraria sem conflito. Recusar aqui é o que
+     * impede que ele seja gravado; a decisão de pular o documento em vez de
+     * falhar o lote é do conector, e este erro é nomeado para que ele possa
+     * classificá-lo.
+     *
+     * O que se aceita é a **família** do modelo pedido, e não o modelo: o
+     * conector de CT-e entrega CT-e regular, CT-e OS, CT-e simplificado e
+     * GTV-e no mesmo lote, e recusar três deles porque o chamador disse `Cte`
+     * seria recusar a família inteira por causa de um membro. O que continua
+     * recusado é o que está fora dela — e o `default => null` do catálogo
+     * acima é o que recusa o que ninguém nomeou, sem que o `null` vire um
+     * modelo de reserva em qualquer ponto deste arquivo.
+     *
+     * @return FiscalModel o modelo que a chave do próprio documento carrega
      */
-    private function guardModel(string $chave, FiscalModel $expected): void
+    private function guardModel(string $chave, FiscalModel $expected): FiscalModel
     {
         $code = substr($chave, 20, 2);
         $found = FiscalModel::fromDocumentModel($code);
@@ -120,9 +251,11 @@ final class FiscalXmlMetadata
             throw new RuntimeException("Chave de acesso com modelo fora do catálogo ({$code}): {$chave}.");
         }
 
-        if ($found !== $expected) {
+        if (! in_array($found, $expected->family(), true)) {
             throw new RuntimeException("Chave de acesso de {$found->label()} onde se esperava {$expected->label()}: {$chave}.");
         }
+
+        return $found;
     }
 
     /**

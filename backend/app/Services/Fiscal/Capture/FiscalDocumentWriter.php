@@ -90,6 +90,12 @@ final class FiscalDocumentWriter
             'sha256' => hash('sha256', $document->xml),
             'digval' => $document->digVal,
             'digval_confere' => $digvalConfere,
+            // Vem do parser e nunca é inferido do NSU, do `schema` declarado nem
+            // da etapa: nenhum dos três diz se o fisco substituiu as chaves dos
+            // documentos transportados, e uma linha gravada dizendo `false`
+            // quando o documento chegou mascarado é uma afirmação falsa ao lado
+            // de uma verdade.
+            'mascarado' => $document->mascarado,
             'xml_bytes' => strlen($document->xml),
             'captured_at' => now(),
         ]);

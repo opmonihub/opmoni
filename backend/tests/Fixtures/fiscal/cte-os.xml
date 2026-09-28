@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  Raiz `cteOSProc`, a família de CT-e OS (outros serviços), modelo `67` na
+  chave de acesso. A raiz e a presença de `protCTe` foram conferidas contra o
+  `procCTeOS_v4.00.xsd` publicado no pacote `PRCTE` do SVRS; o corpo foi
+  reduzido ao mínimo que o módulo lê.
+
+  `infDoc/infNFe/chave` traz a chave de uma NF-e transportada com o DV válido,
+  o que é o caso comum: o cliente consultou por `autXML` e o fisco entrega a
+  referência legível. O nome do elemento é `chave`, não `chNFe` — é o que o
+  `cteTiposBasico_v4.00.xsd` publicado traz em `infDoc/infNFe` ("Chave de acesso
+  da NF-e"). A chave alheia é a isca do caso mascarado: ela aparece no
+  documento antes de qualquer `chCTe` em ordem de percurso, e não é a identidade
+  deste CT-e OS.
+-->
+<cteOSProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTeOS>
+    <infCte versao="4.00">
+      <chCTe>35220999999999999999670000000011021000000006</chCTe>
+      <dhEmi>2022-09-01T10:00:00-03:00</dhEmi>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+      <vPrest>250.00</vPrest>
+      <vTPrest>250.00</vTPrest>
+      <infDoc>
+        <infNFe>
+          <chave>35220999999999999999550010000011081000000006</chave>
+        </infNFe>
+      </infDoc>
+    </infCte>
+  </CTeOS>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220999999999999999670000000011021000000006</chCTe>
+      <dhRecbto>2022-09-01T10:00:07-03:00</dhRecbto>
+      <nProt>135220000000002</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZSBvcyAx</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
+</cteOSProc>

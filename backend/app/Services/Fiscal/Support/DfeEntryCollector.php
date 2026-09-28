@@ -88,6 +88,10 @@ final class DfeEntryCollector
                 emissaoAt: $extracted->emissaoAt,
                 eventoOcorridoEmAt: $extracted->eventoOcorridoEmAt,
                 xml: $xml,
+                // Do parser, sem inferência: `nsu` e `schema` são o que o
+                // serviço declarou, e nenhum dos dois diz se o fisco mascarou as
+                // chaves transportadas deste documento.
+                mascarado: $extracted->mascarado,
             );
         }
 

@@ -229,4 +229,22 @@ describe('as opções de modelo do filtro', () => {
     const daApi = ['nfe', 'cte', 'nfs_e']
     assert.deepEqual(availableFiscalModels(daApi.filter(isFiscalModel)), ['nfe', 'cte'])
   })
+
+  it('filtra o CT-e OS e o GTV-e, que o backend grava e esta lista tinha de saber', () => {
+    // `cte_os` e `gtve` são modelos que o enum do backend tem e esta lista
+    // conhecia: o documento era capturado, gravado, listado e não filtrável, e
+    // nenhuma das três primeiras coisas denuncia a quarta. A ida e a volta pela
+    // query é o contrato — um chip que some no F5 é um filtro que não existe.
+    assert.equal(isFiscalModel('cte_os'), true)
+    assert.equal(isFiscalModel('gtve'), true)
+
+    assert.deepEqual(parseFiscalFilters({ model: 'cte_os' }).model, ['cte_os'])
+    assert.deepEqual(parseFiscalFilters({ model: 'gtve' }).model, ['gtve'])
+
+    // A lista inteira do enum, para que a próxima família nova não repita isto.
+    assert.deepEqual(
+      availableFiscalModels(['nfe', 'nfce', 'cte', 'cte_os', 'gtve', 'nfse'].filter(isFiscalModel)),
+      ['nfe', 'nfce', 'cte', 'cte_os', 'gtve', 'nfse']
+    )
+  })
 })

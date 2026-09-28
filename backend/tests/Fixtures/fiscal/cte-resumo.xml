@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  A raiz `resCTe` é a família "resumo" da distribuição de CT-e, nomeada pela
+  própria nomenclatura do serviço (`resCTe` aparece como schema de `docZip` e
+  como raiz do payload em material publicado da distribuição de DF-e de CT-e,
+  ao lado de `cteProc` e `procEventoCTe`).
+
+  A lista de campos internos NÃO foi conferida contra um XSD publicado: o
+  pacote `PRCTE` do SVRS, que foi o que este checkout conseguiu alcançar, não
+  traz `resCTe` — a lá o resumo é `<proc><procComp/><CTe>…`. O que está aqui
+  segue a convenção do resumo homônimo da NF-e (`resNFe`), com os nomes de
+  campo do CT-e (`chCTe`, `dhRecbto`, `vTPrest`), que é também o conjunto que
+  a leitura achatada do ACBr mostra para `RESCTe`.
+
+  O que o teste cobre não depende dessa lista: raiz reconhecida, modelo pela
+  chave de acesso, etapa "resumo" por não trazer protocolo de autorização, e
+  o `digVal` no topo — que é onde o resumo o carrega.
+-->
+<resCTe xmlns="http://www.portalfiscal.inf.br/cte" versao="1.00">
+  <chCTe>35220999999999999999570000000011011000000006</chCTe>
+  <CNPJ>99999999999999</CNPJ>
+  <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+  <IE>110042490114</IE>
+  <dhEmi>2022-09-01T09:15:00-03:00</dhEmi>
+  <vTPrest>1500.00</vTPrest>
+  <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIHJlc3Vtbw==</digVal>
+  <dhRecbto>2022-09-01T09:16:12-03:00</dhRecbto>
+  <nProt>135220000000001</nProt>
+</resCTe>

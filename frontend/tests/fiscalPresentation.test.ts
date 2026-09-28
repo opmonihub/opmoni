@@ -470,6 +470,8 @@ describe('volume por modelo', () => {
     assert.equal(modelLabel('nfe'), 'NF-e')
     assert.equal(modelLabel('nfce'), 'NFC-e')
     assert.equal(modelLabel('cte'), 'CT-e')
+    assert.equal(modelLabel('cte_os'), 'CT-e OS')
+    assert.equal(modelLabel('gtve'), 'GTV-e')
     assert.equal(modelLabel('nfse'), 'NFS-e')
     assert.equal(modelLabel('nfe_retirada'), 'nfe_retirada')
   })

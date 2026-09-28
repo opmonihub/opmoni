@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  Raiz `cteSimpProc`, a família de CT-e Simplificado, que é modelo `57` na
+  chave de acesso — o mesmo modelo do CT-e regular, e é por isso que o modelo
+  não pode ser deduzido do nome da raiz. A raiz e a presença de `protCTe` foram
+  conferidas contra o `procCTeSimp_v4.00.xsd` publicado no pacote `PRCTE` do
+  SVRS; o corpo foi reduzido ao mínimo que o módulo lê.
+-->
+<cteSimpProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTeSimp>
+    <infCte versao="4.00">
+      <chCTe>35220999999999999999570000000011031000000000</chCTe>
+      <dhEmi>2022-09-01T11:00:00-03:00</dhEmi>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>1</CRT>
+      </emit>
+      <rem>
+        <xNome>REMETENTE EXEMPLO LTDA</xNome>
+        <vPrest>98.50</vPrest>
+        <vTPrest>98.50</vTPrest>
+      </rem>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+    </infCte>
+  </CTeSimp>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220999999999999999570000000011031000000000</chCTe>
+      <dhRecbto>2022-09-01T11:00:05-03:00</dhRecbto>
+      <nProt>135220000000003</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZSDigJzbSB1</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
+</cteSimpProc>

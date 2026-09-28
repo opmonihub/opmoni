@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  Raiz `cteProc`, a família de CT-e regular, modelo `57`. O `protCTe` foi
+  acrescentado nesta tarefa: um `cteProc` de distribuição sempre o traz — o
+  `procCTe_v4.00.xsd` publicado no pacote `PRCTE` do SVRS tem `CTe` e `protCTe`
+  como os dois filhos da raiz — e sem ele o fixture era classificado como
+  "resumo", que é a etapa errada para um documento processado.
+-->
 <cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
   <CTe>
     <infCte versao="4.00">
@@ -23,4 +32,16 @@
       </toma>
     </infCte>
   </CTe>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220799999999999999570010000001231123456786</chCTe>
+      <dhRecbto>2022-07-16T12:31:04-03:00</dhRecbto>
+      <nProt>135220000000001</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZQ==</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
 </cteProc>

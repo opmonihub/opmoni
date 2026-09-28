@@ -554,6 +554,8 @@ const modelLabels: Record<string, string> = {
   nfe: 'NF-e',
   nfce: 'NFC-e',
   cte: 'CT-e',
+  cte_os: 'CT-e OS',
+  gtve: 'GTV-e',
   nfse: 'NFS-e'
 }
 

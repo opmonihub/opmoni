@@ -41,6 +41,13 @@ final readonly class PulledDocument
      * autorizado em `protNFe/infProt`, e são esses dois que o writer compara para
      * dizer se o XML completo é o que foi catalogado.
      *
+     * `mascarado` atravessa pelo mesmo motivo dos três metadados, e é a única
+     * das colunas com padrão: o padrão é `false`, que é o que vale para
+     * qualquer entrega cujas referências transportadas não foram substituídas
+     * — a NF-e entre elas, e todo documento sem referência transportada. Só a
+     * camada de parse sabe dizer que houve mascaramento, e dizer que não houve
+     * sem ter olhado seria uma afirmação que o writer faz em nome do parser.
+     *
      * `nsu` é a posição desta entrega, não a do documento: resumo, documento
      * completo e evento chegam em posições diferentes e os três coexistem.
      *
@@ -65,5 +72,6 @@ final readonly class PulledDocument
         public ?CarbonImmutable $emissaoAt,
         public ?CarbonImmutable $eventoOcorridoEmAt,
         public string $xml,
+        public bool $mascarado = false,
     ) {}
 }

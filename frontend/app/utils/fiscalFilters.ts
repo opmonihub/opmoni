@@ -48,8 +48,14 @@ export function appliedFiscalFilters(
   return parseFiscalFilters({ ...fiscalQuery(current), ...draft })
 }
 
-/** O enum do backend, fechado. `model` fora daqui é 422, não "sem filtro". */
-const models: readonly FiscalModel[] = ['nfe', 'nfce', 'cte', 'nfse']
+/**
+ * O enum do backend, fechado. `model` fora daqui é 422, não "sem filtro".
+ *
+ * É a lista que o `isFiscalModel` consome, e por isso é a porta por onde todo
+ * filtro de modelo passa: um `cte_os` gravado no banco e ausente aqui seria um
+ * documento capturado, listado e não filtrável, em silêncio.
+ */
+const models: readonly FiscalModel[] = ['nfe', 'nfce', 'cte', 'cte_os', 'gtve', 'nfse']
 const kinds: readonly FiscalKind[] = ['document', 'event']
 const sorts: readonly FiscalSort[] = ['emissao_at', 'valor_total', 'captured_at']
 const directions: readonly FiscalSortDirection[] = ['asc', 'desc']

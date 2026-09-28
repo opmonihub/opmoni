@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  Raiz `GTVeProc`, a família GTV-e, modelo `64` na chave de acesso. O nome da
+  raiz é `GTVeProc` e não `procGTVe`, que é o nome do arquivo: os dois foram
+  conferidos contra o `procGTVe_v4.00.xsd` publicado no pacote `PRCTE` do SVRS,
+  onde `xs:element name="GTVeProc"` é a raiz e `protCTe` o protocolo, o mesmo
+  das demais famílias processadas. O corpo foi reduzido ao mínimo que o módulo
+  lê.
+-->
+<GTVeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <GTVe>
+    <infCte versao="4.00">
+      <chCTe>35220999999999999999640000000011051000000007</chCTe>
+      <dhEmi>2022-09-03T14:00:00-03:00</dhEmi>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+      <vPrest>75.00</vPrest>
+      <vTPrest>75.00</vTPrest>
+    </infCte>
+  </GTVe>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220999999999999999640000000011051000000007</chCTe>
+      <dhRecbto>2022-09-03T14:00:06-03:00</dhRecbto>
+      <nProt>135220000000005</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIEdUVmU=</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do GTV-e</xMotivo>
+    </infProt>
+  </protCTe>
+</GTVeProc>
