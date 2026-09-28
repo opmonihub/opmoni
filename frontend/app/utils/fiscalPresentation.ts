@@ -67,6 +67,14 @@ type StateCopy = { title: string, description: string, icon: string, tone: Fisca
  * Só três, porque `with_documents` não tem o que anunciar. `no_clients` fica
  * igual nos dois casos — sem cliente não há de onde vir atenção, e a frase não
  * faz nenhuma afirmação que uma lista pudesse contradizer.
+ *
+ * Nenhuma delas afirma nada sobre a operação. A tentação era o contrário — "a
+ * captura está no ar, o primeiro lote aparece na próxima consulta" — e ela mente
+ * no primeiro dia: um cliente novo com A1 válido, ainda sem cursor, devolve
+ * capturable 1, nenhum documento, lista vazia e `last_capture` null, e o cartão
+ * de última consulta diz, na mesma tela, que a conta **nunca** consultou o
+ * fisco. Quem diz se a conta já consultou é esse cartão; o estado diz o que
+ * existe.
  */
 const stateCopy: Record<FiscalStateWithoutDocuments, StateCopy> = {
   no_clients: {
@@ -83,7 +91,7 @@ const stateCopy: Record<FiscalStateWithoutDocuments, StateCopy> = {
   },
   no_documents: {
     title: 'Ainda sem documentos capturados',
-    description: 'A captura está no ar e nenhum documento foi capturado até agora. O primeiro lote aparece na próxima consulta.',
+    description: 'Nenhum documento foi capturado até agora nesta conta, então não há volume por modelo nem série de emissão para mostrar.',
     icon: 'i-lucide-inbox',
     tone: 'neutral'
   }
@@ -92,18 +100,24 @@ const stateCopy: Record<FiscalStateWithoutDocuments, StateCopy> = {
 /**
  * A frase que **exige** haver atenção para ser verdadeira.
  *
- * `no_documents` e só ele. O texto de base diz "a captura está no ar… o
- * primeiro lote aparece na próxima consulta", e com um cliente bloqueado,
- * interrompido ou em falha na lista de baixo as duas frases se contradiziam na
- * mesma tela. E a contradição não era um acidente: o estado continua sendo
- * `no_documents` justamente porque os últimos cinco motivos descrevem clientes
- * que **contam como capturáveis**. A frase de agora diz o que é verdade nos
- * dois casos — ainda não há documento — e manda o porquê para a lista.
+ * `no_documents` e só ele, e a variante é um acréscimo, não uma correção: a
+ * frase de base já é verdadeira nos dois casos, e com a lista cheia o cartão
+ * ganha um endereço — a lista de baixo é quem diz por quê.
+ *
+ * O que esta frase não pode fazer é nomear o porquê, e é a armadilha: os cinco
+ * motivos de captura nomeiam mecanismos muito diferentes, e nem todos impedem a
+ * consulta. `continuity_warning` é um cliente com A1 válido, `last_seen_at` de
+ * 46 dias e uma consulta que não trouxe nada — o backend o mantém na cobertura
+ * de propósito, e a lista de baixo convida a voltar a capturar. Um cartão
+ * dizendo que "há clientes que impedem a consulta de rodar" seria a segunda
+ * mentira no mesmo item: uma por dizer que a consulta roda, outra por dizer que
+ * não pode. O cartão responde em que estado a carteira está; a lista responde
+ * por que aquele cliente está assim.
  */
 const stateCopyWithAttention: Partial<Record<FiscalStateWithoutDocuments, StateCopy>> = {
   no_documents: {
     title: 'Ainda sem documentos capturados',
-    description: 'Nenhum documento foi capturado até agora, e há clientes na lista de atenção abaixo que impedem a consulta de rodar.',
+    description: 'Nenhum documento foi capturado até agora nesta conta, e a lista de atenção abaixo diz por que nada chegou ainda.',
     icon: 'i-lucide-inbox',
     tone: 'warning'
   }
@@ -135,9 +149,9 @@ const stateCopyWithoutAttention: Partial<Record<FiscalStateWithoutDocuments, Sta
  *
  * A decisão continua com quatro valores — é o contrato que a próxima tela usa e
  * que o resumo entrega. O que muda é que a frase não pode afirmar nada que o
- * resto do payload contradiga: a lista de atenção é a outra metade da mesma
- * tela, e duas frases opostas na mesma página é exatamente a ambiguidade que
- * este painel existe para não ter.
+ * resto do payload contradiga, e nem nada que a lista de atenção vai explicar
+ * por ela: o cartão é o estado, a lista é a causa, e as duas metades da tela
+ * escrevem sobre a mesma carteira.
  *
  * `with_documents` não entra: não há o que anunciar quando há o que ler, e a
  * página não desenha esse cartão.

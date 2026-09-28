@@ -99,28 +99,55 @@ describe('estado da cobertura', () => {
 })
 
 describe('a frase do estado conforme a atenção', () => {
-  // O payload que produz esta contradição é real e o backend pode montá-lo:
-  // {capturable: 1, documents: {total: 0}, attention: [{reason:
-  // 'capture_blocked'}]}. Os cinco últimos motivos descrevem clientes que
-  // contam como capturáveis, então o estado é `no_documents` e a lista de
-  // atenção diz, na mesma tela, que a consulta não está rodando.
+  // O cartão de estado e a lista de atenção são as duas metades da mesma tela.
+  // O cartão responde "em que estado a carteira está" e a lista responde "por
+  // que aquele cliente está assim". Quando o cartão nomeia o mecanismo, ele
+  // repete a lista — e passa a poder contradizê-la, porque os cinco motivos de
+  // captura nomeiam mecanismos muito diferentes entre si, e nem todos impedem a
+  // consulta.
 
-  it('não afirma que a captura está rodando quando alguém está em atenção', () => {
-    // A afirmação é "está no ar" e "o próximo lote aparece" — duas promessas
-    // sobre uma consulta que a lista de baixo diz estar bloqueada, interrompida
-    // ou em falha. O que é verdade nos dois casos é só que ainda não há
-    // documento, e o porquê está na lista.
+  it('não diz que a consulta está impedida quando o motivo só avisa sobre o futuro', () => {
+    // `continuity_warning` é um cliente com A1 válido, `last_seen_at` de 46 dias
+    // e uma consulta que não trouxe nada. O backend o mantém na cobertura de
+    // propósito — `motivoDaCaptura()` não desconta ninguém — e a lista de baixo
+    // convida a voltar a capturar. Um cartão dizendo que a consulta não pode
+    // rodar seria a segunda mentira no mesmo item: uma por dizer que a consulta
+    // roda, outra por dizer que não.
     const copy = fiscalStateCopy('no_documents', true)
-    assert.doesNotMatch(copy.description, /no ar|próxima consulta|próximo lote|próxima execução/i)
+    assert.doesNotMatch(copy.description, /impede|impedid|não roda|bloqueia|bloquead|parou|parada/i)
     assert.match(copy.description, /nenhum documento/i)
-    assert.match(copy.description, /atenção/i, 'a frase precisa mandar o operador à lista que explica o porquê')
+    assert.match(copy.description, /atenção/i, 'a frase precisa mandar o operador à lista que carrega o porquê')
   })
 
-  it('pode afirmar que a captura está rodando quando não há ninguém em atenção', () => {
-    // O caso espelho: sem atenção, nada no payload contradiz a frase, e ela é a
-    // informação útil — o primeiro dia de uso não deve ler como um problema.
+  it('também não nomeia mecanismo com um motivo que de fato bloqueia', () => {
+    // O caso espelho, e o que torna o primeiro não-trivial: `capture_blocked`
+    // é o motivo em que a consulta está de fato parada, e é por isso que ele
+    // não pode ser o motivo do cartão. Se o cartão nomeasse o bloqueio aqui, a
+    // frase valeria para um dos cinco e mentiria para os outros quatro.
+    assert.match(attentionDescription('capture_blocked'), /bloqueou/i)
+    assert.doesNotMatch(fiscalStateCopy('no_documents', true).description, /bloque|parou|impede|não roda/i)
+  })
+
+  it('não nomeia nenhum dos mecanismos que a lista nomeia', () => {
+    // A cobertura do caso acima: em vez de um motivo, todos os verbos que as
+    // cinco frases de captura usam. Um cartão que nomeia mecanismo é um cartão
+    // que fica errado no motivo que ele não conhece.
+    const copy = fiscalStateCopy('no_documents', true)
+    for (const mecanismo of ['impede', 'impedid', 'bloque', 'parou', 'interrompid', 'esgotad', 'falhou', 'retom', 'aguard']) {
+      assert.doesNotMatch(copy.description, new RegExp(mecanismo, 'i'), `o cartão de estado nomeia "${mecanismo}"`)
+    }
+  })
+
+  it('não afirma nada sobre a operação quando a lista está vazia', () => {
+    // Dia um: cliente novo com A1 válido e sem cursor ainda. A API devolve
+    // capturable 1, nenhum documento, lista vazia e `last_capture` null — e o
+    // cartão de última consulta diz, na mesma tela, que a conta nunca consultou
+    // o fisco. A frase do estado não pode afirmar o contrário, nem prometer a
+    // hora de um lote que ninguém consultou.
+    const nuncaConsultou = lastCaptureOutcome(null)
     const copy = fiscalStateCopy('no_documents', false)
-    assert.match(copy.description, /no ar/i)
+    assert.match(`${nuncaConsultou.title} ${nuncaConsultou.description}`, /nunca consultou/i)
+    assert.doesNotMatch(copy.description, /no ar|rodando|capturando|próxima consulta|próximo lote|próxima execução/i)
     assert.match(copy.description, /nenhum documento/i)
   })
 
@@ -152,21 +179,19 @@ describe('a frase do estado conforme a atenção', () => {
     assert.equal(fiscalStateCopy('no_clients', true).description, fiscalStateCopy('no_clients', false).description)
   })
 
-  it('nenhuma das frases afirma o que a lista de atenção afirma ao contrário', () => {
-    // O payload que o backend consegue montar, e as duas metades da tela lado a
-    // lado. Um painel que desenha duas afirmações incompatíveis é o defeito, e
-    // ele nasce de duas frases que ninguém comparou entre si.
-    const listaVazia = fiscalNoAttention.description
+  it('nenhuma das frases afirma o que a outra metade da tela afirma ao contrário', () => {
+    // Os dois payloads que o backend consegue montar, e as duas metades da tela
+    // lado a lado.
+    const listaVazia = `${fiscalNoAttention.title} ${fiscalNoAttention.description}`
     const listaCheia = attentionDescription('capture_blocked')
 
-    // Metade 1: `no_capturable` sem lista. O cartão não pode prometer que a
-    // lista explica cada cliente, porque a lista vazia diz que ninguém precisa
-    // de ação. A tela mostra título e descrição, então a comparação é dos dois.
-    assert.match(`${fiscalNoAttention.title} ${listaVazia}`, /nenhum cliente precisa de ação/i)
+    // `no_capturable` sem lista não pode prometer que a lista explica cada
+    // cliente, porque a lista vazia diz que ninguém precisa de ação.
+    assert.match(listaVazia, /nenhum cliente precisa de ação/i)
     assert.doesNotMatch(fiscalStateCopy('no_capturable', false).description, /o motivo de cada um está na lista/i)
 
-    // Metade 2: `no_documents` com lista. O cartão não pode dizer que a captura
-    // roda, porque a lista cheia diz que o fisco segurou a consulta.
+    // `no_documents` com lista não pode dizer que a captura roda, porque a
+    // lista cheia diz que o fisco segurou a consulta.
     assert.match(listaCheia, /bloqueou/i)
     assert.doesNotMatch(fiscalStateCopy('no_documents', true).description, /no ar|próxima consulta|próximo lote/i)
   })
