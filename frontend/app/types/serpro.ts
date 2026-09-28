@@ -222,10 +222,19 @@ export interface SerproAccountCertificate {
 export interface SerproSyncRun {
   id: number
   state: SerproSyncRunState
+  /** `total` is the sum of the five below — `encerrado` has no counterpart here. */
   total: number
   synchronized: number
   skipped: number
   failed: number
+  /**
+   * The provider may have applied the call and nobody knows (timeout after
+   * the request went out). Counted on its own — folding it into `failed`
+   * would claim an answer the provider never gave.
+   */
+  indeterminate: number
+  /** Still waiting inside the run; `0` once the run is terminal. */
+  not_processed: number
   started_at: string | null
   finished_at: string | null
 }

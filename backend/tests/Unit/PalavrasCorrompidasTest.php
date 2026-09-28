@@ -148,7 +148,7 @@ final class PalavrasCorrompidasTest extends TestCase
      *   `corretamente` (12), `inteiramente` (12), `precisamente` (12),
      *   `separadamente` (13);
      * - **6 das 12 não são hapax**, e o filtro as descarta antes disso:
-     *   `exatamente` (56×), `realmente` (5×), `deliberadamente` (4×),
+     *   `exatamente` (59×), `realmente` (5×), `deliberadamente` (4×),
      *   `separadamente` (3×), `estruturalmente` (2×), `localmente` (2×);
      * - **só 2 são ao mesmo tempo hapax e de 14 ou mais**, e são as duas que a
      *   regra de fato aciona com a lista vazia: `propositalmente` e
@@ -482,23 +482,24 @@ final class PalavrasCorrompidasTest extends TestCase
      * conferido por
      * `MedidaDaRegraDeColagemTest::test_a_particao_dos_hapaxes_longos_e_completa`:
      *
-     * - **25** palavras de 14 caracteres ou mais aparecem uma vez só;
-     * - **13** delas a regra **acusaria** no instante em que a metade ausente
+     * - **26** palavras de 14 caracteres ou mais aparecem uma vez só;
+     * - **15** delas a regra **acusaria** no instante em que a metade ausente
      *   aparecesse, porque a regra exige que **as duas** metades estejam no
-     *   corpus e o corpus cresce com o próprio repositório. São onze com metade
+     *   corpus e o corpus cresce com o próprio repositório. São treze com metade
      *   ausente comum — `autoalimentado` esperando `alimentado`,
      *   `sobrescrevendo` esperando `sobr`, `contraditórias` esperando
      *   `ditórias`, `diferentesariam` esperando `sariam`, `implementações`
      *   esperando `implement`, `comportamentos` esperando `mentos`,
      *   `sobrescrevesse` esperando `sobr`, `reautenticação` esperando
      *   `reautentic`, `reclassificaria` esperando `reclassi`,
-     *   `reimplementação` esperando `reimplement` e `classifications`
-     *   esperando `ifications` — e mais **`infraestrutura` esperando `infra`**
+     *   `reimplementação` esperando `reimplement`, `classifications`
+     *   esperando `ifications`, `synchronization` esperando `hronization` e
+     *   `identificadores` esperando `dores` — e mais **`infraestrutura` esperando `infra`**
      *   e **`programaticamente` esperando `programatica`**, cujas o único corte
      *   possível tem a metade **presente** isenta;
-     * - **12** não acusariam, e é a soma que fecha a partição.
+     * - **11** não acusariam, e é a soma que fecha a partição.
      *
-     * **13 + 12 = 25**, e a soma é a checagem de que a partição é completa.
+     * **15 + 11 = 26**, e a soma é a checagem de que a partição é completa.
      *
      * **A partição anterior deste parágrafo — `11 + 2 + 12` — estava errada
      * como partição, e a forma do erro importa.** O `2` era

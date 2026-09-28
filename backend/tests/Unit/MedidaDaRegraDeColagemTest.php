@@ -9,7 +9,7 @@ use Tests\TestCase;
  * A **medição** da camada de colagem, reexecutável.
  *
  * **Este arquivo não é guarda de corrupção — ele é o número.** A docblock da
- * regra de colagem afirma três contagens sobre os 25 hapaxes de 14+ caracteres,
+ * regra de colagem afirma três contagens sobre os 26 hapaxes de 14+ caracteres,
  * e nos rounds anteriores elas foram medidas por um script **externo**, que é
  * uma reimplementação da regra: a cópia e o original divergiram em 11 e 13, e
  * a cópia ganhou. Aqui os números saem do corpus e dos cortes, com a mesma
@@ -45,11 +45,11 @@ final class MedidaDaRegraDeColagemTest extends TestCase
      *
      * | conjunto | tamanho | o que é |
      * | --- | --- | --- |
-     * | hapaxes de 14+ | 25 | a base |
-     * | acusariam quando a metade faltasse | **13** | 11 com metade ausente comum, mais `infraestrutura` e `programaticamente` |
-     * | não acusariam | **12** | as duas caladas por `ISENTAS` e as dez que não dividem |
+     * | hapaxes de 14+ | 26 | a base |
+     * | acusariam quando a metade faltasse | **15** | 13 com metade ausente comum, mais `infraestrutura` e `programaticamente` |
+     * | não acusariam | **11** | as duas caladas por `ISENTAS` e as nove que não dividem |
      *
-     * **13 + 12 = 25**, e a soma é a checagem de que a partição é completa.
+     * **15 + 11 = 26**, e a soma é a checagem de que a partição é completa.
      *
      * **A partição anterior do round 4 era `11 + 2 + 12`, e ela estava errada
      * como partição:** o `2` — `silenciosamente` e `propositalmente` — é
@@ -70,7 +70,7 @@ final class MedidaDaRegraDeColagemTest extends TestCase
             ARRAY_FILTER_USE_BOTH,
         ));
 
-        $this->assertCount(25, $hapaxLongos, 'Os hapaxes de 14+ mudaram: as contagens da docblock da regra precisam ser recontadas.');
+        $this->assertCount(26, $hapaxLongos, 'Os hapaxes de 14+ mudaram: as contagens da docblock da regra precisam ser recontadas.');
 
         $acusam = [];
         $nunca = [];
@@ -96,9 +96,9 @@ final class MedidaDaRegraDeColagemTest extends TestCase
             }
         }
 
-        $this->assertCount(13, $acusam, sprintf('Os que acusariam quando a metade faltasse: %d agora, a docblock diz 13. São %s.', count($acusam), implode(', ', $acusam)));
-        $this->assertCount(12, $nunca, sprintf('Os que não acusariam: %d agora, a docblock diz 12. São %s.', count($nunca), implode(', ', $nunca)));
-        $this->assertSame(25, 13 + 12, 'A partição não fecha.');
+        $this->assertCount(15, $acusam, sprintf('Os que acusariam quando a metade faltasse: %d agora, a docblock diz 15. São %s.', count($acusam), implode(', ', $acusam)));
+        $this->assertCount(11, $nunca, sprintf('Os que não acusariam: %d agora, a docblock diz 11. São %s.', count($nunca), implode(', ', $nunca)));
+        $this->assertSame(26, 15 + 11, 'A partição não fecha.');
 
         // As duas que a isenta segura, e que são subconjunto do 12 — o ponto em
         // que a partição do round 4 estava errada.
@@ -125,7 +125,7 @@ final class MedidaDaRegraDeColagemTest extends TestCase
         [$corpus] = $this->medir();
 
         $esperado = [
-            'exatamente' => [10, 56],
+            'exatamente' => [10, 59],
             'corretamente' => [12, 0],
             'separadamente' => [13, 3],
             'realmente' => [9, 5],

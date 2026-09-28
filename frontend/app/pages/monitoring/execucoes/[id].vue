@@ -162,14 +162,21 @@ const runCounts = computed(() => {
     { label: 'Total', value: run.value.total, class: 'text-highlighted' },
     { label: 'Sincronizados', value: run.value.synchronized, class: 'text-success' },
     { label: 'Ignorados', value: run.value.skipped, class: 'text-highlighted' },
-    { label: 'Falhos', value: run.value.failed, class: run.value.failed > 0 ? 'text-error' : 'text-highlighted' }
+    { label: 'Falhos', value: run.value.failed, class: run.value.failed > 0 ? 'text-error' : 'text-highlighted' },
+    // Indeterminate is an answer the provider never gave: beside `failed`,
+    // never inside it.
+    { label: 'Indeterminados', value: run.value.indeterminate, class: run.value.indeterminate > 0 ? 'text-warning' : 'text-highlighted' },
+    { label: 'Pendentes', value: run.value.not_processed, class: 'text-highlighted' }
   ]
 })
 
 /** Share of the run already answered, for the same bar the client detail draws. */
 const donePct = computed(() => {
   if (!run.value || run.value.total === 0) return 0
-  const done = run.value.synchronized + run.value.skipped + run.value.failed
+  // Indeterminate counts as answered: the call went out and the provider's
+  // response identifier is on the item — what is missing is certainty, not
+  // an attempt.
+  const done = run.value.synchronized + run.value.skipped + run.value.failed + run.value.indeterminate
   return Math.min(100, Math.round((done / run.value.total) * 100))
 })
 
@@ -195,8 +202,8 @@ const progressBarClass = computed(() => barClass[runState.value?.color ?? 'neutr
 
       <template v-else-if="isLoading">
         <USkeleton class="h-28 w-full rounded-xl" />
-        <div class="grid gap-3 sm:grid-cols-4">
-          <USkeleton v-for="index in 4" :key="index" class="h-20 w-full rounded-xl" />
+        <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <USkeleton v-for="index in 6" :key="index" class="h-20 w-full rounded-xl" />
         </div>
         <USkeleton class="h-64 w-full rounded-xl" />
       </template>
@@ -291,7 +298,7 @@ const progressBarClass = computed(() => barClass[runState.value?.color ?? 'neutr
           </div>
         </UCard>
 
-        <UPageGrid class="gap-3 sm:gap-3 lg:grid-cols-4 lg:gap-px">
+        <UPageGrid class="gap-3 sm:gap-3 lg:grid-cols-6 lg:gap-px">
           <UPageCard
             v-for="count in runCounts"
             :key="count.label"
