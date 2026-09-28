@@ -46,8 +46,12 @@ docker-compose.override.yml
 
 # Worktrees locais (isolamento SDD)
 .worktrees/
+.workitrees/
+.workittrees/
 
 # Ferramentas locais (não versionar: config da máquina + licença de skill copiada)
+.openchamber/
+.devin/
 .impeccable/
 .codex/
 .cursor/
