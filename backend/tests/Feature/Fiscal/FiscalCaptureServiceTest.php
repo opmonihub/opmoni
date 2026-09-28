@@ -452,11 +452,17 @@ class FiscalCaptureServiceTest extends TestCase
         // devolve nesse caso é o eco da posição pedida — ou zero, quando o campo
         // não vem. Gravar isso sobrescreveria o cursor com o valor anterior e
         // apagaria a posição que a consulta anterior tinha conquistado.
+        //
+        // O `137` é o que classifica a resposta, então vem junto: um `null`
+        // aqui seria uma forma que o conector não produz, e a forma que ele
+        // produz — resposta com `lastNsu` diferente da posição guardada — é a
+        // única em que `assertSame(900, …)` consegue falhar.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [],
             lastNsu: 0,
             mayAdoptPosition: false,
             blockedUntil: CarbonImmutable::now()->addHour(),
+            failure: FiscalFailure::NoDocuments,
         ));
 
         $outcome = $this->service()->capture($client, FiscalSource::NfeDistribuicao);
@@ -472,30 +478,6 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertNull($cursor->last_error);
     }
 
-    public function test_a_block_from_the_connector_is_persisted(): void
-    {
-        [$client] = $this->tenant(withCertificate: true);
-
-        // Consumo indevido: a posição vem dentro do corpo da própria rejeição, e
-        // é a única alavanca de recuperação que o fisco oferece. Perdê-la custaria
-        // recomeçar do começo, então este é o caso em que a posição é gravada
-        // mesmo sem nenhum documento.
-        $this->bindConnector(fn (): PullResult => $this->batch(
-            [],
-            lastNsu: 1678,
-            mayAdoptPosition: true,
-            blockedUntil: CarbonImmutable::now()->addHour(),
-        ));
-
-        $outcome = $this->service()->capture($client, FiscalSource::NfeDistribuicao);
-
-        $cursor = $this->cursor($client);
-
-        $this->assertSame(1678, $cursor->last_nsu);
-        $this->assertSame(1678, $outcome->toNsu);
-        $this->assertNotNull($cursor->blocked_until);
-    }
-
     public function test_rejeicao_por_consumo_indevido_marca_a_coluna_com_o_rotulo_fixo(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -504,6 +486,11 @@ class FiscalCaptureServiceTest extends TestCase
         // localizado" são indistinguíveis pelo relógio, e só uma delas é um
         // item de atenção. O rótulo é o que sobrevive para o painel, e ele é
         // fixo: nada do que o fisco escreveu no `xMotivo` entra na coluna.
+        //
+        // A posição vem dentro do corpo da própria rejeição, e é a única
+        // alavanca de recuperação que o fisco oferece: perdê-la custaria
+        // recomeçar do começo, então este é o caso em que a posição é gravada
+        // mesmo sem nenhum documento.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [],
             lastNsu: 1678,
@@ -525,6 +512,31 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertSame(1678, $cursor->last_nsu);
     }
 
+    public function test_a_marca_de_consumo_indevido_nao_depende_da_pausa(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // A classificação e a pausa são eixos independentes, e o design diz que
+        // o são: a pausa de uma hora vale nos dois tipos de recusa, e o rótulo é
+        // só do consumo indevido. Sem este teste, acrescentar
+        // `&& $blockedUntil !== null` à expressão do marcador passaria a suíte
+        // inteira — os três fixtures de `Blocked` trazem a pausa junto, e um
+        // teste que amarra as duas coisas só consegue provar que as duas existem.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [],
+            lastNsu: 1678,
+            mayAdoptPosition: true,
+            failure: FiscalFailure::Blocked,
+        ));
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $cursor = $this->cursor($client);
+
+        $this->assertSame('blocked_consumption', $cursor->last_error);
+        $this->assertNull($cursor->blocked_until);
+    }
+
     public function test_nenhum_documento_localizado_pausa_sem_deixar_marca(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -534,9 +546,14 @@ class FiscalCaptureServiceTest extends TestCase
         // Mesma pausa, outro motivo: o fisco não tinha nada novo para o CNPJ.
         // A coluna fica limpa, porque um cliente saudável consultando de hora
         // em hora não pode aparecer na lista de atenção.
+        //
+        // A posição devolvida é 1200 e não a 900 que estava guardada: com as duas
+        // iguais, `assertSame(900, …)` passaria tanto se a posição tivesse sido
+        // preservada quanto se tivesse sido adotada, e o teste não provaria nada
+        // sobre a recusa do serviço.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [],
-            lastNsu: 900,
+            lastNsu: 1200,
             mayAdoptPosition: false,
             blockedUntil: CarbonImmutable::now()->addHour(),
             failure: FiscalFailure::NoDocuments,

@@ -524,7 +524,7 @@ class FiscalReconciliationTest extends TestCase
         $estranha = $this->tenant();
 
         $this->cursor($client, 100);
-        $this->createGap($client, 101);
+        $lacunaDoCliente = $this->createGap($client, 101);
         $lacunaEstranha = $this->createGap($estranha, 101);
 
         // O worker de fila é longo e a conta corrente é um singleton que ninguém
@@ -532,6 +532,25 @@ class FiscalReconciliationTest extends TestCase
         // cliente apontada aqui. Quem manda na lacuna é o cliente da chamada,
         // nunca o resíduo do ambiente.
         resolve(CurrentTenant::class)->accountId = $estranha->account_id;
+
+        // A dona de cada linha é a conta do cliente, e a coluna não é
+        // mass-assignável em `FiscalGap`: `recordGap()` escreve por atribuição
+        // direta de propósito, porque um `fill()` ou um `firstOrCreate()` ali
+        // deixaria a chave de fora e o hook de criação puxaria a conta corrente —
+        // que é exatamente o resíduo que este teste monta. A lacuna passaria a
+        // ser de outra conta, em silêncio, e ninguém veria.
+        //
+        // A leitura é antes da execução porque a execução recupera a posição e
+        // apaga a linha: o que se quer fixar é quem é a dona dela, e a dona não
+        // muda por a linha deixar de existir.
+        $this->assertSame(
+            $client->account_id,
+            FiscalGap::withoutGlobalScope('account')->findOrFail($lacunaDoCliente->getKey())->account_id,
+        );
+        $this->assertSame(
+            $estranha->account_id,
+            FiscalGap::withoutGlobalScope('account')->findOrFail($lacunaEstranha->getKey())->account_id,
+        );
 
         $this->bindConnector($this->noPull(), fn (Client $client, int $nsu): ?PulledDocument => $this->pulled($nsu, self::CHAVE_101));
 
