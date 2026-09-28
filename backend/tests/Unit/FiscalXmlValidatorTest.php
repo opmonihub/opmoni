@@ -125,6 +125,34 @@ class FiscalXmlValidatorTest extends TestCase
     }
 
     /**
+     * A mesma assinatura injetada, agora no schema do **CT-e**, e a mesma
+     * recusa local.
+     *
+     * A meia verdade do lado de NF-e é que o `cStat 215` do serviço é um fato
+     * verificado do serviço de NF-e, e o XSD local é a outra metade: um
+     * `xs:sequence` fechado, sem `xs:any` algum, que não abre espaço para
+     * elemento nenhum além do que ele lista. Do CT-e **ninguém sabe** — este
+     * repositório não falou com o serviço uma vez sequer —, e o que se afirma
+     * aqui é só a parte local: o mesmo payload sem a assinatura passa
+     * (`test_accepts_the_cte_request_the_envelope_builds`), e são os dois testes
+     * juntos que provam que foi a sequência fechada que recusou. Um `215` vindo
+     * do serviço de CT-e é hipótese do canário, e está escrito como tal em
+     * `config/fiscal.php`.
+     */
+    public function test_rejects_the_cte_request_with_an_injected_signature(): void
+    {
+        $request = str_replace(
+            '</distDFeInt>',
+            '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/></distDFeInt>',
+            $this->payloadDaConsulta(fonte: 'cte_distribuicao'),
+        );
+
+        $this->expectException(RuntimeException::class);
+
+        $this->validate($request, service: 'cte', version: '1.00');
+    }
+
+    /**
      * O XSD descreve o `distDFeInt`, não o envelope SOAP que o embrulha: o
      * conector entrega o payload, e o fixture vem do envelope de verdade para
      * que os dois não divirjam sobre a forma do documento.

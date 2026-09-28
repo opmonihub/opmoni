@@ -40,10 +40,14 @@ use RuntimeException;
  *
  * Quatro regras que este arquivo existe para sustentar:
  *
- * 1. **A requisição não é assinada.** O serviço não assina, o XSD local recusa
- *    assinatura injetada antes de qualquer byte, e a autenticação é o certificado
- *    A1 do cliente no transporte. Não existe XMLDSig aqui nem em qualquer outro
- *    arquivo do módulo.
+ * 1. **A requisição não é assinada.** O schema local recusa assinatura injetada
+ *    antes de qualquer byte — `distDFeInt_v1.00.xsd` é um `xs:sequence` fechado,
+ *    sem `xs:any` —, e a autenticação é o certificado A1 do cliente no
+ *    transporte. Não existe XMLDSig aqui nem em qualquer outro arquivo do módulo.
+ *    ⚠️ A outra metade da frase, o `cStat 215` do serviço, é fato verificado do
+ *    **NF-e** e trazido para cá por analogia: este repositório não chamou o
+ *    serviço de CT-e nenhuma vez, e o que responde `215` a um corpo assinado é
+ *    uma das coisas que o canário de um cliente vai conferir.
  * 2. **A posição nunca é incrementada.** `ultNSU` no pedido é a posição que o
  *    consumidor já tem, e `lastNsu` no resultado é o valor que a resposta
  *    devolveu — nunca o local somado de um.

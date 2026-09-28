@@ -38,10 +38,13 @@ use RuntimeException;
  *
  * Quatro regras que este arquivo carrega desde o conector de NF-e:
  *
- * 1. **A requisição não é assinada.** O serviço não assina, o XSD rejeita
- *    assinatura injetada com `cStat 215`, e a autenticação é o certificado A1
- *    do cliente no transporte. Não existe XMLDSig aqui nem em qualquer outro
- *    arquivo do módulo.
+ * 1. **A requisição não é assinada.** O XSD local recusa assinatura injetada
+ *    antes de qualquer byte — os dois serviços têm schema fechado, sem `xs:any` —,
+ *    e a autenticação é o certificado A1 do cliente no transporte. Não existe
+ *    XMLDSig aqui nem em qualquer outro arquivo do módulo. O `cStat 215` que o
+ *    serviço de NF-e devolve a um corpo assinado é verificado **dele**; para o
+ *    serviço de CT-e é hipótese, e é uma das coisas que o canário de um cliente
+ *    vai conferir.
  * 2. **Nada é manifestado.** A distribuição consulta e lê. O `210200` é um
  *    ato legal que bloquearia o cancelamento do emissor, e nenhum caminho de
  *    código deste módulo o envia.
