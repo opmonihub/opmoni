@@ -1,6 +1,5 @@
 // app/utils/fiscalFilters.ts
 import type {
-  FiscalDocumentRow,
   FiscalKind,
   FiscalListFilters,
   FiscalModel,
@@ -220,26 +219,31 @@ export function fiscalQuery(filters: FiscalListFilters): Record<string, string |
 }
 
 /**
- * Os modelos que o filtro de modelo oferece: os das linhas da tela, mais os
- * que o operador já tinha selecionado.
+ * Os modelos que o filtro de modelo oferece: os da consulta, mais os que o
+ * operador já tinha selecionado.
  *
- * O segundo grupo é o que o backend também faz (`available_models` carrega o
- * selecionado mesmo sem linha atrás dele) e é o que impede a tela de esconder
- * a única saída de um filtro que esvaziou a tabela. Um `Set` resolve os dois:
- * o mesmo modelo vindo das linhas e da URL é a mesma palavra.
+ * O primeiro grupo é o `available_models` da API, e ele é o **resultado
+ * inteiro**, não a página: o backend tira o distinct da consulta filtrada antes
+ * de paginar justamente para isso. Uma versão que lesse as linhas da tela
+ * trocaria o filtro por um estado de paginação — na página 3 de uma lista só de
+ * NF-e o chip de CT-e desapareceria, sendo que o CT-e está no resultado e é um
+ * filtro legal. A lista de chips é propriedade da consulta, e a paginação não
+ * entra nela.
  *
- * A ordem é a das linhas, e não alfabética: a lista de opções acompanha o que
- * a tela está mostrando, e só o que não veio de linha entra no fim.
+ * O segundo grupo é o que o backend também faz e é o que impede a tela de
+ * esconder a única saída de um filtro que esvaziou a tabela. Um `Set` resolve os
+ * dois: o mesmo modelo vindo da consulta e da URL é a mesma palavra.
+ *
+ * A ordem é a da consulta. O guard de valor desconhecido fica em quem chama,
+ * com o `isFiscalModel` daqui: um modelo novo de um backend mais novo não pode
+ * virar chip, porque o chip vira `?model=` e a API responde 422.
  */
 export function availableFiscalModels(
-  rows: readonly FiscalDocumentRow[],
+  models: readonly FiscalModel[],
   selected: readonly FiscalModel[] = []
 ): FiscalModel[] {
-  const options = new Set<FiscalModel>()
+  const options = new Set<FiscalModel>(models)
 
-  for (const row of rows) {
-    if (isFiscalModel(row.model)) options.add(row.model)
-  }
   for (const model of selected) options.add(model)
 
   return [...options]

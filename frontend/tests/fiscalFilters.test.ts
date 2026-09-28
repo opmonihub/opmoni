@@ -1,7 +1,7 @@
 // tests/fiscalFilters.test.ts
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { FiscalDocumentRow, FiscalListFilters } from '../app/types/fiscal.ts'
+import type { FiscalListFilters } from '../app/types/fiscal.ts'
 import {
   availableFiscalModels,
   fiscalDocumentosPath,
@@ -9,11 +9,6 @@ import {
   isFiscalModel,
   parseFiscalFilters
 } from '../app/utils/fiscalFilters.ts'
-
-/** Só o campo que a função dos modelos lê; o resto da linha não é dela. */
-function row(model: FiscalDocumentRow['model']): FiscalDocumentRow {
-  return { model } as FiscalDocumentRow
-}
 
 describe('a URL da tabela de documentos', () => {
   it('lê modelo repetido, cliente e página do jeito que a barra escreve', () => {
@@ -136,11 +131,11 @@ describe('a URL da tabela de documentos', () => {
 })
 
 describe('as opções de modelo do filtro', () => {
-  it('lista cada modelo uma vez, na ordem em que a página os traz', () => {
-    assert.deepEqual(availableFiscalModels([row('nfe'), row('cte'), row('cte')]), ['nfe', 'cte'])
+  it('lista cada modelo uma vez, na ordem em que a consulta devolveu', () => {
+    assert.deepEqual(availableFiscalModels(['nfe', 'cte', 'cte']), ['nfe', 'cte'])
   })
 
-  it('não oferece modelo nenhum sem linha atrás', () => {
+  it('não oferece modelo nenhum sem resultado', () => {
     assert.deepEqual(availableFiscalModels([]), [])
   })
 
@@ -148,7 +143,17 @@ describe('as opções de modelo do filtro', () => {
     // Filtro de modelo que esvaziou a tabela é justamente quando o operador
     // mais precisa do chip para tirá-lo.
     assert.deepEqual(availableFiscalModels([], ['nfse']), ['nfse'])
-    assert.deepEqual(availableFiscalModels([row('cte')], ['cte', 'nfe']), ['cte', 'nfe'])
+    assert.deepEqual(availableFiscalModels(['cte'], ['cte', 'nfe']), ['cte', 'nfe'])
+  })
+
+  it('oferece um modelo que não tem linha nenhuma na página atual', () => {
+    // A lista que entra aqui é a da consulta (`available_models`), e ela
+    // descreve o resultado inteiro. Na página 3 de uma lista de NF-e não há
+    // linha de CT-e, e o chip de CT-e precisa continuar ali: sem ele, um filtro
+    // legal deixa de ser oferecível e o que resta é o estado da paginação
+    // fingindo ser filtro.
+    assert.deepEqual(availableFiscalModels(['cte']), ['cte'])
+    assert.deepEqual(availableFiscalModels(['nfe', 'cte']), ['nfe', 'cte'])
   })
 
   it('mantém o modelo selecionado depois de recarregar a tela', () => {
@@ -157,15 +162,16 @@ describe('as opções de modelo do filtro', () => {
     assert.deepEqual(parseFiscalFilters(fiscalQuery({ model: ['nfse'] })).model, ['nfse'])
   })
 
-  it('recusa um modelo que a API rejeitaria, e a linha que o trouxe', () => {
+  it('recusa um modelo que a API rejeitaria, antes de oferecer o chip', () => {
     // Um modelo novo do backend num build antigo: ele aparece no volume do
-    // painel, e nem aí pode virar chip ou `?model=` — a API responde 422 a um
-    // valor fora da lista fechada.
+    // painel e em `available_models`, e nem aí pode virar chip ou `?model=` — a
+    // API responde 422 a um valor fora da lista fechada. A guarda é a mesma que
+    // a leitura da query faz, e ela entra antes da lista de opções.
     assert.equal(isFiscalModel('cte'), true)
     assert.equal(isFiscalModel('nfs-e'), false)
     assert.equal(isFiscalModel(3), false)
 
-    const unknown = { model: 'nfs_e' } as unknown as FiscalDocumentRow
-    assert.deepEqual(availableFiscalModels([row('nfe'), unknown]), ['nfe'])
+    const daApi = ['nfe', 'cte', 'nfs_e']
+    assert.deepEqual(availableFiscalModels(daApi.filter(isFiscalModel)), ['nfe', 'cte'])
   })
 })

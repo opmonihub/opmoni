@@ -160,16 +160,25 @@ function onFilters(models: DataTableFilterModel[]) {
 }
 
 /**
- * Os modelos que o filtro oferece, pelas linhas da tela mais os já
- * selecionados.
+ * Os modelos que o filtro oferece: os da consulta, mais os já selecionados.
  *
- * O selecionado entra mesmo sem linha atrás: é o que o backend também faz em
- * `available_models`, e é o que deixa o filtro de modelo que esvaziou a tabela
- * sair sem recarregar a página.
+ * A fonte é `available_models`, que o backend tira do **resultado inteiro**
+ * antes de paginar, e não as linhas desta página. A diferença é funcional: na
+ * página 3 de uma lista só de NF-e o CT-e não tem linha nenhuma aqui e mesmo
+ * assim é um filtro legal, offerable. Ler as linhas trocaria o filtro por um
+ * estado de paginação — os chips mudariam conforme `page` e `per_page`, e um
+ * filtro válido desapareceria.
+ *
+ * O `isFiscalModel` é o guard da outra ponta: um modelo novo de um backend mais
+ * novo não vira chip, porque chip vira `?model=` e a API responde 422. O
+ * selecionado entra mesmo sem resultado nenhum atrás, que é o que deixa o
+ * filtro que esvaziou a tabela sair sem recarregar a página.
  */
 const modelOptions = computed(() =>
-  availableFiscalModels(rows.value, filters.value.model ?? [])
-    .map(model => ({ label: modelLabel(model), value: model }))
+  availableFiscalModels(
+    (data.value?.available_models ?? []).filter(isFiscalModel),
+    filters.value.model ?? []
+  ).map(model => ({ label: modelLabel(model), value: model }))
 )
 
 /**
