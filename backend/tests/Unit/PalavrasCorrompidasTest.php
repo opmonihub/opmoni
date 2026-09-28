@@ -128,42 +128,40 @@ final class PalavrasCorrompidasTest extends TestCase
     ];
 
     /**
-     * Metade direita que **não** é colagem: é o escape hatch da regra, e ele
-     * serve para as duas coisas que produzem metade direita legítima.
+     * Metade direita que **não** é colagem: é o escape hatch da regra, e a
+     * forma como ele é aplicado o torna uma **classe**, não uma palavra.
      *
-     * **Uma é derivação em português.** `silenciosamente` e `propositalmente`
-     * se dividem em duas palavras do corpus — `silenciosa` + `mente`,
-     * `proposital` + `mente` — e as duas são palavra correta. Medido na árvore
-     * de `2026-09-28`: são os **únicos** dois casos que a regra acusaria com o
-     * piso em 14 e esta lista vazia, e é por isso que a lista não é
-     * enfeite — sem ela o piso teria de subir para 16 e perderia a
-     * `continuaexistindo` do round 2, que tem 17 e seria a única colagem real
-     * conhecida.
+     * **A regra é "toda palavra cuja metade direita, em algum corte, é uma
+     * destas três, passa"** — e é assim que `divisaoEmPalavrasConhecidas()`
+     * funciona, porque o `continue` da isenta acontece **a cada corte** e não
+     * só naquele que fecharia. A consequência é que a lista silencia muito mais
+     * do que as três palavras que a motivaram: no escopo deste teste, nas seis
+     * raízes de `2026-09-28`, ela silencia **12** palavras, e as 12 são por
+     * causa de `mente`: `exatamente`, `corretamente`, `separadamente`,
+     * `realmente`, `raramente`, `deliberadamente`, `silenciosamente`,
+     * `inteiramente`, `localmente`, `propositalmente`, `estruturalmente` e
+     * `precisamente`. São as doze que a regra acusaria com `ISENTAS` vazia e
+     * o piso em 14, e é por isso que a lista não é enfeite: sem ela o piso
+     * teria de subir para 16, e a `continuaexistindo` do round 2 tem 17 e seria
+     * a única colagem real conhecida.
      *
-     * **A outra é a metade que é palavra por si só, com a outra metade sendo
-     * prefixo** — `infra` + `estrutura`, `implement` + `ações`. Medido
-     * (§ ruído, na docblock da regra): há **12** palavras de 14 caracteres ou
-     * mais que aparecem uma vez só e que **já** satisfazem a regra no instante
-     * em que a outra metade aparecer em qualquer comentário. Duas delas estão
-     * a uma palavra comum de distância:
+     * **As duas entradas além de `mente` não acusam nada hoje, e estão aqui
+     * para o amanhã** — e a razão de aceitarem **palavra inteira** e não só
+     * sufixo é que uma regra de sufixo jamais pegaria `infraestrutura`:
+     * `estrutura` não é sufixo de derivação, é palavra por si só, com `infra`
+     * como prefixo. `infraestrutura`
+     * (`app/Services/SerproConnectivity.php:180`) e `implementações`
+     * (`app/Services/Fiscal/Support/DfeResponseParser.php:14`) são palavra
+     * portuguesa correta, e ambas ficariam a uma palavra comum de distância de
+     * acusar: basta alguém escrever `infra` ou `implement` em um comentário.
      *
-     * - `infraestrutura` (`app/Services/SerproConnectivity.php:180`), que
-     *   espera `infra`;
-     * - `implementações` (`app/Services/Fiscal/Support/DfeResponseParser.php:14`),
-     *   que espera `implement`.
-     *
-     * Nenhuma das duas é colagem, e **nenhuma é isentada pelo sufixo**, porque
-     * `estrutura` e `ações` não são sufixo de derivação. É por isso que esta
-     * lista aceita **palavra inteira** e não só sufixo: `estrutura` e `ações`
-     * entram aqui como isentas, e a regra passa a isentar também a palavra
-     * inteira que contém a tal metade.
-     *
-     * **A consequência de um erro é declarada nos dois sentidos.** Uma colagem
-     * real que termine em `mente`, ou que seja `infraestrutura`, passa. Isso é
-     * mais barato que as doze palavras corretas acusando toda vez que o
-     * repositório cresce, e a correção de um falso positivo novo é **uma
-     * entrada aqui**, com a mesma revisão que qualquer entrada da `SUSPEITAS`
-     * exige.
+     * **A consequência de um erro é declarada nos dois sentidos, e o
+     * sobre-silenciamento é maior que as palavras que motivaram a lista.**
+     * Uma colagem real que termine em `mente`, ou cuja metade direita seja
+     * `estrutura` ou `ações`, **passa** — e não só `infraestrutura`, mas toda
+     * a família `inter*` + `ações`. Isso é o preço de um detector estrutural,
+     * e a correção de um falso positivo novo é **uma entrada aqui**, com a
+     * mesma revisão que qualquer entrada da `SUSPEITAS` exige.
      *
      * @var list<string>
      */
@@ -189,6 +187,16 @@ final class PalavrasCorrompidasTest extends TestCase
      * cada método declarado aqui existe, e que não há método de varredura neste
      * arquivo fora da lista — que é o que fecha a direção inversa, a camada
      * nova que ninguém registrou.
+     *
+     * **E a lacuna que este meta-teste não fecha, declarada porque declará-la
+     * vale mais que fingir que ele fecha.** A verificação é por edição, não é
+     * invariante: apagar o método da camada **e** a entrada dela da lista na
+     * mesma alteração deixa a suíte verde, e a docblock da classe continua
+     * anunciando três camadas onde há duas. Nenhum guarda em arquivo detecta
+     * conjunção dessas — a verificação precisa de um instantâneo que ninguém
+     * editou —, e o que a revisão do round 3 mediu é que a lacuna é pequena: os
+     * dois lados são independentes, e cada um sozinho pega a forma comum do
+     * erro. **Não foi construído para ela**, e a decisão é explícita.
      *
      * @var array<string, string>
      */
@@ -268,16 +276,52 @@ final class PalavrasCorrompidasTest extends TestCase
      * são anteriores a este arquivo e inofensivos; o que fica escrito é que
      * eles são **decididos**, e não esquecidos.
      *
-     * **O que fica fora das seis raízes e é perda, e não decisão:** o `frontend/`
-     * e o `openspec/` também têm prosa em português, e a varredura deste teste
-     * não os alcança porque ela é um teste de backend. Rodada manualmente sobre
-     * a árvore inteira com as mesmas duas regras, a única colagem viva fora do
-     * backend é um relatório de tarefa em `.superpowers/`, e nenhum caractere de
-     * outro roteiro aparece fora de `openspec/schemas/superpowers-bridge/`, que
-     * é ferramenta de terceiro com um `README.zh-TW.md` — Chinês legítimo, não
-     * corrupção. A camada 2 pegaria o Chinês daquele diretório se ele entrasse,
-     * e é por isso que a varredura de árvore inteira precisa da mesma exclusão
-     * explícita que a lista `EXCLUIDOS` faz aqui.
+     * **O que fica fora das seis raízes e é perda, e não decisão:** o `frontend/`,
+     * o `openspec/` e o `.superpowers/` também têm prosa em português, e a
+     * varredura deste teste não os alcança porque ela é um teste de backend.
+     *
+     * **A varredura de árvore inteira é datada, e a data é o que importa.** O
+     * sweep com as mesmas duas regras sobre `backend/`, `frontend/`,
+     * `openspec/`, `docs/` e `.superpowers/` foi feito em `2026-09-28`, na
+     * árvore de `47fc957`, e é o sweep que o round 3 do relatório desta tarefa
+     * colou. Ele achou **cinco** colagens fora das seis raízes, em **quatro**
+     * arquivos diferentes — não uma, como uma versão anterior desta docblock
+     * dizia:
+     *
+     * | arquivo | palavra | o que é |
+     * | --- | --- | --- |
+     * | `RecordSerproTermProof.php:172` | `interatividade` | palavra correta, `inter` + `atividade` |
+     * | `task-5-report.md:1806` | `correntesproduzem` | **colagem real**, do round 1 |
+     * | `task-3-report.md:1087` | `propriedadeverificável` | **colagem real**, do round 0 |
+     * | `progress.md:410` | `autenticaprocurador` | o nome do serviço do provedor |
+     * | `cleanup-wave-report.md:958` | `multiconjuntos` | palavra correta |
+     *
+     * **E o sweep de hoje, na árvore deste commit, dá ZERO colagens — e o
+     * motivo é o que a lição vale.** As cinco passaram a aparecer duas ou três
+     * vezes cada uma, porque **o relatório as citou**, e o filtro de hapax
+     * deixa de acusá-las. As frequências, contadas como **token de prosa** (a
+     * regra remove crase antes de tokenizar, e é por isso que `grep -o` cru
+     * dá números muito maiores e não é o filtro): `interatividade` 1 vez como
+     * comentário e 3 como prosa, `correntesproduzem` 0 e 2,
+     * `propriedadeverificável` 0 e 3, `autenticaprocurador` 0 e 3,
+     * `multiconjuntos` 0 e 3. **Uma guarda cuja evidência é destruída pelo ato
+     * de documentá-la precisa de medições datadas à árvore de onde vieram**,
+     * e é por isso que esta lista e a tabela de `COMPRIMENTO_MINIMO` trazem a
+     * data e o commit.
+     *
+     * **Uma quinta classe apareceu nesse sweep e a docblock não a nomeava:**
+     * `autocontraditório`, 17 caracteres, em
+     * `.superpowers/…-01-conexao/task-1-report.md:265`. É hapax e **não
+     * divide** em nada que o corpus contenha, então não vira achado — o que a
+     * torna o exemplo mais limpo do limite da camada 3, e é o que faltava
+     * aqui.
+     *
+     * **Nenhum caractere de outro roteiro aparece fora de
+     * `openspec/schemas/superpowers-bridge/`**, que é ferramenta de terceiro
+     * com um `README.zh-TW.md` — Chinês legítimo, não corrupção, e 3.059
+     * caracteres fora do latim. A camada 2 pegaria o Chinês daquele diretório
+     * se ele entrasse, e é por isso que a varredura de árvore inteira precisa
+     * da mesma exclusão explícita que a lista `EXCLUIDOS` faz aqui.
      *
      * @var list<string>
      */
@@ -412,15 +456,28 @@ final class PalavrasCorrompidasTest extends TestCase
      * `correntes` + `produzem` — e não uma arbitrária.
      *
      * **O ruído desta camada é um piso que sobe, e ele é declarado aqui porque
-     * zero falso positivo hoje não é a mesma coisa que regra exata.** Medido na
-     * árvore de `2026-09-28`: das **25** palavras de 14 caracteres ou mais que
-     * aparecem uma vez só, **12** já satisfazem a regra no instante em que a
-     * outra metade aparecer em qualquer comentário — porque a regra exige que
-     * **as duas** metades estejam no corpus, e o corpus cresce com o próprio
-     * repositório. As doze estão isentas por `ISENTAS` só onde o lado direito é
-     * derivação; as outras nove são `infraestrutura` esperando `infra`,
-     * `implementações` esperando `implement`, `autodescrito` esperando
-     * `auto`, e assim por diante.
+     * zero falso positivo hoje não é a mesma coisa que regra exata.** Medido
+     * nas seis raízes, na árvore de `2026-09-28` com o commit `47fc957`:
+     *
+     * - **25** palavras de 14 caracteres ou mais aparecem uma vez só;
+     * - **11** delas acusam no instante em que uma metade específica
+     *   apareça em qualquer comentário, porque a regra exige que **as duas**
+     *   metades estejam no corpus e o corpus cresce com o próprio repositório;
+     * - **2** são silenciadas em **permanência** por `ISENTAS` — o único corte
+     *   que as dividiria tem metade direita isenta, e nenhum outro corte
+     *   funciona: são `silenciosamente` e `propositalmente`, `mente` no fim;
+     * - **12** não dividem em nada que o corpus contenha, e são as outras 12
+     *   das 25.
+     *
+     * **11 + 2 + 12 = 25**, e a soma é a checagem de que a contagem é a que
+     * este parágrafo diz ser. As onze, com a metade que falta: `autoalimentado`
+     * esperando `alimentado`, `sobrescrevendo` esperando `sobr`,
+     * `contraditórias` esperando `ditórias`, `diferentesariam` esperando
+     * `sariam`, `implementações` esperando `implement`, `comportamentos`
+     * esperando `mentos`, `sobrescrevesse` esperando `sobr`, `reautenticação`
+     * esperando `reautentic`, `reclassificaria` esperando `reclassi`,
+     * `reimplementação` esperando `reimplement` e `classifications` esperando
+     * `ifications`.
      *
      * **A consequência é aritmética e não é "~":** a cada palavra nova escrita
      * em comentário, a probabilidade de um falso positivo sobe. É por isso que
@@ -433,7 +490,11 @@ final class PalavrasCorrompidasTest extends TestCase
      * **O outro limite, e ele é real:** o corpus é o repositório, então uma
      * palavra que já aparece duas vezes deixa de contar como colagem. Corrupção
      * repetida em dois comentários escapa; em comentário único, que é o caso
-     * comum, não.
+     * comum, não. **E este limite é o que a documentação desta tarefa mediu
+     * sobre si mesma:** as cinco colagens que o round 3 varreu na árvore
+     * inteira deixaram de ser achados porque passaram a aparecer duas ou três
+     * vezes — justamente porque o relatório as citava. Ver `DIRETORIOS`, que
+     * registra a mesma lição pelo outro lado.
      */
     public function test_nenhuma_palavra_colada_em_comentario(): void
     {
