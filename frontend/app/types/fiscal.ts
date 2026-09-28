@@ -252,3 +252,20 @@ export interface FiscalCaptureAccepted {
   queued: true
   client_id: number
 }
+
+/**
+ * A recusa por bloqueio (409) da mesma rota.
+ *
+ * É a única resposta de captura que **não** é um `FiscalCaptureAccepted`: o
+ * cliente está na janela que o fisco abriu por consumo indevido, e nenhum job
+ * foi enfileirado. A frase é do backend e a hora é a da janela — a tela mostra
+ * as duas, porque "não foi agora" sem "quando" deixa o operador adivinhando se
+ * vale tentar de novo daqui a pouco.
+ *
+ * O tipo mora aqui, e não no `.vue` que lê: a forma do corpo é do contrato, e
+ * uma segunda cópia declarada dentro da tela é a que diverge primeiro.
+ */
+export interface FiscalCaptureBlocked {
+  message: string
+  blocked_until: string
+}

@@ -3,6 +3,7 @@ import { VisArea, VisAxis, VisCrosshair, VisLine, VisTooltip, VisXYContainer } f
 import type { FiscalAttentionItem, FiscalSummary } from '~/types/fiscal'
 import type { FiscalTone } from '~/utils/fiscalPresentation'
 import { customerDetailPath } from '~/utils/customerRoutes'
+import { fiscalDocumentosPath, isFiscalModel } from '~/utils/fiscalFilters'
 import {
   attentionDescription,
   attentionGroups,
@@ -130,6 +131,19 @@ const state = computed(() => coverageState(summaryData.value))
 const share = computed(() => coverageShare(summaryData.value.coverage))
 const hasDocuments = computed(() => summaryData.value.documents.total > 0)
 const models = computed(() => modelVolumes(summaryData.value.documents.models))
+
+/**
+ * O mesmo volume, cada cartão com o caminho da tabela já filtrada por ele.
+ *
+ * `model.model` é `string` porque o mapa de volume do resumo traz o que o
+ * backend mandou, e o filtro de modelo é uma lista fechada: um modelo fora
+ * dela não pode virar `?model=`, porque a API responde 422 a valor que não
+ * conhece. O cartão sem link continua dizendo o volume, que é o que ele sabe.
+ */
+const modelCards = computed(() => models.value.map(model => ({
+  ...model,
+  to: isFiscalModel(model.model) ? fiscalDocumentosPath({ model: [model.model] }) : undefined
+})))
 const series = computed(() => fiscalMonthSeries(summaryData.value.documents.over_time))
 const groups = computed(() => attentionGroups(summaryData.value.attention))
 const attentionTotal = computed(() => summaryData.value.attention.length)
@@ -340,12 +354,21 @@ function toneClass(tone: FiscalTone): string {
           </div>
 
           <UPageGrid class="gap-3 sm:gap-3 lg:grid-cols-4 lg:gap-px">
+            <!--
+              O cartão de modelo abre a tabela já filtrada por ele, e o caminho
+              sai do mesmo módulo que a barra de filtro usa para escrever a URL —
+              duas strings montadas à mão garantiriam dois links diferentes para
+              o mesmo filtro. Um modelo que este build não conhece não vira
+              link: `?model=` fora da lista fechada é 422, e um cartão que
+              leva o operador a um erro não é atalho para lugar nenhum.
+            -->
             <MetricCard
-              v-for="model in models"
+              v-for="model in modelCards"
               :key="model.model"
               icon="i-lucide-file-text"
               :title="model.label"
               :value="formatFiscalCount(model.total)"
+              :to="model.to"
             />
           </UPageGrid>
         </section>
