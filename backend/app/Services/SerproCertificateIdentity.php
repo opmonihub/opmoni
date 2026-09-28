@@ -19,7 +19,10 @@ use Illuminate\Validation\ValidationException;
  * ICP-Brasil: o `serialNumber` do subject e o `CN`, que traz a razão social
  * separada do documento por `:`. Os dois são lidos e precisam concordar.
  *
- * A leitura é feita sobre os bytes recebidos, sem gravar nem regerar o PFX.
+ * A leitura é feita sobre os bytes recebidos, sem gravar nem regerar o PFX. O
+ * serviço não guarda estado: nada além dos campos do contrato sai daqui, e a
+ * vigência dos bytes é do escopo de quem os tem em mãos — zerar uma cópia
+ * local da senha não apaga nada da memória, então nem fingimos que apaga.
  */
 final class SerproCertificateIdentity
 {
@@ -47,46 +50,40 @@ final class SerproCertificateIdentity
      */
     public function parse(string $bytes, string $password): array
     {
+        $this->flushOpenSslErrors();
+
         $parsed = [];
 
-        try {
-            $this->flushOpenSslErrors();
-
-            if (! openssl_pkcs12_read($bytes, $parsed, $password) || ! isset($parsed['cert'])) {
-                throw ValidationException::withMessages([
-                    'password' => 'Não foi possível abrir o certificado do contratante com a senha informada.',
-                ]);
-            }
-
-            $metadata = openssl_x509_parse($parsed['cert']);
-
-            if (! is_array($metadata) || ! isset($metadata['validFrom_time_t'], $metadata['validTo_time_t'])) {
-                throw ValidationException::withMessages([
-                    'certificate' => 'O certificado do contratante não contém metadados válidos.',
-                ]);
-            }
-
-            $validFrom = Carbon::createFromTimestamp((int) $metadata['validFrom_time_t']);
-            $validUntil = Carbon::createFromTimestamp((int) $metadata['validTo_time_t']);
-
-            if ($validUntil->isPast()) {
-                throw ValidationException::withMessages([
-                    'certificate' => 'O certificado do contratante está vencido.',
-                ]);
-            }
-
-            return [
-                'document' => $this->contractingDocument($metadata),
-                'subject' => is_string($metadata['name'] ?? null) ? $metadata['name'] : 'desconhecido',
-                'serial' => $this->serial($metadata),
-                'valid_from' => $validFrom,
-                'valid_until' => $validUntil,
-            ];
-        } finally {
-            $password = '';
-            $parsed = [];
-            unset($password, $parsed);
+        if (! openssl_pkcs12_read($bytes, $parsed, $password) || ! isset($parsed['cert'])) {
+            throw ValidationException::withMessages([
+                'password' => 'Não foi possível abrir o certificado do contratante com a senha informada.',
+            ]);
         }
+
+        $metadata = openssl_x509_parse($parsed['cert']);
+
+        if (! is_array($metadata) || ! isset($metadata['validFrom_time_t'], $metadata['validTo_time_t'])) {
+            throw ValidationException::withMessages([
+                'certificate' => 'O certificado do contratante não contém metadados válidos.',
+            ]);
+        }
+
+        $validFrom = Carbon::createFromTimestamp((int) $metadata['validFrom_time_t']);
+        $validUntil = Carbon::createFromTimestamp((int) $metadata['validTo_time_t']);
+
+        if ($validUntil->isPast()) {
+            throw ValidationException::withMessages([
+                'certificate' => 'O certificado do contratante está vencido.',
+            ]);
+        }
+
+        return [
+            'document' => $this->contractingDocument($metadata),
+            'subject' => is_string($metadata['name'] ?? null) ? $metadata['name'] : 'desconhecido',
+            'serial' => $this->serial($metadata),
+            'valid_from' => $validFrom,
+            'valid_until' => $validUntil,
+        ];
     }
 
     /**
@@ -96,7 +93,7 @@ final class SerproCertificateIdentity
     {
         $subject = is_array($metadata['subject'] ?? null) ? $metadata['subject'] : [];
         $documents = [];
-        $malformed = false;
+        $pareceDocumento = false;
 
         foreach ($this->candidates($subject) as $candidate) {
             $document = $this->taxId->normalize($candidate);
@@ -107,12 +104,12 @@ final class SerproCertificateIdentity
                 continue;
             }
 
-            $malformed = $malformed || strlen($document) === 14;
+            $pareceDocumento = $pareceDocumento || $this->looksLikeDocument($candidate, $document);
         }
 
         if ($documents === []) {
             throw ValidationException::withMessages([
-                'certificate' => $malformed
+                'certificate' => $pareceDocumento
                     ? 'O certificado do contratante informa um CNPJ inválido.'
                     : 'O certificado do contratante não informa o CNPJ da empresa.',
             ]);
@@ -125,6 +122,23 @@ final class SerproCertificateIdentity
         }
 
         return (string) array_key_first($documents);
+    }
+
+    /**
+     * Distingue "o certificado traz um documento que não fecha" de "o
+     * certificado não traz documento nenhum" — a diferença é o que o operador
+     * precisa para saber se o erro é do certificado ou do preenchimento.
+     *
+     * O comprimento sozinho não diz nada: um segmento de CN como
+     * `AGROINDUSTRIAL` tem catorze caracteres depois de normalizado e não é
+     * documento nenhum. Documento tem dígitos — no CNPJ clássico todos, e
+     * sempre ao menos os dois do dígito verificador no alfanumérico — e
+     * catorze posições depois de perder pontuação e espaço.
+     */
+    private function looksLikeDocument(string $candidate, string $normalized): bool
+    {
+        return strlen($normalized) === 14
+            && preg_match('/\d/', $candidate) === 1;
     }
 
     /**
@@ -172,8 +186,10 @@ final class SerproCertificateIdentity
 
     private function flushOpenSslErrors(): void
     {
+        // A fila de erro do OpenSSL é por thread: uma falha antiga contaminaria
+        // a leitura deste PFX, e é preciso limpá-la antes de abrir.
         while (openssl_error_string() !== false) {
-            // OpenSSL keeps a per-thread error queue; clear stale failures before reading this PFX.
+            // Esvazia a fila.
         }
     }
 }

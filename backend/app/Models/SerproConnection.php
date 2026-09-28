@@ -57,6 +57,11 @@ class SerproConnection extends Model
 
     /**
      * A credencial é da plataforma, não de uma conta: exatamente uma linha.
+     *
+     * "Exatamente uma" é garantido pelo índice único da coluna `singleton`, e
+     * não por esta consulta nem por qualquer trava do gerenciador: o índice
+     * vale para qualquer processo e qualquer entrada. Por isso o `first()` sem
+     * ordem é seguro aqui — a segunda linha não existe.
      */
     public static function current(): ?self
     {

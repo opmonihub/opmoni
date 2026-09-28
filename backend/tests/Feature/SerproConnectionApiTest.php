@@ -11,11 +11,15 @@ use App\Services\SerproClient;
 use App\Services\SerproException;
 use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class SerproConnectionApiTest extends TestCase
@@ -107,6 +111,83 @@ class SerproConnectionApiTest extends TestCase
 
         $this->assertDatabaseCount('serpro_connections', 1);
         $this->assertSame('chave-de-integracao-nova', $stored->fresh()->consumer_key);
+    }
+
+    public function test_banco_recusa_uma_segunda_credencial(): void
+    {
+        // "Uma única credencial da plataforma" é a premissa da spec inteira: se
+        // ela vale só por convenção de aplicação, a primeira vez que duas
+        // gravações se cruzarem deixa duas linhas, e `current()` — que é um
+        // `first()` sem ordem — se apega a uma delas enquanto a outra guarda
+        // um PFX e um segredo que nada mais rotaciona, invalida ou exibe.
+        $unicos = array_values(array_filter(
+            Schema::getIndexes('serpro_connections'),
+            fn (array $index): bool => $index['unique'] === true
+                && $index['primary'] === false
+                && in_array('singleton', $index['columns'], true),
+        ));
+
+        $this->assertCount(1, $unicos, 'A unicidade da credencial tem de ser garantida pelo índice do banco.');
+
+        SerproConnection::factory()->create();
+
+        try {
+            SerproConnection::factory()->create();
+
+            $this->fail('Uma segunda credencial deveria ser recusada pelo banco.');
+        } catch (UniqueConstraintViolationException) {
+            // esperado: é o índice que impede a segunda linha.
+        }
+
+        // A recusa é da segunda gravação, não da que já existia: a credencial
+        // guardada continua legível e continua sendo uma só.
+        $this->assertSame(1, SerproConnection::query()->count());
+        $this->assertSame(self::CNPJ, SerproConnection::current()?->contratante_numero);
+    }
+
+    public function test_perdedor_da_corrida_recebe_erro_nomeado_e_nao_500(): void
+    {
+        ['file' => $file] = $this->pfx();
+        $super = User::factory()->create(['is_super_admin' => true]);
+
+        // A corrida que a trava do manager não cobre: `lockForUpdate()` não
+        // trava a linha que ainda não existe (e o SQLite nem compila o
+        // `for update`), então as duas primeiras gravações chegam as duas
+        // lendo "não há credencial". A segunda só é barrada pelo índice — e
+        // precisa chegar ao operador como erro nomeado, não como 500.
+        $chegouAntes = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$chegouAntes): void {
+            if ($chegouAntes || ! str_contains($query->sql, 'from "serpro_connections"')) {
+                return;
+            }
+
+            $chegouAntes = true;
+
+            DB::table('serpro_connections')->insert([
+                'consumer_key' => 'chave-que-chegou-primeiro',
+                'consumer_secret_encrypted' => Crypt::encryptString('segredo-que-chegou-primeiro'),
+                'contratante_numero' => self::CNPJ,
+            ]);
+        });
+
+        $this->actingAs($super, 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-que-chegou-depois',
+                'consumer_secret' => self::SEGREDO,
+                'certificate' => $file,
+                'password' => self::SENHA,
+            ], $this->jsonHeaders())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('consumer_key');
+
+        $this->assertTrue($chegouAntes, 'A gravação perdedora precisa ter encontrado a linha da outra.');
+
+        // A gravação perdedora não deixou linha nenhuma. A linha da vencedora
+        // aqui está na mesma transação e cai junto no rollback — é o que a
+        // corrida real não faz, e é o que a garantia do banco prova no teste
+        // anterior: uma escrita recusada convive com a linha que já existia.
+        $this->assertLessThanOrEqual(1, SerproConnection::query()->count());
     }
 
     public function test_rotacao_invalida_o_token_em_cache(): void
@@ -387,6 +468,22 @@ class SerproConnectionApiTest extends TestCase
             ->assertJsonValidationErrors('certificate')
             ->assertJsonPath('errors.certificate.0', 'O certificado do contratante informa um CNPJ inválido.');
 
+        // Um segmento de CN com catorze caracteres alfanuméricos e nenhum dígito
+        // é razão social (`AGROINDUSTRIAL`), não documento: o comprimento
+        // normalizado sozinho acusaria um CNPJ inválido onde não há CNPJ.
+        ['file' => $razaoSocial] = $this->pfx(['CN' => 'AGROINDUSTRIAL:1234567']);
+
+        $this->actingAs($super, 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'certificate' => $razaoSocial,
+                'password' => self::SENHA,
+            ], $this->jsonHeaders())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('certificate')
+            ->assertJsonPath('errors.certificate.0', 'O certificado do contratante não informa o CNPJ da empresa.');
+
         $this->assertDatabaseCount('serpro_connections', 0);
     }
 
@@ -409,11 +506,11 @@ class SerproConnectionApiTest extends TestCase
         $this->assertDatabaseCount('serpro_connections', 0);
     }
 
-    public function test_senha_divergente_sem_novo_certificado_e_recusada(): void
+    public function test_senha_divergente_ou_sem_certificado_confiavel_e_recusada(): void
     {
         ['bytes' => $bytes] = $this->pfx();
 
-        SerproConnection::factory()->create([
+        $comCertificado = SerproConnection::factory()->create([
             'certificate_encrypted' => Crypt::encryptString($bytes),
             'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
         ]);
@@ -427,8 +524,22 @@ class SerproConnectionApiTest extends TestCase
 
         $this->assertSame(
             self::SENHA,
-            SerproConnection::sole()->certificatePassword(),
+            $comCertificado->fresh()->certificatePassword(),
         );
+
+        SerproConnection::query()->delete();
+
+        // Sem certificado guardado não há o que conferir, e a senha é recusada
+        // em vez de gravada: uma linha sem PFX (factory, restauração) não pode
+        // virar uma credencial que nada consegue ler.
+        SerproConnection::factory()->create();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->putJson('/api/serpro/connection', ['password' => 'senha-qualquer'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->assertNull(SerproConnection::sole()->certificatePassword());
     }
 
     public function test_credencial_incompleta_na_primeira_gravacao_e_recusada(): void

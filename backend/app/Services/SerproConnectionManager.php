@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SerproConnection;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -36,47 +37,61 @@ final class SerproConnectionManager
     ): SerproConnection {
         $rotated = false;
 
-        $connection = DB::transaction(function () use ($key, $secret, $certificate, $password, &$rotated): SerproConnection {
-            $locked = SerproConnection::query()->lockForUpdate()->first();
+        try {
+            $connection = DB::transaction(function () use ($key, $secret, $certificate, $password, &$rotated): SerproConnection {
+                $locked = SerproConnection::query()->lockForUpdate()->first();
 
-            if ($locked === null) {
-                $this->refuseIncompleteFirstWrite($key, $secret, $certificate, $password);
+                if ($locked === null) {
+                    $this->refuseIncompleteFirstWrite($key, $secret, $certificate, $password);
 
-                // Cadastrar a credencial também invalida o token: um par em cache
-                // de uma linha que foi apagada continua sendo um token válido.
-                $rotated = true;
+                    // Cadastrar a credencial também invalida o token: um par em cache
+                    // de uma linha que foi apagada continua sendo um token válido.
+                    $rotated = true;
 
-                return SerproConnection::create(array_merge(
-                    ['consumer_key' => $key, 'consumer_secret_encrypted' => Crypt::encryptString((string) $secret)],
-                    $this->certificateAttributes($certificate, $password),
-                ));
-            }
+                    return SerproConnection::create(array_merge(
+                        ['consumer_key' => $key, 'consumer_secret_encrypted' => Crypt::encryptString((string) $secret)],
+                        $this->certificateAttributes($certificate, $password),
+                    ));
+                }
 
-            $attributes = [];
+                $attributes = [];
 
-            if ($key !== '') {
-                $attributes['consumer_key'] = $key;
-                $rotated = true;
-            }
+                if ($key !== '') {
+                    $attributes['consumer_key'] = $key;
+                    $rotated = true;
+                }
 
-            if ($secret !== null && $secret !== '') {
-                $attributes['consumer_secret_encrypted'] = Crypt::encryptString($secret);
-                $rotated = true;
-            }
+                if ($secret !== null && $secret !== '') {
+                    $attributes['consumer_secret_encrypted'] = Crypt::encryptString($secret);
+                    $rotated = true;
+                }
 
-            if ($certificate !== null) {
-                $attributes = array_merge($attributes, $this->certificateAttributes($certificate, $password));
-                $rotated = true;
-            } elseif ($password !== null && $password !== '') {
-                $this->confirmPassword($locked, $password);
-                $attributes['certificate_password_encrypted'] = Crypt::encryptString($password);
-                $rotated = true;
-            }
+                if ($certificate !== null) {
+                    $attributes = array_merge($attributes, $this->certificateAttributes($certificate, $password));
+                    $rotated = true;
+                } elseif ($password !== null && $password !== '') {
+                    $this->confirmPassword($locked, $password);
+                    $attributes['certificate_password_encrypted'] = Crypt::encryptString($password);
+                    $rotated = true;
+                }
 
-            $locked->forceFill($attributes)->save();
+                $locked->forceFill($attributes)->save();
 
-            return $locked;
-        });
+                return $locked;
+            });
+        } catch (UniqueConstraintViolationException) {
+            /*
+             * O índice de `singleton` recusou a segunda linha: outra gravação
+             * chegou primeiro e criou a credencial enquanto esta ainda não a
+             * via. O `insert` desta tabela só pode colidir nele — a chave
+             * primária é gerada pelo banco e não colide em inserção —, então a
+             * recusa tem nome e não é um 500 para o operador. Nada do que veio
+             * nesta requisição foi gravado: a transação inteira caiu.
+             */
+            throw ValidationException::withMessages([
+                'consumer_key' => 'Outra gravação da credencial do Integra Contador chegou primeiro e criou a linha única. Nada desta foi gravada: recarregue a tela e rotacione a credencial que ficou.',
+            ]);
+        }
 
         // Depois do commit: um rollback não pode derrubar um token válido, e a
         // rotação é justamente o momento em que ele deixa de valer.
@@ -161,11 +176,18 @@ final class SerproConnectionManager
      * abrir o certificado guardado: gravá-la sem conferir deixaria a credencial
      * com um segredo que não abre nada, e a falha só apareceria na primeira
      * chamada, como recusa do provedor.
+     *
+     * Sem certificado guardado não há o que conferir, e a senha é recusada em
+     * vez de gravada — uma linha sem PFX só existe por factory, migração ou
+     * escrita fora daqui, e guardar a senha nela produziria uma credencial que
+     * nada consegue ler.
      */
     private function confirmPassword(SerproConnection $connection, string $password): void
     {
         if ($connection->certificate_encrypted === null) {
-            return;
+            throw ValidationException::withMessages([
+                'password' => 'Não há certificado do contratante gravado para conferir esta senha.',
+            ]);
         }
 
         $this->identity->document((string) $connection->certificateBytes(), $password);
