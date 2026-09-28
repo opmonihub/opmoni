@@ -218,13 +218,14 @@ final class FiscalXmlMetadata
      * trava permanente para quem a encontrasse, e o checkout não tem schema que
      * a sustente. Ver `pathsOf()` e `CHAVE_NA_RAIZ_DESCONHECIDA`.
      *
-     * ⚠️ A justificativa de que a recusa "não tranca ninguém" **não** é mais o
-     * que segura esta escolha, e quem a lê para decidir se o catálogo deve
+     * ⚠️ A justificativa que esta escolha carregava — "recusar aqui é inofensivo
+     * porque ainda não há posição de cliente em jogo" — **não** é mais o que
+     * segura a escolha, e quem lê este bloco para decidir se o catálogo deve
      * crescer precisa saber disso. O que é verdade hoje é mais estreito: o CT-e
      * não está em produção, e é por isso que um cliente real ainda não tem
      * posição em jogo. No instante em que o canário é autorizado — que é o
-     * primeiro passo do gate de liberação — essa frase deixa de valer, e o
-     * binding é do gate, não de um comentário.
+     * primeiro passo do gate de liberação — a frase deixa de valer, e o binding é
+     * do gate, não de um comentário.
      *
      * O que a recusa compra, e o que ela custa, estão no caminho do
      * esgotamento da lacuna: recusar mantém a evidência (a linha em

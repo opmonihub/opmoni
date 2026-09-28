@@ -179,8 +179,11 @@ class CteDistributionConnectorTest extends TestCase
         $this->connector()->pull($client, 0, 50);
 
         // A requisição não é assinada e não usa cabeçalho SOAP: a autenticação é
-        // o certificado A1 do cliente no transporte, e o serviço rejeita
-        // assinatura injetada com `cStat 215`.
+        // o certificado A1 do cliente no transporte. O `cStat 215` que um serviço
+        // devolve a um corpo assinado é fato verificado do serviço de **NF-e**; o
+        // que o esquema do CT-e garante — e o que isto confirma do lado da saída —
+        // é que nada assinado sai daqui, e o que o serviço de CT-e responder a
+        // um corpo assinado é uma das coisas que o canário vai conferir.
         Http::assertSent(fn (Request $request): bool => ! str_contains($request->body(), 'Signature')
             && ! str_contains($request->body(), 'Header')
             && str_contains($request->body(), '<distDFeInt'));

@@ -25,10 +25,13 @@ final class FiscalXmlValidator
         $schema = resource_path("xsd/{$service}/{$schemaName}_v{$version}.xsd");
 
         if (! is_file($schema)) {
-            // Serviço, versão e caminho resolvido: sem eles a recusa não diz o
-            // que fazer. "XSD não encontrado" com três serviços e duas versões
-            // por serviço é um erro que só quem escreveu o `config` consegue
-            // ler, e o caminho resolvido é o que fecha a pista.
+            // Serviço, versão e caminho resolvido. A versão já viaja dentro do
+            // nome do arquivo, então repetir o serviço e a versão na frase é
+            // repetir o par que decide **qual** arquivo era o esperado: com um
+            // `config` que tem um bloco por serviço e uma versão por serviço, um
+            // `xsd_service` trocado produz um caminho que não existe sem que nada
+            // diga qual dos dois lados estava errado. E o caminho resolvido é o
+            // que fecha a pista.
             throw new RuntimeException("XSD não encontrado: {$service} {$schemaName} v{$version} ({$schema}).");
         }
 

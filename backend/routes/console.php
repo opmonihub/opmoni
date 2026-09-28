@@ -38,11 +38,16 @@ Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();
  * `656`. A correspondência entre "canário aprovado" e "agenda ligada" vale para
  * um cliente, e é a transição que precisa ser uma decisão consciente.
  *
- * Ela é independente de `fiscal.cte_enabled`, que é a porta do botão da tela, e
- * as duas **não** são conferidas juntas: o comando e o job perguntam ao registro
- * de conectores e nunca a `cte_enabled`, então esta entrada começa tráfego sem
- * consultar aquela chave. Furo conhecido, deixado pela revisão que pôs o gate na
- * fronteira HTTP e o nomeou como acompanhamento.
+ * Ela é independente de `fiscal.cte_enabled`, que é a porta do botão da tela. Na
+ * **captura**, as duas não são conferidas juntas: o comando e o job perguntam ao
+ * registro de conectores e nunca a `cte_enabled`, então esta entrada começa
+ * tráfego sem consultar aquela chave — furo conhecido, deixado pela revisão que
+ * pôs o gate na fronteira HTTP e o nomeou como acompanhamento. Na **volta
+ * atrás**, o oposto: `FiscalReconciliation` e a contagem de lacunas do serviço de
+ * captura consultam `cte_enabled`, e é ela que decide se a reconciliação roda e
+ * se uma lacuna segurando a posição a segura. Nenhum dos dois lados consulta esta
+ * chave, e por isso a agenda ligada com a outra desligada é o estado que a
+ * reversão do incidente de um operador produz.
  *
  * Entrada própria, e não uma fusão com a de cima: `--source` fixo é o que
  * impede esta agenda de virar uma segunda captura de NF-e por hora.

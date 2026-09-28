@@ -144,14 +144,19 @@ final class DfePullReader
         // propósito, sem deixá-la virar `FailedEntry`, para que ela não prenda a
         // posição para sempre (`DfeEntryCollector::collect()`).
         //
-        // Nos dois casos a posição realmente não tem documento, e `null` é a
-        // resposta certa para uma consulta por posição: quem reconcilia segue para
-        // a próxima em vez de reabrir um buraco que não existe. A alternativa —
-        // procurar a recusa que não há — é um aviso de chave indefinida, que
-        // Laravel converte em `ErrorException`, e `ErrorException` não é
-        // `RuntimeException`: ela escaparia das cinco guardas da reconciliação e
-        // abandonaria as lacunas restantes daquele cliente, todas as noites, sem
-        // que nada dissesse por quê.
+        // Nos dois casos a posição não tem documento que este módulo saiba
+        // guardar, e a resposta de uma consulta por posição só tem duas formas
+        // (`FiscalReconciliation::store()`): documento ou ausência. Devolver
+        // ausência é o que fecha o laço, e o que a reconciliação faz com ela é
+        // o mesmo que faz com o "não há documento" do fisco — uma tentativa a
+        // mais e a próxima hora (`postpone()`), a lacuna continuando na fila.
+        //
+        // Não é por isso que a recusa seria a resposta errada: a recusa do
+        // parser é o que impede o avanço da posição, e um `ErrorException` em
+        // vez dela escaparia das cinco guardas da reconciliação — que é um
+        // `Exception`, não um `RuntimeException` — e abandonaria as lacunas
+        // restantes daquele cliente, todas as noites, sem que nada dissesse por
+        // quê.
         if ($result->failures === []) {
             return null;
         }

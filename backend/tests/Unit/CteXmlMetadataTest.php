@@ -403,7 +403,7 @@ class CteXmlMetadataTest extends TestCase
         // A exceção de "não é indexável" é capturada **antes** da `RuntimeException`
         // genérica. Se fosse capturada depois, viraria `FailedEntry` e a
         // posição travaria — que é o defeito que o tipo separado existe para
-        // impedir, e que este teste pins.
+        // impedir, e que este teste fixa.
         $this->expectException(NotIndexableDocument::class);
 
         (new FiscalXmlMetadata)->extract(
@@ -418,8 +418,11 @@ class CteXmlMetadataTest extends TestCase
     {
         // O outro lado da regra, e ele vale: no conector que não está em produção,
         // uma raiz que o módulo não reconhece é recusa, porque recusar o que não
-        // se consegue classificar é a escolha honesta e não tranca ninguém. O
-        // que muda de um lado para o outro da linha é o conector, não a raiz.
+        // se consegue classificar é a escolha honesta enquanto o serviço não tem
+        // posição de cliente em jogo. O que muda de um lado para o outro da linha
+        // é o conector, não a raiz. O preço e o que a recusa deixam para trás
+        // estão em `FiscalXmlMetadata::RAIZ_E_RECUSA`, e a justificativa muda de
+        // verdade no instante em que o canário é autorizado.
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/^Raiz de documento fora do catálogo/');
 

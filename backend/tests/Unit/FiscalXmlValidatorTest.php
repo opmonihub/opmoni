@@ -101,10 +101,12 @@ class FiscalXmlValidatorTest extends TestCase
      * A recusa de XSD ausente é nomeada por serviço, schema, versão e caminho
      * resolvido — e a mensagem é o que se fixa, não só o tipo da exceção.
      *
-     * Com três serviços e duas versões por serviço na configuração, "XSD não
-     * encontrado: distDFeInt." é um erro que só quem escreveu o bloco de
-     * endpoint consegue ler; o caminho resolvido é o que fecha a pista, porque
-     * é a diferença entre um serviço escrito errado e uma pasta que não existe.
+     * O caminho já carrega serviço e versão, então repetir os dois na frase é
+     * repetir o par que decide **qual** arquivo era o esperado: um
+     * `xsd_service` trocado gera um caminho que não existe, e sem os
+     * discriminadores a recusa seria "não encontrado" e o operador teria de
+     * adivinhar de qual dos dois lados veio o erro. O caminho resolvido fecha a
+     * pista porque é ele que a pasta de `resources/xsd/` deveria ter.
      */
     public function test_rejects_an_unknown_schema(): void
     {

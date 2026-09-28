@@ -22,9 +22,13 @@
       para o validador, e a versão de NF-e (`1.01`) rejeitaria este payload.
 
     O que este arquivo continua garantindo é o que a NF-e ganha dele: que
-    requisição nenhuma sai com assinatura injetada (`cStat 215` no serviço),
-    CNPJ com número errado de dígitos, posição com número errado de dígitos,
-    versão fora da `1.00`, UF fora da tabela do IBGE ou elemento fora de ordem.
+    requisição nenhuma sai com assinatura injetada, CNPJ com número errado de
+    dígitos, posição com número errado de dígitos, versão fora da `1.00`, UF fora
+    da tabela do IBGE ou elemento fora de ordem. A assinatura injetada é recusada
+    aqui porque a sequência é fechada e não há `xs:any`; o `cStat 215` que o
+    serviço de NF-e devolve a um corpo assinado é fato verificado **daquele**
+    serviço, e para o serviço de CT-e é uma das coisas que o canário de um cliente
+    vai conferir.
 -->
 <xs:schema xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns="http://www.portalfiscal.inf.br/cte" targetNamespace="http://www.portalfiscal.inf.br/cte"
