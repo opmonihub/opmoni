@@ -30,6 +30,21 @@ final class SerproTokenProvider
         Cache::forget(self::CACHE_KEY);
     }
 
+    /**
+     * Verificação sob demanda: descarta o par guardado e autentica de novo.
+     *
+     * Sem `forget()` o par em cache responderia "está funcionando" com uma
+     * autenticação de meia hora atrás. E o que fica em cache depois é o par
+     * recém-emitido, então o teste não custa uma autenticação à sincronização
+     * seguinte. Nenhum serviço é chamado aqui — a pergunta é sobre a credencial,
+     * e um gateway que responde bem não diz nada sobre ela.
+     */
+    public function verify(): void
+    {
+        $this->forget();
+        $this->pair();
+    }
+
     private function authenticate(): SerproTokenPair
     {
         $connection = SerproConnection::current();
@@ -77,11 +92,21 @@ final class SerproTokenProvider
         }
 
         if ($response->failed()) {
-            throw new SerproException(
-                'A credencial do Integra Contador foi recusada.',
-                SerproFailure::DoNotRetry,
-                $response->status(),
-            );
+            // O `4xx` recusa o que foi enviado e o `5xx` diz que o serviço não
+            // deu conta: são defeitos de ações opostas — corrigir a credencial ou
+            // esperar o provedor — e quem precisa decidir entre as duas é quem
+            // vai tratar a falha.
+            throw $response->serverError()
+                ? new SerproException(
+                    'O serviço de autenticação do Integra Contador está indisponível.',
+                    SerproFailure::Upstream,
+                    $response->status(),
+                )
+                : new SerproException(
+                    'A credencial do Integra Contador foi recusada.',
+                    SerproFailure::DoNotRetry,
+                    $response->status(),
+                );
         }
 
         $payload = $response->json();

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AccountController as AdminAccountController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\SerproConnectionController as AdminSerproConnectionController;
+use App\Http\Controllers\Admin\SerproConnectivityController as AdminSerproConnectivityController;
 use App\Http\Controllers\Admin\SubscriptionController as AdminSubscriptionController;
 use App\Http\Controllers\Admin\SupportLogController as AdminSupportLogController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -100,5 +101,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can:viewAny,'.SerproConnection::class);
 
     Route::put('serpro/connection', [AdminSerproConnectionController::class, 'update'])
+        ->middleware('super_admin');
+
+    // O teste de conectividade exercita a autenticação da credencial da
+    // plataforma, sem consultar nenhum contribuinte: quem opera a integração é
+    // o super_admin, e um Membro da conta não tem o que fazer aqui.
+    Route::post('serpro/connectivity', AdminSerproConnectivityController::class)
         ->middleware('super_admin');
 });

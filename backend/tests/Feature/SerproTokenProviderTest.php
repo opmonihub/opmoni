@@ -145,6 +145,27 @@ class SerproTokenProviderTest extends TestCase
         }
     }
 
+    public function test_um_erro_do_servidor_nao_vira_recusa_de_credencial(): void
+    {
+        // Recusa e indisponibilidade pedem conserto oposto — corrigir a
+        // credencial ou esperar o provedor —, e as duas não podem sair daqui com
+        // o mesmo rótulo. O `5xx` é o serviço que não deu conta; o `4xx` acima
+        // é o que foi enviado que ele não aceitou.
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => Http::response(['message' => 'Erro interno.'], 503),
+        ]);
+
+        $this->connection();
+
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('Um erro do servidor deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Upstream, $exception->failure);
+            $this->assertSame(503, $exception->status);
+        }
+    }
+
     public function test_a_response_without_the_authorization_token_is_refused(): void
     {
         Http::fake([
