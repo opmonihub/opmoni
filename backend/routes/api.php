@@ -70,6 +70,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::post('process-templates/{process_template}/generate', [ProcessTemplateController::class, 'generate']);
     Route::apiResource('tasks', TaskController::class)->only(['index', 'show', 'update']);
     Route::get('fiscal/summary', [FiscalDocumentController::class, 'summary']);
+    Route::get('fiscal/documents', [FiscalDocumentController::class, 'index']);
     Route::get('work/calendar', [TaskController::class, 'calendar']);
     Route::get('work/grouped', [TaskController::class, 'grouped']);
     Route::get('work/tasks/unscoped', [TaskController::class, 'unscopedForMonth']);

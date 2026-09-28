@@ -19,6 +19,19 @@ class FiscalDocument extends Model
     /** @use HasFactory<FiscalDocumentFactory> */
     use BelongsToAccount, HasFactory;
 
+    /**
+     * Quantos eventos existem na linha do tempo desta chave de acesso.
+     *
+     * Não é coluna e não é relação: é um número que depende da página inteira
+     * da consulta, e é o serviço de leitura (`FiscalDocuments`) que o preenche
+     * antes de a linha chegar ao Resource. Declarado como propriedade — em vez
+     * de atributo virtual criado em tempo de consulta — para que o Resource
+     * possa tipar o acesso e para que o número não possa sumir calado: sem
+     * preenchimento, é zero, que é o número honesto para um documento sem
+     * evento.
+     */
+    public int $event_count = 0;
+
     protected function casts(): array
     {
         return [
@@ -46,6 +59,10 @@ class FiscalDocument extends Model
 
     public function client(): BelongsTo
     {
-        return $this->belongsTo(Client::class);
+        // O cliente removido por logicamente continua sendo dono do documento:
+        // sem `withTrashed()` a linha histórica sai órfã, e a tabela que o
+        // operador consulta perde o nome e o CNPJ de quem emitiu. A remoção
+        // apaga o cliente da carteira, não o documento que ele já capturou.
+        return $this->belongsTo(Client::class)->withTrashed();
     }
 }

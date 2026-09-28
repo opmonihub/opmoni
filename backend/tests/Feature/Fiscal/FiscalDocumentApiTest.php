@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Fiscal;
 
+use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalStage;
 use App\Http\Controllers\Tenant\FiscalDocumentController;
 use App\Models\Account;
 use App\Models\AccountUser;
@@ -12,6 +14,7 @@ use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Models\User;
 use App\Services\Fiscal\Read\FiscalCoverage;
+use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Database\Factories\ClientCertificateFactory;
@@ -496,6 +499,552 @@ class FiscalDocumentApiTest extends TestCase
             ->assertDontSee((string) $certificado->subject, false);
     }
 
+    public function test_lista_exige_sessao(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente Da Conta Própria');
+        $this->documento($cliente);
+
+        $this->getJson('/api/fiscal/documents')
+            ->assertUnauthorized()
+            ->assertJsonMissingPath('data')
+            ->assertJsonMissingPath('available_models');
+    }
+
+    public function test_lista_abre_para_qualquer_membro_da_conta(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente Da Conta Própria');
+        $this->documento($cliente);
+
+        // `user` só não escreve. Fechar a leitura para ele deixaria o painel
+        // fiscal como a única tela do produto que o membro read-only não alcança.
+        foreach (['admin', 'operador', 'user'] as $papel) {
+            $this->actingAs($this->membroDe($account, $papel), 'sanctum')
+                ->getJson('/api/fiscal/documents')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 1);
+        }
+    }
+
+    public function test_lista_ordena_pela_emissao_mais_recente_primeiro(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documentos');
+
+        $antigo = $this->documento($cliente, ['emissao_at' => '2026-08-01 09:00:00']);
+        $meio = $this->documento($cliente, ['emissao_at' => '2026-09-10 09:00:00']);
+        $novo = $this->documento($cliente, ['emissao_at' => '2026-09-20 09:00:00']);
+
+        // Empate de emissão: o desempate é o id, para que a segunda página não
+        // traga de volta a linha da primeira.
+        $empateAntigo = $this->documento($cliente, ['emissao_at' => '2026-09-10 09:00:00']);
+        $empateNovo = $this->documento($cliente, ['emissao_at' => '2026-09-10 09:00:00']);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 5)
+            ->assertJsonPath('data.0.id', $novo->getKey())
+            ->assertJsonPath('data.1.id', $empateNovo->getKey())
+            ->assertJsonPath('data.2.id', $empateAntigo->getKey())
+            ->assertJsonPath('data.3.id', $meio->getKey())
+            ->assertJsonPath('data.4.id', $antigo->getKey());
+    }
+
+    public function test_lista_ordena_por_valor_e_por_captura_quando_pedido(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documentos');
+
+        $barato = $this->documento($cliente, [
+            'valor_total' => 10.00,
+            'captured_at' => '2026-09-01 10:00:00',
+            'emissao_at' => '2026-09-01 10:00:00',
+        ]);
+        $caro = $this->documento($cliente, [
+            'valor_total' => 900.00,
+            'captured_at' => '2026-09-20 10:00:00',
+            'emissao_at' => '2026-09-20 10:00:00',
+        ]);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?sort=valor_total&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $barato->getKey())
+            ->assertJsonPath('data.1.id', $caro->getKey());
+
+        // Sem direção, o padrão é decrescente: a mesma leitura do padrão de
+        // emissão, que é o que a tela põe na frente.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?sort=valor_total')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $caro->getKey());
+
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?sort=captured_at&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $barato->getKey());
+    }
+
+    public function test_lista_conta_eventos_da_chave_de_acesso_e_nao_por_nsu(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Eventos');
+        $outro = $this->cliente($account, 'Cliente 2 Sem Eventos');
+
+        $documento = $this->documento($cliente, ['nsu' => 1000, 'emissao_at' => '2026-09-10 10:00:00']);
+
+        // Cada evento chega na distribuição com a posição própria, e é por isso
+        // que a contagem não pode ser por NSU: os dois eventos abaixo têm NSU
+        // diferente do documento e um do outro, e ainda assim são dele.
+        $primeiro = $this->evento($cliente, $documento->chave_acesso, '110111', 2001);
+        $segundo = $this->evento($cliente, $documento->chave_acesso, '110112', 2002);
+        $semEvento = $this->documento($outro);
+
+        // A mesma chave de acesso em outro cliente da carteira é a outra metade
+        // do par, e a unicidade da tabela é `(client_id, chave_acesso, stage,
+        // event_id)`: uma nota emitida a um e recebida pelo outro aparece nas
+        // duas carteiras. Contar por chave sozinha somaria os dois documentos
+        // e diria que o primeiro tem três eventos.
+        $mesmaChave = $this->documento($outro, [
+            'chave_acesso' => $documento->chave_acesso,
+            'emissao_at' => '2026-09-11 10:00:00',
+        ]);
+        $this->evento($outro, $documento->chave_acesso, '110111', 3001);
+
+        $linhas = collect(
+            $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+                ->getJson('/api/fiscal/documents')
+                ->assertOk()
+                ->json('data')
+        )->keyBy('id');
+
+        $this->assertSame(2, $linhas[$documento->getKey()]['event_count']);
+        $this->assertSame(1, $linhas[$mesmaChave->getKey()]['event_count']);
+
+        // Uma linha de evento não conta a si mesma: ela já está na lista, e
+        // somá-la diria que existe um evento a mais do que existe.
+        $this->assertSame(1, $linhas[$primeiro->getKey()]['event_count']);
+        $this->assertSame(1, $linhas[$segundo->getKey()]['event_count']);
+
+        // Documento sem evento é zero explícito, e não campo vazio: a tela
+        // escreve "sem eventos" a partir do número.
+        $this->assertSame(0, $linhas[$semEvento->getKey()]['event_count']);
+    }
+
+    public function test_lista_devolve_a_identidade_do_cliente_removido_sem_credencial(): void
+    {
+        $account = Account::factory()->create();
+        $removido = $this->clienteComCertificado($account, 'Cliente Removido Com Certificado');
+        $documento = $this->documento($removido, ['emissao_at' => '2026-09-10 10:00:00']);
+        $certificado = ClientCertificate::query()->where('client_id', $removido->getKey())->sole();
+        $removido->delete();
+
+        $response = $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+            ->getJson('/api/fiscal/documents');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $documento->getKey())
+            ->assertJsonPath('data.0.client.id', $removido->getKey())
+            ->assertJsonPath('data.0.client.name', 'Cliente Removido Com Certificado')
+            ->assertJsonPath('data.0.client.tax_id', $removido->tax_id);
+
+        // A identidade que sobra da remoção é nome e CNPJ. Certificado é
+        // material de outro cofre, e a linha não tem por que carregá-lo.
+        $response->assertDontSee('password_encrypted', false)
+            ->assertDontSee('storage_path', false)
+            ->assertDontSee((string) $certificado->storage_path, false)
+            ->assertDontSee((string) $certificado->subject, false);
+    }
+
+    public function test_lista_filtra_por_modelo_cliente_partes_de_cnpj_tipo_e_periodo(): void
+    {
+        $account = Account::factory()->create();
+        $primeiro = $this->cliente($account, 'Cliente 1 Emitente');
+        $segundo = $this->cliente($account, 'Cliente 2 Destinatario');
+
+        $alvo = $this->documento($primeiro, [
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'emitente_cnpj' => '11111111000199',
+            'destinatario_cnpj' => '33333333000188',
+            'valor_total' => 55.55,
+            'emissao_at' => '2026-09-10 10:00:00',
+        ]);
+        $cte = $this->documento($primeiro, [
+            'model' => FiscalModel::Cte,
+            'emitente_cnpj' => '11111111000199',
+            'valor_total' => 900.00,
+            'emissao_at' => '2026-09-10 10:00:00',
+        ]);
+        $notaDoSegundo = $this->documento($segundo, [
+            'model' => FiscalModel::Nfe,
+            'emitente_cnpj' => '22222222000177',
+            'destinatario_cnpj' => '44444444000166',
+            'valor_total' => 70.00,
+            'emissao_at' => '2026-08-10 10:00:00',
+        ]);
+        $evento = $this->evento($primeiro, $alvo->chave_acesso, '110111', 2001, [
+            'emitente_cnpj' => '11111111000199',
+            'destinatario_cnpj' => '33333333000188',
+            'valor_total' => 55.55,
+            'emissao_at' => '2026-09-10 10:00:00',
+        ]);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // Os ids saem ordenados porque o que estes testes medem é *quais* linhas
+        // o filtro deixou passar. A ordem da página tem teste próprio
+        // (`test_lista_ordena_*`) e repetir a mesma expectativa em cada filtro
+        // só esconderia uma mudança de ordenação atrás de um filtro.
+        $ids = fn (string $query): array => collect(
+            $this->actingAs($membro, 'sanctum')
+                ->getJson('/api/fiscal/documents?'.$query)
+                ->assertOk()
+                ->json('data')
+        )->pluck('id')->sort()->values()->all();
+
+        // Um filtro por vez, cada um cortando do jeito que o rótulo promete. O
+        // CNPJ entra por prefixo, porque é assim que o operador o digita. O
+        // evento entra em `model[]=nfe` porque é uma entrega de NF-e: o modelo
+        // é do documento, e o que separa a linha do evento é a etapa.
+        $this->assertSame([$alvo->getKey(), $notaDoSegundo->getKey(), $evento->getKey()], $ids('model[]=nfe'));
+        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('client_id='.$primeiro->getKey()));
+        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('issuer=1111'));
+        $this->assertSame([$notaDoSegundo->getKey()], $ids('recipient=4444'));
+        $this->assertSame([$evento->getKey()], $ids('kind=event'));
+        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('issued_from=2026-09-01&issued_to=2026-09-30'));
+        $this->assertSame([$notaDoSegundo->getKey()], $ids('issued_to=2026-08-31'));
+
+        // E a combinação inteira, que é como a tela usa: cada filtro sozinho
+        // deixa passar mais de uma linha, e é a soma deles que escolhe uma.
+        $this->assertSame(
+            [$alvo->getKey()],
+            $ids('model[]=nfe&client_id='.$primeiro->getKey().'&issuer=1111&recipient=3333&kind=document'
+                .'&issued_from=2026-09-01&issued_to=2026-09-30&amount_min=10&amount_max=100')
+        );
+    }
+
+    public function test_lista_filtra_por_faixa_de_valor(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documentos');
+
+        $barato = $this->documento($cliente, ['valor_total' => 10.00, 'emissao_at' => '2026-09-01 10:00:00']);
+        $medio = $this->documento($cliente, ['valor_total' => 50.00, 'emissao_at' => '2026-09-10 10:00:00']);
+        $caro = $this->documento($cliente, ['valor_total' => 900.00, 'emissao_at' => '2026-09-20 10:00:00']);
+
+        $membro = $this->membroDe($account, 'operador');
+        $ids = fn (string $query): array => collect(
+            $this->actingAs($membro, 'sanctum')
+                ->getJson('/api/fiscal/documents?'.$query)
+                ->assertOk()
+                ->json('data')
+        )->pluck('id')->sort()->values()->all();
+
+        $this->assertSame([$medio->getKey()], $ids('amount_min=20&amount_max=100'));
+
+        // Cada ponta sozinha é um filtro legítimo: quem só quer até um valor
+        // não precisa saber o piso, e quem só quer acima dele não precisa
+        // saber o teto.
+        $this->assertSame([$barato->getKey(), $medio->getKey()], $ids('amount_max=100'));
+        $this->assertSame([$caro->getKey()], $ids('amount_min=100'));
+    }
+
+    public function test_lista_recusa_filtro_invalido(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente Da Conta Própria');
+        $this->documento($cliente);
+
+        $outra = Account::factory()->create();
+        $alheio = $this->cliente($outra, 'Empresa Alienada Com Documento');
+        $this->documento($alheio);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // Filtro inválido é 422 com a chave que está errada, e nunca uma lista
+        // vazia: quem recebe vazio acredita que a consulta rodou e não achou.
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?model[]=invalido')
+            ->assertStatus(422)->assertJsonValidationErrors('model.0');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?model[]=nfe&model[]=invalido')
+            ->assertStatus(422)->assertJsonValidationErrors('model.1');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?kind=invalido')
+            ->assertStatus(422)->assertJsonValidationErrors('kind');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?sort=chave_acesso')
+            ->assertStatus(422)->assertJsonValidationErrors('sort');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?direction=do_lado')
+            ->assertStatus(422)->assertJsonValidationErrors('direction');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?per_page=10')
+            ->assertStatus(422)->assertJsonValidationErrors('per_page');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?amount_min=-1')
+            ->assertStatus(422)->assertJsonValidationErrors('amount_min');
+
+        // Faixa invertida nas duas pontas: o fim antes do começo não tem
+        // leitura nenhuma, e a data invertida é o mesmo erro.
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?amount_min=100&amount_max=10')
+            ->assertStatus(422)->assertJsonValidationErrors('amount_max');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?issued_from=2026-09-30&issued_to=2026-09-01')
+            ->assertStatus(422)->assertJsonValidationErrors('issued_to');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?issued_from=01/09/2026')
+            ->assertStatus(422)->assertJsonValidationErrors('issued_from');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?issuer=abc')
+            ->assertStatus(422)->assertJsonValidationErrors('issuer');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?page=0')
+            ->assertStatus(422)->assertJsonValidationErrors('page');
+
+        // Cliente de outra conta não é um filtro: é um id que não existe para
+        // quem pergunta.
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?client_id='.$alheio->getKey())
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('client_id')
+            ->assertJsonMissingPath('data')
+            ->assertDontSee('Alienada', false);
+    }
+
+    public function test_lista_sem_correspondencia_devolve_total_zero_e_mantem_o_modelo_selecionado(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documento');
+        $this->documento($cliente, ['model' => FiscalModel::Nfe, 'valor_total' => 50.00]);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // Combinação sem resultado é vazio com total zero, não erro: a tela
+        // escreve "nenhum documento corresponde aos filtros".
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?amount_min=900')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('available_models', []);
+
+        // O modelo selecionado continua na lista mesmo sem linha atrás dele: é
+        // o que permite tirar o filtro que esvaziou a tabela.
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?model[]=nfe&amount_min=900')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('available_models', ['nfe']);
+    }
+
+    public function test_lista_nao_expoe_documento_de_outra_conta(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Da Conta Própria');
+        $nfe = $this->documento($cliente, ['model' => FiscalModel::Nfe, 'emissao_at' => '2026-09-10 10:00:00']);
+        $cte = $this->documento($cliente, ['model' => FiscalModel::Cte, 'emissao_at' => '2026-09-20 10:00:00']);
+
+        $outra = Account::factory()->create();
+        $alheio = $this->cliente($outra, 'Empresa Alienada Com Documento');
+        $documentoAlheio = $this->documento($alheio, ['model' => FiscalModel::Nfse, 'emissao_at' => '2026-09-28 10:00:00']);
+
+        $response = $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+            ->getJson('/api/fiscal/documents');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.id', $cte->getKey())
+            ->assertJsonPath('data.1.id', $nfe->getKey())
+            // A lista de modelos também é da conta: um modelo que só a outra
+            // conta capturou não é opção aqui.
+            ->assertJsonPath('available_models', ['cte', 'nfe']);
+
+        $response->assertDontSee('Alienada', false)
+            ->assertDontSee('nfse', false)
+            ->assertDontSee((string) $documentoAlheio->chave_acesso, false);
+    }
+
+    public function test_lista_aceita_cliente_removido_da_conta_e_recusa_cliente_alheio(): void
+    {
+        $account = Account::factory()->create();
+        $removido = $this->cliente($account, 'Cliente 1 Removido');
+        $documento = $this->documento($removido);
+        $removido->delete();
+
+        $outra = Account::factory()->create();
+        $alheio = $this->cliente($outra, 'Empresa Alienada Com Documento');
+        $this->documento($alheio);
+
+        $membro = $this->membroDe($account, 'operador');
+
+        // Cliente removido é histórico legítimo: o documento guardado tem de
+        // continuar alcançável pelo seu filtro, e a validação tem de aceitar o
+        // id dele — senão a linha existe e ninguém consegue chegar nela.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?client_id='.$removido->getKey())
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $documento->getKey())
+            ->assertJsonPath('data.0.client.name', 'Cliente 1 Removido');
+
+        // Cliente de outra conta, removido ou não, continua fora: a validação
+        // é por conta e por id, e a lista também.
+        $this->actingAs($membro, 'sanctum')
+            ->getJson('/api/fiscal/documents?client_id='.$alheio->getKey())
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('client_id')
+            ->assertJsonMissingPath('data')
+            ->assertDontSee('Alienada', false);
+    }
+
+    public function test_lista_devolve_apenas_as_chaves_declaradas_sem_caminho_do_xml(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->clienteComCertificado($account, 'Cliente 1 Com Documento');
+        $documento = FiscalDocument::factory()->withStoredXml()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Document,
+            'digval_confere' => true,
+            'mascarado' => true,
+        ]);
+
+        // Uma etapa única não tem com quem conferir o digest: `null` é o
+        // terceiro estado, e a linha precisa dizer isso em vez de mentir que
+        // o digest não bateu.
+        $semPar = $this->documento($cliente, [
+            'model' => FiscalModel::Cte,
+            'emissao_at' => '2026-09-09 10:00:00',
+            'digval_confere' => null,
+        ]);
+
+        $certificado = ClientCertificate::query()->where('client_id', $cliente->getKey())->sole();
+
+        $response = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/documents');
+
+        $response->assertOk()
+            ->assertJsonStructure(['data', 'meta', 'links', 'available_models']);
+
+        $linha = $response->json('data.0');
+
+        $this->assertSame([
+            'id', 'client', 'model', 'kind', 'stage', 'chave_acesso', 'emitente_cnpj',
+            'destinatario_cnpj', 'valor_total', 'emissao_at', 'event_count', 'mascarado', 'digval_confere',
+        ], array_keys($linha));
+        $this->assertSame(['id', 'name', 'tax_id'], array_keys($linha['client']));
+
+        // As duas linhas são buscadas por id, não por posição: a ordem da
+        // página é assunto do teste de ordenação, e uma posição fixa aqui
+        // transformaria este teste em mais um teste de ordem.
+        $porId = collect($response->json('data'))->keyBy('id');
+
+        $this->assertTrue($porId[$documento->getKey()]['digval_confere']);
+        $this->assertTrue($porId[$documento->getKey()]['mascarado']);
+        $this->assertNull($porId[$semPar->getKey()]['digval_confere']);
+
+        // O caminho interno do XML é o segredo desta tabela. As needles são os
+        // valores reais das colunas, porque `assertDontSee` com string vazia
+        // passaria sem ver nada.
+        $this->assertNotSame('', (string) $documento->storage_path);
+        $response->assertDontSee('storage_path', false)
+            ->assertDontSee((string) $documento->storage_path, false)
+            ->assertDontSee('sha256', false)
+            ->assertDontSee('"digval"', false)
+            ->assertDontSee('xml_bytes', false)
+            ->assertDontSee('password_encrypted', false)
+            ->assertDontSee((string) $certificado->storage_path, false);
+    }
+
+    public function test_lista_pagina(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com Documentos');
+
+        for ($dia = 0; $dia < 26; $dia++) {
+            $this->documento($cliente, ['emissao_at' => now()->subDays($dia)->toDateTimeString()]);
+        }
+
+        $membro = $this->membroDe($account, 'operador');
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonCount(25, 'data')
+            ->assertJsonPath('meta.total', 26)
+            ->assertJsonPath('meta.per_page', 25)
+            ->assertJsonPath('meta.last_page', 2);
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?page=2')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2);
+
+        $this->actingAs($membro, 'sanctum')->getJson('/api/fiscal/documents?per_page=50')
+            ->assertOk()
+            ->assertJsonCount(26, 'data')
+            ->assertJsonPath('meta.per_page', 50);
+    }
+
+    public function test_cliente_removido_com_documento_nao_entra_na_cobertura(): void
+    {
+        $account = Account::factory()->create();
+        $this->clienteComCertificado($account, 'Cliente 1 Ativo');
+
+        // A lista mostra histórico de cliente removido e a cobertura conta quem
+        // ainda é capturado. São dois eixos: dar `withTrashed()` na relação do
+        // documento não pode arrastar o cliente removido para a contagem.
+        $removido = $this->clienteComCertificado($account, 'Cliente 2 Removido Com Documento');
+        $this->documento($removido);
+        $removido->delete();
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/summary')
+            ->assertOk()
+            ->assertJsonPath('data.coverage.total', 1)
+            ->assertJsonPath('data.coverage.capturable', 1)
+            ->assertJsonPath('data.coverage.not_capturable', 0)
+            ->assertJsonPath('data.attention', [])
+            ->assertDontSee('Removido', false);
+    }
+
+    public function test_lista_escopa_a_conta_que_recebe_e_nao_a_conta_corrente(): void
+    {
+        $primeira = Account::factory()->create();
+        $segunda = Account::factory()->create();
+
+        $documentoDaPrimeira = $this->documento(
+            $this->cliente($primeira, 'Cliente Da Primeira Conta'),
+            ['model' => FiscalModel::Nfe]
+        );
+        $this->documento($this->cliente($segunda, 'Cliente Da Segunda Conta'), ['model' => FiscalModel::Nfse]);
+
+        // O escopo global de `BelongsToAccount` é condicional: ele filtra pela
+        // conta corrente e, sem ela, não filtra nada. Na rota da API o
+        // middleware `tenant` sempre a define, o que faz o escopo global
+        // mascarar um `where('account_id')` faltando no serviço — e é
+        // exatamente por isso que o serviço repete a conta por parâmetro. Este
+        // teste é o que prova que a repetição existe: ele chama o serviço
+        // diretamente, com a conta corrente **ausente**, que é a condição do
+        // console e da fila. Sem o `where` explícito, as duas contas entram.
+        resolve(CurrentTenant::class)->accountId = null;
+
+        $page = (new FiscalDocuments)->page(
+            (int) $primeira->getKey(),
+            ['sort' => 'emissao_at', 'direction' => 'desc']
+        );
+
+        $this->assertSame([$documentoDaPrimeira->getKey()], $page['rows']->pluck('id')->all());
+        $this->assertSame(['nfe'], $page['available_models']);
+    }
+
     private function cliente(Account $account, string $name): Client
     {
         return Client::factory()->company()->create([
@@ -538,6 +1087,21 @@ class FiscalDocumentApiTest extends TestCase
         return FiscalDocument::factory()->create(array_merge([
             'client_id' => $cliente->getKey(),
             'account_id' => $cliente->account_id,
+        ], $attributes));
+    }
+
+    /**
+     * Evento de uma chave de acesso já captada, com a posição (`nsu`) que o
+     * fisco deu para ele: a terceira entrega da distribuição, que é o mesmo
+     * documento e uma linha diferente.
+     */
+    private function evento(Client $cliente, string $chave, string $eventId, int $nsu, array $attributes = []): FiscalDocument
+    {
+        return FiscalDocument::factory()->event($eventId)->create(array_merge([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $cliente->account_id,
+            'chave_acesso' => $chave,
+            'nsu' => $nsu,
         ], $attributes));
     }
 
