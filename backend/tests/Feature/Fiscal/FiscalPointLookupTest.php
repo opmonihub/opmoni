@@ -371,6 +371,63 @@ class FiscalPointLookupTest extends TestCase
         }
     }
 
+    public function test_a_trava_do_cnpj_ocupada_adiada_sem_gastar_a_vaga(): void
+    {
+        // A chave da trava é o CNPJ, e ela é compartilhada entre contas de
+        // propósito: duas consultas do mesmo cliente ao mesmo tempo é condição
+        // prevista, não exceção. Quem não consegue a trava no tempo da espera
+        // não consulta, e não gasta a vaga — a consulta não saiu.
+        $client = $this->clientWithCertificate();
+        $budget = resolve(FiscalLookupBudget::class);
+
+        for ($tentativa = 1; $tentativa <= 19; $tentativa++) {
+            $budget->reserve($client);
+        }
+
+        $trava = Cache::lock('fiscal:consulta:'.$client->tax_id, 5);
+
+        $this->assertTrue($trava->get(), 'O teste precisa segurar a trava que o orçamento usa.');
+
+        try {
+            $this->assertFalse($budget->reserve($client));
+        } finally {
+            $trava->release();
+        }
+
+        // A vigésima vaga continua disponível: a tentativa adiada não foi
+        // cobrada, e o contador não andou.
+        $this->assertTrue($budget->reserve($client));
+    }
+
+    public function test_a_consulta_por_posicao_com_a_trava_ocupada_e_adiada_e_nao_erro(): void
+    {
+        // Contenção e teto estourado chegam para quem chama como a mesma coisa:
+        // adiar. A diferença é que a contenção é uma disputa interna do módulo,
+        // nada que o serviço respondeu, e ela não pode virar erro inesperado no
+        // meio de uma reconciliação.
+        $client = $this->clientWithCertificate();
+        $trava = Cache::lock('fiscal:consulta:'.$client->tax_id, 5);
+
+        $this->assertTrue($trava->get(), 'O teste precisa segurar a trava que o orçamento usa.');
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        try {
+            $this->connector()->fetchByNsu($client, 100);
+
+            $this->fail('Consulta pontual com a trava ocupada deveria ser adiada.');
+        } catch (FiscalLookupDeferred) {
+            // A mesma exceção do teto esgotado, e nenhuma requisição na rede.
+        } finally {
+            Http::assertNothingSent();
+        }
+
+        $trava->release();
+
+        // O contador nem chegou a ser criado por uma consulta que não saiu.
+        $this->assertTrue(resolve(FiscalLookupBudget::class)->reserve($client));
+    }
+
     public function test_a_consulta_incremental_nao_gasta_o_orcamento_de_consultas(): void
     {
         // O teto é do fisco para consulta pontual, e a captura do dia a dia não
