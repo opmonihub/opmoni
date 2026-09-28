@@ -12,7 +12,9 @@ use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Services\Fiscal\Capture\FiscalLookupBudget;
 use App\Services\Fiscal\Contracts\FiscalConnector;
+use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
 use App\Services\Fiscal\Exceptions\FiscalException;
+use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
 use App\Services\Fiscal\Support\DfeResponseParser;
@@ -376,7 +378,7 @@ class NfeDistributionConnectorTest extends TestCase
         // `cUFAutor` é a UF do interessado e o serviço aceita qualquer código da
         // tabela: um valor inventado aqui seria uma afirmação falsa sobre quem
         // pergunta, e nada voltaria para denunciá-la.
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalClientStateUnknown::class);
         $this->expectExceptionMessage('não está na tabela de UFs');
 
         try {
@@ -466,7 +468,7 @@ class NfeDistributionConnectorTest extends TestCase
 
         Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalRequestNotSent::class);
         $this->expectExceptionMessage('Cliente sem certificado A1 vigente.');
 
         try {
@@ -488,7 +490,7 @@ class NfeDistributionConnectorTest extends TestCase
 
         Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalRequestNotSent::class);
         $this->expectExceptionMessage('A senha do certificado do cliente não está armazenada.');
 
         try {

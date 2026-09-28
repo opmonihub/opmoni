@@ -21,6 +21,7 @@ use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
+use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -357,6 +358,67 @@ class FiscalReconciliationTest extends TestCase
                 && $context['client_id'] === $client->getKey()
                 && str_contains($context['reason'], 'consumo indevido')
                 && ! str_contains(serialize($context), 'docZip'));
+    }
+
+    public function test_consulta_que_nao_saiu_para_a_execucao_sem_cobrar_tentativa(): void
+    {
+        // Cliente sem certificado A1: a pre-flight do conector recusa antes de
+        // qualquer byte e antes de gastar a vaga do orçamento, então a consulta
+        // por posição nem existe. O conector real é o que levanta a recusa — um
+        // falso aqui devolveria um documento e não provaria nada.
+        $client = $this->tenant(withCertificate: false);
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        $this->bindConnectorDelegatingLookup($this->noPull());
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+
+        // A tentativa é contada de consulta que saiu, e esta não saiu. Cobrar
+        // aqui daria três noites de A1 inutilizável como três vereditos do fisco
+        // sobre a posição — e o esgotamento libera o cursor, que abandona um
+        // documento que estava lá o tempo todo.
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+        $this->assertNull($this->gapOf($client, 101)->next_attempt_at);
+        $this->assertSame(100, $this->cursorOf($client)->last_nsu);
+
+        // E o log diz qual recusa foi, que é o que o nome da classe compra: com
+        // uma `RuntimeException` genérica o diagnóstico inteiro seria a palavra
+        // "RuntimeException", indistinguível de um disco cheio.
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.consulta_nao_enviada'
+                && $context['nsu'] === 101
+                && $context['tentativas'] === 0
+                && str_contains($context['reason'], 'FiscalRequestNotSent'));
+    }
+
+    public function test_a_uf_que_nao_existe_na_tabela_nao_cobra_tentativa(): void
+    {
+        // O materializador do conector precisa de bytes no cofre para chegar até
+        // a montagem do envelope, onde a UF é lida, então os dois disco são
+        // falsificados antes do certificado ser criado.
+        Storage::fake('certificates');
+        Storage::fake('local');
+
+        $client = $this->tenant();
+        $client->forceFill(['state' => 'XX'])->save();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        $this->bindConnectorDelegatingLookup($this->noPull());
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+
+        // Defeito de cadastro, não de transporte: a requisição também não saiu,
+        // e a posição não tem nada a ver com a sigla que o cliente traz.
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
     }
 
     public function test_cliente_dentro_da_janela_de_bloqueio_nao_e_consultado(): void
@@ -838,6 +900,23 @@ class FiscalReconciliationTest extends TestCase
                 return ($this->fetchByNsu)($client, $nsu);
             }
         });
+    }
+
+    /**
+     * Liga um conector falso cuja consulta por posição é a do conector real.
+     *
+     * A pre-flight mora no conector e não na reconciliação, então é o conector
+     * que tem de recusar para o laço de recuperação ter o que tratar: um falso
+     * que devolvesse documento não provaria nada.
+     *
+     * @param  Closure(): PullResult  $pull
+     */
+    private function bindConnectorDelegatingLookup(Closure $pull): void
+    {
+        $this->bindConnector(
+            $pull,
+            fn (Client $client, int $nsu): ?PulledDocument => resolve(NfeDistributionConnector::class)->fetchByNsu($client, $nsu),
+        );
     }
 
     /**

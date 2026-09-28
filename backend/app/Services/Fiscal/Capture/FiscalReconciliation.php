@@ -11,6 +11,7 @@ use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
+use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -35,12 +36,13 @@ use RuntimeException;
  *    estudasse mais buracos do que a hora inteira permite gastaria o orçamento
  *    inteiro e ainda assim tentaria a vaga seguinte, que não existe.
  * 3. **Adiar não é falhar, e parar não é cobrar.** Teto estourado, trava do
- *    próprio CNPJ ocupada e consumo indevido são condições diferentes com a
- *    mesma resposta: nenhuma delas é o fisco dizendo algo sobre aquela posição.
- *    As duas primeiras param a execução sem gastar tentativa, e o consumo
- *    indevido faz o mesmo e ainda grava a pausa de uma hora — a única coluna de
- *    `fiscal_cursors` que esta classe escreve, e ela escreve porque
- *    `blocked_until` é autoritativa para as duas consultas ao mesmo CNPJ.
+ *    próprio CNPJ ocupada, consulta que não chegou a sair e consumo indevido são
+ *    condições diferentes com a mesma resposta: nenhuma delas é o fisco dizendo
+ *    algo sobre aquela posição. Todas param a execução sem gastar tentativa — a
+ *    tentativa é contada de consulta que **saiu** — e o consumo indevido ainda
+ *    grava a pausa de uma hora, a única coluna de `fiscal_cursors` que esta
+ *    classe escreve, porque `blocked_until` é autoritativa para as duas
+ *    consultas ao mesmo CNPJ.
  * 4. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
  *    posição pedida: o conector devolve o que o serviço mandou, e um documento
@@ -146,6 +148,17 @@ final class FiscalReconciliation
                 // no mesmo bloqueio na mesma noite.
                 $this->reportBlocked($client, $gap);
                 $this->block($cursor);
+
+                break;
+            } catch (FiscalRequestNotSent $exception) {
+                // A pre-flight do conector recusou: sem certificado utilizável,
+                // sem senha guardada, com bytes ilegíveis no cofre, com disco
+                // temporário sem espaço, ou com uma UF que não existe na tabela.
+                // Nenhum desses chegou a abrir conexão, e um disco cheio ou um A1
+                // inutilizável atinge a carteira inteira na mesma noite — parar
+                // aqui é o que impede que uma noite de servidor vire uma
+                // tentativa em cada lacuna, e três tentativas esgotam a lacuna.
+                $this->reportNotSent($client, $gap, $exception);
 
                 break;
             } catch (RuntimeException $exception) {
@@ -300,6 +313,27 @@ final class FiscalReconciliation
             'nsu' => (int) $gap->nsu,
             'tentativas' => (int) $gap->attempts,
             'reason' => 'consumo indevido: o serviço mandou parar este cliente por uma hora.',
+        ]);
+    }
+
+    /**
+     * A recusa que impediu a requisição de existir, e a posição que ficou sem
+     * resposta.
+     *
+     * O motivo é a classe da exceção e nada mais: é ela que distingue "o A1 não
+     * abre" de "o disco do servidor está cheio" e de "a UF do cliente não está
+     * na tabela", e a mensagem de qualquer uma delas pode carregar o nome do
+     * arquivo temporário ou o identificador do cadastro. As tentativas saem sem
+     * o incremento que a coluna mostra ao lado — nada foi tentado.
+     */
+    private function reportNotSent(Client $client, FiscalGap $gap, FiscalRequestNotSent $exception): void
+    {
+        Log::warning('fiscal.reconciliacao.consulta_nao_enviada', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'nsu' => (int) $gap->nsu,
+            'tentativas' => (int) $gap->attempts,
+            'reason' => 'consulta não enviada: '.class_basename($exception),
         ]);
     }
 

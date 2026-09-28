@@ -12,8 +12,10 @@ use App\Services\Fiscal\Contracts\FailedEntry;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
+use App\Services\Fiscal\Exceptions\FiscalClientStateUnknown;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
+use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
 use App\Services\Fiscal\Support\DfeResponse;
 use App\Services\Fiscal\Support\DfeResponseParser;
@@ -644,25 +646,34 @@ final class NfeDistributionConnector implements FiscalConnector
      * `FiscalException`, porque a taxonomia descreve o que o *serviço*
      * respondeu e aqui ninguém perguntou nada. Quem decide se o cliente é
      * capturável é a captura, antes de chamar o conector.
+     *
+     * É `FiscalRequestNotSent` e não `RuntimeException` porque essa diferença
+     * é o que impede a reconciliação de cobrar uma tentativa de uma consulta que
+     * não chegou a existir.
      */
     private function certificateOf(Client $client): ClientCertificate
     {
         $certificate = $client->currentCertificate;
 
         if ($certificate === null) {
-            throw new RuntimeException('Cliente sem certificado A1 vigente.');
+            throw new FiscalRequestNotSent('Cliente sem certificado A1 vigente.');
         }
 
         return $certificate;
     }
 
+    /**
+     * A UF que não está na tabela é defeito de cadastro, e a consulta também não
+     * sai por causa disso — a classe é a da família, com nome próprio para que o
+     * log diga qual das duas recusas aconteceu.
+     */
     private function ufCodeOf(Client $client): string
     {
         $acronym = strtoupper(trim((string) $client->state));
         $code = self::UF_CODES[$acronym] ?? null;
 
         if ($code === null) {
-            throw new RuntimeException("UF do cliente {$client->tax_id} não está na tabela de UFs: '{$client->state}'.");
+            throw new FiscalClientStateUnknown("UF do cliente {$client->tax_id} não está na tabela de UFs: '{$client->state}'.");
         }
 
         return (string) $code;

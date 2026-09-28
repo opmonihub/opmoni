@@ -3,12 +3,12 @@
 namespace App\Services\Fiscal\Support;
 
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use Closure;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 final class ClientCertificateMaterializer
 {
@@ -16,6 +16,13 @@ final class ClientCertificateMaterializer
      * O cURL aceita apenas caminho de arquivo para `cert`/`ssl_key`, então o
      * PKCS#12 é gravado num arquivo efêmero e apagado em `finally`. A senha
      * vive no escopo do método e some junto com ele.
+     *
+     * As três recusas são `FiscalRequestNotSent` e não `RuntimeException` porque
+     * nenhuma delas chega a abrir uma conexão: a requisição não saiu, e quem
+     * reconcilia precisa saber disso para não gastar a tentativa de uma
+     * consulta que o fisco nunca viu. A de disco cheio é a mais cara de errar —
+     * ela é de um servidor, não de um cliente, e atinge a carteira inteira ao
+     * mesmo tempo.
      *
      * @template TReturn
      *
@@ -27,7 +34,7 @@ final class ClientCertificateMaterializer
         $bytes = $this->bytes($certificate);
 
         if ($bytes === null) {
-            throw new RuntimeException('Certificado do cliente não está disponível.');
+            throw new FiscalRequestNotSent('Certificado do cliente não está disponível.');
         }
 
         $password = $certificate->certificatePassword();
@@ -35,7 +42,7 @@ final class ClientCertificateMaterializer
         // `null` não é senha vazia: é certificado anterior a esta versão, que
         // precisa de novo upload. Condição nomeada, nunca um placeholder.
         if ($password === null) {
-            throw new RuntimeException('A senha do certificado do cliente não está armazenada.');
+            throw new FiscalRequestNotSent('A senha do certificado do cliente não está armazenada.');
         }
 
         $disk = Storage::disk('local');
@@ -56,7 +63,7 @@ final class ClientCertificateMaterializer
             @chmod($path, 0600);
 
             if (! $written) {
-                throw new RuntimeException('Não foi possível gravar o certificado no diretório temporário.');
+                throw new FiscalRequestNotSent('Não foi possível gravar o certificado no diretório temporário.');
             }
 
             return $callback($path);

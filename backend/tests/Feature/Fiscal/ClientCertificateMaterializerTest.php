@@ -3,6 +3,7 @@
 namespace Tests\Feature\Fiscal;
 
 use App\Models\ClientCertificate;
+use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
 use Closure;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -116,7 +117,7 @@ class ClientCertificateMaterializerTest extends TestCase
 
         $this->assertNull($certificate->storage_path);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalRequestNotSent::class);
         $this->expectExceptionMessage('Certificado do cliente não está disponível.');
 
         (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
@@ -130,7 +131,7 @@ class ClientCertificateMaterializerTest extends TestCase
         // `get` estrito do disco launcharia, e o guarda transforma em falha nomeada.
         Storage::disk('certificates')->delete((string) $certificate->storage_path);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalRequestNotSent::class);
         $this->expectExceptionMessage('Certificado do cliente não está disponível.');
 
         (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
@@ -145,7 +146,7 @@ class ClientCertificateMaterializerTest extends TestCase
         Storage::disk('certificates')->put((string) $certificate->storage_path, 'conteudo-que-nao-e-payload-cifrado');
         $this->assertNotNull($certificate->certificatePassword());
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(FiscalRequestNotSent::class);
         $this->expectExceptionMessage('Certificado do cliente não está disponível.');
 
         (new ClientCertificateMaterializer)->withCertificate($certificate, $this->callbackThatMustNotRun());
@@ -166,6 +167,7 @@ class ClientCertificateMaterializerTest extends TestCase
 
             $this->fail('Um certificado sem senha armazenada deveria falhar.');
         } catch (RuntimeException $exception) {
+            $this->assertInstanceOf(FiscalRequestNotSent::class, $exception);
             $this->assertSame('A senha do certificado do cliente não está armazenada.', $exception->getMessage());
             $this->assertStringNotContainsString('segredo-unico-9f2b', $exception->getMessage());
         }
@@ -219,6 +221,7 @@ class ClientCertificateMaterializerTest extends TestCase
 
             $this->fail('Uma gravação que falhou deveria ser erro nomeado.');
         } catch (RuntimeException $exception) {
+            $this->assertInstanceOf(FiscalRequestNotSent::class, $exception);
             $this->assertSame('Não foi possível gravar o certificado no diretório temporário.', $exception->getMessage());
         }
 
