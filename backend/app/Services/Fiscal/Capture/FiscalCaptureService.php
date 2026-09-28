@@ -29,6 +29,10 @@ use Throwable;
  * 2. **A posição é o valor que a resposta devolveu, nunca o valor local mais
  *    um.** E ela só é gravada quando a resposta autorizou (`mayAdoptPosition`) e
  *    o lote inteiro entrou — as duas condições, porque cada uma sozinha mente.
+ *    A única exceção é nomeada e estreita: uma lacuna que já esgotou as
+ *    tentativas configuradas libera a posição mesmo com a recusa do conector,
+ *    porque essa recusa foi resposta a uma posição que o fisco já disse três
+ *    vezes que não tem documento.
  * 3. **A parada é absoluta e sobrevive entre execuções.** `blocked_until` é coluna
  *    porque retomar antes de completar a hora zera a contagem do fisco e a
  *    reinicia: backoff curto não desbloqueia nunca.
@@ -131,9 +135,9 @@ final class FiscalCaptureService
 
         $batch = $this->storeBatch($client, $source, $result);
 
-        $pending = $this->recordGaps($client, $source, $batch['unread']);
+        $gaps = $this->recordGaps($client, $source, $batch['unread']);
 
-        $this->persistAnswer($cursor, $result, $pending, $from);
+        $this->persistAnswer($cursor, $result, $gaps, $from);
 
         return new FiscalCaptureOutcome(
             ran: true,
@@ -168,14 +172,19 @@ final class FiscalCaptureService
      * local não para o fisco de gerar posições, e fingir que parou produziria um
      * histórico interrompido que ninguém teve.
      *
-     * @param  int  $pending  posições entregues que seguem pendentes de reconciliação
+     * @param  array{pending: int, spent: int}  $gaps  as duas contas da reconciliação, que viajam
+     *                                                 juntas de propósito: são dois inteiros que
+     *                                                 mudam de significado juntos, e separadas em
+     *                                                 dois argumentos uma troca de ordem passaria
+     *                                                 silenciosa
      */
-    private function persistAnswer(FiscalCursor $cursor, PullResult $result, int $pending, int $from): void
+    private function persistAnswer(FiscalCursor $cursor, PullResult $result, array $gaps, int $from): void
     {
+        $pending = $gaps['pending'];
         $positions = count($result->documents) + count($result->failures);
 
         $cursor->forceFill([
-            'last_nsu' => $result->mayAdoptPosition && $pending === 0 ? $result->lastNsu : $from,
+            'last_nsu' => $this->mayAdopt($result, $gaps) ? $result->lastNsu : $from,
             'last_seen_at' => now(),
             'last_success_at' => now(),
             // Duas pausas de uma hora, uma coluna. O lote incompleto vem
@@ -193,6 +202,55 @@ final class FiscalCaptureService
             // limpa uma janela já vencida.
             'blocked_until' => $result->blockedUntil,
         ])->save();
+    }
+
+    /**
+     * A posição pode ser adotada?
+     *
+     * As duas condições de sempre: a resposta autorizou e não sobrou nada sem
+     * gravar. `mayAdoptPosition` continua significando o que o fisco disse, e
+     * é ele que impede que a posição passe por cima de uma entrada entregue que
+     * ainda ninguém leu.
+     *
+     * E existe uma liberação, deliberada e nomeada: quando a recusa do conector
+     * é a única coisa que ainda seguraria a posição e **todas** as entradas
+     * que ele recusou são lacunas que já esgotaram as tentativas, a posição
+     * anda. Sem isso a liberação do round anterior não existia para o caminho
+     * principal, porque é justamente nele que o conector nega a posição — o
+     * conector marca `mayAdoptPosition = false` sempre que o lote teve alguma
+     * entrada ilegível, e uma lacuna nasce exatamente de uma entrada ilegível.
+     *
+     * A justificativa é a mesma da liberação, e ela é do fisco: três respostas
+     * "não há documento nesta posição", com uma hora de intervalo, resolvem
+     * tudo o que este serviço consegue resolver sobre aquela posição. A linha
+     * continua na lacuna com as tentativas e a última consulta, e a posição é
+     * imutável e cresce — continuar recusando o avanço não recupera nada
+     * daquela posição e perde todos os documentos que estão depois dela.
+     *
+     * A liberação é estreita de propósito, nas duas pontas. Ela exige
+     * `$pending === 0`, então qualquer entrada entregue que ainda ninguém leu
+     * continua segurando a posição como segurava antes, com ou sem a
+     * autorização do fisco. E ela exige que a recusa do conector seja sobre
+     * **entradas deste lote**: uma resposta que recusa a posição sem nenhuma
+     * entrada recusada é o "nenhum documento localizado", e o que ela devolve
+     * é o eco da posição pedida — adotar ali sobrescreveria o cursor com o
+     * valor anterior e apagaria a posição que a consulta anterior tinha
+     * conquistado. A liberação não alcança esse caso, que é a única coisa que a
+     * recusa do conector diz quando não há entrada nenhuma para mirar.
+     *
+     * @param  array{pending: int, spent: int}  $gaps
+     */
+    private function mayAdopt(PullResult $result, array $gaps): bool
+    {
+        if ($gaps['pending'] > 0) {
+            return false;
+        }
+
+        if ($result->mayAdoptPosition) {
+            return true;
+        }
+
+        return $result->failures !== [] && $gaps['spent'] > 0;
     }
 
     /**
@@ -304,14 +362,16 @@ final class FiscalCaptureService
      * limitado por aquilo que o serviço entregou.
      *
      * @param  list<int>  $nsus  posições que o serviço entregou e que não viraram documento
-     * @return int quantas delas continuam pendentes de reconciliação
+     * @return array{pending: int, spent: int} quantas seguem pendentes de
+     *                                         reconciliação e quantas são lacunas que já
+     *                                         esgotaram as tentativas
      */
-    private function recordGaps(Client $client, FiscalSource $source, array $nsus): int
+    private function recordGaps(Client $client, FiscalSource $source, array $nsus): array
     {
         $nsus = array_values(array_unique($nsus));
 
         if ($nsus === []) {
-            return 0;
+            return ['pending' => 0, 'spent' => 0];
         }
 
         // Uma consulta por lote, e não uma por entrada. O `whereIn` é o que
@@ -329,9 +389,11 @@ final class FiscalCaptureService
             ->all();
 
         $pendentes = 0;
+        $esgotadasNoLote = 0;
 
         foreach ($nsus as $nsu) {
             if (in_array($nsu, $esgotadas, true)) {
+                $esgotadasNoLote++;
                 $this->reportSpentGap($client, $nsu);
 
                 continue;
@@ -341,7 +403,7 @@ final class FiscalCaptureService
             $this->recordGap($client, $source, $nsu);
         }
 
-        return $pendentes;
+        return ['pending' => $pendentes, 'spent' => $esgotadasNoLote];
     }
 
     /**

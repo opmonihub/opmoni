@@ -481,6 +481,145 @@ class FiscalReconciliationTest extends TestCase
         $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
     }
 
+    public function test_lacuna_esgotada_libera_a_posicao_do_cliente(): void
+    {
+        $maximo = (int) config('fiscal.reconcile_max_attempts');
+        $client = $this->tenant();
+
+        $this->createGap($client, 101, ['attempts' => $maximo]);
+
+        // Esta é a combinação que `NfeDistributionConnector::collect()` produz
+        // de verdade: entrada ilegível no lote significa `mayAdoptPosition`
+        // falso, e uma lacuna nasce justamente de uma entrada ilegível. Com a
+        // autorização ligada, o teste passaria sem exercitar a liberação.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            200,
+            false,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
+        ));
+
+        Log::spy();
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // A posição já gastou as tentativas configuradas, e a spec manda parar
+        // depois delas: parar de consultar não pode virar parar de capturar.
+        // Três "não há documento nesta posição" com uma hora de intervalo
+        // resolvem tudo o que este serviço resolve sobre aquela posição, e
+        // recusar o avanço depois dela perde todos os documentos que estão
+        // adiante sem nenhuma chance de recuperá-los.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(200, $cursor->last_nsu);
+        $this->assertNull($cursor->last_error);
+
+        // A linha continua: é o registro do que o fisco respondeu, e apagar a
+        // posição perderia a única evidência de que houve uma pergunta.
+        $gap = $this->gapOf($client, 101);
+        $this->assertSame($maximo, $gap->attempts);
+
+        // E a liberação é avisada, com frase fixa e sem nada do fisco. O `once`
+        // fica de fora porque a entrada ilegível do mesmo lote também avisa, e
+        // o que importa aqui é o conteúdo da linha da liberação.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.capture.lacuna_esgotada'
+                && $context['nsu'] === 101
+                && $context['client_id'] === $client->getKey()
+                && ! str_contains(serialize($context), 'docZip'));
+    }
+
+    public function test_lacuna_abaixo_do_topo_segura_a_posicao_com_recusa_do_fisco(): void
+    {
+        $client = $this->tenant();
+
+        $this->createGap($client, 101);
+
+        // Exatamente a forma do teste de liberação, com uma diferença só: a
+        // lacuna ainda tem tentativas. Sem esta diferença, a liberação seria
+        // indistinguível de um afrouxamento geral de `mayAdoptPosition` — e é a
+        // posição que o fisco não autorizou que está em jogo nos dois.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            200,
+            false,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(0, $cursor->last_nsu);
+        $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_a_liberacao_nao_alcanca_a_recusa_sem_entrada_recusada(): void
+    {
+        $maximo = (int) config('fiscal.reconcile_max_attempts');
+        $client = $this->tenant();
+
+        $this->createGap($client, 100, ['attempts' => $maximo]);
+
+        // O lote tem uma entrada ilegível para o writer, nenhuma recusada pelo
+        // conector, e a posição recusada assim mesmo. É a forma do "nenhum
+        // documento localizado": o conector nega a posição e o que a resposta
+        // traz é o eco da posição pedida.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_QUE_NAO_FECHA)],
+            100,
+            false,
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // A liberação exige que a recusa do conector seja sobre entradas deste
+        // lote. Sem essa exigência, uma lacuna esgotada viraria permissão para
+        // adotar o eco da posição pedida — e sobrescrever o cursor com o valor
+        // anterior apagaria a posição que a consulta anterior conquistou.
+        $this->assertSame(0, $this->cursorOf($client)->last_nsu);
+    }
+
+    public function test_as_duas_contas_da_reconciliacao_somam_no_mesmo_lote(): void
+    {
+        $maximo = (int) config('fiscal.reconcile_max_attempts');
+        $client = $this->tenant();
+
+        $this->createGap($client, 101, ['attempts' => $maximo]);
+        $this->createGap($client, 102, ['attempts' => $maximo]);
+        $this->createGap($client, 103, ['attempts' => 0]);
+
+        // Três posições entregues e ilegíveis, duas resolvidas e uma não. As
+        // duas contas viajam no mesmo lote, e é por isso que a frase de
+        // `last_error` observa as duas de uma vez só.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [],
+            110,
+            false,
+            failures: [
+                new FailedEntry(101, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+                new FailedEntry(102, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+                new FailedEntry(103, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+            ],
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // Uma posição pendente continua segurando a posição do cliente, e as
+        // duas esgotadas não entram na conta. A contagem da frase é a
+        // observação externa das duas contas ao mesmo tempo: se elas
+        // trocassem de lugar, a frase seria "2 de 3" e a liberação do teste
+        // anterior deixaria de fazer sentido.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(0, $cursor->last_nsu);
+        $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
+
+        // E nenhuma das três linhas foi mexida: a reencontrada continua com a
+        // contagem que tinha, e as duas esgotadas continuam com a delas.
+        $this->assertSame($maximo, $this->gapOf($client, 101)->attempts);
+        $this->assertSame($maximo, $this->gapOf($client, 102)->attempts);
+        $this->assertSame(0, $this->gapOf($client, 103)->attempts);
+    }
+
     public function test_toda_posicao_entregue_e_nao_lida_vira_lacuna(): void
     {
         // Um `batch_limit` de 1 e três entradas ilegíveis: o que a captura
