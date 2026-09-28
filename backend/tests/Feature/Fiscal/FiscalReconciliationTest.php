@@ -61,8 +61,6 @@ class FiscalReconciliationTest extends TestCase
 
     private const CHAVE_102 = '33333333333333333333333333333333333333331023';
 
-    private const CHAVE_110 = '33333333333333333333333333333333333333331104';
-
     private const CHAVE_999 = '33333333333333333333333333333333333333339997';
 
     private const CHAVE_QUE_NAO_FECHA = '33333333333333333333333333333333333333332004';
@@ -424,12 +422,12 @@ class FiscalReconciliationTest extends TestCase
         $this->assertSame([101], $this->gapNsus($client));
     }
 
-    public function test_buraco_entre_duas_posicoes_vistas_registra_somente_a_posicao_do_meio(): void
+    public function test_posicao_ausente_no_meio_do_lote_nao_e_lacuna(): void
     {
         $client = $this->tenant();
 
-        // A posição devolvida (200) é bem acima da última entrada entregue
-        // (102), e as duas pontas da distância são de fora do buraco.
+        // Duas posições vistas, uma no meio ausente, e a posição devolvida bem
+        // acima da última entrada entregue.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
             200,
@@ -438,33 +436,46 @@ class FiscalReconciliationTest extends TestCase
 
         $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
 
-        // Só o meio é buraco. A distância entre zero e a primeira posição vista
-        // também é um número, e tratá-la como lacuna fabricaria dezenas de
-        // milhares de posições pendentes na primeira captura de um cliente que
-        // já tem histórico no ambiente nacional. O mesmo vale para a distância
-        // entre a última posição vista e a posição devolvida: `ultNSU` é a
-        // posição do ambiente, e o serviço entrega o que pertence ao CNPJ
-        // consultado — a diferença entre as duas é rotina, não buraco.
-        $this->assertSame([101], $this->gapNsus($client));
+        // A distância entre 100 e 102 não é lacuna, e nem as duas pontas: 1 a 99
+        // antes da primeira posição vista, e 103 a 200 depois da última. A
+        // posição do ambiente nacional é maior que a última entrada entregue
+        // porque o serviço entrega o que pertence ao CNPJ consultado, e o que
+        // está entre duas posições suas pertence a outro contribuinte. Uma
+        // primeira captura em 100, 5000 e 200000 "acharia" 4 899 posições que
+        // não são documento nenhum, e cada uma custaria uma consulta por hora ao
+        // CNPJ para o fisco responder "não há documento nesta posição".
+        $this->assertSame([], $this->gapNsus($client));
+        $this->assertSame([100, 102], FiscalDocument::query()->orderBy('nsu')->pluck('nsu')->all());
+
+        // E a posição anda, porque o lote entrou inteiro: a spec pede para
+        // reconciliar **aquele** documento, e aqui o fisco não disse que existe
+        // documento em 101.
+        $this->assertSame(200, $this->cursorOf($client)->last_nsu);
+        $this->assertNull($this->cursorOf($client)->last_error);
     }
 
-    public function test_buraco_detectado_impede_a_posicao_de_andar(): void
+    public function test_lacuna_nao_esgotada_impede_a_posicao_de_andar(): void
     {
         $client = $this->tenant();
 
+        $this->createGap($client, 101);
+
+        // O serviço entregou a posição 101 e a entrada não pôde ser lida. É a
+        // única forma de uma lacuna nascer, e a garantia que a captura depende:
+        // enquanto a reconciliação não respondeu, a posição não anda.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
-            102,
+            200,
             true,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
         ));
 
         $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
 
-        // O serviço autorizou a posição 102 e a posição 101 não foi lida: a
-        // autorização do serviço é uma condição, e a integridade do lote é a
-        // outra. Gravar 102 pediria ao fisco o que vem depois do buraco para
-        // sempre, e a consulta pontual da reconciliação é a única coisa que
-        // ainda sabe onde ele está.
+        // A autorização do serviço (200) é uma condição e a integridade do lote
+        // é a outra, e a segunda manda: gravar 200 pediria ao fisco o que vem
+        // depois da posição ilegível para sempre, e a consulta pontual da
+        // reconciliação é a única coisa que ainda sabe onde ela está.
         $cursor = $this->cursorOf($client);
         $this->assertSame(0, $cursor->last_nsu);
         $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
@@ -472,23 +483,35 @@ class FiscalReconciliationTest extends TestCase
 
     public function test_o_teto_de_lacunas_por_lote_vem_da_configuracao(): void
     {
-        config(['fiscal.batch_limit' => 3]);
+        config(['fiscal.batch_limit' => 2]);
 
         $client = $this->tenant();
 
         $this->bindConnector(fn (): PullResult => $this->batch(
-            [$this->pulled(100, self::CHAVE_100), $this->pulled(110, self::CHAVE_110)],
+            [$this->pulled(100, self::CHAVE_100)],
             110,
-            true,
+            false,
+            failures: [
+                new FailedEntry(101, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+                new FailedEntry(102, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+                new FailedEntry(103, 'resNFe_v1.01.xsd', 'FiscalXmlMetadata rejeitou o documento decodificado.'),
+            ],
         ));
 
         $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
 
-        // O número de posições que um lote pode transformar em lacuna é o
-        // tamanho do lote, lido da configuração. Um número escrito no código
-        // passaria a divergir do fisco em silêncio, e cada posição a mais vira
-        // uma consulta por hora para um buraco que talvez nem exista.
-        $this->assertSame([101, 102, 103], $this->gapNsus($client));
+        // O teto das lacunas de um lote é o tamanho do lote, lido da
+        // configuração. Um número escrito no código passaria a divergir do fisco
+        // em silêncio.
+        $this->assertSame([101, 102], $this->gapNsus($client));
+
+        // E o teto corta o registro, nunca a conta: as três posições continuam
+        // segurando a posição do cliente, porque o que segura a posição é o
+        // que o fisco disse que existe e não entrou — não o número de linhas
+        // que a gravação conseguiu escrever.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(0, $cursor->last_nsu);
+        $this->assertSame('lote incompleto: 3 de 4 posições não gravadas.', $cursor->last_error);
     }
 
     public function test_gravacao_recusada_registra_a_posicao_da_entrada(): void
@@ -521,10 +544,14 @@ class FiscalReconciliationTest extends TestCase
         $proxima = now()->subDay()->startOfSecond();
         $this->createGap($client, 101, ['attempts' => 2, 'next_attempt_at' => $proxima]);
 
+        // A captura reencontra a posição porque o serviço a entregou de novo e
+        // ela não pôde ser lida de novo — que é como uma lacuna reencontrada
+        // acontece na prática.
         $this->bindConnector(fn (): PullResult => $this->batch(
             [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
             102,
-            true,
+            false,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
         ));
 
         $this->capture()->capture($client, FiscalSource::NfeDistribuicao);

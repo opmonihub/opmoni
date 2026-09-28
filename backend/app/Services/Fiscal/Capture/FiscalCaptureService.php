@@ -129,16 +129,16 @@ final class FiscalCaptureService
             throw $exception;
         }
 
-        $stored = $this->storeBatch($client, $source, $result);
+        $batch = $this->storeBatch($client, $source, $result);
 
-        $holes = $this->recordHoles($client, $source, $result);
+        $pending = $this->recordGaps($client, $source, $batch['unread']);
 
-        $this->persistAnswer($cursor, $result, $stored, $holes, $from);
+        $this->persistAnswer($cursor, $result, $pending, $from);
 
         return new FiscalCaptureOutcome(
             ran: true,
             skipReason: null,
-            stored: $stored,
+            stored: $batch['stored'],
             fromNsu: $from,
             toNsu: (int) $cursor->last_nsu,
         );
@@ -151,29 +151,31 @@ final class FiscalCaptureService
      * A posição é adotada quando **as duas** condições são verdadeiras, e cada uma
      * sozinha mente. `mayAdoptPosition` é o que o serviço respondeu — a posição
      * depois de um buraco ou a posição de um "nenhum documento localizado" não
-     * podem ser gravadas. E `$unread === 0` é o que o disco aceitou: gravar a
+     * podem ser gravadas. E `$pending === 0` é o que o disco aceitou: gravar a
      * posição depois de um documento que não entrou é perdê-lo em silêncio, porque
      * a consulta seguinte começa depois dele.
      *
-     * `$holes` entra na conta por causa do mesmo motivo, com uma diferença: a
-     * lacuna **fica gravada** em `fiscal_gaps`, então a posição não está perdida
-     * — mas a consulta seguinte começa depois dela, e a captura incremental não
-     * volta atrás por posição. Quem volta atrás é a reconciliação, e ela só sabe
-     * onde é porque a lacuna foi gravada antes desta linha.
+     * `$pending` são as posições que o serviço entregou, que não entraram e que
+     * ainda têm reconciliação pela frente. A lacuna **fica gravada** em
+     * `fiscal_gaps`, então a posição não está perdida — mas a consulta seguinte
+     * começa depois dela, e a captura incremental não volta atrás por posição.
+     * Quem volta atrás é a reconciliação, e ela só sabe onde é porque a lacuna
+     * foi gravada antes desta linha.
      *
      * `last_seen_at` e `last_success_at` são escritos mesmo com o lote
      * incompleto, e essa é a parte que parece errada e não é: quem precisa do
      * fisco é o serviço, e o serviço está vivo e respondendo. Uma falha de disco
      * local não para o fisco de gerar posições, e fingir que parou produziria um
      * histórico interrompido que ninguém teve.
+     *
+     * @param  int  $pending  posições entregues que seguem pendentes de reconciliação
      */
-    private function persistAnswer(FiscalCursor $cursor, PullResult $result, int $stored, int $holes, int $from): void
+    private function persistAnswer(FiscalCursor $cursor, PullResult $result, int $pending, int $from): void
     {
-        $unread = count($result->documents) - $stored + count($result->failures) + $holes;
-        $positions = count($result->documents) + count($result->failures) + $holes;
+        $positions = count($result->documents) + count($result->failures);
 
         $cursor->forceFill([
-            'last_nsu' => $result->mayAdoptPosition && $unread === 0 ? $result->lastNsu : $from,
+            'last_nsu' => $result->mayAdoptPosition && $pending === 0 ? $result->lastNsu : $from,
             'last_seen_at' => now(),
             'last_success_at' => now(),
             // Duas pausas de uma hora, uma coluna. O lote incompleto vem
@@ -183,7 +185,7 @@ final class FiscalCaptureService
             // motivo pelo qual `certificate_reupload` é uma palavra e não uma
             // frase. O esfriamento de `137` não marca nada: ele se repete a
             // cada consulta de um cliente saudável.
-            'last_error' => $unread > 0 ? $this->incompleteNote($unread, $positions)
+            'last_error' => $pending > 0 ? $this->incompleteNote($pending, $positions)
                 : ($result->failure === FiscalFailure::Blocked ? 'blocked_consumption' : null),
             // A parada do serviço é um eixo separado da posição: ela vale mesmo no
             // lote que não entrou inteiro, e vale nos dois tipos de pausa. Grava
@@ -221,11 +223,13 @@ final class FiscalCaptureService
      * O que já foi gravado fica gravado. A gravação é idempotente por chave de
      * acesso, então repetir a captura depois reconstrói o lote sem duplicar nada.
      *
-     * @return int quantos documentos entraram
+     * @return array{stored: int, unread: list<int>} documentos gravados e
+     *                                               posições entregues que não viraram documento
      */
-    private function storeBatch(Client $client, FiscalSource $source, PullResult $result): int
+    private function storeBatch(Client $client, FiscalSource $source, PullResult $result): array
     {
         $stored = 0;
+        $unread = [];
 
         foreach ($result->documents as $document) {
             try {
@@ -238,7 +242,7 @@ final class FiscalCaptureService
                     'gravação recusada: '.class_basename($exception),
                     $document->chave,
                 );
-                $this->recordGap($client, $source, $document->nsu);
+                $unread[] = $document->nsu;
             }
         }
 
@@ -248,86 +252,63 @@ final class FiscalCaptureService
         // qual delas.
         foreach ($result->failures as $failure) {
             $this->reportUnreadableEntry($client, $failure->nsu, $failure->reason);
-            $this->recordGap($client, $source, $failure->nsu);
+            $unread[] = $failure->nsu;
         }
 
-        return $stored;
+        return ['stored' => $stored, 'unread' => $unread];
     }
 
     /**
-     * As posições que o serviço entregou em números sem parar no meio.
+     * As posições que o serviço entregou e que não entraram viram lacuna, e o
+     * método devolve quantas delas continuam pendentes de reconciliação.
      *
-     * O buraco é a distância **entre duas posições vistas no mesmo lote**: 100 e
-     * 102 chegaram, então 101 foi publicada no ambiente nacional e não veio.
-     * E é só isso que se conclui, pelos dois lados da distância:
+     * **Uma posição que não veio no lote não é lacuna — e nenhuma varredura de
+     * sequência consegue dizer que é.** A distância entre duas posições vistas
+     * também é um número, e ela não prova nada: `ultNSU` é a posição do
+     * ambiente nacional, e o serviço entrega o que pertence ao CNPJ
+     * consultado. A posição do ambiente é maior que a última entrada, e o que
+     * está no meio pertence a outro contribuinte. A primeira captura de um
+     * cliente com histórico em 100, 5000 e 200000 "acharia" 4 899 posições que
+     * não são documento nenhum, e cada uma delas custaria uma consulta por hora
+     * ao CNPJ só para o fisco responder "não há documento nesta posição".
      *
-     * - Antes da primeira posição vista não se conclui nada. A distância entre
-     *   zero e 100 também é um número, e tratá-la como lacuna fabricaria
-     *   dezenas de milhares de posições pendentes na primeira captura de um
-     *   cliente que já tem histórico no ambiente. A primeira posição vista é o
-     *   começo do lote, nunca o zero.
-     * - Depois da última também não. `ultNSU` é a posição do ambiente, e ela
-     *   pode estar acima da última entrada entregue — o serviço entrega o que
-     *   pertence ao CNPJ consultado, e a posição do ambiente é maior. Uma
-     *   lacuna contada daí reapareceria em toda captura, para sempre.
+     * E não é risco teórico. O `design.md` do change nomeia "outro sistema
+     * captura o mesmo CNPJ primeiro" como a principal causa de buraco e diz
+     * que **não há defesa técnica, só operacional** — a entrega de cada posição
+     * é única por CNPJ, e a posição consumida por outro some. Esse é
+     * justamente o buraco que nenhuma varredura enxerga, e é o motivo de a
+     * reconciliação existir da forma que existe: ela não caça posição ausente,
+     * ela volta atrás da posição que o fisco **entregou** e que nós não
+     * conseguimos ler.
      *
-     * O teto é o tamanho do lote, lido da configuração, e ele limita o quanto
-     * esta checagem olha — não o que o lote vale. Um `ultNSU` muito acima da
-     * última posição entregue transformaria a leitura numa varredura de dezenas
-     * de milhares de posições, e cada uma delas seria uma consulta por hora
-     * para um buraco que talvez nem exista. As posições acima do teto não são
-     * registradas por este lote, e continuam não registradas: a captura recebe
-     * o mesmo lote de novo e recomeça pelas mesmas posições, que é o custo
-     * escolhido por um dado que é do serviço.
+     * Por isso a lacuna nasce de duas coisas, e nenhuma delas é ausência: uma
+     * entrada que o conector recusou e um documento que o writer não gravou. Nos
+     * dois casos o fisco disse que existe documento em tal posição, e a spec
+     * pede exatamente isso — recuperar **aquele** documento.
      *
-     * @return int quantas lacunas foram gravadas
+     * O teto de `fiscal.batch_limit` limita as linhas gravadas, não a conta. A
+     * conta é o número de posições que o serviço entregou e que não entraram, e
+     * é ela que segura a posição do cliente: um lote não traz mais entradas do
+     * que o tamanho do lote, então o teto não morde, e se morresse o corte seria
+     * do registro de recuperação, nunca da integridade do cursor.
+     *
+     * @param  list<int>  $nsus  posições que o serviço entregou e que não viraram documento
+     * @return int quantas delas continuam pendentes de reconciliação
      */
-    private function recordHoles(Client $client, FiscalSource $source, PullResult $result): int
+    private function recordGaps(Client $client, FiscalSource $source, array $nsus): int
     {
-        $observed = $this->observedPositions($result);
+        $nsus = array_values(array_unique($nsus));
         $cap = (int) config('fiscal.batch_limit', 50);
         $recorded = 0;
 
-        for ($position = 1; $position < count($observed) && $recorded < $cap; $position++) {
-            $after = $observed[$position - 1];
-
-            // A distância entre duas posições vistas, uma a uma. Uma posição
-            // repetida não gera nada: a unicidade da lacuna é por posição, e
-            // o serviço reentrega o mesmo lote a cada captura.
-            for ($missing = $after + 1; $missing < $observed[$position] && $recorded < $cap; $missing++) {
-                $this->recordGap($client, $source, $missing);
+        foreach ($nsus as $nsu) {
+            if ($recorded < $cap) {
+                $this->recordGap($client, $source, $nsu);
                 $recorded++;
             }
         }
 
-        return $recorded;
-    }
-
-    /**
-     * As posições que a resposta trouxe, em ordem e sem repetição.
-     *
-     * Documento e entrada recusada contam igual: as duas são posições que o
-     * serviço viu, e é a distância entre elas que separa um buraco de uma
-     * posição que simplesmente não veio no lote.
-     *
-     * @return list<int>
-     */
-    private function observedPositions(PullResult $result): array
-    {
-        $positions = [];
-
-        foreach ($result->documents as $document) {
-            $positions[] = $document->nsu;
-        }
-
-        foreach ($result->failures as $failure) {
-            $positions[] = $failure->nsu;
-        }
-
-        $positions = array_values(array_unique($positions));
-        sort($positions);
-
-        return $positions;
+        return count($nsus);
     }
 
     /**
@@ -389,9 +370,9 @@ final class FiscalCaptureService
      * respondeu, parte do lote está gravada, e a posição não vai passar por cima
      * do resto.
      */
-    private function incompleteNote(int $unread, int $total): string
+    private function incompleteNote(int $pending, int $total): string
     {
-        return sprintf('lote incompleto: %d de %d posições não gravadas.', $unread, $total);
+        return sprintf('lote incompleto: %d de %d posições não gravadas.', $pending, $total);
     }
 
     /**
