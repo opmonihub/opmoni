@@ -187,15 +187,18 @@ final class FiscalCaptureService
             'last_nsu' => $this->mayAdopt($result, $gaps) ? $result->lastNsu : $from,
             'last_seen_at' => now(),
             'last_success_at' => now(),
-            // Duas pausas de uma hora, uma coluna. O lote incompleto vem
+            // Três estados de atenção, uma coluna. O lote incompleto vem
             // primeiro porque ele descreve um buraco que alguém precisa
             // reconciliar; depois, o consumo indevido — que para o fisco e
-            // também é problema do cliente — ganha um rótulo fixo, o mesmo
-            // motivo pelo qual `certificate_reupload` é uma palavra e não uma
-            // frase. O esfriamento de `137` não marca nada: ele se repete a
-            // cada consulta de um cliente saudável.
-            'last_error' => $pending > 0 ? $this->incompleteNote($pending, $positions)
-                : ($result->failure === FiscalFailure::Blocked ? 'blocked_consumption' : null),
+            // também é problema do cliente — e a lacuna que esgotou as
+            // tentativas, que é o abandono de uma posição. Os três são palavras
+            // fixas, pelo mesmo motivo de `certificate_reupload` ser uma e não
+            // uma frase: a coluna é lida por painel e classificada por token, e
+            // o texto do fisco nunca entra. O esfriamento de `137` não marca
+            // nada: ele se repete a cada consulta de um cliente saudável.
+            'last_error' => $pending > 0
+                ? $this->incompleteNote($pending, $positions)
+                : $this->stateNote($result, $gaps),
             // A parada do serviço é um eixo separado da posição: ela vale mesmo no
             // lote que não entrou inteiro, e vale nos dois tipos de pausa. Grava
             // sempre, e zera quando a resposta não trouxe parada, que é o que
@@ -472,6 +475,34 @@ final class FiscalCaptureService
             'chave_acesso' => $chave,
             'reason' => $reason,
         ]);
+    }
+
+    /**
+     * O rótulo fixo do estado de atenção que a resposta deixou, quando o lote
+     * não ficou incompleto.
+     *
+     * `blocked_consumption` e `gap_abandoned` são eixos independentes, e a
+     * classificação do serviço não depende da pausa: os dois campos são
+     * gravados sempre, e o `137` — que também pausa uma hora — não marca nada.
+     *
+     * `gap_abandoned` é o terceiro token da coluna, e ele existe porque a
+     * liberação da posição é o único ponto do módulo em que um documento
+     * entregue pelo fisco é descartado de vez. Sem ele, o cliente volta a
+     * parecer saudável no dia seguinte: cursor normal, `last_error` nulo,
+     * documento chegando. A única prova de que aquela posição foi perdida fica
+     * numa linha de aviso e numa linha de `fiscal_gaps` que nada consulta. O
+     * leitor por conta pertence à API, e até lá um token estável é o que torna
+     * o estado nomeável — e é nele que o leitor vai se apoiar.
+     *
+     * @param  array{pending: int, spent: int}  $gaps
+     */
+    private function stateNote(PullResult $result, array $gaps): ?string
+    {
+        if ($result->failure === FiscalFailure::Blocked) {
+            return 'blocked_consumption';
+        }
+
+        return $gaps['spent'] > 0 ? 'gap_abandoned' : null;
     }
 
     /**

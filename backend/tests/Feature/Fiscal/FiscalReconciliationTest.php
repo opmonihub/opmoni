@@ -691,7 +691,14 @@ class FiscalReconciliationTest extends TestCase
         // adiante sem nenhuma chance de recuperá-los.
         $cursor = $this->cursorOf($client);
         $this->assertSame(200, $cursor->last_nsu);
-        $this->assertNull($cursor->last_error);
+
+        // A liberação grava o abandono. Um cursor saudável, com `last_error`
+        // nulo e documento chegando todo dia, é indistinguível de um cliente que
+        // nunca perdeu nada — e a posição que o fisco entregou e ninguém guardou
+        // só existe como uma linha de aviso e uma linha de `fiscal_gaps` que
+        // nada consulta. Um token fixo é o que torna o estado nomeável, e é o
+        // mesmo vocabulário de `certificate_reupload` e `blocked_consumption`.
+        $this->assertSame('gap_abandoned', $cursor->last_error);
 
         // A linha continua: é o registro do que o fisco respondeu, e apagar a
         // posição perderia a única evidência de que houve uma pergunta.
