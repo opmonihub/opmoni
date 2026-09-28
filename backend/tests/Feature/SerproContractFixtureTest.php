@@ -33,6 +33,7 @@ class SerproContractFixtureTest extends TestCase
         return [
             ['sitfis-relatorio.json'],
             ['application-error.json'],
+            ['procuracao-familias.json'],
         ];
     }
 
