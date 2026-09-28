@@ -96,6 +96,14 @@ Gravar a posição antes dos documentos inverte a ordem e perde documento silenc
 
 O `656` devolve a posição correta dentro do XML desde a v1.14 da NT. Adotá-la é a alavanca de recuperação que o fisco oferece; zerar o cursor é perder a informação que ele está entregando.
 
+### 5b. Uma posição que esgotou as tentativas é abandonada, e abandonada em voz alta
+
+`fiscal_reconcile_max_attempts` tentativas separadas por uma hora encerram a reconciliação daquela posição: passar disso seria uma consulta por noite para o fisco responder "não há documento nesta posição", e a resposta não muda porque a posição é imutável e cresce. A linha continua em `fiscal_gaps` com as tentativas e a última consulta — é o histórico do que o fisco respondeu — e a captura volta a andar, porque parar de consultar não pode virar parar de capturar.
+
+A consequência é que existe um ponto do módulo em que um documento que o fisco entregou é descartado de vez. Sem marca, o cliente volta a parecer saudável no dia seguinte: cursor normal, `last_error` nulo, documento chegando todo dia. A prova ficaria numa linha de aviso e numa linha de `fiscal_gaps` que nada consulta — e nenhum dos dois é estado que um painel consiga mostrar.
+
+Por isso a liberação grava o token fixo `gap_abandoned` em `last_error`, no mesmo vocabulário de `certificate_reupload` e `blocked_consumption`. A coluna vira o vocabulário de classificação do cursor: quatro tokens estáveis, e nenhum texto de terceiro dentro dela. **`fiscal_gaps` não ganha leitor neste change** — leitor por conta é da API e da tela, e até lá o token é o que torna o estado nomeável. Quem construir a lista de atenção vai precisar conhecer este terceiro token, e é nele que a lista se apoia.
+
 ### 6. Bloqueio como coluna, com semântica de "recomeçar a contagem"
 
 `blocked_until` em `fiscal_cursors`.

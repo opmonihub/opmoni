@@ -94,14 +94,18 @@ The system SHALL stop querying a client that has not been captured for more than
 - **THEN** the system makes no outbound call and reports the client as having an interrupted history
 
 ### Requirement: Reconciliação de posições faltantes
-The system SHALL provide a scheduled reconciliation that detects positions missing from a client's stored sequence and recovers them within published lookup limits, and SHALL be safe to run repeatedly.
+The system SHALL provide a scheduled reconciliation that recovers, one position at a time and within published lookup limits, the positions the service delivered and that the system could not read or store, SHALL stop asking after the configured attempt count while keeping the position registered, and SHALL be safe to run repeatedly. It SHALL NOT infer that a position is missing from the absence of an interior position in the stored sequence, because the sequence belongs to the national environment and not to the queried CNPJ, so an absent interior position belongs to another taxpayer and the absence carries no evidence about this client.
 
-#### Scenario: Lacuna detectada
-- **WHEN** reconciliation finds a position missing from the stored sequence
-- **THEN** the system attempts to recover that document within the lookup limit and stops after the configured attempt count
+#### Scenario: Lacuna registrada
+- **WHEN** reconciliation finds a registered position that the service delivered and that the system could not read or store
+- **THEN** the system attempts to recover that document within the lookup limit and stops after the configured attempt count, keeping the position registered
+
+#### Scenario: Posição ausente entre duas capturadas
+- **WHEN** two stored positions of a client are far apart
+- **THEN** the system performs no recovery lookup for the positions in between, because they belong to the national sequence and not to the CNPJ
 
 #### Scenario: Reconciliação sem lacuna
-- **WHEN** reconciliation finds no missing position
+- **WHEN** reconciliation finds no registered position
 - **THEN** no recovery lookup is performed and the client's position is left unchanged
 
 ### Requirement: Cobertura da carteira
