@@ -135,15 +135,30 @@ final class PalavrasCorrompidasTest extends TestCase
      * destas três, passa"** — e é assim que `divisaoEmPalavrasConhecidas()`
      * funciona, porque o `continue` da isenta acontece **a cada corte** e não
      * só naquele que fecharia. A consequência é que a lista silencia muito mais
-     * do que as três palavras que a motivaram: no escopo deste teste, nas seis
-     * raízes de `2026-09-28`, ela silencia **12** palavras, e as 12 são por
-     * causa de `mente`: `exatamente`, `corretamente`, `separadamente`,
-     * `realmente`, `raramente`, `deliberadamente`, `silenciosamente`,
-     * `inteiramente`, `localmente`, `propositalmente`, `estruturalmente` e
-     * `precisamente`. São as doze que a regra acusaria com `ISENTAS` vazia e
-     * o piso em 14, e é por isso que a lista não é enfeite: sem ela o piso
-     * teria de subir para 16, e a `continuaexistindo` do round 2 tem 17 e seria
-     * a única colagem real conhecida.
+     * do que as três palavras que a motivaram. **A lista nomeia doze palavras de
+     * prosa, e é preciso dizer o que cada uma delas é**, porque a versão
+     * anterior desta docblock dizia que as doze "seriam acusadas com `ISENTAS`
+     * vazia" e **a regra só acusa duas delas**. Medido nas seis raízes, em
+     * `2026-09-28`, e cada linha conferida por
+     * `MedidaDaRegraDeColagemTest::test_as_palavras_isentas_tem_o_comprimento_e_a_frequencia_que_a_docblock_declara`:
+     *
+     * - **8 das 12 estão abaixo do piso de 14** e por isso a regra as descarta
+     *   pela comprimento antes de consultar a isenta: `realmente` (9),
+     *   `raramente` (9), `exatamente` (10), `localmente` (10),
+     *   `corretamente` (12), `inteiramente` (12), `precisamente` (12),
+     *   `separadamente` (13);
+     * - **6 das 12 não são hapax**, e o filtro as descarta antes disso:
+     *   `exatamente` (51×), `realmente` (5×), `deliberadamente` (4×),
+     *   `separadamente` (3×), `estruturalmente` (2×), `localmente` (2×);
+     * - **só 2 são ao mesmo tempo hapax e de 14 ou mais**, e são as duas que a
+     *   regra de fato aciona com a lista vazia: `propositalmente` e
+     *   `silenciosamente`, **ambas com 15 caracteres**.
+     *
+     * **E é por isso que a lista não é enfeite, e por isso o piso é 14.** As
+     * duas têm 15, de modo que o piso em 16 as calaria — e a
+     * `continuaexistindo` do round 2 tem 17, então subir o piso perderia a
+     * única colagem real conhecida. O piso 14 é o ponto em que as duas
+     * condições se encontram.
      *
      * **As duas entradas além de `mente` não acusam nada hoje, e estão aqui
      * para o amanhã** — e a razão de aceitarem **palavra inteira** e não só
@@ -297,24 +312,29 @@ final class PalavrasCorrompidasTest extends TestCase
      * | `cleanup-wave-report.md:958` | `multiconjuntos` | palavra correta |
      *
      * **E o sweep de hoje, na árvore deste commit, dá ZERO colagens — e o
-     * motivo é o que a lição vale.** As cinco passaram a aparecer duas ou três
-     * vezes cada uma, porque **o relatório as citou**, e o filtro de hapax
-     * deixa de acusá-las. As frequências, contadas como **token de prosa** (a
-     * regra remove crase antes de tokenizar, e é por isso que `grep -o` cru
-     * dá números muito maiores e não é o filtro): `interatividade` 1 vez como
-     * comentário e 3 como prosa, `correntesproduzem` 0 e 2,
-     * `propriedadeverificável` 0 e 3, `autenticaprocurador` 0 e 3,
-     * `multiconjuntos` 0 e 3. **Uma guarda cuja evidência é destruída pelo ato
-     * de documentá-la precisa de medições datadas à árvore de onde vieram**,
-     * e é por isso que esta lista e a tabela de `COMPRIMENTO_MINIMO` trazem a
-     * data e o commit.
+     * motivo é o que a lição vale.** As cinco passaram a aparecer **mais de uma
+     * vez** como token de prosa, porque **o relatório as citou**, e o filtro de
+     * hapax deixa de acusá-las. O fato é o que está escrito, e não a
+     * frequência: a frequência **depende do predicado de linha** que se usa
+     * para dizer o que é comentário, e a versão anterior deste parágrafo
+     * publicava inteiros sem dizer qual — de modo que a review, medindo com
+     * outro predicado, obteve outros, e os dois estavam certos. **Contagem sem
+     * predicado declarado não é medição, é número solto**, e é por isso que
+     * aqui sobrou o qualitativo e saiu o quantitativo. Para a contagem usar é a
+     * mesma que a regra usa: linha de comentário pelos quatro prefixos
+     * `//`, `*`, `#` e `/*`, crase removida antes de tokenizar. **Uma guarda
+     * cuja evidência é destruída pelo ato de documentá-la precisa de medições
+     * datadas à árvore de onde vieram**, e é por isso que esta lista e a tabela
+     * de `COMPRIMENTO_MINIMO` trazem a data e o commit.
      *
      * **Uma quinta classe apareceu nesse sweep e a docblock não a nomeava:**
      * `autocontraditório`, 17 caracteres, em
      * `.superpowers/…-01-conexao/task-1-report.md:265`. É hapax e **não
      * divide** em nada que o corpus contenha, então não vira achado — o que a
      * torna o exemplo mais limpo do limite da camada 3, e é o que faltava
-     * aqui.
+     * aqui. E é a forma mais honesta de o texto citar uma palavra que ele
+     * mesmo diz que a regra não pegaria: **a palavra que nomeia o limite não
+     * vira exemplo de violação.**
      *
      * **Nenhum caractere de outro roteiro aparece fora de
      * `openspec/schemas/superpowers-bridge/`**, que é ferramenta de terceiro
@@ -339,6 +359,7 @@ final class PalavrasCorrompidasTest extends TestCase
      */
     private const EXCLUIDOS = [
         ['tests/Unit/PalavrasCorrompidasTest.php', 'contém os radicais de `SUSPEITAS` e as isentas de `ISENTAS` escritas por extenso, na docblock de cada motivo e no exemplo de palavra colada — é a única razão de este arquivo existir, e tirá-lo da varredura é o que faria ele passar em silêncio sobre a própria corrupção'],
+        ['tests/Unit/MedidaDaRegraDeColagemTest.php', 'é o arquivo que **mede** a regra, e ele fica em `tests/`, que é raiz varrida. Escrevê-lo mudou o que é medido: acrescentá-lo à varredura levou o corpus de 357 para 358 arquivos, os hapaxes de 14+ de 25 para 24 e `exatamente` de 51 para 54 ocorrências, porque o arquivo repete em prosa as palavras que a medição confere. **Medir alterando a árvore medida é a mesma doença que escrever um achado e neutralizá-lo**, que é o que o `DIRETORIOS` registra — e a exclusão é a correção, não um contorno'],
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
@@ -457,27 +478,37 @@ final class PalavrasCorrompidasTest extends TestCase
      *
      * **O ruído desta camada é um piso que sobe, e ele é declarado aqui porque
      * zero falso positivo hoje não é a mesma coisa que regra exata.** Medido
-     * nas seis raízes, na árvore de `2026-09-28` com o commit `47fc957`:
+     * nas seis raízes, na árvore de `2026-09-28` com o commit `47fc957`, e
+     * conferido por
+     * `MedidaDaRegraDeColagemTest::test_a_particao_dos_hapaxes_longos_e_completa`:
      *
      * - **25** palavras de 14 caracteres ou mais aparecem uma vez só;
-     * - **11** delas acusam no instante em que uma metade específica
-     *   apareça em qualquer comentário, porque a regra exige que **as duas**
-     *   metades estejam no corpus e o corpus cresce com o próprio repositório;
-     * - **2** são silenciadas em **permanência** por `ISENTAS` — o único corte
-     *   que as dividiria tem metade direita isenta, e nenhum outro corte
-     *   funciona: são `silenciosamente` e `propositalmente`, `mente` no fim;
-     * - **12** não dividem em nada que o corpus contenha, e são as outras 12
-     *   das 25.
+     * - **13** delas a regra **acusaria** no instante em que a metade ausente
+     *   aparecesse, porque a regra exige que **as duas** metades estejam no
+     *   corpus e o corpus cresce com o próprio repositório. São onze com metade
+     *   ausente comum — `autoalimentado` esperando `alimentado`,
+     *   `sobrescrevendo` esperando `sobr`, `contraditórias` esperando
+     *   `ditórias`, `diferentesariam` esperando `sariam`, `implementações`
+     *   esperando `implement`, `comportamentos` esperando `mentos`,
+     *   `sobrescrevesse` esperando `sobr`, `reautenticação` esperando
+     *   `reautentic`, `reclassificaria` esperando `reclassi`,
+     *   `reimplementação` esperando `reimplement` e `classifications`
+     *   esperando `ifications` — e mais **`infraestrutura` esperando `infra`**
+     *   e **`programaticamente` esperando `programatica`**, cujas o único corte
+     *   possível tem a metade **presente** isenta;
+     * - **12** não acusariam, e é a soma que fecha a partição.
      *
-     * **11 + 2 + 12 = 25**, e a soma é a checagem de que a contagem é a que
-     * este parágrafo diz ser. As onze, com a metade que falta: `autoalimentado`
-     * esperando `alimentado`, `sobrescrevendo` esperando `sobr`,
-     * `contraditórias` esperando `ditórias`, `diferentesariam` esperando
-     * `sariam`, `implementações` esperando `implement`, `comportamentos`
-     * esperando `mentos`, `sobrescrevesse` esperando `sobr`, `reautenticação`
-     * esperando `reautentic`, `reclassificaria` esperando `reclassi`,
-     * `reimplementação` esperando `reimplement` e `classifications` esperando
-     * `ifications`.
+     * **13 + 12 = 25**, e a soma é a checagem de que a partição é completa.
+     *
+     * **A partição anterior deste parágrafo — `11 + 2 + 12` — estava errada
+     * como partição, e a forma do erro importa.** O `2` era
+     * `silenciosamente` e `propositalmente`, que a `ISENTAS` segura — e essas
+     * duas **também não acusam**, então o `2` é **subconjunto do 12** e não um
+     * balde à parte. A soma fechava porque 11 + 2 + 12 dá 25, e fechava por
+     * coincidência de aritmética, não porque os baldes fossem disjuntos. **Duas
+     * contagens que não são uma partição fecham por acaso**, e é por isso que
+     * a de agora tem dois conjuntos, um assertion de soma, e a lista dos
+     * nomes que cada um contém.
      *
      * **A consequência é aritmética e não é "~":** a cada palavra nova escrita
      * em comentário, a probabilidade de um falso positivo sobe. É por isso que
