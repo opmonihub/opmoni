@@ -18,7 +18,14 @@ return [
      * chave só para as duas coisas obrigaria a ligar a agenda para rodar o
      * canário, que é o oposto do que se quer. E a agenda **não** consulta esta
      * chave: quem registra a entrada é `routes/console.php`, e o comando e o job
-     * nunca chegam aqui.
+     * de captura nunca chegam aqui.
+     *
+     * A volta atrás, essa sim, tem a mesma porta: `FiscalReconciliation::run()`
+     * pula as lacunas de CT-e com esta chave desligada, sem gastar tentativa e
+     * sem derrubar a noite de NF-e. A lacuna de CT-e sobrevive a qualquer chave
+     * — ela fica na tabela até ser resolvida ou abandonada —, e o job de
+     * reconciliação que já estava na fila é o caminho que a consultaria com as
+     * duas chaves desligadas. Ver `isPaused()`.
      *
      * O motivo de a chave existir: os parâmetros do serviço de CT-e (URL, ação
      * SOAP, namespace, versão) foram transcritos de um exemplo de terceiro e
@@ -80,12 +87,15 @@ return [
      * chave aqui seria mais uma posição para alguém errar e nenhuma proteção a
      * mais.
      *
-     * As duas chaves **não são conferidas juntas**: `CaptureFiscalDocumentsJob`
-     * e `FiscalCaptureService` perguntam ao registro de conectores, nunca a
-     * `cte_enabled`, então registrar esta agenda começa tráfego sem consultar a
-     * outra chave. Isso é um furo conhecido e não um descuido — a revisão que
-     * fechou a porta do botão deixou o gate na fronteira HTTP e nomeou isto como
-     * acompanhamento.
+     * A captura é a que **não** confere a outra chave:
+     * `CaptureFiscalDocumentsJob` e `FiscalCaptureService` perguntam ao registro
+     * de conectores, nunca a `cte_enabled`, então registrar esta agenda começa
+     * tráfego sem consultar aquela chave. Isso é um furo conhecido e não um
+     * descuido — a revisão que fechou a porta do botão deixou o gate na
+     * fronteira HTTP e nomeou isto como acompanhamento. A volta atrás é o
+     * caminho que confere a outra chave e não esta (`FiscalReconciliation::
+     * isPaused()`), e é a agenda de CT-e ligada com a volta atrás desligada que
+     * deixa as lacunas paradas, que é o lado seguro.
      *
      * A leitura do texto é a mesma da chave de cima, e pelo mesmo motivo: a
      * entrada existe ou não existe a partir de uma palavra que alguém escreveu,

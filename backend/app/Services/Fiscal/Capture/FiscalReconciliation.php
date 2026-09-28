@@ -21,7 +21,7 @@ use RuntimeException;
  * A volta atrás: buscar, uma a uma, as posições que a captura registrou como
  * buraco.
  *
- * Quatro regras, e a ordem entre elas é a segurança do módulo:
+ * Cinco regras, e a ordem entre elas é a segurança do módulo:
  *
  * 1. **A reconciliação não anda com a posição.** Nem `last_nsu`, nem
  *    `last_run_at`, nem `last_seen_at`, nem `last_success_at`. A posição parada
@@ -48,7 +48,13 @@ use RuntimeException;
  *    O consumo indevido faz ainda mais que parar: grava a pausa de uma hora, a
  *    única coluna de `fiscal_cursors` que esta classe escreve, porque
  *    `blocked_until` é autoritativa para as duas consultas ao mesmo CNPJ.
- * 4. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
+ * 4. **A volta atrás tem porta, e a mesma da captura manual.** Uma lacuna que
+ *    sobrou de um tempo em que a porta de CT-e estava aberta sobrevive a
+ *    qualquer chave, e um job de reconciliação que já estava na fila é o caminho
+ *    que a consultaria com as duas chaves desligadas. `fiscal.cte_enabled`
+ *    desligada pula as lacunas de CT-e — sem gastar tentativa, com a noite de
+ *    NF-e intacta e uma linha de log dizendo por quê. Ver `isPaused()`.
+ * 5. **Só é resolvido o que foi gravado.** A lacuna sai da fila depois do
  *    arquivo em disco e da linha no banco, e só quando o documento é o da
  *    posição pedida: o conector devolve o que o serviço mandou, e um documento
  *    de outra posição arquivado sob esta seria a pior linha possível na
@@ -84,7 +90,39 @@ final class FiscalReconciliation
             return 0;
         }
 
+        // A fonte que a instalação pausou é pulada aqui, e não adiante: a
+        // reconciliação e a captura são dois caminhos para o mesmo serviço e
+        // para o mesmo teto de consultas, e a lacuna que sobrou de um tempo em
+        // que a porta estava aberta sobrevive a qualquer chave — sem esta
+        // guarda, um job de reconciliação que já estava na fila mandaria
+        // `consNSU` para o serviço não verificado com as duas chaves desligadas,
+        // e é a rejeição repetida que produz o bloqueio de consumo indevido.
+        //
+        // Pular, e não falhar: a noite de NF-e de uma conta não pode ser
+        // interrompida por causa das lacunas de CT-e de outra. Nenhuma
+        // tentativa é cobrada, porque nada foi perguntado, e a lacuna volta na
+        // noite seguinte para a agenda de CT-e encontrar.
+        if ($this->isPaused($source)) {
+            $this->reportPausedSource($client, $source);
+
+            return 0;
+        }
+
         return FiscalCaptureLock::run($client, $source, fn (): int => $this->recover($client, $source)) ?? 0;
+    }
+
+    /**
+     * A fonte que a instalação pausou.
+     *
+     * Só CT-e tem porta, e a porta é a mesma da captura manual
+     * (`fiscal.cte_enabled`): as duas são decisões sobre o mesmo serviço. A
+     * agenda (`fiscal.cte_scheduled`) é a terceira decisão e **não** entra aqui
+     * — ela decide se alguém agenda a captura, e uma agenda ligada sem esta
+     * chave ligada deixa a volta atrás parada, que é o lado seguro.
+     */
+    private function isPaused(FiscalSource $source): bool
+    {
+        return $source === FiscalSource::CteDistribuicao && ! config('fiscal.cte_enabled', false);
     }
 
     private function recover(Client $client, FiscalSource $source): int
@@ -407,6 +445,27 @@ final class FiscalReconciliation
             'account_id' => (int) $client->account_id,
             'client_id' => (int) $client->getKey(),
             'fonte' => $source->value,
+        ]);
+    }
+
+    /**
+     * A fonte pausada pela instalação, e as lacunas dela que continuam na fila
+     * sem contagem.
+     *
+     * O log existe pelo mesmo motivo do acima e pelo mesmo custo do silêncio:
+     * uma reconciliação que não perguntou nada parece uma noite sem buraco, e a
+     * lacuna volta na noite seguinte sem que ninguém entenda por quê — agora com
+     * a explicação errada à mão, que é "o fisco não devolveu aquele documento".
+     * Só entram valores de taxonomia do módulo e a chave que decidiu, nunca texto
+     * do fisco.
+     */
+    private function reportPausedSource(Client $client, FiscalSource $source): void
+    {
+        Log::warning('fiscal.reconciliacao.fonte_pausada', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'fonte' => $source->value,
+            'reason' => 'captura desta fonte desligada nesta instalação (fiscal.cte_enabled).',
         ]);
     }
 }

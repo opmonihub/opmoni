@@ -15,6 +15,20 @@ final class ReconcileFiscalDocuments extends Command
 
     protected $description = 'Dispara a reconciliação das posições gravadas como lacuna de captura';
 
+    /**
+     * A volta atrás: despacha uma reconciliação por cliente que tem lacuna na
+     * fonte pedida.
+     *
+     * A fonte padrão é a de NF-e, que é a que a agenda noturna usa — ela não
+     * passa `--source`, e por isso nunca alcança a de CT-e por si. Passada
+     * `--source=cte_distribuicao`, este comando despacha jobs de CT-e mesmo com a
+     * captura desligada, e a chave não é consultada aqui: quem decide é
+     * `FiscalReconciliation::run()`, que pula as lacunas de CT-e com
+     * `fiscal.cte_enabled` desligada, sem gastar tentativa e sem derrubar a noite
+     * de NF-e. A chave é da mesma porta que a captura manual, e é a mesma
+     * decisão sobre o mesmo serviço — quem liga a captura liga a volta atrás, e
+     * o canário é a primeira das duas.
+     */
     public function handle(FiscalConnectorRegistry $connectors): int
     {
         $source = FiscalSource::tryFrom((string) $this->option('source'));

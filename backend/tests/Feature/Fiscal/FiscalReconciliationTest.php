@@ -78,6 +78,14 @@ class FiscalReconciliationTest extends TestCase
      */
     private array $lookups = [];
 
+    /**
+     * Os conectores falsos já ligados, por fonte, para que a segunda ligação
+     * não apague a primeira — o registro é remontado inteiro a cada `bindConnector`.
+     *
+     * @var array<string, FiscalConnector>
+     */
+    private array $ligados = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -206,6 +214,98 @@ class FiscalReconciliationTest extends TestCase
         // sempre, nem quando o teto é maior que o número escrito no código.
         $this->assertSame([101, 101], $this->lookups);
         $this->assertSame(2, $this->gapOf($client, 101)->attempts);
+    }
+
+    /**
+     * A volta atrás de CT-e com a captura desligada **não vai ao fisco**.
+     *
+     * A lacuna sobrevive à noite — uma lacuna que ninguém perguntou não pode ser
+     * considerada tentada, e é o que a coloca na fila outra vez —, nenhuma
+     * `consNSU` sai contra o serviço cujos parâmetros ninguém verificou, e nada
+     * do teto horário de consultas é gasto. A linha de log existe porque o
+     * silêncio aqui é indistinguível de "não havia buraco": a lacuna voltaria na
+     * noite seguinte sem que ninguém entendesse por quê.
+     */
+    public function test_a_reconciliacao_de_cte_desligada_nao_consulta_e_nao_cobra_tentativa(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101, ['source' => FiscalSource::CteDistribuicao]);
+
+        $this->bindConnector($this->noPull(), source: FiscalSource::CteDistribuicao);
+
+        $this->assertFalse(config('fiscal.cte_enabled'), 'A captura de CT-e precisa nascer desligada.');
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::CteDistribuicao));
+
+        $this->assertSame([], $this->lookups, 'Nenhuma consulta por posição pode sair para o serviço de CT-e.');
+        $this->assertSame(0, $this->gapOf($client, 101, FiscalSource::CteDistribuicao)->attempts);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.fonte_pausada'
+                && $context['fonte'] === FiscalSource::CteDistribuicao->value
+                && $context['client_id'] === $client->getKey()
+                && str_contains($context['reason'], 'cte_enabled'));
+    }
+
+    /**
+     * Com a porta ligada, a volta atrás de CT-e volta atrás como sempre — a
+     * guarda é a da instalação, não uma recusa do fisco e não uma fonte
+     * desconhecida: a mesma lacuna, a mesma posição e o mesmo documento entram.
+     */
+    public function test_a_reconciliacao_de_cte_ligada_recupera_a_posicao_pendente(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101, ['source' => FiscalSource::CteDistribuicao]);
+
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => $this->pulled(101, self::CHAVE_101, FiscalModel::Cte),
+            FiscalSource::CteDistribuicao,
+        );
+
+        config(['fiscal.cte_enabled' => true]);
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::CteDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+        $this->assertDatabaseMissing('fiscal_gaps', [
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::CteDistribuicao->value,
+            'nsu' => 101,
+        ]);
+    }
+
+    /**
+     * As duas fontes na mesma noite, com CT-e desligada: a de NF-e é recuperada
+     * e a de CT-e fica pendente. Uma pausa de CT-e não pode ser a noite em que
+     * uma conta perde a reconciliação de NF-e, que é o caminho de produção.
+     */
+    public function test_a_desligagem_de_cte_nao_derruba_a_reconciliacao_de_nfe(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+        $this->createGap($client, 102, ['source' => FiscalSource::CteDistribuicao]);
+
+        $this->bindConnector($this->noPull(), fn (): ?PulledDocument => $this->pulled(101, self::CHAVE_101));
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => $this->pulled(102, self::CHAVE_102, FiscalModel::Cte),
+            FiscalSource::CteDistribuicao,
+        );
+
+        $this->assertFalse(config('fiscal.cte_enabled'));
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+        $this->assertSame(0, $this->gapOf($client, 102, FiscalSource::CteDistribuicao)->attempts);
+        $this->assertSame(1, FiscalDocument::count());
     }
 
     public function test_consulta_adiada_nao_cobra_tentativa_nem_encerra_a_lacuna(): void
@@ -924,9 +1024,13 @@ class FiscalReconciliationTest extends TestCase
      * @param  Closure(): PullResult  $pull
      * @param  Closure(Client, int): ?PulledDocument|null  $fetchByNsu  quando
      *                                                                  nulo, toda consulta por posição responde que não há documento
+     * @param  FiscalSource  $source  a fonte que o dublê serve, para o registro resolver por ela
      */
-    private function bindConnector(Closure $pull, ?Closure $fetchByNsu = null): void
-    {
+    private function bindConnector(
+        Closure $pull,
+        ?Closure $fetchByNsu = null,
+        FiscalSource $source = FiscalSource::NfeDistribuicao,
+    ): void {
         $answer = $fetchByNsu ?? fn (): ?PulledDocument => null;
 
         $lookup = function (Client $client, int $nsu) use ($answer): ?PulledDocument {
@@ -935,7 +1039,7 @@ class FiscalReconciliationTest extends TestCase
             return $answer($client, $nsu);
         };
 
-        $fake = new class($pull, $lookup) implements FiscalConnector
+        $fake = new class($pull, $lookup, $source) implements FiscalConnector
         {
             /**
              * @param  Closure(): PullResult  $pull
@@ -944,11 +1048,12 @@ class FiscalReconciliationTest extends TestCase
             public function __construct(
                 private readonly Closure $pull,
                 private readonly Closure $fetchByNsu,
+                private readonly FiscalSource $source,
             ) {}
 
             public function source(): FiscalSource
             {
-                return FiscalSource::NfeDistribuicao;
+                return $this->source;
             }
 
             public function pull(Client $client, int $fromNsu, int $limit): PullResult
@@ -970,9 +1075,13 @@ class FiscalReconciliationTest extends TestCase
         // O dublê entra pelo registro, e não por uma ligação da interface
         // `FiscalConnector`: quem fala com o fisco resolve o conector pela fonte,
         // e é o registro que é a fonte dessa resolução.
-        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry([
-            FiscalSource::NfeDistribuicao->value => $fake,
-        ]));
+        //
+        // O registro é remontado a cada ligação e carrega os que já estavam: um
+        // teste que precisa das duas fontes na mesma noite liga as duas, e o
+        // segundo dublê não pode apagar o primeiro.
+        $this->ligados[$source->value] = $fake;
+
+        $this->app->instance(FiscalConnectorRegistry::class, new FiscalConnectorRegistry($this->ligados));
     }
 
     /**
@@ -1074,11 +1183,11 @@ class FiscalReconciliationTest extends TestCase
      * teste é sobre o que ficou gravado, e a conta corrente é uma condição que
      * o próprio teste controla.
      */
-    private function gapOf(Client $client, int $nsu): FiscalGap
+    private function gapOf(Client $client, int $nsu, FiscalSource $source = FiscalSource::NfeDistribuicao): FiscalGap
     {
         return FiscalGap::withoutGlobalScope('account')
             ->where('client_id', $client->getKey())
-            ->where('source', FiscalSource::NfeDistribuicao)
+            ->where('source', $source)
             ->where('nsu', $nsu)
             ->firstOrFail();
     }
@@ -1105,10 +1214,10 @@ class FiscalReconciliationTest extends TestCase
         return "fiscal:capture:{$client->getKey()}:".FiscalSource::NfeDistribuicao->value;
     }
 
-    private function pulled(int $nsu, string $chave): PulledDocument
+    private function pulled(int $nsu, string $chave, FiscalModel $model = FiscalModel::Nfe): PulledDocument
     {
         return new PulledDocument(
-            model: FiscalModel::Nfe,
+            model: $model,
             kind: FiscalKind::Document,
             stage: FiscalStage::Document,
             chave: $chave,
@@ -1118,7 +1227,7 @@ class FiscalReconciliationTest extends TestCase
             valorTotal: null,
             digVal: null,
             nsu: $nsu,
-            schema: 'resNFe_v1.01.xsd',
+            schema: $model === FiscalModel::Nfe ? 'resNFe_v1.01.xsd' : 'procCTe_v4.00.xsd',
             emissaoAt: now()->toImmutable(),
             eventoOcorridoEmAt: null,
             xml: '<resNFe/>',
