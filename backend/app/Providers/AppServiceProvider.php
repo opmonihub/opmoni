@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Account;
+use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\Department;
 use App\Models\Process;
@@ -10,6 +11,7 @@ use App\Models\ProcessTemplate;
 use App\Models\SerproMonitoring;
 use App\Models\Task;
 use App\Observers\AccountObserver;
+use App\Policies\AccountCertificatePolicy;
 use App\Policies\AccountPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\DepartmentPolicy;
@@ -71,6 +73,7 @@ class AppServiceProvider extends ServiceProvider
         Account::observe(AccountObserver::class);
 
         Gate::policy(Account::class, AccountPolicy::class);
+        Gate::policy(AccountCertificate::class, AccountCertificatePolicy::class);
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(Department::class, DepartmentPolicy::class);
         Gate::policy(SerproMonitoring::class, SerproMonitoringPolicy::class);

@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SupportLogController as AdminSupportLogController
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\SupportAccessController;
+use App\Http\Controllers\Tenant\AccountCertificateController;
 use App\Http\Controllers\Tenant\AccountMemberController;
 use App\Http\Controllers\Tenant\AccountSwitchController;
 use App\Http\Controllers\Tenant\ClientBulkDeletionController;
@@ -65,6 +66,21 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::delete('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'destroy']);
     Route::apiResource('clients', ClientController::class);
     Route::apiResource('monitorings', SerproMonitoringController::class);
+    /*
+     * O e-CNPJ do escritório é **da conta**, e por isso estas rotas ficam no
+     * grupo `tenant` — ao contrário de `serpro/connection` mais abaixo, que é a
+     * credencial da plataforma e por isso responde pela policy de outra conta.
+     *
+     * As três rotas não endereçam linha nenhuma: o certificado do escritório é
+     * um por conta, e o upload substitui o que estava valendo e a remoção apaga
+     * o que estava valendo. O `404` da leitura é o de "esta conta não tem
+     * certificado", e por construção é também o de "o certificado é de outra
+     * conta" — a busca é por `account_id` explícito, nunca pelo escopo global
+     * do tenant.
+     */
+    Route::get('serpro/account-certificate', [AccountCertificateController::class, 'show']);
+    Route::post('serpro/account-certificate', [AccountCertificateController::class, 'store']);
+    Route::delete('serpro/account-certificate', [AccountCertificateController::class, 'destroy']);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);
