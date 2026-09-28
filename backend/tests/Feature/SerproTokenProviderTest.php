@@ -145,6 +145,32 @@ class SerproTokenProviderTest extends TestCase
         }
     }
 
+    public function test_um_limite_de_tentativas_nao_vira_recusa_de_credencial(): void
+    {
+        // O `429` é o único `4xx` que não é recusa: é o provedor mandando
+        // esperar. Tratar o `4xx` inteiro como recusa punia duas vezes quem está
+        // só com o serviço ocupado — com o rótulo de credencial e com a
+        // instrução de redigitar chave, segredo e certificado, que nada disso
+        // resolve. `classify()` já devolve `Throttled` para `429`; a
+        // autenticação precisa concordar com a chamada de serviço.
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => Http::response(['message' => 'Limite de requisições.'], 429),
+        ]);
+
+        $this->connection();
+
+        try {
+            resolve(SerproTokenProvider::class)->pair();
+            $this->fail('Um limite de tentativas deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Throttled, $exception->failure);
+            $this->assertSame(429, $exception->status);
+            $this->assertStringNotContainsString('Limite de requisições.', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
     public function test_um_erro_do_servidor_nao_vira_recusa_de_credencial(): void
     {
         // Recusa e indisponibilidade pedem conserto oposto — corrigir a

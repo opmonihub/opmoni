@@ -361,6 +361,35 @@ class ClientCrudTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * A validade do documento vem antes da capacidade da fonte. Um CNPJ
+     * alfanumérico com dígito verificador errado é um documento malformado, e
+     * "a fonte não conhece este documento" seria uma afirmação falsa sobre o
+     * conteúdo dela: quem tem o erro é quem mandou, e a resposta precisa dizer
+     * isso. É a única forma de a linha chegar aqui — a validação da request
+     * recusa o verificador errado — e é por isso que ela só é alcançável com
+     * uma linha escrita fora do caminho validado.
+     */
+    public function test_atualizar_da_receita_com_verificador_errado_e_recusa_o_documento_e_nao_a_fonte(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '12ABC345000189',
+        ]);
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $this->postJson("/api/clients/{$client->id}/cnpj-refresh-preview")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'CNPJ inválido.');
+
+        $this->postJson("/api/clients/{$client->id}/cnpj-refresh")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'CNPJ inválido.');
+
+        Http::assertNothingSent();
+    }
+
     public function test_company_create_ignores_browser_preview_fields_and_forces_mei_regime(): void
     {
         $fixture = $this->companyFixture();

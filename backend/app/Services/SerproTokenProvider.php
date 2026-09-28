@@ -122,21 +122,7 @@ final class SerproTokenProvider
         }
 
         if ($response->failed()) {
-            // O `4xx` recusa o que foi enviado e o `5xx` diz que o serviço não
-            // deu conta: são defeitos de ações opostas — corrigir a credencial ou
-            // esperar o provedor — e quem precisa decidir entre as duas é quem
-            // vai tratar a falha.
-            throw $response->serverError()
-                ? new SerproException(
-                    'O serviço de autenticação do Integra Contador está indisponível.',
-                    SerproFailure::Upstream,
-                    $response->status(),
-                )
-                : new SerproException(
-                    'A credencial do Integra Contador foi recusada.',
-                    SerproFailure::DoNotRetry,
-                    $response->status(),
-                );
+            throw $this->refusal($response->status());
         }
 
         $payload = $response->json();
@@ -160,5 +146,48 @@ final class SerproTokenProvider
         Cache::put(self::CACHE_KEY, $pair, $pair->ttl());
 
         return $pair;
+    }
+
+    /**
+     * O que a falha da autenticação é, pelo que a resposta de fato diz.
+     *
+     * Três grupos, três consertos opostos: o provedor mandou esperar, o provedor
+     * não deu conta, e o provedor recusou o que foi enviado. O `429` é o único
+     * `4xx` do terceiro grupo que não é recusa — limite de tentativas não se
+     * corrige redigitando a credencial, e tratá-lo como recusa punia duas vezes
+     * quem está só com o serviço ocupado: com o rótulo errado e com a instrução
+     * de refazer chave, segredo e certificado. É o mesmo `Throttled` que
+     * `SerproException::classify()` devolve para `429` na chamada de serviço.
+     *
+     * Esta classe **não** chama `classify()`, e a divergência é deliberada: ele é
+     * a regra da chamada de serviço, onde `401` significa token vencido (e
+     * `SerproClient::send()` repete a chamada uma vez) e `504` significa "pode ter
+     * sido aplicado e ninguém sabe". Na autenticação nada das duas coisas vale —
+     * um `401` aqui é chave ou segredo recusado, e repetir seria pedir de novo ao
+     * provedor algo que ele acabou de recusar; um `504` aqui não deixa nada
+     * pendente para reconciliar, porque a autenticação não aplica nada. O único
+     * ponto em que as duas divergiam era o `429`, e ele está nomeado acima.
+     *
+     * @throws SerproException
+     */
+    private function refusal(int $status): SerproException
+    {
+        return match (true) {
+            $status === 429 => new SerproException(
+                'O serviço de autenticação do Integra Contador recusou a autenticação por limite de tentativas.',
+                SerproFailure::Throttled,
+                $status,
+            ),
+            $status >= 500 => new SerproException(
+                'O serviço de autenticação do Integra Contador está indisponível.',
+                SerproFailure::Upstream,
+                $status,
+            ),
+            default => new SerproException(
+                'A credencial do Integra Contador foi recusada.',
+                SerproFailure::DoNotRetry,
+                $status,
+            ),
+        };
     }
 }

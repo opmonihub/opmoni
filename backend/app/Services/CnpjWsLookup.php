@@ -21,6 +21,9 @@ final class CnpjWsLookup
      */
     private const NAO_ENCONTRADO = 'CNPJ não encontrado.';
 
+    /** A recusa de documento malformado, a mesma que `lookup()` devolve. */
+    private const INVALIDO = 'CNPJ inválido.';
+
     public function __construct(private BrazilianTaxId $taxId) {}
 
     /**
@@ -32,11 +35,24 @@ final class CnpjWsLookup
      * provedor daria — só não custa uma das três consultas por minuto da conta
      * para ser descoberto.
      *
+     * **A validade vem antes da capacidade, e é uma decisão, não uma
+     * conveniência.** Um CNPJ com dígito verificador errado é malformado para
+     * qualquer fonte, e "a fonte não conhece este documento" é uma afirmação
+     * sobre o conteúdo dela que seria falsa: quem tem o erro é quem mandou, e a
+     * resposta precisa dizer isso. O inverso também importaria: um documento
+     * válido que a fonte não tem é `404` mesmo assim, e não uma falha de
+     * validação. A ordem é validade, depois capacidade, e cada uma tem a sua
+     * recusa.
+     *
      * @return array<string, mixed>
      */
     public function lookupOrFail(string $cnpj): array
     {
         $normalized = $this->taxId->normalize($cnpj);
+
+        if (! $this->taxId->isValidCnpj($normalized)) {
+            throw new CnpjLookupException(self::INVALIDO, 422);
+        }
 
         if (! $this->taxId->isNumericCnpj($normalized)) {
             throw new CnpjLookupException(self::NAO_ENCONTRADO, 404);
@@ -53,7 +69,7 @@ final class CnpjWsLookup
         $normalized = $this->taxId->normalize($cnpj);
 
         if (! $this->taxId->isValidCnpj($normalized)) {
-            throw new CnpjLookupException('CNPJ inválido.', 422);
+            throw new CnpjLookupException(self::INVALIDO, 422);
         }
 
         $accountId = resolve(CurrentTenant::class)->accountId;

@@ -244,6 +244,23 @@ class ClientCnpjLookupTest extends TestCase
             ->assertNotFound()->assertJsonPath('message', 'CNPJ não encontrado.');
     }
 
+    public function test_consulta_de_alfanumerico_diz_que_nao_conhece_sem_gastar_consulta(): void
+    {
+        // A tela não oferece esta consulta para documento alfanumérico, mas a
+        // validação aceita o CNPJ alfanumérico e a API é pública para quem a
+        // chama: sem o atalho, um documento que a fonte não tem como responder
+        // gastava uma das três consultas por minuto da conta para descobrir o que
+        // já se sabia.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
+
+        $this->postJson('/api/clients/cnpj-lookup', ['tax_id' => '12.ABC.345/0001-88'])
+            ->assertNotFound()
+            ->assertJsonPath('message', 'CNPJ não encontrado.');
+
+        Http::assertNothingSent();
+    }
+
     public function test_user_role_cannot_use_lookup_or_refresh(): void
     {
         $account = Account::factory()->create();

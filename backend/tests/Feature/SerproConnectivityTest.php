@@ -140,13 +140,17 @@ class SerproConnectivityTest extends TestCase
             ],
         ];
 
-        // A lista é o contrato: um caso novo no enum tem de aparecer aqui, ou a
-        // contagem falha antes de qualquer mapeamento ser conferido.
         $declarados = array_merge(...array_values($destinos));
-        $this->assertCount(
-            count(SerproFailure::cases()),
-            $declarados,
-            'Todo desfecho do enum precisa de destino declarado na taxonomia.',
+
+        // A lista é o contrato: um `case` novo que não apareça aqui precisa
+        // falhar, e uma vírgula a mais não pode tapar um `case` que sumiu. A
+        // comparação é de multiconjuntos — ordenar e comparar os valores, não
+        // só a contagem, porque contar não distingue `8 = 8 casos todos
+        // declarados` de `8 = 7 casos e um declarado duas vezes`.
+        $this->assertEqualsCanonicalizing(
+            array_map(fn (SerproFailure $falha): string => $falha->value, SerproFailure::cases()),
+            array_map(fn (SerproFailure $falha): string => $falha->value, $declarados),
+            'Todo desfecho do enum precisa de destino declarado na taxonomia, uma vez só.',
         );
 
         foreach ($destinos as $elemento => $falhas) {
@@ -258,6 +262,28 @@ class SerproConnectivityTest extends TestCase
             ->assertJsonPath(
                 'data.message',
                 'A credencial configurada não pôde ser usada; reveja a chave de integração, o segredo e o certificado gravados.',
+            );
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_autenticacao_limitada_e_provedor_e_nao_credencial(): void
+    {
+        // Um `429` real do provedor de token é o único jeito de chegar ao
+        // desfecho `provedor` por limite, e ele precisa chegar: tratado como
+        // recusa de credencial, o operador era mandado refazer chave, segredo e
+        // certificado por causa de um serviço ocupado.
+        Http::fake([self::AUTHENTICATION => Http::response(['message' => 'Limite de requisições.'], 429)]);
+        $this->connection();
+
+        $this->superAdmin();
+        $this->postJson('/api/serpro/connectivity')
+            ->assertOk()
+            ->assertJsonPath('data.ok', false)
+            ->assertJsonPath('data.failed_element', 'provedor')
+            ->assertJsonPath(
+                'data.message',
+                'A verificação não pôde ser concluída: o serviço de autenticação do Integra Contador ou a máquina que o executa não respondeu como esperado.',
             );
 
         Http::assertSentCount(1);

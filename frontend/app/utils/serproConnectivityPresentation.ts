@@ -15,10 +15,11 @@ export const failedElementLabels: Record<string, string> = {
 }
 
 /**
- * A failure that is not the operator's credential to fix. The backend maps both
- * the provider being out of reach and the machine running the check being unable
- * to run it to `provedor`, because the action is the same for the two: wait, and
- * do not re-enter any data.
+ * A failure that is not the operator's credential to fix. The backend maps every
+ * "wait" verdict to `provedor` — the provider being out of reach, the machine
+ * running the check being unable to run it, and the provider throttling the
+ * authentication — because the action is the same in all of them: wait, and do
+ * not re-enter any data.
  */
 export function isProviderFailure(result: SerproConnectivityResult | null): boolean {
   return result?.failed_element === 'provedor'
@@ -37,11 +38,11 @@ export function connectivityIcon(result: SerproConnectivityResult | null): strin
 /**
  * The title never names a culprit.
  *
- * The four-element contract cannot tell the two causes of `provedor` apart — the
- * SERPRO service being down, and this machine being unable to run the check at
- * all — so a title reading "the provider did not answer" would send an operator
- * to watch a status page for a disk that filled up. `message` is where the
- * backend says which of the two it was.
+ * The four-element contract cannot tell the causes of `provedor` apart — the
+ * SERPRO service being down, the machine being unable to run the check at all,
+ * the provider throttling us — so a title reading "the provider did not answer"
+ * would send an operator to watch a status page for a disk that filled up.
+ * `message` is where the backend says which of them it was.
  */
 export function connectivityTitle(result: SerproConnectivityResult | null): string {
   if (result?.ok) return 'Conexão autenticada com sucesso'
