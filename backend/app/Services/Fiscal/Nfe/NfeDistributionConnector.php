@@ -11,6 +11,7 @@ use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
 use App\Services\Fiscal\Support\ClientStateCode;
+use App\Services\Fiscal\Support\DfeEndpoint;
 use App\Services\Fiscal\Support\DfePullReader;
 use App\Services\Fiscal\Support\DfeResponse;
 use App\Services\Fiscal\Support\DfeSoapEnvelope;
@@ -263,17 +264,18 @@ final class NfeDistributionConnector implements FiscalConnector
     }
 
     /**
+     * O bloco de `fiscal.endpoints` deste serviço, conferido inteiro.
+     *
+     * A conferência é do bloco, e não de cada leitura: `envelopeFor()` roda
+     * **antes** de `DfeTransport::request()` — ele é avaliado como argumento —,
+     * então uma guarda dentro de `request()` nunca alcançaria `version`, que é
+     * lida aqui. `DfeEndpoint` confere as nove chaves de uma vez, e o que chega
+     * nas leituras seguintes já pode ser lido.
+     *
      * @return array<string, string>
      */
     private function endpoint(): array
     {
-        /** @var array<string, array<string, string>> $endpoints */
-        $endpoints = (array) config('fiscal.endpoints', []);
-
-        if (! isset($endpoints[$this->source()->value])) {
-            throw new RuntimeException('Endpoint de distribuição não configurado.');
-        }
-
-        return $endpoints[$this->source()->value];
+        return DfeEndpoint::of((array) config('fiscal.endpoints', []), $this->source()->value);
     }
 }

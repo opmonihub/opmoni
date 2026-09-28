@@ -308,19 +308,23 @@ class CteDistributionConnectorTest extends TestCase
      * Um bloco de endpoint escrito pela metade é recusado **pelo nome do
      * parâmetro que falta**, e nada sai para a rede.
      *
-     * O `config` ganhou um segundo serviço, e com ele um segundo degrau de erro:
-     * `endpoint()` já recusa uma fonte que não existe, mas a chave interna do
-     * bloco só aparecia como aviso de chave indefinida — que o Laravel converte
-     * em `ErrorException`, e `ErrorException` não é `RuntimeException`, então
-     * escaparia das guardas da reconciliação. O aviso também não dizia *qual*
-     * chave, e era o operador que teria de adivinhar.
+     * A chave `version` é a que importa aqui, e ela é a que uma guarda dentro de
+     * `DfeTransport::request()` **não** alcançaria: `envelopeFor()` é avaliado
+     * como argumento e lê `version` antes de `request()` entrar. A conferência
+     * precisa ser do bloco inteiro e acontecer no conector — `DfeEndpoint::of()`
+     * —, e é este teste que diz isso pelo caminho de verdade, com o envelope
+     * passando por dentro.
+     *
+     * Antes, a mesma remoção produzia "Undefined array key" virando
+     * `ErrorException`, que não é `RuntimeException` e escapava das cinco guardas
+     * da reconciliação.
      */
-    public function test_um_bloco_de_endpoint_sem_um_parametro_e_recusado_pelo_nome(): void
+    public function test_um_bloco_de_endpoint_sem_a_versao_e_recusado_antes_do_envelope(): void
     {
         $client = $this->clientWithCertificate();
 
         $bloco = config('fiscal.endpoints.cte_distribuicao');
-        unset($bloco['xsd_service']);
+        unset($bloco['version']);
         config(['fiscal.endpoints.cte_distribuicao' => $bloco]);
 
         Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300), 200)]);
@@ -328,9 +332,9 @@ class CteDistributionConnectorTest extends TestCase
         try {
             $this->connector()->pull($client, 0, 50);
 
-            $this->fail('Um bloco sem o serviço do XSD precisa ser recusado.');
+            $this->fail('Um bloco sem a versão precisa ser recusado.');
         } catch (RuntimeException $exception) {
-            $this->assertSame("Bloco de endpoint sem o parâmetro 'xsd_service'.", $exception->getMessage());
+            $this->assertSame("Bloco de endpoint sem o parâmetro 'version'.", $exception->getMessage());
         } finally {
             Http::assertNothingSent();
         }

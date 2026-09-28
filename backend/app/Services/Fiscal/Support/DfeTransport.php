@@ -100,12 +100,12 @@ final class DfeTransport
      */
     public function request(Client $client, array $endpoint, string $body): DfeResponse
     {
-        // O bloco é lido antes de qualquer outra coisa, e não por organização: um
-        // parâmetro faltando é defeito de configuração, e materializar
-        // certificado para descobrir isso depois seria trabalho de disco e de
-        // senha por um erro que o array já denunciava.
-        $schemaService = $this->parameterOf($endpoint, 'xsd_service');
-        $version = $this->parameterOf($endpoint, 'version');
+        // O bloco chega conferido de `DfeEndpoint::of()`, e é conferido de novo
+        // aqui porque esta é a última linha antes do byte: um array não é um
+        // contrato, e o custo de ler duas vezes é zero em comparação com uma
+        // requisição contra o serviço errado por causa de uma chave faltando.
+        $schemaService = DfeEndpoint::value($endpoint, 'xsd_service');
+        $version = DfeEndpoint::value($endpoint, 'version');
 
         $certificate = $this->requireCertificate($client);
 
@@ -124,32 +124,6 @@ final class DfeTransport
         );
 
         return $this->interpret($response);
-    }
-
-    /**
-     * Um parâmetro do serviço, ou a recusa que diz qual é.
-     *
-     * `endpoint()` — em cada conector — já recusa uma fonte que não está na
-     * configuração; a chave interna do bloco é um segundo degrau que só apareceu
-     * quando o `config` ganhou um segundo serviço: um bloco escrito pela metade
-     * (um `xsd_service` esquecido, uma versão que virou `null`) chegava ao
-     * validador como aviso de chave indefinida, e o aviso vira `ErrorException`,
-     * que não é `RuntimeException` e escapa das guardas da reconciliação. Ler a
-     * chave por nome transforma o aviso em recusa nomeada — a mesma forma que o
-     * resto do módulo trata como defeito de configuração, e sem nenhum byte na
-     * rede.
-     *
-     * @param  array<string, string>  $endpoint
-     */
-    private function parameterOf(array $endpoint, string $parameter): string
-    {
-        $value = $endpoint[$parameter] ?? null;
-
-        if (! is_string($value) || $value === '') {
-            throw new RuntimeException("Bloco de endpoint sem o parâmetro '{$parameter}'.");
-        }
-
-        return $value;
     }
 
     /**
@@ -190,7 +164,7 @@ final class DfeTransport
                 // escreve esse cabeçalho: montá-lo em `withHeaders` antes
                 // seria apagado na linha seguinte.
                 ->withBody($body, $this->contentTypeOf($endpoint))
-                ->post($this->parameterOf($endpoint, $environment));
+                ->post(DfeEndpoint::value($endpoint, $environment));
         } catch (ConnectionException) {
             // Sem resposta não há status HTTP para classificar, e `0` é a forma
             // que a taxonomia reserva para "não houve resposta": `Upstream`,
@@ -365,7 +339,7 @@ final class DfeTransport
      */
     private function contentTypeOf(array $endpoint): string
     {
-        $action = $this->parameterOf($endpoint, 'soap_action');
+        $action = DfeEndpoint::value($endpoint, 'soap_action');
 
         return 'application/soap+xml; charset=utf-8; action="'.$action.'"';
     }
