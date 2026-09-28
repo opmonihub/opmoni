@@ -1039,7 +1039,8 @@ class SerproAuthorizationTermTest extends TestCase
         // token de um escritório pelo de outro, e as duas linhas continuariam
         // `autenticado`. A segunda leitura sai do escopo de conta de propósito
         // — ela é sobre a conta **vizinha**, e é o escopo global de
-        // `BelongsToAccount` que esconderia a linha de quem a有关系.
+        // `BelongsToAccount` que esconderia a linha de quem o teste está
+        // relacionando.
         $this->assertSame(
             self::TOKEN_ETAG,
             SerproAuthorizationTerm::query()->where('account_id', $alvo->getKey())->sole()->token(),
