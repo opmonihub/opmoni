@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Resposta de uma consulta por posição (`consNSU`), e não de um lote.
+
+  O `retDistDFeInt_138.xml` é a forma do `distNSU`: o serviço devolve o que
+  pertence ao CNPJ consultado a partir de uma posição, e a posição devolvida é a
+  seguinte do ambiente, não a pedida. Uma `consNSU` devolve o documento **daquela
+  posição** ou nada (`137`) — nunca a vizinha. Testar a consulta por posição com
+  a fixture do lote fixa, como contrato esperado, "uma consulta por posição pode
+  devolver documento de outra posição", e o próximo que chamar o método confia
+  nisso.
+-->
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <nfeDistDFeInteresseResponse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
+      <nfeDistDFeInteresseResult>
+        <retDistDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+          <tpAmb>1</tpAmb>
+          <verAplic>SVRS20260927101233</verAplic>
+          <cStat>138</cStat>
+          <xMotivo>Documento localizado</xMotivo>
+          <dhResp>2026-09-27T10:12:33-03:00</dhResp>
+          <ultNSU>000000000000100</ultNSU>
+          <maxNSU>000000000000100</maxNSU>
+          <lote NSU="000000000000100">
+            <docZip NSU="000000000000100" schema="resNFe_v1.01.xsd">H4sIAAAAAAACA1WQS4+CMBSF9/yKpnvpbS3MSEqNo5Bxoug4OHHLaJEmPBSIj38/FFaedNGcfufc
+m4rpo8jRTdWNrkofUxswUuWxOuny7ON9HI7e8VRaolZNFCrUwWXj46xtLx4h9/vdvlR1m+Spbo5J
+busytf9qUqYK951J1VdSLC2ExDHrKuTYYQz45EWOA0ABGPSijIPjuC6AIEPGpOfR9ku+xgTpTfP6
+iKpCyZ/9Ntitg918ttig4BCst6sNWsWLmSADYNBlIGk3jDM+AUq5IJ1h/FMWFFoyYGwEvDsxpZ7D
+PT4ZwdgzuwyAQW9RKN8o2MY19z6uz79JLjWrr1GycOtrMU+zw+cz/kj5Q9Fl8e13FQNkCTJ8qPwH
+kQHmtoABAAA=</docZip>
+          </lote>
+        </retDistDFeInt>
+      </nfeDistDFeInteresseResult>
+    </nfeDistDFeInteresseResponse>
+  </soap:Body>
+</soap:Envelope>

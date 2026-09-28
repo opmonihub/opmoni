@@ -42,8 +42,9 @@ class FiscalPointLookupTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Chave de acesso do fixture `retDistDFeInt_138.xml`, com o dígito
-     * verificador que o módulo 11 do próprio módulo calcula.
+     * Chave de acesso do fixture `retDistDFeInt_138_consNSU.xml`, com o dígito
+     * verificador que o módulo 11 do próprio módulo calcula. O mesmo documento
+     * aparece na fixture do lote, `retDistDFeInt_138.xml`, na posição 200.
      */
     private const CHAVE = '35220499999999999999550010020000001240556600';
 
@@ -64,12 +65,19 @@ class FiscalPointLookupTest extends TestCase
     {
         $client = $this->clientWithCertificate();
 
-        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138_consNSU.xml'), 200)]);
 
         $document = $this->connector()->fetchByNsu($client, 100);
 
         $this->assertNotNull($document);
         $this->assertSame(self::CHAVE, $document->chave);
+
+        // O documento devolvido é o da posição pedida. A fixture é a da forma
+        // `consNSU` — uma entrada só, na posição pedida — porque é isso que o
+        // serviço responde; a fixture do lote devolveria o documento da posição
+        // 200 para um pedido de 100, e o teste passaria fixando como contrato
+        // uma coisa que o serviço nunca faz.
+        $this->assertSame(100, $document->nsu);
 
         Http::assertSent(function (Request $request): bool {
             // A posição pedida vai no grupo de consulta por posição, e nenhum
@@ -91,7 +99,7 @@ class FiscalPointLookupTest extends TestCase
         // passa pelo mesmo `validate()` do caminho incremental.
         $client = $this->clientWithCertificate();
 
-        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138_consNSU.xml'), 200)]);
 
         $this->connector()->fetchByNsu($client, 100);
 
@@ -116,7 +124,7 @@ class FiscalPointLookupTest extends TestCase
         Http::fake(['*' => function (Request $request, array $options) use (&$guzzle) {
             $guzzle = $options;
 
-            return Http::response($this->fixture('retDistDFeInt_138.xml'), 200);
+            return Http::response($this->fixture('retDistDFeInt_138_consNSU.xml'), 200);
         }]);
 
         $this->connector()->fetchByNsu($client, 100);
@@ -146,7 +154,7 @@ class FiscalPointLookupTest extends TestCase
             'last_nsu' => 300,
         ]);
 
-        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138_consNSU.xml'), 200)]);
 
         $this->connector()->fetchByNsu($client, 100);
 
@@ -325,7 +333,7 @@ class FiscalPointLookupTest extends TestCase
             $budget->reserve($client);
         }
 
-        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138_consNSU.xml'), 200)]);
 
         // A vigésima consulta ainda sai, e é a última.
         $this->assertNotNull($this->connector()->fetchByNsu($client, 100));
@@ -437,6 +445,9 @@ class FiscalPointLookupTest extends TestCase
 
         $this->esgotaOrcamento($client);
 
+        // Aqui a fixture é a do lote, e é a que cabe: `pull()` faz `distNSU` e o
+        // serviço devolve o que pertence ao CNPJ a partir da posição pedida. A
+        // fixture da `consNSU` é a do outro método.
         Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
 
         $result = $this->connector()->pull($client, 0, 50);
