@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Capture;
 
+use App\Enums\FiscalFailure;
 use App\Enums\FiscalSkipReason;
 use App\Enums\FiscalSource;
 use App\Models\Client;
@@ -166,10 +167,19 @@ final class FiscalCaptureService
             'last_nsu' => $result->mayAdoptPosition && $unread === 0 ? $result->lastNsu : $from,
             'last_seen_at' => now(),
             'last_success_at' => now(),
-            'last_error' => $unread === 0 ? null : $this->incompleteNote($unread, count($result->documents) + count($result->failures)),
+            // Duas pausas de uma hora, uma coluna. O lote incompleto vem
+            // primeiro porque ele descreve um buraco que alguém precisa
+            // reconciliar; depois, o consumo indevido — que para o fisco e
+            // também é problema do cliente — ganha um rótulo fixo, o mesmo
+            // motivo pelo qual `certificate_reupload` é uma palavra e não uma
+            // frase. O esfriamento de `137` não marca nada: ele se repete a
+            // cada consulta de um cliente saudável.
+            'last_error' => $unread > 0 ? $this->incompleteNote($unread, count($result->documents) + count($result->failures))
+                : ($result->failure === FiscalFailure::Blocked ? 'blocked_consumption' : null),
             // A parada do serviço é um eixo separado da posição: ela vale mesmo no
-            // lote que não entrou inteiro. Grava sempre, e zera quando a resposta
-            // não trouxe parada, que é o que limpa uma janela já vencida.
+            // lote que não entrou inteiro, e vale nos dois tipos de pausa. Grava
+            // sempre, e zera quando a resposta não trouxe parada, que é o que
+            // limpa uma janela já vencida.
             'blocked_until' => $result->blockedUntil,
         ])->save();
     }

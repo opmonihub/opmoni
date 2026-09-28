@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Contracts;
 
+use App\Enums\FiscalFailure;
 use Carbon\CarbonImmutable;
 
 /**
@@ -63,6 +64,21 @@ final readonly class PullResult
      *                        aconteceu, porque só ele viu o código que voltou.
      * @param  list<FailedEntry>  $failures  as entradas do lote que não viraram
      *                                       documento, na ordem em que chegaram
+     * @param  FiscalFailure|null  $failure  por que a resposta foi uma rejeição
+     *                                       que parou a captura, quando foi. `null`
+     *                                       é o caso normal — o serviço respondeu
+     *                                       e entregou (ou não tinha) documentos, e
+     *                                       nenhuma pausa foi pedida.
+     *
+     *                                        O campo existe porque duas paradas de
+     *                                        uma hora são indistinguíveis pelo
+     *                                        relógio: `137` é o fisco sem nada
+     *                                        novo, rotina que se repete a cada
+     *                                        consulta, e `656` é o CNPJ que
+     *                                        consultou demais, que é problema do
+     *                                        cliente. `blockedUntil` é igual nos
+     *                                        dois casos, então a distinção que
+     *                                        sobra é este rótulo.
      */
     public function __construct(
         public array $documents,
@@ -72,5 +88,6 @@ final readonly class PullResult
         public ?CarbonImmutable $blockedUntil,
         public bool $mayAdoptPosition,
         public array $failures = [],
+        public ?FiscalFailure $failure = null,
     ) {}
 }

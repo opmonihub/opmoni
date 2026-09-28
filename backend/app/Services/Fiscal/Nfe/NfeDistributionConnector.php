@@ -139,6 +139,11 @@ final class NfeDistributionConnector implements FiscalConnector
                 // recuperação que o serviço oferece — descartá-la custaria
                 // recomeçar do começo.
                 mayAdoptPosition: $failure !== FiscalFailure::NoDocuments,
+                // A pausa é a mesma nas duas, então o rótulo é o que separa o
+                // esfriamento normal do bloqueio que é problema do cliente. É a
+                // palavra da taxonomia, nunca o `xMotivo`: a coluna que a
+                // recebe é lida pelo painel e não carrega texto do fisco.
+                failure: $failure,
             );
         }
 

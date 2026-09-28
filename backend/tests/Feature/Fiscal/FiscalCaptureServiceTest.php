@@ -489,6 +489,97 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertNotNull($cursor->blocked_until);
     }
 
+    public function test_rejeicao_por_consumo_indevido_marca_a_coluna_com_o_rotulo_fixo(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // Consumo indevido: a pausa de uma hora e a de "nenhum documento
+        // localizado" são indistinguíveis pelo relógio, e só uma delas é um
+        // item de atenção. O rótulo é o que sobrevive para o painel, e ele é
+        // fixo: nada do que o fisco escreveu no `xMotivo` entra na coluna.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [],
+            lastNsu: 1678,
+            mayAdoptPosition: true,
+            blockedUntil: CarbonImmutable::now()->addHour(),
+            failure: FiscalFailure::Blocked,
+        ));
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $cursor = $this->cursor($client);
+
+        $this->assertSame('blocked_consumption', $cursor->last_error);
+        // A parada continua sendo a mesma das duas, e a posição do corpo da
+        // rejeição continua sendo adotada: o rótulo não mexe em nenhum dos
+        // dois eixos.
+        $this->assertNotNull($cursor->blocked_until);
+        $this->assertTrue($cursor->blocked_until->isFuture());
+        $this->assertSame(1678, $cursor->last_nsu);
+    }
+
+    public function test_nenhum_documento_localizado_pausa_sem_deixar_marca(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->cursor($client)->forceFill(['last_nsu' => 900])->save();
+
+        // Mesma pausa, outro motivo: o fisco não tinha nada novo para o CNPJ.
+        // A coluna fica limpa, porque um cliente saudável consultando de hora
+        // em hora não pode aparecer na lista de atenção.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [],
+            lastNsu: 900,
+            mayAdoptPosition: false,
+            blockedUntil: CarbonImmutable::now()->addHour(),
+            failure: FiscalFailure::NoDocuments,
+        ));
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $cursor = $this->cursor($client);
+
+        $this->assertNull($cursor->last_error);
+        $this->assertNotNull($cursor->blocked_until);
+        $this->assertSame(900, $cursor->last_nsu);
+    }
+
+    public function test_a_marca_de_consumo_indevido_limpa_na_resposta_seguinte(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [],
+            lastNsu: 1678,
+            mayAdoptPosition: true,
+            blockedUntil: CarbonImmutable::now()->addHour(),
+            failure: FiscalFailure::Blocked,
+        ));
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $this->assertSame('blocked_consumption', $this->cursor($client)->last_error);
+
+        // A janela do fisco vence, e a captura volta a ser consultada.
+        $this->travelTo(now()->addHours(2));
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(1800, self::CHAVE_100)],
+            lastNsu: 1800,
+            mayAdoptPosition: true,
+        ));
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // `last_error` é o último erro, não um histórico: o cliente que voltou
+        // a responder não fica marcado como consumo indevido para sempre.
+        $cursor = $this->cursor($client);
+
+        $this->assertNull($cursor->last_error);
+        $this->assertNull($cursor->blocked_until);
+        $this->assertSame(1800, $cursor->last_nsu);
+    }
+
     public function test_records_the_run_before_and_the_sighting_after_the_pull_answers(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -841,6 +932,8 @@ class FiscalCaptureServiceTest extends TestCase
      *
      * @param  list<PulledDocument>  $documents
      * @param  list<FailedEntry>  $failures
+     * @param  FiscalFailure|null  $failure  o rótulo da parada, quando a resposta
+     *                                       foi uma rejeição que mandou esperar
      */
     private function batch(
         array $documents,
@@ -850,6 +943,7 @@ class FiscalCaptureServiceTest extends TestCase
         array $failures = [],
         ?int $maxNsu = null,
         bool $more = false,
+        ?FiscalFailure $failure = null,
     ): PullResult {
         return new PullResult(
             documents: $documents,
@@ -859,6 +953,7 @@ class FiscalCaptureServiceTest extends TestCase
             blockedUntil: $blockedUntil,
             mayAdoptPosition: $mayAdoptPosition,
             failures: $failures,
+            failure: $failure,
         );
     }
 

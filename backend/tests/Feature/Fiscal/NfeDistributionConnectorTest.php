@@ -204,6 +204,59 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame(1678, $result->lastNsu);
     }
 
+    public function test_a_parada_de_uma_hora_sem_documento_e_rotulada_como_frio_do_fisco(): void
+    {
+        // Duas paradas de uma hora que o painel precisa distinguir: esta é o
+        // fisco sem nada novo para entregar, e a outra é o CNPJ consultando
+        // demais. O rótulo que o conector carrega é o que separa as duas lá
+        // dentro, porque a pausa em si é idêntica.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_137.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 900, 50);
+
+        $this->assertSame(FiscalFailure::NoDocuments, $result->failure);
+        $this->assertNotNull($result->blockedUntil);
+        $this->assertTrue($result->blockedUntil->isAfter(now()->addMinutes(50)));
+        // A posição é o eco da que foi pedida, e por isso não é adotada.
+        $this->assertSame(900, $result->lastNsu);
+        $this->assertFalse($result->mayAdoptPosition);
+    }
+
+    public function test_o_consumo_indevido_e_rotulado_para_o_operador(): void
+    {
+        // A outra metade do mesmo par: mesmo `cStat` de espera, outra
+        // gravidade, e a posição do corpo da rejeição continua sendo a
+        // alavanca de recuperação.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_656_com_nsu.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertSame(FiscalFailure::Blocked, $result->failure);
+        $this->assertNotNull($result->blockedUntil);
+        $this->assertTrue($result->blockedUntil->isAfter(now()->addMinutes(50)));
+        $this->assertTrue($result->mayAdoptPosition);
+        $this->assertSame(1678, $result->lastNsu);
+    }
+
+    public function test_o_lote_que_veio_nao_caria_rotulo_de_parada(): void
+    {
+        // O rótulo descreve uma pausa que o serviço mandou, e `138` é o
+        // serviço entregando: sem ele, um lote normal apareceria para quem lê
+        // como se tivesse parado.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertNull($result->failure);
+        $this->assertNull($result->blockedUntil);
+    }
+
     public function test_uma_entrada_corrompida_e_registrada_e_o_lote_continua(): void
     {
         $client = $this->clientWithCertificate();
