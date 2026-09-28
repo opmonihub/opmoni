@@ -176,7 +176,7 @@ Captura roda para quem tem certificado utilizável. Não há interruptor por esc
 
 **PKCS#12 com RC2** → `openssl_pkcs12_read` falha em arquivo exportado com `-legacy`, e a exceção do OpenSSL não diz qual arquivo é. Mitigação: erro próprio, com o nome do cliente no contexto.
 
-**`SOAPAction` do CT-e divergente no pacote de referência** → Rejeição opaca do servidor. Mitigação: valor verificado contra produção, com teste de contrato fixando a string.
+**`SOAPAction` do CT-e divergente no pacote de referência** → Rejeição opaca do servidor. Mitigação: o valor vem de um exemplo de terceiro testado em produção e é fixado por teste de contrato (`CteDistributionConnectorTest`), **não** foi verificado deste checkout, e o gate de liberação exige um canário de um único cliente conferindo o `cStat` antes de qualquer uso em produção. O bloco de `config/fiscal.php` repete isso, para que a única documentação do parâmetro não seja este arquivo.
 
 **Chaves mascaradas por `autXML` no CT-e** → Quem consulta por `autXML` recebe as chaves das NF-e transportadas zeradas; extrair e indexar colide. Mitigação: marcar o documento como mascarado e não extrair chave de `infDoc/infNFe` nesse caso.
 

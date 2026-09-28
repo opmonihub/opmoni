@@ -67,6 +67,11 @@ The system SHALL decode each document in a returned batch from its compressed ba
 - **WHEN** an entry cannot be decoded
 - **THEN** the system records the failure for that entry, does not advance past it and does not abort the remaining entries of the batch
 
+#### Scenario: Entrada que o serviço entrega e que não é documento
+- **WHEN** a batch delivers an entry whose root is a known non-document of the service, such as the inutilização of a CT-e
+- **THEN** the system discards that entry, records no gap for its position, and allows the cursor to advance past it, because there was no document there to lose
+- **AND** a single-document lookup for the same position answers that the position holds no document, rather than reporting an unreadable entry
+
 ### Requirement: Controle de consumo do serviço
 The system SHALL stop querying a client for one hour after the service reports no document located or rejects for improper consumption, SHALL NOT retry with a short backoff after such a rejection, and SHALL adopt the position reported inside an improper-consumption rejection when the service supplies one.
 

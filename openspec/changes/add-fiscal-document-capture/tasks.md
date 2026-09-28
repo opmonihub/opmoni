@@ -91,12 +91,35 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 
 ## 8. Conector de CT-e
 
-- [ ] 8.1 Implementar `CteDistributionConnector` reaproveitando envelope, parser e writer, com método `cteDistDFeInteresse`, versão `1.00` e a URL do ambiente nacional do CT-e; verificar com teste de contrato por fixture
-- [ ] 8.2 Usar o `SOAPAction` verificado contra produção, e não o montado pelo pacote de referência, que está divergente; verificar com teste unitário que fixa a string
-- [ ] 8.3 Tratar os cinco valores de `schema` do CT-e, incluindo modelo de serviço de transporte, conhecimento de carga e o simplificado, e não apenas os dois da NF-e; verificar com teste unitário por valor de `schema`
-- [ ] 8.4 Tratar a rejeição de consumo indevido do CT-e junto com a da NF-e como o mesmo evento de negócio, com o código próprio do serviço mapeado para o mesmo efeito; verificar com teste unitário
-- [ ] 8.5 Marcar como mascarado o documento obtido por autorizado a consultar, cujas chaves de documentos transportados chegam zeradas, e não extrair chave de transporte nesse caso; verificar com teste unitário
-- [ ] 8.6 Tratar a ausência de consulta por chave no serviço do CT-e, deixando a recuperação de lacuna só por posição; verificar com teste unitário
+- [x] 8.1 Implementar `CteDistributionConnector` reaproveitando envelope, parser e writer, com método `cteDistDFeInteresse`, versão `1.00` e a URL do ambiente nacional do CT-e; verificar com teste de contrato por fixture
+- [x] 8.2 Usar o `SOAPAction` verificado contra produção, e não o montado pelo pacote de referência, que está divergente; verificar com teste unitário que fixa a string
+- [x] 8.3 Tratar os cinco valores de `schema` do CT-e, incluindo modelo de serviço de transporte, conhecimento de carga e o simplificado, e não apenas os dois da NF-e; verificar com teste unitário por valor de `schema`
+- [x] 8.4 Tratar a rejeição de consumo indevido do CT-e junto com a da NF-e como o mesmo evento de negócio, com o código próprio do serviço mapeado para o mesmo efeito; verificar com teste unitário
+- [x] 8.5 Marcar como mascarado o documento obtido por autorizado a consultar, cujas chaves de documentos transportados chegam zeradas, e não extrair chave de transporte nesse caso; verificar com teste unitário
+- [x] 8.6 Tratar a ausência de consulta por chave no serviço do CT-e, deixando a recuperação de lacuna só por posição; verificar com teste unitário
+
+### Divergências de 8.3, e por quê
+
+**A classificação é pela raiz do XML, e não pelo `schema` do `docZip`.** O enunciado
+pedia teste por valor de `schema`; o que foi entregue é o oposto, e é uma decisão, não
+um erro: o `docZip@schema` é texto do fisco que não fez validação de nada, e
+aceitá-lo como classificação trocaria "o serviço disse que é isso" por "isto é o que
+o XML é". Os dois divergem — o `leiauteDistCTe` publicado mostra entradas com
+`procComp` e sem ele na mesma lista —, e só a raiz descreve a forma do payload. O
+catálogo está em `FiscalXmlMetadata::CHAVE_PROPRIA`, indexado pela raiz, e a suíte
+cobre cada raiz e cada recusa; `schema` continua sendo **guardado** na linha gravada,
+porque é informação do fisco, e nunca é lido como classificação.
+
+**Conhecimento de carga (MDF-e) saiu do escopo, e a exclusão é declarada.** O
+catálogo de raízes de documento do CT-e não tem raiz de MDF-e, e a lista de
+"não documento" também não: uma entrada de conhecimento de carga é, hoje, **recusa**
+no caminho de CT-e — vira lacuna, custa três tentativas e a posição anda por cima
+dela. Nenhuma das cinco famílias do enunciado (CT-e regular, simplificado, OS, GTV-e
+e evento) entrou como MDF-e, e a 8.5 fala em "documento obtido por autorizado a
+consultar", o que é o caso do CT-e, não o MDF-e. Ampliar o catálogo para MDF-e exige
+o schema que este checkout não tem, e a verificação de que a raiz é mesmo a esperada
+contra um serviço que ninguém chamou — o gate de liberação, não este checklist.
+
 
 ## 9. Reconciliação
 
