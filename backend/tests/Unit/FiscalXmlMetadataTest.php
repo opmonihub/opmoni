@@ -334,6 +334,53 @@ class FiscalXmlMetadataTest extends TestCase
         (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
     }
 
+    public function test_extracts_an_nfe_whose_root_is_outside_the_root_catalogue(): void
+    {
+        // A regressão do caminho que está em produção. O catálogo de raízes foi
+        // escrito contra o pacote do CT-e e este checkout não tem nenhum schema
+        // que enumere as raízes que a distribuição de NF-e pode entregar, então
+        // a raiz desconhecida **não recusa** aqui: o NF-e volta a se comportar
+        // como antes, extraindo a primeira `chNFe` que encontrar.
+        //
+        // A recusa aqui não seria um bug de parse. `DfeEntryCollector` adota a
+        // posição só quando não houve falha, e a mesma entrada voltaria na
+        // consulta seguinte, e na seguinte: uma raiz de NF-e fora do catálogo
+        // levaria cada cliente que a tivesse em faixa para uma posição que nunca
+        // mais avança, sem nenhum erro que dissesse isso.
+        $xml = <<<'XML'
+        <entregaDeDocumento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+          <chNFe>35220499999999999999550010020000001240556600</chNFe>
+          <CNPJ>99999999999999</CNPJ>
+          <dhEmi>2022-04-04T11:54:49-03:00</dhEmi>
+          <vNF>710.00</vNF>
+        </entregaDeDocumento>
+        XML;
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+
+        // O nome da raiz segue no `schema`, que é o que a coluna guarda, e a
+        // etapa sai da ausência de protocolo — o mesmo de sempre.
+        $this->assertSame('35220499999999999999550010020000001240556600', $result->chave);
+        $this->assertSame('99999999999999', $result->emitenteCnpj);
+        $this->assertSame('710.00', $result->valorTotal);
+        $this->assertSame('entregaDeDocumento', $result->schema);
+        $this->assertSame(FiscalStage::Summary, $result->stage);
+    }
+
+    public function test_the_model_guard_still_refuses_a_cte_on_a_root_the_catalogue_knows(): void
+    {
+        // O outro lado da mesma distinção: no NF-e a raiz desconhecida não recusa,
+        // mas a guarda de modelo continua valendo e é independente da raiz. O
+        // `cteProc` é recusado pelo modelo — não pela raiz, que aqui não tem
+        // nada a dizer.
+        $xml = file_get_contents(base_path('tests/Fixtures/fiscal/cteProc.xml'));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/CT-e.*NF-e/');
+
+        (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+    }
+
     public function test_extracts_metadata_from_an_nfce(): void
     {
         $xml = file_get_contents(base_path('tests/Fixtures/fiscal/resNFe_nfce.xml'));

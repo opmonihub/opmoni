@@ -89,6 +89,55 @@ final class FiscalXmlMetadata
         'infDocAnt/infNFeTranspParcial/chave',
     ];
 
+    /**
+     * As raízes que a distribuição entrega e que **não** são um documento a
+     * indexar. A entrada é pulada, e a posição avança.
+     *
+     * `procInutCTe` é a inutilização e `procCancCTe` o cancelamento antigo —
+     * os dois são entradas reais da distribuição de CT-e (`procInutCTe` é a raiz
+     * de `procInutCTe_v4.00.xsd`; os dois aparecem como tipo de entrada no
+     * `leiauteLoteRFBCTe_v1.00.xsd`). Nenhum dos dois tem chave de acesso de
+     * documento, e nenhum é algo que este módulo gravaria.
+     *
+     * Estão aqui, e não como recusa, por causa de `DfeEntryCollector`:
+     * `mayAdoptPosition` é falso quando há recusa, então recusar aqui travaria a
+     * posição do cliente no primeiro `inut` do lote, para sempre. Uma entrada
+     * que não é documento não é um buraco — não havia documento nela.
+     *
+     * A lista é do CT-e e só do CT-e: o catálogo do NF-e vive fora deste
+     * checkout e esta tarefa não tem como fechar uma lista de raízes de NF-e
+     * sem inventar, e uma lista inventada seria pior do que a ausência dela —
+     * ver `CHAVE_NA_RAIZ_DESCONHECIDA`.
+     *
+     * @var list<string>
+     */
+    private const NAO_DOCUMENTO = [
+        'procInutCTe',
+        'procCancCTe',
+    ];
+
+    /**
+     * O comportamento de antes do catálogo de raízes, preservado de propósito no
+     * caminho de NF-e: a primeira `chNFe` ou `chCTe` que aparecer em qualquer
+     * lugar do documento.
+     *
+     * O conector de NF-e está em produção desde o plano anterior, e o catálogo
+     * desta tarefa foi escrito contra o pacote `PRCTE` do SVRS — que é o do
+     * CT-e. **Este checkout não tem nenhum schema que enumere as raízes que a
+     * distribuição de NF-e pode entregar**: o único XSD de NF-e versionado aqui
+     * (`tiposDistDFe_v1.01.xsd`) não declara elemento raiz nenhum. Então não há
+     * como afirmar que o catálogo de raízes cobre o NF-e, e uma raiz de NF-e que
+     * ele não cobrisse viraria uma recusa permanente numa posição de produção.
+     *
+     * No caminho de CT-e — que não está em produção e em que recusar o que não se
+     * consegue classificar é a escolha honesta — a raiz desconhecida é recusa.
+     *
+     * Este é o lado permissivo do catálogo, e ele é exclusivo do NF-e: no CT-e a
+     * chave seria lida de um documento cuja forma ninguém classificou, e é
+     * exatamente ali que uma chave de transporte poderia ser lida como identidade.
+     */
+    private const CHAVE_NA_RAIZ_DESCONHECIDA = ['chNFe', 'chCTe'];
+
     public function extract(string $xml, FiscalModel $model): FiscalXmlMetadataResult
     {
         $dom = new DOMDocument;
@@ -109,14 +158,13 @@ final class FiscalXmlMetadata
         // também o que classifica a forma do payload.
         $schema = $this->schemaOf($dom);
 
-        // Raiz fora do catálogo é recusa antes de qualquer leitura de campo. Um
-        // XML que o módulo não conhece seria classificado por um `chCTe`
-        // qualquer que ele achasse em qualquer lugar — e um lote com a chave de
-        // um documento real, embrulhada num XML que não é um documento, é
-        // exatamente o que a deduplicação por `chave_acesso` não impede,
-        // porque a chave entraria sem conflito.
-        $paths = self::CHAVE_PROPRIA[$schema]
-            ?? throw new RuntimeException("Raiz de documento fora do catálogo: {$schema}.");
+        // Raiz conhecida e não indexável: a entrada é pulada e a posição avança.
+        // Ver `NotIndexableDocument` para por que isto não pode ser uma recusa.
+        if (in_array($schema, self::NAO_DOCUMENTO, true)) {
+            throw new NotIndexableDocument($schema);
+        }
+
+        $paths = $this->pathsOf($schema, $model);
 
         $tpEvento = $this->firstText($xpath, ['tpEvento']);
         $nSeqEvento = $this->firstText($xpath, ['nSeqEvento']);
@@ -157,6 +205,58 @@ final class FiscalXmlMetadata
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
             mascarado: $this->isMascarado($xpath),
         );
+    }
+
+    /**
+     * O conector em que uma raiz fora do catálogo é **recusa**, e não apenas uma
+     * classificação que não encontrou o caminho da chave.
+     *
+     * É o conector de CT-e porque é o único em que recusar o que não se
+     * consegue classificar não tranca ninguém: ele ainda não tem posição de
+     * cliente em jogo. No NF-e, que está em produção, a mesma recusa viraria uma
+     * trava permanente para quem a encontrasse — e o checkout não tem schema que
+     * sustente a recusa. Ver `pathsOf()` e `CHAVE_NA_RAIZ_DESCONHECIDA`.
+     */
+    private const RAIZ_E_RECUSA = FiscalModel::Cte;
+
+    /**
+     * Onde a chave do próprio documento está, dada a raiz e o conector que
+     * perguntou.
+     *
+     * A raiz do catálogo resolve o caso comum. A raiz de fora do catálogo tem dois
+     * desfechos, e a diferença entre eles é o que separa uma classificação de uma
+     * trava:
+     *
+     * - **No CT-e, que não está em produção**, a raiz desconhecida é recusa. O
+     *   catálogo foi escrito contra o pacote publicado do CT-e, recusar o que não
+     *   se consegue classificar é a escolha honesta, e a recusa aqui não tranca
+     *   ninguém porque ainda não há posição de cliente em jogo.
+     * - **No NF-e, que está em produção**, a raiz desconhecida não recusa: o
+     *   comportamento de antes do catálogo é preservado. Este checkout não tem
+     *   schema que enumere as raízes que a distribuição de NF-e entrega, então uma
+     *   recusa aqui seria uma afirmação que nada sustenta — e, por
+     *   `mayAdoptPosition`, uma afirmação que tranca a posição de um cliente que
+     *   hoje avança. Ver `CHAVE_NA_RAIZ_DESCONHECIDA`.
+     *
+     * A guarda de modelo continua valendo nos dois caminhos e independentemente da
+     * raiz: uma `chCTe` entregue ao conector de NF-e é recusada pelo modelo, não
+     * pela raiz.
+     *
+     * @return list<string>
+     */
+    private function pathsOf(string $root, FiscalModel $expected): array
+    {
+        $paths = self::CHAVE_PROPRIA[$root] ?? null;
+
+        if ($paths !== null) {
+            return $paths;
+        }
+
+        if (in_array($expected, self::RAIZ_E_RECUSA->family(), true)) {
+            throw new RuntimeException("Raiz de documento fora do catálogo: {$root}.");
+        }
+
+        return self::CHAVE_NA_RAIZ_DESCONHECIDA;
     }
 
     /**

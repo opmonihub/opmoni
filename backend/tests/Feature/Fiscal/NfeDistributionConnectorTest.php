@@ -387,6 +387,27 @@ class NfeDistributionConnectorTest extends TestCase
         $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $result->failures[0]->reason);
     }
 
+    public function test_uma_nfe_com_raiz_fora_do_catalogo_ainda_e_capturada_e_a_posicao_avanca(): void
+    {
+        // A mesma distinção do teste unitário, vista pelo conector que está em
+        // produção. Uma raiz que o catálogo de raízes não conhece **não** pode
+        // virar recusa aqui: `mayAdoptPosition` ficaria falso para sempre, a
+        // mesma posição voltaria em toda consulta e o cliente nunca avançaria.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->responseWith('138', 'Documento(s) localizado(s)', 300, 300, [
+            $this->docZip(300, $this->entregaDeDocumento(), 'resNFe_v1.01.xsd'),
+        ]), 200)]);
+
+        $result = $this->connector()->pull($client, 0, 50);
+
+        $this->assertSame([], $result->failures);
+        $this->assertCount(1, $result->documents);
+        $this->assertSame('35220499999999999999550010020000001240556600', $result->documents[0]->chave);
+        $this->assertSame(300, $result->documents[0]->nsu);
+        $this->assertTrue($result->mayAdoptPosition);
+    }
+
     /**
      * O contrato do lote com recusa: a entrada que não vira documento é
      * registrada com a frase da etapa que a recusou, a posição não é adotada e
@@ -1013,6 +1034,22 @@ class NfeDistributionConnectorTest extends TestCase
             .'<dhEmi>2022-04-04T11:54:49-03:00</dhEmi>'
             .'<vNF>710.00</vNF>'
             .'</resNFe>';
+    }
+
+    /**
+     * Raiz de NF-e fora do catálogo de raízes, com a chave legível no topo. O
+     * payload é o mesmo `resNFe` com outro nome de elemento — o que um serviço
+     * que evolui o leiaute entrega sem aviso, e o que este checkout não tem como
+     * enumerar.
+     */
+    private function entregaDeDocumento(): string
+    {
+        return '<entregaDeDocumento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">'
+            .'<chNFe>'.self::CHAVE.'</chNFe>'
+            .'<CNPJ>99999999999999</CNPJ>'
+            .'<dhEmi>2022-04-04T11:54:49-03:00</dhEmi>'
+            .'<vNF>710.00</vNF>'
+            .'</entregaDeDocumento>';
     }
 
     /**

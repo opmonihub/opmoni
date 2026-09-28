@@ -10,6 +10,7 @@ use App\Services\Fiscal\Support\DfeEntryCollector;
 use App\Services\Fiscal\Support\DfeResponse;
 use App\Services\Fiscal\Support\DocZipDecoder;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
+use App\Services\Fiscal\Support\NotIndexableDocument;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
@@ -290,6 +291,81 @@ class CteXmlMetadataTest extends TestCase
         // A razão é uma frase fixa: ela nomeia a etapa, e não repete o payload.
         $this->assertSame('FiscalXmlMetadata rejeitou o documento decodificado.', $resultado->failures[0]->reason);
         $this->assertFalse($resultado->mayAdoptPosition);
+    }
+
+    public function test_uma_raiz_conhecida_que_nao_e_documento_deixa_a_posicao_avancar(): void
+    {
+        // Pular e recusar são opostos, e a diferença é a posição. Uma inutilização
+        // chega no meio do lote e o serviço a entrega sempre: recusada, ela faria
+        // `mayAdoptPosition` falso para sempre, a consulta seguinte pediria o
+        // mesmo intervalo e receberia a mesma inutilização — a posição daquele
+        // cliente nunca mais andaria, e nada disso apareceria como erro.
+        $payload = base64_encode(gzcompress(
+            '<procInutCTe versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">'
+            .'<infInut><cUF>35</cUF><ano>22</ano><CNPJ>99999999999999</CNPJ>'
+            .'<serie>000</serie><mod>57</mod><nCTIni>1</nCTIni><nCTFin>9</nCTFin></infInut>'
+            .'</procInutCTe>',
+        ));
+
+        $resultado = (new DfeEntryCollector(new DocZipDecoder, new FiscalXmlMetadata))->collect(
+            new DfeResponse(
+                cStat: '138',
+                xMotivo: 'Documento localizado',
+                ultNsu: 200,
+                maxNsu: 200,
+                entries: [
+                    new DfeEntry(nsu: 199, schema: 'procInutCTe_v4.00.xsd', payload: $payload),
+                    new DfeEntry(
+                        nsu: 200,
+                        schema: 'cteProc_v4.00.xsd',
+                        payload: base64_encode(gzcompress(file_get_contents(base_path('tests/Fixtures/fiscal/cte-gtve.xml')))),
+                    ),
+                ],
+            ),
+            FiscalModel::Cte,
+        );
+
+        // Nenhuma linha para a inutilização, nenhuma falha por ela, e a posição
+        // adota: o buraco que impede a posição de andar é o buraco, e a
+        // inutilização não é um.
+        $this->assertSame([], $resultado->failures);
+        $this->assertCount(1, $resultado->documents);
+        $this->assertSame(200, $resultado->documents[0]->nsu);
+        $this->assertSame(FiscalModel::Gtve, $resultado->documents[0]->model);
+        $this->assertTrue($resultado->mayAdoptPosition);
+    }
+
+    public function test_uma_raiz_conhecida_que_nao_e_documento_e_recusada_como_pular_e_nao_como_falha(): void
+    {
+        // A exceção de "não é indexável" é capturada **antes** da `RuntimeException`
+        // genérica. Se fosse capturada depois, viraria `FailedEntry` e a
+        // posição travaria — que é o defeito que o tipo separado existe para
+        // impedir, e que este teste pins.
+        $this->expectException(NotIndexableDocument::class);
+
+        (new FiscalXmlMetadata)->extract(
+            '<procCancCTe versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">'
+            .'<infCanc><chCTe>35220999999999999999570000000011011000000006</chCTe></infCanc>'
+            .'</procCancCTe>',
+            FiscalModel::Cte,
+        );
+    }
+
+    public function test_uma_raiz_desconhecida_nao_e_documento_e_continua_sendo_recusa_no_cte(): void
+    {
+        // O outro lado da regra, e ele vale: no conector que não está em produção,
+        // uma raiz que o módulo não reconhece é recusa, porque recusar o que não
+        // se consegue classificar é a escolha honesta e não tranca ninguém. O
+        // que muda de um lado para o outro da linha é o conector, não a raiz.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/^Raiz de documento fora do catálogo/');
+
+        (new FiscalXmlMetadata)->extract(
+            '<loteDeDocumentos xmlns="http://www.portalfiscal.inf.br/cte">'
+            .'<chCTe>35220999999999999999570000000011011000000006</chCTe>'
+            .'</loteDeDocumentos>',
+            FiscalModel::Cte,
+        );
     }
 
     public function test_o_mascarado_atravessa_o_contrato_ate_o_writer(): void

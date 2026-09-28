@@ -60,6 +60,16 @@ final class DfeEntryCollector
 
             try {
                 $extracted = $this->metadata->extract($xml, $model);
+            } catch (NotIndexableDocument) {
+                // A entrada é uma coisa que o parser reconheceu e que não é um
+                // documento a indexar. Ela **não** vira recusa, e é o que a
+                // distingue de um buraco: recusa aqui puniria a posição por
+                // `mayAdoptPosition` falso, e a mesma entrada viria na consulta
+                // seguinte, na seguinte e na seguinte — uma inutilização no meio
+                // do lote travaria o cliente sem que nada disso virasse erro.
+                // Pular é o que deixa a posição passar: não havia documento
+                // naquela posição, e não havia documento para perder.
+                continue;
             } catch (RuntimeException) {
                 // A chave com dígito verificador inválido, o modelo que não é o
                 // do serviço e o XML ilegível chegam todos aqui, e em nenhum
@@ -103,6 +113,9 @@ final class DfeEntryCollector
             blockedUntil: null,
             // Havendo buraco, a posição não é adotada: a próxima consulta volta
             // a pedir a partir da posição anterior e tenta ler a entrada de novo.
+            // A entrada pulada por não ser documento não é buraco e não entra
+            // aqui — é o que impede que uma recusa que nunca passa, porque o
+            // serviço a entrega sempre, trave a posição para sempre.
             mayAdoptPosition: $failures === [],
             failures: $failures,
         );
