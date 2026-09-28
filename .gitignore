@@ -49,6 +49,9 @@ docker-compose.override.yml
 .workitrees/
 .workittrees/
 
+# Ledger e artefatos de execução do subagent-driven-development (por plano)
+.superpowers/
+
 # Ferramentas locais (não versionar: config da máquina + licença de skill copiada)
 .openchamber/
 .devin/
