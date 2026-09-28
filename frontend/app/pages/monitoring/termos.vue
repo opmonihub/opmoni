@@ -2,7 +2,7 @@
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproAccountCertificate, SerproAuthorizationTerm } from '~/types/serpro'
-import { formatMonitoringDate, serproCertificateAsk, serproCertificateMissingNotice, serproCertificateRemoval, serproCertificateRemovalText, serproCertificateReplacement, serproTermGuidance, serproTermRequest, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { formatMonitoringDate, serproCertificateRemoval, serproTermRequest, serproTermScreen, serproTermStatePresentation } from '~/utils/monitoringPresentation'
 import { pageDetailClass, pageRecordScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
@@ -70,40 +70,15 @@ const termState = computed(() => term.value?.state ?? 'ausente')
  * um estado real do produto, não um atraso que alguém da conta possa resolver.
  */
 const request = computed(() => serproTermRequest(termState.value, hasCertificate.value))
-const ask = computed(() => serproCertificateAsk(termState.value, hasCertificate.value))
 
 /**
- * O que o cartão do certificado diz quando há pedido, e o que ele diz quando não
- * há certificado e também não há pedido. São textos diferentes porque as
- * consequências são diferentes — o texto que diz "a integração parou" acima de um
- * termo válido seria mentira, e é a remoção que produz essa situação. A função
- * devolve `null` nos estados em que quem fala é o pedido, o que faz desta
- * leitura e do `ask` mutuamente exclusivos.
+ * **Toda a frase da tela vem daqui**, e não do template: é o enumerador que o
+ * oráculo de consistência lê, e uma tela que desenhasse texto de outro lugar
+ * estaria de fora da conferência. Se um bloco aparecer no template sem passar por
+ * `serproTermScreen`, ele nasce sem guarda — que foi como a frase do cabeçalho
+ * sobreviveu a três revisões.
  */
-const certificateNotice = computed(() => (ask.value
-  ?? serproCertificateMissingNotice(termState.value, hasCertificate.value)))
-
-/**
- * O que a remoção promete, e a promessa muda com o termo: sem documento não há o
- * que apagar, com documento que a plataforma reenvia há o que continua sendo
- * enviado, e com documento parado — vigência acabada ou recusa do provedor — a
- * confirmação diz que ele não está sendo enviado, porque não está.
- */
-const removalText = computed(() => serproCertificateRemovalText(termState.value, hasCertificate.value))
-
-/**
- * Os rótulos do formulário. `substituir` é mentira numa conta que nunca entregou
- * certificado, e o rótulo do pedido tem a precedência porque é ele que sabe se o
- * que se pede é uma reentrega por termo vencido ou recusado.
- */
-const isReplacing = computed(() => hasCertificate.value)
-const fileLabel = computed(() => (isReplacing.value ? 'Selecionar novo arquivo' : 'Selecionar arquivo'))
-const submitLabel = computed(() => ask.value?.label
-  ?? certificateNotice.value?.label
-  ?? serproCertificateReplacement.label)
-
-/** O texto do termo para o par (estado, certificado), e o par é o que ele diz. */
-const termGuidance = computed(() => serproTermGuidance(termState.value, hasCertificate.value))
+const screen = computed(() => serproTermScreen(termState.value, hasCertificate.value))
 
 /**
  * O badge fica dentro de `v-if="term"`, e o caso sem termo não desenha badge
@@ -134,7 +109,7 @@ const termFacts = computed<MetaListItem[]>(() => {
      * documento assinado à mão por alguém da conta, que é exatamente o que o
      * produto não faz e não deve parecer que faz.
      */
-    { label: 'Assinatura', value: 'Pela plataforma, com o e-CNPJ do escritório' },
+    { label: 'Assinatura', value: screen.value.signature },
     /*
      * `document_present` é booleano porque o documento assinado não sai do
      * backend: a tela afirma que ele existe e nada mais. O outro ramo diz
@@ -275,16 +250,18 @@ async function confirmRemove() {
                 Termo do escritório
               </h1>
               <!--
-                A frase que carrega a promessa mais forte da tela mora aqui e
-                **não tem guarda nenhuma**: `node --test` não importa `.vue`, e
-                um stub seria uma mentira sobre cobertura. O que a guarda de
-                "ninguém assina" protege é o outro texto — o de cada estado do
-                termo, em `monitoringPresentation.ts`. Se esta frase mudar, ela
-                muda sem teste, e é por isso que ela repete o que o resto da tela
-                já diz em vez de acrescentar uma promessa nova.
+                A frase que carrega a promessa mais forte da tela **não mora
+                aqui**: ela é `serproTermScreen().header`, no módulo, porque
+                `node --test` não importa `.vue` e uma frase escrita no template é
+                uma frase que nenhum oráculo consegue ler. Foi exatamente por
+                isso que ela sobreviveu a três rondas de revisão — em `ausente`,
+                `vencido` e `recusado` ela prometia renovação, e `refresh()` não
+                reenvia em nenhum dos três. O portão é `serproTermReenviado`, e o
+                teste é `o cabeçalho só promete renovação onde refresh() ainda
+                reenvia`, em `monitoringTermScreenConsistency.test.ts`.
               -->
               <p class="text-xs text-muted">
-                A plataforma monta, assina, envia e renova o termo sozinha, com o e-CNPJ do próprio escritório. Ninguém da conta assina o termo.
+                {{ screen.header }}
               </p>
               <div
                 v-if="term"
@@ -295,7 +272,7 @@ async function confirmRemove() {
                   :icon="presentation.icon"
                   variant="subtle"
                   size="sm"
-                  :label="presentation.label"
+                  :label="screen.badge"
                 />
               </div>
             </div>
@@ -303,12 +280,12 @@ async function confirmRemove() {
         </UCard>
 
         <UAlert
-          v-if="term && request !== 'nenhuma'"
+          v-if="term && screen.action"
           :color="presentation.color"
           variant="subtle"
           :icon="presentation.icon"
-          :title="presentation.label"
-          :description="termGuidance"
+          :title="screen.action.title"
+          :description="screen.action.description"
         />
 
         <UCard
@@ -322,7 +299,7 @@ async function confirmRemove() {
           <template v-if="request === 'nenhuma'">
             <USeparator class="my-3" />
             <p class="text-xs text-muted">
-              {{ termGuidance }}
+              {{ screen.state }}
             </p>
           </template>
         </UCard>
@@ -334,15 +311,14 @@ async function confirmRemove() {
                 Certificado do escritório (e-CNPJ)
               </h2>
               <!--
-                Descrição do mecanismo, e não do estado: "é ele que a plataforma usa
-                para assinar" vale em qualquer estado, e o que a plataforma faz com
-                esse certificado **neste** termo está no texto do estado e no pedido,
-                logo abaixo. Uma frase aqui que citasse renovação estaria
-                afirmando que a plataforma renova também um termo vencido ou
-                recusado, e ela não — `refresh()` nem chega a reenviar nesses dois.
+                Do enumerador, e não do template, pelo mesmo motivo do cabeçalho da
+                tela: uma frase escrita aqui nasce fora da conferência. É a
+                descrição do mecanismo — quem assina com o e-CNPJ — e o que a
+                plataforma faz neste termo em particular está no texto do estado e
+                no pedido, logo abaixo.
               -->
               <p class="text-xs text-muted">
-                O e-CNPJ do escritório é o material com que a plataforma assina o termo. O arquivo e a senha ficam cifrados no banco e a API não devolve nenhum dos dois.
+                {{ screen.certificateHeader }}
               </p>
             </div>
             <UBadge
@@ -374,15 +350,15 @@ async function confirmRemove() {
             </div>
 
             <UAlert
-              v-if="confirmingRemove"
+              v-if="confirmingRemove && screen.removal"
               color="error"
               variant="subtle"
               icon="i-lucide-trash-2"
-              :title="serproCertificateRemoval.title"
-              :description="removalText"
+              :title="screen.removal.title"
+              :description="screen.removal.description"
             />
             <div
-              v-if="confirmingRemove"
+              v-if="confirmingRemove && screen.removal"
               class="flex justify-end gap-2"
             >
               <UButton
@@ -404,12 +380,12 @@ async function confirmRemove() {
           </template>
 
           <UAlert
-            v-if="certificateNotice"
-            :color="certificateNotice.color"
-            :icon="certificateNotice.icon"
+            v-if="screen.notice"
+            :color="screen.notice.color"
+            :icon="screen.notice.icon"
             variant="subtle"
-            :title="certificateNotice.title"
-            :description="certificateNotice.description"
+            :title="screen.notice.title"
+            :description="screen.notice.description"
           />
 
           <!--
@@ -420,33 +396,31 @@ async function confirmRemove() {
             com o estado é o texto acima e o rótulo do botão.
           -->
           <p
-            v-if="canWriteCertificate && hasCertificate && !ask"
+            v-if="canWriteCertificate && screen.replacement"
             class="text-xs text-muted"
           >
-            <span class="font-medium text-default">{{ serproCertificateReplacement.title }}</span> — {{ serproCertificateReplacement.description }}
+            <span class="font-medium text-default">{{ screen.replacement.title }}</span> — {{ screen.replacement.description }}
           </p>
 
           <template v-if="canWriteCertificate">
             <UFormField
               label="Arquivo do certificado (.pfx ou .p12)"
               name="certificate"
-              :help="isReplacing
-                ? 'Substitui o certificado guardado: a linha anterior continua no histórico, sem o conteúdo cifrado.'
-                : 'A API decide pela extensão do nome do arquivo, e não pelo conteúdo — é o que faz um e-CNPJ de verdade passar.'"
+              :help="screen.form.fileHelp"
             >
               <UFileUpload
                 v-model="file"
                 accept=".pfx,.p12"
-                :label="fileLabel"
+                :label="screen.form.fileLabel"
                 description="Arraste o arquivo ou clique para selecionar"
                 class="w-full"
               />
             </UFormField>
 
             <UFormField
-              label="Senha do certificado"
+              :label="screen.form.passwordLabel"
               name="password"
-              help="A senha que abre o arquivo. Ela não é guardada no navegador e a API não a devolve."
+              :help="screen.form.passwordHelp"
             >
               <UInput
                 v-model="password"
@@ -459,7 +433,7 @@ async function confirmRemove() {
 
             <div class="flex justify-end">
               <UButton
-                :label="submitLabel"
+                :label="screen.form.submitLabel"
                 icon="i-lucide-upload"
                 type="button"
                 :loading="submitting"
@@ -470,10 +444,10 @@ async function confirmRemove() {
           </template>
 
           <p
-            v-else-if="ask"
+            v-else-if="screen.readOnly"
             class="text-xs text-muted"
           >
-            A entrega do certificado é do administrador e do operador do escritório. O seu papel aqui é somente leitura.
+            {{ screen.readOnly }}
           </p>
         </UCard>
       </template>

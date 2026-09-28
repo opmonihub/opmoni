@@ -231,7 +231,7 @@ const serproTermGuidanceByState: Record<SerproAuthorizationTermState, string> = 
   pendente: 'A resposta do provedor ainda não chegou. Não há nada a fazer.',
   validado: 'O provedor aceitou o documento do termo, mas o token que autoriza as chamadas do escritório ainda não está disponível. A renovação diária tenta de novo, e isso é da plataforma: não há nada a fazer.',
   autenticado: 'O termo está autorizado e a plataforma fala com o provedor em nome do escritório. A renovação é feita sozinha, sem nenhuma ação do escritório.',
-  vencido: 'A vigência do termo acabou. Emitir outro é do escritório e depende de um certificado digital vigente — a plataforma não o faz sozinha.',
+  vencido: 'A vigência do termo acabou. Para a plataforma emitir outro, o escritório precisa entregar um certificado digital vigente — e a emissão é dela.',
   recusado: 'O provedor recusou o termo. Para sair disso o escritório precisa entregar um certificado digital vigente, e a emissão do termo novo é da plataforma.'
 }
 
@@ -573,7 +573,7 @@ export function serproCertificateRemovalText(state: SerproAuthorizationTermState
   }
 
   if (!serproTermReenviado[state]) {
-    return `${abertura} A remoção não revoga o termo: ele continua gravado, mas a plataforma não o está reenviando — a vigência do documento acabou, ou o provedor recusou o que foi enviado, e nenhuma das duas se resolve com o certificado. O que a remoção tira é a capacidade de a plataforma emitir um termo novo.`
+    return `${abertura} A remoção não revoga o termo: ele continua gravado, mas a plataforma não o está reenviando — a vigência do documento acabou, ou o provedor recusou o que foi enviado. O que a remoção tira é a capacidade de a plataforma emitir um termo novo.`
   }
 
   return `${abertura} A remoção não revoga o termo: o documento já assinado continua gravado e continua sendo enviado pela plataforma, e o que ela perde é a capacidade de emitir um termo novo.`
@@ -597,6 +597,136 @@ export const serproCertificateReplacement = {
   description: 'O e-CNPJ do escritório expira, e é ele que assina o termo. Entregue o novo antes de o antigo expirar: quem monta, assina e renova o termo é a plataforma, e a integração não fica para trás.',
   label: 'Substituir certificado'
 } as const
+
+/**
+ * The sentences that are **not** state-conditional, and the one that is.
+ *
+ * They live here, and not in `termos.vue`, for a reason that is about testing and
+ * not about tidiness: `node --test` cannot import a `.vue`, so a sentence written
+ * in a template is a sentence no oracle can read. The screen's copy is the
+ * product's copy, and the product's copy is data.
+ */
+export const serproTermScreenCopy = {
+  certificateHeader: 'O e-CNPJ do escritório é o material com que a plataforma assina o termo. O arquivo e a senha ficam cifrados no banco e a API não devolve nenhum dos dois.',
+  signature: 'Pela plataforma, com o e-CNPJ do escritório',
+  readOnly: 'A entrega do certificado é do administrador e do operador do escritório. O seu papel aqui é somente leitura.',
+  /** The file field's help, and it is two strings because the consequence differs. */
+  fileHelpFirstDelivery: 'A API decide pela extensão do nome do arquivo, e não pelo conteúdo — é o que faz um e-CNPJ de verdade passar.',
+  fileHelpReplacing: 'Substitui o certificado guardado: a linha anterior continua no histórico, sem o conteúdo cifrado.',
+  passwordHelp: 'A senha que abre o arquivo. Ela não é guardada no navegador e a API não a devolve.'
+} as const
+
+/**
+ * The screen's header, and the only part of it that changes with the state.
+ *
+ * **The renewal clause is gated on `serproTermReenviado`, and that gate is the
+ * fix.** The first sentence attributes *who* assembles, signs and sends, and that
+ * is the same in all six states — nobody in the account signs anything, whatever
+ * the state. The second says the platform renews what it sent, and that is a
+ * behaviour per state: `refresh()` goes on resubmitting the document in
+ * `pendente`, `validado` and `autenticado`, and returns before `enviar()` in
+ * `vencido` and `recusado`. A header with the renewal in it, rendered in all six,
+ * told a lapsed office that the platform was renewing a term it no longer sends.
+ *
+ * **`hasCertificate` is part of the signature and not of the text, deliberately.**
+ * The sentence says where the signing material comes from, and that is true with
+ * or without a certificate on file — the difference between the two is what
+ * `serproTermGuidance`'s certificate clause says, one block below. Making the
+ * argument `_hasCertificate` would be a lie about the shape, and keeping it named
+ * with a `void` is the note that the reader needs.
+ */
+export function serproTermHeader(state: SerproAuthorizationTermState, hasCertificate: boolean): string {
+  void hasCertificate
+
+  const responsavel = 'Quem monta, assina e envia o termo é a plataforma, com o e-CNPJ do próprio escritório, e ninguém da conta assina nada.'
+
+  if (!serproTermReenviado[state]) {
+    return responsavel
+  }
+
+  return `${responsavel} Depois de enviado, quem renova também é ela.`
+}
+
+export interface SerproTermScreen {
+  header: string
+  certificateHeader: string
+  signature: string
+  /** The badge's label, and the alert's title when the office is asked to act. */
+  badge: string
+  state: string
+  action: { title: string, description: string } | null
+  notice: SerproCertificateNotice | null
+  replacement: { title: string, description: string, label: string } | null
+  removal: { title: string, description: string } | null
+  readOnly: string | null
+  /**
+   * The delivery form's copy, and it is in the enumerator for the same reason the
+   * header is: the two `help` strings make claims about what the API accepts, and
+   * a claim about the API written in a template is a claim no oracle reads.
+   */
+  form: {
+    fileLabel: string
+    fileHelp: string
+    passwordLabel: string
+    passwordHelp: string
+    submitLabel: string
+  }
+}
+
+/**
+ * Every sentence the term screen renders for one (state, certificate) pair.
+ *
+ * **This is the enumerator the consistency oracle reads, and the page renders
+ * from it** — which is the whole point. An oracle that collects the copy from a
+ * second place proves nothing about the screen, and that is how three rounds of
+ * review found only what a reader happened to look at: the sentences that escaped
+ * were the ones in the template, and a template is invisible to a test.
+ *
+ * The `null`s are the blocks the screen does not draw for that pair: no action
+ * alert when nothing is asked, no notice when a certificate is on file, no
+ * replacement paragraph when a request is in its place, no removal confirmation
+ * when nothing was removed yet, and no read-only note when the member can write.
+ *
+ * **What is not in here, and why — the list is exhaustive so this sentence can be
+ * trusted.** The date and metadata values in the two fact lists are readings of
+ * what the API returned, not claims about the system. The block headings ("Termo do
+ * escritório", "Dados do termo", "Certificado do escritório") and the form
+ * affordances (the upload `description`, the password `placeholder`, the error
+ * alert's title) are labels, and a label asserts nothing. The four toasts report
+ * what the request that just happened returned — "Certificado do escritório
+ * entregue", "Não foi possível entregar o certificado" and their removal pair —
+ * and their subject is the request, not the term's lifecycle. What is in here is
+ * **every sentence that makes a claim about what the system does**, which is the
+ * only kind that can contradict a state predicate.
+ */
+export function serproTermScreen(state: SerproAuthorizationTermState, hasCertificate: boolean): SerproTermScreen {
+  const request = serproTermRequest(state, hasCertificate)
+  const presentation = serproTermStatePresentation[state]
+  const guidance = serproTermGuidance(state, hasCertificate)
+  const notice = serproCertificateAsk(state, hasCertificate) ?? serproCertificateMissingNotice(state, hasCertificate)
+
+  return {
+    header: serproTermHeader(state, hasCertificate),
+    certificateHeader: serproTermScreenCopy.certificateHeader,
+    signature: serproTermScreenCopy.signature,
+    badge: presentation.label,
+    state: guidance,
+    action: request === 'certificado' ? { title: presentation.label, description: guidance } : null,
+    notice,
+    replacement: hasCertificate && request === 'nenhuma' ? { ...serproCertificateReplacement } : null,
+    removal: hasCertificate
+      ? { title: serproCertificateRemoval.title, description: serproCertificateRemovalText(state, hasCertificate) }
+      : null,
+    readOnly: !hasCertificate && request === 'certificado' ? serproTermScreenCopy.readOnly : null,
+    form: {
+      fileLabel: hasCertificate ? 'Selecionar novo arquivo' : 'Selecionar arquivo',
+      fileHelp: hasCertificate ? serproTermScreenCopy.fileHelpReplacing : serproTermScreenCopy.fileHelpFirstDelivery,
+      passwordLabel: 'Senha do certificado',
+      passwordHelp: serproTermScreenCopy.passwordHelp,
+      submitLabel: notice?.label ?? serproCertificateReplacement.label
+    }
+  }
+}
 
 /** The total is the sum of the four; `encerrado` is deliberately not in it. */
 export function monitoringCountersTotal(summary: Pick<MonitoringObligationSummary, 'em_dia' | 'processando' | 'pendencias' | 'atencao'>) {
