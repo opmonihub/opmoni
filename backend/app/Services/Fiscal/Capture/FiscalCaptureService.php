@@ -198,7 +198,7 @@ final class FiscalCaptureService
             'last_nsu' => $this->mayAdopt($result, $gaps) ? $result->lastNsu : $from,
             'last_seen_at' => now(),
             'last_success_at' => now(),
-            // Três estados de atenção, uma coluna. O lote incompleto vem
+            // Quatro tokens de atenção, uma coluna. O lote incompleto vem
             // primeiro porque ele descreve um buraco que alguém precisa
             // reconciliar; depois, o consumo indevido — que para o fisco e
             // também é problema do cliente —, a lacuna que esgotou as

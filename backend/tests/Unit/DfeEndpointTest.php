@@ -22,12 +22,17 @@ use Tests\TestCase;
 class DfeEndpointTest extends TestCase
 {
     /**
+     * O bloco de CT-e como o `config` o entrega, que é o serviço que os testes
+     * desta classe manipulam. A conferência não distingue um serviço do outro —
+     * `of()` recebe a fonte como argumento e a lista de chaves é a mesma —, e
+     * por isso o bloco de NF-e é exercitado pelo teste dos blocos configurados.
+     *
      * @return array<string, string>
      */
-    private function bloco(bool $cte = true): array
+    private function bloco(): array
     {
         /** @var array<string, string> $bloco */
-        $bloco = (array) config($cte ? 'fiscal.endpoints.cte_distribuicao' : 'fiscal.endpoints.nfe_distribuicao');
+        $bloco = (array) config('fiscal.endpoints.cte_distribuicao');
 
         return $bloco;
     }

@@ -282,7 +282,7 @@ describe('rótulo dos dez motivos', () => {
   })
 
   it('não derruba a tela com um motivo que o painel não conhece', () => {
-    // O tipo é fechado, e mesmo assim um décimo motivo do backend não pode
+    // O tipo é fechado, e mesmo assim um motivo a mais vindo do backend não pode
     // derrubar o SSR inteiro. Ele aparece com o próprio código, que é a única
     // coisa que o operador consegue comparar com o que a API mandou.
     const reason = 'capture_retry_budget' as FiscalAttentionReason

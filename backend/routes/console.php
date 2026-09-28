@@ -44,10 +44,12 @@ Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();
  * tráfego sem consultar aquela chave — furo conhecido, deixado pela revisão que
  * pôs o gate na fronteira HTTP e o nomeou como acompanhamento. Na **volta
  * atrás**, o oposto: `FiscalReconciliation` e a contagem de lacunas do serviço de
- * captura consultam `cte_enabled`, e é ela que decide se a reconciliação roda e
- * se uma lacuna segurando a posição a segura. Nenhum dos dois lados consulta esta
- * chave, e por isso a agenda ligada com a outra desligada é o estado que a
- * reversão do incidente de um operador produz.
+ * captura consultam `cte_enabled`, e é ela que decide se a reconciliação consulta
+ * e se uma lacuna segurando a posição a segura.
+ *
+ * Nenhum leitor de `cte_enabled` consulta **esta** chave — nem a captura nem a
+ * volta atrás —, e é por isso que a agenda ligada com a outra desligada é um
+ * estado possível e é o estado que a reversão de um incidente produz.
  *
  * Entrada própria, e não uma fusão com a de cima: `--source` fixo é o que
  * impede esta agenda de virar uma segunda captura de NF-e por hora.

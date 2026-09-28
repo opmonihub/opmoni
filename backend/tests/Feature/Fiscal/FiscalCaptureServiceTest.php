@@ -670,8 +670,8 @@ class FiscalCaptureServiceTest extends TestCase
 
         $cursor = $this->cursor($client, FiscalSource::CteDistribuicao);
 
-        // A posição adopted: o documento de trás entrou e a lacuna não segura o
-        // cliente preso nela.
+        // A posição foi adotada: o documento de trás entrou e a lacuna não segura
+        // o cliente preso nela.
         $this->assertSame(200, $cursor->last_nsu);
 
         // E a lacuna continua lá, com a posição nomeada e sem tentativa — a prova
@@ -1083,8 +1083,12 @@ class FiscalCaptureServiceTest extends TestCase
 
     /**
      * Liga um conector falso que registra as chamadas em `$this->pulls` e devolve
-     * — ou levanta — o que o teste preparou. O registro fica só com a fonte de
-     * NF-e, que é a fonte que estes testes capturam.
+     * — ou levanta — o que o teste preparou.
+     *
+     * A fonte é a que o dublê serve, e o padrão é a de NF-e porque é a que a
+     * maioria destes testes captura. Ligar a segunda fonte **acumula** no
+     * registro em vez de substituí-lo: um teste que precisa das duas na mesma
+     * execução liga as duas, e o segundo dublê não pode apagar o primeiro.
      *
      * @param  Closure(): PullResult  $answer
      */

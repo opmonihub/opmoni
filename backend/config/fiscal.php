@@ -107,15 +107,21 @@ return [
      * chave aqui seria mais uma posição para alguém errar e nenhuma proteção a
      * mais.
      *
-     * A captura é a que **não** confere a outra chave:
+     * A **captura** é o caminho que **não** confere a outra chave:
      * `CaptureFiscalDocumentsJob` e `FiscalCaptureService` perguntam ao registro
      * de conectores, nunca a `cte_enabled`, então registrar esta agenda começa
      * tráfego sem consultar aquela chave. Isso é um furo conhecido e não um
      * descuido — a revisão que fechou a porta do botão deixou o gate na
-     * fronteira HTTP e nomeou isto como acompanhamento. A volta atrás é o
-     * caminho que confere a outra chave e não esta (`FiscalReconciliation::
-     * isPaused()`), e é a agenda de CT-e ligada com a volta atrás desligada que
-     * deixa as lacunas paradas, que é o lado seguro.
+     * fronteira HTTP e nomeou isto como acompanhamento.
+     *
+     * A **volta atrás** é o caminho que confere a outra chave e não esta, e ela
+     * tem hoje **dois** leitores: `FiscalReconciliation::isPaused()`, que decide
+     * se a reconciliação consulta, e `FiscalCaptureService::recordGaps()`, que
+     * decide se uma lacuna segurando a posição a segura. As duas perguntas saem
+     * de `FiscalCteGate::isPaused()`, que é a resposta única e o lugar onde a
+     * diferença entre as três decisões está escrita. É a agenda de CT-e ligada
+     * com a volta atrás desligada que deixa as lacunas paradas, que é o lado
+     * seguro.
      *
      * A leitura do texto é a mesma da chave de cima, e pelo mesmo motivo: a
      * entrada existe ou não existe a partir de uma palavra que alguém escreveu,

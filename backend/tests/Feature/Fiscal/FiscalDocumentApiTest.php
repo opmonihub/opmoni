@@ -237,6 +237,38 @@ class FiscalDocumentApiTest extends TestCase
             ->assertJsonPath('data.attention.0.reason', 'gap_abandoned');
     }
 
+    /**
+     * A lacuna pausada chega ao motivo da API pelo caminho real da cobertura, e
+     * é este teste que segura a frase de `FiscalCoverage` que diz que ela **não**
+     * pode virar `capture_failed`.
+     *
+     * A afirmação em prosa não protege nada: apagar o ramo de `gap_paused` em
+     * `motivoDaCaptura()` deixaria a suíte inteira verde — nenhum outro teste
+     * escreve esse token no cursor — e estes clientes apareceriam para o
+     * operador como uma falha qualquer do serviço, que é a leitura errada para
+     * um estado que é uma decisão de instalação e se resolve ligando a chave.
+     */
+    public function test_resumo_marca_lacuna_pausada_sem_vira_falha_de_captura(): void
+    {
+        $account = Account::factory()->create();
+        $pausada = $this->clienteComCertificado($account, 'Cliente 1 Lacuna Pausada');
+
+        $this->cursor($pausada, [
+            'last_run_at' => now(),
+            'last_seen_at' => now(),
+            'last_error' => 'gap_paused',
+        ]);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/summary')
+            // Igual à posição abandonada nos dois eixos: a lacuna não tira o
+            // cliente da cobertura, e a captura dele continua rodando.
+            ->assertOk()
+            ->assertJsonPath('data.coverage.capturable', 1)
+            ->assertJsonCount(1, 'data.attention')
+            ->assertJsonPath('data.attention.0.reason', 'gap_paused');
+    }
+
     public function test_resumo_classifica_falha_de_captura(): void
     {
         $account = Account::factory()->create();

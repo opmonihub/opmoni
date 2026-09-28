@@ -10,7 +10,7 @@ import type {
 } from '../types/fiscal.ts'
 
 /**
- * A apresentação do painel fiscal: os quatro estados da carteira, os nove
+ * A apresentação do painel fiscal: os quatro estados da carteira, os dez
  * motivos de atenção e as leituras que o resumo devolve.
  *
  * Módulo puro por construção — só `import type`, com a extensão explícita,
@@ -418,7 +418,7 @@ const attentionOrder: readonly FiscalAttentionReason[] = [
  * conhece.
  *
  * O tipo é fechado de propósito, e o painel é escrito para o contrato de hoje.
- * Ainda assim, um décimo motivo vindo do backend não pode derrubar a tela
+ * Ainda assim, um décimo primeiro motivo vindo do backend não pode derrubar a tela
  * inteira — um `attentionCopy[reason].label` em `undefined` levaria o SSR
  * inteiro junto. O desconhecido cai no próprio código, que é a única coisa que
  * o operador consegue comparar com o que a API mandou, e é o mesmo caminho que
@@ -649,7 +649,7 @@ export function documentsOverTimeHeader(documents: Pick<FiscalSummary['documents
  * nada, e o operador age diferente nas duas.
  *
  * O `error` entra como frase, do jeito que a coluna o guardou (nome de classe,
- * classificação do conector ou frase fixa), e nunca como um dos nove motivos: o
+ * classificação do conector ou frase fixa), e nunca como um dos dez motivos: o
  * resumo não mandou qual motivo foi, e inventar um aqui seria uma leitura do que
  * a consulta deu.
  */
