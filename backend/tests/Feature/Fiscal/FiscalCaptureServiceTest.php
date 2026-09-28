@@ -639,7 +639,7 @@ class FiscalCaptureServiceTest extends TestCase
      * já escreve no rodapé dela — reconciliação não mexe em `last_run_at` porque
      * nada foi perguntado, e aqui a recusa significa que nada vai ser perguntado.
      */
-    public function test_a_fonte_sem_conetor_nao_deixa_marca_de_execucucao_no_cursor(): void
+    public function test_a_fonte_sem_conector_nao_deixa_marca_de_execucao_no_cursor(): void
     {
         [$client] = $this->tenant(withCertificate: true);
 
@@ -666,7 +666,7 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertSame([], $this->pulls);
     }
 
-    public function test_a_fonte_sem_conetor_nao_altera_o_cursor_que_ja_existe(): void
+    public function test_a_fonte_sem_conector_nao_altera_o_cursor_que_ja_existe(): void
     {
         [$client] = $this->tenant(withCertificate: true);
 
