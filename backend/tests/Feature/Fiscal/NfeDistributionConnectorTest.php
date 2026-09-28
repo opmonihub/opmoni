@@ -634,6 +634,55 @@ class NfeDistributionConnectorTest extends TestCase
         }
     }
 
+    /**
+     * A ordem entre as duas guardas da consulta por posição: uma consulta que
+     * não chegou a existir não pode ser cobrada como consulta que saiu, e é a
+     * vaga do teto que se cobra aqui. Sem esta ordem, apagar uma linha resolveria
+     * o problema do certificado e debitaria o orçamento do CNPJ por uma
+     * requisição que nunca saiu.
+     *
+     * É o mesmo invariante que `CteDistributionConnectorTest` fixa do outro
+     * lado, e ele é do módulo e não de um conector: os dois têm a mesma ordem
+     * porque a trava é a mesma. Só o `assertNothingSent()` não provaria nada
+     * aqui — ele passa com a linha apagada, porque o conector de NF-e aborta
+     * antes por outro motivo.
+     */
+    public function test_a_consulta_por_posicao_sem_certificado_nao_gasta_a_vaga_do_orcamento(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '00000000000191',
+            'state' => 'SP',
+        ]);
+
+        // Dezenove vagas: sobra exatamente uma, e ela é a que a consulta recusada
+        // não pode gastar. Um `reserve()` verdadeiro depois da recusa é o que
+        // prova que a vaga está intacta — com a ordem invertida, a recusa teria
+        // consumido a última e o `reserve()` seguinte devolveria falso.
+        $budget = resolve(FiscalLookupBudget::class);
+
+        for ($tentativa = 1; $tentativa <= 19; $tentativa++) {
+            $budget->reserve($client);
+        }
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_138.xml'), 200)]);
+
+        try {
+            $this->connector()->fetchByNsu($client, 100);
+
+            $this->fail('Cliente sem certificado deveria ser recusado antes da consulta.');
+        } catch (FiscalRequestNotSent) {
+            // esperado: a pre-flight do transporte
+        } finally {
+            Http::assertNothingSent();
+        }
+
+        // Nada saiu para a rede, e nada foi debitado do teto do CNPJ.
+        $this->assertTrue($budget->reserve($client));
+        $this->assertFalse($budget->reserve($client));
+    }
+
     public function test_fetch_by_chave_consulta_pela_chave_e_traz_o_documento(): void
     {
         $client = $this->clientWithCertificate();
