@@ -528,6 +528,17 @@ final class SerproTermSigner
      * `subject`. A comparação é a que fecha o par: o parâmetro tem de ser o
      * documento desta credencial, e não o de outra.
      *
+     * **A comparação é de igualdade e não de não-vazio, e isso é uma escolha
+     * consciente.** A coluna é `NOT NULL` e aceita a string vazia, então uma
+     * linha com `contratante_numero = ''` passaria por aqui com um `sign('')`
+     * que produziria um `destinatario` sem número. A linha é inalcançável: o
+     * `SerproConnectionManager` escreve `contratante_numero` e
+     * `certificate_subject` no mesmo `forceFill`, e os dois saem de um único
+     * `parse()` de um certificado que a identidade só aceita depois de
+     * encontrar um CNPJ que fecha. Guardar contra isso aqui seria uma validação
+     * de uma linha que ninguém consegue construir, e validação que não tem
+     * entrada possível é ruído que a próxima pessoa teria de investigar.
+     *
      * A mensagem é fixa e não nomeia nem o número recusado nem o esperado: os
      * dois são documentos de empresa, e o que se precisa dizer é que a credencial
      * e o termo não falam da mesma empresa — qual dos dois está errado é

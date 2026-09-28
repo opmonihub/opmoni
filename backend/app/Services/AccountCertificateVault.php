@@ -136,7 +136,7 @@ final class AccountCertificateVault
              * reabre o PKCS#12 cifrado com a senha guardada. Segurar a chave em
              * uma requisição de upload só daria a ela um tempo de vida a mais.
              *
-             * O teste `test_o_cofre_abre_o_e_cnpj_uma_vez_e_usa_o_certificado_que_ja_abriu`
+             * O teste `test_o_cofre_extrai_o_documento_do_certificado_que_ja_abriu`
              * fixa o caminho, e `test_a_linha_gravada_descreve_o_mesmo_certificado_que_o_cofre_abriu`
              * fixa que a linha continua descrevendo um arquivo só.
              */

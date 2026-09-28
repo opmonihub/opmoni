@@ -979,10 +979,19 @@ class SerproAccountCertificateTest extends TestCase
             'O cofre tem de pedir o documento ao certificado que o inspect() já devolveu.',
         );
 
-        // A segunda leitura dos mesmos bytes é o que o caso tem de impedir, e
-        // a forma dela é `$this->identity->document($bytes, $password)`.
+        // A segunda leitura dos mesmos bytes é o que o caso tem de impedir, e a
+        // forma dela é uma chamada a `$this->identity->document(`.
+        //
+        // **A ausência é afirmada sem o nome da variável, e isso é o que a
+        // torna estrita.** Com o nome da variável, a checagem seria
+        // `$this->identity->document($bytes` — e uma reintrodução que renomeasse
+        // o argumento, `$this->identity->document($bytesDoArquivo, $senha)`,
+        // passaria por cima dela, reabrindo os bytes sem o teste reclamar. Sem
+        // a variável, a única forma de write que casa é a segunda leitura, e o
+        // `documentFromCertificate(` da linha de cima não casa, porque o prefixo
+        // não é o mesmo: `document(` contra `documentFromCertificate(`.
         $this->assertStringNotContainsString(
-            '$this->identity->document($bytes',
+            '$this->identity->document(',
             $fonte,
             'O cofre voltou a reabrir os bytes para extrair o documento.',
         );

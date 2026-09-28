@@ -206,34 +206,38 @@ a redeploy.
 **The digest's input is the template plus the format constants, and a template-only digest is a gate
 that does not gate.** `SerproTermSigner::formatDigest()` hashes the canonicalized template, with
 every per-office and per-term value replaced by a **fixed plain-ASCII** placeholder, **concatenated
-with the format constants**: the validity period length, the canonicalization algorithm, and the
-invisible-Unicode normalization rule. The join carries a separator or a length prefix that cannot
-occur in either part, because "concatenated in a stable order" on its own leaves a template ending in
-the same bytes a constant begins with ambiguous. The placeholder is ASCII for a reason that is easy to
-get backwards: if a template carried invisible characters, the normalization step would change its
-bytes, and the digest would be sensitive to that step for the wrong reason — the constant would appear
-to be covered by the template when it is the constant that covers it. The constants are in there because measurement says the
-template cannot see them. The period never appears in the document — the model writes only the
+with the format constants**: the validity period length, the canonicalization algorithm, the
+invisible-Unicode normalization rule, and the timezone the term's dates are written in. The join
+carries a separator or a length prefix that cannot occur in either part, because "concatenated in a
+stable order" on its own leaves a template ending in the same bytes a constant begins with
+ambiguous. The placeholder is ASCII for a reason that is easy to get backwards: if a template
+carried invisible characters, the normalization step would change its bytes, and the digest would be
+sensitive to that step for the wrong reason — the constant would appear to be covered by the
+template when it is the constant that covers it. The constants are in there because measurement says
+the template cannot see them. The period never appears in the document — the model writes only the
 computed date, and that date is a per-term placeholder — so moving 30 days to 60 leaves the template
 bytes identical and returns the same digest. The normalization step is a transformation of the
-document, not a mark on the template, so removing it also leaves the template untouched. Two of the
-three values this gate exists to cover are therefore invisible to a template-only digest, and the
-canonicalization algorithm is a third that happens to be harmless: for a document with no namespace
+document, not a mark on the template, so removing it also leaves the template untouched. The
+timezone does not appear in the document at all, and it decides something: near midnight the
+calendar day `dataAssinatura` falls on is the one the timezone says it is, so changing it changes
+the document the provider receives while the template stays byte-identical. Three of the four values
+this gate exists to cover are therefore invisible to a template-only digest, and the
+canonicalization algorithm is a fourth that happens to be harmless: for a document with no namespace
 declaration the exclusive and inclusive forms are byte-identical, so the constant cannot change the
-output at all. An earlier version of this paragraph claimed that "editing the document builder changes
-the digest" and stopped there; that is true only of edits to the template, and the two edits that
-matter most are not template edits. A recorded proof that survives the edit it should have
+output at all. An earlier version of this paragraph claimed that "editing the document builder
+changes the digest" and stopped there; that is true only of edits to the template, and the edits
+that matter most are not template edits. A recorded proof that survives the edit it should have
 invalidated reads as a guarantee, which is worse than having no gate, so the constants are hashed
 rather than trusted to be visible.
 
-The gate is **self-invalidating** for the same reason: change the template or any of the three
+The gate is **self-invalidating** for the same reason: change the template or any of the four
 constants and the digest changes, the comparison stops matching, and issuance re-blocks with nobody
 deciding to block it. A boolean is the obvious cheaper design and it is wrong here, because a
 boolean cannot be invalidated by a change to the format and would keep authorizing a document nobody
 tested.
 
 **What the gate does not cover is the signature envelope, and saying so is part of the decision.** The
-digest sees the term template and three constants. The provider validates the *signed* document, so a
+digest sees the term template and four constants. The provider validates the *signed* document, so a
 change to the transform list, to the `Reference` URI, to the signature algorithm, or to
 `SerproSigner` itself changes the bytes the provider sees and leaves `formatDigest()` untouched — the
 gate re-opens for nobody. That is a real hole and it is not this gate's to close: the envelope is

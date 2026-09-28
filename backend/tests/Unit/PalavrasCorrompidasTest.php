@@ -2,6 +2,9 @@
 
 namespace Tests\Unit;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use Tests\TestCase;
 
 /**
@@ -26,6 +29,18 @@ use Tests\TestCase;
  * positivo em comentário — que se resolve removendo a entrada, como aconteceu
  * com duas delas.
  *
+ * **E "ampliar" foi medido, não presumido.** A extensão óbvia seria um detector
+ * de palavra inglesa, e ela é inviável aqui: o repositório tem comentários
+ * **inteiros** em inglês — `AccountPolicy`, `Client`, `Plan`, `ClientController`,
+ * `UserFactory` —, e a varredura é só de linha de comentário. Medido antes de
+ * decidir: `that` aparece 12 vezes, `from` 11, `should` 5, `are` 5, `where` 4.
+ * Um filtro de inglês não pegaria uma corrupção sem levantar um alarme sobre a
+ * língua que já existe. O que entra na lista, portanto, é palavra da
+ * **corrupção** — palavra isolada em inglês que nenhum comentário deste
+ * repositório usa, e que entra no lugar de um verbo português. `suffer` no
+ * lugar de "sofre" é a forma: um verbo regular em inglês, que nenhuma técnica
+ * de comentário plausível escreveria aqui.
+ *
  * O que este teste **não** faz, e é o limite honesto dele: ele não sabe dizer se
  * uma frase inteira faz sentido. Uma corrupção que produzisse uma frase em
  * português gramatical e com sentido plausível passa, e a revisão humana do diff é
@@ -46,10 +61,11 @@ final class PalavrasCorrompidasTest extends TestCase
      * não viu `perfectlyamente`, que estava um caractere adiante. Por isso a
      * verificação é `str_contains` sobre o radical.
      *
-     * O que segue são radicais de palavra **colada** ou em grafia anglicada, e
-     * não palavra solta: uma palavra isolada em inglês dentro de comentário
-     * português é nome de arquivo, tipo de mídia ou nome de classe, e distingui-la
-     * de tradução pela metade é leitura, não filtro.
+     * Os seis primeiros são radicais de palavra **colada** ou em grafia
+     * anglicada. Os dois últimos são palavra inglesa **isolada** que nenhum
+     * comentário deste repositório usa — a extensão que a medição de "detector
+     * de inglês" permite, e que é onde entra a corrupção da forma que o resto
+     * da lista não alcança.
      *
      * @var array<string, string>
      */
@@ -60,47 +76,53 @@ final class PalavrasCorrompidasTest extends TestCase
         'quedado' => 'colagem de "que" + "dado"',
         'dedado' => 'colagem de "de" + "dado"',
         'nãosó' => 'colagem de "não" + "só"',
+        'suffer' => 'verbo inglês no lugar de um verbo português, que é a forma da corrupção de review anterior',
+        'wrongly' => 'advérbio inglês no lugar de um advérbio português, mesma forma',
     ];
 
     /**
-     * Arquivos de produção e de teste onde comentário em português é a norma.
+     * Onde a varredura procura.
      *
-     * A lista é explícita e não um `glob`, por dois motivos: um filtro por
-     * diretório pegaria `vendor/`, e pegaria o `resources/` do ICP-Brasil; e a
-     * lista é a revisão que este teste tem de fazer quando um arquivo novo
-     * entra no escopo — acrescentar o caminho é o que faz o teste cobri-lo, e
-     * esquecer é o modo dele ficar vazio sem ninguém perceber.
+     * São os diretórios onde **comentário em português é a norma** — código de
+     * produção, teste, migration, factory, configuração e rota. A lista é
+     * derivada do disco, e não escrita à mão, e a razão é o que este arquivo
+     * passou a garantir: uma lista escrita à mão é vazia para todo arquivo que
+     * ninguém lembrou de acrescentar, e esse é o modo de uma guarda sumir sem
+     * que nenhum teste fique vermelho.
      *
      * @var list<string>
      */
-    private const ARQUIVOS = [
-        'app/Models/AccountCertificate.php',
-        'app/Models/Account.php',
-        'app/Policies/AccountCertificatePolicy.php',
-        'app/Http/Controllers/Tenant/AccountCertificateController.php',
-        'app/Http/Requests/Tenant/UploadAccountCertificateRequest.php',
-        'app/Http/Requests/Admin/UpsertSerproConnectionRequest.php',
-        'app/Http/Resources/AccountCertificateResource.php',
-        'app/Services/AccountCertificateVault.php',
-        'app/Services/CertificatePkcs12.php',
-        'app/Services/SerproTermSigner.php',
-        'app/Support/SerproSigner.php',
-        'database/factories/AccountCertificateFactory.php',
-        'database/migrations/2026_09_28_085929_create_account_certificates_table.php',
-        'tests/Feature/SerproAccountCertificateTest.php',
-        'tests/Feature/SerproConnectionApiTest.php',
-        'tests/Unit/SerproTermSignerTest.php',
+    private const DIRETORIOS = ['app', 'bootstrap', 'config', 'database', 'routes', 'tests'];
+
+    /**
+     * Arquivos que a varredura **não** abre, e por quê.
+     *
+     * Cada entrada é uma decisão, e a decisão é o oposto do que era antes: um
+     * arquivo só sai da varredura por aqui, com motivo escrito. Antes a lista
+     * era de inclusão, e nenhum arquivo novo era coberto sem que alguém
+     * acrescentasse o caminho.
+     *
+     * @var list<array{0: string, 1: string}>
+     */
+    private const EXCLUIDOS = [
+        ['tests/Unit/PalavrasCorrompidasTest.php', 'cita as palavras corrompidas como exemplo, e as cita justamente para poder pegá-las'],
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
     {
+        $arquivos = $this->arquivos();
+
+        // A guarda de que a guarda existe. Uma varredura que não abriu arquivo
+        // nenhum passa em silêncio e parece cobertura: é a mesma classe de
+        // defeito da lista vazia, um nível acima. As duas condições abaixo
+        // fecham os dois lados — diretório renomeado, caminho base errado ou
+        // lista de exclusão com entrada errada viram teste vermelho.
+        $this->assertGreaterThan(100, count($arquivos), 'A varredura de comentário não abriu arquivo nenhum: a lista de diretórios está errada.');
+
         $achados = [];
 
-        foreach (self::ARQUIVOS as $relativo) {
-            $caminho = base_path($relativo);
-            $this->assertFileExists($caminho);
-
-            foreach (file($caminho) as $numero => $linha) {
+        foreach ($arquivos as $relativo) {
+            foreach (file($relativo) as $numero => $linha) {
                 // Só comentário: código pode ter identificador em inglês por
                 // decisão, e uma palavra english em `$variable` não é defeito.
                 if (! $this->ehComentario($linha)) {
@@ -116,6 +138,67 @@ final class PalavrasCorrompidasTest extends TestCase
         }
 
         $this->assertSame([], $achados, "Palavra corrompida em comentário:\n".implode("\n", $achados));
+    }
+
+    /**
+     * Toda exclusão aponta para um arquivo que existe, e toda exclusão tem
+     * motivo escrito.
+     *
+     * Sem este caso, uma entrada de `EXCLUIDOS` com o caminho trocado não
+     * exclui nada — o arquivo segue varrido e o teste passa como se a exclusão
+     * valesse —, e uma entrada vazia de motivo é uma exclusão que ninguém
+     * revisou. A lista de exclusão é o lugar onde a cobertura se perde de
+     * propósito, então é o lugar onde precisa de trava.
+     */
+    public function test_toda_exclusao_aponta_para_um_arquivo_que_existe_e_tem_motivo(): void
+    {
+        $this->assertNotSame([], self::EXCLUIDOS, 'A lista de exclusão não pode ser removida sem revisão: ela é a única coisa entre o arquivo e a varredura.');
+
+        foreach (self::EXCLUIDOS as [$relativo, $porque]) {
+            $this->assertFileExists(base_path($relativo), sprintf('A exclusão `%s` aponta para um arquivo que não existe.', $relativo));
+            $this->assertNotSame('', trim($porque), sprintf('A exclusão `%s` precisa do motivo.', $relativo));
+        }
+    }
+
+    /**
+     * Os arquivos da varredura, em caminho relativo à raiz do backend.
+     *
+     * @return list<string>
+     */
+    private function arquivos(): array
+    {
+        $excluidos = array_column(self::EXCLUIDOS, 0);
+        $arquivos = [];
+
+        foreach (self::DIRETORIOS as $diretorio) {
+            $caminho = base_path($diretorio);
+
+            if (! is_dir($caminho)) {
+                continue;
+            }
+
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($caminho, FilesystemIterator::SKIP_DOTS),
+            );
+
+            foreach ($iterator as $arquivo) {
+                if (! $arquivo->isFile() || $arquivo->getExtension() !== 'php') {
+                    continue;
+                }
+
+                $relativo = ltrim(str_replace(base_path(), '', $arquivo->getPathname()), '/');
+
+                if (in_array($relativo, $excluidos, true)) {
+                    continue;
+                }
+
+                $arquivos[] = base_path($relativo);
+            }
+        }
+
+        sort($arquivos);
+
+        return $arquivos;
     }
 
     /**
@@ -142,8 +225,8 @@ final class PalavrasCorrompidasTest extends TestCase
      * `str_contains` e não expressão regular com fronteira de palavra, e a
      * mudança é deliberada: o defeito que a lista caça é a **grafia** errada, e
      * `perfectamente`, `perfeitamente` e `perfectlyamente` têm três fronteiras
-     * diferentes — um limite pegaria a primeira e deixaria passar as outras
-     * duas, que foi o que aconteceu na primeira versão deste arquivo. Com
+     * diferentes — um limite pegaria a primeira e deixaria passar as outras duas,
+     * que foi o que aconteceu na primeira versão deste arquivo. Com
      * radical, as três caem; e o custo é uma palavra portuguesa que contenha o
      * radical por acaso também cair, que é o motivo de os radicais serem curtos.
      */

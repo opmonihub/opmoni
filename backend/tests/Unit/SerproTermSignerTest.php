@@ -287,7 +287,7 @@ class SerproTermSignerTest extends TestCase
      * canonicaliza o `SignedInfo` com a **exclusiva** — a divergência do modelo
      * de referência, que só não aparece porque o termo não declara namespace
      * algum. Um `xmlns` a mais, declarado e não usado, basta para as duas formas
-     * divergirem, e quem suffer com isso é o validador do provedor, que
+     * divergirem, e quem sofre com isso é o validador do provedor, que
      * canonicaliza em inclusiva como manda a `Reference`: a falha aparece lá,
      * com um código opaco, e não aqui.
      */
