@@ -139,14 +139,14 @@ class ClientCertificateVault
     /**
      * O erro de RC2 da leitura compartilhada fala do certificado, e quem sabe de
      * quem é o certificado é o cofre — a leitura não conhece cliente nem
-     * escritório, e é por isso que ela devolve uma `LegacyPkcs12Ciphertext` em
-     * vez de uma `ValidationException` qualquer.
+     * escritório, e é por isso que ela devolve uma `LegacyPkcs12Ciphertext` em vez
+     * de uma `ValidationException` qualquer.
      *
-     * A troca é **só do sujeito**: o prefixo "O certificado" vira "O certificado
-     * do cliente X" e o resto da frase é o mesmo caractere a caractere que era
-     * antes da extração. Cortar em `strlen()` é seguro porque o prefixo são treze
-     * bytes ASCII e `substr` conta bytes — um corte no meio de um caractere de
-     * um byte só produziria lixo, não texto.
+     * A troca do sujeito é feita pela própria exceção, que é quem tem a frase e o
+     * predicado sobre o que a frase começa a dizer. Este cofre só acrescenta
+     * **de quem** é o certificado; cortar a frase aqui por conta própria faria
+     * uma reescrita de texto na unidade compartilhada virar lixo para o cliente
+     * sem nenhum teste reclamar.
      *
      * RC2 é a única mensagem que nomeia alguém porque é a única em que o
      * operador precisa saber de qual cliente é o arquivo para refazer o export
@@ -154,11 +154,6 @@ class ClientCertificateVault
      */
     private function namingTheClient(LegacyPkcs12Ciphertext $exception, Client $client): ValidationException
     {
-        $sentence = $exception->errors()['certificate'][0] ?? '';
-        $prefix = strlen('O certificado');
-
-        return ValidationException::withMessages([
-            'certificate' => sprintf('O certificado do cliente %s', $client->name).substr($sentence, $prefix),
-        ]);
+        return $exception->withSubject(sprintf('O certificado do cliente %s', $client->name));
     }
 }
