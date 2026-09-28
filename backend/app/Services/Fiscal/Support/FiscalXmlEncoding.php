@@ -14,8 +14,17 @@ use RuntimeException;
  * bytes já são UTF-8 não é convertido, mesmo que a declaração diga
  * ISO-8859-1: o `ã` UTF-8 são dois bytes (`0xC3 0xA3`), e o ISO-8859-1 leria
  * esse par como `Ã£`. Converter assim produziria mojibake, que é pior que a
- * etiqueta errada — que a tela não mostra. Quem decide é o byte; a
- * declaração, quando há conversão, é reescrita por coerência.
+ * etiqueta errada. Quem decide é o byte, nunca a etiqueta.
+ *
+ * Já a reescrita da declaração é incondicional, e é o contrato inteiro deste
+ * método: a saída é UTF-8 por contrato, então um rótulo `ISO-8859-1` vira
+ * `UTF-8` em todos os caminhos, inclusive quando os bytes de entrada já
+ * eram UTF-8. A alternativa seria devolver UTF-8 sob um rótulo que declara
+ * ISO-8859-1, ou seja, um documento que mente sobre si mesmo. O corpo nunca
+ * é tocado por essa reescrita — só o rótulo.
+ *
+ * Nada aqui muta a entrada nem toca o que está gravado: a entrada é uma
+ * string, o byte cru continua no banco com o `sha256` calculado sobre ele.
  *
  * A recusa é deliberada: converter `windows-1252` por heurística é o
  * caminho que troca cada byte ímpar por `?` e mostra um documento fiscal

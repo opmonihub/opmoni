@@ -29,10 +29,15 @@ class FiscalXmlEncodingTest extends TestCase
     /**
      * O `ã` em UTF-8 são dois bytes (`0xC3 0xA3`), e o ISO-8859-1 leria esse
      * par como `Ã£`. Converter um documento cujos bytes já são UTF-8
-     * produziria esse mojibake, que é pior do que a etiqueta errada — que a
-     * tela não mostra. Daí a conversão só acontecer quando o byte é mesmo
-     * ISO-8859-1: aqui ela não acontece, e a prova é o par de bytes intacto
-     * na saída, ao lado da declaração reescrita por coerência.
+     * produziria esse mojibake, então a conversão é decidida pelo byte e não
+     * pela etiqueta: aqui ela não acontece, e a prova é o par de bytes
+     * intacto na saída.
+     *
+     * O rótulo, ao contrário, é reescrito em todos os caminhos — inclusive
+     * neste. A saída é UTF-8 por contrato, e um documento que se declara
+     * ISO-8859-1 depois de convertido seria um documento que mente sobre si
+     * mesmo. Este teste fixa as duas metades do contrato de uma vez: corpo
+     * intacto, rótulo coerente.
      */
     public function test_preserva_utf8_que_apenas_declara_iso_8859_1(): void
     {
