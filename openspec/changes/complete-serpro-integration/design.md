@@ -205,9 +205,14 @@ a redeploy.
 
 **The digest's input is the template plus the format constants, and a template-only digest is a gate
 that does not gate.** `SerproTermSigner::formatDigest()` hashes the canonicalized template, with
-every per-office and per-term value replaced by a fixed placeholder, **concatenated with the format
-constants**: the validity period length, the canonicalization algorithm, and the
-invisible-Unicode normalization rule. The constants are in there because measurement says the
+every per-office and per-term value replaced by a **fixed plain-ASCII** placeholder, **concatenated
+with the format constants**: the validity period length, the canonicalization algorithm, and the
+invisible-Unicode normalization rule. The join carries a separator or a length prefix that cannot
+occur in either part, because "concatenated in a stable order" on its own leaves a template ending in
+the same bytes a constant begins with ambiguous. The placeholder is ASCII for a reason that is easy to
+get backwards: if a template carried invisible characters, the normalization step would change its
+bytes, and the digest would be sensitive to that step for the wrong reason — the constant would appear
+to be covered by the template when it is the constant that covers it. The constants are in there because measurement says the
 template cannot see them. The period never appears in the document — the model writes only the
 computed date, and that date is a per-term placeholder — so moving 30 days to 60 leaves the template
 bytes identical and returns the same digest. The normalization step is a transformation of the
@@ -227,14 +232,33 @@ deciding to block it. A boolean is the obvious cheaper design and it is wrong he
 boolean cannot be invalidated by a change to the format and would keep authorizing a document nobody
 tested.
 
+**What the gate does not cover is the signature envelope, and saying so is part of the decision.** The
+digest sees the term template and three constants. The provider validates the *signed* document, so a
+change to the transform list, to the `Reference` URI, to the signature algorithm, or to
+`SerproSigner` itself changes the bytes the provider sees and leaves `formatDigest()` untouched — the
+gate re-opens for nobody. That is a real hole and it is not this gate's to close: the envelope is
+covered by the provenance tests, which assert its structure and verify the signature against the
+certificate's own public key. Those are a different kind of evidence — a measurement, where a contract
+test is an acceptance — and conflating them is how a reader ends up believing the gate covers the
+whole document when it covers the part that carries the office's data.
+
 **The proof is written by one command, and that command is the declared exception to its own rule.**
 The columns are written by no request, no job and no scheduler, and are not `Fillable` on the model
 — the same protection the encrypted columns of that table have. The single sanctioned writer is the
 operator-invoked `serpro:record-term-proof`, which writes both columns together and records an audit
-entry naming the digest it stored. Naming it matters more than it looks: the earlier wording, "no
-automated path writes the columns and an operator records the value", left the requirement with no
-satisfiable mechanism — an artisan command *is* application code, and out-of-band SQL through tinker
-leaves no audit trail, which is the opposite of what a proof is for.
+entry naming the digest it stored. **It takes no digest as input**: the value written is the one
+`formatDigest()` computes at that moment, and an operator who disagrees with it has a bug to fix, not
+a flag to set. A proof that recorded the operator's assertion rather than a measurement would prove
+nothing, and would in fact be worse than no gate, because it would read as evidence.
+
+Naming the command matters more than it looks, and so does how the rule is scoped. The earlier
+wording, "no automated path writes the columns and an operator records the value", left the
+requirement with no satisfiable mechanism: an artisan command *is* application code, and out-of-band
+SQL through tinker leaves no audit trail. The rule that dissolves it is the narrower one the spec now
+states — **no request, no job, no scheduler** — because those are the paths that would write the
+columns on their own initiative. A rule phrased as "no code path" would have to except the very thing
+it forbids, and `tasks.md` briefly restated it that way before this round put it back in step with
+the spec.
 
 The canonicalization decision carries one more safeguard, because it is the only one of the two
 preserved values that can drift without anyone touching the code. The two canonicalizations coincide
