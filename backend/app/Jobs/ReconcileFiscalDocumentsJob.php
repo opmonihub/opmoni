@@ -5,8 +5,10 @@ namespace App\Jobs;
 use App\Enums\FiscalSource;
 use App\Models\Client;
 use App\Services\Fiscal\Capture\FiscalReconciliation;
+use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 
 /**
  * A volta atrás de um cliente: as posições que a captura gravou como lacuna,
@@ -50,16 +52,70 @@ final class ReconcileFiscalDocumentsJob implements ShouldQueue
 
     public function handle(FiscalReconciliation $reconciliation): void
     {
-        // `find` sem `withoutGlobalScopes`: o escopo de conta só existe com
-        // tenant, e o de exclusão lógica é o que impede reconciliar cliente
-        // apagado. Um cliente que saiu da carteira entre o despacho e a
-        // execução é nada, não erro.
-        $client = Client::query()->find($this->clientId);
+        // A conta sai da consulta e a conta do cliente entra no lugar dela. A
+        // leitura do escopo de conta depende da conta corrente, e a conta
+        // corrente é um singleton que o worker de fila nunca zera entre jobs: o
+        // `queue:work` é longo e o valor do job anterior sobrevive, então um
+        // `find` com o escopo ligado devolveria `null` para o cliente de uma
+        // conta que não é a que ficou apontada — e a reconciliação da noite
+        // sumiria sem deixar rastro. O comando já entrega o cliente de todas as
+        // contas; este job não pode desmentir isso uma camada abaixo.
+        //
+        // O escopo de exclusão lógica fica: cliente apagado da carteira não tem
+        // buraco a recuperar, e o que ele traga de fora é nada, não erro.
+        $client = Client::query()
+            ->withoutGlobalScope('account')
+            ->find($this->clientId);
 
         if ($client === null) {
+            $this->reportMissingClient();
+
             return;
         }
 
+        // A conta do cliente passa a ser a conta corrente pelo resto da
+        // execução, e não só para esta consulta. É o mesmo gesto de
+        // `ClientTagAssigner::apply()` e de `ProcessGenerationService::eligibleClients()`:
+        // quem trabalha para uma conta a torna a conta corrente, e o resto do
+        // caminho — o cursor lido e as lacunas lidas — fica coerente com o
+        // cliente, em vez de cada consulta ter de repetir um `where('account_id')`
+        // embaixo de uma conta alheia. E o job seguinte, quando chegar, escreve
+        // a conta dele em cima desta.
+        resolve(CurrentTenant::class)->accountId = (int) $client->account_id;
+
         $reconciliation->run($client, $this->source);
+    }
+
+    /**
+     * O `null` da busca acima tem duas causas e elas não se confundem.
+     *
+     * A linha apagada é o caso previsto: o cliente saiu da carteira entre o
+     * despacho e a execução, não há documento a recuperar e nada a dizer — a
+     * lacuna dele cai junto, em cascata, e a noite segue. A linha que não está
+     * lá de jeito nenhum é outra coisa: ninguém na carteira é dono daquele id, e
+     * uma noite em que a reconciliação não fez nada precisa ter uma linha que
+     * diga por quê.
+     *
+     * A terceira causa — a linha viva que a busca não devolveu — seria defeito
+     * e não estado, e por isso avisa junto: ela só existiria se alguma outra
+     * coisa voltasse a filtrar a consulta, que é exatamente o que esta consulta
+     * existe para não deixar acontecer. A pergunta é feita só neste caminho, e
+     * só quando a busca já falhou.
+     */
+    private function reportMissingClient(): void
+    {
+        $row = Client::withTrashed()
+            ->withoutGlobalScope('account')
+            ->whereKey($this->clientId)
+            ->first();
+
+        if ($row !== null && $row->trashed()) {
+            return;
+        }
+
+        Log::warning('fiscal.reconciliacao.cliente_ausente', [
+            'client_id' => $this->clientId,
+            'source' => $this->source->value,
+        ]);
     }
 }

@@ -18,6 +18,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -36,8 +37,9 @@ use Tests\TestCase;
  *
  * `Bus::fake()` de propósito: o que se verifica no comando é o despacho, nunca
  * a fila. Rodar o job aqui seria repetir o `FiscalReconciliationTest` — com a
- * exceção do caminho que só o job tem, que é o cliente apagado entre o despacho
- * e a execução, e é testado chamando o `handle()` direto.
+ * exceção dos caminhos que só o job tem, que são o cliente apagado entre o
+ * despacho e a execução e a conta corrente que o worker deixou resíduo da noite
+ * anterior, e é por isso que eles são testados chamando o `handle()` direto.
  */
 class ReconcileFiscalDocumentsCommandTest extends TestCase
 {
@@ -248,7 +250,38 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
         $this->assertSame(100, $this->cursorOf($client)->last_nsu);
     }
 
-    public function test_job_de_cliente_apagado_entre_o_despacho_e_a_execucao_nao_faz_nada(): void
+    public function test_o_job_reconcilia_o_cliente_dele_com_a_conta_corrente_residua_de_outra_conta(): void
+    {
+        $contaDoCliente = Account::factory()->create();
+        $outraConta = Account::factory()->create();
+
+        $client = $this->clientWithGap($contaDoCliente, 101);
+        $this->cursor($client);
+
+        // A mesma condição do teste do comando, agora do lado do worker: o job
+        // anterior deixou a conta de outro cliente apontada aqui, e o job desta
+        // noite é do cliente da primeira conta. Se a busca do job obedecer à
+        // conta corrente, ele volta vazio e a lacuna deste cliente passa a noite
+        // inteira sem ser tentada — sem erro, sem log, sem nada.
+        resolve(CurrentTenant::class)->accountId = $outraConta->getKey();
+
+        $connector = $this->bindConnector();
+
+        $this->runJob((int) $client->getKey(), FiscalSource::NfeDistribuicao);
+
+        $this->assertSame([101], $connector->lookups);
+        $this->assertSame(1, $this->gapOf($client, 101)->attempts);
+
+        // E a conta corrente virou a conta do cliente, e não ficou na conta
+        // alheia: é isso que torna coerente o resto do caminho — o cursor e as
+        // lacunas lidas — com o cliente que este job está reconciliando.
+        $this->assertSame(
+            $contaDoCliente->getKey(),
+            resolve(CurrentTenant::class)->accountId,
+        );
+    }
+
+    public function test_cliente_apagado_encerra_o_job_em_silencio(): void
     {
         $account = Account::factory()->create();
         $client = $this->clientWithGap($account, 101);
@@ -260,10 +293,39 @@ class ReconcileFiscalDocumentsCommandTest extends TestCase
 
         $connector = $this->bindConnector();
 
+        Log::spy();
+
         $this->runJob((int) $client->getKey(), FiscalSource::NfeDistribuicao);
 
         $this->assertSame([], $connector->lookups);
         $this->assertDatabaseCount('fiscal_cursors', 0);
+
+        // Saiu da carteira, e a lacuna dele cai junto: é o caso previsto e não
+        // é erro, então nada é logado. Quem precisa de aviso é o `null` do
+        // outro tipo, e ele tem a própria linha.
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_job_de_cliente_que_ninguem_agora_tem_avisa_em_vez_de_sumir(): void
+    {
+        $orphan = 999_999;
+
+        $connector = $this->bindConnector();
+
+        Log::spy();
+
+        $this->runJob($orphan, FiscalSource::NfeDistribuicao);
+
+        $this->assertSame([], $connector->lookups);
+
+        // Ninguém na carteira é dono daquele id. Não é a mesma coisa que cliente
+        // apagado — que é o previsto e é silencioso — e é a única forma de uma
+        // noite em que a reconciliação não fez nada não deixar rastro.
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.cliente_ausente'
+                && $context['client_id'] === $orphan
+                && $context['source'] === FiscalSource::NfeDistribuicao->value);
     }
 
     public function test_o_job_uma_tentativa_so_e_o_timeout_abaixo_da_trava_e_do_worker(): void
