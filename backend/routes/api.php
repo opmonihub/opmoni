@@ -24,6 +24,7 @@ use App\Http\Controllers\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
+use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
 use App\Http\Controllers\Tenant\SerproMonitoringController;
 use App\Http\Controllers\Tenant\TagController;
@@ -111,6 +112,17 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      * rota errada.
      */
     Route::get('serpro/authorization-terms', SerproAuthorizationTermController::class);
+
+    /*
+     * A habilitação da integração é do escritório, e fica aqui — no grupo
+     * `tenant` — porque é a conta corrente que liga e desliga. Escrever é de
+     * `admin` (o `update` da `AccountPolicy` que o Form Request consulta):
+     * desligar um escritório é contenção, e a decisão não é de quem só
+     * opera a rotina. Ler é de qualquer Membro, porque a tela de todos
+     * precisa saber se a integração está ligada.
+     */
+    Route::get('serpro/enablement', [SerproAccountEnablementController::class, 'show']);
+    Route::put('serpro/enablement', [SerproAccountEnablementController::class, 'update']);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);
