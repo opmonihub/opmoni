@@ -40,11 +40,27 @@ use Illuminate\Validation\ValidationException;
  * porque a fila só é lida quando a recusa é de RC2. Aí os dois cofres passam a
  * receber a mesma distinção e a divergência de frase deixa de existir.
  *
- * O ponto de convergência é o mesmo da segunda leitura: hoje
- * `SerproCertificateIdentity` reabre o PFX que esta unidade já abriu
- * (`AccountCertificateVault::replace()`), e a Task 4 tem de remover essa
- * segunda leitura e a divergência de frase na mesma passada. Feitas separadas,
- * as duas passam por testes que não veem a outra.
+ * **A segunda leitura saiu, e a divergência de frase continua aberta.** O
+ * `SerproCertificateIdentity` não reabre mais o PFX que esta unidade já abriu:
+ * o `AccountCertificateVault::replace()` entrega a ele o `cert` que o
+ * `inspect()` devolveu, e a extração do CNPJ vem de `documentFromCertificate()`.
+ * A classificação continua vindo daqui — é o que preserva a detecção de RC2 —, e
+ * a validação do documento continua sendo da identidade, com o
+ * `BrazilianTaxId`. Uma leitura a menos de até 2 MiB por upload, e nenhum
+ * segundo validador de CNPJ.
+ *
+ * O que **não** foi resolvido é a frase, e ela é um trabalho à parte. As duas
+ * metades eram pedidas para convergir na mesma passada porque estão em
+ * arquivos que não podem ser alterados juntos, e porque convergi-las exige
+ * mudar o **contrato** desta unidade — que hoje só sabe dizer RC2 quando tem
+ * byte de RC2, e precisaria distinguir "senha errada" de "algoritmo legado não
+ * suportado" para o chamador ter algo a fazer. Mudar esse contrato é uma mudança
+ * de comportamento de `inspect()` para os dois cofres ao mesmo tempo, com a suíte
+ * dos dois rodando, e o `AccountCertificateVault` foi escrito sabendo disso: a
+ * recusa de hoje nomeia as três causas que ele **não** consegue distinguir, em
+ * vez de jurar qual foi. Enquanto a frase não convergir, o `TODO` acima
+ * continua verdadeiro — a parte dele que fala da segunda leitura é que não vale
+ * mais.
  *
  * **A classificação da falha é decidida aqui e em mais lugar nenhum.** Senha
  * errada e arquivo ilegível saem pela chave `password`; o container legado sai

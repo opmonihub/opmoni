@@ -40,6 +40,14 @@ use DOMElement;
  * briga com o papel `contratante` que o próprio modelo dá ao elemento
  * `destinatario`, e é a leitura do modelo que o código segue.
  *
+ * **O par que identifica o contratante é conferido, e não montado.** O número
+ * chega por parâmetro — a interface é do plano e o parâmetro fica —, o nome sai
+ * do certificado da credencial de plataforma, e as duas fontes são cruzadas uma
+ * contra a outra antes de existir qualquer byte do documento. Sem a conferência,
+ * um chamador que passasse o CNPJ do escritório produziria um termo que nomeia a
+ * plataforma com o número de outra empresa: documento jurídico errado, sem
+ * exceção, sem log e sem nada no XML que parecesse fora do lugar.
+ *
  * **Os bytes são o documento.** A renovação reenvia exatamente os mesmos bytes e
  * o provedor responde `304` com o token no `ETag` sem re-assinar nada. Um termo
  * que mudasse de byte entre a persistência e o reenvio seria outro documento, e
@@ -50,17 +58,19 @@ use DOMElement;
  * `America/Sao_Paulo` e as duas chamadas de Carbon do mesmo instante dão as
  * mesmas datas, de modo que a montagem é reprodutível byte a byte.
  *
- * **As três constantes de formato são declarações, e o gate as lê.** O período de
- * vigência não aparece no documento — o modelo escreve só a data computada, e a
- * data é valor por termo —, e a normalização é transformação do documento, não
- * marca no template. Um digest do template sozinho ficaria igual depois de
- * `30` virar `60` ou depois de a normalização ser removida, e a prova de
- * contrato gravada continuaria autorizando um documento que ninguém testou. Por
- * isso `formatDigest()` hasheia o template canonicalizado concatenado com as
- * três constantes, com prefixo de comprimento, em ordem fixa.
+ * **As quatro constantes de formato são declarações, e o gate as lê.** O período
+ * de vigência não aparece no documento — o modelo escreve só a data computada, e
+ * a data é valor por termo —, a normalização é transformação do documento, não
+ * marca no template, e o fuso também não aparece: o que ele muda é o dia da
+ * `dataAssinatura`, que é valor por termo. Um digest do template sozinho ficaria
+ * igual depois de `30` virar `60`, depois de a normalização ser removida e
+ * depois de o fuso mudar, e a prova de contrato gravada continuaria autorizando
+ * um documento que ninguém testou. Por isso `formatDigest()` hasheia o template
+ * canonicalizado concatenado com as quatro constantes, com prefixo de
+ * comprimento, em ordem fixa.
  *
  * **O que esse digest não cobre, e é preciso saber onde termina.** Ele cobre o
- * template do termo e as três constantes. Ele **não** cobre o envelope da
+ * template do termo e as quatro constantes. Ele **não** cobre o envelope da
  * assinatura: o provedor valida o documento assinado, então mudar a lista de
  * transforms, a URI da `Reference`, o algoritmo de assinatura ou a própria
  * `SerproSigner` muda os bytes que o provedor vê e deixa `formatDigest()`
@@ -97,6 +107,13 @@ final class SerproTermSigner
      * neste documento porque o termo não declara namespace algum — que é o que
      * o teste de divergência de canonicalização prova, e o que a raiz sem
      * namespace é que garante.
+     *
+     * **O URI está repetido de propósito.** A `SerproSigner` tem o mesmo literal
+     * em `CANONICALIZATION`, e as duas cópias não devem virar uma: o teste que
+     * amarra o algoritmo **declarado no documento assinado** a esta constante é
+     * o que pega uma troca feita de um lado só. Uma constante compartilhada
+     * mudaria os dois lados junto e o teste ficaria cego — que é a forma mais
+     * comum de um teste que passa sem provar nada.
      */
     public const ALGORITMO_CANONICALIZACAO = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
 
@@ -124,8 +141,17 @@ final class SerproTermSigner
     /** O prefixo da regra de normalização, que o código corta para ler os pontos. */
     private const PREFIXO_REGRA = 'remove:';
 
-    /** O fuso em que as duas datas do termo são escritas. */
-    private const FUSO = 'America/Sao_Paulo';
+    /**
+     * O fuso em que as duas datas do termo são escritas.
+     *
+     * Entra no digest pelo mesmo motivo das outras três: não aparece em lugar
+     * nenhum do template, e o que ele muda é a `dataAssinatura` — que é valor
+     * por termo, com placeholder. Na fronteira da meia-noite de São Paulo o dia
+     * da assinatura muda, o documento muda, e o digest do formato não diria
+     * nada disso. Uma prova de contrato já gravada continuaria autorizando o
+     * termo novo, que é exatamente a falha que o gate existe para impedir.
+     */
+    public const FUSO = 'America/Sao_Paulo';
 
     /** O identificador do sistema, literal do modelo. */
     private const SISTEMA = 'API Integra Contador';
@@ -155,22 +181,37 @@ final class SerproTermSigner
      *
      * @param  string  $contractingDocument  o documento do **contratante**, que é
      *                                       o da plataforma e nunca o do
-     *                                       escritório: os dois são empresas
-     *                                       diferentes e confundi-los produz um
-     *                                       termo que nomeia a parte errada.
+     *                                       escritório. A interface é do plano e
+     *                                       o parâmetro fica, mas ele não é
+     *                                       aceito por confiança: é conferido
+     *                                       contra `contratante_numero` da
+     *                                       credencial, e um documento que não
+     *                                       bate com ela interrompe a assinatura.
      *
-     * @throws SerproException quando não há credencial de plataforma para nomear
-     *                         o contratante, ou quando a assinatura falha. Nenhuma
-     *                         das mensagens carrega o termo, o certificado ou a
-     *                         senha.
+     * @throws SerproException quando não há credencial de plataforma, quando o
+     *                         documento recebido não é o dela, ou quando a
+     *                         assinatura falha. Nenhuma das mensagens carrega o
+     *                         termo, o certificado ou a senha.
      */
     public function sign(Account $account, AccountCertificate $certificate, string $contractingDocument): string
     {
+        // A credencial vem antes do documento: ela é quem diz o que o
+        // contratante é, e tanto o número quanto o nome saem dela. Conferir o
+        // número contra ela é o que impede o termo de casar o nome de uma
+        // empresa com o documento de outra.
+        $conexao = SerproConnection::current();
+
+        if ($conexao === null) {
+            throw new SerproException('Não há credencial de plataforma para nomear o contratante do termo.', SerproFailure::NotSent, 0);
+        }
+
+        $this->confirmaContratante($contractingDocument, $conexao);
+
         $documento = self::document(array_merge([
             'contratante_numero' => $contractingDocument,
-            'contratante_nome' => $this->nomeDoContratante(),
+            'contratante_nome' => $this->nomeDoContratante($conexao),
             'autor_numero' => $certificate->document,
-            'autor_nome' => $account->name,
+            'autor_nome' => $this->nomeDoEscritorio($account),
         ], $this->datas()));
 
         /*
@@ -217,15 +258,15 @@ final class SerproTermSigner
 
     /**
      * A impressão digital do **formato** do termo, e a entrada do gate de
-     * emissão: o SHA-256 do template canonicalizado concatenado com as três
+     * emissão: o SHA-256 do template canonicalizado concatenado com as quatro
      * constantes de formato — o comprimento do período de vigência, o algoritmo
-     * de canonicalização e a regra de normalização — em ordem fixa e com prefixo
-     * de comprimento, para que nenhum template concate ambiguamente com uma
-     * constante.
+     * de canonicalização, a regra de normalização e o fuso das datas — em ordem
+     * fixa e com prefixo de comprimento, para que nenhum template concate
+     * ambiguamente com uma constante.
      *
      * **Não é o hash de um termo nem o de uma instância**: é o do formato, e
      * por isso não muda de escritório para escritório. Mudar o template ou
-     * qualquer uma das três constantes muda o digest, a comparação com a prova
+     * qualquer uma das quatro constantes muda o digest, a comparação com a prova
      * gravada deixa de bater e a emissão reabre o gate sem ninguém decidir
      * isso — que é a razão de o gate ser esse e não uma marca booleana.
      */
@@ -236,6 +277,7 @@ final class SerproTermSigner
             (string) self::PERIODO_VIGENCIA_DAYS,
             self::ALGORITMO_CANONICALIZACAO,
             self::REGRA_NORMALIZACAO,
+            self::FUSO,
         ]));
     }
 
@@ -410,6 +452,33 @@ final class SerproTermSigner
     }
 
     /**
+     * A razão social do escritório, que é o autor do pedido de dados.
+     *
+     * **Isto é uma escolha, e a escolha é o nome da conta — não o `subject` do
+     * certificado.** O modelo de referência pede "o nome exato do CPF ou CNPJ de
+     * quem vai assinar", e o `subject` gravado do e-CNPJ é a fonte mais próxima
+     * desse "exato". Ele foi recusado por um motivo prático: é uma distinguished
+     * name cujo formato varia com quem montou o certificado — vírgula em um
+     * emissor, barra em outro — e o mesmo corte de DN que a razão social da
+     * plataforma precisa seria uma heurística aplicada ao nome de uma pessoa
+     * jurídica que o escritório recognise. O `Account.name` é o nome com que a
+     * conta é conhecida no produto, e é o que alguém que procura o termo procura.
+     *
+     * **A pergunta que isto deixa em aberto, e que ninguém respondeu:** o `CN`
+     * do certificado e o `Account.name` podem ser nomes diferentes da mesma
+     * empresa, e nada no cofre os compara — o cofre grava o `document`, extraído
+     * do certificado, e nunca o confere contra um nome. Se o provedor recusar um
+     * termo por divergência de nome, o lugar de procurar é aqui, e a correção é
+     * trocar a fonte pelo `subject` do certificado. Fica escrito porque é
+     * exatamente o tipo de substituição que um leitor mais tarde faz sem pensar,
+     * e o motivo de não ser o padrão não é o do modelo — é o da DN.
+     */
+    private function nomeDoEscritorio(Account $account): string
+    {
+        return $account->name;
+    }
+
+    /**
      * A razão social do contratante, que é a plataforma.
      *
      * **De onde vem, e por que não é um campo próprio.** A conta tem coluna de
@@ -425,12 +494,11 @@ final class SerproTermSigner
      * rabo tem catorze posições de documento, para que uma razão social com dois
      * pontos não seja partida ao meio.
      */
-    private function nomeDoContratante(): string
+    private function nomeDoContratante(SerproConnection $conexao): string
     {
-        $conexao = SerproConnection::current();
-        $assunto = trim((string) $conexao?->certificate_subject);
+        $assunto = trim((string) $conexao->certificate_subject);
 
-        if ($conexao === null || $assunto === '') {
+        if ($assunto === '') {
             throw new SerproException('Não há credencial de plataforma para nomear o contratante do termo.', SerproFailure::NotSent, 0);
         }
 
@@ -441,6 +509,44 @@ final class SerproTermSigner
         }
 
         return $nome;
+    }
+
+    /**
+     * Confere que o número do contratante é o desta credencial de plataforma.
+     *
+     * **O número e o nome saem de fontes diferentes, e é por isso que o número
+     * é conferido.** O nome vem do `certificate_subject` desta linha, lido e
+     * cortado; o número vem do parâmetro de quem chama. Sem a conferência, um
+     * chamador que passasse o CNPJ do escritório produziria um termo cujo
+     * `destinatario` carregaria **o número de uma empresa com a razão social de
+     * outra** — sem exceção, sem log, e sem nada no documento que parecesse
+     * errado para quem lê. Um termo é documento jurídico, e um documento que
+     * nomeia a parte errada é pior do que um termo que não existe.
+     *
+     * A linha já guarda `contratante_numero`, extraído do próprio certificado da
+     * plataforma no momento em que ele foi enviado — o mesmo lugar de onde vem o
+     * `subject`. A comparação é a que fecha o par: o parâmetro tem de ser o
+     * documento desta credencial, e não o de outra.
+     *
+     * A mensagem é fixa e não nomeia nem o número recusado nem o esperado: os
+     * dois são documentos de empresa, e o que se precisa dizer é que a credencial
+     * e o termo não falam da mesma empresa — qual dos dois está errado é
+     * informação que só a credencial tem.
+     *
+     * @throws SerproException quando o documento recebido não é o da credencial
+     *                         de plataforma que nomeia o termo.
+     */
+    private function confirmaContratante(string $contractingDocument, SerproConnection $conexao): void
+    {
+        if ($contractingDocument === (string) $conexao->contratante_numero) {
+            return;
+        }
+
+        throw new SerproException(
+            'O documento do contratante não é o da credencial de plataforma: o termo nomearia uma empresa com o nome de outra.',
+            SerproFailure::NotSent,
+            0,
+        );
     }
 
     private function razaoSocial(string $assunto): string

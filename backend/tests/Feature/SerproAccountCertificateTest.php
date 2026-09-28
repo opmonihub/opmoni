@@ -888,22 +888,22 @@ class SerproAccountCertificateTest extends TestCase
     }
 
     /**
-     * O cofre abre o mesmo arquivo duas vezes, e o que se fixa aqui é aquilo em
-     * que as duas leituras podem divergir.
+     * Tudo o que a linha grava vem do mesmo arquivo, e a fonte de cada campo
+     * importa porque a convergência das duas leituras aconteceu.
      *
-     * `CertificatePkcs12::inspect()` devolve metadados, e o
-     * `SerproCertificateIdentity` reabre os mesmos bytes para extrair o
-     * documento — que é a única coisa que só ele sabe ler. Os dois leem o mesmo
-     * certificado, então tudo o que a linha grava tem de descrever **o mesmo
-     * arquivo**: o `sha256` dos bytes enviados, o `subject` e o número de série
-     * que o certificado declara, a validade, e o CNPJ de dentro dele.
+     * `CertificatePkcs12::inspect()` abre o PKCS#12 e devolve metadados **e** o
+     * certificado, e o `SerproCertificateIdentity` extrai o documento desse
+     * certificado já aberto — a segunda leitura dos mesmos bytes saiu. O
+     * caminho agora é um só, e o que este caso fixa é que ele continua
+     * descrevendo **um** arquivo: o `sha256` dos bytes enviados, o `subject` e o
+     * número de série que o certificado declara, a validade, e o CNPJ de dentro
+     * dele.
      *
-     * A divergência que este teste caça é a forma silenciosa do defeito: se as
-     * duas leituras algum dia enxergarem certificados diferentes, a linha
-     * passaria a descrever um e-CNPJ que ninguém assinou, e nada na tela mostraria
-     * isso — o `document` viria de um arquivo e o `sha256` de outro.
+     * A divergência que este teste caça é a forma silenciosa do defeito: se o
+     * `document` viesse de um certificado e o `sha256` de outro, a linha passaria
+     * a descrever um e-CNPJ que ninguém assinou, e nada na tela mostraria isso.
      */
-    public function test_a_linha_gravada_descreve_o_mesmo_certificado_que_as_duas_leituras_viram(): void
+    public function test_a_linha_gravada_descreve_o_mesmo_certificado_que_o_cofre_abriu(): void
     {
         $conta = Account::factory()->create();
         ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
@@ -944,6 +944,48 @@ class SerproAccountCertificateTest extends TestCase
         // `subject`, e é dele que a linha guarda o valor.
         $this->assertStringContainsString(self::CNPJ, (string) $linha->subject);
         $this->assertSame(self::CNPJ, $linha->document);
+    }
+
+    /**
+     * O cofre abre o e-CNPJ **uma vez**, e é isso que este caso trava.
+     *
+     * `CertificatePkcs12::inspect()` já devolve `cert` e `pkey` e já classificou
+     * a leitura — inclusive o container legado, que é a única coisa que o
+     * `SerproCertificateIdentity` não sabe fazer. Reabrir os mesmos bytes para
+     * extrair o CNPJ custava um segundo `openssl_pkcs12_read` de até 2 MiB por
+     * upload, e o ganho era zero: as duas leituras viam o mesmo certificado.
+     *
+     * **A asserção é sobre o código, e não sobre o resultado, e a razão está
+     * escrita porque ela é incomum.** Um teste que conferisse o `document`
+     * gravado passaria com as duas leituras: as duas devolvem o mesmo
+     * documento, e é por isso que o custo — que era o defeito — não aparece
+     * em lugar nenhum do resultado. Medir a contagem de parse exigiria um dublê
+     * da identidade, e ela é `final`: nem o `Mockery` a substitui nem uma
+     * subclasse a estende. Em vez de afrouxar o `final` por causa de um
+     * teste, o que fica é a leitura da fonte, e ela pega o que importa: uma
+     * volta à segunda leitura. O comportamento — que a linha grava o documento
+     * do certificado certo — é de
+     * `test_a_linha_gravada_descreve_o_mesmo_certificado_que_o_cofre_abriu`, e
+     * o contrato das duas entradas da identidade é de
+     * `Tests\Unit\SerproCertificateIdentityTest`.
+     */
+    public function test_o_cofre_extrai_o_documento_do_certificado_que_ja_abriu(): void
+    {
+        $fonte = (string) file_get_contents(app_path('Services/AccountCertificateVault.php'));
+
+        $this->assertStringContainsString(
+            '$this->identity->documentFromCertificate($inspected[\'cert\'])',
+            $fonte,
+            'O cofre tem de pedir o documento ao certificado que o inspect() já devolveu.',
+        );
+
+        // A segunda leitura dos mesmos bytes é o que o caso tem de impedir, e
+        // a forma dela é `$this->identity->document($bytes, $password)`.
+        $this->assertStringNotContainsString(
+            '$this->identity->document($bytes',
+            $fonte,
+            'O cofre voltou a reabrir os bytes para extrair o documento.',
+        );
     }
 
     /**

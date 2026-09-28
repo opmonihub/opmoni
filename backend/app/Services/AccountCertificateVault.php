@@ -107,15 +107,15 @@ final class AccountCertificateVault
 
         try {
             /*
-             * **O arquivo é aberto duas vezes, e é de propósito neste round.**
+             * **O arquivo é aberto uma vez, e a identidade lê o que já foi
+             * aberto.**
              *
-             * `inspect()` devolve `cert` e `pkey` e este cofre descarta os dois,
-             * e a linha seguinte reabre os mesmos bytes para extrair o documento
-             * — que é a única coisa que o `SerproCertificateIdentity` sabe ler e
-             * o `CertificatePkcs12` não. Um e-CNPJ de verdade, de até 2 MiB, é
-             * portanto parseado duas vezes por upload.
+             * `inspect()` devolve `cert` e `pkey` além dos metadados, e este
+             * cofre entrega o `cert` à identidade em vez de descartá-lo. A
+             * segunda leitura dos mesmos bytes saiu: um e-CNPJ de verdade, de
+             * até 2 MiB, é parseado uma vez por upload.
              *
-             * As três saídas possíveis, e por que a segunda foi escolhida:
+             * As três saídas possíveis, e por que a terceira foi a escolhida:
              *
              * 1. **Usar só o `parse()` do `SerproCertificateIdentity`.** Perde a
              *    detecção de RC2 — que é o `LegacyPkcs12Ciphertext` —, e com ela a
@@ -125,18 +125,20 @@ final class AccountCertificateVault
              *    escrever um segundo validador de CNPJ, que é a coisa que o
              *    `SerproCertificateIdentity` existe para não acontecer, e é o
              *    `BrazilianTaxId` que confere o dígito alfanumérico. Não.
-             * 3. **Aceitar as duas leituras.** É o que está aqui.
+             * 3. **Passar o certificado aberto para a identidade extrair o
+             *    documento dele.** É o que está aqui: a classificação continua
+             *    vindo do `inspect()` — inclusive o container legado —, e a
+             *    extração do CNPJ continua sendo da identidade, que é quem sabe
+             *    ler documento. Nenhuma das duas perdeu o que só ela sabe.
              *
-             * O custo é uma leitura a mais em um upload que a conta faz **uma
-             * vez na vida** — o e-CNPJ é handover único, não fluxo. E a
-             * convergência das duas unidades é trabalho da Task 4, que remove a
-             * segunda leitura: o `SerproCertificateIdentity` passa a receber o
-             * certificado já aberto e a validar o que só ele sabe. O teste
-             * `test_a_linha_gravada_descreve_o_mesmo_certificado_que_as_duas_leituras_viram`
-             * é o que segura a direção enquanto isso não acontece: ele fixa que
-             * tudo o que a linha grava descreve **o mesmo** arquivo, que é o que
-             * quebra se um dia as duas leituras enxergarem certificados
-             * diferentes.
+             * A chave privada que `inspect()` também devolve continua sem uso
+             * aqui, e é o certo: a assinatura acontece em outro processo, que
+             * reabre o PKCS#12 cifrado com a senha guardada. Segurar a chave em
+             * uma requisição de upload só daria a ela um tempo de vida a mais.
+             *
+             * O teste `test_o_cofre_abre_o_e_cnpj_uma_vez_e_usa_o_certificado_que_ja_abriu`
+             * fixa o caminho, e `test_a_linha_gravada_descreve_o_mesmo_certificado_que_o_cofre_abriu`
+             * fixa que a linha continua descrevendo um arquivo só.
              */
             $inspected = $this->pkcs12->inspect($bytes, $password);
 
@@ -145,7 +147,7 @@ final class AccountCertificateVault
             // O documento é o que está dentro do certificado, nunca o que veio no
             // formulário — e a identidade é quem valida que ele fecha, porque
             // CNPJ alfanumérico não se confere com uma segunda conta aqui.
-            $document = $this->identity->document($bytes, $password);
+            $document = $this->identity->documentFromCertificate($inspected['cert']);
 
             $attributes = [
                 'document' => $document,
@@ -298,7 +300,8 @@ final class AccountCertificateVault
      * para extrair o documento, recusa com a frase **dele**. É de propósito que
      * as duas coisas sejam verdade ao mesmo tempo: esta vem primeiro e é a que o
      * escritório lê, e a do plano 01 continua ali como a segunda tranca do mesmo
-     * cadeado.
+     * cadeado — ainda que ela venha do certificado já aberto, e não de uma
+     * segunda leitura dos bytes.
      *
      * @throws ValidationException
      */

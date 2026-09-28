@@ -23,10 +23,68 @@ use Illuminate\Validation\ValidationException;
  * serviço não guarda estado: nada além dos campos do contrato sai daqui, e a
  * vigência dos bytes é do escopo de quem os tem em mãos — zerar uma cópia
  * local da senha não apaga nada da memória, então nem fingimos que apaga.
+ *
+ * **São dois caminhos de entrada e uma validação só.** `document()` recebe os
+ * bytes crus e abre o container; `documentFromCertificate()` recebe o
+ * certificado que quem já abriu o container tem em mãos. A extração do CNPJ é a
+ * mesma nos dois — `contractingDocument()`, com o `BrazilianTaxId` conferindo o
+ * dígito —, porque um segundo validador de CNPJ aqui seria justamente o defeito
+ * que a existência desta classe evita. O segundo caminho não é uma atalho
+ * mais permissivo: ele confere a mesma vigência e recusa com as mesmas três
+ * causas.
  */
 final class SerproCertificateIdentity
 {
     public function __construct(private BrazilianTaxId $taxId) {}
+
+    /**
+     * O documento a partir de um certificado **já aberto**.
+     *
+     * É o mesmo caminho de leitura com um degrau a menos, e ele existe por um
+     * motivo concreto: quem já tem o PKCS#12 aberto não deveria abri-lo de novo
+     * só para chegar ao mesmo `openssl_x509_parse()`. O `AccountCertificateVault`
+     * recebia o certificado de `CertificatePkcs12::inspect()` — que já o tinha
+     * lido e já o tinha classificado, inclusive o container legado — e o
+     * descartava para reabrir os mesmos bytes, de até 2 MiB, por upload.
+     *
+     * **A validação é a mesma, e é aqui que ela mora.** O que só esta classe
+     * sabe fazer é conferir o CNPJ com o `BrazilianTaxId` — inclusive o dígito
+     * alfanumérico da RFB IN 2.119/2022 —, e um segundo validador de CNPJ é
+     * exatamente o defeito que a existência desta classe evita. Por isso este
+     * método não extrai nada: ele entrega os metadados do certificado ao mesmo
+     * `contractingDocument()` que o caminho dos bytes usa.
+     *
+     * A vigência é conferida aqui tanto quanto no caminho dos bytes, para que o
+     * método novo não seja um contrato mais frouxo que o antigo. O cofre do
+     * escritório recusa antes, com a frase dele — as duas trancas continuam, e a
+     * ordem entre elas não muda.
+     *
+     * @param  string  $certificate  o certificado X.509 em PEM, o `cert` que
+     *                               `openssl_pkcs12_read` devolve
+     *
+     * @throws ValidationException quando o texto não é um certificado legível,
+     *                             ele está vencido ou não carrega um CNPJ único.
+     */
+    public function documentFromCertificate(string $certificate): string
+    {
+        $this->flushOpenSslErrors();
+
+        $metadata = openssl_x509_parse($certificate);
+
+        if (! is_array($metadata) || ! isset($metadata['validFrom_time_t'], $metadata['validTo_time_t'])) {
+            throw ValidationException::withMessages([
+                'certificate' => 'O certificado do contratante não contém metadados válidos.',
+            ]);
+        }
+
+        if (Carbon::createFromTimestamp((int) $metadata['validTo_time_t'])->isPast()) {
+            throw ValidationException::withMessages([
+                'certificate' => 'O certificado do contratante está vencido.',
+            ]);
+        }
+
+        return $this->contractingDocument($metadata);
+    }
 
     /**
      * @throws ValidationException quando o PFX não abre, o certificado está

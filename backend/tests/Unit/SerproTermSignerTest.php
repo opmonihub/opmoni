@@ -34,17 +34,17 @@ use Tests\TestCase;
  * Por isso a normalização acontece **antes** da assinatura, nenhuma
  * normalização acontece depois, e nada reserializa o resultado.
  *
- * **As três constantes de formato são declarações, e declaração não é
+ * **As quatro constantes de formato são declarações, e declaração não é
  * derivação.** O digest do gate lê o template do termo concatenado com o
- * período de vigência, o algoritmo de canonicalização e a regra de
- * normalização — porque duas delas não aparecem em lugar nenhum do documento, e
- * por isso um gate que só lesse o template ficaria aberto depois de uma mudança
- * que o mudaria. Ler as constantes é o necessário e não é o suficiente: o que
- * interessa é que a assinatura **use** o valor declarado, e é isso que os três
- * casos de vínculo aqui testam — a vigência emitida sai da constante de
- * período, o algoritmo declarado no `SignedInfo` é a constante de
- * canonicalização, e a regra nomeia exatamente os caracteres que saem do
- * documento.
+ * período de vigência, o algoritmo de canonicalização, a regra de normalização
+ * e o fuso das datas — porque nenhuma delas aparece no documento, e por isso
+ * um gate que só lesse o template ficaria aberto depois de uma mudança que o
+ * mudaria. Ler as constantes é o necessário e não é o suficiente: o que
+ * interessa é que a assinatura **use** o valor declarado, e é isso que os casos
+ * de vínculo aqui testam — a vigência emitida sai da constante de período, o
+ * algoritmo declarado no `SignedInfo` é a constante de canonicalização, a regra
+ * nomeia exatamente os caracteres que saem do documento, e a data sai no fuso
+ * declarado.
  *
  * O e-CNPJ é gerado em tempo de execução e não é versionado: `*.pfx` e `*.p12`
  * estão no `.gitignore` da raiz, e a regra é do arquivo inteiro, não do caso.
@@ -235,6 +235,86 @@ class SerproTermSignerTest extends TestCase
         );
     }
 
+    /**
+     * O `KeyInfo` é onde um terceiro decide em quem confiar.
+     *
+     * A assinatura já é conferida contra a chave do PKCS#12 que a rotina usou, e
+     * isso prova que a conta fecha. Não prova que o **documento** leva o
+     * certificado certo: um validador não tem os parâmetros de quem assinou — ele
+     * lê o `X509Certificate` que está no documento e confere a assinatura contra
+     * a chave pública que encontrou ali. Se o `KeyInfo` trouxesse outro
+     * certificado, a assinatura deixaria de fechar para quem valida, e o
+     * documento é enviado ao provedor justamente para ser validado por ele.
+     */
+    public function test_o_x509_do_termo_assinado_e_o_certificado_do_escritorio(): void
+    {
+        [$conta, $certificado] = $this->escritorio('Escritório de Teste');
+
+        $documento = $this->parse($this->assinar($conta, $certificado));
+
+        $x509 = $this->child(
+            $this->child($this->child($this->signature($documento), 'KeyInfo'), 'X509Data'),
+            'X509Certificate',
+        );
+
+        $doTermo = openssl_x509_parse($this->pemFrom(trim($x509->textContent)));
+        $this->assertIsArray($doTermo, 'O X509Certificate do termo deveria ser um certificado legível.');
+
+        $lido = [];
+        $this->assertTrue(openssl_pkcs12_read((string) self::$pfx, $lido, self::PASSWORD));
+        $doPfx = openssl_x509_parse($lido['cert']);
+        $this->assertIsArray($doPfx);
+
+        // O par que decide é o titular e a chave pública. O número de série
+        // entra como confirmação de que é o mesmo certificado e não outro com o
+        // mesmo titular — e o que realmente amarra é a chave, que é a que a
+        // assinatura foi conferida: é o vínculo que um validador faz sem ter os
+        // parâmetros de quem assinou.
+        $this->assertSame($doPfx['serialNumber'], $doTermo['serialNumber']);
+        $this->assertSame($doPfx['subject'], $doTermo['subject']);
+        $this->assertSame($doPfx['name'], $doTermo['name']);
+
+        $this->assertSame(
+            openssl_pkey_get_details(openssl_pkey_get_public($lido['cert']))['key'],
+            openssl_pkey_get_details(openssl_pkey_get_public($this->pemFrom(trim($x509->textContent))))['key'],
+        );
+    }
+
+    /**
+     * A `Signature` declara o namespace dela e **nada mais**.
+     *
+     * A rotina declara `CanonicalizationMethod` como a inclusiva da REC 2001 e
+     * canonicaliza o `SignedInfo` com a **exclusiva** — a divergência do modelo
+     * de referência, que só não aparece porque o termo não declara namespace
+     * algum. Um `xmlns` a mais, declarado e não usado, basta para as duas formas
+     * divergirem, e quem suffer com isso é o validador do provedor, que
+     * canonicaliza em inclusiva como manda a `Reference`: a falha aparece lá,
+     * com um código opaco, e não aqui.
+     */
+    public function test_a_signature_declara_o_seu_namespace_e_nenhum_outro_atributo(): void
+    {
+        [$conta, $certificado] = $this->escritorio('Escritório de Teste');
+
+        $documento = $this->parse($this->assinar($conta, $certificado));
+        $assinatura = $this->signature($documento);
+
+        // **A asserção é sobre os bytes serializados, e não sobre a visão do
+        // DOM.** A declaração de namespace padrão não aparece em
+        // `$assinatura->attributes` — o libxml a consome como namespace e só a
+        // devolve na serialização —, e é na serialização que o validador do
+        // provedor a lê. Um `xmlns:algo` a mais, declarado e não usado, é
+        // suficiente para a inclusiva e a exclusiva divergirem, e essa é
+        // exatamente a divergência que a rotina de propósito não pode ter.
+        $serializado = (string) $documento->saveXML($assinatura);
+
+        $this->assertSame(1, preg_match('/^<Signature\s+([^>]*)>/', $serializado, $achado), 'A tag de abertura da Signature deveria ser legível.');
+        $this->assertSame('xmlns="'.self::XMLDSIG.'"', trim($achado[1]));
+
+        // E o `SignedInfo` — o que a rotina de fato assina — está no namespace,
+        // o que é o que faz a `Reference` funcionar para quem valida.
+        $this->assertSame(self::XMLDSIG, $assinatura->namespaceURI);
+    }
+
     public function test_a_raiz_do_termo_nao_declara_namespace_nenhum(): void
     {
         [$conta, $certificado] = $this->escritorio('Escritório de Teste');
@@ -381,23 +461,76 @@ class SerproTermSignerTest extends TestCase
         );
     }
 
-    public function test_o_digest_do_formato_le_o_template_e_as_tres_constantes(): void
+    public function test_o_digest_do_formato_le_o_template_e_as_quatro_constantes(): void
     {
         $template = $this->canonicalTemplate();
         $periodo = (string) SerproTermSigner::PERIODO_VIGENCIA_DAYS;
         $algoritmo = SerproTermSigner::ALGORITMO_CANONICALIZACAO;
         $regra = SerproTermSigner::REGRA_NORMALIZACAO;
+        $fuso = SerproTermSigner::FUSO;
 
-        $this->assertSame(hash('sha256', $this->juncao([$template, $periodo, $algoritmo, $regra])), SerproTermSigner::formatDigest());
+        $this->assertSame(hash('sha256', $this->juncao([$template, $periodo, $algoritmo, $regra, $fuso])), SerproTermSigner::formatDigest());
 
-        // O gate é auto-invalidante porque as três constantes e o template estão
-        // **dentro** da entrada hasheada. Cada uma tem aqui a prova de que a
-        // conta muda quando ela muda — que é o contrário do que um teste que só
-        // lê o rótulo da constante provaria.
-        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, '31', $algoritmo, $regra])));
-        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, $periodo, $algoritmo.' ', $regra])));
-        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, $periodo, $algoritmo, $regra.' '])));
-        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template.'<dados/>', $periodo, $algoritmo, $regra])));
+        // O gate é auto-invalidante porque as quatro constantes e o template
+        // estão **dentro** da entrada hasheada. Cada uma tem aqui a prova de que
+        // a conta muda quando ela muda — que é o contrário do que um teste que
+        // só lê o rótulo da constante provaria.
+        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, '31', $algoritmo, $regra, $fuso])));
+        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, $periodo, $algoritmo.' ', $regra, $fuso])));
+        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template, $periodo, $algoritmo, $regra.' ', $fuso])));
+        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao([$template.'<dados/>', $periodo, $algoritmo, $regra, $fuso])));
+    }
+
+    /**
+     * O fuso entra no digest, e a razão é a mesma das outras constantes.
+     *
+     * O fuso não aparece em lugar nenhum do template, e o que ele muda é a
+     * `dataAssinatura` — que é valor por termo, com placeholder. Trocá-lo
+     * mudaria o documento que o provedor recebe sem mudar uma byte do que o
+     * gate lê, e uma prova de contrato já gravada continuaria autorizando o
+     * termo novo. É a mesma falha que a spec descreve para o período e para a
+     * normalização, e por isso a mesma resposta: a constante vai para dentro da
+     * entrada hasheada.
+     */
+    public function test_o_fuso_entra_no_digest_e_nao_via_por_ele(): void
+    {
+        $template = $this->canonicalTemplate();
+        $partes = [
+            $template,
+            (string) SerproTermSigner::PERIODO_VIGENCIA_DAYS,
+            SerproTermSigner::ALGORITMO_CANONICALIZACAO,
+            SerproTermSigner::REGRA_NORMALIZACAO,
+            SerproTermSigner::FUSO,
+        ];
+
+        $this->assertSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao($partes)));
+
+        // Um fuso diferente é um documento diferente — na fronteira da meia-noite
+        // a `dataAssinatura` cai no dia anterior — e o digest precisa dizer isso.
+        $outro = array_merge(array_slice($partes, 0, -1), ['America/Belem']);
+
+        $this->assertNotSame(SerproTermSigner::formatDigest(), hash('sha256', $this->juncao($outro)));
+    }
+
+    /**
+     * O fuso declarado é o fuso que a data do termo sai, e não o do processo.
+     *
+     * Um `now()` sem fuso declararia a assinatura no fuso do servidor, que em
+     * produção não é o de São Paulo — e o dia da `dataAssinatura` é a
+     * informação que o provedor compara com a vigência.
+     */
+    public function test_a_data_do_termo_sai_no_fuso_declarado_e_nao_no_do_processo(): void
+    {
+        // 23:30 em São Paulo são 02:30 do dia seguinte em UTC: com o relógio do
+        // processo em UTC, `now()` sem fuso declararia o dia seguinte.
+        Carbon::setTestNow(Carbon::parse('2026-03-10 02:30:00', 'UTC'));
+
+        [$conta, $certificado] = $this->escritorio('Escritório de Teste');
+
+        $documento = $this->parse($this->assinar($conta, $certificado));
+
+        $this->assertSame('America/Sao_Paulo', SerproTermSigner::FUSO);
+        $this->assertSame('20260309', $this->elemento($documento, 'dataAssinatura')->getAttribute('data'));
     }
 
     public function test_o_template_do_formato_nao_carrega_nome_nem_documento_de_escritorio(): void
@@ -479,6 +612,35 @@ class SerproTermSignerTest extends TestCase
         }
     }
 
+    /**
+     * O documento do contratante é conferido contra a credencial que o nomeia.
+     *
+     * O nome da plataforma vem da linha de `SerproConnection`, e o número vinha
+     * do parâmetro — duas fontes que ninguém ligava uma na outra. Um chamador
+     * que passasse o CNPJ do escritório produzia um termo cujo `destinatario`
+     * carregava **o número de uma empresa com a razão social de outra**, sem
+     * exceção, sem log e sem que nada no documento parecesse errado. A linha da
+     * credencial já guarda `contratante_numero` para isso, e é contra ele que o
+     * termo se confirma.
+     */
+    public function test_o_documento_do_contratante_tem_de_bater_com_a_credencial_da_plataforma(): void
+    {
+        [$conta, $certificado] = $this->escritorio('Escritório de Teste');
+
+        try {
+            // O CNPJ do escritório, que é o número que **não** pode ser o do
+            // contratante — e é o erro que só o cruzamento com a credencial
+            // pega, porque os dois números são CNPJs válidos.
+            $this->assinar($conta, $certificado, self::ESCRITORIO);
+            $this->fail('Um termo cujo contratante é o escritório não deveria ser assinado.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::NotSent, $exception->failure);
+            $this->assertStringNotContainsString('Escritório de Teste', $exception->getMessage());
+            $this->assertStringNotContainsString(self::ESCRITORIO, $exception->getMessage());
+            $this->assertStringNotContainsString(self::PLATAFORMA, $exception->getMessage());
+        }
+    }
+
     public function test_sem_credencial_de_plataforma_o_termo_nao_e_assinado(): void
     {
         SerproConnection::query()->delete();
@@ -536,6 +698,18 @@ class SerproTermSignerTest extends TestCase
         $template = $this->parse(SerproTermSigner::template());
 
         return (string) $template->documentElement?->C14N(false, false);
+    }
+
+    /**
+     * O corpo do PEM do certificado que está no `X509Certificate` do termo, de
+     * volta a PEM — que é o que um validador faz para chegar na chave pública
+     * que o próprio documento traz.
+     */
+    private function pemFrom(string $base64): string
+    {
+        return "-----BEGIN CERTIFICATE-----\n"
+            .chunk_split(trim($base64), 64, "\n")
+            .'-----END CERTIFICATE-----'."\n";
     }
 
     /**
