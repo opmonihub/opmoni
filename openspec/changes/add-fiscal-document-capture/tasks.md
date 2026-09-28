@@ -22,7 +22,7 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 2.3 Registrar o disco `fiscal` em `config/filesystems.php` com `serve => false`, `throw => true` e `report => true`, apontando para `storage/app/private/fiscal`; verificar que `Storage::disk('fiscal')` resolve e que o diretório não é servido publicamente
 - [x] 2.4 Criar `FiscalDocument` e `FiscalCursor` com `BelongsToAccount`, casts e relações, mais factories; verificar com teste de feature que uma conta não enxerga documento nem cursor de outra
 - [x] 2.5 Remover `documents`: migration, model, factory, controller, request, resource, policy, binding em `AppServiceProvider`, rota `apiResource` e a relação em `Account`; verificar que `php artisan route:list` não mostra mais a rota e que a migration de remoção roda
-- [ ] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
+- [x] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
 
 ## 3. Núcleo de transporte e parsing
 
@@ -33,7 +33,7 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 3.5 Criar `FiscalXmlValidator` validando a requisição contra o XSD local do serviço antes de enviar; verificar com teste unitário que requisição com prefixo de namespace, codificação errada e versão fora do vigente é rejeitada antes da chamada
 - [x] 3.6 Criar `FiscalXmlMetadata` extraindo chave de acesso, emitente, destinatário, valor e datas por modelo, validando o dígito verificador da chave; verificar com teste unitário por modelo contra fixtures de XML reais, incluindo chave com DV inválido
 - [x] 3.7 Criar a comparação de `digVal` entre resumo e documento completo, marcando divergência em vez de descartar; verificar com teste unitário que dois `digVal` iguais marcam íntegro e diferentes marcam divergente
-- [ ] 3.8 Criar a rotina de encoding que detecta Latin-1 antes de converter e preserva os bytes crus para persistência; verificar com teste unitário que acento não vira `?` e que o bruto é mantido
+- [x] 3.8 Criar a rotina de encoding que detecta Latin-1 antes de converter e preserva os bytes crus para persistência; verificar com teste unitário que acento não vira `?` e que o bruto é mantido
 - [x] 3.9 Vendorizar o bundle de AC ICP-Brasil e apontar a verificação de TLS para ele com verificação ligada; verificar com teste que a verificação do servidor permanece ativa e que o bundle está versionado
 
 > **Ressalva de 3.2, 3.3 e 3.6:** os fixtures em `backend/tests/Fixtures/fiscal/` são sintéticos e
@@ -44,10 +44,10 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 ## 4. Conector de NF-e
 
 - [x] 4.1 Definir o contrato `FiscalConnector` e os value objects `PullResult` e `PulledDocument`; verificar com teste unitário a construção e a leitura dos value objects
-- [ ] 4.2 Implementar `NfeDistributionConnector` com a URL do ambiente nacional, versão `1.01` e o payload `distDFeInt`; verificar com teste de contrato usando fixture de resposta real gravada, sem rede
+- [x] 4.2 Implementar `NfeDistributionConnector` com a URL do ambiente nacional, versão `1.01` e o payload `distDFeInt`; verificar com teste de contrato usando fixture de resposta real gravada, sem rede
 - [x] 4.3 Mapear a lista real de rejeições do serviço, sem os códigos que pertencem ao serviço de autorização; verificar com teste unitário que um código inexistente no serviço cai em `Rejected` genérico e não num ramo específico inexistente
 - [x] 4.4 Tratar `137` e a rejeição de consumo indevido como parada de uma hora, adotando a posição que vem no XML da rejeição; verificar com teste unitário usando fixture do `656` com posição embutida
-- [ ] 4.5 Detectar a rejeição de posição à frente do serviço e marcar a posição como exigindo reconciliação sem descartar o valor armazenado; verificar com teste unitário
+- [x] 4.5 Detectar a rejeição de posição à frente do serviço e marcar a posição como exigindo reconciliação sem descartar o valor armazenado; verificar com teste unitário
 - [x] 4.6 Tratar indisponibilidade do serviço e serviço paralisado como falha retentável, e a rejeição por CNPJ sem correspondência como falha de credencial do cliente; verificar com teste unitário para cada caso
 - [x] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
 
@@ -58,36 +58,36 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 5.3 Implementar `FiscalCaptureService` que resolve o certificado, respeita o bloqueio, persiste o lote inteiro e só então avança a posição com o valor devolvido; verificar com teste de feature usando conector falso, sem rede
 - [x] 5.4 Garantir que falha no meio do lote não advance a posição e que os documentos já gravados permanecem; verificar com teste de feature
 - [x] 5.5 Garantir que cliente sem certificado utilizável, vencido ou sem senha armazenada não faça chamada externa e mantenha a posição; verificar com teste de feature
-- [ ] 5.6 Criar `CaptureFiscalDocumentsJob` com exclusão por cliente e fonte acima do timeout do worker, e verificar que uma sobreposição não vira duas chamadas concorrentes; verificar com teste de feature
-- [ ] 5.7 Criar o comando `fiscal:capture` e agendá-lo com sobreposição proibida; verificar com `php artisan schedule:list` que a entrada aparece
+- [x] 5.6 Criar `CaptureFiscalDocumentsJob` com exclusão por cliente e fonte acima do timeout do worker, e verificar que uma sobreposição não vira duas chamadas concorrentes; verificar com teste de feature
+- [x] 5.7 Criar o comando `fiscal:capture` e agendá-lo com sobreposição proibida; verificar com `php artisan schedule:list` que a entrada aparece
 - [x] 5.8 Implementar a checagem de continuidade e impedir a consulta, marcando o cliente como histórico interrompido quando a última captura bem-sucedida ultrapassar a janela; verificar com teste de feature
-- [ ] 5.9 Implementar a contabilidade de consultas por chave respeitando o limite horário published, deferindo o restante em vez de consumir nova tentativa; verificar com teste de feature
+- [x] 5.9 Implementar a contabilidade de consultas por chave respeitando o limite horário published, deferindo o restante em vez de consumir nova tentativa; verificar com teste de feature
 - [x] 5.10 Garantir que nenhuma manifestação do destinatário é enviada em nenhum caminho de código; verificar com teste de feature que a captura não faz chamada ao serviço de eventos
 
 ## 6. API do módulo
 
-- [ ] 6.1 Adicionar as rotas de resumo, listagem, detalhe, download do XML e disparo sob demanda em `routes/api.php` sob o middleware já existente; verificar com `php artisan route:list` que as rotas exigem sessão
-- [ ] 6.2 Criar `IndexFiscalDocumentRequest` com filtros de modelo, cliente, emitente, destinatário, intervalo de datas, tipo, ordenação e paginação, validando com `Rule::in` sobre o enum; verificar com teste de feature que filtro inválido responde erro de validação
-- [ ] 6.3 Criar `FiscalDocumentController::index` e `summary` com paginação e os contadores de cobertura por motivo; verificar com teste de feature que a cobertura distingue ausente, vencido e sem senha
-- [ ] 6.4 Criar `FiscalDocumentController::show` com metadados e linha do tempo de eventos; verificar com teste de feature
-- [ ] 6.5 Criar o download do XML servindo do disco privado por controller autorizado; verificar com teste de feature que o download funciona na própria conta e responde 404 em outra
-- [ ] 6.6 Criar o disparo sob devolver na hora e despachar o job, recusando cliente bloqueado com o tempo restante; verificar com teste de feature nos dois casos
-- [ ] 6.7 Criar `FiscalDocumentPolicy` e os resources correspondentes, nunca expondo o caminho interno do arquivo; verificar com teste de feature e `assertJsonMissingPath`
-- [ ] 6.8 Restringir o disparo a `admin` e `operador` pelo gate, deixando a leitura disponível aos demais papéis; verificar com teste de feature para os três papéis
+- [x] 6.1 Adicionar as rotas de resumo, listagem, detalhe, download do XML e disparo sob demanda em `routes/api.php` sob o middleware já existente; verificar com `php artisan route:list` que as rotas exigem sessão
+- [x] 6.2 Criar `IndexFiscalDocumentRequest` com filtros de modelo, cliente, emitente, destinatário, intervalo de datas, tipo, ordenação e paginação, validando com `Rule::in` sobre o enum; verificar com teste de feature que filtro inválido responde erro de validação
+- [x] 6.3 Criar `FiscalDocumentController::index` e `summary` com paginação e os contadores de cobertura por motivo; verificar com teste de feature que a cobertura distingue ausente, vencido e sem senha
+- [x] 6.4 Criar `FiscalDocumentController::show` com metadados e linha do tempo de eventos; verificar com teste de feature
+- [x] 6.5 Criar o download do XML servindo do disco privado por controller autorizado; verificar com teste de feature que o download funciona na própria conta e responde 404 em outra
+- [x] 6.6 Criar o disparo sob devolver na hora e despachar o job, recusando cliente bloqueado com o tempo restante; verificar com teste de feature nos dois casos
+- [x] 6.7 Criar `FiscalDocumentPolicy` e os resources correspondentes, nunca expondo o caminho interno do arquivo; verificar com teste de feature e `assertJsonMissingPath`
+- [x] 6.8 Restringir o disparo a `admin` e `operador` pelo gate, deixando a leitura disponível aos demais papéis; verificar com teste de feature para os três papéis
 
 ## 7. Telas do módulo
 
-- [ ] 7.1 Criar `app/utils/fiscalNav.ts` no padrão de `workNav` e registrar a entrada "Fiscal" no menu lateral e no grupo de busca; verificar que o grupo expande e marca a página atual
-- [ ] 7.2 Criar `app/types/fiscal.ts` com os tipos do contrato de rede, incluindo a união de motivos de atenção e o par de contadores de cobertura; verificar com `pnpm typecheck`
-- [ ] 7.3 Criar `app/composables/useFiscal.ts` no padrão de `useClients`, com resumo, listagem, detalhe, download e disparo; verificar com `pnpm typecheck`
-- [ ] 7.4 Criar `app/pages/fiscal.vue` como invólucro com barra de navegação, abas e `NuxtPage`, reaproveitando o padrão de `work.vue`; verificar com `pnpm lint`
-- [ ] 7.5 Criar o painel em `app/pages/fiscal/index.vue` com a cobertura como leitura primária, totais por modelo, série temporal e a lista de atenção agrupada por motivo; verificar com `pnpm lint` e `pnpm typecheck`
-- [ ] 7.6 Garantir que o painel distingue estado vazio de "nenhum documento" e de "nenhum cliente capturável", com a razão por cliente em cada caso; verificar com teste de `node --test` para a função de apresentação
-- [ ] 7.7 Criar a tabela em `app/pages/fiscal/documentos.vue` reaproveitando `DataTableFilter`, `sheetTableUi` e a paginação com guarda de geração de `customers/[documento]/[[situacao].vue`; verificar com `pnpm lint` e `pnpm typecheck`
-- [ ] 7.8 Manter os filtros na URL e oferecer no filtro de modelo apenas os valores presentes no resultado; verificar com teste de `node --test` para a derivação de opções
-- [ ] 7.9 Criar a folha de detalhe com metadados, linha do tempo de eventos, prévia do XML e ação de download; verificar com `pnpm lint`
-- [ ] 7.10 Esconder ou desabilitar o disparo de captura para quem só pode ler, e exibir o motivo quando o cliente está bloqueado; verificar com `pnpm lint` e inspeção dos papéis
-- [ ] 7.11 Adicionar testes de `node --test` para as funções puras de filtro, formatação e apresentação do módulo, seguindo a convenção dos arquivos existentes; verificar com `node --test tests/`
+- [x] 7.1 Criar `app/utils/fiscalNav.ts` no padrão de `workNav` e registrar a entrada "Fiscal" no menu lateral e no grupo de busca; verificar que o grupo expande e marca a página atual
+- [x] 7.2 Criar `app/types/fiscal.ts` com os tipos do contrato de rede, incluindo a união de motivos de atenção e o par de contadores de cobertura; verificar com `pnpm typecheck`
+- [x] 7.3 Criar `app/composables/useFiscal.ts` no padrão de `useClients`, com resumo, listagem, detalhe, download e disparo; verificar com `pnpm typecheck`
+- [x] 7.4 Criar `app/pages/fiscal.vue` como invólucro com barra de navegação, abas e `NuxtPage`, reaproveitando o padrão de `work.vue`; verificar com `pnpm lint`
+- [x] 7.5 Criar o painel em `app/pages/fiscal/index.vue` com a cobertura como leitura primária, totais por modelo, série temporal e a lista de atenção agrupada por motivo; verificar com `pnpm lint` e `pnpm typecheck`
+- [x] 7.6 Garantir que o painel distingue estado vazio de "nenhum documento" e de "nenhum cliente capturável", com a razão por cliente em cada caso; verificar com teste de `node --test` para a função de apresentação
+- [x] 7.7 Criar a tabela em `app/pages/fiscal/documentos.vue` reaproveitando `DataTableFilter`, `sheetTableUi` e a paginação com guarda de geração de `customers/[documento]/[[situacao].vue`; verificar com `pnpm lint` e `pnpm typecheck`
+- [x] 7.8 Manter os filtros na URL e oferecer no filtro de modelo apenas os valores presentes no resultado; verificar com teste de `node --test` para a derivação de opções
+- [x] 7.9 Criar a folha de detalhe com metadados, linha do tempo de eventos, prévia do XML e ação de download; verificar com `pnpm lint`
+- [x] 7.10 Esconder ou desabilitar o disparo de captura para quem só pode ler, e exibir o motivo quando o cliente está bloqueado; verificar com `pnpm lint` e inspeção dos papéis
+- [x] 7.11 Adicionar testes de `node --test` para as funções puras de filtro, formatação e apresentação do módulo, seguindo a convenção dos arquivos existentes; verificar com `node --test tests/`
 
 ## 8. Conector de CT-e
 
@@ -123,14 +123,14 @@ contra um serviço que ninguém chamou — o gate de liberação, não este chec
 
 ## 9. Reconciliação
 
-- [ ] 9.1 Implementar a rotina de reconciliação que detecta posições faltantes na sequência armazenada e as recupera dentro do limite de consultas, com contador de tentativas; verificar com teste de feature
-- [ ] 9.2 Tornar a reconciliação repetível sem efeito colateral quando não há lacuna; verificar com teste de feature rodando duas vezes
-- [ ] 9.3 Agendar a reconciliação em horário fora do comercial, com fuso configurável; verificar com `php artisan schedule:list`
+- [x] 9.1 Implementar a rotina de reconciliação que detecta posições faltantes na sequência armazenada e as recupera dentro do limite de consultas, com contador de tentativas; verificar com teste de feature
+- [x] 9.2 Tornar a reconciliação repetível sem efeito colateral quando não há lacuna; verificar com teste de feature rodando duas vezes
+- [x] 9.3 Agendar a reconciliação em horário fora do comercial, com fuso configurável; verificar com `php artisan schedule:list`
 
 ## 10. Verificação integrada
 
-- [ ] 10.1 Rodar a suíte completa do backend e confirmar que nada regrediu, em especial os testes de tenancy e de certificado; verificar com `composer test`
-- [ ] 10.2 Rodar `vendor/bin/pint --dirty --format agent` e confirmar que não há diff pendente
-- [ ] 10.3 Rodar `pnpm lint`, `pnpm typecheck` e `node --test` no frontend
-- [ ] 10.4 Validar a change e conferir que os três delta specs continuam consistentes com o que foi implementado
-- [ ] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
+- [x] 10.1 Rodar a suíte completa do backend e confirmar que nada regrediu, em especial os testes de tenancy e de certificado; verificar com `composer test`
+- [x] 10.2 Rodar `vendor/bin/pint --dirty --format agent` e confirmar que não há diff pendente
+- [x] 10.3 Rodar `pnpm lint`, `pnpm typecheck` e `node --test` no frontend
+- [x] 10.4 Validar a change e conferir que os três delta specs continuam consistentes com o que foi implementado
+- [x] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
