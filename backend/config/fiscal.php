@@ -50,6 +50,23 @@ return [
      */
     'reconcile_max_attempts' => 3,
 
+    /*
+     * Quando a volta atrás roda. Uma vez ao dia, fora do expediente, e no fuso
+     * dela: a reconciliação é consulta pontual ao CNPJ — orçamento que o fisco
+     * conta por hora — e a janela dela é a noite, quando ninguém está esperando
+     * documento. O fuso é escrito porque a hora da agenda é do fuso dela:
+     * `0 2 * * *` em São Paulo são cinco da manhã no fuso do servidor (UTC), e
+     * é assim que `schedule:list` mostra a entrada quando ninguém pede outro
+     * fuso.
+     *
+     * Sem `env()` de propósito, como `reconcile_max_attempts`: hora e fuso são a
+     * janela que o teste de agenda fixa, e uma variável de ambiente os mudaria
+     * sem que ninguém revisasse a mudança.
+     */
+    'reconcile_hour' => 2,
+
+    'reconcile_timezone' => 'America/Sao_Paulo',
+
     'endpoints' => [
         'nfe_distribuicao' => [
             'producao' => 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',

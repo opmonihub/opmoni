@@ -85,6 +85,19 @@ class Client extends Model
         return $this->hasOne(ClientEcacPowerOfAttorney::class);
     }
 
+    /**
+     * As posições que a captura gravou como lacuna e que ninguém recuperou
+     * ainda. A relação é simples e sem filtro: quem decide o que é lacuna devida
+     * é a reconciliação, e quem decide de quem é a linha é o cliente da
+     * chamada — o escopo de conta é condicional e a conta corrente é um
+     * singleton que o worker de fila nunca zera, então quem chama em console
+     * tira o escopo na consulta, como em `scopeForClientSource`.
+     */
+    public function fiscalGaps(): HasMany
+    {
+        return $this->hasMany(FiscalGap::class);
+    }
+
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(Tag::class, 'client_tag')

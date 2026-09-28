@@ -56,7 +56,32 @@ final class FiscalReconciliation
      */
     public function run(Client $client, FiscalSource $source): int
     {
+        // A fonte que o conector ligado não serve é recusada aqui, no único
+        // lugar por onde a reconciliação fala com o fisco. O job pode ter sido
+        // despachado por um comando de outra versão — o conector do CT-e é
+        // registrado no container depois, e a fila é longa e sobrevive ao
+        // deploy — e um job de CT-e rodando o conector da NF-e consultaria a
+        // posição de um serviço pelo outro, e o writer arquivaria a resposta na
+        // fonte errada, que é a linha pior possível na tabela. A guarda é a
+        // mesma pergunta que `FiscalCaptureService` faz, no mesmo formato, e
+        // recusar aqui protege qualquer chamador — hoje só o job.
+        if (! $this->hasConnectorFor($source)) {
+            $this->reportMismatchedConnector($client, $source);
+
+            return 0;
+        }
+
         return FiscalCaptureLock::run($client, $source, fn (): int => $this->recover($client, $source)) ?? 0;
+    }
+
+    /**
+     * Se a fonte tem conector nesta versão. Mesma resposta e mesmo formato do
+     * `FiscalCaptureService`: quem despacha em lote pergunta antes de encher a
+     * fila, e quem executa pergunta de novo antes de gastar orçamento do CNPJ.
+     */
+    public function hasConnectorFor(FiscalSource $source): bool
+    {
+        return $this->connector->source() === $source;
     }
 
     private function recover(Client $client, FiscalSource $source): int
@@ -211,6 +236,27 @@ final class FiscalReconciliation
             'nsu' => (int) $gap->nsu,
             'tentativas' => (int) $gap->attempts + 1,
             'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * A recusa de fonte, e a lacuna que por causa dela continua pendente e sem
+     * contagem: nada foi perguntado, e uma posição que ninguém perguntou não
+     * pode ser considerada tentada.
+     *
+     * O log existe porque o silêncio é o pior diagnóstico: sem ele, uma entrada
+     * despachada para a fonte errada parece uma noite em que não havia buraco
+     * nenhum, e a lacuna volta na noite seguinte sem que ninguém entenda por
+     * quê. Só entram valores de taxonomia do módulo — conta, cliente, a fonte
+     * pedida e a que o conector serve.
+     */
+    private function reportMismatchedConnector(Client $client, FiscalSource $source): void
+    {
+        Log::warning('fiscal.reconciliacao.conetor_de_outra_fonte', [
+            'account_id' => (int) $client->account_id,
+            'client_id' => (int) $client->getKey(),
+            'fonte' => $source->value,
+            'fonte_do_conector' => $this->connector->source()->value,
         ]);
     }
 }
