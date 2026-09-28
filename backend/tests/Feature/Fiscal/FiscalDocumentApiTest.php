@@ -1925,10 +1925,28 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertStringNotContainsString((string) $certificado->storage_path, json_encode($log->metadata, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('password_encrypted', json_encode($log->metadata, JSON_THROW_ON_ERROR));
 
-        // E a recusa do bloqueio também é registrada, porque ela é a única
-        // pista de que alguém tentou capturar um cliente parado.
+        // A recusa por bloqueio responde 409 e de propósito não deixa rastro de
+        // auditoria: uma recusa não é escrita — a posição do fisco não foi
+        // consumida e nada mudou na conta — e a tabela de suporte registra
+        // escritas, com verbo de escrita. É a regra de todo `logWrite` do
+        // código: nenhum deles acompanha uma recusa.
+        //
+        // As duas asserções abaixo existem para que o comentário e o código não
+        // voltem a divergir: quem um dia ler isto e achar que falta a
+        // auditoria da recusa quebra o teste, e não mente sobre o rastro.
         $this->cursor($cliente, ['last_run_at' => now(), 'blocked_until' => now()->addHour()]);
+
         $this->postJson("/api/fiscal/clients/{$cliente->getKey()}/capture")->assertStatus(409);
+
+        // Continua havendo um despacho só e uma entrada só: as duas são as do
+        // 202 acima, e a recusa não acrescentou nenhuma das duas.
+        Bus::assertDispatchedTimes(CaptureFiscalDocumentsJob::class, 1);
+
+        $this->assertSame(1, SupportAccessLog::query()
+            ->where('super_admin_user_id', $suporte->getKey())
+            ->where('account_id', $alvo->getKey())
+            ->where('action', 'capture')
+            ->count(), 'a recusa por bloqueio não é uma escrita e não pode virar entrada de auditoria');
     }
 
     public function test_captura_do_membro_da_propria_conta_nao_gera_log_de_suporte(): void
