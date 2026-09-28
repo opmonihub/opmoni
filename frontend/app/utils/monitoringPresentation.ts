@@ -216,14 +216,23 @@ export type SerproTermRequest = 'nenhuma' | 'certificado'
  * mentioned the certificate here would be a lie on the screen of an office that
  * had just removed it — which is a state the product produces itself, with its
  * own remove button and no state gate on it.
+ *
+ * **No sentence here says a term was issued or will be issued.** The issuance
+ * gate is closed and the API does not publish it, so a screen that promised a
+ * signed-and-sent term would be promising every office something the product
+ * cannot do today. Every sentence names **who** acts — a validity that is the
+ * office's to deliver, an emission that is the platform's — and none of them
+ * claims the act is done or on its way. The two places where the office's
+ * next step is named are `serproCertificateAsk` and this record, and both point
+ * at the e-CNPJ rather than at a signature.
  */
 const serproTermGuidanceByState: Record<SerproAuthorizationTermState, string> = {
   ausente: 'O escritório ainda não tem termo, e o termo é emissão da plataforma: o escritório não assina nada.',
   pendente: 'A resposta do provedor ainda não chegou. Não há nada a fazer.',
-  validado: 'O provedor aceitou o documento do termo, mas o token que autoriza as chamadas do escritório ainda não está disponível. A renovação diária é quem resolve, e é da plataforma: não há nada a fazer.',
+  validado: 'O provedor aceitou o documento do termo, mas o token que autoriza as chamadas do escritório ainda não está disponível. A renovação diária tenta de novo, e isso é da plataforma: não há nada a fazer.',
   autenticado: 'O termo está autorizado e a plataforma fala com o provedor em nome do escritório. A renovação é feita sozinha, sem nenhuma ação do escritório.',
   vencido: 'A vigência do termo acabou. Emitir outro é do escritório e depende de um certificado digital vigente — a plataforma não o faz sozinha.',
-  recusado: 'O provedor recusou o termo. Para sair disso o escritório precisa entregar um certificado digital vigente, e a plataforma emite outro.'
+  recusado: 'O provedor recusou o termo. Para sair disso o escritório precisa entregar um certificado digital vigente, e a emissão do termo novo é da plataforma.'
 }
 
 /**
@@ -368,7 +377,7 @@ export function serproCertificateAsk(state: SerproAuthorizationTermState, hasCer
 
   return {
     title: 'Entregar o certificado de novo',
-    description: 'O termo guardado não serve mais para a plataforma: o provedor ou a vigência o encerraram, e nenhum dos dois se resolve com o documento que já está gravado. Reenvie o e-CNPJ — pode ser o mesmo arquivo — e é a plataforma que monta e envia o termo novo, sozinha.',
+    description: 'O termo guardado não serve mais para a plataforma: o provedor ou a vigência o encerraram, e nenhum dos dois se resolve com o documento que já está gravado. Reenvie o e-CNPJ — pode ser o mesmo arquivo — e a emissão do termo novo é da plataforma, sozinha.',
     label: 'Enviar o certificado de novo',
     color: 'warning',
     icon: 'i-lucide-upload'
@@ -390,6 +399,11 @@ export function serproCertificateAsk(state: SerproAuthorizationTermState, hasCer
  * term authorises no call. A sentence about a `pendente` term that said it
  * "continued in force" would be the false claim; one that said it was unsigned
  * would be false too.
+ *
+ * **This predicate is not "is it being sent", and the two are not the same
+ * thing.** A document can exist and still never leave the platform again — that is
+ * what `serproTermReenviado` below is for, and a sentence about one cannot be
+ * chosen with this one.
  */
 const serproTermDocumentoGravado: Record<SerproAuthorizationTermState, boolean> = {
   ausente: false,
@@ -398,6 +412,44 @@ const serproTermDocumentoGravado: Record<SerproAuthorizationTermState, boolean> 
   autenticado: true,
   vencido: true,
   recusado: true
+}
+
+/**
+ * Whether the daily `refresh()` still resubmits the stored document, which is what
+ * "a plataforma continua cuidando do termo" means.
+ *
+ * **`false` for `vencido` and `recusado`, and the difference is the whole point
+ * of the table.** `SerproTermManager::refresh()` returns before `enviar()` when the
+ * document's own validity is over, and it returns before `enviar()` for a refused
+ * document too — resending the same bytes would draw the same refusal. The
+ * document is still stored in both cases, so `serproTermDocumentoGravado` is
+ * `true` for them and a sentence chosen on that table would promise a submission
+ * the product never makes. **A branch that asserts "continua sendo enviado" has
+ * to read this table, not the other one.**
+ */
+const serproTermReenviado: Record<SerproAuthorizationTermState, boolean> = {
+  ausente: false,
+  pendente: true,
+  validado: true,
+  autenticado: true,
+  vencido: false,
+  recusado: false
+}
+
+/**
+ * Whether the term authorises calls, which is `SerproAuthorizationTerm::authorizesGateway()`
+ * verbatim: `validado` and `autenticado` only, and only once a usable token is on
+ * the row. A sentence that says a term "continua valendo" has to read this table
+ * and not its neighbour — a `pendente` term is signed, stored and resubmitted, and
+ * it authorises nothing.
+ */
+const serproTermEmVigor: Record<SerproAuthorizationTermState, boolean> = {
+  ausente: false,
+  pendente: false,
+  validado: true,
+  autenticado: true,
+  vencido: false,
+  recusado: false
 }
 
 /**
@@ -422,6 +474,13 @@ const serproTermDocumentoGravado: Record<SerproAuthorizationTermState, boolean> 
  * *new* term issued, and nothing else. One sentence covering both would tell an
  * office whose term is still in flight that its term is in force — which is
  * false, and which is what this function used to say.
+ *
+ * **Each branch is chosen by the fact its own sentence asserts.** "Continua
+ * valendo e sendo renovado" needs `serproTermEmVigor` **and** `serproTermReenviado`,
+ * and the branch asks for both; the in-flight sentence is the one that holds for a
+ * document the platform keeps resubmitting without it being in force, which today
+ * is `pendente` alone. Anything else returns `null` instead of borrowing a
+ * sentence.
  */
 export function serproCertificateMissingNotice(
   state: SerproAuthorizationTermState,
@@ -430,14 +489,23 @@ export function serproCertificateMissingNotice(
   if (hasCertificate) return null
   if (serproTermRequest(state, hasCertificate) !== 'nenhuma') return null
 
-  if (!serproTermDocumentoGravado[state]) {
-    // A guarda que um estado novo tem de passar para chegar às frases de baixo:
-    // as duas falam do documento que a plataforma guarda, e um estado sem
-    // documento guardado não pode receber nenhuma delas.
-    return null
+  if (serproTermEmVigor[state] && serproTermReenviado[state]) {
+    return {
+      title: 'O certificado do escritório não está mais guardado',
+      description: 'O termo já assinado continua valendo e sendo renovado pela plataforma, que reenvia o documento guardado sem precisar do certificado. O que a remoção tira é a emissão de um termo novo — nenhum estado de tela afirma que a integração parou, porque ela não parou.',
+      /*
+       * O rótulo ainda é o da primeira entrega, e é o certo: o formulário existe,
+       * a conta está sem certificado nenhum, e "substituir" seria mentira sobre o
+       * que está guardado. O que a nota acima diz é que a entrega não é urgente
+       * agora — e o botão não precisa prometer urgência para dizer a verdade.
+       */
+      label: 'Entregar certificado',
+      color: 'neutral',
+      icon: 'i-lucide-shield-off'
+    }
   }
 
-  if (state === 'pendente') {
+  if (serproTermReenviado[state]) {
     return {
       title: 'O certificado do escritório não está mais guardado',
       description: 'O termo já está assinado e na mão da plataforma, mas o provedor ainda não respondeu e ele ainda não autoriza nenhuma chamada. A plataforma continua cuidando dele; o que a remoção tira é a emissão de um termo novo.',
@@ -447,19 +515,7 @@ export function serproCertificateMissingNotice(
     }
   }
 
-  return {
-    title: 'O certificado do escritório não está mais guardado',
-    description: 'O termo já assinado continua valendo e sendo renovado pela plataforma, que reenvia o documento guardado sem precisar do certificado. O que a remoção tira é a emissão de um termo novo — nenhum estado de tela afirma que a integração parou, porque ela não parou.',
-    /*
-     * O rótulo ainda é o da primeira entrega, e é o certo: o formulário existe,
-     * a conta está sem certificado nenhum, e "substituir" seria mentira sobre o
-     * que está guardado. O que a nota acima diz é que a entrega não é urgente
-     * agora — e o botão não precisa prometer urgência para dizer a verdade.
-     */
-    label: 'Entregar certificado',
-    color: 'neutral',
-    icon: 'i-lucide-shield-off'
-  }
+  return null
 }
 
 /**
@@ -477,24 +533,29 @@ export const serproCertificateRemoval = {
 /**
  * The confirmation's text, and it says what the removal does **not** do — that is
  * the sentence that matters. An office that removes a compromised certificate
- * reasonably expects the integration to stop; it does not stop, and a
- * confirmation that implied it would leave the office believing it is protected
- * when it is not. The vault blanks the two encrypted columns and keeps the
- * metadata, `refresh()` goes on resubmitting the document already on file, and
- * what is really lost is the ability to issue a new term.
+ * reasonably expects the integration to stop; whether it stops depends on the
+ * term, and a confirmation that implied one answer or the other would be wrong for
+ * half the states. The vault blanks the two encrypted columns and keeps the
+ * metadata, and what is really lost is the ability to issue a new term.
  *
- * **`hasCertificate` does not change the sentence about the term, and that is
- * deliberate.** With a certificate on file, both sentences are about the term
- * rather than about the certificate; what varies there is whether a signed
- * document exists, and that is `serproTermDocumentoGravado`. The argument does
- * change the *first* branch, because without a certificate there is no row to
- * mark as removed and the confirmation must not claim that anything was erased.
+ * **Three sentences, and each is chosen by the fact it asserts.** The middle one
+ * promises a submission, so it is gated on `serproTermReenviado` — the fact about
+ * `refresh()` — and **not** on `serproTermDocumentoGravado`, the fact about
+ * storage. The two are different, and they differ in exactly `vencido` and
+ * `recusado`: the document is stored in both and sent in neither, because
+ * `refresh()` returns before `enviar()` in both. An office that removed its
+ * certificate with a lapsed term would be told, por esta frase, que a plataforma
+ * continua enviando um documento que ela não envia.
  *
- * **The `ausente` wording is the one that was false.** The remove button appears
+ * **The `ausente` wording is the other false one.** The remove button appears
  * whenever a certificate exists, with no state gate on it, and with the issuance
  * gate closed "certificate delivered, no term yet" is the commonest state this
  * product has. Telling that office that the "already-signed document keeps being
  * sent" describes a document nobody has.
+ *
+ * **`hasCertificate` changes the first branch only.** Without a certificate there
+ * is no row to mark as removed, and `AccountCertificateVault::remove()` answers
+ * `204` having erased nothing — so the confirmation must not claim it erased.
  */
 export function serproCertificateRemovalText(state: SerproAuthorizationTermState, hasCertificate: boolean): string {
   if (!hasCertificate) {
@@ -509,6 +570,10 @@ export function serproCertificateRemovalText(state: SerproAuthorizationTermState
 
   if (!serproTermDocumentoGravado[state]) {
     return `${abertura} Ainda não há termo assinado: o que a remoção tira é a capacidade de a plataforma emitir um, e não havia nada em vigor para ser interrompido.`
+  }
+
+  if (!serproTermReenviado[state]) {
+    return `${abertura} A remoção não revoga o termo: ele continua gravado, mas a plataforma não o está reenviando — a vigência do documento acabou, ou o provedor recusou o que foi enviado, e nenhuma das duas se resolve com o certificado. O que a remoção tira é a capacidade de a plataforma emitir um termo novo.`
   }
 
   return `${abertura} A remoção não revoga o termo: o documento já assinado continua gravado e continua sendo enviado pela plataforma, e o que ela perde é a capacidade de emitir um termo novo.`

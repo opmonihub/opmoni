@@ -84,9 +84,10 @@ const certificateNotice = computed(() => (ask.value
   ?? serproCertificateMissingNotice(termState.value, hasCertificate.value)))
 
 /**
- * O que a remoção promete, e a promessa muda com o termo: sem documento assinado
- * não há o que continuar sendo enviado, e a confirmação que falasse disso
- * descreveria um documento que ninguém tem.
+ * O que a remoção promete, e a promessa muda com o termo: sem documento não há o
+ * que apagar, com documento que a plataforma reenvia há o que continua sendo
+ * enviado, e com documento parado — vigência acabada ou recusa do provedor — a
+ * confirmação diz que ele não está sendo enviado, porque não está.
  */
 const removalText = computed(() => serproCertificateRemovalText(termState.value, hasCertificate.value))
 
@@ -332,8 +333,16 @@ async function confirmRemove() {
               <h2 class="text-sm font-semibold text-highlighted">
                 Certificado do escritório (e-CNPJ)
               </h2>
+              <!--
+                Descrição do mecanismo, e não do estado: "é ele que a plataforma usa
+                para assinar" vale em qualquer estado, e o que a plataforma faz com
+                esse certificado **neste** termo está no texto do estado e no pedido,
+                logo abaixo. Uma frase aqui que citasse renovação estaria
+                afirmando que a plataforma renova também um termo vencido ou
+                recusado, e ela não — `refresh()` nem chega a reenviar nesses dois.
+              -->
               <p class="text-xs text-muted">
-                Entregue uma vez e é ele que a plataforma usa para assinar e renovar o termo. O arquivo e a senha ficam cifrados no banco e a API não devolve nenhum dos dois.
+                O e-CNPJ do escritório é o material com que a plataforma assina o termo. O arquivo e a senha ficam cifrados no banco e a API não devolve nenhum dos dois.
               </p>
             </div>
             <UBadge

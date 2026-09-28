@@ -369,6 +369,65 @@ describe('a entrega voluntária e a remoção do certificado', () => {
     assert.doesNotMatch(texto, /é apagado/i)
     assert.match(texto, /nada a remover|não há o que remover/i)
   })
+
+  it('a confirmação da remoção de um termo vencido não diz que a plataforma o continua enviando', () => {
+    // **O predicado honesto é "o `refresh()` ainda reenvia", não "o documento
+    // existe".** `SerproTermManager::refresh()` devolve antes de `enviar()`
+    // quando a vigência do documento acabou, e o documento continua gravado: eram
+    // duas frases, uma para "existe" e outra para "é reenviado", e o ramo
+    // escolhia pela primeira. O botão de remover não tem filtro de estado, então
+    // este par é alcançável pela própria tela.
+    const texto = serproCertificateRemovalText('vencido', COM_CERTIFICADO)
+
+    assert.doesNotMatch(texto, /continua sendo enviado pela plataforma/i)
+    assert.match(texto, /não revoga o termo/i)
+    assert.match(texto, /não o está reenviando|não está reenviando/i)
+  })
+
+  it('a confirmação da remoção de um termo recusado não diz que a plataforma o continua enviando', () => {
+    // O mesmo ramo, o outro estado em que `refresh()` não reenvia: recusado
+    // devolve antes de `enviar()` porque os mesmos bytes drawingiam a mesma
+    // recusa.
+    const texto = serproCertificateRemovalText('recusado', COM_CERTIFICADO)
+
+    assert.doesNotMatch(texto, /continua sendo enviado pela plataforma/i)
+    assert.match(texto, /não revoga o termo/i)
+    assert.match(texto, /não o está reenviando|não está reenviando/i)
+  })
+
+  it('a confirmação só promete reenvio nos três estados em que refresh() reenvia', () => {
+    // O oráculo está escrito aqui, à mão, e não lido da implementação: quem
+    // manda é `SerproTermManager::refresh()`, que reenvia o documento guardado em
+    // `pendente`, `validado` e `autenticado` e devolve antes em `vencido` e
+    // `recusado`.
+    const reenvia = new Set<SerproAuthorizationTermState>(['pendente', 'validado', 'autenticado'])
+
+    for (const estado of ESTADOS) {
+      const texto = serproCertificateRemovalText(estado, COM_CERTIFICADO)
+
+      if (reenvia.has(estado)) {
+        assert.match(texto, /continua sendo enviado pela plataforma/i, `${estado} é reenviado`)
+      } else {
+        assert.doesNotMatch(texto, /continua sendo enviado pela plataforma/i, `${estado} não é reenviado`)
+        assert.match(texto, /Ainda não há termo|não o está reenviando/i, `${estado} precisa negar o reenvio`)
+      }
+    }
+  })
+
+  it('a nota de certificado removido só afirma vigor onde o termo está em vigor', () => {
+    // Mesmo padrão, na outra função: o ramo precisa ser escolhido pelo fato que a
+    // frase afirma. "Continua valendo" é `authorizesGateway()`, que aceita só
+    // `validado` e `autenticado` — um `pendente` tem documento e não está em
+    // vigor, e é o que a frase da nota precisa dizer.
+    const emVigor = new Set<SerproAuthorizationTermState>(['validado', 'autenticado'])
+
+    for (const estado of ESTADOS) {
+      const nota = serproCertificateMissingNotice(estado, SEM_CERTIFICADO)
+      const afirmaVigor = nota?.description.includes('continua valendo') ?? false
+
+      assert.equal(afirmaVigor, emVigor.has(estado), `${estado}: nota afirma vigor em ${afirmaVigor}`)
+    }
+  })
 })
 
 describe('o guarda de "ninguém assina"', () => {
