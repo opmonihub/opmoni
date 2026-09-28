@@ -182,6 +182,13 @@ final class SerproTermManager
          * ser renovação e não emissão. A assinatura custa uma operação de
          * chave privada, e o resultado seria gravado cifrado e reenviado nos
          * próximos trinta dias.
+         *
+         * **O número dos trinta dias é `SerproTermSigner::PERIODO_VIGENCIA_DAYS`,
+         * e ele é um valor não confirmado.** A linha acima descreve a
+         * constante, não um fato do provedor: por que trinta e não o fim do
+         * exercício, e qual é o contra-argumento, estão na docblock da
+         * constante. Quem lê esta linha sem ler aquela está lendo mais do que o
+         * código sabe.
          */
         $assinado = $this->signer->sign($conta, $certificado, (string) $conexao->contratante_numero);
 

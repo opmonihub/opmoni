@@ -27,6 +27,15 @@ use Tests\TestCase;
  * conhecido não é uma regra de forma, e uma regra de forma não acha palavra
  * que ninguém viu.
  *
+ * **A lista de camadas é uma constante, `CAMADAS`, e ela é verificada contra
+ * os métodos de teste que existem** por
+ * `test_as_camadas_declaradas_existem_como_teste`. Sem essa verificação, a
+ * docblock acima é uma afirmação: apagar a camada 2 inteira — o que foi feito
+ * na revisão do round 2 para provar que ela pegava CJK — deixa a suíte verde e
+ * o texto falando de três camadas onde há duas. Um guarda que some e continua
+ * passando é a forma exata que este arquivo existe para acabar com, e ela
+ * acontece também no nível de camada.
+ *
  * **A perda da camada 2 é o que este round conserta, e a história importa.** A
  * versão anterior deste arquivo declarou o `grep -P '[\x{4e00}-\x{9fff}]'` como
  * "superseded" e trocou o roteiro pela lista de radicais, com o argumento — que
@@ -119,43 +128,121 @@ final class PalavrasCorrompidasTest extends TestCase
     ];
 
     /**
-     * Sufixos que provam derivação, e portanto **não** são colagem.
+     * Metade direita que **não** é colagem: é o escape hatch da regra, e ele
+     * serve para as duas coisas que produzem metade direita legítima.
      *
-     * `silenciosamente` e `propositalmente` se dividem em duas palavras do
-     * corpus — `silenciosa` + `mente`, `proposital` + `mente` — e as duas são
-     * português correto. São os dois únicos falsos positivos que a medição achou
-     * no piso de 14 caracteres, e os dois caem no mesmo sufixo.
+     * **Uma é derivação em português.** `silenciosamente` e `propositalmente`
+     * se dividem em duas palavras do corpus — `silenciosa` + `mente`,
+     * `proposital` + `mente` — e as duas são palavra correta. Medido na árvore
+     * de `2026-09-28`: são os **únicos** dois casos que a regra acusaria com o
+     * piso em 14 e esta lista vazia, e é por isso que a lista não é
+     * enfeite — sem ela o piso teria de subir para 16 e perderia a
+     * `continuaexistindo` do round 2, que tem 17 e seria a única colagem real
+     * conhecida.
      *
-     * **A lista existe para manter o alarme baixo, e por isso a consequência
-     * de um erro é declarada:** uma colagem real que termine em `mente` passa.
-     * Isso é mais barato que as duas palavras corretas gritando todo dia, e a
-     * correção de um falso positivo novo é uma entrada aqui, com a mesma
-     * revisão que qualquer entrada da `SUSPEITAS` exige.
+     * **A outra é a metade que é palavra por si só, com a outra metade sendo
+     * prefixo** — `infra` + `estrutura`, `implement` + `ações`. Medido
+     * (§ ruído, na docblock da regra): há **12** palavras de 14 caracteres ou
+     * mais que aparecem uma vez só e que **já** satisfazem a regra no instante
+     * em que a outra metade aparecer em qualquer comentário. Duas delas estão
+     * a uma palavra comum de distância:
+     *
+     * - `infraestrutura` (`app/Services/SerproConnectivity.php:180`), que
+     *   espera `infra`;
+     * - `implementações` (`app/Services/Fiscal/Support/DfeResponseParser.php:14`),
+     *   que espera `implement`.
+     *
+     * Nenhuma das duas é colagem, e **nenhuma é isentada pelo sufixo**, porque
+     * `estrutura` e `ações` não são sufixo de derivação. É por isso que esta
+     * lista aceita **palavra inteira** e não só sufixo: `estrutura` e `ações`
+     * entram aqui como isentas, e a regra passa a isentar também a palavra
+     * inteira que contém a tal metade.
+     *
+     * **A consequência de um erro é declarada nos dois sentidos.** Uma colagem
+     * real que termine em `mente`, ou que seja `infraestrutura`, passa. Isso é
+     * mais barato que as doze palavras corretas acusando toda vez que o
+     * repositório cresce, e a correção de um falso positivo novo é **uma
+     * entrada aqui**, com a mesma revisão que qualquer entrada da `SUSPEITAS`
+     * exige.
      *
      * @var list<string>
      */
-    private const DERIVACOES = ['mente'];
+    private const ISENTAS = [
+        'mente',
+        'estrutura',
+        'ações',
+    ];
 
     /**
-     * O menor comprimento que uma colagem pode ter, e a medição que fixou 14.
+     * A camada → o método de teste que a exercita.
      *
-     * Sem piso, a regra acha 53 casos, e a maioria é palavra portuguesa
-     * correta que por acaso se divide: `recusados` = `recusa` + `dos`,
-     * `perdeu` = `per` + `deu`, `logout` = `log` + `out`, `comporta` =
-     * `com` + `porta`, `sobreviva` = `sobre` + `viva`. São 51 falsos positivos
-     * para 2 acertos, e uma guarda que erra 51 vezes por rodada é uma guarda
-     * que alguém desliga.
+     * **Esta constante existe para a docblock da classe não mentir, e é o
+     * guarda do guarda.** A lista de camadas da docblock é texto, e texto não
+     * quebra quando o código muda: apagar a camada 2 inteira deixa a suíte
+     * verde, o arquivo continua dizendo "três camadas" e quem procurar a forma
+     * de colagem não encontra nada. Foi o que a revisão do round 2 mediu ao
+     * remover a camada de roteiro para provar que ela pegava CJK — **3 passed,
+     * verde** —: a prova de que a camada é boa foi também a prova de que nada
+     * a vigiava.
      *
-     * **O que a medição mostra é que a colagem é longa** — duas palavras
-     * coladas têm o comprimento da soma —, e que palavra portuguesa longa é
-     * curta. No piso 13 são 6 casos, no 14 são 4, e os 4 são as duas colagens
-     * reais mais `silenciosamente` e `propositalmente`, que `DERIVACOES`
-     * isenta. Os 2 casos abaixo do piso 14 que sobram (`transformação` e
-     * `contraexemplo`) são derivação comum em português.
+     * `test_as_camadas_declaradas_existem_como_teste` confere os dois lados: que
+     * cada método declarado aqui existe, e que não há método de varredura neste
+     * arquivo fora da lista — que é o que fecha a direção inversa, a camada
+     * nova que ninguém registrou.
      *
-     * **O que 14 custa:** uma colagem de 13 ou menos caracteres passa. O que
-     * mostra que o piso não esvaziou a regra é a demonstração com a corrupção
-     * real do item 1 reinjetada: `continuaexistindo` tem 17, e a regra a pega.
+     * @var array<string, string>
+     */
+    private const CAMADAS = [
+        'radical conhecido' => 'test_nenhuma_palavra_corrompida_em_comentario',
+        'roteiro estranho' => 'test_nenhum_caractere_de_outro_roteiro_em_comentario',
+        'colagem estrutural' => 'test_nenhuma_palavra_colada_em_comentario',
+    ];
+
+    /**
+     * O menor comprimento que uma colagem pode ter, e **o que 14 compra e o
+     * que ele custa, medido na árvore de `2026-09-28` depois do round 2.**
+     *
+     * **Os números abaixo descrevem a árvore com a corrupção do item 1 já
+     * corrigida**, e é a árvore em que a regra roda hoje. Qualquer árvore
+     * futura produz números diferentes, e a leitura honesta é a seguinte:
+     *
+     * | piso | achados com a regra commitada |
+     * | --- | --- |
+     * | 0 | **9** |
+     * | 10 | 6 |
+     * | 12 | 2 |
+     * | 13 | 2 |
+     * | 14 | **0** |
+     * | 16 ou mais | 0 |
+     *
+     * **O que o piso 14 compra é o silêncio, e não a exatidão.** Os 9 achados
+     * do piso 0 são **todos** falsos positivos — `filename`, `transformação`,
+     * `contradizem`, `superclasse`, `sobreviva`, `datetime`, `sobrevivia`,
+     * `contraexemplo`, `resultantes`, todos corretos —, e **o mesmo é verdade
+     * dos 2 do piso 12**. Nenhum piso produz um acerto, porque a árvore já não
+     * tem colagem: as duas que existiam foram corrigidas. O que muda de verdade
+     * com o piso é quanta palavra portuguesa innocentemente dividida a regra
+     * acusa, e o piso 14 é onde essa quantidade chega a **zero**.
+     *
+     * **E é por isso que o número que importa não é um número.** Uma contagem
+     * de achados vale o que vale até o próximo comentário novo; "zero falso
+     * positivo hoje" é a afirmação que se pode defender, e é a que a
+     * demonstração com a corrupção real do round 2 sustenta: `continuaexistindo`
+     * tem 17 caracteres, e a regra a pega. O piso **não** é um limiar de
+     * exatidão — nada no piso 14 separa uma coisa da outra, porque as duas
+     * colagens do caso real têm 17 —; é um limiar de **ruído**, e o valor 14
+     * foi escolhido porque é onde o ruído medido acaba.
+     *
+     * **O que a restrição que mais pesa é a das meias, e ela é o que
+     * realmente faz a regra viável.** Com o piso em 0 e meias de 4, são 9
+     * achados; com meias de 3, **44**; de 2, **227**; de 1, **374**. É a
+     * exigência de que cada metade tenha 4 caracteres ou mais que corta o
+     * ruído, e o piso de comprimento é o que fecha o resto.
+     *
+     * **O que 14 custa, declarado:** uma colagem de 13 ou menos caracteres
+     * passa. A regra é um detector de colagem **longa**, e o que prova que isso
+     * não a esvaziou é a corrupção real do round 2 reinjetada:
+     * `continuaexistindo` tem 17, e a regra a pega.
      */
     private const COMPRIMENTO_MINIMO = 14;
 
@@ -207,7 +294,7 @@ final class PalavrasCorrompidasTest extends TestCase
      * @var list<array{0: string, 1: string}>
      */
     private const EXCLUIDOS = [
-        ['tests/Unit/PalavrasCorrompidasTest.php', 'contém os radicais de `SUSPEITAS` e os sufixos de `DERIVACOES` escritos por extenso, na docblock de cada motivo e no exemplo de palavra colada — é a única razão de este arquivo existir, e tirá-lo da varredura é o que faria ele passar em silêncio sobre a própria corrupção'],
+        ['tests/Unit/PalavrasCorrompidasTest.php', 'contém os radicais de `SUSPEITAS` e as isentas de `ISENTAS` escritas por extenso, na docblock de cada motivo e no exemplo de palavra colada — é a única razão de este arquivo existir, e tirá-lo da varredura é o que faria ele passar em silêncio sobre a própria corrupção'],
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
@@ -313,10 +400,9 @@ final class PalavrasCorrompidasTest extends TestCase
      *   lista de longas se a regra não exigisse minúsculas;
      * - aparece **uma vez só** no corpus de comentário, que é o repositório
      *   funcionando como dicionário;
-     * - tem **14 caracteres ou mais** — que é o piso que separa a colagem da
-     *   palavra portuguesa longa. No piso 13 a medição achou 6 casos, no 14
-     *   achou 4, e os 4 eram duas colagens reais mais `silenciosamente` e
-     *   `propositalmente`, que as derivações isentam;
+     * - tem **14 caracteres ou mais** — que é o piso de **ruído**, e o
+     *   `COMPRIMENTO_MINIMO` tem a tabela completa e diz qual árvore cada
+     *   número descreve;
      * - e se **divide** em dois tokens de 4 caracteres ou mais que o corpus
      *   contém.
      *
@@ -325,9 +411,29 @@ final class PalavrasCorrompidasTest extends TestCase
      * ela devolveu a divisão verdadeira — `continua` + `existindo`,
      * `correntes` + `produzem` — e não uma arbitrária.
      *
-     * **O limite, e ele é real:** o corpus é o repositório, então uma palavra
-     * que já aparece duas vezes deixa de contar como colagem. Corrupção repetida
-     * em dois comentários escapa; em comentário único, que é o caso comum, não.
+     * **O ruído desta camada é um piso que sobe, e ele é declarado aqui porque
+     * zero falso positivo hoje não é a mesma coisa que regra exata.** Medido na
+     * árvore de `2026-09-28`: das **25** palavras de 14 caracteres ou mais que
+     * aparecem uma vez só, **12** já satisfazem a regra no instante em que a
+     * outra metade aparecer em qualquer comentário — porque a regra exige que
+     * **as duas** metades estejam no corpus, e o corpus cresce com o próprio
+     * repositório. As doze estão isentas por `ISENTAS` só onde o lado direito é
+     * derivação; as outras nove são `infraestrutura` esperando `infra`,
+     * `implementações` esperando `implement`, `autodescrito` esperando
+     * `auto`, e assim por diante.
+     *
+     * **A consequência é aritmética e não é "~":** a cada palavra nova escrita
+     * em comentário, a probabilidade de um falso positivo sobe. É por isso que
+     * `ISENTAS` aceita **palavra inteira** e não só sufixo, e é por isso que
+     * o próximo falso positivo é corrigido com uma entrada ali e não com
+     * modelo novo. A alternativa — deixar a lista crescer sem teto — é a que
+     * faria alguém desligar a guarda, e a medição do round 2 mostrou o preço
+     * dela: 9 falsos positivos já no piso 0, e 374 no piso 0 com meias de 1.
+     *
+     * **O outro limite, e ele é real:** o corpus é o repositório, então uma
+     * palavra que já aparece duas vezes deixa de contar como colagem. Corrupção
+     * repetida em dois comentários escapa; em comentário único, que é o caso
+     * comum, não.
      */
     public function test_nenhuma_palavra_colada_em_comentario(): void
     {
@@ -384,6 +490,62 @@ final class PalavrasCorrompidasTest extends TestCase
         }
 
         $this->assertSame([], $achados, "Palavra colada em comentário:\n".implode("\n", $achados));
+    }
+
+    /**
+     * A lista de camadas da docblock é o que este arquivo tem, e a lista é
+     * conferida contra os testes que existem.
+     *
+     * **Este é o guarda do guarda, e a falha que ele fecha foi observada.** Na
+     * revisão do round 2, remover a camada de roteiro inteira para provar que
+     * ela pegava CJK deixou a suíte em **3 passed, verde** — a prova de que a
+     * camada funcionava era também a prova de que nada exigia que ela
+     * existisse. A docblock da classe continuaria anunciando três camadas, e a
+     * próxima pessoa a procurar a forma de roteiro não encontraria nada.
+     *
+     * **Os dois sentidos são conferidos, e os dois são necessários.** O
+     * primeiro — toda camada declarada tem método — pega a camada apagada. O
+     * segundo — nenhum método de varredura está fora da lista — pega a camada
+     * acrescentada sem registro, que é o mesmo defeito pelo outro lado: o
+     * código cresceu e o texto não. Os meta-testes de `EXCLUIDOS` e do conjunto de
+     * arquivos estão isentos por serem a infra-estrutura da guarda e não uma
+     * camada, e o motivo está no filtro logo abaixo.
+     */
+    public function test_as_camadas_declaradas_existem_como_teste(): void
+    {
+        $this->assertNotSame([], self::CAMADAS, 'A lista de camadas não pode ser removida: ela é o que impede a docblock de mentir sobre o arquivo.');
+
+        foreach (self::CAMADAS as $camada => $metodo) {
+            $this->assertTrue(
+                method_exists($this, $metodo),
+                sprintf('A camada "%s" está declarada na docblock e o método `%s` não existe: a camada foi apagada ou renomeada.', $camada, $metodo),
+            );
+        }
+
+        $declarados = array_values(self::CAMADAS);
+        $deTeste = array_values(array_filter(
+            get_class_methods($this),
+            fn (string $metodo): bool => str_starts_with($metodo, 'test_'),
+        ));
+
+        // Os dois meta-testes cuidam da guarda, não de corrupção, e eles não
+        // são camadas. A lista é escrita à mão e não com `__FUNCTION__`, porque
+        // `__FUNCTION__` dentro de closure devolve o nome da closure — e foi
+        // exatamente esse o primeiro erro que este teste pegou em si mesmo,
+        // antes de a lista existir.
+        $infra = ['test_toda_exclusao_aponta_para_um_arquivo_que_existe_e_tem_motivo', 'test_as_camadas_declaradas_existem_como_teste'];
+
+        foreach ($deTeste as $metodo) {
+            if (in_array($metodo, $infra, true)) {
+                continue;
+            }
+
+            $this->assertContains(
+                $metodo,
+                $declarados,
+                sprintf('O método `%s` varre comentário e não está em `CAMADAS`: registre a camada, ou o método é um meta-teste de guarda.', $metodo),
+            );
+        }
     }
 
     /**
@@ -485,21 +647,28 @@ final class PalavrasCorrompidasTest extends TestCase
      * O caractere é de fora do latim, das letras, dos números, da pontuação, do
      * símbolo, do espaço, do controle e do modificador.
      *
-     * **A lista de categorias permitidas é a medição da árvore, e é curta de
-     * propósito.** Varrendo as seis raízes, os caracteres não latinos que
-     * existem hoje em comentário são **zero**. Os que existem fora do ASCII são
-     * o travessão, o ponto de reticências e a seta — todos de categoria de
-     * símbolo — e mais a letra acentuada do latim, que é `\p{Latin}`.
-     *
-     * As três categorias da lista que não são óbvias, e o que cada uma mediu:
+     * **A lista de categorias permitidas é medida, e o que cada entrada mediu
+     * está escrito — inclusive quando a medição é "nenhuma".** Varrendo as seis
+     * raízes, os caracteres não latinos que existem hoje em comentário são
+     * **zero**. Os que existem fora do ASCII são o travessão, o ponto de
+     * reticências e a seta — todos de categoria de símbolo — e mais a letra
+     * acentuada do latim, que é `\p{Latin}`.
      *
      * - `\p{Cc}` — tabulação e `\r` de arquivo Windows são controle e aparecem
      *   em toda parte; sem ele a regra gritaria com indentação;
-     * - `\p{Mn}` — medido na árvore inteira, e achado: `openspec/changes/**`
-     *   escreve `✗` com o **seletor de variação** U+FE0F, que é `\p{Mn}`, e
-     *   sem esta categoria a regra acusaria emoji. Um seletor de variação e um
-     *   acento combinante são invisíveis, e nenhum deles é o que se caça;
-     * - `\p{Cf}` — marca de formatação invisível, mesma razão.
+     * - `\p{Mn}` — **medido nas seis raízes: zero.** Não há acento combinante
+     *   nem seletor de variação em nenhum comentário varrido, e o revisor está
+     *   certo ao dizer que a razão que eu escrevi — o `✗` com U+FE0F de
+     *   `openspec/changes/**` — é de uma árvore que a guarda **não abre**,
+     *   porque `openspec/` não está em `DIRETORIOS`. A categoria fica, e a razão
+     *   real é outra, e é de **categoria** e não de medição: `\p{Mn}` é a marca
+     *   não separável, a categoria do que se **gruda** a uma letra base para
+     *   formar outra — acento combinante, seletor de variação. A letra acentuada
+     *   é `\p{Latin}` e entra pela porta da frente; manter a base e dispensar o
+     *   que se gruda a ela é o mesmo gesto, e é a mesma razão que já traz
+     *   `\p{Cf}`. **Nenhum caractere destas duas categorias é o que a regra
+     *   caça** — quem caça a mistura e a colagem são a camada 1 e a camada 3;
+     * - `\p{Cf}` — marca de formatação invisível, mesma razão de categoria.
      *
      * O que fica **fora** — e é o ponto da regra — é `\p{Script=Han}`, o
      * cirílico, o grego, o arábico, o hebraico, o kana e o hangul. A versão
@@ -541,16 +710,22 @@ final class PalavrasCorrompidasTest extends TestCase
     /**
      * A primeira divisão da palavra em duas que o corpus reconhece, ou `null`.
      *
-     * A divisão é recusada quando a metade da direita é um sufixo de derivação,
-     * que é o que separa `silenciosamente` — que é `silenciosa` + `mente` e é
-     * palavra correta — de `continuaexistindo`, que é `continua` + `existindo` e
-     * não é palavra nenhuma.
+     * A divisão é recusada quando a metade da direita está em `ISENTAS`, e é
+     * isso que separa `silenciosamente` — `silenciosa` + `mente`, palavra
+     * correta — de `continuaexistindo` — `continua` + `existindo`, que não é
+     * palavra nenhuma. O mesmo mecanismo isenta `infraestrutura`, cuja metade
+     * direita é `estrutura`, e a lista aceita palavra inteira por isso.
      *
-     * O corte percorre da esquerda para a direita e devolve a **primeira** que
-     * fecha, e a medição nos casos reais que estavam vivos na árvore mostrou que
-     * a primeira é a certa: ela devolveu `continua` + `existindo` e
-     * `correntes` + `produzem`, as duas divisões verdadeiras, e não uma
-     * arbitrária que o corpus também conteria.
+     * **O corte percorre da esquerda para a direita e devolve a primeira que
+     * fecha**, e a medição nos casos reais que estavam vivos na árvore mostrou
+     * que a primeira é a certa: devolveu `continua` + `existindo` e `correntes`
+     * + `produzem`, as duas divisões verdadeiras, e não uma arbitrária que o
+     * corpus também conteria.
+     *
+     * **A isenta é conferida em qualquer corte, não só no que fecha** — e é por
+     * isso que a isenta de `infraestrutura` funciona mesmo havendo um corte
+     * anterior que fecharia. A isenta é a resposta para "esta metade, aqui, é
+     * palavra", e não para "esta divisão, aqui, está errada".
      *
      * @param  array<string, int>  $corpus
      * @return array{0: string, 1: string}|null
@@ -563,7 +738,7 @@ final class PalavrasCorrompidasTest extends TestCase
             $esquerda = mb_substr($palavra, 0, $corte);
             $direita = mb_substr($palavra, $corte);
 
-            if (in_array($direita, self::DERIVACOES, true)) {
+            if (in_array($direita, self::ISENTAS, true)) {
                 continue;
             }
 

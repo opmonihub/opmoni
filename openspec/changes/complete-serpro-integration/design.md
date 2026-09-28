@@ -188,20 +188,40 @@ code that was already built for them is confirmed rather than changed:
   `contratante`, and the signing office in `assinadoPor`. That is the reading this system builds, and
   it settles the conflict the plan had with the spec's "with the office as the recipient".
 
-**What the documentation does not settle is the validity period, and this is now the honest
-statement of why the `+30 days` is kept.** The provider declares only that `vigencia` is "a data de
-validade deste termo de autorização, no formato AAAAMMDD" — a format, no number of days, and no XSD.
-Its own two examples run far longer: the layout example spans `20220614` → `20221231` (**200 days**)
-and the service example `20220808` → `20221231` (**145 days**). Both end on the same date, which is
-what samples written by hand look like and not what a rule looks like: if the period were a constant
-of N days, the two examples would end on different dates. So the examples **contradict** 30 days and
-do **not** replace it with a better number. `PERIODO_VIGENCIA_DAYS = 30` stays because it is the only
-arithmetic of a period anywhere in the provider's material — the reference model's `+30 days` — and
-because choosing 145 or 200 would be picking one of two contradictory samples as a rule, against a
-schema we cannot see. It is recorded as **unconfirmed**, and the contract test of `tasks.md` 4.6a is
-what has to settle it before any proof is recorded: the constant is inside `formatDigest()`, so
-changing it re-opens the gate by itself, which is the correct behaviour and also the reason not to
-change it on a guess.
+**What the documentation does not settle is the validity period, and this is the argument for keeping
+`+30 days`.** The provider declares only that `vigencia` is "a data de validade deste termo de
+autorização, no formato AAAAMMDD" — a format, no number of days, and no XSD. Its own two examples run
+far longer: the layout example spans `20220614` → `20221231` (**200 days**) and the service example
+`20220808` → `20221231` (**145 days**). The examples therefore **contradict** 30 days, and they do
+**not** replace it with a better number.
+
+**What the shared end date does and does not prove, stated precisely because an earlier draft of this
+paragraph got it wrong.** "Both examples end on the same date, so the period is not a constant of N
+days" rules out exactly one hypothesis: a fixed count. It says nothing about a **computed** period, and
+the obvious computed period is in plain sight — **31 December is the natural terminus of a Brazilian
+fiscal document**, and both examples are from 2022. "Valid through the end of the exercise year"
+explains two different start dates and one shared end date perfectly, and would be a documented
+convention rather than a coincidence. The inference the shared end date *does* support is weaker and is
+what the decision rests on: **neither 145 nor 200 is inferable**, because under any rule consistent
+with the samples both numbers are artefacts of the rule rather than the rule.
+
+**So `PERIODO_VIGENCIA_DAYS = 30` is the risk-asymmetric choice, and that is the whole argument.** If
+the provider's real rule is *longer* than thirty days — year-end, say — a thirty-day term is shorter
+than the maximum and is very likely still accepted, because a document that expires does satisfy a
+longer deadline. If the rule is *shorter* than thirty, the term is rejected, and **that failure is late
+and recoverable**: the daily refresh still runs, the rejection is recorded as `recusado`, and the
+recorded action is to re-sign. A long period fails immediately against a real gateway instead, and a
+rejected term is the one state this product cannot undo without the office delivering its e-CNPJ again.
+With the gate closed and `tasks.md` 4.6a unpaid, **30 is the value whose error costs least.**
+
+**The counter-argument belongs next to the conclusion, not in a footnote.** Thirty days is a short
+term for an authorization meant to last an exercise, and the provider's own documentation — the only
+thing a non-technical reader would look at — points towards the end of the year. If the contract test
+rejects 30, the value changes, and the mechanical consequence is one constant: `formatDigest()`
+re-opens the gate by itself, which is the correct behaviour. What cannot be done is *substituting* 145
+or 200 for 30, which would be promoting one of two contradictory samples to a rule against a schema we
+cannot see. The value is recorded as **unconfirmed**, and the contract test of `tasks.md` 4.6a is what
+has to settle it before any proof is recorded.
 
 "Verbatim" has a precise meaning for the vigência, and getting it wrong would make the decision
 unimplementable: what is preserved is the **period the reference model computes**, not a claim that

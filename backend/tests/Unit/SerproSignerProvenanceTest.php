@@ -44,11 +44,16 @@ use ReflectionClass;
  * SimpleXML já vem sem o espaço, e o `loadXML`/`saveXML` da própria
  * assinatura o apaga — e
  * **dois foram mantidos verbatim por decisão**, a vigência de 30 dias e a
- * canonicalização exclusiva do digest. O gate vale para os nomes e valores
- * resultantes: **nenhum termo pode ser emitido antes de um teste de contrato
- * provar a aceitação**. A decisão e o gate estão em `design.md` (D2) e na spec;
- * aqui o que cabe é provar a coincidência da canonicalização e falhar se ela
- * deixar de valer.
+ * canonicalização exclusiva do digest. **A vigência de 30 dias é
+ * `SerproTermSigner::PERIODO_VIGENCIA_DAYS`, que é um valor não confirmado** —
+ * a documentação do provedor declara só o formato de `vigencia` e os exemplos
+ * que publica duram muito mais, e por que o valor é trinta apesar disso está
+ * na docblock da constante. Aqui a frase nomeia a constante, como deve: este
+ * arquivo prova a procedência da assinatura, e a vigência é de outro teste.
+ * O gate vale para os nomes e valores resultantes: **nenhum termo pode ser
+ * emitido antes de um teste de contrato provar a aceitação**. A decisão e o
+ * gate estão em `design.md` (D2) e na spec; aqui o que cabe é provar a
+ * coincidência da canonicalização e falhar se ela deixar de valer.
  *
  * O certificado é gerado em tempo de execução e não é versionado: `*.pfx` está
  * no `.gitignore` da raiz, e a regra é do arquivo inteiro, não do caso. Para
