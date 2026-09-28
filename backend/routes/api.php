@@ -78,9 +78,19 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      * certificado", e por construção é também o de "o certificado é de outra
      * conta" — a busca é por `account_id` explícito, nunca pelo escopo global
      * do tenant.
+     *
+     * **O upload é limitado, e pelo mesmo motivo do diagnóstico mais
+     * abaixo.** Cada envio aceito agenda a emissão do termo, e a emissão é um
+     * `submitTerm` de verdade contra o provedor, com `tries = 1` e sem
+     * unicidade: um `admin` ou `operador` que chame a rota em laço gasta a cota
+     * **do escritório dele**, que é a cota de um parceiro do SERPRO. Seis por
+     * minuto é folgado para o uso real — o e-CNPJ se entrega uma vez, e a
+     * reentrega é rara — e curto o bastante para que a cota gasta por uma
+     * sessão de teste seja irrelevante.
      */
     Route::get('serpro/account-certificate', [AccountCertificateController::class, 'show']);
-    Route::post('serpro/account-certificate', [AccountCertificateController::class, 'store']);
+    Route::post('serpro/account-certificate', [AccountCertificateController::class, 'store'])
+        ->middleware('throttle:6,1');
     Route::delete('serpro/account-certificate', [AccountCertificateController::class, 'destroy']);
 
     /*
@@ -89,7 +99,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      * Não há rota de escrita, e a ausência é a decisão: o termo é assinado
      * pelo e-CNPJ que a rota de cima entrega e emitido pela plataforma, e
      * nenhum Membro tem o que pedir ao provedor em nome do escritório. A
-     * policy nega a escrita para todo mundo pelo mesmo motivo.
+     * policy nega a escrita para todo mundo pelo mesmo motivo, e o que
+     * segura as duas coisas é a ausência do verbo nela **e** a ausência da
+     * rota aqui: um `Route::post` que chamasse o `SerproTermManager`
+     * diretamente passaria pelo `Gate` sem nunca chegar à policy, e é por
+     * isso que o teste que afirma a ausência de rota existe.
      *
      * O `200` com `state` = `ausente` para quem não tem termo é o que a
      * spec chama de "ação pertencente ao escritório" — a tela precisa da

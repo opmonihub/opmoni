@@ -7,15 +7,20 @@ use App\Models\AccountCertificate;
 use App\Models\AccountUser;
 use App\Models\SupportAccessLog;
 use App\Models\User;
+use App\Policies\AccountCertificatePolicy;
 use App\Tenant\CurrentTenant;
 use Carbon\Carbon;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use ReflectionClass;
+use ReflectionMethod;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -95,10 +100,95 @@ class SerproAccountCertificateTest extends TestCase
         }
     }
 
+    /**
+     * Os middlewares que a rota carrega, pelo par método e URI.
+     *
+     * @return list<string>
+     */
+    private function routeMiddleware(string $method, string $uri): array
+    {
+        $rota = collect(Route::getRoutes())->first(
+            fn ($candidata): bool => in_array($method, $candidata->methods(), true) && $candidata->uri() === $uri
+        );
+
+        $this->assertNotNull($rota, "Rota {$method} {$uri} não encontrada.");
+
+        return $rota->gatherMiddleware();
+    }
+
+    /**
+     * O upload do e-CNPJ é limitado, e o motivo é o mesmo do diagnóstico.
+     *
+     * **Cada sucesso custa uma submissão ao provedor.** O cofre agenda o
+     * `IssueSerproTermJob` depois do commit, e o job faz um `submitTerm` de
+     * verdade, com `tries = 1` e sem unicidade: não há o que impeça um
+     * `admin`/`operador` de chamar a rota em laço e queimar a cota **do
+     * escritório dele**, que é a cota de um parceiro do SERPRO e não uma
+     * chamada interna. A rota vizinha de conectividade já é limitada por
+     * exatamente esse argumento, e ela está a dez linhas de distância no mesmo
+     * arquivo.
+     *
+     * O que o caso afirma é o middleware — o que a rota **tem** —, e não a
+     * contagem: um teste que dependesse de seis uploads gastaria seis
+     * certificados de descarte e mediria o `RateLimiter` do framework em vez
+     * da decisão.
+     */
+    public function test_o_upload_do_ecnpj_e_limitado(): void
+    {
+        $this->assertContains(
+            'throttle:6,1',
+            $this->routeMiddleware('POST', 'api/serpro/account-certificate'),
+            'Cada upload que o provedor aceita custa uma emissão de verdade, e a rota do diagnóstico é limitada pelo mesmo motivo.',
+        );
+    }
+
+    /**
+     * A policy do e-CNPJ não tem verbo que enderece a linha.
+     *
+     * **A invariante é a da docblock e ela não tinha trava.** O e-CNPJ é um
+     * por conta e as três rotas não endereçam linha nenhuma: o upload
+     * substitui o que estava valendo e a remoção apaga o que estava valendo. Um
+     * `view(User, AccountCertificate $cert)` acrescentado "por simetria" com o
+     * resto do produto cairia na armadilha que a própria docblock nomeia — a
+     * autorização de uma linha de outra conta, respondendo pelo model em vez
+     * de responder pela conta — e a policy irmã do termo, que tem a mesma
+     * invariante, é verificada com um teste.
+     *
+     * A verificação é por **reflexão sobre os parâmetros**, e não por nome de
+     * verbo: `delete` existe aqui sem model, e a forma que a regra proíbe é a
+     * assinatura com o segundo parâmetro. Um método novo com model quebraria
+     * este teste mesmo com um nome que ninguém非常大.
+     */
+    public function test_a_policy_do_ecnpj_nao_declara_verbos_que_enderecem_a_linha(): void
+    {
+        $policy = new AccountCertificatePolicy;
+
+        foreach ((new ReflectionClass($policy))->getMethods(ReflectionMethod::IS_PUBLIC) as $metodo) {
+            if ($metodo->getDeclaringClass()->getName() !== $policy::class) {
+                continue;
+            }
+
+            $this->assertLessThanOrEqual(
+                1,
+                $metodo->getNumberOfParameters(),
+                sprintf('`%s` recebe um segundo parâmetro: a rota do e-CNPJ não endereça linha, e um verbo com model autoriza a linha de qualquer conta.', $metodo->getName()),
+            );
+        }
+
+        // E o que a policy faz de verdade continua valendo, para que a trava
+        // acima não possa ser satisfeita apagando a policy inteira.
+        $conta = Account::factory()->create();
+
+        resolve(CurrentTenant::class)->accountId = $conta->getKey();
+
+        $this->assertTrue(Gate::forUser($this->membroDe($conta, 'admin'))->allows('create', AccountCertificate::class));
+        $this->assertTrue(Gate::forUser($this->membroDe($conta, 'operador'))->allows('delete', AccountCertificate::class));
+        $this->assertFalse(Gate::forUser($this->membroDe($conta, 'user'))->allows('create', AccountCertificate::class));
+    }
+
     public function test_admin_e_operador_enviam_o_ecnpj_do_escritorio(): void
     {
         $conta = Account::factory()->create();
-
         foreach (['admin', 'operador'] as $papel) {
             ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
 
@@ -776,6 +866,80 @@ class SerproAccountCertificateTest extends TestCase
     }
 
     /**
+     * O `subject` é uma DN que **a AC escolhe**, e ela é do tamanho que ela
+     * quiser.
+     *
+     * **O caso reproduz a DN de um e-CNPJ de verdade, e ela é grande.** Um
+     * certificado ICP-Brasil antigo traz meia dúzia de RDNs — país, O, a AC
+     * que emitiu, o título do certificado, cidade, estado, o CN com a razão
+     * social e o documento, e-mail — e o `X509_NAME_oneline` concatena todos:
+     * o que a revisão mediu num e-CNPJ G5 real foi **274 caracteres**, e uma
+     * razão social de sessenta caracteres leva a forma longa a mais de duzentos
+     * e noventa. A coluna é `varchar(255)` e o Postgres **recusa** um valor
+     * maior: um `500` no meio de um upload cujo arquivo está inteiramente
+     * correto, para um escritório que **não pode encurtar a própria DN** —
+     * ele não escolhe o certificado que a AC emitiu. Diferente do nome do
+     * arquivo, para o qual existe o nome completo como conserto, aqui o que
+     * some é a folha de rosto do certificado e o conserto é o mesmo corte.
+     *
+     * A suíte não veria isso: o SQLite aceita `varchar` estourado em silêncio e
+     * o `subject` do certificado de descarte tem 55 caracteres.
+     */
+    public function test_uma_dn_de_aceite_maior_que_a_coluna_e_aparada_sem_recusar_o_ecnpj(): void
+    {
+        $conta = Account::factory()->create();
+
+        ['file' => $arquivo, 'bytes' => $bytes] = $this->pfx('escritorio.p12', subject: $this->dnLonga());
+
+        $lida = [];
+        $this->assertTrue(openssl_pkcs12_read($bytes, $lida, self::SENHA), 'O PFX de descarte tem de abrir.');
+
+        $nome = (string) openssl_x509_parse($lida['cert'])['name'];
+
+        $this->assertGreaterThan(255, mb_strlen($nome), 'A DN do caso tem de estourar o varchar(255).');
+
+        // O e-CNPJ entra. Recusá-lo por causa do nome do sujeito seria trocar um
+        // `500` por um `422` que o escritório não tem como corrigir.
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $gravado = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($gravado);
+        $this->assertLessThanOrEqual(255, mb_strlen((string) $gravado->subject));
+        $this->assertTrue(mb_check_encoding((string) $gravado->subject, 'UTF-8'), 'O corte tem de contar caractere, e não byte.');
+        $this->assertSame($gravado->subject, $gravado->fresh()->subject);
+
+        // A identidade continua extraída do certificado inteiro, e não do
+        // `subject` gravado: o corte é de exibição, e um corte que levasse o CN
+        // junto derrubaria a emissão do termo.
+        $this->assertSame(self::CNPJ, $gravado->document);
+        $this->assertNotNull($gravado->certificate_encrypted);
+        $this->assertSame(1, AccountCertificate::query()->count());
+    }
+
+    /**
+     * Uma DN de e-CNPJ do padrão ICP-Brasil, com os RDNs que a AC emite.
+     *
+     * @return array<string, string>
+     */
+    private function dnLonga(): array
+    {
+        return [
+            'C' => 'BR',
+            'O' => 'ICP-Brasil',
+            'OU' => 'Autoridade Certificadora Raiz da ICP-Brasil, G5 - Cassia Digital',
+            'title' => 'Certificado Digital para Pessoa Juridica - e-CNPJ A1',
+            'L' => 'Sao Paulo',
+            'ST' => 'Sao Paulo',
+            'CN' => 'TESTE CONTABIL EIRELI - ME:'.self::CNPJ,
+            'emailAddress' => 'contato@testecontabil.com.br',
+            'description' => 'Certificado emitido para pessoa juridica',
+        ];
+    }
+
+    /**
      * O corte conta **caractere**, e o `varchar(255)` do Postgres também conta
      * caractere — que é o que faz o `mb_substr` ser a operação certa aqui.
      *
@@ -1185,16 +1349,24 @@ class SerproAccountCertificateTest extends TestCase
      *
      * @return array{bytes: string, file: UploadedFile}
      */
+    /**
+     * @param  array<string, string>|null  $subject  o subject inteiro do
+     *                                               certificado de descarte, quando
+     *                                               o caso precisa de uma DN longa
+     */
     private function pfx(
         string $name,
         string $password = self::SENHA,
         int $dias = 365,
         string $document = self::CNPJ,
+        ?array $subject = null,
     ): array {
-        $assunto = [
-            'CN' => 'Escritorio Contabil Andre Siqueira:'.$document,
-            'serialNumber' => $document,
-        ];
+        $assunto = $subject === null
+            ? [
+                'CN' => 'Escritorio Contabil Andre Siqueira:'.$document,
+                'serialNumber' => $document,
+            ]
+            : $subject + ['serialNumber' => $document];
         $config = $this->opensslConfig();
 
         $chave = openssl_pkey_new(array_merge(

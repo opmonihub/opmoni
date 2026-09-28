@@ -40,8 +40,10 @@ use Illuminate\Validation\ValidationException;
  *    arquivo: o disco do container do Laravel é efêmero em produção, e um
  *    certificado em arquivo sumiria a cada recriação do serviço.
  *
- * Sobre a senha: o `finally` esvazia a referência e descarta o que a leitura
- * devolveu, e **não** faz mais do que isso. Atribuir não apaga memória, e um
+ * Sobre a senha: o `finally` esvazia a referência, descarta os bytes e descarta
+ * **o que a leitura devolveu** — inclusive a chave privada em PEM que
+ * `inspect()` traz, que é o que fica com a vida mais longa se a referência
+ * sobreviver. E **não** faz mais do que isso. Atribuir não apaga memória, e um
  * comentário aqui dizendo o contrário seria pior do que a ausência dele.
  */
 final class AccountCertificateVault
@@ -69,14 +71,15 @@ final class AccountCertificateVault
     private const RECUSA_DE_VIGENCIA = 'O e-CNPJ enviado está vencido: envie um certificado vigente para assinar o termo de autorização.';
 
     /**
-     * O tamanho da coluna `original_filename`, em **caractere** — que é a
-     * unidade que o `varchar(n)` do Postgres conta.
+     * O tamanho das duas colunas de metadado que o cofre apara, em
+     * **caractere** — que é a unidade que o `varchar(n)` do Postgres conta.
      *
-     * O número é o da migration — `string()` é `varchar(255)` — e é repetido
-     * aqui porque o cofre é quem decide o que entra, e um corte que precisasse
-     * confirmar o schema a cada upload seria uma leitura por upload.
+     * São `original_filename` e `subject`, e as duas são `string()` na
+     * migration — o que é `varchar(255)` —, o que é repetido aqui porque o
+     * cofre é quem decide o que entra, e um corte que precisasse confirmar o
+     * schema a cada upload seria uma leitura por upload.
      */
-    private const LIMITE_DO_NOME = 255;
+    private const LIMITE_DO_METADADO = 255;
 
     public function __construct(
         private CertificatePkcs12 $pkcs12,
@@ -152,7 +155,7 @@ final class AccountCertificateVault
 
             $attributes = [
                 'document' => $document,
-                'subject' => $inspected['subject'],
+                'subject' => $this->boundedSubject($inspected['subject']),
                 'serial_number' => $inspected['serial'],
                 'valid_from' => $inspected['valid_from'],
                 'valid_until' => $inspected['valid_until'],
@@ -207,7 +210,13 @@ final class AccountCertificateVault
         } finally {
             $password = '';
             $bytes = '';
-            unset($password, $bytes);
+            // `$inspected` entra no `unset` pelo mesmo motivo dos outros dois, e
+            // o motivo dele é maior: ele carrega o `pkey`, que é a **chave
+            // privada em PEM** que `inspect()` devolveu. A versão anterior
+            // esvaziava a senha e os bytes e deixava essa referência viva até
+            // o fim da requisição — a docblock da classe dizia "descarta o que a
+            // leitura devolveu" sobre um `finally` que não descartava a leitura.
+            unset($password, $bytes, $inspected);
         }
     }
 
@@ -283,7 +292,9 @@ final class AccountCertificateVault
      * de 204 caracteres antes do fim, porque ele tem 404 bytes, e cairia no meio
      * de um caractere multibyte, produzindo um nome com byte inválido que a
      * tela mostra com caractere de replacement. O nome completo está no
-     * `subject` do certificado, que vem do próprio X.509 e não é do formulário.
+     * `subject` do certificado, que vem do próprio X.509 e não é do formulário —
+     * e o `subject` tem o corte dele, que apara o que sobra do nome quando ele
+     * também não cabe.
      *
      * O `ClientCertificateVault` grava a mesma coluna sem este corte. Não é uma
      * justificativa para repetir o defeito: é o motivo de o corte estar aqui
@@ -292,7 +303,41 @@ final class AccountCertificateVault
      */
     private function boundedFilename(string $name): string
     {
-        return mb_substr($name, 0, self::LIMITE_DO_NOME);
+        return mb_substr($name, 0, self::LIMITE_DO_METADADO);
+    }
+
+    /**
+     * O `subject` como vai para a coluna, e ele precisa caber nela.
+     *
+     * **A DN é escolhida pela AC, e ela é do tamanho que a AC quiser.** O
+     * `subject` é o `X509_NAME_oneline` do certificado, que concatena todos os
+     * RDNs: um e-CNPJ do ICP-Brasil antigo traz país, `O`, a autoridade
+     *-certificadora que emitiu, o título do certificado, cidade, estado, o `CN`
+     * com a razão social e o documento, e-mail e descrição — e o que a revisão
+     * mediu num e-CNPJ G5 de verdade foi **274 caracteres**, contra os 255 da
+     * coluna. Uma razão social de sessenta caracteres leva a forma longa a mais
+     * de duzentos e noventa. O Postgres não trunca: recusa, e a recusa é um `500`
+     * no meio de um upload cujo arquivo está inteiramente correto.
+     *
+     * **E aqui a recuperação é pior do que a do nome do arquivo, e é o que
+     * decide pelo corte e não pela recusa.** O nome do arquivo é do cliente, e o
+     * `subject` do certificado é o lugar onde o nome completo sobrevive. O
+     * `subject`, não: ele **é** o nome completo, e o escritório não pode
+     * encurtar a própria DN — ele não escolhe o certificado que a AC emitiu.
+     * Recusar o e-CNPJ por causa do nome do sujeito seria um `422` que o
+     * escritório não tem como corrigir, e o escritório ficaria sem poder
+     * autorizar a integração por um campo que é metadado de exibição.
+     *
+     * **O que o corte não toca é a identidade.** O CNPJ vem do certificado
+     * aberto, por `SerproCertificateIdentity::documentFromCertificate()`, e não
+     * desta string: um corte que levasse o `CN` junto derrubaria a emissão do
+     * termo — que é o que assina o documento jurídico — por causa de uma coluna
+     * de histórico. O que se perde é o rabo da DN, e a DN inteira continua no
+     * certificado que o escritório tem em mãos.
+     */
+    private function boundedSubject(string $subject): string
+    {
+        return mb_substr($subject, 0, self::LIMITE_DO_METADADO);
     }
 
     /**

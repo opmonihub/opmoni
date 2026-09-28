@@ -36,6 +36,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use LogicException;
 use RuntimeException;
@@ -2066,6 +2067,37 @@ class SerproAuthorizationTermTest extends TestCase
                 "A policy não deve declarar `{$verbo}`: não há rota que o acione, e método sem rota é método que ninguém exercita.",
             );
         }
+    }
+
+    /**
+     * Nenhuma rota escreve o termo, e a afirmação é sobre o **roteador**.
+     *
+     * **O que a policy sozinha não segura.** O caso acima prova que a policy não
+     * declara verbo de escrita e que o Gate nega — mas um `Route::post`
+     * apontando direto para o `SerproTermManager::issue()` não passaria por ela:
+     * a chamada sairia do controller sem `Gate::authorize`, e a recusa do gate
+     * de emissão — que é `DoNotRetry` e é a linha que a spec pede — nunca
+     * seria consultada por um Membro. A suíte ficaria verde e a decisão do
+     * design, que é "nenhum Membro escreve o termo", seria apenas um texto.
+     *
+     * Por isso a verificação olha o roteador, e não a policy: as duas juntas é
+     * que fecham, e é a segunda que estava sem trava.
+     */
+    public function test_o_roteador_nao_expoe_rota_de_escrita_do_termo(): void
+    {
+        $escritas = [];
+
+        foreach (Route::getRoutes() as $rota) {
+            if (in_array($rota->uri(), ['api/serpro/authorization-terms', 'serpro/authorization-terms'], true)) {
+                $escritas[] = implode('|', $rota->methods());
+            }
+        }
+
+        $this->assertSame(
+            ['GET|HEAD'],
+            $escritas,
+            'O termo é emitido pela plataforma e renovado pela agenda: nenhuma rota de escrita pode existir, e uma que exista passaria pelo manager sem passar pelo Gate.',
+        );
     }
 
     // -------------------------------------------------------------------- esquema

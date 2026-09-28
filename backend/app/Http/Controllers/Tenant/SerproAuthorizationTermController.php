@@ -7,7 +7,6 @@ use App\Http\Resources\SerproAuthorizationTermResource;
 use App\Models\Account;
 use App\Models\SerproAuthorizationTerm;
 use App\Tenant\CurrentTenant;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -24,13 +23,19 @@ use Illuminate\Support\Facades\Gate;
  * e um `404` seria indistinguível de rota errada para quem está do outro
  * lado da API.
  *
+ * **Nenhum parâmetro de requisição, e o `Request` não é importado.** A rota
+ * não tem o que receber: ela não lê corpo, não lê query string e não
+ * endereça linha. A versão anterior declarava `Request $request` sem usar,
+ * que é a forma mais barata de deixar a impressa de que a rota escuta
+ * alguma coisa.
+ *
  * O controller não decifra, não decide estado e não formata material. A
  * busca é por `account_id` explícito, o que faz o termo de outra conta não
  * aparecer em nenhuma hipótese.
  */
 class SerproAuthorizationTermController extends Controller
 {
-    public function __invoke(Request $request): SerproAuthorizationTermResource
+    public function __invoke(): SerproAuthorizationTermResource
     {
         Gate::authorize('viewAny', SerproAuthorizationTerm::class);
 
