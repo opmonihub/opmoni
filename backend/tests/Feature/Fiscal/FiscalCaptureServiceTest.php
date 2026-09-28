@@ -180,6 +180,67 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertSame(FiscalSkipReason::NoCertificate, $outcome->skipReason);
     }
 
+    public function test_certificado_com_senha_indecifravel_exige_reenvio(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        // A coluna tem senha e a senha não abre: `APP_KEY` rotacionada, valor
+        // truncado ou lixo antigo. O certificado existe e está no prazo, então
+        // este não é um cliente sem certificado — é um cliente cujo A1 tem de
+        // voltar, e essa é a diferença que a carteira precisa enxergar.
+        $client->currentCertificate->forceFill(['password_encrypted' => 'nao-e-um-ciphertext'])->save();
+
+        $this->cursor($client)->forceFill(['last_nsu' => 900])->save();
+
+        $this->bindConnector(fn (): PullResult => $this->batch([], 1000, true));
+
+        $outcome = $this->service()->capture($client->refresh(), FiscalSource::NfeDistribuicao);
+
+        $this->assertSame([], $this->pulls);
+        $this->assertFalse($outcome->ran);
+        $this->assertSame(FiscalSkipReason::NoCertificate, $outcome->skipReason);
+
+        // `last_error` é a classificação estável que a API vai ler, e não uma
+        // frase montada a partir da exceção: o motivo é o reenvio, e nada mais.
+        $cursor = $this->cursor($client);
+        $this->assertSame('certificate_reupload', $cursor->last_error);
+
+        // A posição não se move e a coluna que diria "rodamos" continua vazia:
+        // sem senha não há o que consultar, e uma posição que anda por cima de
+        // uma consulta que não aconteceu perde documento em silêncio.
+        $this->assertSame(900, $cursor->last_nsu);
+        $this->assertNull($cursor->last_run_at);
+    }
+
+    public function test_certificado_reenviado_limpa_o_motivo_apos_a_captura(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+
+        $client->currentCertificate->forceFill(['password_encrypted' => 'nao-e-um-ciphertext'])->save();
+
+        $this->bindConnector(fn (): PullResult => $this->batch([], 0, true));
+
+        $this->service()->capture($client->refresh(), FiscalSource::NfeDistribuicao);
+
+        $this->assertSame('certificate_reupload', $this->cursor($client)->last_error);
+
+        $this->reuploadCertificate($client);
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100)],
+            lastNsu: 200,
+            mayAdoptPosition: true,
+        ));
+
+        $this->service()->capture($client->refresh(), FiscalSource::NfeDistribuicao);
+
+        // A marcação é o estado de agora, não um histórico de estados: um cliente
+        // que voltou a ser capturável não pode continuar na lista de quem precisa
+        // reenviar o certificado, senão o aviso vira ruído e ninguém lê mais.
+        $this->assertSame(200, $this->cursor($client)->last_nsu);
+        $this->assertNull($this->cursor($client)->last_error);
+    }
+
     public function test_skips_a_client_inside_a_block_window(): void
     {
         [$client] = $this->tenant(withCertificate: true);
@@ -815,6 +876,19 @@ class FiscalCaptureServiceTest extends TestCase
         }
 
         return [$client->refresh()];
+    }
+
+    /**
+     * O reenvio do A1 pelo vault: uma linha nova de certificado, com senha que
+     * abre, que passa a ser a corrente do cliente. É o que desfaz a marcação de
+     * reenvio, e o que a torna recuperável em vez de definitiva.
+     */
+    private function reuploadCertificate(Client $client): void
+    {
+        ClientCertificate::factory()->withPassword()->create([
+            'account_id' => $client->account_id,
+            'client_id' => $client->getKey(),
+        ]);
     }
 
     private function cursor(Client $client): FiscalCursor

@@ -5,6 +5,7 @@ namespace App\Services\Fiscal\Capture;
 use App\Enums\FiscalSkipReason;
 use App\Enums\FiscalSource;
 use App\Models\Client;
+use App\Models\ClientCertificate;
 use App\Models\FiscalCursor;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PullResult;
@@ -85,7 +86,21 @@ final class FiscalCaptureService
         // O certificado primeiro, entre as três guardas: ele é a única delas cujo
         // motivo não passa, e a carteira precisa de um cliente não capturável
         // distinguível de um cliente que hoje não pode ser consultado.
-        if ($this->certificateIsUnusable($client)) {
+        $certificate = $client->currentCertificate;
+
+        if ($this->certificateIsUnusable($certificate)) {
+            // Sem certificado, sem senha ou com certificado vencido, o painel já
+            // descreve o estado pelo próprio certificado. Cliente com senha
+            // guardada que não abre é outro estado — o A1 tem de voltar — e sem
+            // uma marcação na coluna a carteira veria só "não capturável", que é
+            // a mesma palavra de quem nunca enviou certificado. A marcação entra
+            // aqui, antes de qualquer requisição e sem mexer na posição: sem
+            // senha não há o que consultar, e uma posição que anda por cima de
+            // uma consulta que não aconteceu perde documento em silêncio.
+            if ($this->passwordIsUndecryptable($certificate)) {
+                $cursor->forceFill(['last_error' => 'certificate_reupload'])->save();
+            }
+
             return FiscalCaptureOutcome::skipped(FiscalSkipReason::NoCertificate, $from);
         }
 
@@ -329,16 +344,39 @@ final class FiscalCaptureService
             ->value('last_nsu');
     }
 
-    private function certificateIsUnusable(Client $client): bool
+    private function certificateIsUnusable(?ClientCertificate $certificate): bool
     {
-        $certificate = $client->currentCertificate;
-
         if ($certificate === null) {
             return true;
         }
 
         return $certificate->certificatePassword() === null
             || $certificate->valid_until->isPast();
+    }
+
+    /**
+     * A coluna tem senha e a senha não abre: `APP_KEY` rotacionada, valor
+     * truncado, lixo antigo.
+     *
+     * A distinção que interessa não é uma exceção para se capturar, e a
+     * `DecryptException` não é o sinal dela: `certificatePassword()` já devolve
+     * `null` para a coluna vazia e para o payload que não decifra, justamente
+     * para que ler credencial em qualquer tela continue sendo uma leitura. O
+     * sintoma é o mesmo nos dois casos e o que os separa é a coluna — preenchida
+     * e ainda assim sem senha é certificado que o cliente precisa reenviar;
+     * vazia é certificado que nunca teve senha.
+     *
+     * A senha em si não é comparada, registrada nem devolvida: daqui sai um
+     * booleano, e para a coluna vai uma palavra de classificação.
+     */
+    private function passwordIsUndecryptable(?ClientCertificate $certificate): bool
+    {
+        if ($certificate === null) {
+            return false;
+        }
+
+        return ($certificate->password_encrypted !== null && $certificate->password_encrypted !== '')
+            && $certificate->certificatePassword() === null;
     }
 
     /**
