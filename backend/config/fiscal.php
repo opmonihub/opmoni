@@ -41,6 +41,15 @@ return [
 
     'consulta_hourly_limit' => 20,
 
+    /*
+     * Quantas vezes a reconciliação consulta a mesma lacuna antes de parar com
+     * ela. Três tentativas separadas por uma hora é o que distingue "a posição
+     * ainda não foi publicada" de "não existe documento nesta posição": depois
+     * disso a lacuna continua registrada e visível, mas não custa mais consulta
+     * ao CNPJ, que é o recurso que o fisco conta.
+     */
+    'reconcile_max_attempts' => 3,
+
     'endpoints' => [
         'nfe_distribuicao' => [
             'producao' => 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',

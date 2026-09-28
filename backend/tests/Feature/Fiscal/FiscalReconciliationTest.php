@@ -1,0 +1,743 @@
+<?php
+
+namespace Tests\Feature\Fiscal;
+
+use App\Enums\FiscalFailure;
+use App\Enums\FiscalKind;
+use App\Enums\FiscalModel;
+use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
+use App\Models\Account;
+use App\Models\Client;
+use App\Models\ClientCertificate;
+use App\Models\FiscalCursor;
+use App\Models\FiscalDocument;
+use App\Models\FiscalGap;
+use App\Services\Fiscal\Capture\FiscalCaptureService;
+use App\Services\Fiscal\Capture\FiscalReconciliation;
+use App\Services\Fiscal\Contracts\FailedEntry;
+use App\Services\Fiscal\Contracts\FiscalConnector;
+use App\Services\Fiscal\Contracts\PulledDocument;
+use App\Services\Fiscal\Contracts\PullResult;
+use App\Services\Fiscal\Exceptions\FiscalException;
+use App\Services\Fiscal\Exceptions\FiscalLookupDeferred;
+use App\Tenant\CurrentTenant;
+use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+/**
+ * A lacuna conhecida e a reconciliação: onde a posição que não virou documento
+ * é gravada, e como ela volta para ser buscada uma a uma.
+ *
+ * Duas metades e uma regra que as atravessa. A captura grava a lacuna — porque
+ * `last_error` tem uma linha por lote e a identidade da entrada ilegível é o
+ * que faz o buraco recuperável. A reconciliação volta para buscá-la — e ela não
+ * anda com a posição em nenhum caminho, nem no sucesso, nem na recusa, nem na
+ * exceção. Uma recuperação que mexesse no cursor transformaria o mecanismo de
+ * fechar buraco em avanço inventado, e a idempotência do módulo inteiro
+ * (lote gravado antes de a posição andar) perderia o chão.
+ *
+ * Nenhum teste aqui toca a rede: o `FiscalConnector` é um falso ligado no
+ * container e `preventStrayRequests` explode se alguma requisição escapar.
+ */
+class FiscalReconciliationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /**
+     * Chaves de acesso com o dígito verificador que o módulo 11 da NT exige —
+     * o writer recusa a que não fecha, e a identidade do documento é a chave,
+     * não a posição.
+     */
+    private const CHAVE_100 = '33333333333333333333333333333333333333331007';
+
+    private const CHAVE_101 = '33333333333333333333333333333333333333331015';
+
+    private const CHAVE_102 = '33333333333333333333333333333333333333331023';
+
+    private const CHAVE_110 = '33333333333333333333333333333333333333331104';
+
+    private const CHAVE_999 = '33333333333333333333333333333333333333339997';
+
+    private const CHAVE_QUE_NAO_FECHA = '33333333333333333333333333333333333333332004';
+
+    /**
+     * As posições pedidas uma a uma, na ordem em que saíram. É a única prova de
+     * que a reconciliação foi ao fisco: uma posição que ninguém pediu é um
+     * buraco que ninguém fechou, e uma posição pedida a mais é consulta
+     * indevida — a mesma coisa que bloqueia o CNPJ.
+     *
+     * @var list<int>
+     */
+    private array $lookups = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('fiscal');
+        Http::preventStrayRequests();
+    }
+
+    public function test_recupera_a_posicao_pendente_e_encerra_a_lacuna(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $gap = $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull(), fn (): ?PulledDocument => $this->pulled(101, self::CHAVE_101));
+
+        $recovered = $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+
+        $this->assertSame(1, $recovered);
+        $this->assertSame([101], $this->lookups);
+        $this->assertDatabaseMissing('fiscal_gaps', ['id' => $gap->getKey()]);
+        $this->assertSame([101], FiscalDocument::query()->orderBy('nsu')->pluck('nsu')->all());
+
+        // A posição guardada é a posição que a captura incremental soube
+        // alcançar, e a reconciliação não a move: `last_nsu`, `last_run_at` e
+        // `last_seen_at` continuam exatamente como estavam, porque nada aqui é
+        // uma captura.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(100, $cursor->last_nsu);
+        $this->assertNull($cursor->last_run_at);
+        $this->assertNull($cursor->last_seen_at);
+        $this->assertNull($cursor->last_success_at);
+    }
+
+    public function test_a_segunda_execucao_nao_consulta_nenhuma_posicao(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull(), fn (): ?PulledDocument => $this->pulled(101, self::CHAVE_101));
+
+        $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+        $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+
+        // A lacuna foi encerrada porque o documento entrou pelo writer, e não
+        // porque a posição andou: quem some da fila é a pendência, e a posição
+        // segue onde a captura a deixou.
+        $this->assertSame([101], $this->lookups);
+        $this->assertSame(100, $this->cursorOf($client)->last_nsu);
+        $this->assertSame(1, FiscalDocument::count());
+    }
+
+    public function test_uma_execucao_estuda_no_maximo_o_teto_horario_de_consultas(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+
+        for ($nsu = 101; $nsu <= 125; $nsu++) {
+            $this->createGap($client, $nsu);
+        }
+
+        $this->bindConnector($this->noPull());
+
+        $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+
+        // O teto por execução é o mesmo número do teto horário do CNPJ, e é
+        // por isso que ele vem da configuração: uma execução que estudasse
+        // mais posições do que a hora inteira permite gastaria o orçamento
+        // inteiro e ainda assim tentaria a vaga seguinte, que não existe.
+        $this->assertSame((int) config('fiscal.consulta_hourly_limit'), count($this->lookups));
+
+        // As posições que não entraram na execução não foram cobradas: a
+        // tentativa é de consulta que saiu, e nenhuma saiu.
+        $this->assertSame(
+            25 - (int) config('fiscal.consulta_hourly_limit'),
+            FiscalGap::query()->where('attempts', 0)->count(),
+        );
+    }
+
+    public function test_posicao_sem_documento_conta_uma_tentativa_e_adia_uma_hora(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        // `null` é a resposta do fisco: ele diz que não tem documento naquela
+        // posição. Isso é resposta, não falha de transporte, e o que ela
+        // autoriza é uma nova tentativa mais tarde — nunca apagar a lacuna.
+        $this->bindConnector($this->noPull());
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $gap = $this->gapOf($client, 101);
+        $this->assertSame(1, $gap->attempts);
+        $this->assertTrue($gap->next_attempt_at->between(now()->addMinutes(59), now()->addMinutes(61)));
+        $this->assertSame(0, FiscalDocument::count());
+        $this->assertSame(100, $this->cursorOf($client)->last_nsu);
+    }
+
+    public function test_apos_o_teto_de_tentativas_a_posicao_deixa_de_ser_consultada(): void
+    {
+        config(['fiscal.reconcile_max_attempts' => 2]);
+
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull());
+
+        for ($run = 1; $run <= 2; $run++) {
+            $this->travel(2)->hours();
+
+            $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+        }
+
+        $this->assertSame([101, 101], $this->lookups);
+        $this->assertSame(2, $this->gapOf($client, 101)->attempts);
+
+        $this->travel(2)->hours();
+
+        $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+
+        // O teto vem da configuração, e é ele que cala a posição: uma posição
+        // que o fisco não tem não pode custar uma consulta por execução para
+        // sempre, nem quando o teto é maior que o número escrito no código.
+        $this->assertSame([101, 101], $this->lookups);
+        $this->assertSame(2, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_consulta_adiada_nao_cobra_tentativa_nem_encerra_a_lacuna(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 100);
+        $this->createGap($client, 101);
+
+        // Adiar é a resposta do limite horário de consultas — ou da trava do
+        // próprio CNPJ ocupada por outra reconciliação. Nenhuma das duas é
+        // recusa do fisco, e as duas chegam para cá como a mesma coisa.
+        $this->bindConnector(
+            $this->noPull(),
+            function (Client $client, int $nsu): ?PulledDocument {
+                if ($nsu === 101) {
+                    throw new FiscalLookupDeferred('Limite horário de consultas pontuais atingido.');
+                }
+
+                return $this->pulled($nsu, self::CHAVE_100);
+            },
+        );
+
+        $recovered = $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao);
+
+        $this->assertSame(1, $recovered);
+        $this->assertSame([100, 101], $this->lookups);
+
+        // A posição adiada continua pendente e sem contagem: a consulta não
+        // saiu, e o que não saiu não é erro da posição.
+        $adiada = $this->gapOf($client, 101);
+        $this->assertSame(0, $adiada->attempts);
+        $this->assertNull($adiada->next_attempt_at);
+        $this->assertSame(100, $this->cursorOf($client)->last_nsu);
+    }
+
+    public function test_documento_de_outra_posicao_nao_encerra_a_lacuna(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        // A consulta por posição devolve o que o serviço mandou, e o serviço
+        // pode mandar a posição vizinha. Gravar isso sob a lacuna pedida
+        // arquivaria um documento com a identidade de outro, que é o pior erro
+        // possível nesta tabela: some o documento verdadeiro e entra o
+        // errado, com a coluna de posição afirmando o que não é.
+        $this->bindConnector($this->noPull(), fn (): ?PulledDocument => $this->pulled(999, self::CHAVE_999));
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame(0, FiscalDocument::count());
+        $this->assertSame(1, $this->gapOf($client, 101)->attempts);
+        $this->assertSame(100, $this->cursorOf($client)->last_nsu);
+    }
+
+    public function test_falha_sem_resposta_mantem_a_lacuna_e_nao_escreve_a_mensagem_da_excecao(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        // A mensagem é escrita pelo serviço, e ela ecoa o `docZip` que o fisco
+        // devolveu. A coluna de tentativas e o log recebem a posição e a classe
+        // da exceção; o texto do fisco não entra em lugar nenhum.
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => throw new FiscalException(
+                'Rejeicao: Consumo Indevido. detalhe=<docZip>H4sIAAAAAAAA</docZip>',
+                FiscalFailure::Blocked,
+            ),
+        );
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame(1, $this->gapOf($client, 101)->attempts);
+
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(100, $cursor->last_nsu);
+        $this->assertNull($cursor->last_seen_at);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.lacuna_mantida'
+                && $context['nsu'] === 101
+                && str_contains($context['reason'], 'FiscalException')
+                // O que o fisco escreveu não entra nem na linha do log nem na
+                // tentativa: o `docZip` e o detalhe da rejeição são o payload
+                // que ele devolveu.
+                && ! str_contains(serialize($context), 'docZip')
+                && ! str_contains(serialize($context), 'H4sIAAAAAAAA'));
+    }
+
+    public function test_cliente_dentro_da_janela_de_bloqueio_nao_e_consultado(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100, ['blocked_until' => now()->addMinutes(30)]);
+        $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull());
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        // O fisco mandou parar uma hora para este CNPJ, e a reconciliação é
+        // consulta como qualquer outra: a parada é do cliente, não do módulo.
+        $this->assertSame([], $this->lookups);
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_historico_interrompido_nao_e_consultado(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100, [
+            'last_seen_at' => now()->subDays((int) config('fiscal.continuity_days') + 1),
+        ]);
+        $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull());
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        // O fisco não gera posições retroativas para o período que ficou de
+        // fora, então consultar de novo não recupera nada — e gasta orçamento
+        // do CNPJ para descobrir o que a captura já sabe.
+        $this->assertSame([], $this->lookups);
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_lacuna_de_outra_conta_nao_e_consultada(): void
+    {
+        $client = $this->tenant();
+        $estranha = $this->tenant();
+        $this->assertNotSame($client->account_id, $estranha->account_id);
+
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+        $lacunaEstranha = $this->createGap($estranha, 101);
+
+        $this->bindConnector($this->noPull(), fn (Client $client, int $nsu): ?PulledDocument => $this->pulled($nsu, self::CHAVE_101));
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame([101], $this->lookups);
+
+        // A carteira é isolada por conta, e a lacuna de outro escritório não é
+        // recuperável por este: a mesma posição em outro CNPJ é outro
+        // documento.
+        $intacta = FiscalGap::withoutGlobalScope('account')->findOrFail($lacunaEstranha->getKey());
+        $this->assertSame(0, $intacta->attempts);
+        $this->assertSame($estranha->account_id, $intacta->account_id);
+    }
+
+    public function test_conta_corrente_residua_nao_esconde_a_lacuna_do_cliente(): void
+    {
+        $client = $this->tenant();
+        $estranha = $this->tenant();
+
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+        $lacunaEstranha = $this->createGap($estranha, 101);
+
+        // O worker de fila é longo e a conta corrente é um singleton que ninguém
+        // zera entre jobs: o job anterior pode ter deixado a conta de outro
+        // cliente apontada aqui. Quem manda na lacuna é o cliente da chamada,
+        // nunca o resíduo do ambiente.
+        resolve(CurrentTenant::class)->accountId = $estranha->account_id;
+
+        $this->bindConnector($this->noPull(), fn (Client $client, int $nsu): ?PulledDocument => $this->pulled($nsu, self::CHAVE_101));
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+
+        $this->assertSame(0, FiscalGap::withoutGlobalScope('account')->findOrFail($lacunaEstranha->getKey())->attempts);
+    }
+
+    public function test_a_trava_ocupada_da_captura_impede_a_reconciliacao(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101);
+
+        $this->bindConnector($this->noPull());
+
+        // A mesma chave que a captura usa: duas consultas do mesmo CNPJ ao mesmo
+        // tempo é a condição prevista que a trava existe para impedir.
+        $outraExecucao = Cache::lock($this->captureLockKey($client), 60);
+        $this->assertTrue($outraExecucao->get(), 'O teste precisa segurar a trava que a captura usa.');
+
+        try {
+            $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfeDistribuicao));
+        } finally {
+            $outraExecucao->release();
+        }
+
+        $this->assertSame([], $this->lookups);
+        $this->assertSame(0, $this->gapOf($client, 101)->attempts);
+    }
+
+    public function test_entrada_ilegivel_registra_uma_lacuna_e_mantem_o_que_entrou(): void
+    {
+        $client = $this->tenant();
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            200,
+            false,
+            failures: [new FailedEntry(101, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // Uma posição ilegível é um buraco a reconciliar, não o fim da fila: os
+        // documentos dos dois lados dela continuam gravados, e a única lacuna
+        // é a posição que o conector recusou.
+        $this->assertSame([100, 102], FiscalDocument::query()->orderBy('nsu')->pluck('nsu')->all());
+        $this->assertSame([101], $this->gapNsus($client));
+    }
+
+    public function test_buraco_entre_duas_posicoes_vistas_registra_somente_a_posicao_do_meio(): void
+    {
+        $client = $this->tenant();
+
+        // A posição devolvida (200) é bem acima da última entrada entregue
+        // (102), e as duas pontas da distância são de fora do buraco.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            200,
+            true,
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // Só o meio é buraco. A distância entre zero e a primeira posição vista
+        // também é um número, e tratá-la como lacuna fabricaria dezenas de
+        // milhares de posições pendentes na primeira captura de um cliente que
+        // já tem histórico no ambiente nacional. O mesmo vale para a distância
+        // entre a última posição vista e a posição devolvida: `ultNSU` é a
+        // posição do ambiente, e o serviço entrega o que pertence ao CNPJ
+        // consultado — a diferença entre as duas é rotina, não buraco.
+        $this->assertSame([101], $this->gapNsus($client));
+    }
+
+    public function test_buraco_detectado_impede_a_posicao_de_andar(): void
+    {
+        $client = $this->tenant();
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            102,
+            true,
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // O serviço autorizou a posição 102 e a posição 101 não foi lida: a
+        // autorização do serviço é uma condição, e a integridade do lote é a
+        // outra. Gravar 102 pediria ao fisco o que vem depois do buraco para
+        // sempre, e a consulta pontual da reconciliação é a única coisa que
+        // ainda sabe onde ele está.
+        $cursor = $this->cursorOf($client);
+        $this->assertSame(0, $cursor->last_nsu);
+        $this->assertSame('lote incompleto: 1 de 3 posições não gravadas.', $cursor->last_error);
+    }
+
+    public function test_o_teto_de_lacunas_por_lote_vem_da_configuracao(): void
+    {
+        config(['fiscal.batch_limit' => 3]);
+
+        $client = $this->tenant();
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(110, self::CHAVE_110)],
+            110,
+            true,
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // O número de posições que um lote pode transformar em lacuna é o
+        // tamanho do lote, lido da configuração. Um número escrito no código
+        // passaria a divergir do fisco em silêncio, e cada posição a mais vira
+        // uma consulta por hora para um buraco que talvez nem exista.
+        $this->assertSame([101, 102, 103], $this->gapNsus($client));
+    }
+
+    public function test_gravacao_recusada_registra_a_posicao_da_entrada(): void
+    {
+        $client = $this->tenant();
+
+        // A chave que não fecha é a recusa real do writer: ele levanta
+        // `RuntimeException` antes de gravar qualquer coisa.
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_QUE_NAO_FECHA)],
+            100,
+            true,
+        ));
+
+        $outcome = $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // A posição que chegou como documento e não entrou é lacuna do mesmo
+        // jeito que a posição que o conector recusou: o que a reconciliação
+        // recebe é a posição, e não a origem da recusa.
+        $this->assertSame(0, $outcome->stored);
+        $this->assertSame(0, FiscalDocument::count());
+        $this->assertSame([100], $this->gapNsus($client));
+        $this->assertSame(0, $this->cursorOf($client)->last_nsu);
+    }
+
+    public function test_a_lacuna_ja_conhecida_nao_perde_a_conta_de_tentativas(): void
+    {
+        $client = $this->tenant();
+
+        $proxima = now()->subDay()->startOfSecond();
+        $this->createGap($client, 101, ['attempts' => 2, 'next_attempt_at' => $proxima]);
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(102, self::CHAVE_102)],
+            102,
+            true,
+        ));
+
+        $this->capture()->capture($client, FiscalSource::NfeDistribuicao);
+
+        // A captura reentrega o mesmo lote enquanto a lacuna estiver aberta, e
+        // reencontrar o buraco não pode zerar o histórico de tentativas: a
+        // posição que já gastou duas das três tentativas voltaria a ter três
+        // vidas a cada hora.
+        $gap = $this->gapOf($client, 101);
+        $this->assertSame(2, $gap->attempts);
+        $this->assertTrue($gap->next_attempt_at->equalTo($proxima));
+    }
+
+    private function reconciliation(): FiscalReconciliation
+    {
+        return resolve(FiscalReconciliation::class);
+    }
+
+    private function capture(): FiscalCaptureService
+    {
+        return resolve(FiscalCaptureService::class);
+    }
+
+    /**
+     * O lote como o conector o devolve, e a resposta de uma consulta por
+     * posição que o fisco não localiza.
+     */
+    private function noPull(): Closure
+    {
+        return fn (): PullResult => $this->batch([], 0, false);
+    }
+
+    /**
+     * Liga um conector falso que registra as consultas por posição em
+     * `$this->lookups` e devolve — ou levanta — o que o teste preparou.
+     *
+     * @param  Closure(): PullResult  $pull
+     * @param  Closure(Client, int): ?PulledDocument|null  $fetchByNsu  quando
+     *                                                                  nulo, toda consulta por posição responde que não há documento
+     */
+    private function bindConnector(Closure $pull, ?Closure $fetchByNsu = null): void
+    {
+        $answer = $fetchByNsu ?? fn (): ?PulledDocument => null;
+
+        $lookup = function (Client $client, int $nsu) use ($answer): ?PulledDocument {
+            $this->lookups[] = $nsu;
+
+            return $answer($client, $nsu);
+        };
+
+        $this->app->instance(FiscalConnector::class, new class($pull, $lookup) implements FiscalConnector
+        {
+            /**
+             * @param  Closure(): PullResult  $pull
+             * @param  Closure(Client, int): ?PulledDocument  $fetchByNsu
+             */
+            public function __construct(
+                private readonly Closure $pull,
+                private readonly Closure $fetchByNsu,
+            ) {}
+
+            public function source(): FiscalSource
+            {
+                return FiscalSource::NfeDistribuicao;
+            }
+
+            public function pull(Client $client, int $fromNsu, int $limit): PullResult
+            {
+                return ($this->pull)();
+            }
+
+            public function fetchByChave(Client $client, string $chave): ?PulledDocument
+            {
+                return null;
+            }
+
+            public function fetchByNsu(Client $client, int $nsu): ?PulledDocument
+            {
+                return ($this->fetchByNsu)($client, $nsu);
+            }
+        });
+    }
+
+    /**
+     * @param  list<PulledDocument>  $documents
+     * @param  list<FailedEntry>  $failures
+     */
+    private function batch(
+        array $documents,
+        int $lastNsu,
+        bool $mayAdoptPosition,
+        array $failures = [],
+        ?CarbonImmutable $blockedUntil = null,
+    ): PullResult {
+        return new PullResult(
+            documents: $documents,
+            lastNsu: $lastNsu,
+            maxNsu: null,
+            more: false,
+            blockedUntil: $blockedUntil,
+            mayAdoptPosition: $mayAdoptPosition,
+            failures: $failures,
+        );
+    }
+
+    private function tenant(bool $withCertificate = true): Client
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+
+        if ($withCertificate) {
+            ClientCertificate::factory()->withPassword()->create([
+                'account_id' => $account->getKey(),
+                'client_id' => $client->getKey(),
+            ]);
+        }
+
+        return $client->refresh();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function cursor(Client $client, int $lastNsu, array $attributes = []): FiscalCursor
+    {
+        $cursor = FiscalCursor::factory()->create([
+            'account_id' => $client->account_id,
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::NfeDistribuicao,
+            'last_nsu' => $lastNsu,
+        ]);
+
+        $cursor->forceFill($attributes)->save();
+
+        return $cursor;
+    }
+
+    private function cursorOf(Client $client): FiscalCursor
+    {
+        return FiscalCursor::query()
+            ->withoutGlobalScope('account')
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::NfeDistribuicao)
+            ->firstOrFail();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createGap(Client $client, int $nsu, array $attributes = []): FiscalGap
+    {
+        return FiscalGap::factory()->create([
+            'account_id' => $client->account_id,
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::NfeDistribuicao,
+            'nsu' => $nsu,
+            ...$attributes,
+        ]);
+    }
+
+    /**
+     * A lacuna relida depois da execução, com o escopo de conta fora porque o
+     * teste é sobre o que ficou gravado, e a conta corrente é uma condição que
+     * o próprio teste controla.
+     */
+    private function gapOf(Client $client, int $nsu): FiscalGap
+    {
+        return FiscalGap::withoutGlobalScope('account')
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::NfeDistribuicao)
+            ->where('nsu', $nsu)
+            ->firstOrFail();
+    }
+
+    /**
+     * As posições pendentes do cliente, em ordem. A leitura ignora o escopo de
+     * conta de propósito: é o teste que afirma o que existe, e ele existe
+     * mesmo com a conta corrente apontada para outro lugar.
+     *
+     * @return list<int>
+     */
+    private function gapNsus(Client $client): array
+    {
+        return FiscalGap::withoutGlobalScope('account')
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::NfeDistribuicao)
+            ->orderBy('nsu')
+            ->pluck('nsu')
+            ->all();
+    }
+
+    private function captureLockKey(Client $client): string
+    {
+        return "fiscal:capture:{$client->getKey()}:".FiscalSource::NfeDistribuicao->value;
+    }
+
+    private function pulled(int $nsu, string $chave): PulledDocument
+    {
+        return new PulledDocument(
+            model: FiscalModel::Nfe,
+            kind: FiscalKind::Document,
+            stage: FiscalStage::Document,
+            chave: $chave,
+            eventId: '',
+            emitenteCnpj: null,
+            destinatarioCnpj: null,
+            valorTotal: null,
+            digVal: null,
+            nsu: $nsu,
+            schema: 'resNFe_v1.01.xsd',
+            emissaoAt: now()->toImmutable(),
+            eventoOcorridoEmAt: null,
+            xml: '<resNFe/>',
+        );
+    }
+}

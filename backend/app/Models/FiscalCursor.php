@@ -28,6 +28,34 @@ class FiscalCursor extends Model
         ];
     }
 
+    /**
+     * O fisco mandou parar este cliente por uma hora.
+     *
+     * A parada é de dono, não de tempo: ela vale para a captura incremental e
+     * para a reconciliação, porque as duas são consulta ao mesmo serviço, e
+     * retomar antes de completar a hora zera a contagem do fisco e a reinicia.
+     */
+    public function isBlocked(): bool
+    {
+        return $this->blocked_until?->isFuture() === true;
+    }
+
+    /**
+     * O fisco não gera posições retroativas para o período que ficou de fora,
+     * então uma captura parada além da janela de continuidade não recupera
+     * nada: ela apenas produz "nenhum documento localizado" para sempre. A
+     * data é a da última vez que o serviço respondeu, e é por isso que ela é
+     * escrita depois da chamada.
+     */
+    public function historyIsInterrupted(): bool
+    {
+        if ($this->last_seen_at === null) {
+            return false;
+        }
+
+        return $this->last_seen_at->lt(now()->subDays((int) config('fiscal.continuity_days', 60)));
+    }
+
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);

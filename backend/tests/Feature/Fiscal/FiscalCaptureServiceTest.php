@@ -50,6 +50,8 @@ class FiscalCaptureServiceTest extends TestCase
      */
     private const CHAVE_100 = '33333333333333333333333333333333333333331007';
 
+    private const CHAVE_101 = '33333333333333333333333333333333333333331015';
+
     private const CHAVE_150 = '33333333333333333333333333333333333333331503';
 
     private const CHAVE_200 = '33333333333333333333333333333333333333332003';
@@ -80,9 +82,14 @@ class FiscalCaptureServiceTest extends TestCase
 
         // A posição devolvida vai além do último documento do lote, e é ela que
         // entra no cursor: `ultNSU` é o valor que a resposta trouxe, nunca o
-        // valor local somado de um. Nem 151, nem 201.
+        // valor local somado de um. Nem 102, nem 201.
+        //
+        // As duas posições do lote são vizinhas de propósito: posição faltando
+        // no meio é buraco, e buraco não deixa a posição andar — o que tem
+        // teste próprio em `FiscalReconciliationTest`, junto com a lacuna que
+        // ele grava.
         $this->bindConnector(fn (): PullResult => $this->batch(
-            [$this->pulled(100, self::CHAVE_100), $this->pulled(150, self::CHAVE_150)],
+            [$this->pulled(100, self::CHAVE_100), $this->pulled(101, self::CHAVE_101)],
             lastNsu: 200,
             mayAdoptPosition: true,
         ));
@@ -95,7 +102,7 @@ class FiscalCaptureServiceTest extends TestCase
         $this->assertSame(0, $outcome->fromNsu);
         $this->assertSame(200, $outcome->toNsu);
         $this->assertSame(2, FiscalDocument::count());
-        $this->assertSame([100, 150], FiscalDocument::query()->orderBy('nsu')->pluck('nsu')->all());
+        $this->assertSame([100, 101], FiscalDocument::query()->orderBy('nsu')->pluck('nsu')->all());
 
         $cursor = $this->cursor($client);
         $this->assertSame(200, $cursor->last_nsu);
