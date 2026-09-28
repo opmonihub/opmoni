@@ -17,6 +17,35 @@ use Illuminate\Validation\ValidationException;
  * falha. Ler isso num lugar só é o que impede os dois cofres de contarem
  * histórias diferentes sobre o mesmo arquivo.
  *
+ * TODO(Task 4, convergência das duas unidades) — a frase acima **não vale mais
+ * como está escrita**, e o `AccountCertificateVault` é a prova.
+ *
+ * O que a unidade garante hoje é a **classificação**: a leitura do PKCS#12, a
+ * limpeza da fila e o reconhecimento de RC2 acontecem em um lugar só, e é isso
+ * que impede os dois cofres de divergirem sobre *o que* o OpenSSL respondeu. O
+ * que ela **não** garante é a **frase**, e é a razão da afirmação original de
+ * que os dois contariam a mesma história. Hoje não contam: o cofre de cliente
+ * repassa a recusa de senha como ela vem ("Não foi possível abrir o certificado
+ * com a senha informada."), e o cofre do Account a reescreve para
+ * nomear as três causas que não consegue distinguir
+ * (`AccountCertificateVault::broadeningTheRejection()`) — porque a ICP-Brasil
+ * emitiu anos de container com RC2 e com outros algoritmos legados, e dizer "a
+ * senha informada" a um escritório que mandou um deles o faz digitar a senha
+ * certa de novo e abrir um chamado.
+ *
+ * Isso é uma divergência **de texto, e só de texto**: nenhum dos dois cofres
+ * decide sozinho, e nenhum dos dois grava alguma coisa diferente por causa
+ * disso. O que a convergir é a **classificação** — distinguir "senha errada" de
+ * "algoritmo legado não suportado" na fila de erro, o que hoje é impossível
+ * porque a fila só é lida quando a recusa é de RC2. Aí os dois cofres passam a
+ * receber a mesma distinção e a divergência de frase deixa de existir.
+ *
+ * O ponto de convergência é o mesmo da segunda leitura: hoje
+ * `SerproCertificateIdentity` reabre o PFX que esta unidade já abriu
+ * (`AccountCertificateVault::replace()`), e a Task 4 tem de remover essa
+ * segunda leitura e a divergência de frase na mesma passada. Feitas separadas,
+ * as duas passam por testes que não veem a outra.
+ *
  * **A classificação da falha é decidida aqui e em mais lugar nenhum.** Senha
  * errada e arquivo ilegível saem pela chave `password`; o container legado sai
  * pela chave `certificate`, numa `LegacyPkcs12Ciphertext` — que é a única forma de

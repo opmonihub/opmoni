@@ -61,13 +61,41 @@ return new class extends Migration
              * hoje" de "o certificado que o escritório já teve".
              *
              * Uma linha trocada ou removida perde as duas colunas cifradas e
-             * mantém os metadados: é histórico do que foi gravado, não lixo. E
-             * nunca há duas linhas correntes porque quem grava tranca a conta e
-             * marca a anterior no mesmo passo — a garantia é da aplicação, como
-             * no cofre de cliente, e não de um índice, porque um índice comum
-             * não consegue dizer "no máximo uma corrente por conta" e um índice
-             * parcial exigiria SQL cru em uma migração que precisa rodar
-             * também no SQLite da suíte.
+             * mantém os metadados: é histórico do que foi gravado, não lixo.
+             *
+             * **"No máximo uma linha corrente por conta" é garantido pela
+             * aplicação, não pelo banco** — `AccountCertificateVault::replace()`
+             * tranca a conta com `lockForUpdate()` e marca a anterior no mesmo
+             * passo, dentro de uma transação.
+             *
+             * Um índice parcial daria a garantia ao banco, e a sintaxe é
+             * `CREATE UNIQUE INDEX … ON account_certificates (account_id) WHERE
+             * replaced_at IS NULL AND removed_at IS NULL`. Ela **não** foi usada,
+             * e os dois motivos são reais:
+             *
+             * 1. O `Schema` do Laravel não a expressa. Índice comum tem
+             *    `Blueprint::index()`; condição no índice exige `rawIndex()` ou
+             *    `DB::statement()` com SQL cru — e uma migração com SQL cru tem
+             *    de ser reescrita à mão em cada dialecto, o que é o custo que o
+             *    schema builder existe para evitar.
+             * 2. Um índice único troca uma corrida perdida por **erro de banco**.
+             *    Hoje a corrida perdida é resolvida pelo `lockForUpdate()`, que
+             *    serializa as duas gravações e faz a segunda ver a linha que a
+             *    primeira criou. Com o índice, as duas chegam ao mesmo ponto e uma
+             *    delas morre de violação — o que obriga o chamador a tratar uma
+             *    exceção de banco numa operação que antes não tinha por que
+             *    falhar. O índice não impede o estado ruim; ele transforma um
+             *    conflito raro em erro.
+             *
+             * E a consequência de uma duplicata **existe**, e é esta:
+             * `supersede()` marca apenas a linha que `first()` devolveu, então a
+             * segunda duplicata fica corrente para sempre — nenhuma troca
+             * futura a marca, porque ela nunca é a primeira. `currentFor()`
+             * degrada para `latest('id')` e passa a devolver a duplicata mais
+             * recente, o que significa um termo de autorização assinado com o
+             * e-CNPJ de um dos dois, e **não** um stack trace. O conserto de uma
+             * duplicata é, portanto, de inspeção: a linha que sobrou corrente é
+             * a que tem de ser marcada à mão.
              */
             $table->timestamp('replaced_at')->nullable();
             $table->timestamp('removed_at')->nullable();

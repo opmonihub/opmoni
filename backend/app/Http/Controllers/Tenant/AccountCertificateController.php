@@ -61,9 +61,22 @@ class AccountCertificateController extends Controller
                 (string) $validated['password'],
             );
         } finally {
-            // A senha sai do escopo da requisição assim que o cofre terminou,
-            // e o `finally` roda também quando o cofre recusa — que é o caso em
-            // que ela está na memória e não tem outro lugar para onde ir.
+            /*
+             * A referência local da senha é descartada assim que o cofre
+             * termina, e o `finally` roda também quando o cofre recusa — que é
+             * o caso em que ela está na memória e não tem outro lugar para onde
+             * ir.
+             *
+             * **Isto tira a senha do escopo deste método, e não da requisição.**
+             * O mesmo texto continua no objeto `Request` — em `$request->input`
+             * e nos parâmetros do corpo — que segue vivo até o fim do
+             * ciclo, e é por isso que este comentário não diz que a senha "sai
+             * do escopo da requisição": ela não sai, e o que o `finally` faz é
+             * impedir que a cópia do controller vaza para o log de exceção e
+             * para a auditoria. Apagar memória exigiria algo que PHP não tem, e
+             * o cofre diz a mesma coisa no `finally` dele
+             * (`AccountCertificateVault::replace`).
+             */
             $validated['password'] = '';
             unset($validated);
         }
@@ -82,17 +95,19 @@ class AccountCertificateController extends Controller
         return (new AccountCertificateResource($certificate))->response()->setStatusCode(200);
     }
 
+    /**
+     * A linha que a auditoria nomeia é a que o cofre removeu, e é o motivo de o
+     * cofre devolver a linha: ler a corrente aqui, fora da transação, seria uma
+     * segunda leitura que pode ver outra linha.
+     */
     public function destroy(Request $request): Response
     {
         Gate::authorize('delete', AccountCertificate::class);
 
-        $account = $this->currentAccount();
-        $current = AccountCertificate::currentFor($account->getKey());
+        $removed = $this->vault->remove($this->currentAccount());
 
-        $this->vault->remove($account);
-
-        SupportAudit::logWrite($request, 'account_certificates', 'delete', $current?->getKey(), [
-            'document' => $current?->document,
+        SupportAudit::logWrite($request, 'account_certificates', 'delete', $removed?->getKey(), [
+            'document' => $removed?->document,
         ]);
 
         return response()->noContent();

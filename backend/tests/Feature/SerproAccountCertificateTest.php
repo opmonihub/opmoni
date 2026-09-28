@@ -8,8 +8,11 @@ use App\Models\AccountUser;
 use App\Models\SupportAccessLog;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
+use Carbon\Carbon;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -46,6 +49,12 @@ class SerproAccountCertificateTest extends TestCase
     /** O motivo pelo qual o container legado não saiu, quando ele não sai. */
     private ?string $legacyUnavailable = null;
 
+    /** Quantos `select` em `account_certificates` a requisição sob medição fez. */
+    private int $leituras = 0;
+
+    /** Se a contagem de leituras está armada para a requisição atual. */
+    private bool $contando = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -58,6 +67,32 @@ class SerproAccountCertificateTest extends TestCase
         // O disco do cofre de cliente existe para provar o oposto: o e-CNPJ do
         // escritório não passa por ele.
         Storage::fake('certificates');
+
+        // A contagem de leituras da linha corrente é feita por `DB::listen`,
+        // que é global: ela só vale para a requisição que a arma, e `descontar`
+        // é o que faz o resto do teste não entrar na contagem.
+        DB::listen(function (QueryExecuted $query): void {
+            if ($this->contando && str_contains($query->sql, 'from "account_certificates"')) {
+                $this->leituras++;
+            }
+        });
+    }
+
+    /**
+     * Conta as leituras da linha corrente durante a chamada dada.
+     *
+     * @param  callable(): mixed  $acao
+     */
+    private function contando(callable $acao): mixed
+    {
+        $this->leituras = 0;
+        $this->contando = true;
+
+        try {
+            return $acao();
+        } finally {
+            $this->contando = false;
+        }
     }
 
     public function test_admin_e_operador_enviam_o_ecnpj_do_escritorio(): void
@@ -437,16 +472,25 @@ class SerproAccountCertificateTest extends TestCase
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
-        $removida = AccountCertificate::factory()->create([
+        // As duas linhas fora de vigência passam pelos estados da factory, e não
+        // por `['removed_at' => now()]` sobre a linha corrente: uma linha fora
+        // de vigência **não tem conteúdo cifrado**, porque é o cofre que o apaga
+        // ao marcar. Montar o fixture na mão produzia uma linha que nunca existiu
+        // — com o segredo presente e o marcador posto — e era a forma que o
+        // próximo teste ia copiar.
+        $removida = AccountCertificate::factory()->removed()->create([
             'account_id' => $conta->getKey(),
             'document' => self::CNPJ_ALHEIO,
-            'removed_at' => now(),
         ]);
-        $trocada = AccountCertificate::factory()->create([
+        $trocada = AccountCertificate::factory()->replaced()->create([
             'account_id' => $conta->getKey(),
             'document' => self::CNPJ_ALHEIO,
-            'replaced_at' => now(),
         ]);
+
+        $this->assertNull($removida->certificate_encrypted);
+        $this->assertNull($removida->password_encrypted);
+        $this->assertNull($trocada->certificate_encrypted);
+        $this->assertNull($trocada->password_encrypted);
 
         // `latest('id')` escolhe a corrente, e não a última linha gravada: as
         // duas que estão fora de vigência precisam ser invisíveis para quem
@@ -680,6 +724,226 @@ class SerproAccountCertificateTest extends TestCase
             ->assertJsonValidationErrors('password');
 
         $this->assertDatabaseCount('account_certificates', 0);
+    }
+
+    /**
+     * O nome do arquivo é o que o cliente digitou, e o cliente não tem um teto.
+     *
+     * A coluna é `varchar(255)` e o Postgres **não** trunca: um nome de 256
+     * caracteres viraria `500` de banco de dados no meio de um upload válido —
+     * um `500` que não é do operador corrigir reenviando, porque o arquivo está
+     * certo. O `ClientCertificateVault` tem a mesma linha e o mesmo problema, e
+     * o nome do arquivo é limitado aqui porque este é o segundo lugar onde ele
+     * é gravado; o primeiro é dos clientes e fica para quando aquele cofre for
+     * tocado.
+     *
+     * O corte é no limite da coluna e não em um mais apertado, e ele é visível:
+     * um nome cortado muda na resposta, e mudar é melhor do que recusar o
+     * e-CNPJ por causa do nome com que ele chegou.
+     */
+    public function test_nome_de_arquivo_acima_do_limite_da_coluna_e_guardado_sem_estourar(): void
+    {
+        $conta = Account::factory()->create();
+
+        // 300 + ".p12": 304 posições, quase cinquenta acima do `varchar(255)`.
+        $nomeLongo = str_repeat('a', 300).'.p12';
+
+        $this->assertGreaterThan(255, mb_strlen($nomeLongo), 'O nome do caso tem de estourar o varchar(255).');
+
+        ['file' => $arquivo] = $this->pfx($nomeLongo);
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $gravado = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($gravado);
+        $this->assertLessThanOrEqual(255, mb_strlen((string) $gravado->original_filename));
+        $this->assertSame($gravado->original_filename, $gravado->fresh()->original_filename);
+
+        // A linha é a mesma linha de sempre: o nome foi aparado, o certificado
+        // não foi recusado nem trocado.
+        $this->assertSame(1, AccountCertificate::query()->count());
+        $this->assertNotNull($gravado->certificate_encrypted);
+        $this->assertTrue($gravado->valid_until->isFuture());
+
+        // E o nome que volta é o que foi gravado, não o que foi pedido.
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->getJson(self::ROTA)
+            ->assertOk()
+            ->assertJsonPath('data.original_filename', $gravado->original_filename);
+    }
+
+    /**
+     * O corte conta **caractere**, e o `varchar(255)` do Postgres também conta
+     * caractere — que é o que faz o `mb_substr` ser a operação certa aqui.
+     *
+     * O que um corte em bytes faria com um nome acentuado é pior do que estourar
+     * a coluna: `substr($nome, 0, 255)` de um nome de caracteres de dois bytes
+     * cai no meio de um deles, e o que vai para a coluna é um texto com byte
+     * inválido — que o Postgres aceita em `varchar` mas que a tela mostra com
+     * caractere de replacement, e que a comparação do nome deixa de bater.
+     *
+     * Este caso é o que separa os dois cortes, e por isso o nome é de
+     * multibyte de propósito: com um nome de ASCII, `substr` e `mb_substr` dão
+     * o mesmo resultado e o defeito não aparece.
+     */
+    public function test_nome_de_arquivo_com_acento_e_cortado_sem_byte_invalido(): void
+    {
+        $conta = Account::factory()->create();
+
+        // 200 "ã" (2 bytes cada) + ".p12": 204 caracteres e 404 bytes. O nome
+        // cabe em `varchar(255)` por caractere e estouraria por byte — que é
+        // exatamente a confusão que o corte por caractere desfaz.
+        $nome = str_repeat('ã', 200).'.p12';
+
+        $this->assertLessThanOrEqual(255, mb_strlen($nome), 'O nome cabe na coluna por caractere.');
+        $this->assertGreaterThan(255, strlen($nome), 'E não cabe por byte, que é o que o corte em bytes usaria.');
+
+        ['file' => $arquivo] = $this->pfx($nome);
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $gravado = (string) AccountCertificate::currentFor($conta->getKey())?->original_filename;
+
+        $this->assertTrue(
+            mb_check_encoding($gravado, 'UTF-8'),
+            'O nome gravado tem byte inválido, o que é o que o corte em byte produziria.',
+        );
+        $this->assertLessThanOrEqual(255, mb_strlen($gravado));
+        $this->assertSame($gravado, mb_substr($nome, 0, 255));
+    }
+
+    /**
+     * A auditoria da remoção tem de nomear **a linha que foi removida**, e não
+     * uma leitura da linha corrente feita fora da transação.
+     *
+     * Com as duas leituras separadas, o controller lê a corrente, o cofre abre a
+     * transação e lê a corrente de novo — e nesse meio tempo um upload concorrente
+     * pode ter trocado a linha. A auditoria passaria a registrar o `document` de
+     * um certificado que já não é o do escritório, que é a única coisa que a
+     * auditoria existe para dizer.
+     *
+     * O sintoma é observável sem concorrência: o cofre devolve a linha que
+     * removeu, e é essa linha — com o `document` e o `id` dela — que entra no
+     * registro.
+     */
+    public function test_a_auditoria_da_remocao_nomeia_a_linha_que_o_cofre_removeu(): void
+    {
+        $alvo = Account::factory()->create();
+
+        $super = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create(['account_id' => $casa->getKey(), 'user_id' => $super->getKey(), 'role' => 'admin']);
+        $super->forceFill(['current_account_id' => $alvo->getKey()])->save();
+        $super = $super->refresh();
+
+        // A conta tem uma linha anterior fora de vigência, de um e-CNPJ que já
+        // foi trocado, e a corrente por último. O que se fixa aqui é que o
+        // `document` e o `id` registrados são os da linha **removida** — a que
+        // estava valendo —, e não os de qualquer outra linha da conta.
+        $historicoAntigo = AccountCertificate::factory()->replaced()->create([
+            'account_id' => $alvo->getKey(),
+            'document' => '11222333000181',
+        ]);
+
+        ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($super, 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $corrente = AccountCertificate::currentFor($alvo->getKey());
+
+        $this->assertNotNull($corrente);
+        $this->assertSame(self::CNPJ, $corrente->document);
+        $this->assertNotSame($historicoAntigo->getKey(), $corrente->getKey());
+
+        // A remoção, com a contagem de leituras armada: o que se quer ver é que a
+        // linha corrente é lida **uma vez**. O controller lia a corrente para
+        // montar a auditoria e o cofre a lia de novo dentro da transação — duas
+        // queries para uma linha, e duas chances de verem linhas diferentes.
+        // O cofre devolve a linha que removeu, e é dela que a auditoria sai.
+        $this->contando(function () use ($super): void {
+            $this->actingAs($super, 'sanctum')->deleteJson(self::ROTA)->assertNoContent();
+        });
+
+        $this->assertSame(1, $this->leituras, 'A linha corrente foi lida mais de uma vez durante a remoção.');
+
+        $log = SupportAccessLog::query()
+            ->where('action', 'delete')
+            ->sole();
+
+        $this->assertSame($corrente->getKey(), $log->metadata['resource_id'] ?? null);
+        $this->assertSame(self::CNPJ, $log->metadata['document'] ?? null);
+
+        // Uma linha removida, e só a que estava valendo.
+        $this->assertNotNull($corrente->refresh()->removed_at);
+        $this->assertNotNull($historicoAntigo->refresh()->replaced_at);
+        $this->assertNull($historicoAntigo->refresh()->removed_at);
+        $this->assertNull(AccountCertificate::currentFor($alvo->getKey()));
+    }
+
+    /**
+     * O cofre abre o mesmo arquivo duas vezes, e o que se fixa aqui é o que as
+     * duas leituras podemmaker de discordar.
+     *
+     * `CertificatePkcs12::inspect()` devolve metadados, e o
+     * `SerproCertificateIdentity` reabre os mesmos bytes para extrair o
+     * documento — que é a única coisa que só ele sabe ler. Os dois leem o mesmo
+     * certificado, então tudo o que a linha grava tem de descrever **o mesmo
+     * arquivo**: o `sha256` dos bytes enviados, o `subject` e o número de série
+     * que o certificado declara, a validade, e o CNPJ de dentro dele.
+     *
+     * A divergência que este teste caça é a forma silenciosa do defeito: se as
+     * duas leituras algum dia enxergarem certificados diferentes, a linha
+     * passaria a descrever um e-CNPJ que ninguém assinou, e nada na tela mostraria
+     * isso — o `document` viria de um arquivo e o `sha256` de outro.
+     */
+    public function test_a_linha_gravada_descreve_o_mesmo_certificado_que_as_duas_leituras_viram(): void
+    {
+        $conta = Account::factory()->create();
+        ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $linha = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($linha);
+
+        // O `sha256` é dos bytes que foram enviados, e não de uma releitura: é o
+        // que o `CertificatePkcs12` calcula e é o que o `certificate_bytes()` de
+        // uma instância nova devolve.
+        $this->assertSame(hash('sha256', $bytes), $linha->sha256);
+        $this->assertSame($bytes, $linha->certificateBytes());
+
+        // O que o cofre gravou bate com o que o próprio certificado diz, lido
+        // direto do X.509 dos mesmos bytes.
+        $aberto = [];
+        $this->assertTrue(openssl_pkcs12_read($bytes, $aberto, self::SENHA));
+        $metadados = openssl_x509_parse((string) $aberto['cert']);
+
+        $this->assertIsArray($metadados);
+        $this->assertSame($metadados['name'], $linha->subject);
+        $this->assertSame((string) $metadados['serialNumber'], (string) $linha->serial_number);
+        $this->assertSame(
+            Carbon::createFromTimestamp((int) $metadados['validFrom_time_t'])->toISOString(),
+            $linha->valid_from->toISOString(),
+        );
+        $this->assertSame(
+            Carbon::createFromTimestamp((int) $metadados['validTo_time_t'])->toISOString(),
+            $linha->valid_until->toISOString(),
+        );
+
+        // E o `document` vem de dentro desse mesmo certificado — o CNPJ está no
+        // `subject`, e é dele que a linha guarda o valor.
+        $this->assertStringContainsString(self::CNPJ, (string) $linha->subject);
+        $this->assertSame(self::CNPJ, $linha->document);
     }
 
     public function test_escrita_em_modo_suporte_registra_a_auditoria_sem_segredo(): void
