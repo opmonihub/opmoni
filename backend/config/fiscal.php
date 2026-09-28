@@ -44,6 +44,14 @@ return [
      * cliente só, conferindo o `cStat` e sem expor material de certificado, e a
      * ordem é o canário primeiro: a agenda vem depois do canário, nunca antes.
      *
+     * ⚠️ E a agenda não continua o canário, ela o multiplica: a entrada
+     * registrada em `routes/console.php` não passa `--client`, e sem ele o
+     * comando captura todo cliente capturável de **todas** as contas — na
+     * agenda nada seta o `CurrentTenant`, e o escopo por conta não filtra sem
+     * uma conta corrente. Ligar esta chave depois de canariar o cliente 1 é, na
+     * prática, canariar a carteira inteira de uma vez, e a rejeição repetida é o
+     * que produz o `656`.
+     *
      * E a chave é o registro de uma decisão, não um mecanismo de segurança: ela
      * não impede ninguém, ela apenas deixa escrito que alguém ligou. A proteção
      * deste caminho é a autorização do canário; o que protege o resto do código

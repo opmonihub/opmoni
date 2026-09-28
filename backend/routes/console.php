@@ -27,6 +27,17 @@ Schedule::command('fiscal:capture')->hourly()->withoutOverlapping();
  * registro de uma decisão, não um mecanismo de segurança — ela não impede
  * ninguém, e é por isso que a autorização do canário é a proteção real.
  *
+ * ⚠️ E LIGAR ESTA CHAVE NÃO ESTENDE O CANÁRIO: ELA O SUBSTITUI POR TODO MUNDO.
+ * Esta entrada **não** passa `--client`, então o comando captura a carteira
+ * inteira — e não a da conta que autorizou o canário: na agenda nada seta o
+ * `CurrentTenant`, que fica `null`, e o escopo por conta não filtra sem uma conta
+ * corrente, de modo que a entrada alcança todo cliente capturável de todas as
+ * contas. Quem canariou o cliente 1 e liga a chave achando que continua no um
+ * está ligando tráfego de hora em hora para a carteira toda, contra um serviço
+ * cujos parâmetros ninguém verificou, e é a rejeição repetida que produz o
+ * `656`. A correspondência entre "canário aprovado" e "agenda ligada" vale para
+ * um cliente, e é a transição que precisa ser uma decisão consciente.
+ *
  * Ela é independente de `fiscal.cte_enabled`, que é a porta do botão da tela, e
  * as duas **não** são conferidas juntas: o comando e o job perguntam ao registro
  * de conectores e nunca a `cte_enabled`, então esta entrada começa tráfego sem

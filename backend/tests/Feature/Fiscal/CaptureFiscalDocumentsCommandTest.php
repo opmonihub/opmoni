@@ -10,6 +10,7 @@ use App\Models\ClientCertificate;
 use App\Services\Fiscal\Capture\FiscalCaptureService;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
+use Illuminate\Console\Application;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -268,6 +269,11 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
      * duplicidade, com o dobro de consulta no orçamento que o fisco conta por
      * hora. E a de NF-e continua registrada ao lado dela.
      *
+     * O comando da entrada é conferido inteiro, porque a ausência de `--client`
+     * é a afirmação mais consequente que este arquivo faz: sem ele a agenda
+     * alcança todo cliente capturável de todas as contas, e um `--client` aqui
+     * seria um canário de carteira que ninguém autorizou.
+     *
      * A agenda é montada no boot da aplicação, então mexer na chave depois do
      * boot não registraria nada e este teste passaria sem exercitar o registro.
      * Por isso a aplicação nasce de novo com a chave no ambiente — que é
@@ -286,6 +292,19 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
             $cte = $this->captureEventsFor(FiscalSource::CteDistribuicao->value);
 
             $this->assertCount(1, $cte, 'A agenda de CT-e é uma entrada só, do tipo da de NF-e.');
+
+            // O comando inteiro da entrada, e não só a parte que o filtro
+            // procurava: um `--client` acrescentado aqui passaria por toda a
+            // verificação acima e transformaria a agenda num canário de um
+            // cliente só — que é a decisão que o gate de liberação não
+            // autoriza. Hoje a entrada cobre a carteira inteira, e é isso que
+            // o comentário da agenda diz em voz alta.
+            $this->assertSame(
+                Application::formatCommandString('fiscal:capture --source=cte_distribuicao'),
+                (string) $cte[0]->command,
+                'A entrada de CT-e é exatamente este comando: sem --client ela alcança todo cliente capturável de todas as contas.',
+            );
+
             $this->assertSame('0 * * * *', $cte[0]->getExpression(), 'A captura de CT-e roda de hora em hora.');
             $this->assertTrue($cte[0]->withoutOverlapping, 'A captura de CT-e não pode se sobrepor a si mesma.');
 
