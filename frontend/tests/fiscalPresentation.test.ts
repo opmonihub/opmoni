@@ -19,6 +19,7 @@ import {
   fiscalMonthLabel,
   fiscalNoAttention,
   fiscalMonthSeries,
+  fiscalReferenceNow,
   fiscalSourceLabel,
   fiscalStateCopy,
   formatFiscalCount,
@@ -357,6 +358,61 @@ describe('tempo restante do bloqueio', () => {
 
   it('não quebra com uma data que o cliente não sabe ler', () => {
     assert.equal(blockedRemaining('amanhã', now), null)
+  })
+
+  it('conta a partir do relógio que a página passa, não do relógio que a função tem', () => {
+    // A função não tem relógio próprio: quem conta é quem tem o dado, e o erro
+    // que ela precisa tornar impossível é o painel continuar contando do
+    // relógio do render anterior depois de recarregar.
+    const until = '2026-09-30T16:00:00Z'
+    assert.equal(blockedRemaining(until, new Date('2026-09-28T16:00:00Z')), 'faltam 2 dias')
+    assert.equal(blockedRemaining(until, new Date('2026-09-29T16:00:00Z')), 'faltam 1 dia')
+    assert.equal(blockedRemaining(until, new Date('2026-09-30T16:00:00Z')), 'a janela já passou')
+  })
+
+  it('nunca cresce quando o relógio avança, para o mesmo valor do servidor', () => {
+    // Esta é a propriedade que o relógio congelado quebrava: um painel que
+    // reancora a cada resposta conta a janela de menos, nunca de mais. As três
+    // âncoras abaixo saem da mesma resposta do servidor; a última é o que a
+    // tela mostra uma hora depois de aberta, sem nenhum clique.
+    const until = '2026-10-05T12:00:00Z'
+    const naResposta = blockedRemaining(until, fiscalReferenceNow('2026-10-01T12:00:00Z'))
+    const umaHoraDepois = blockedRemaining(until, fiscalReferenceNow('2026-10-01T13:00:00Z'))
+    const umDiaDepois = blockedRemaining(until, fiscalReferenceNow('2026-10-02T12:00:00Z'))
+
+    assert.equal(naResposta, 'faltam 4 dias')
+    assert.equal(umaHoraDepois, 'faltam 3 dias e 23 h')
+    assert.equal(umDiaDepois, 'faltam 3 dias')
+    assert.ok(umaHoraDepois !== naResposta, 'um painel aberto não pode mostrar a mesma contagem para sempre')
+  })
+
+  it('conta a janela a partir do instante em que a resposta chegou, não do anterior', () => {
+    // O caso que a revisão nomeou: o servidor reenvia `blocked_until` três
+    // horas depois do primeiro render. Contar do relógio antigo daria "faltam
+    // 2 dias e 10 h" para uma janela que o servidor, naquele instante, disse
+    // que durava 2 dias e 7 h — o painel growria a janela sozinho.
+    const servidorEmT0 = blockedRemaining('2026-10-03T19:00:00Z', fiscalReferenceNow('2026-10-01T12:00:00Z'))
+    const servidorEmT1 = blockedRemaining('2026-10-03T19:00:00Z', fiscalReferenceNow('2026-10-01T15:00:00Z'))
+
+    assert.equal(servidorEmT0, 'faltam 2 dias e 7 h')
+    assert.equal(servidorEmT1, 'faltam 2 dias e 4 h')
+    assert.notEqual(servidorEmT1, servidorEmT0)
+  })
+
+  it('ancora no instante da resposta, e não em outro relógio qualquer', () => {
+    const ancora = fiscalReferenceNow('2026-10-01T12:00:00Z')
+    assert.equal(ancora.getTime(), new Date('2026-10-01T12:00:00Z').getTime())
+    assert.equal(fiscalReferenceNow(new Date('2026-10-01T12:00:00Z')).getTime(), ancora.getTime())
+  })
+
+  it('ancora em agora quando a resposta não trouxe um instante legível', () => {
+    // Sem âncora não há contagem, e a única resposta segura para um relógio
+    // ilegível é o próprio agora — nunca o relógio de um render anterior, que é
+    // o defeito que esta função existe para impedir.
+    const antes = Date.now()
+    const ancora = fiscalReferenceNow('quinta-feira que vem')
+    assert.ok(ancora.getTime() >= antes)
+    assert.ok(ancora.getTime() <= Date.now())
   })
 })
 

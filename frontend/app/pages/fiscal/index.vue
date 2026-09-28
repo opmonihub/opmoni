@@ -15,6 +15,7 @@ import {
   fiscalMissingValue,
   fiscalMonthSeries,
   fiscalNoAttention,
+  fiscalReferenceNow,
   fiscalStateCopy,
   formatFiscalCount,
   formatFiscalDateTime,
@@ -45,6 +46,26 @@ const EMPTY_SUMMARY: FiscalSummary = {
 }
 
 /**
+ * O relógio com que as janelas de bloqueio são contadas.
+ *
+ * Fica em `useState` por um motivo só: a hidratação. O servidor pinta
+ * "faltam 2 dias e 7 h" e o cliente precisa pintar a mesma frase no primeiro
+ * render, senão o Vue reclama do texto. O estado do Nuxt viaja no payload, e a
+ * hydrated page lê o valor que o servidor gravou.
+ *
+ * E é por isso que ele é reancorado a cada resposta, logo abaixo: `useState` é
+ * global e permanente, e um relógio que nunca é reancorado faz o painel contar
+ * a janela de menos a cada recarregamento. O botão "Atualizar" traz
+ * `blocked_until` novo do servidor e, se o relógio ficasse no primeiro render,
+ * a mesma janela apareceria mais longa a cada clique — três horas depois, um
+ * "2 dias e 10 h" para um bloqueio que o servidor disse durar 2 dias e 7 h.
+ * A aritmética e a âncora moram em `fiscalPresentation.ts` porque o `.vue` não
+ * é importável pelo runner de teste, e essa decisão sem teste é exatamente a
+ * que ninguém acha para cair.
+ */
+const referenceNow = useState('fiscal-panel-now', () => new Date().toISOString())
+
+/**
  * Uma busca só, no servidor e no cliente, com a chave estável do módulo.
  *
  * O shell em `pages/fiscal.vue` não busca nada: quem busca é a página filha, e
@@ -52,10 +73,20 @@ const EMPTY_SUMMARY: FiscalSummary = {
  * undefined` força o dado a vir da API em cada entrada em vez de reaproveitar o
  * payload de um SSR antigo — um painel de captura que mostra a cobertura de
  * ontem é a mesma mentira de um gráfico de ontem.
+ *
+ * O relógio é reancorado aqui, dentro da busca, e não num `watch` do botão:
+ * toda resposta nova invalida o relógio velho, e o caminho que chega a
+ * `blockedUntil` novo é este. Um watcher só do botão deixaria de fora a
+ * reancora da primeira renderização no cliente e qualquer outro caminho que
+ * reexecute a busca.
  */
 const { data, status, error, refresh: reload } = await useAsyncData<FiscalSummary>(
   'fiscal-summary',
-  () => summary(),
+  async () => {
+    const fresh = await summary()
+    referenceNow.value = fiscalReferenceNow(new Date()).toISOString()
+    return fresh
+  },
   { getCachedData: () => undefined }
 )
 
@@ -81,16 +112,6 @@ const refreshRequest = useState('fiscal-refresh', () => 0)
 watch(refreshRequest, () => {
   void refresh()
 })
-
-/**
- * O instante de referência das janelas de bloqueio.
- *
- * Fixo por request e serializado no payload, para que o tempo restante que o
- * servidor pintou seja o mesmo que o cliente pinta. Se cada lado chamasse
- * `new Date()` na hora de desenhar, a hidratação trocaria a frase "faltam 3 h"
- * por "faltam 2 h 59 min" e o Vue reclamaria do texto.
- */
-const referenceNow = useState('fiscal-panel-now', () => new Date().toISOString())
 
 /**
  * O resumo, com o estado da carteira já resolvido.
