@@ -2,13 +2,10 @@
 import { h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
-import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
-import { apiMessage, apiStatus } from '~/composables/useApiError'
+import FiscalDocumentSheet from '~/components/fiscal/FiscalDocumentSheet.vue'
 import type {
-  FiscalCaptureBlocked,
-  FiscalDetail,
   FiscalDocumentRow,
   FiscalListFilters,
   FiscalPerPage,
@@ -16,10 +13,11 @@ import type {
 } from '~/types/fiscal'
 import { appliedFiscalFilters, availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
 import {
-  fiscalMissingValue,
-  fiscalSourceLabel,
+  fiscalEventCount,
+  fiscalKindLabel,
+  formatFiscalAmount,
   formatFiscalCount,
-  formatFiscalDateTime,
+  formatFiscalDay,
   modelLabel
 } from '~/utils/fiscalPresentation'
 import { formatTaxId } from '~/utils/taxId'
@@ -29,15 +27,19 @@ import { formatTaxId } from '~/utils/taxId'
  *
  * Middleware nomeado como em todas as páginas do produto: qualquer membro da
  * conta lê a captura (`FiscalDocumentPolicy::viewAny`). Quem **dispara** captura
- * é `admin`/`operador`, e esse controle aparece adiante — ler e escrever são
- * decisões diferentes e a tela não as mistura.
+ * é `admin`/`operador`, e esse controle mora na folha de detalhe — ler e
+ * escrever são decisões diferentes e a tela não as mistura.
+ *
+ * A folha é `FiscalDocumentSheet.vue`, e esta página é a lista: filtro na URL,
+ * tabela, cartões do telefone e paginação. O que é decisão de leitura (o valor em
+ * reais, o dia da emissão, a contagem de eventos, o nome do tipo e da etapa) é de
+ * `fiscalPresentation.ts` e é compartilhado com a folha, para que os dois lados
+ * da costura nunca contem a mesma história de formas diferentes.
  */
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const toast = useToast()
-const { list, show, download, capture } = useFiscal()
-const { canManageClients } = useAuth()
+const { list } = useFiscal()
 
 /**
  * A URL é a fonte da verdade do filtro, e o módulo puro é quem a traduz.
@@ -319,52 +321,32 @@ function clearRange() {
 }
 
 /* ------------------------------------------------------------------ *
- * A tabela
+ * A folha de detalhe
  * ------------------------------------------------------------------ */
 
-const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-
 /**
- * O valor do documento vem como texto decimal e nunca como número.
+ * A folha, e a única coisa que a página diz a ela.
  *
- * A coluna é `decimal(14,2)` e o Resource devolve `"55.55"`: um float de JSON
- * não representa `0,01`, e converter para número de volta — ou pior, somar em
- * cents sobre float — devolveria o erro que o formato de texto existe para
- * evitar. Aqui é só parse para exibição.
+ * O detalhe é estado de outro arquivo: ele abre, carrega, guarda a linha do
+ * tempo, baixa o XML e dispara a captura. Aqui só entra o id da linha que o
+ * operador tocou — passar a linha inteira acoplar os dois lados a um objeto que
+ * o detalhe vai reler da API de qualquer jeito.
+ *
+ * O tipo do `ref` vem do componente (`InstanceType`), e não de uma forma escrita
+ * à mão: `useTemplateRef<{ open: (id: number) => void }>` compila igual com ou
+ * sem o `defineExpose` do outro lado, e a página ficaria com um método que só
+ * existe no papel. Importado à mão por isso — o mesmo que `work/tarefas.vue` faz
+ * com os componentes que usa.
  */
-function formatAmount(value: string | null) {
-  if (value === null) return fiscalMissingValue
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? currency.format(parsed) : fiscalMissingValue
+const sheet = useTemplateRef<InstanceType<typeof FiscalDocumentSheet>>('sheet')
+
+function openDetail(row: FiscalDocumentRow) {
+  sheet.value?.open(row.id)
 }
 
-/**
- * A emissão é um dia, e o dia é o do fisco.
- *
- * `formatFiscalDateTime` mostra a hora, e a hora da emissão não é informação do
- * documento. Fuso fixo em UTC pelos dois lados, senão o SSR e o cliente pintam
- * dias diferentes na mesma tabela e o Vue reclama do texto.
- */
-const dayFormat = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' })
-
-function formatDay(value: string | null) {
-  if (!value) return fiscalMissingValue
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? fiscalMissingValue : dayFormat.format(date)
-}
-
-/**
- * A contagem de eventos da linha é a mesma que o detalhe repete, e o zero é
- * dito por extenso.
- *
- * O número conta as próprias linhas de evento da chave, sem autoexclusão, e
- * subtrair um aqui colocaria dois números diferentes para a mesma chave de
- * acesso na mesma tela. Zero é "sem eventos" escrito: uma célula vazia parece
- * um dado que não chegou.
- */
-function eventCount(row: FiscalDocumentRow) {
-  return row.event_count === 0 ? 'Sem eventos' : formatFiscalCount(row.event_count)
-}
+/* ------------------------------------------------------------------ *
+ * A tabela
+ * ------------------------------------------------------------------ */
 
 /**
  * O veredito do digest da chave, e os três estados que ele tem.
@@ -381,17 +363,6 @@ function digestOf(row: FiscalDocumentRow) {
   if (row.digval_confere === true) return digestConfere
   if (row.digval_confere === false) return digestDiverge
   return digestPendente
-}
-
-const stageLabels: Record<FiscalDocumentRow['stage'], string> = {
-  summary: 'Resumo da distribuição',
-  document: 'Documento autorizado',
-  event: 'Evento autorizado'
-}
-
-const kindLabels: Record<FiscalDocumentRow['kind'], string> = {
-  document: 'Documento',
-  event: 'Evento'
 }
 
 /**
@@ -434,189 +405,6 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
   { id: 'digest', header: 'Digest', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
   { id: 'acoes', meta: { class: { th: 'w-12', td: 'w-12' } } }
 ])
-
-/* ------------------------------------------------------------------ *
- * O detalhe: uma folha sobre a tabela, não uma rota
- * ------------------------------------------------------------------ */
-
-const detailOpen = ref(false)
-const detail = ref<FiscalDetail | null>(null)
-const detailPending = ref(false)
-
-/**
- * A guarda de geração, do mesmo formato que a de
- * `customers/[documento]/[[situacao].vue`: cada abertura toma um número e só a
- * última escreve.
- *
- * Duas linhas clicadas em sequência dão duas respostas em voo, e a da primeira
- * chega depois. Sem o número, a folha trocava de documento no meio da leitura
- * — o operador leria os metadados do evento B no cabeçalho do documento A. A
- * lista não precisa da guarda porque a chave do `useAsyncData` já separa uma
- * consulta da outra; aqui a escrita é num `ref` da própria folha, e o `ref` é
- * o que precisa se defender.
- */
-let detailGeneration = 0
-
-async function openDetail(row: FiscalDocumentRow) {
-  const seen = ++detailGeneration
-  detailOpen.value = true
-  detail.value = null
-  detailPending.value = true
-
-  try {
-    const loaded = await show(row.id)
-    if (seen !== detailGeneration) return
-    detail.value = loaded
-  } catch {
-    if (seen !== detailGeneration) return
-    toast.add({ title: 'Não foi possível abrir o documento', color: 'error' })
-  } finally {
-    if (seen === detailGeneration) detailPending.value = false
-  }
-}
-
-const detailFacts = computed<MetaListItem[]>(() => {
-  const target = detail.value
-  if (!target) return []
-
-  return [
-    { label: 'Chave de acesso', value: target.chave_acesso, mono: true },
-    { label: 'Modelo', value: modelLabel(target.model) },
-    { label: 'Tipo', value: kindLabels[target.kind] },
-    { label: 'Etapa', value: stageLabels[target.stage] },
-    { label: 'Emitente', value: formatTaxId(target.emitente_cnpj), mono: true },
-    { label: 'Destinatário', value: formatTaxId(target.destinatario_cnpj), mono: true },
-    { label: 'Valor total', value: formatAmount(target.valor_total), mono: true },
-    { label: 'Emissão', value: formatDay(target.emissao_at), mono: true },
-    { label: 'Capturado em', value: formatFiscalDateTime(target.captured_at), mono: true },
-    { label: 'Distribuição', value: `${fiscalSourceLabel(target.source)} · NSU ${formatFiscalCount(target.nsu)}` },
-    { label: 'Código do evento', value: target.event_id || fiscalMissingValue, mono: true },
-    { label: 'Eventos', value: target.event_count === 0 ? 'Sem eventos' : formatFiscalCount(target.event_count), mono: true },
-    { label: 'Layout', value: target.schema ?? fiscalMissingValue, mono: true },
-    { label: 'XML gravado', value: `${formatFiscalCount(target.xml_bytes)} bytes`, mono: true },
-    { label: 'Digest do XML', value: target.digval ?? fiscalMissingValue, mono: true },
-    { label: 'SHA-256', value: target.sha256, mono: true },
-    { label: 'Mascarado pelo fisco', value: target.mascarado ? 'Sim' : 'Não' }
-  ]
-})
-
-/**
- * O XML é texto, e é renderizado como texto.
- *
- * `xml_preview` é o que o backend projetou para exibição, com teto de 4 KiB, e
- * vem `null` em dois casos honestos: o arquivo sumiu do disco ou o byte é de uma
- * codificação que a projeção recusa em vez de adivinhar. Nenhum dos dois é
- * erro — e nenhum dos dois tira o download, que serve o byte cru que a prévia
- * não conseguiu mostrar.
- */
-const xmlPreview = computed(() => detail.value?.xml_preview ?? null)
-
-/**
- * O download é uma requisição autenticada, e por isso um `Blob` e um clique
- * programático.
- *
- * Um `<a href>` para a rota do XML seria uma navegação sem o cookie de sessão,
- * que o servidor responderia com 401 em vez do arquivo. A URL do objeto é
- * revogada assim que o navegador recebeu o clique — ela existe para o
- * download, não para ficar na memória.
- */
-const downloading = ref(false)
-
-async function downloadXml() {
-  const target = detail.value
-  if (!target || downloading.value) return
-
-  downloading.value = true
-  try {
-    const blob = await download(target.id)
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${target.chave_acesso}.xml`
-      link.rel = 'noopener'
-      document.body.append(link)
-      link.click()
-      link.remove()
-    } finally {
-      URL.revokeObjectURL(url)
-    }
-  } catch {
-    toast.add({ title: 'Não foi possível baixar o XML', color: 'error' })
-  } finally {
-    downloading.value = false
-  }
-}
-
-/* ------------------------------------------------------------------ *
- * A captura sob demanda
- * ------------------------------------------------------------------ */
-
-const capturing = ref(false)
-
-/**
- * O contador que o painel fiscal escuta.
- *
- * O painel relê o resumo toda vez que entra, então a consulta enfileirada aparece
- * nele sem ajuda de ninguém; este contador é a costura que o painel deixou para
- * a captura, e não um `refresh()` escondido aqui dentro — quem dispara a captura
- * é quem sabe que a carteira mudou.
- */
-const refreshRequest = useState('fiscal-refresh', () => 0)
-
-/**
- * O corpo da recusa por bloqueio, lido do erro.
- *
- * O 409 do backend traz `{message, blocked_until}` e o tipo dele mora em
- * `types/fiscal.ts` — declarar a forma aqui dentro seria a segunda cópia, e as
- * duas divergem. O que fica é só a leitura: o status 409 é o que separa a
- * recusa do fisco de qualquer outra falha, e `blocked_until` é a hora em que a
- * janela acaba, que é o que o operador precisa para não tentar de novo cedo.
- */
-function blockedRefusal(error: unknown): FiscalCaptureBlocked | null {
-  if (apiStatus(error) !== 409) return null
-
-  const body = typeof error === 'object' && error !== null ? (error as { data?: unknown }).data : null
-  if (typeof body !== 'object' || body === null) return null
-
-  const { message, blocked_until } = body as Partial<FiscalCaptureBlocked>
-  if (typeof message !== 'string' || typeof blocked_until !== 'string') return null
-
-  return { message, blocked_until }
-}
-
-async function triggerCapture() {
-  const target = detail.value
-  if (!target || capturing.value) return
-
-  capturing.value = true
-  try {
-    await capture(target.client.id, target.source)
-    toast.add({
-      title: 'Captura enfileirada',
-      description: `A consulta de ${fiscalSourceLabel(target.source)} do cliente entrou na fila. Os documentos chegam na tabela quando o lote terminar.`,
-      color: 'success'
-    })
-    refreshRequest.value += 1
-  } catch (error) {
-    const blocked = blockedRefusal(error)
-    if (blocked) {
-      toast.add({
-        title: 'A consulta deste cliente está em espera',
-        description: `${blocked.message} A janela acaba em ${formatFiscalDateTime(blocked.blocked_until)}.`,
-        color: 'warning'
-      })
-      return
-    }
-    toast.add({
-      title: 'Não foi possível enfileirar a captura',
-      description: apiMessage(error),
-      color: 'error'
-    })
-  } finally {
-    capturing.value = false
-  }
-}
 </script>
 
 <template>
@@ -797,12 +585,12 @@ async function triggerCapture() {
 
               <div class="mt-3 flex flex-wrap items-center gap-1.5">
                 <UBadge
-                  :label="kindLabels[row.kind]"
+                  :label="fiscalKindLabel(row.kind)"
                   variant="subtle"
                   size="sm"
                 />
                 <UBadge
-                  :label="eventCount(row)"
+                  :label="fiscalEventCount(row)"
                   variant="subtle"
                   size="sm"
                 />
@@ -826,8 +614,8 @@ async function triggerCapture() {
                 {{ row.chave_acesso }}
               </p>
               <div class="mt-1 flex items-center justify-between gap-3 text-xs tabular-nums text-muted">
-                <span>{{ formatDay(row.emissao_at) }}</span>
-                <span>{{ formatAmount(row.valor_total) }}</span>
+                <span>{{ formatFiscalDay(row.emissao_at) }}</span>
+                <span>{{ formatFiscalAmount(row.valor_total) }}</span>
               </div>
             </UCard>
           </div>
@@ -891,15 +679,15 @@ async function triggerCapture() {
               </template>
 
               <template #valor-cell="{ row }">
-                {{ formatAmount(row.original.valor_total) }}
+                {{ formatFiscalAmount(row.original.valor_total) }}
               </template>
 
               <template #emissao-cell="{ row }">
-                {{ formatDay(row.original.emissao_at) }}
+                {{ formatFiscalDay(row.original.emissao_at) }}
               </template>
 
               <template #eventos-cell="{ row }">
-                {{ eventCount(row.original) }}
+                {{ fiscalEventCount(row.original) }}
               </template>
 
               <template #digest-cell="{ row }">
@@ -955,149 +743,11 @@ async function triggerCapture() {
     </div>
 
     <!--
-      O detalhe é uma folha sobre a tabela, e não uma rota. A tela pede uma
-      tabela filtrável e o documento vive dentro dela: um link por documento
-      seria um id que o operador cola e outra entrada de histórico para cada
-      leitura. A volta para a lista é o botão de fechar, que é onde a lista
-      continua exatamente como estava.
+      O detalhe é uma folha sobre a tabela, e não uma rota. A folha, a linha
+      do tempo, a prévia, o download e a captura moram no componente, e a
+      página só diz qual documento abrir: a volta para a lista é o botão de
+      fechar, que é onde a lista continua exatamente como estava.
     -->
-    <USlideover
-      v-model:open="detailOpen"
-      title="Detalhe do documento"
-      :description="detail ? `${modelLabel(detail.model)} · ${detail.client.name}` : undefined"
-      :ui="{ footer: 'justify-between' }"
-    >
-      <template #body>
-        <div v-if="detailPending" class="space-y-2">
-          <USkeleton class="h-8 w-full" />
-          <USkeleton class="h-40 w-full" />
-          <USkeleton class="h-24 w-full" />
-        </div>
-
-        <div v-else-if="!detail" class="py-8 text-center text-sm text-muted">
-          O documento não pôde ser carregado.
-        </div>
-
-        <div v-else class="flex min-w-0 flex-col gap-5">
-          <DataTableMetaList :items="detailFacts" columns="grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2" />
-
-          <section class="flex min-w-0 flex-col gap-2">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-timeline" class="size-4 shrink-0 text-muted" />
-              <h4 class="text-sm font-semibold text-highlighted">
-                Linha do tempo
-              </h4>
-              <span class="truncate text-xs text-muted">
-                Eventos da chave de acesso, em ordem cronológica.
-              </span>
-            </div>
-
-            <p v-if="detail.events.length === 0" class="text-sm text-muted">
-              Sem eventos registrados para esta chave de acesso.
-            </p>
-
-            <ul v-else class="divide-y divide-default rounded-lg ring ring-default">
-              <li
-                v-for="event in detail.events"
-                :key="event.id"
-                class="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-              >
-                <div class="flex min-w-0 items-center gap-2">
-                  <UBadge
-                    :label="event.event_id"
-                    color="neutral"
-                    variant="subtle"
-                    class="tabular-nums"
-                  />
-                  <UBadge
-                    v-if="event.mascarado"
-                    label="Mascarado"
-                    color="neutral"
-                    variant="subtle"
-                    size="sm"
-                  />
-                </div>
-                <div class="flex shrink-0 flex-col items-end text-xs tabular-nums text-muted">
-                  <span>{{ formatFiscalDateTime(event.evento_ocorrido_em_at) }}</span>
-                  <span>Capturado em {{ formatFiscalDateTime(event.captured_at) }}</span>
-                </div>
-              </li>
-            </ul>
-          </section>
-
-          <section class="flex min-w-0 flex-col gap-2">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-file-code" class="size-4 shrink-0 text-muted" />
-              <h4 class="text-sm font-semibold text-highlighted">
-                Prévia do XML
-              </h4>
-              <span class="truncate text-xs text-muted">
-                Texto, com teto de 4 KiB. O download serve o arquivo inteiro.
-              </span>
-            </div>
-
-            <!--
-              `{{ }}` e nada de `v-html`: o XML é o que o fisco gravou, e a
-              prévia existe para o operador reconhecer a nota, não para executar
-              marcação. Um documento hostil renderizado como HTML seria a entrega
-              mais rápida do que esta tela existe para evitar.
-            -->
-            <pre
-              v-if="xmlPreview"
-              class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-elevated/50 p-3 font-mono text-xs text-highlighted ring ring-default"
-            >{{ xmlPreview }}</pre>
-
-            <p v-else class="text-sm text-muted">
-              Sem prévia para este XML: o arquivo não está mais no disco, ou o byte gravado
-              não é de uma codificação que a leitura de exibição aceite. O download serve o
-              arquivo gravado como está.
-            </p>
-          </section>
-        </div>
-      </template>
-
-      <template #footer="{ close }">
-        <UButton
-          label="Fechar"
-          color="neutral"
-          variant="ghost"
-          @click="close"
-        />
-
-        <div class="flex items-center gap-2">
-          <!--
-            Ausente, e não desabilitado, para quem só lê. Um botão acinzentado
-            convida a explicar por que está acinzentado, e a resposta — "o seu
-            papel não captura" — é uma informação sobre permissão que a tela de
-            documentos não precisa dar a quem não pode agir. O `v-if` é lido de
-            `useAuth().canManageClients` no script, que é a mesma policy que o
-            `capture` do backend autoriza.
-          -->
-          <UButton
-            v-if="canManageClients && detail"
-            label="Capturar agora"
-            icon="i-lucide-refresh-cw"
-            color="neutral"
-            variant="outline"
-            :loading="capturing"
-            :title="detail ? `Consulta de ${fiscalSourceLabel(detail.source)} deste cliente` : undefined"
-            @click="triggerCapture"
-          />
-
-          <!--
-            O download fica disponível mesmo sem prévia: são coisas diferentes.
-            A prévia é a projeção para leitura, e o arquivo é o byte que o
-            fisco gravou — que é o que se confere com o fisco.
-          -->
-          <UButton
-            label="Baixar XML"
-            icon="i-lucide-download"
-            :loading="downloading"
-            :disabled="!detail"
-            @click="downloadXml"
-          />
-        </div>
-      </template>
-    </USlideover>
+    <FiscalDocumentSheet ref="sheet" />
   </div>
 </template>

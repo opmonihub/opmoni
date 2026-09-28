@@ -2,8 +2,10 @@ import type {
   FiscalAttentionItem,
   FiscalAttentionReason,
   FiscalCoverage,
+  FiscalKind,
   FiscalLastCapture,
   FiscalSource,
+  FiscalStage,
   FiscalSummary
 } from '../types/fiscal.ts'
 
@@ -192,6 +194,67 @@ export function formatFiscalDateTime(value: string | null | undefined): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return fiscalMissingValue
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' }).format(date)
+}
+
+/**
+ * O dia da emissão, sem hora.
+ *
+ * A hora da emissão não é informação do documento, e a tabela de documentos tem
+ * uma coluna só para isso. O fuso é fixo em UTC pelos dois lados pelo mesmo
+ * motivo de `formatFiscalDateTime`: SSR e cliente precisam pintar o mesmo dia,
+ * senão o Vue reclama do texto na hidratação.
+ */
+const fiscalDay = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' })
+
+export function formatFiscalDay(value: string | null | undefined): string {
+  if (!value) return fiscalMissingValue
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? fiscalMissingValue : fiscalDay.format(date)
+}
+
+/**
+ * O valor do documento em reais, a partir do texto decimal que a API entrega.
+ *
+ * `valor_total` é `decimal(14,2)` com cast `decimal:2`, e por isso chega como
+ * `"55.55"`: um float de JSON não representa `0,01`. Aqui é só parse para
+ * exibição — nenhuma aritmética, porque somar em cents sobre float volta a errar
+ * no centavo que o texto existe para preservar. Vazio e texto ilegível são o
+ * traço do valor ausente, e não zero.
+ */
+const fiscalCurrency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+
+export function formatFiscalAmount(value: string | null | undefined): string {
+  if (value === null || value === undefined || value.trim() === '') return fiscalMissingValue
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? fiscalCurrency.format(parsed) : fiscalMissingValue
+}
+
+/**
+ * A contagem de eventos da linha, com o zero dito por extenso.
+ *
+ * O número conta as próprias linhas de evento da chave de acesso, sem
+ * autoexclusão, e é o mesmo que o detalhe repete para a mesma chave: subtrair um
+ * aqui colocaria dois números diferentes para a mesma chave na mesma tela. Zero é
+ * "sem eventos" escrito, porque uma célula vazia parece um dado que não chegou.
+ */
+export function fiscalEventCount(row: { event_count: number }): string {
+  return row.event_count === 0 ? 'Sem eventos' : formatFiscalCount(row.event_count)
+}
+
+/** O que a linha é: o documento autorizado ou o evento que o acompanha. */
+export function fiscalKindLabel(kind: FiscalKind): string {
+  return kind === 'event' ? 'Evento' : 'Documento'
+}
+
+/**
+ * A etapa da distribuição que entregou a linha.
+ *
+ * É vocabulario do fisco, e o operador do escritório não o conhece: o resumo é
+ * o documento autorizado e o evento que o acompanha, e não "stage document".
+ */
+export function fiscalStageLabel(stage: FiscalStage): string {
+  if (stage === 'event') return 'Evento autorizado'
+  return stage === 'summary' ? 'Resumo da distribuição' : 'Documento autorizado'
 }
 
 /** A origem da última consulta, pelo nome que o fisco usa. */

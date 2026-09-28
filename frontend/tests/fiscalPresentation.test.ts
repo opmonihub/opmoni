@@ -23,13 +23,18 @@ import {
   blockedRemaining,
   coverageShare,
   coverageState,
+  fiscalEventCount,
+  fiscalKindLabel,
   fiscalMonthLabel,
   fiscalNoAttention,
   fiscalMonthSeries,
   fiscalSourceLabel,
+  fiscalStageLabel,
   fiscalStateCopy,
+  formatFiscalAmount,
   formatFiscalCount,
   formatFiscalDateTime,
+  formatFiscalDay,
   lastCaptureOutcome,
   modelLabel,
   modelVolumes
@@ -540,6 +545,50 @@ describe('última consulta', () => {
 describe('contagem em pt-BR', () => {
   it('formata o número como o resto do produto formata', () => {
     assert.equal(formatFiscalCount(1234), '1.234')
+  })
+})
+
+describe('a leitura das células do documento', () => {
+  it('mostra o valor decimal que a API entrega, sem arredondar o centavo', () => {
+    // A coluna é `decimal(14,2)` e o Resource devolve texto. Um float de JSON
+    // não representa 0,01, e é por isso que o valor chega como string.
+    // O espaço entre `R$` e o número é o não separável do Intl (U+00A0), escrito
+    // aqui como escape porque um espaço invisível no teste é um espaço que o
+    // editor apaga sem querer.
+    assert.equal(formatFiscalAmount('55.55').replace(/\u00a0/g, ' '), 'R$ 55,55')
+    assert.equal(formatFiscalAmount('0.01').replace(/\u00a0/g, ' '), 'R$ 0,01')
+  })
+
+  it('diz que não há valor em vez de mostrar zero', () => {
+    // Zero é uma medida; campo vazio é ausência. Uma coluna que mostrava R$ 0,00
+    // para um documento sem valor affirmaria um preço que ninguém gravou.
+    assert.equal(formatFiscalAmount(null), '—')
+    assert.equal(formatFiscalAmount(''), '—')
+    assert.equal(formatFiscalAmount('  '), '—')
+    assert.equal(formatFiscalAmount('não é número'), '—')
+  })
+
+  it('pinta a emissão como dia, em UTC, e o vazio como ausente', () => {
+    assert.equal(formatFiscalDay('2026-09-27T13:45:00Z'), '27/09/2026')
+    assert.equal(formatFiscalDay('2026-09-27T23:30:00Z'), '27/09/2026')
+    assert.equal(formatFiscalDay(null), '—')
+    assert.equal(formatFiscalDay('ontem'), '—')
+  })
+
+  it('conta os eventos da chave sem subtrair a própria linha', () => {
+    // O número é o mesmo na tabela e no detalhe, para a mesma chave. Um `-1`
+    // aqui colocaria dois números diferentes na mesma tela.
+    assert.equal(fiscalEventCount({ event_count: 0 }), 'Sem eventos')
+    assert.equal(fiscalEventCount({ event_count: 1 }), '1')
+    assert.equal(fiscalEventCount({ event_count: 1234 }), '1.234')
+  })
+
+  it('nomeia o tipo e a etapa pelo que o fisco entrega', () => {
+    assert.equal(fiscalKindLabel('document'), 'Documento')
+    assert.equal(fiscalKindLabel('event'), 'Evento')
+    assert.equal(fiscalStageLabel('summary'), 'Resumo da distribuição')
+    assert.equal(fiscalStageLabel('document'), 'Documento autorizado')
+    assert.equal(fiscalStageLabel('event'), 'Evento autorizado')
   })
 })
 
