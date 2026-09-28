@@ -65,11 +65,12 @@ final class SerproConnectivity
 
         // A ausência do certificado é conferida aqui porque `assertIdentity()`
         // volta sem reclamar quando não há PFX, e quem recusa isso mais adiante é
-        // o materializador — depois de `verify()` ter descartado o par de token em
-        // cache e de a credencial ter sido relida. A resposta seria a mesma, por
-        // um caminho mais longo e depois de trabalho inútil: um teste que
-        // descobre que o certificado sumiu não deve invalidar o token que estava
-        // bom.
+        // o materializador — depois de `verify()` ter tentado uma autenticação e
+        // de a credencial ter sido relida. A resposta seria a mesma, por um
+        // caminho mais longo e depois de trabalho inútil: um teste que descobre
+        // que o certificado sumiu não deve invalidar o token que estava bom, e
+        // `verify()` agora descarta o par em cache por `DoNotRetry` — que é
+        // exatamente o que um certificado ausente produz.
         if ($connection->certificate_encrypted === null) {
             return $this->failure('certificado', $checkedAt);
         }

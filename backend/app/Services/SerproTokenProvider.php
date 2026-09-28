@@ -32,18 +32,66 @@ final class SerproTokenProvider
     }
 
     /**
-     * Verificação sob demanda: descarta o par guardado e autentica de novo.
+     * Verificação sob demanda: autentica de novo, sem consultar o par guardado.
      *
-     * Sem `forget()` o par em cache responderia "está funcionando" com uma
-     * autenticação de meia hora atrás. E o que fica em cache depois é o par
-     * recém-emitido, então o teste não custa uma autenticação à sincronização
-     * seguinte. Nenhum serviço é chamado aqui — a pergunta é sobre a credencial,
-     * e um gateway que responde bem não diz nada sobre ela.
+     * Sem isso o par em cache responderia "está funcionando" com uma
+     * autenticação de meia hora atrás, e é por isso que este método não passa
+     * por `pair()`: ele vai direto a `authenticate()`, e o que a autenticação
+     * bem-sucedida deixa em cache é o par recém-emitido — então o teste não custa
+     * uma autenticação à sincronização seguinte. Nenhum serviço é chamado aqui —
+     * a pergunta é sobre a credencial, e um gateway que responde bem não diz
+     * nada sobre ela.
+     *
+     * **A falha não descarta o par por igual.** Descartar antes de tentar e
+     * falhar depois deixa o cache vazio, e a sincronização seguinte tem de se
+     * autenticar no meio da mesma falha que a verificação acabou de ter — que é
+     * o inverso do que a spec pede ("SHALL keep a usable token rather than
+     * obtaining a new one per call"), e no pior momento possível.
+     *
+     * O que sobrevive é o par cuja falha **não diz nada sobre a credencial**:
+     * `Upstream` (o provedor não deu conta, ou não deu conta de responder), e
+     * `Throttled` (ele mandou esperar, e esperar é a única ação). `NotSent` entra
+     * pelo mesmo critério — a pasta temporária que não aceitou gravação e o
+     * cifrado que não abre não jugam a credencial, e o token guardado continua
+     * sendo o único que existe.
+     *
+     * `DoNotRetry` é o contrário e é o único que descarta: é o rótulo de "a
+     * credencial é o problema" em todos os pontos que o produzem — linha
+     * ausente, serviço fora do catálogo, certificado vencido, ausente, ilegível
+     * ou divergente do documento, e a recusa do que foi enviado. O par em cache
+     * saiu daquela mesma credencial, então devolvê-lo só compra um `401` na
+     * chamada seguinte, que o `SerproClient` transformaria em uma segunda
+     * tentativa com o mesmo token.
+     *
+     * Qualquer falha fora desses dois grupos também **preserva** o par: o que
+     * este método não conhece não tem autoridade para jogar fora um token que
+     * talvez esteja válido. Trocar um par bom por nenhum é sempre o erro; trocar
+     * um par bom por outro é apenas um token a mais.
+     *
+     * @throws SerproException
      */
     public function verify(): void
     {
-        $this->forget();
-        $this->pair();
+        try {
+            $this->authenticate();
+        } catch (SerproException $exception) {
+            if ($this->discardsCachedPair($exception->failure)) {
+                $this->forget();
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * O par em cache só é descartado quando a falha é sobre a credencial que o
+     * emitiu, e `DoNotRetry` é o único rótulo que significa isso. A lista
+     * explícita é o ponto: um caso novo da taxonomia entra **preservando** o
+     * par, que é o lado seguro de se errar.
+     */
+    private function discardsCachedPair(SerproFailure $failure): bool
+    {
+        return $failure === SerproFailure::DoNotRetry;
     }
 
     private function authenticate(): SerproTokenPair

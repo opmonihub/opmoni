@@ -490,6 +490,58 @@ class SerproClientTest extends TestCase
      * `"Array"` — com um aviso no log — e passaria a valer como se fosse um
      * código da tabela.
      */
+    /**
+     * Nenhuma forma observada do gateway traz `mensagens` — a fixture
+     * `gateway-429.json` não tem. O teste acima fecha a porta para o `code` e o
+     * `message`; este fecha para a hipótese de um corpo de gateway que por
+     * acaso trouxesse o envelope.
+     *
+     * Sem a guarda, o `codigo` de lá entraria no lugar do `code` do gateway e o
+     * `texto` livre subiria para `SerproException::getMessage()` — e de lá para o
+     * log. É o mesmo vazamento do teste anterior, por um caminho que ninguém
+     * exercise porque nenhuma resposta real tem essa forma. O sinal é o
+     * `status` de chave: o envelope sempre o traz, o gateway nunca traz
+     * envelope.
+     */
+    public function test_um_corpo_sem_envelope_nao_traz_mensagens_para_o_codigo_nem_para_a_mensagem(): void
+    {
+        $this->connection();
+        $this->fakeTokens();
+        $this->cacheTokenPair();
+
+        Http::fake([
+            'gateway.apiserpro.serpro.gov.br/*' => Http::response([
+                'code' => '900807',
+                'message' => 'Throttled out',
+                'mensagens' => [[
+                    'codigo' => 'AcessoNegado-ICGERENCIADOR-041',
+                    'texto' => 'Bearer access-1 recusado para o contribuinte 33683111000107.',
+                ]],
+            ], 429),
+        ]);
+
+        try {
+            resolve(SerproClient::class)->call(
+                'REGIMEAPURACAO',
+                'CONSULTARANOSCALENDARIOS102',
+                [],
+                '33683111000107',
+                '33683111000875',
+            );
+
+            $this->fail('Um erro de gateway deve levantar SerproException.');
+        } catch (SerproException $exception) {
+            // Sem envelope, o código é o do gateway — o `900807`, que classifica
+            // `Throttled` — e não o `AcessoNegado` de lá, que reclassificaria a
+            // mesma resposta como `Reauthenticate`.
+            $this->assertSame(SerproFailure::Throttled, $exception->failure);
+            $this->assertSame('900807', $exception->providerCode);
+            $this->assertSame(SerproFailure::Throttled->label(), $exception->getMessage());
+            $this->assertStringNotContainsString('access-1', $exception->getMessage());
+            $this->assertStringNotContainsString('33683111000107', $exception->getMessage());
+        }
+    }
+
     public function test_um_codigo_de_gateway_que_nao_e_texto_e_ignorado(): void
     {
         $this->connection();

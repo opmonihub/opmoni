@@ -2,7 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
-import { companyTaxIdEntry, canRegisterTypedCnpj } from '~/utils/taxId'
+import { companyTaxIdEntry, canRegisterTypedCnpj, taxIdEditInvalidatesLookup } from '~/utils/taxId'
 
 defineOptions({ inheritAttrs: false })
 
@@ -173,6 +173,20 @@ watch(() => state.person_type, (type) => {
     step.value = 1
     preview.value = null
   }
+})
+
+// `preview`, `step` e `typedName` descrevem um documento consultado, e não o
+// campo. Editar o campo para outro documento e continuar no passo 2 fazia o
+// cadastro enviar o nome, o email e o regime do documento consultado sob o número
+// do novo — e nada na tela denunciava, porque `typedNameRequired` esconde a razão
+// social justamente quando existe `preview`. A comparação é sobre o documento
+// normalizado, então reformatar o campo não joga fora uma consulta que ainda vale.
+watch(() => state.tax_id, (next, previous) => {
+  if (!taxIdEditInvalidatesLookup(previous ?? '', next)) return
+
+  preview.value = null
+  step.value = state.person_type === 'company' ? 1 : 2
+  typedName.value = false
 })
 
 async function onLookup() {

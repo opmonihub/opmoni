@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { canLookupCnpj, canRegisterTypedCnpj, companyTaxIdEntry, formatTaxId, maskTaxId } from '../app/utils/taxId.ts'
+import { canLookupCnpj, canRegisterTypedCnpj, companyTaxIdEntry, formatTaxId, maskTaxId, taxIdEditInvalidatesLookup } from '../app/utils/taxId.ts'
 
 describe('taxId com CNPJ alfanumérico', () => {
   it('formata os doze primeiros caracteres alfanuméricos e os dois dígitos', () => {
@@ -48,5 +48,22 @@ describe('taxId com CNPJ alfanumérico', () => {
     assert.equal(companyTaxIdEntry('12ABC3450001888'), 'incomplete')
     assert.equal(companyTaxIdEntry('12ABC3450001A'), 'incomplete')
     assert.equal(companyTaxIdEntry('529.982.247-25'), 'incomplete')
+  })
+
+  it('invalida a consulta anterior quando a edição muda o documento, e não quando só reformata', () => {
+    // Consultar A, voltar, editar para B e seguir no passo 2 enviava os dados de A
+    // sob o número de B. A comparação é sobre o documento normalizado, e é essa a
+    // razão de ela existir: reformatar o campo é o que o usuário faz o tempo todo
+    // ao digitar, e jogar fora a consulta que ainda vale seria o mesmo defeito
+    // com outro tamanho.
+    assert.equal(taxIdEditInvalidatesLookup('27.865.757/0001-02', '27.865.757/0001-03'), true)
+    assert.equal(taxIdEditInvalidatesLookup('12.ABC.345/0001-88', '27.865.757/0001-02'), true)
+    assert.equal(taxIdEditInvalidatesLookup('27865757000102', ''), true)
+    assert.equal(taxIdEditInvalidatesLookup('', '27865757000102'), true)
+
+    // Mesmo documento, outra grafia: a consulta continua válida.
+    assert.equal(taxIdEditInvalidatesLookup('27.865.757/0001-02', '27865757000102'), false)
+    assert.equal(taxIdEditInvalidatesLookup('12.abc.345/0001-88', '12ABC345000188'), false)
+    assert.equal(taxIdEditInvalidatesLookup('27865757000102', '27865757000102'), false)
   })
 })

@@ -4,7 +4,6 @@ namespace Tests\Unit;
 
 use App\Enums\SerproAuthorizationTermState;
 use App\Enums\SerproConnectionState;
-use App\Enums\SerproFailure;
 use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\SerproSyncItemState;
 use App\Enums\SerproSyncRunState;
@@ -91,22 +90,26 @@ class SerproStateTest extends TestCase
      * perderia nada semântico — deve, por isso, ser uma decisão que não quebre
      * teste nenhum. Por isso a comparação de grafia entre os dois fica de fora
      * de propósito. O que é semântico — o estado do provedor e a falha local não
-     * colapsam em um só — está nas duas afirmações que sobraram e nos docblocks
-     * de `SerproSyncItemState` e de `SerproFailure`.
+     * colapsam em um só — está na afirmação que sobrou e nos docblocks de
+     * `SerproSyncItemState` e de `SerproFailure`.
+     *
+     * E ela é uma só porque as outras duas eram guarda sem nada atrás: só
+     * falhariam se alguém declarasse um item de execução com estado `not_sent`,
+     * e essa é uma decisão que ninguém toma por engano — o item tem cinco
+     * estados, nenhum deles é esse, e a lista está fixada no teste logo acima.
+     * Um teste que só quebra por adulteração proposital não guarda nada, e
+     * fingir que guarda é pior do que não ter: dá a aparência de uma garantia
+     * que a plan 04 não tem.
      */
     public function test_indeterminado_e_o_desfecho_do_provedor_e_nao_a_falha_local_que_nada_enviou(): void
     {
+        // O que a plan 04 vai ler para decidir a contagem: `indeterminado` é o
+        // desfecho do provedor, e `NotSent` — a falha que aconteceu antes de
+        // qualquer requisição — não tem nome de estado aqui. A lista exata dos
+        // cinco estados está no teste acima, e é ela que garante que `not_sent`
+        // não entra: uma afirmação sobre o vocabulário alheio não pode vigiar o
+        // próprio.
         $this->assertSame('indeterminado', SerproSyncItemState::Indeterminate->value);
-
-        // O que a plan 04 vai ler para decidir a contagem: o estado do provedor
-        // não é a falha que aconteceu antes de enviar, e o item não nomeia essa
-        // falha em lugar nenhum do seu vocabulário. As duas afirmações continuam
-        // valendo se um dia os dois enums passarem a falar o mesmo idioma.
-        $this->assertNotSame(SerproFailure::NotSent->value, SerproSyncItemState::Indeterminate->value);
-        $this->assertNotContains(
-            SerproFailure::NotSent->value,
-            array_column(SerproSyncItemState::cases(), 'value'),
-        );
     }
 
     /**

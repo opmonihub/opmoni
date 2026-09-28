@@ -50,7 +50,13 @@ final class SerproConnectionManager
                     // de uma linha que foi apagada continua sendo um token válido.
                     $rotated = true;
 
-                    return SerproConnection::create(array_merge(
+                    // `forceCreate`, e não `create`: o segredo gravado e o
+                    // certificado extraído **não** são `Fillable` do modelo, e é
+                    // essa a garantia de que nenhum `fill()` de request os
+                    // alcance. Esta classe é o autor desses valores — ela os
+                    // cifrou neste mesmo passo —, e é por isso que ela, e só
+                    // ela, atravessa a lista.
+                    return SerproConnection::forceCreate(array_merge(
                         ['consumer_key' => $key, 'consumer_secret_encrypted' => Crypt::encryptString((string) $secret)],
                         $this->certificateAttributes($certificate, $password),
                     ));

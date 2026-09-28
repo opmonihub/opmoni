@@ -21,14 +21,22 @@ final class CnpjWsLookup
      */
     private const NAO_ENCONTRADO = 'CNPJ não encontrado.';
 
-    /** A recusa de documento malformado, a mesma que `lookup()` devolve. */
+    /**
+     * A recusa de documento malformado, e é a mesma frase em `lookup()` e em
+     * `lookupOrFail()`: a validação não tem dois caminhos, e a diferença entre
+     * as duas respostas — `422` aqui, `404` para o alfanumérico válido que a
+     * fonte não tem — é a parte que `lookupOrFail()` decide.
+     */
     private const INVALIDO = 'CNPJ inválido.';
 
     public function __construct(private BrazilianTaxId $taxId) {}
 
     /**
      * O mesmo que `lookup()`, para o chamador que trata "a fonte não conhece este
-     * documento" como recusa em vez de como ausência de dado.
+     * documento" como recusa em vez de como ausência de dado. `lookup()` é
+     * privado, e é o que garante que só este método decide o que é recusa e o
+     * que é dado ausente: a ordem validade-depois-capacidade abaixo é uma
+     * decisão, e uma segunda porta de entrada a desfaz.
      *
      * Documento alfanumérico é recusado sem gastar a consulta: a resposta seria
      * sempre a mesma, e ela é conhecida. O `404` continua sendo o `404` que o
@@ -62,9 +70,16 @@ final class CnpjWsLookup
     }
 
     /**
+     * A consulta de fato, e ela **não** é porta de entrada: quem chega aqui já
+     * passou por `lookupOrFail()`, e a revalidação de `isValidCnpj()` abaixo é o
+     * que fecha a porta para quem tentar usá-la direto. Sem ela, `lookup()`
+     * aceitaria o mesmo CNPJ de uma segunda forma pública, e a ordem
+     * validade-depois-capacidade — que o chamador público garante e que o
+     * chamador privado não — passaria a depender de quem chamou.
+     *
      * @return array<string, mixed>
      */
-    public function lookup(string $cnpj): array
+    private function lookup(string $cnpj): array
     {
         $normalized = $this->taxId->normalize($cnpj);
 

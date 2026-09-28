@@ -8,12 +8,18 @@ use App\Http\Resources\SerproConnectionResource;
 use App\Models\SerproConnection;
 use App\Services\SerproConnectionManager;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class SerproConnectionController extends Controller
 {
-    public function show(Request $request): SerproConnectionResource
+    /**
+     * Sem parâmetro de request: a autorização inteira desta rota é middleware —
+     * `auth:sanctum` para saber **quem** pergunta, e `can:viewAny` para dizer que
+     * qualquer membro da conta corrente lê a identidade do contrato, sem que
+     * nada mais sobre a requisição importe. O controller que precisa do request
+     * é o `update()`, que lê o corpo validado.
+     */
+    public function show(): SerproConnectionResource
     {
         $connection = SerproConnection::current();
 

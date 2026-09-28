@@ -687,6 +687,41 @@ class SerproConnectivityTest extends TestCase
         );
     }
 
+    public function test_verificacao_repetida_e_limitada_para_nao_esgotar_a_credencial_da_plataforma(): void
+    {
+        // Cada verificação é uma emissão de token de verdade — mTLS com o A1 do
+        // contratante, `client_credentials`, e a credencial é **uma só para a
+        // plataforma**. Um laço de retry ou um duplo clique aqui não gasta o
+        // limite de quem clicou: gasta o do SERPRO, e o `429` que ele devolve
+        // aparece como `provedor` para toda conta ao mesmo tempo, para sempre.
+        //
+        // O limite é por operador autenticado porque o recurso limitado é a
+        // credencial da plataforma, que é compartilhada: seis por minuto sobra
+        // para um diagnóstico real — testar, ler, esperar, testar de novo — e
+        // corta o estrago de um laço em seis emissões.
+        Http::fake([self::AUTHENTICATION => Http::response([
+            'expires_in' => 2008,
+            'token_type' => 'Bearer',
+            'access_token' => 'access-1',
+            'jwt_token' => 'jwt-1',
+        ])]);
+        $this->connection();
+
+        $this->superAdmin();
+
+        for ($tentativa = 1; $tentativa <= 6; $tentativa++) {
+            $this->postJson('/api/serpro/connectivity')
+                ->assertOk()
+                ->assertJsonPath('data.ok', true);
+        }
+
+        // A sétima é barrada antes de chegar ao provedor: o `429` do limite
+        // local não custa uma emissão, que é o ponto todo do limite.
+        $this->postJson('/api/serpro/connectivity')->assertStatus(429);
+
+        Http::assertSentCount(6);
+    }
+
     public function test_membro_da_conta_sem_super_admin_recebe_403(): void
     {
         $this->postJson('/api/serpro/connectivity')->assertUnauthorized();

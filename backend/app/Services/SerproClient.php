@@ -157,7 +157,7 @@ final class SerproClient
 
         if ($failure !== SerproFailure::Success) {
             throw new SerproException(
-                $this->failureMessage($envelope['mensagens'], $failure),
+                $this->failureMessage($envelope['mensagens'], $failure, $payload),
                 $failure,
                 $response->status(),
                 $providerCode === '' ? null : $providerCode,
@@ -183,12 +183,23 @@ final class SerproClient
      * fizemos, e a requisição carrega o token e o documento do cliente. O que
      * sobe é o código, que é o que classifica a falha; o texto não sai daqui.
      *
+     * `mensagens` só é lido quando o corpo tem envelope, e o sinal é o `status`
+     * de chave. Nenhuma forma observada do provedor traz `mensagens` num erro
+     * de gateway — a fixture `gateway-429.json` não tem —, mas a leitura sem
+     * essa guarda significaria que um corpo de gateway que por acaso trouxesse
+     * `mensagens` teria o `texto` livre dele subindo para
+     * `SerproException::getMessage()` e de lá para o log, que é o caminho que
+     * `test_um_erro_de_gateway_nao_devolve_o_texto_do_provedor` existe para
+     * fechar. Um `status` presente é o que distingue as duas famílias: o
+     * envelope sempre o traz, e o gateway nunca traz envelope.
+     *
      * @param  list<array{codigo: string, texto: string}>  $mensagens
      * @param  array<string, mixed>  $payload
      */
     private function providerCode(array $mensagens, array $payload): string
     {
-        $codigo = $mensagens[0]['codigo'] ?? '';
+        $temEnvelope = array_key_exists('status', $payload);
+        $codigo = $temEnvelope ? ($mensagens[0]['codigo'] ?? '') : '';
         $gateway = $payload['code'] ?? null;
 
         if ($codigo !== '') {
@@ -203,11 +214,17 @@ final class SerproClient
      * falha — nunca o texto livre do gateway, e nunca vazia, que no log seria
      * uma `SerproException` sem dizer nada.
      *
+     * O texto do provedor só entra quando **há envelope**, pelo mesmo sinal e
+     * pelo mesmo motivo de `providerCode()`: sem envelope, `mensagens` não é a
+     * falha da aplicação, e um `texto` que apareceu ali é texto livre de quem
+     * respondeu — que é o que a requisição com token e documento do cliente não
+     * pode deixar subir para o log.
+     *
      * @param  list<array{codigo: string, texto: string}>  $mensagens
      */
-    private function failureMessage(array $mensagens, SerproFailure $failure): string
+    private function failureMessage(array $mensagens, SerproFailure $failure, array $payload): string
     {
-        $texto = $mensagens[0]['texto'] ?? '';
+        $texto = array_key_exists('status', $payload) ? ($mensagens[0]['texto'] ?? '') : '';
 
         return $texto !== '' ? $texto : $failure->label();
     }

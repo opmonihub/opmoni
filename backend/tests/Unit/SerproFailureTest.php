@@ -92,8 +92,14 @@ class SerproFailureTest extends TestCase
         // temporária sem gravação de virar uma execução com todo cliente
         // `indeterminado` e `failed = 0`. Confundir os dois enfaqueceria a
         // distinção que a plan 04 vai consumir.
-        $this->assertSame('not_sent', SerproFailure::NotSent->value);
-        $this->assertNotSame(SerproFailure::Indeterminate->value, SerproFailure::NotSent->value);
+        //
+        // O rótulo entra porque é ele que o operador e a tela de execuções leem,
+        // e um rótulo vazio — ou o mesmo rótulo do outro caso — apagaria a
+        // diferença que o valor carrega. Já a comparação de `->value` com
+        // `Indeterminate` foi retirada: os dois valores são fixados pela lista
+        // de `test_values_fixa_o_vocabulario_da_taxonomia_de_falha`, e um
+        // `assertNotSame` entre dois literais de enums que ninguém muda em
+        // silêncio só dá a aparência de guardar o que a lista já guarda.
         $this->assertNotSame('', SerproFailure::NotSent->label());
         $this->assertNotSame(SerproFailure::Indeterminate->label(), SerproFailure::NotSent->label());
     }

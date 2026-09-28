@@ -15,16 +15,29 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Validation\ValidationException;
 
+/*
+ * As três colunas cifradas — `consumer_secret_encrypted`,
+ * `certificate_encrypted` e `certificate_password_encrypted` — e o documento
+ * contratante **não** são `Fillable`, e a ausência é a garantia, não uma
+ * omissão: `Fillable` é a camada por onde um
+ * `$model->fill($request->validated())` passaria, e o segredo, a senha do
+ * certificado e os bytes do PFX não podem atravessar por lá em nenhuma
+ * hipótese. Quem os grava é o `SerproConnectionManager`, com `forceCreate` na
+ * primeira escrita e `forceFill` na rotação — que ignoram esta lista de
+ * propósito, porque ele **é** o autor dos valores e não uma request.
+ *
+ * O documento contratante entra na mesma lista por uma razão que não é de
+ * segredo: ele é extraído do certificado e gravado no mesmo passo, e a coluna
+ * não pode ser preenchida por um corpo de requisição — a request marca
+ * `contratante_numero` como `prohibited`, e `contracting_document` no recurso
+ * é sempre lido do que o certificado realmente diz.
+ */
 #[Fillable([
     'consumer_key',
-    'consumer_secret_encrypted',
-    'certificate_encrypted',
-    'certificate_password_encrypted',
     'certificate_subject',
     'certificate_serial_number',
     'certificate_valid_from',
     'certificate_valid_until',
-    'contratante_numero',
     'contratante_tipo',
 ])]
 // Nenhuma coluna cifrada pode sair por `toArray()`/`toJson()`: a resource lista

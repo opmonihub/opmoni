@@ -98,17 +98,41 @@ class Client extends Model
         return $this->hasMany(Process::class);
     }
 
+    /**
+     * A busca da lista de clientes, e o `tax_id` só entra como documento quando
+     * o termo **tem** a forma de um.
+     *
+     * O que mudou com o CNPJ alfanumérico: `normalize()` deixou de ser um
+     * `preg_replace('/\D+/')` e passou a devolver os dígitos **e** as letras em
+     * maiúsculo. `normalize('joão silva')` é `JOSILVA`, e um `tax_id LIKE
+     * '%JOSILVA%'` em uma busca por nome é uma cláusula que não casa com nada,
+     * não usa índice, e é exatamente a pergunta que um otimizador de consulta
+     * trata como a pior forma de "varredura disfarçada".
+     *
+     * A guarda de **onze** caracteres é o comprimento do CNPJ sem os dois
+     * dígitos verificadores, e é o piso abaixo do qual nenhuma busca por
+     * documento é útil: um termo de dez caracteres ou menos é nome, e o nome já
+     * tem as duas primeiras cláusulas. Um termo de onze ou mais que não for
+     * documento ainda entra no `LIKE` — nesse caso o usuário digitou uma
+     * sequência longa que só pode ser um documento parcial, e um `LIKE` sem
+     * índice sobre a carteira inteira custa o mesmo que já custava quando a
+     * busca era só numérica.
+     *
+     * Os 14 completos (CNPJ) e 11 completos (CPF) continuam caindo aqui, e é o
+     * que faz a busca por documento continuar funcionando exatamente como antes.
+     */
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
         return $query->when($term, function (Builder $query, string $term): Builder {
             $normalizedTaxId = resolve(BrazilianTaxId::class)->normalize($term);
+            $podeSerDocumento = strlen($normalizedTaxId) >= 11;
 
-            return $query->where(function (Builder $query) use ($term, $normalizedTaxId): Builder {
+            return $query->where(function (Builder $query) use ($term, $normalizedTaxId, $podeSerDocumento): Builder {
                 $query
                     ->where('name', 'like', "%{$term}%")
                     ->orWhere('trade_name', 'like', "%{$term}%");
 
-                if ($normalizedTaxId !== '') {
+                if ($podeSerDocumento) {
                     $query->orWhere('tax_id', 'like', "%{$normalizedTaxId}%");
                 }
 

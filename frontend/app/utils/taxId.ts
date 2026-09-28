@@ -45,6 +45,30 @@ export function canRegisterTypedCnpj(value: string): boolean {
   return companyTaxIdEntry(value) !== 'incomplete'
 }
 
+/**
+ * Uma edição no documento invalida a consulta anterior, e a comparação é sobre o
+ * documento **normalizado**: `12.ABC.345/01DE-35` e `12ABC34501DE35` são o mesmo
+ * CNPJ, e formatar o campo não pode jogar fora um `preview` que é a resposta
+ * daquele documento.
+ *
+ * Sem esta distinção, o caminho de cadastro de CNPJ alfanumérico — consultar A,
+ * voltar, trocar o campo para B e voltar para A — perderia a consulta que era
+ * perfeitamente válida. Com ela, a edição que muda o documento é a única que
+ * invalida, e trocar apenas os separadores não.
+ *
+ * A comparação é o que o modal usa para decidir se precisa soltar `preview`,
+ * `step` e `typedName`: os três descrevem **um** documento consultado, e deixar
+ * qualquer um deles vivo depois que o documento mudou é o que faz o cadastro
+ * enviar o nome, o email e o regime do documento anterior sob o número do
+ * seguinte — sem nenhum campo que acuse, porque `typedNameRequired` esconde a
+ * razão social justamente quando há `preview`.
+ */
+export function taxIdEditInvalidatesLookup(previous: string, next: string): boolean {
+  const normalize = (value: string) => value.replace(CNPJ_PUNCTUATION, '').toUpperCase()
+
+  return normalize(previous) !== normalize(next)
+}
+
 export function maskTaxId(value: string | null): string {
   const formatted = formatTaxId(value)
   return value?.length === 11 ? `***.${value.slice(3, 6)}.${value.slice(6, 9)}-**` : formatted

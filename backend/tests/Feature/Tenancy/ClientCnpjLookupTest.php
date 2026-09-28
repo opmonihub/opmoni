@@ -33,7 +33,7 @@ class ClientCnpjLookupTest extends TestCase
             'publica.cnpj.ws/cnpj/27865757000102' => Http::response($this->providerPayload()),
         ]);
 
-        $result = resolve(CnpjWsLookup::class)->lookup('27.865.757/0001-02');
+        $result = resolve(CnpjWsLookup::class)->lookupOrFail('27.865.757/0001-02');
 
         $this->assertSame('27865757000102', $result['tax_id']);
         $this->assertSame('GLOBO COMUNICACAO E PARTICIPACOES S/A', $result['name']);
@@ -78,8 +78,8 @@ class ClientCnpjLookupTest extends TestCase
         ]);
 
         $service = resolve(CnpjWsLookup::class);
-        $first = $service->lookup('27.865.757/0001-02');
-        $second = $service->lookup('27865757000102');
+        $first = $service->lookupOrFail('27.865.757/0001-02');
+        $second = $service->lookupOrFail('27865757000102');
 
         $this->assertSame($first, $second);
         Http::assertSentCount(1);
@@ -90,7 +90,7 @@ class ClientCnpjLookupTest extends TestCase
         Http::fake();
 
         try {
-            resolve(CnpjWsLookup::class)->lookup('27.865.757/0001-03');
+            resolve(CnpjWsLookup::class)->lookupOrFail('27.865.757/0001-03');
             $this->fail('An invalid CNPJ should throw a lookup exception.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(422, $exception->status);
@@ -107,7 +107,7 @@ class ClientCnpjLookupTest extends TestCase
         ]);
 
         try {
-            resolve(CnpjWsLookup::class)->lookup('27865757000102');
+            resolve(CnpjWsLookup::class)->lookupOrFail('27865757000102');
             $this->fail('A missing CNPJ should throw a lookup exception.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(404, $exception->status);
@@ -122,7 +122,7 @@ class ClientCnpjLookupTest extends TestCase
         ]);
 
         try {
-            resolve(CnpjWsLookup::class)->lookup('27865757000102');
+            resolve(CnpjWsLookup::class)->lookupOrFail('27865757000102');
             $this->fail('A provider rate limit should throw a lookup exception.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(429, $exception->status);
@@ -135,7 +135,7 @@ class ClientCnpjLookupTest extends TestCase
         Http::fake(Http::failedConnection('timeout'));
 
         try {
-            resolve(CnpjWsLookup::class)->lookup('27865757000102');
+            resolve(CnpjWsLookup::class)->lookupOrFail('27865757000102');
             $this->fail('A provider connection failure should throw a lookup exception.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(503, $exception->status);
@@ -152,7 +152,7 @@ class ClientCnpjLookupTest extends TestCase
         ]);
 
         try {
-            resolve(CnpjWsLookup::class)->lookup('27865757000102');
+            resolve(CnpjWsLookup::class)->lookupOrFail('27865757000102');
             $this->fail('A provider server error should throw a lookup exception.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(503, $exception->status);
@@ -167,12 +167,12 @@ class ClientCnpjLookupTest extends TestCase
         ]);
 
         $service = resolve(CnpjWsLookup::class);
-        $service->lookup('27865757000102');
-        $service->lookup('04252011000110');
-        $service->lookup('00623904000173');
+        $service->lookupOrFail('27865757000102');
+        $service->lookupOrFail('04252011000110');
+        $service->lookupOrFail('00623904000173');
 
         try {
-            $service->lookup('11222333000181');
+            $service->lookupOrFail('11222333000181');
             $this->fail('The fourth distinct cache miss should be rate limited.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(429, $exception->status);
@@ -192,7 +192,7 @@ class ClientCnpjLookupTest extends TestCase
 
         foreach (['27865757000102', '04252011000110', '00623904000173'] as $cnpj) {
             try {
-                $service->lookup($cnpj);
+                $service->lookupOrFail($cnpj);
                 $this->fail('A provider server error should throw a lookup exception.');
             } catch (CnpjLookupException $exception) {
                 $this->assertSame(503, $exception->status);
@@ -200,7 +200,7 @@ class ClientCnpjLookupTest extends TestCase
         }
 
         try {
-            $service->lookup('11222333000181');
+            $service->lookupOrFail('11222333000181');
             $this->fail('The fourth failed cache miss should be rate limited.');
         } catch (CnpjLookupException $exception) {
             $this->assertSame(429, $exception->status);

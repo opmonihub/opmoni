@@ -103,9 +103,23 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::put('serpro/connection', [AdminSerproConnectionController::class, 'update'])
         ->middleware('super_admin');
 
-    // O teste de conectividade exercita a autenticação da credencial da
-    // plataforma, sem consultar nenhum contribuinte: quem opera a integração é
-    // o super_admin, e um Membro da conta não tem o que fazer aqui.
+    /*
+     * O teste de conectividade exercita a autenticação da credencial da
+     * plataforma, sem consultar nenhum contribuinte: quem opera a integração é
+     * o super_admin, e um Membro da conta não tem o que fazer aqui.
+     *
+     * O limite vai junto porque cada chamada **custa uma emissão de token de
+     * verdade** — mTLS com o A1 do contratante e `client_credentials` —, e a
+     * credencial é uma só para a plataforma inteira. O token que fica em cache
+     * não protege esta rota: a pergunta é "está funcionando agora?", e por
+     * definição ela não aceita a resposta de meia hora atrás. Sem limite, um
+     * duplo clique ou um laço de retry no botão gasta a cota do SERPRO, e o
+     * `429` que volta apareceria como `provedor` para **toda** conta ao mesmo
+     * tempo — um botão de diagnóstico de uma conta derrubando a integração das
+     * outras. Seis por minuto é folgado para o uso real (um diagnóstico são
+     * algumas cliques com tempo de leitura entre elas) e curto o bastante para
+     * que a cota gasto por uma sessão de teste seja irrelevante.
+     */
     Route::post('serpro/connectivity', AdminSerproConnectivityController::class)
-        ->middleware('super_admin');
+        ->middleware(['super_admin', 'throttle:6,1']);
 });

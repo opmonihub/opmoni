@@ -126,6 +126,112 @@ class SerproTokenProviderTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    /**
+     * O provedor de token responde bem uma vez — o par que fica em cache — e
+     * falha em todas as seguintes. Um segundo `Http::fake()` não serviria: os
+     * stubs são somados, e o primeiro registrado continua respondendo, o que
+     * faria a verificação passar com o token que ela deveria ter recusado.
+     */
+    private function falhandoDepoisDaPrimeiraEmissao(int $status): void
+    {
+        $chamadas = 0;
+
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => function () use (&$chamadas, $status) {
+                $chamadas++;
+
+                return $chamadas === 1
+                    ? Http::response([
+                        'expires_in' => 2008,
+                        'token_type' => 'Bearer',
+                        'access_token' => 'access-1',
+                        'jwt_token' => 'jwt-1',
+                    ])
+                    : Http::response(['message' => 'Limite de requisições.'], $status);
+            },
+        ]);
+    }
+
+    public function test_verificar_com_o_provedor_fora_do_ar_nao_joga_fora_o_par_valido(): void
+    {
+        // A verificação descarta o par guardado antes de tentar, e é por isso
+        // que ela precisa devolver o que tinha quando a falha não diz nada
+        // sobre a credencial: descartar primeiro e falhar depois deixa o cache
+        // vazio, e a sincronização seguinte tem de se autenticar no meio da
+        // mesma falha que a verificação acabou de ter. Um provedor fora do ar
+        // não recusa chave nenhuma — o par de meia hora atrás continua válido.
+        $this->falhandoDepoisDaPrimeiraEmissao(503);
+        $this->connection();
+
+        $provider = resolve(SerproTokenProvider::class);
+        $provider->pair();
+
+        try {
+            $provider->verify();
+            $this->fail('Um provedor fora do ar deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        }
+
+        // O par anterior sobreviveu à verificação e é o que a execução seguinte
+        // reaproveita: a falha foi da rede, não da credencial.
+        $this->assertSame('access-1', $provider->pair()->accessToken());
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_verificar_com_um_limite_de_tentativas_nao_joga_fora_o_par_valido(): void
+    {
+        // `429` é o provedor mandando esperar, e esperar é a única ação. O par
+        // em cache não é o problema, e devolvê-lo para a sincronização é o que
+        // permite que ela siga durante a espera.
+        $this->falhandoDepoisDaPrimeiraEmissao(429);
+        $this->connection();
+
+        $provider = resolve(SerproTokenProvider::class);
+        $provider->pair();
+
+        try {
+            $provider->verify();
+            $this->fail('Um limite de tentativas deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::Throttled, $exception->failure);
+        }
+
+        $this->assertSame('access-1', $provider->pair()->accessToken());
+    }
+
+    public function test_verificar_com_uma_credencial_recusada_joga_fora_o_par_anterior(): void
+    {
+        // O contrário da rede: a recusa é do que foi enviado, e o par em cache
+        // saiu exatamente daquela credencial. Devolvê-lo só compra um `401` na
+        // próxima chamada — que o `SerproClient` transformaria em uma segunda
+        // tentativa com o mesmo token. Aqui o descarte é o conserto.
+        $this->falhandoDepoisDaPrimeiraEmissao(401);
+        $this->connection();
+
+        $provider = resolve(SerproTokenProvider::class);
+        $provider->pair();
+
+        try {
+            $provider->verify();
+            $this->fail('Uma credencial recusada deveria levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+        }
+
+        try {
+            $provider->pair();
+            $this->fail('O par recusado não pode sobreviver à recusa.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+        }
+
+        // A terceira chamada é a que prova o descarte: `pair()` não devolveu
+        // `access-1` de onde estava, foi pedir um par novo.
+        Http::assertSentCount(3);
+    }
+
     public function test_a_rejected_credential_raises_a_do_not_retry_failure(): void
     {
         Http::fake([

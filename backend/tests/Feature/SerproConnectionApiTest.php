@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\SerproFailure;
+use App\Http\Resources\SerproConnectionResource;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\SerproConnection;
@@ -425,6 +426,118 @@ class SerproConnectionApiTest extends TestCase
         $this->assertStringContainsString('1234', (string) $response->json('data.consumer_key_hint'));
     }
 
+    public function test_a_pista_da_chave_nao_vira_a_chave_quando_ela_e_curta(): void
+    {
+        // A chave real do SERPRO é longa e a pista são quatro caracteres de dezenas.
+        // O caso oposto é o que a guarda existe para: uma chave de poucos
+        // caracteres — teste, homologação — onde `substr($key, -4)` seria quase a
+        // chave inteira, e a pista passaria a ser a chave com um prefixo só.
+        // Modelos em memória, e não linhas: o índice de `singleton` só admite uma
+        // credencial, e a pista não consulta nada além da chave que a resource
+        // recebeu.
+        $this->assertSame('••••', $this->pistaDe(new SerproConnection(['consumer_key' => 'ABC123'])));
+
+        // Nove caracteres é onde a guarda antiga (`strlen > 8`) vazava: `••••`
+        // mais os quatro últimos de uma chave de nove é quase a chave inteira,
+        // e a pista deixava de ser pista.
+        $this->assertSame('••••', $this->pistaDe(new SerproConnection(['consumer_key' => 'ABCDEFGHI'])));
+
+        // Dezesseis é o piso: uma chave de dezesseis caracteres já tem um
+        // "final" que não é a chave, e é a partir dele que a pista vale.
+        $this->assertSame('••••MNOP', $this->pistaDe(new SerproConnection(['consumer_key' => 'ABCDEFGHIJKLMNOP'])));
+
+        // E a chave de verdade, que é longa, continua reconhecível.
+        $this->assertSame('••••6789', $this->pistaDe(new SerproConnection([
+            'consumer_key' => 'chave-de-integracao-da-plataforma-0001234-56789',
+        ])));
+    }
+
+    public function test_conexao_ainda_nao_cadastrada_responde_desconfigurada_e_nao_500(): void
+    {
+        // A tela que o super_admin abre primeiro numa instalação nova é esta, e
+        // ela tem um ramo só para a credencial ausente
+        // (`frontend/app/pages/admin/serpro.vue`, `unconfiguredNotice`) que
+        // depende desta resposta. Todo outro teste de leitura cria a linha
+        // antes, então o ramo sem linha só era alcançado por um `401` que nunca
+        // chega ao controller — e um `500` aqui seria a primeira coisa que o
+        // operador veria, em tela cheia, logo depois de instalar.
+        $this->getJson('/api/serpro/connection')->assertUnauthorized();
+
+        $this->assertDatabaseCount('serpro_connections', 0);
+
+        $response = $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->getJson('/api/serpro/connection');
+
+        $response->assertOk()
+            ->assertJsonPath('data.configured', false)
+            ->assertJsonPath('data.consumer_key_hint', null)
+            ->assertJsonPath('data.contracting_document', null)
+            ->assertJsonPath('data.certificate_subject', null)
+            ->assertJsonPath('data.certificate_serial', null)
+            ->assertJsonPath('data.certificate_not_before', null)
+            ->assertJsonPath('data.certificate_not_after', null)
+            ->assertJsonPath('data.updated_at', null);
+
+        // O contrato é o mesmo da credencial cadastrada: a tela decide o que
+        // mostrar pela forma da resposta, não por um `404` — o recurso existe,
+        // o que não existe é a configuração.
+        $this->assertSame([
+            'certificate_not_after',
+            'certificate_not_before',
+            'certificate_serial',
+            'certificate_subject',
+            'configured',
+            'consumer_key_hint',
+            'contracting_document',
+            'updated_at',
+        ], $this->sortedKeys($response->json('data')));
+    }
+
+    public function test_coluna_cifrada_e_documento_contratante_nao_sao_preenchiveis(): void
+    {
+        // `Fillable` é a camada por onde um `fill($request->validated())`
+        // passaria, e é onde a garantia de que nenhum segredo atravessa por
+        // request tem de estar — não no `prohibited` da request, que é uma
+        // linha. Um `fill()` com qualquer um desses atributos tem de ser
+        // recusado pelo modelo, e quem grava o segredo de verdade é o gerenciador
+        // com `forceCreate`.
+        $connection = SerproConnection::factory()->create();
+
+        $this->assertFalse(
+            $connection->isFillable('consumer_secret_encrypted'),
+            'O segredo da credencial não pode ser preenchível a partir de uma requisição.',
+        );
+        $this->assertFalse(
+            $connection->isFillable('certificate_encrypted'),
+            'Os bytes do PFX não podem ser preenchíveis a partir de uma requisição.',
+        );
+        $this->assertFalse(
+            $connection->isFillable('certificate_password_encrypted'),
+            'A senha do certificado não pode ser preenchível a partir de uma requisição.',
+        );
+        $this->assertFalse(
+            $connection->isFillable('contratante_numero'),
+            'O documento contratante é extraído do certificado e não pode vir do corpo da requisição.',
+        );
+
+        // E o `fill()` realmente não escreve nada: um `fill` com tudo junto não
+        // altera nem o segredo nem o documento.
+        $antes = $connection->getRawOriginal('consumer_secret_encrypted');
+
+        $connection->fill([
+            'consumer_key' => 'chave-que-nao-deveria-passar',
+            'consumer_secret_encrypted' => 'cifrado-inventado',
+            'certificate_encrypted' => 'pfx-inventado',
+            'certificate_password_encrypted' => 'senha-inventada',
+            'contratante_numero' => '99999999999999',
+        ]);
+
+        $this->assertSame($antes, $connection->getRawOriginal('consumer_secret_encrypted'));
+        $this->assertSame(self::CNPJ, $connection->contratante_numero);
+        $this->assertNull($connection->certificate_encrypted);
+        $this->assertNull($connection->certificate_password_encrypted);
+    }
+
     public function test_contratante_numero_da_request_e_recusado(): void
     {
         ['file' => $file] = $this->pfx();
@@ -711,6 +824,17 @@ class SerproConnectionApiTest extends TestCase
     /**
      * @return array<string, string>
      */
+    /**
+     * A pista como a resource a monta, sem passar pela requisição: a guarda é
+     * do método privado, e o que se quer verificar é o valor que ele decide.
+     */
+    private function pistaDe(SerproConnection $connection): ?string
+    {
+        $pista = (new SerproConnectionResource($connection))->toArray(request())['consumer_key_hint'] ?? null;
+
+        return $pista === null ? null : (string) $pista;
+    }
+
     private function jsonHeaders(): array
     {
         return ['Accept' => 'application/json'];

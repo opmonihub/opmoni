@@ -38,9 +38,10 @@ class SerproContractFixtureTest extends TestCase
 
     /**
      * As três respostas gravadas de verdade, com o `idServico` de cada uma.
-     * Elas não cobrem o diretório todo: `gateway-429.json` é gravada e não tem
-     * `idServico`, e está em `fixturesGravadas()`, que é a lista que a varredura
-     * e o teste de cobertura usam.
+     *
+     * Esta lista não cobre o diretório todo: `gateway-429.json` é gravada e não
+     * tem `idServico` — é resposta do gateway, não de serviço —, e por isso ela
+     * não entra aqui e entra em `fixturesGravadas()`.
      *
      * @return list<array{0: string, 1: string}>
      */
@@ -193,7 +194,10 @@ class SerproContractFixtureTest extends TestCase
             $nome = basename($arquivo);
             $bruto = (string) file_get_contents($arquivo);
 
-            $this->assertFalse($this->portadorNoCorpo($bruto), $nome);
+            // O corpo vai na mensagem porque é a única coisa que diz *onde* o
+            // portador apareceu: `assertFalse` sem o valor só entrega o nome do
+            // arquivo, e um nome não aponta a linha.
+            $this->assertFalse($this->portadorNoCorpo($bruto), $nome.': '.$bruto);
 
             foreach ($this->violacoes(json_decode($bruto, true)) as $violacao) {
                 $this->fail("{$nome}: {$violacao}");
@@ -258,9 +262,18 @@ class SerproContractFixtureTest extends TestCase
     /**
      * As quatro fixtures que vieram de resposta observada do provedor.
      *
-     * É esta lista, e não `payloads()`, que a varredura e o teste de cobertura
-     * somam: `payloads()` carrega o `idServico` de cada resposta e por isso não
-     * tem lugar para `gateway-429.json`, que é do gateway e não de serviço.
+     * Quem **soma** esta lista é `test_as_listas_de_fixture_cobrem_o_diretorio()`,
+     * e a soma é o que impede uma fixture nova de entrar sem alguém decidir, na
+     * suíte, de que lado ela está. Ela é maior que `payloads()` porque
+     * `payloads()` carrega o `idServico` de cada resposta e por isso não tem
+     * lugar para `gateway-429.json`, que é do gateway e não de serviço — o
+     * `idServico` é o que `test_a_recorded_success_parses_into_data()` afirma.
+     *
+     * A varredura de `test_nenhuma_fixture_tem_documento_ou_credencial()` não
+     * depende desta lista: ela faz `glob` do diretório, e por isso alcança
+     * qualquer `.json` que apareça ali, inclusive uma fixture que ninguém
+     * declarou. As duas coisas são diferentes de propósito — o glob é a rede e
+     * a lista é a decisão —, e por isso a lista não é o que a varredura usa.
      *
      * @return list<array{0: string}>
      */
@@ -279,7 +292,7 @@ class SerproContractFixtureTest extends TestCase
     {
         $bruto = (string) file_get_contents(self::DIR.'/'.$file);
 
-        $this->assertFalse($this->portadorNoCorpo($bruto), $file);
+        $this->assertFalse($this->portadorNoCorpo($bruto), $file.': '.$bruto);
         $this->assertSame([], $this->violacoes(json_decode($bruto, true)), $file);
     }
 
@@ -293,7 +306,7 @@ class SerproContractFixtureTest extends TestCase
     {
         $bruto = (string) file_get_contents(self::DIR.'/'.$file);
 
-        $this->assertFalse($this->portadorNoCorpo($bruto), $file);
+        $this->assertFalse($this->portadorNoCorpo($bruto), $file.': '.$bruto);
         $this->assertSame([], $this->violacoes(json_decode($bruto, true)), $file);
     }
 

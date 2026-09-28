@@ -712,4 +712,46 @@ class ClientCrudTest extends TestCase
 
         $this->assertSame(0, Client::search('unmatched')->count());
     }
+
+    public function test_search_pelo_documento_cai_no_tax_id_e_o_por_nome_nao_custa_clausula_de_documento(): void
+    {
+        // Com o CNPJ alfanumérico, `normalize()` devolve letras junto com os
+        // dígitos: `normalize('joão silva')` é `JOSILVA`, e um
+        // `tax_id LIKE '%JOSILVA%'` numa busca por nome é uma cláusula que não
+        // casa com nada, não tem índice e é a pior forma de "varredura
+        // disfarçada" numa lista quente. A guarda de onze caracteres — o CNPJ sem
+        // os dois dígitos verificadores — devolve a busca por nome ao que ela
+        // era, e a busca por documento continua como estava.
+        $alfanumerico = Client::factory()->company()->create([
+            'tax_id' => '12ABC34501DE35',
+            'name' => 'Alfanumerico Alfa',
+        ]);
+        $porNome = Client::factory()->company()->create([
+            'tax_id' => '52998224725',
+            'name' => 'Josilva Comercio',
+        ]);
+
+        // Documento completo: cai na cláusula de `tax_id` e acha.
+        $this->assertSame(
+            $alfanumerico->getKey(),
+            Client::search('12ABC34501DE35')->sole()->getKey(),
+        );
+
+        // Documento com separadores: a normalização é o que existia antes.
+        $this->assertSame(
+            $alfanumerico->getKey(),
+            Client::search('12.ABC.345/01DE-35')->sole()->getKey(),
+        );
+
+        // Nome com letras suficientes para gerar uma chave alfanumérica: acha
+        // pelo nome, e a consulta não carrega a cláusula inútil de `tax_id`.
+        $porNomeId = Client::search('Josilva')->sole()->getKey();
+        $this->assertSame($porNome->getKey(), $porNomeId);
+
+        $this->assertStringNotContainsString(
+            'tax_id',
+            strtolower(Client::search('Josilva')->toSql()),
+            'Uma busca por nome não pode emitir tax_id LIKE: é a cláusula que o CNPJ alfanumérico tornou possível e que a guarda de onze caracteres existe para evitar.',
+        );
+    }
 }

@@ -88,8 +88,9 @@ final class SerproEnvelope
 
             // Só lista e string seguem adiante, e a string é justamente o que a
             // primeira passagem entrega: sem ela a segunda — a que abre o JSON
-            // de dentro — nunca acontece. `null` entra por fora do `is_scalar`,
-            // que é falso para ele, e é o mesmo tipo trocado que o resto.
+            // de dentro — nunca acontece. `null` é barrado por esta mesma
+            // condição, e é o mesmo tipo trocado que o resto: um `dados` que o
+            // serviço mandou como texto não pode chegar como nulo.
             if (json_last_error() !== JSON_ERROR_NONE || (! is_array($decoded) && ! is_string($decoded))) {
                 break;
             }

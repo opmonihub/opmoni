@@ -48,10 +48,19 @@ class SerproConnectionResource extends JsonResource
     }
 
     /**
+    /**
      * A chave é pública no protocolo (ela viaja no `Authorization: Basic` ao
      * lado do segredo), mas mesmo assim é a pista que permite reconhecer qual
      * chave está gravada sem devolvê-la: a tela precisa da pista para que quem
      * rotaciona por perda reconheça o que está trocando.
+     *
+     * A pista **tem** de ser curta em relação à chave, e o limite de 16 é
+     * arbitrário o bastante para dizer isso: a chave real do SERPRO é longa, e
+     * nesse caso a pista é quatro caracteres de dozens. O que a guarda evita é o
+     * outro extremo — uma chave de teste, ou uma chave de um ambiente de
+     * homologação com poucos caracteres, onde `substr($key, -4)` seria quase a
+     * chave inteira. Abaixo de 16, a pista é só a máscara: o operador não
+     * reconhece qual chave é, e a tela ainda não diz que há uma.
      */
     private function keyHint(): ?string
     {
@@ -63,7 +72,7 @@ class SerproConnectionResource extends JsonResource
 
         // Uma chave mais curta que a máscara não tem "final" a revelar: sem
         // esta guarda, `substr` devolveria a chave inteira.
-        $tail = strlen($key) > 8 ? substr($key, -4) : '';
+        $tail = strlen($key) >= 16 ? substr($key, -4) : '';
 
         return str_repeat('•', 4).$tail;
     }
