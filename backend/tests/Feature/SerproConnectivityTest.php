@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SerproFailure;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
@@ -9,6 +10,7 @@ use App\Models\ClientCertificate;
 use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\SerproConnection;
 use App\Models\User;
+use App\Services\SerproConnectivity;
 use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
 use Carbon\Carbon;
@@ -98,6 +100,33 @@ class SerproConnectivityTest extends TestCase
         }
 
         parent::tearDown();
+    }
+
+    /**
+     * A taxonomia precisa ser total e precisa estar testada em um lugar, porque
+     * o erro dela é silencioso: um caso novo cai no braço `default` e vira
+     * `credencial` — "reveja a chave, o segredo e o certificado" — quando a
+     * verdade é outra, e nenhuma tela descobre que mandou o operador para o lado
+     * errado. Hoje o provedor de token classifica `4xx` como `DoNotRetry` e
+     * `5xx` como `Upstream` sem passar por `classify()`, então `Indeterminate` e
+     * `Throttled` não chegam aqui: o teste é o que impede que o dia em que
+     * passarem a passar continuem sem resposta.
+     */
+    public function test_taxonomia_de_elementos_cobre_todo_desfecho_sem_ninguem_cair_no_default(): void
+    {
+        // Falha de quem não deu conta, ou de quem não mandou nada: em todos os
+        // três casos a ação é a mesma — esperar, e não digitar nada de novo.
+        foreach ([SerproFailure::Upstream, SerproFailure::NotSent, SerproFailure::Indeterminate] as $falha) {
+            $this->assertSame('provedor', SerproConnectivity::elementFor($falha), "{$falha->value} não pode virar credencial.");
+        }
+
+        // Recusa do que foi enviado: corrigir a credencial.
+        foreach ([SerproFailure::DoNotRetry, SerproFailure::Reauthenticate, SerproFailure::ResubmitTerm] as $falha) {
+            $this->assertSame('credencial', SerproConnectivity::elementFor($falha), "{$falha->value} não pode virar provedor.");
+        }
+
+        // `Success` nunca chega: `check()` só traduz a exceção de uma falha.
+        $this->assertNotSame('', SerproFailure::Success->label());
     }
 
     public function test_sem_conexao_retorna_configuracao_sem_chamar_provedor(): void

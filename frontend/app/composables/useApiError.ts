@@ -29,3 +29,20 @@ export function apiFieldErrors(e: unknown): Record<string, string> {
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
   )
 }
+
+/**
+ * A recusa nomeada da API, e não a frase genérica que vem por cima dela.
+ *
+ * Uma resposta de validação traz `message: 'The given data was invalid.'` e põe
+ * a frase que o operador precisa em `errors.<campo>` — a recusa do gerenciador da
+ * credencial, a senha que não abre o certificado, a credencial incompleta. Ler
+ * só o `message` mostra a mesma frase para todo mundo e esconde a única parte
+ * da resposta que diz o que fazer.
+ *
+ * A ordem é campo primeiro: quando existe `errors`, ele é sempre mais específico
+ * do que o `message` de topo, e o inverso — preferindo o `message` — seria
+ * voltar ao genérico. Sem `errors`, o `message` ainda é o que a API disse.
+ */
+export function apiErrorMessage(e: unknown): string | undefined {
+  return Object.values(apiFieldErrors(e)).find(message => message.length > 0) ?? apiMessage(e)
+}

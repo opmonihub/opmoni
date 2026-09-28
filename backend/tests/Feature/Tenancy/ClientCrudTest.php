@@ -186,18 +186,79 @@ class ClientCrudTest extends TestCase
         $this->assertDatabaseCount('clients', 0);
     }
 
+    public function test_regime_sem_dados_da_receita_diz_qual_regime_a_empresa_aceita(): void
+    {
+        // "Empresa não aceita o regime não aplicável" é a frase verdadeira de quem
+        // pediu `not_applicable` — uma empresa não é pessoa física. Dizer a mesma
+        // frase para quem pediu MEI ou Simples mandaria o operador procurar na
+        // empresa uma recusa que ninguém fez: a recusa é nossa, por não ter dado
+        // para confirmar o regime.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
+
+        $payload = static fn (string $regime): array => [
+            'person_type' => 'company',
+            'tax_id' => '12ABC345000188',
+            'name' => 'Empresa Alfa Ltda',
+            'status' => 'active',
+            'tax_regime' => $regime,
+        ];
+
+        foreach (['mei', 'simple_national'] as $regime) {
+            $this->postJson('/api/clients', $payload($regime))->assertUnprocessable()
+                ->assertJsonValidationErrors('tax_regime')
+                ->assertJsonPath(
+                    'errors.tax_regime.0',
+                    'Sem os dados da Receita não é possível confirmar MEI ou Simples Nacional: informe o regime que a empresa aceita.',
+                );
+        }
+
+        $this->postJson('/api/clients', $payload('not_applicable'))->assertUnprocessable()
+            ->assertJsonValidationErrors('tax_regime')
+            ->assertJsonPath('errors.tax_regime.0', 'Empresa não aceita o regime não aplicável.');
+
+        $this->assertDatabaseCount('clients', 0);
+    }
+
+    public function test_cnpj_alfanumerico_nao_gasta_o_orcamento_de_consulta_da_conta(): void
+    {
+        // O tier público é numérico: consultar um documento alfanumérico gasta uma
+        // das três consultas por minuto da conta para receber um 404 que a fonte
+        // não pode evitar. O quarto cadastro alfanumérico dentro do minuto era
+        // então recusado por limite — e disputava orçamento com consulta legítima.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        foreach (['12ABC345000188', '12ABC345000269', '12ABC345000340', '12ABC345000420'] as $taxId) {
+            $this->postJson('/api/clients', [
+                'person_type' => 'company',
+                'tax_id' => $taxId,
+                'name' => 'Empresa Alfa Ltda',
+                'status' => 'active',
+                'tax_regime' => 'actual_profit',
+            ])->assertCreated()->assertJsonPath('data.tax_id', $taxId);
+        }
+
+        // Nenhuma ida ao provedor: o documento não é consultável, e o `404` de
+        // antes não era cacheado — cada cadastro repetia a chamada e o consumo.
+        Http::assertNothingSent();
+        $this->assertSame(4, $account->clients()->count());
+    }
+
     public function test_company_create_nao_degrada_para_dados_digitados_quando_a_fonte_esta_indisponivel(): void
     {
         // Indisponibilidade e limite continuam errando a requisição: um cliente sem os
         // dados oficiais por causa de queda do provedor é efeito colateral, não decisão
-        // de quem cadastrou.
+        // de quem cadastrou. O documento é numérico de propósito — o alfanumérico não
+        // chega ao provedor, e para ele não há indisponibilidade a evitar.
         Http::fake(['publica.cnpj.ws/*' => Http::sequence()->push([], 503)->push([], 429)]);
         $this->actingAs($this->memberOf(Account::factory()->create(), 'operador'), 'sanctum');
 
         $payload = [
             'person_type' => 'company',
-            'tax_id' => '12ABC345000188',
-            'name' => 'Empresa Alfa Ltda',
+            'tax_id' => '27.865.757/0001-02',
+            'name' => 'GLOBO COM PARTICIPACOES',
             'status' => 'active',
             'tax_regime' => 'actual_profit',
         ];
@@ -220,6 +281,33 @@ class ClientCrudTest extends TestCase
             'person_type' => 'company',
             'tax_id' => '12ABC345000188',
             'name' => 'Empresa Alfa Ltda',
+            'status' => 'active',
+            'tax_regime' => 'presumed_profit',
+        ])->assertCreated()->json('data.id');
+
+        $this->patchJson("/api/clients/{$id}", ['tax_regime' => 'actual_profit'])->assertOk()
+            ->assertJsonPath('data.tax_regime', 'actual_profit');
+
+        $this->patchJson("/api/clients/{$id}", ['tax_regime' => 'mei'])->assertUnprocessable()
+            ->assertJsonValidationErrors('tax_regime');
+
+        $this->assertSame('actual_profit', Client::findOrFail($id)->tax_regime->value);
+    }
+
+    public function test_empresa_sem_receita_troca_de_regime_pelo_cadastro_digitado(): void
+    {
+        // O CNPJ numérico que o tier público não conhece é o caso que sobra depois
+        // de o alfanumérico parar de gastar consulta: aqui a consulta é feita, o
+        // provedor responde 404, e a troca de regime continua aceitando o regime
+        // escolhido em vez de exigir o que a Receita diria. MEI continua recusado.
+        Http::fake(['publica.cnpj.ws/*' => Http::response([], 404)]);
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        $id = $this->postJson('/api/clients', [
+            'person_type' => 'company',
+            'tax_id' => '27.865.757/0001-02',
+            'name' => 'GLOBO COM PARTICIPACOES',
             'status' => 'active',
             'tax_regime' => 'presumed_profit',
         ])->assertCreated()->json('data.id');

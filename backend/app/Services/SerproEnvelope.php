@@ -80,7 +80,13 @@ final class SerproEnvelope
         ));
     }
 
-    private function tipo(string $documento): int
+    /**
+     * O tipo do documento no envelope: `1` é pessoa física e `2` é pessoa
+     * jurídica. É público porque a coluna `contratante_tipo` gravada pela
+     * plataforma é este mesmo número, e derivá-la de outra cópia da regra
+     * deixaria documento e tipo podendo discordar.
+     */
+    public function tipo(string $documento): int
     {
         return strlen($documento) === 11 ? 1 : 2;
     }

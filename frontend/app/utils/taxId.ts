@@ -32,6 +32,19 @@ export function companyTaxIdEntry(value: string): CompanyTaxIdEntry {
   return canLookupCnpj(value) ? 'lookup' : 'manual'
 }
 
+/**
+ * A fonte pública de CNPJ responde sobre o CNPJ alfanumérico com um `404`, e o
+ * backend trata esse `404` como cadastro digitado — não só para o documento
+ * alfanumérico, mas para qualquer CNPJ que ela não conheça. Por isso o caminho
+ * digitado existe para todo documento completo, e não apenas para o que não
+ * pode ser consultado: com o critério anterior, o CNPJ numérico que o tier
+ * gratuito não tem era impossível de cadastrar pela tela, embora a API o
+ * aceitasse.
+ */
+export function canRegisterTypedCnpj(value: string): boolean {
+  return companyTaxIdEntry(value) !== 'incomplete'
+}
+
 export function maskTaxId(value: string | null): string {
   const formatted = formatTaxId(value)
   return value?.length === 11 ? `***.${value.slice(3, 6)}.${value.slice(6, 9)}-**` : formatted

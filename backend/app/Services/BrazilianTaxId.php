@@ -40,6 +40,22 @@ final class BrazilianTaxId
             && $this->digit($digits, 13, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === (int) $digits[13];
     }
 
+    /**
+     * A consulta pública de CNPJ é numérica, e não por escolha deste código: o
+     * tier gratuito do `cnpj.ws` só indexa o CNPJ de antes da RFB IN 2.119/2022.
+     * Um documento alfanumérico é válido e mesmo assim não tem resposta lá, então
+     * perguntar é gastar uma consulta da conta para ouvir um `404` que a fonte não
+     * pode evitar.
+     *
+     * É o mesmo critério de `frontend/app/utils/taxId.ts::canLookupCnpj`, e a
+     * mesma decisão nas duas pontas: um CNPJ que a tela não consulta é um CNPJ
+     * que o cadastro não consulta.
+     */
+    public function isNumericCnpj(string $value): bool
+    {
+        return preg_match('/^\d{14}$/D', $this->normalize($value)) === 1;
+    }
+
     /** @param list<int> $weights */
     private function digit(string $digits, int $length, array $weights): int
     {

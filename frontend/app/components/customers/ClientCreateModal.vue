@@ -2,7 +2,7 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
-import { companyTaxIdEntry } from '~/utils/taxId'
+import { companyTaxIdEntry, canRegisterTypedCnpj } from '~/utils/taxId'
 
 defineOptions({ inheritAttrs: false })
 
@@ -126,9 +126,15 @@ const entry = computed(() => companyTaxIdEntry(state.tax_id))
 // A razão social é digitada quando não há consulta para trazer: a fonte pública não
 // conhece documento alfanumérico, e o passo 2 só existe depois de uma escolha.
 const typedName = ref(false)
-const requiresTypedName = computed(() => typedName.value && preview.value === null)
+// Uma única afirmação para as duas metades da mesma garantia: sem consulta
+// bem-sucedida, o nome vem digitado. O schema exige a razão social exatamente
+// quando o campo existe — as duas expressões eram o mesmo fato escrito duas
+// vezes, e uma edição futura em uma delas podia devolver um erro de validação
+// sem campo para ele aparecer.
+const typedNameRequired = computed(() => state.person_type === 'company' && preview.value === null)
+const requiresTypedName = computed(() => typedName.value && typedNameRequired.value)
 const canLookup = computed(() => state.person_type === 'company' && entry.value === 'lookup')
-const canRegisterTyped = computed(() => state.person_type === 'company' && entry.value === 'manual')
+const canRegisterTyped = computed(() => state.person_type === 'company' && canRegisterTypedCnpj(state.tax_id))
 
 function resetForm() {
   state.person_type = 'company'
@@ -256,8 +262,10 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             v-if="canRegisterTyped"
             color="neutral"
             variant="subtle"
-            title="A consulta pública não conhece CNPJ alfanumérico"
-            description="Cadastre com a razão social digitada; os dados públicos do CNPJ ficam vazios."
+            title="A consulta pública pode não conhecer este CNPJ"
+            :description="entry === 'manual'
+              ? 'A fonte pública não consulta CNPJ alfanumérico. Cadastre com a razão social digitada; os dados públicos do CNPJ ficam vazios.'
+              : 'Se a consulta não trouxer nada, cadastre com a razão social digitada; os dados públicos do CNPJ ficam vazios.'"
           />
         </template>
 
@@ -326,7 +334,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             @submit="onSubmit"
           >
             <UFormField
-              v-if="state.person_type === 'company' && !preview"
+              v-if="typedNameRequired"
               label="Razão social"
               name="name"
               help="A consulta não trouxe os dados: informe a razão social"

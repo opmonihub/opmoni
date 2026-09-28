@@ -5,7 +5,6 @@ namespace App\Http\Resources;
 use App\Models\SerproConnection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Symfony\Component\HttpFoundation\Response;
 
 /**
  * A tela de conexão precisa saber *quem* a plataforma está contratada, e não
@@ -13,6 +12,11 @@ use Symfony\Component\HttpFoundation\Response;
  * qualquer arquivo não têm chave aqui. Por isso a lista é explícita — e o
  * `$hidden` do modelo é a segunda rede, caso alguém chegue a serializar a
  * linha inteira.
+ *
+ * A resposta não fixa código de status: a resource é devolvida tanto pela
+ * leitura, que é `200` por ser leitura, quanto pela gravação, que fixa `200`
+ * no controller porque a primeira gravação é criação de uma credencial única e
+ * não de um recurso novo.
  *
  * @mixin SerproConnection
  */
@@ -24,16 +28,6 @@ class SerproConnectionResource extends JsonResource
     public static function unconfigured(): self
     {
         return new self(new SerproConnection);
-    }
-
-    /**
-     * O mesmo `PUT` cria na primeira vez e rotaciona depois, então a resposta é
-     * `200` nas duas: quem grava não está criando um recurso novo, está
-     * configurando uma credencial cuja identidade é única.
-     */
-    public function withResponse(Request $request, Response $response): void
-    {
-        $response->setStatusCode(Response::HTTP_OK);
     }
 
     /**

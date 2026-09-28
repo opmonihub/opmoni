@@ -122,33 +122,22 @@ class SerproConnection extends Model
         }
 
         $document = $this->cachedDocument();
+        $gravado = (string) $this->contratante_numero;
 
         // Nenhum dos dois é segredo — o documento contratante é publicado pela
         // API — então a mensagem nomeia os dois: um `403` do provedor sem dizer
-        // qual CNPJ discordou é o defeito que esta guarda existe para evitar.
-        if ($document !== (string) $this->contratante_numero) {
+        // qual CNPJ discordou é o defeito que esta guarda existe para evitar. E
+        // uma coluna sem documento não é divergência: a coluna é `NOT NULL` mas
+        // aceita a string vazia, e "é do CNPJ X, e não ." não diria nada.
+        if ($document !== $gravado) {
             throw new SerproException(
-                "O certificado do contratante é do CNPJ {$document}, e não {$this->contratante_numero}.",
+                $gravado === ''
+                    ? "O certificado do contratante é do CNPJ {$document}, e a credencial não tem documento contratante gravado."
+                    : "O certificado do contratante é do CNPJ {$document}, e não {$gravado}.",
                 SerproFailure::DoNotRetry,
                 0,
             );
         }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function safeMetadata(): array
-    {
-        return [
-            'configured' => $this->isConfigured(),
-            'certificate_subject' => $this->certificate_subject,
-            'certificate_serial_number' => $this->certificate_serial_number,
-            'certificate_valid_from' => $this->certificate_valid_from?->toISOString(),
-            'certificate_valid_until' => $this->certificate_valid_until?->toISOString(),
-            'contratante_numero' => $this->contratante_numero,
-            'contratante_tipo' => $this->contratante_tipo,
-        ];
     }
 
     /**

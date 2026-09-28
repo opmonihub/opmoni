@@ -65,6 +65,20 @@ class BrazilianTaxIdTest extends TestCase
         $this->assertTrue((new BrazilianTaxId)->isValidCnpj('12.ABC.345-01DE-35'));
     }
 
+    public function test_sabe_dizer_se_o_cnpj_pode_ser_consultado_na_fonte_publica(): void
+    {
+        $service = new BrazilianTaxId;
+
+        // O tier público do `cnpj.ws` é numérico: o CNPJ alfanumérico é documento
+        // válido e documento que aquela fonte não tem como responder.
+        $this->assertTrue($service->isNumericCnpj('27.865.757/0001-02'));
+        $this->assertTrue($service->isNumericCnpj('27865757000102'));
+        $this->assertFalse($service->isNumericCnpj('12ABC345000188'));
+        $this->assertFalse($service->isNumericCnpj('12.ABC.345/0001-88'));
+        $this->assertFalse($service->isNumericCnpj('52998224725'));
+        $this->assertFalse($service->isNumericCnpj(''));
+    }
+
     public function test_cpf_continua_numerico_e_rejeita_letra(): void
     {
         $service = new BrazilianTaxId;

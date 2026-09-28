@@ -94,11 +94,15 @@ final class SerproTokenProvider
 
     private function request(SerproConnection $connection, string $certificatePath): SerproTokenPair
     {
-        $secret = $this->secretOf($connection);
-
+        // O segredo não ganha nome: ele é lido, entregue ao `curl` e morre com o
+        // `PendingRequest` que o carrega, sem atravessar o tratamento da
+        // resposta. Um `$secret` local vivia por todo o resto do método sem
+        // necessidade, e zerá-lo no fim seria a mesma ilusão de
+        // `SerproCertificateIdentity`: uma cópia local sobrescrita não apaga o
+        // segredo de lugar nenhum, e fingir que apaga é pior que não dizer nada.
         try {
             $response = Http::asForm()
-                ->withBasicAuth($connection->consumer_key, $secret)
+                ->withBasicAuth($connection->consumer_key, $this->secretOf($connection))
                 ->withHeaders(['Role-Type' => 'TERCEIROS'])
                 ->withOptions(['curl' => [
                     CURLOPT_SSLCERT => $certificatePath,

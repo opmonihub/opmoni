@@ -11,6 +11,7 @@ use App\Services\SerproClient;
 use App\Services\SerproException;
 use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,7 +20,10 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class SerproConnectionApiTest extends TestCase
@@ -150,6 +154,13 @@ class SerproConnectionApiTest extends TestCase
         ['file' => $file] = $this->pfx();
         $super = User::factory()->create(['is_super_admin' => true]);
 
+        // O operador recebe uma frase boa; o log não pode ficar com nada, porque
+        // recusa de índice único nesta tabela tem uma só explicação e o conserto
+        // (recarregar a tela) depende de ela existir. A exceção do banco traz o
+        // `insert` completo nos seus valores, então o log leva a classe e a
+        // frase fixa — nunca o SQL, que carregaria segredo e PFX cifrado.
+        Log::spy();
+
         // A corrida que a trava do manager não cobre: `lockForUpdate()` não
         // trava a linha que ainda não existe (e o SQLite nem compila o
         // `for update`), então as duas primeiras gravações chegam as duas
@@ -182,6 +193,19 @@ class SerproConnectionApiTest extends TestCase
             ->assertJsonValidationErrors('consumer_key');
 
         $this->assertTrue($chegouAntes, 'A gravação perdedora precisa ter encontrado a linha da outra.');
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context = []): bool {
+                $registro = $message.' '.json_encode($context, JSON_THROW_ON_ERROR);
+
+                $this->assertStringContainsString('singleton', $registro);
+                $this->assertStringNotContainsString(self::SEGREDO, $registro);
+                $this->assertStringNotContainsString(self::SENHA, $registro);
+                $this->assertStringNotContainsString('insert into', $registro);
+
+                return true;
+            });
 
         // A gravação perdedora não deixou linha nenhuma. A linha da vencedora
         // aqui está na mesma transação e cai junto no rollback — é o que a
@@ -542,6 +566,132 @@ class SerproConnectionApiTest extends TestCase
         $this->assertNull(SerproConnection::sole()->certificatePassword());
     }
 
+    public function test_senha_conferida_com_certificado_guardado_ilegivel_e_recusada_e_nao_500(): void
+    {
+        // Trocar a senha sem reenviar o PFX é caminho suportado, e ele abre o
+        // certificado guardado para conferir a senha nova. Um cifrado que não
+        // abre — chave de aplicação trocada, coluna truncada, restauração de
+        // outro ambiente — não pode virar `500` no operador que está tentando
+        // recuperar a credencial: o conserto é reenviar o certificado.
+        ['bytes' => $bytes] = $this->pfx();
+
+        $comCertificado = SerproConnection::factory()->create([
+            'certificate_encrypted' => Crypt::encryptString($bytes),
+            'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
+        ]);
+        $comCertificado->forceFill(['certificate_encrypted' => 'cifrado-que-nao-abre'])->save();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->putJson('/api/serpro/connection', ['password' => 'senha-nova'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password')
+            ->assertJsonPath('errors.password.0', 'Não foi possível conferir a senha: o certificado do contratante gravado não pôde ser lido. Envie o certificado de novo.');
+
+        // A senha nova não foi gravada: uma linha que não abre continua melhor
+        // do que uma linha com a senha trocada e o mesmo certificado ilegível.
+        $this->assertSame(
+            self::SENHA,
+            Crypt::decryptString((string) $comCertificado->fresh()->getRawOriginal('certificate_password_encrypted')),
+        );
+    }
+
+    public function test_documento_contratante_ausente_ou_vazio_na_divergencia_e_dito_por_extenso(): void
+    {
+        // A coluna não aceita `null`, mas aceita a string vazia — e uma linha
+        // restaurada ou escrita fora do manager chega assim. "é do CNPJ X, e não
+        // ." não diz nada, e é justamente o caso em que o operador precisa saber
+        // que o problema não é divergência: é documento faltando.
+        ['bytes' => $bytes] = $this->pfx();
+
+        SerproConnection::factory()->create([
+            'certificate_encrypted' => Crypt::encryptString($bytes),
+            'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
+            'contratante_numero' => '',
+        ]);
+
+        try {
+            resolve(SerproClient::class)->call(
+                'REGIMEAPURACAO',
+                'CONSULTARANOSCALENDARIOS102',
+                [],
+                '33683111000107',
+                '33683111000875',
+            );
+
+            $this->fail('Uma credencial sem documento contratante gravado deve levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertStringNotContainsString('e não .', $exception->getMessage());
+            $this->assertStringContainsString(
+                'a credencial não tem documento contratante gravado',
+                $exception->getMessage(),
+            );
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_tipo_do_contratante_vem_do_documento_gravado_e_nao_do_padrao_do_banco(): void
+    {
+        // Documento e tipo são o mesmo dado em duas colunas: se o extrator um dia
+        // aceitar um CPF, `1` é o valor certo e a coluna não pode continuar
+        // dizendo `2` só porque é o que o banco põe por omissão. Começando de
+        // uma linha com `1`, a rotação do certificado tem de consertar a coluna.
+        ['file' => $file] = $this->pfx();
+
+        $connection = SerproConnection::factory()->create(['contratante_tipo' => 1]);
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'certificate' => $file,
+                'password' => self::SENHA,
+            ], $this->jsonHeaders())
+            ->assertOk();
+
+        $this->assertSame(2, $connection->fresh()->contratante_tipo);
+        $this->assertSame(self::CNPJ, $connection->fresh()->contratante_numero);
+    }
+
+    /**
+     * Os três `NotSent` do enum — pasta temporária sem gravação, segredo ilegível
+     * e certificado ilegível — significam "falha nossa, antes de qualquer
+     * requisição", e cada um precisa ser testemunhado no produtor. O veredito do
+     * teste de conectividade não serve: ele fixa `certificado` ou `provedor` no
+     * guard, antes de olhar a falha, e passaria igual com `DoNotRetry`.
+     */
+    public function test_cada_falha_local_antes_da_requisicao_e_nomeada_como_nada_enviado(): void
+    {
+        // 1. O certificado guardado não abre com a chave de aplicação atual: nada
+        //    foi enviado e recadastrar o certificado é o conserto — não há
+        //    requisição recusada a reter.
+        ['bytes' => $bytes] = $this->pfx();
+        $connection = SerproConnection::factory()->create([
+            'certificate_encrypted' => Crypt::encryptString($bytes),
+            'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
+        ]);
+        $connection->forceFill(['certificate_encrypted' => 'cifrado-que-nao-abre'])->save();
+
+        $falha = $this->falhaDoGateway();
+        $this->assertSame(SerproFailure::NotSent, $falha->failure);
+        $this->assertStringNotContainsString('cifrado-que-nao-abre', $falha->getMessage());
+
+        // 2. A pasta efêmera do PFX recusou a gravação. Mesmo formato de falha, e
+        //    o mesmo `DoNotRetry` seria mentira: ele diria "recadastre a
+        //    credencial" para uma credencial inteira.
+        $connection->refresh()->forceFill([
+            'certificate_encrypted' => Crypt::encryptString($bytes),
+            'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
+        ])->save();
+        $this->tempDirIngravavel();
+
+        $falha = $this->falhaDoGateway();
+        $this->assertSame(SerproFailure::NotSent, $falha->failure);
+        $this->assertStringContainsString('diretório temporário', $falha->getMessage());
+        $this->assertStringNotContainsString(storage_path(), $falha->getMessage());
+
+        Http::assertNothingSent();
+    }
+
     public function test_credencial_incompleta_na_primeira_gravacao_e_recusada(): void
     {
         $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
@@ -558,6 +708,44 @@ class SerproConnectionApiTest extends TestCase
     private function jsonHeaders(): array
     {
         return ['Accept' => 'application/json'];
+    }
+
+    /**
+     * A primeira falha que a camada de serviço levanta, sem passar por nenhuma
+     * rede: `preventStrayRequests` acima transforma qualquer ida ao provedor em
+     * exceção, então o que este helper devolve é a falha local e nada mais.
+     */
+    private function falhaDoGateway(): SerproException
+    {
+        try {
+            resolve(SerproClient::class)->call(
+                'REGIMEAPURACAO',
+                'CONSULTARANOSCALENDARIOS102',
+                [],
+                '33683111000107',
+                '33683111000875',
+            );
+        } catch (SerproException $exception) {
+            return $exception;
+        }
+
+        $this->fail('A camada de serviço deveria ter levantado SerproException.');
+    }
+
+    /**
+     * Pasta efêmera do PFX sem gravação, pelo mesmo caminho do teste do
+     * materializador: o `put()` que devolve `false` é o que ele trata como
+     * falha, e nenhum teste pode fingir uma permissão de disco diferente da que a
+     * máquina de teste tem.
+     */
+    private function tempDirIngravavel(): void
+    {
+        $mock = Mockery::mock(Filesystem::class);
+        $mock->shouldReceive('path')->andReturnUsing(
+            fn (string $path = ''): string => storage_path('app/private/'.ltrim($path, '/')),
+        );
+        $mock->shouldReceive('put')->andReturn(false);
+        Storage::shouldReceive('disk')->andReturn($mock);
     }
 
     /**

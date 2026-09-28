@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { canLookupCnpj, companyTaxIdEntry, formatTaxId, maskTaxId } from '../app/utils/taxId.ts'
+import { canLookupCnpj, canRegisterTypedCnpj, companyTaxIdEntry, formatTaxId, maskTaxId } from '../app/utils/taxId.ts'
 
 describe('taxId com CNPJ alfanumérico', () => {
   it('formata os doze primeiros caracteres alfanuméricos e os dois dígitos', () => {
@@ -24,6 +24,22 @@ describe('taxId com CNPJ alfanumérico', () => {
     assert.equal(companyTaxIdEntry('12ABC345000188'), 'manual')
     assert.equal(companyTaxIdEntry('12.ABC.345/0001-88'), 'manual')
     assert.equal(companyTaxIdEntry('12abc345000188'), 'manual')
+  })
+
+  it('oferece o cadastro digitado para todo CNPJ completo, e não só para o alfanumérico', () => {
+    // O backend aceita o CNPJ numérico que a fonte pública não conhece (o `404`
+    // dele é cadastro digitado, não erro). Se a tela só oferecesse o caminho
+    // digitado para o alfanumérico, esse documento seria cadastrável pela API e
+    // impossível pela tela — as duas pontas discordando do mesmo contrato.
+    assert.equal(canRegisterTypedCnpj('27.865.757/0001-02'), true)
+    assert.equal(canRegisterTypedCnpj('27865757000102'), true)
+    assert.equal(canRegisterTypedCnpj('12ABC345000188'), true)
+    assert.equal(canRegisterTypedCnpj('12.ABC.345/0001-88'), true)
+
+    // Documento incompleto não é documento: não há nada para cadastrar.
+    assert.equal(canRegisterTypedCnpj(''), false)
+    assert.equal(canRegisterTypedCnpj('12ABC3450001'), false)
+    assert.equal(canRegisterTypedCnpj('529.982.247-25'), false)
   })
 
   it('não oferece nenhum caminho enquanto o documento não tem catorze caracteres', () => {

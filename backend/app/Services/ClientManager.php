@@ -37,7 +37,11 @@ class ClientManager
         'email',
     ];
 
-    public function __construct(private CnpjWsLookup $lookup, private ClientCertificateVault $certificateVault) {}
+    public function __construct(
+        private CnpjWsLookup $lookup,
+        private ClientCertificateVault $certificateVault,
+        private BrazilianTaxId $taxId,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -233,7 +237,16 @@ class ClientManager
             return $requested;
         }
 
-        throw ValidationException::withMessages(['tax_regime' => 'Empresa não aceita o regime não aplicável.']);
+        if ($requested === TaxRegime::NotApplicable->value) {
+            throw ValidationException::withMessages(['tax_regime' => 'Empresa não aceita o regime não aplicável.']);
+        }
+
+        // A recusa é nossa e é sobre o nosso conhecimento, não sobre o que a
+        // empresa aceita: dizer a frase do `not_applicable` para quem pediu MEI
+        // mandaria o operador procurar na empresa uma recusa que ninguém fez.
+        throw ValidationException::withMessages([
+            'tax_regime' => 'Sem os dados da Receita não é possível confirmar MEI ou Simples Nacional: informe o regime que a empresa aceita.',
+        ]);
     }
 
     /**
@@ -326,6 +339,11 @@ class ClientManager
      * depender de uma fonte pública que não conhece documento alfanumérico
      * (RFB IN 2.119/2022) nem todo CNPJ recém-aberto.
      *
+     * Documento que a fonte não tem como responder nem é consultado: o `404` do
+     * alfanumérico é certo e permanente, não é cacheado, e cada cadastro ou troca
+     * de regime repetiria a chamada — consumindo uma das três consultas por
+     * minuto da conta para competirem com consulta que alguém pediu de verdade.
+     *
      * Só o 404 vira cadastro manual. Indisponibilidade (503), limite do provedor
      * (429) e documento recusado (422) continuam errando a requisição: um cliente
      * sem os dados oficiais por causa de uma queda de rede é efeito colateral de
@@ -336,6 +354,10 @@ class ClientManager
      */
     private function lookupCompany(string $taxId): ?array
     {
+        if (! $this->taxId->isNumericCnpj($taxId)) {
+            return null;
+        }
+
         try {
             return $this->lookup->lookup($taxId);
         } catch (CnpjLookupException $exception) {

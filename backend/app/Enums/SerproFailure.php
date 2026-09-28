@@ -23,10 +23,12 @@ enum SerproFailure: string
      *
      * A distinção é o que impede a plan 04 de tratar o que é falha nossa como
      * resultado do provedor: `Indeterminate` alimenta
-     * `SerproSyncItemState::Indeterminate` com `failed = 0`, e uma máquina sem
-     * espaço em disco produzia uma execução em que nenhum item falhou e todos
-     * ficaram indeterminados. Quem consumir este caso conta a falha e não tenta
-     * de novo em seguida — corrigir a máquina é pré-condição, não estratégia.
+     * `SerproSyncItemState::Indeterminate` — caso que a plan 04 ainda vai criar,
+     * em `backend/app/Enums/SerproSyncItemState.php` — com `failed = 0`, e uma
+     * máquina sem espaço em disco produzia uma execução em que nenhum item
+     * falhou e todos ficaram indeterminados. Quem consumir este caso conta a
+     * falha e não tenta de novo em seguida — corrigir a máquina é pré-condição,
+     * não estratégia.
      */
     case NotSent = 'not_sent';
 

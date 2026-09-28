@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
-import { apiMessage, apiStatus } from '~/composables/useApiError'
+import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproConnectionMetadata, SerproConnectivityResult } from '~/types/serpro'
 import { formatMonitoringDate } from '~/utils/monitoringPresentation'
 import {
@@ -154,7 +154,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     connectivity.value = null
     toast.add({ title: 'Conexão com o Integra Contador salva', color: 'success' })
   } catch (err) {
-    toast.add({ title: 'Não foi possível salvar a conexão', description: apiMessage(err), color: 'error' })
+    // A recusa nomeada do `PUT` — a gravação perdedora da corrida, a senha que
+    // não abre o certificado, a credencial incompleta na primeira vez — está em
+    // `errors.<campo>`, e o `message` de topo de um 422 é sempre a mesma frase
+    // genérica. Ler só o `message` deixava o operador sem nenhuma pista.
+    toast.add({ title: 'Não foi possível salvar a conexão', description: apiErrorMessage(err), color: 'error' })
   } finally {
     submitting.value = false
   }
@@ -165,7 +169,7 @@ async function onTestConnectivity() {
   try {
     connectivity.value = await testConnectivity()
   } catch (err) {
-    toast.add({ title: 'Não foi possível testar a conexão', description: apiMessage(err), color: 'error' })
+    toast.add({ title: 'Não foi possível testar a conexão', description: apiErrorMessage(err), color: 'error' })
   } finally {
     testing.value = false
   }

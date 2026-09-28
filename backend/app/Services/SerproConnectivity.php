@@ -88,7 +88,7 @@ final class SerproConnectivity
         try {
             $this->tokens->verify();
         } catch (SerproException $exception) {
-            return $this->failure($this->elementOf($exception), $checkedAt);
+            return $this->failure(self::elementFor($exception->failure), $checkedAt);
         }
 
         return [
@@ -102,10 +102,17 @@ final class SerproConnectivity
     /**
      * Só a taxonomia decide aqui, e o que chega já passou pelas guardas acima.
      *
-     * `Upstream` é quem não deu conta do lado de lá, e `NotSent` é quem não
-     * chegou a mandar nada: os dois são `provedor` porque a ação é a mesma nos
-     * dois casos, e recadastrar a credencial não resolve nenhum deles — trocar o
-     * certificado ainda menos.
+     * `Upstream` é quem não deu conta do lado de lá, `Indeterminate` é quem não
+     * sabe se deu, e `NotSent` é quem não chegou a mandar nada: os três são
+     * `provedor` porque a ação é a mesma nos três casos, e recadastrar a
+     * credencial não resolve nenhum deles — trocar o certificado ainda menos.
+     *
+     * `Indeterminate` não chega hoje, e está aqui de propósito: o provedor de
+     * token classifica `5xx` como `Upstream` sem passar por `classify()`, mas um
+     * `504` da autenticação é `Indeterminate` em qualquer outro caminho, e sem
+     * este braço ele cairia no `default` e viraria `credencial` — mandando o
+     * operador trocar uma credencial boa à espera de um serviço que não
+     * respondeu.
      *
      * O `NotSent` que chega aqui é o da pasta temporária, e só ele. Os outros dois
      * `NotSent` — segredo ilegível e certificado ilegível — são conferidos antes
@@ -124,11 +131,15 @@ final class SerproConnectivity
      * releitura do provider: milissegundos e uma gravação concorrente, com o
      * guard acima tendo sido verdadeiro para o valor antigo. Fica nomeado em vez
      * de mascarado por um `status`, e a próxima verificação acerta.
+     *
+     * Estático e público para que a taxonomia inteira seja testável: o erro
+     * dela é silencioso, e um caso novo que caia no `default` não quebraria
+     * teste nenhum.
      */
-    private function elementOf(SerproException $exception): string
+    public static function elementFor(SerproFailure $failure): string
     {
-        return match ($exception->failure) {
-            SerproFailure::Upstream, SerproFailure::NotSent => 'provedor',
+        return match ($failure) {
+            SerproFailure::Upstream, SerproFailure::Indeterminate, SerproFailure::NotSent => 'provedor',
             default => 'credencial',
         };
     }

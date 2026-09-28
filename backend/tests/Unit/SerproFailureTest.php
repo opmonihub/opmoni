@@ -50,15 +50,25 @@ class SerproFailureTest extends TestCase
         $this->assertNotSame('', SerproFailure::Indeterminate->label());
     }
 
-    public function test_uma_falha_local_que_nada_enviou_tem_caso_proprio(): void
+    /**
+     * Este teste só pode provar o vocabulário; a classificação de cada produtor
+     * é de `SerproTokenProviderTest`, de `SerproConnectionApiTest` e de
+     * `SerproConnectivityTest`, onde a falha é levantada de verdade. O que este
+     * arquivo guarda é a distinção que o docblock promete: `NotSent` é o que
+     * acontece *antes* de a requisição existir, e não a resposta a uma pergunta
+     * sobre o provedor.
+     */
+    public function test_not_sent_e_o_que_acontece_antes_da_requisicao_e_nao_indeterminate(): void
     {
         // `Indeterminate` significa "pode ter sido aplicado e ninguém sabe", e
         // isso é falso por construção para uma falha que acontece antes de
         // qualquer requisição existir. O caso novo é o que impede uma pasta
         // temporária sem gravação de virar uma execução com todo cliente
-        // `indeterminado` e `failed = 0`.
+        // `indeterminado` e `failed = 0`. Confundir os dois enfaqueceria a
+        // distinção que a plan 04 vai consumir.
         $this->assertSame('not_sent', SerproFailure::NotSent->value);
+        $this->assertNotSame(SerproFailure::Indeterminate->value, SerproFailure::NotSent->value);
         $this->assertNotSame('', SerproFailure::NotSent->label());
-        $this->assertContains(SerproFailure::NotSent->value, SerproFailure::values());
+        $this->assertNotSame(SerproFailure::Indeterminate->label(), SerproFailure::NotSent->label());
     }
 }
