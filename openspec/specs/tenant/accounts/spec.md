@@ -1,7 +1,6 @@
-# Accounts Specification
+# accounts Specification
 
 ## Purpose
-
 Define os escritórios como unidades isoladas de operação, com membros em três níveis e criação restrita à plataforma.
 
 ## Requirements

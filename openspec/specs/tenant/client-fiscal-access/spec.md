@@ -1,7 +1,6 @@
-# Client Fiscal Access Specification
+# client-fiscal-access Specification
 
 ## Purpose
-
 Centraliza o certificado digital A1 e a procuração e-CAC de cada cliente, protegendo segredos e tornando vencimentos e ausências visíveis na carteira do escritório.
 
 ## Requirements

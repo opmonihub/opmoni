@@ -1,7 +1,6 @@
-# tenant/work-processes Specification
+# work-processes Specification
 
 ## Purpose
-
 Permite que cada Account acompanhe um processo de rotina por cliente e por competência, com status, vencimento e progresso derivado das tasks, congelado após a geração.
 
 ## Requirements

@@ -1,7 +1,6 @@
-# Admin Panel Specification
+# admin-panel Specification
 
 ## Purpose
-
 Oferece ao super_admin um ambiente global separado do operacional para gerir contas, planos, assinaturas, usuários e suporte.
 
 ## Requirements

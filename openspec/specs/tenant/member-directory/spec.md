@@ -1,7 +1,6 @@
-# Member Directory Specification
+# member-directory Specification
 
 ## Purpose
-
 Permite que qualquer membro do Account veja quem pode executar tarefas (nome, papel e departamentos), sem expor email e sem abrir a gestão de membros.
 
 ## Requirements

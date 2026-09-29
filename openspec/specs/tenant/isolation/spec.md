@@ -1,7 +1,6 @@
-# Isolation Specification
+# isolation Specification
 
 ## Purpose
-
 Garante que os dados de um escritório nunca sejam visíveis ou alteráveis a partir de outro escritório ou por quem não pertence a ele.
 
 ## Requirements

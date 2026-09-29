@@ -1,7 +1,6 @@
-# Auth Specification
+# auth Specification
 
 ## Purpose
-
 Permite que pessoas criem conta, entrem e saiam do sistema com sessão segura, estabelecendo a identidade usada por todas as demais capacidades de tenancy.
 
 ## Requirements

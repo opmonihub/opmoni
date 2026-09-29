@@ -1,7 +1,6 @@
-# CNPJ Lookup Specification
+# cnpj-lookup Specification
 
 ## Purpose
-
 Fornece consulta segura e resiliente de dados públicos de CNPJ para preencher e atualizar clientes sem expor o navegador diretamente ao provedor externo.
 
 ## Requirements

@@ -1,7 +1,6 @@
-# tenant/work-calendar Specification
+# work-calendar Specification
 
 ## Purpose
-
 O calendário do Work dá ao escritório a visão mensal, semanal e diária dos vencimentos das rotinas fiscais por cliente, com navegação compartilhável por URL, filtros operacionais híbridos e reagendamento de prazo por arraste com atualização otimista.
 
 ## Requirements

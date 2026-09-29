@@ -1,7 +1,6 @@
-# Client Portfolio Specification
+# client-portfolio Specification
 
 ## Purpose
-
 Permite que cada Account mantenha uma carteira isolada de clientes pessoa jurídica ou física, com cadastro fiscal, consulta, filtros e operações completas no painel operacional.
 
 ## Requirements

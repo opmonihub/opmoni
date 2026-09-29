@@ -1,7 +1,6 @@
-# Team Departments Specification
+# team-departments Specification
 
 ## Purpose
-
 Permite que cada Account organize sua equipe em departamentos (Fiscal, Pessoal...) com membros vinculados, para que o Work possa referenciar departamento + responsável nas tarefas.
 
 ## Requirements

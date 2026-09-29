@@ -1,7 +1,6 @@
-# Subscriptions Specification
+# subscriptions Specification
 
 ## Purpose
-
 Sustenta o modelo comercial com três planos, assinatura automática no Básico e bloqueio no estouro de limites.
 
 ## Requirements

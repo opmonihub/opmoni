@@ -1,7 +1,6 @@
-# tenant/work-templates Specification
+# work-templates Specification
 
 ## Purpose
-
 Permite que cada Account defina modelos de rotinas fiscais mensais com etapas completas, execução em cascata e associação por regra dinâmica (regimes + Tags) com exceções, gerando automaticamente um processo por cliente a cada competência.
 
 ## Requirements

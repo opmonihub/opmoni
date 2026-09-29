@@ -1,7 +1,6 @@
-# Support Access Specification
+# support-access Specification
 
 ## Purpose
-
 Permite ao super_admin operar dentro de um escritório para suporte e manutenção sem se passar por outro usuário, com trilha de auditoria e indicação visível.
 
 ## Requirements
