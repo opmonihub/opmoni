@@ -7,7 +7,6 @@ use App\Enums\SerproSyncItemState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproCall;
-use App\Models\SerproMonitoring;
 use App\Models\SerproSyncRunItem;
 use App\Services\SerproAccountEnablement;
 use App\Services\SerproCallRecorder;
@@ -15,6 +14,8 @@ use App\Services\SerproClient;
 use App\Services\SerproClientLock;
 use App\Services\SerproEligibility;
 use App\Services\SerproException;
+use App\Services\SerproMonitoringMapper;
+use App\Services\SerproMonitoringWriter;
 use App\Services\SerproObligationCatalog;
 use App\Services\SerproPowerOracle;
 use App\Services\SerproResult;
@@ -190,6 +191,8 @@ final class SyncSerproClientJob implements ShouldQueue
         }
 
         $ultimoMotivo = null;
+        $writer = resolve(SerproMonitoringWriter::class);
+        $mapper = resolve(SerproMonitoringMapper::class);
 
         foreach ($catalogo->syncables() as $unidade) {
             if ($this->called($unidade['id_servico'])) {
@@ -202,7 +205,7 @@ final class SyncSerproClientJob implements ShouldQueue
                 // A recusa não custa chamada, mas custa explicação: a linha
                 // do painel recebe a causa para o operador saber o que
                 // falta, em vez de um `sem_dados` que pareceria "não tentou".
-                $this->marcarVinculo($unidade['slug'], ['cause' => $motivo]);
+                $writer->store($this->accountId, $this->clientId, $unidade['slug'], ['cause' => $motivo], null);
                 $ultimoMotivo = $motivo;
 
                 continue;
@@ -212,12 +215,18 @@ final class SyncSerproClientJob implements ShouldQueue
                 fn (): SerproResult => resolve(SerproClient::class)->call(
                     $unidade['id_sistema'],
                     $unidade['id_servico'],
-                    [],
+                    $mapper->payload($unidade['id_servico']),
                     (string) $certificate->document,
                     (string) $client->tax_id,
                     $token,
                 ),
-                fn (SerproResult $result) => $this->marcarVinculo($unidade['slug'], ['source_at' => now()]),
+                fn (SerproResult $result) => $writer->store(
+                    $this->accountId,
+                    $this->clientId,
+                    $unidade['slug'],
+                    $mapper->project($unidade['id_servico'], $result),
+                    now()->toISOString(),
+                ),
             );
 
             return;
@@ -247,7 +256,8 @@ final class SyncSerproClientJob implements ShouldQueue
             // vínculo é criado antes do envio porque ele é o registro de
             // "esta obrigação foi tentada", e `source_at` só chega com a
             // resposta — a linha sem data é "tentado e não respondido".
-            $this->marcarVinculo($unidade['slug'], []);
+            resolve(SerproMonitoringWriter::class)
+                ->store($this->accountId, $this->clientId, $unidade['slug'], [], null);
         }
 
         $item->forceFill([
@@ -306,7 +316,8 @@ final class SyncSerproClientJob implements ShouldQueue
             // `sem_procuracao` que a elegibilidade não viu, e a obrigação
             // fica marcada para o painel, não para retentativa.
             if ($unidade['slug'] !== 'procuracoes') {
-                $this->marcarVinculo($unidade['slug'], ['cause' => 'sem_procuracao']);
+                resolve(SerproMonitoringWriter::class)
+                    ->store($this->accountId, $this->clientId, $unidade['slug'], ['cause' => 'sem_procuracao'], null);
             }
             $this->limparFronteira($item);
             $this->release(1);
@@ -388,30 +399,6 @@ final class SyncSerproClientJob implements ShouldQueue
             ->where('id_servico', $idServico)
             ->whereNotIn('status', [SerproFailure::Throttled, SerproFailure::Upstream])
             ->exists();
-    }
-
-    /**
-     * O vínculo `(conta, cliente, obrigação)`, criado ou atualizado sem o
-     * escopo global: a conta viaja no job e o escopo leria o `CurrentTenant`
-     * do job anterior.
-     *
-     * @param  array<string, mixed>  $atributos
-     */
-    private function marcarVinculo(string $slug, array $atributos): void
-    {
-        $monitoring = SerproMonitoring::query()
-            ->withoutGlobalScope('account')
-            ->where('account_id', $this->accountId)
-            ->where('client_id', $this->clientId)
-            ->where('obligation', $slug)
-            ->first() ?? new SerproMonitoring;
-
-        $monitoring->forceFill([
-            'account_id' => $this->accountId,
-            'client_id' => $this->clientId,
-            'obligation' => $slug,
-            ...$atributos,
-        ])->save();
     }
 
     /**
