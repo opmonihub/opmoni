@@ -38,7 +38,7 @@ class GenerateRecurringProcesses extends Command
 
         $now = now();
         $month = $monthOption !== ''
-            ? Carbon::createFromFormat('Y-m', $monthOption)->startOfMonth()->startOfDay()
+            ? Carbon::createFromFormat('!Y-m', $monthOption)->startOfMonth()->startOfDay()
             : $now->copy()->startOfMonth()->startOfDay();
 
         $templates = ProcessTemplate::query()

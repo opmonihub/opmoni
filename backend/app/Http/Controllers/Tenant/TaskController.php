@@ -147,7 +147,7 @@ class TaskController extends Controller
             'reference_month' => ['required', 'date_format:Y-m'],
         ]);
 
-        $month = Carbon::createFromFormat('Y-m', $filters['reference_month'])->startOfMonth();
+        $month = Carbon::createFromFormat('!Y-m', $filters['reference_month'])->startOfMonth();
 
         $processes = Process::query()
             ->with(['client', 'template', 'tasks' => fn ($query) => $query->ordered()])
@@ -208,7 +208,7 @@ class TaskController extends Controller
             'include_undated' => ['sometimes', 'boolean'],
         ]);
 
-        $month = Carbon::createFromFormat('Y-m', $filters['reference_month'])->startOfMonth();
+        $month = Carbon::createFromFormat('!Y-m', $filters['reference_month'])->startOfMonth();
         $includeUndated = (bool) ($filters['include_undated'] ?? false);
 
         return TaskResource::collection(Task::query()
