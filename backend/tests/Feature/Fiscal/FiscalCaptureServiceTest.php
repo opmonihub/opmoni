@@ -25,7 +25,9 @@ use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Cache\ArrayLock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -452,6 +454,42 @@ class FiscalCaptureServiceTest extends TestCase
                 && $context['nsu'] === 150
                 && $context['reason'] === 'DocZipDecoder não decodificou o payload comprimido.'
                 && ! str_contains(serialize($context), '<docZip>'));
+    }
+
+    /**
+     * Varre tudo o que a captura escreveu no log, e não só o aviso que um
+     * teste espera: a senha do A1, o caminho interno do XML gravado e marcação
+     * XML bruta não podem aparecer em mensagem nem em contexto de nível algum.
+     */
+    public function test_nothing_logged_during_capture_carries_password_path_or_raw_xml(): void
+    {
+        [$client] = $this->tenant(withCertificate: true);
+        $password = $client->currentCertificate->certificatePassword();
+        $this->assertNotNull($password);
+
+        $this->bindConnector(fn (): PullResult => $this->batch(
+            [$this->pulled(100, self::CHAVE_100)],
+            lastNsu: 200,
+            mayAdoptPosition: false,
+            failures: [new FailedEntry(150, 'resNFe_v1.01.xsd', 'DocZipDecoder não decodificou o payload comprimido.')],
+        ));
+
+        $logged = [];
+        Event::listen(MessageLogged::class, function (MessageLogged $event) use (&$logged): void {
+            $logged[] = $event->message.' '.serialize($event->context);
+        });
+
+        $this->service()->capture($client, FiscalSource::NfeDistribuicao);
+
+        $path = FiscalDocument::sole()->storage_path;
+        $this->assertNotSame('', (string) $path);
+        $this->assertNotSame([], $logged, 'A captura com entrada ilegível precisa ter logado algo para a varredura valer.');
+
+        foreach ($logged as $line) {
+            $this->assertStringNotContainsString($password, $line);
+            $this->assertStringNotContainsString((string) $path, $line);
+            $this->assertDoesNotMatchRegularExpression('/<\?xml|<nfeProc|<resNFe|<docZip/', $line);
+        }
     }
 
     public function test_leaves_the_stored_position_untouched_when_no_document_is_located(): void

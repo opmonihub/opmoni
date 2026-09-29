@@ -56,9 +56,16 @@ class FiscalFailureTest extends TestCase
     public function test_document_not_addressed_to_the_cnpj_is_not_interested(): void
     {
         $this->assertSame(FiscalFailure::NotInterested, FiscalFailure::classify(200, '640'));
-        $this->assertSame(FiscalFailure::NotInterested, FiscalFailure::classify(200, '641'));
         $this->assertFalse(FiscalFailure::NotInterested->retryable());
         $this->assertFalse(FiscalFailure::NotInterested->blocksForAnHour());
+    }
+
+    public function test_document_unavailable_to_its_issuer_is_its_own_reason(): void
+    {
+        $this->assertSame(FiscalFailure::UnavailableToIssuer, FiscalFailure::classify(200, '641'));
+        $this->assertNotSame(FiscalFailure::classify(200, '640'), FiscalFailure::classify(200, '641'));
+        $this->assertFalse(FiscalFailure::UnavailableToIssuer->retryable());
+        $this->assertFalse(FiscalFailure::UnavailableToIssuer->blocksForAnHour());
     }
 
     public function test_schema_and_encoding_rejections_are_our_bug(): void
@@ -110,6 +117,7 @@ class FiscalFailureTest extends TestCase
             'cursor_ahead' => [false, false],
             'unauthorized' => [false, false],
             'not_interested' => [false, false],
+            'unavailable_to_issuer' => [false, false],
             'rejected' => [false, false],
             'upstream' => [false, true],
         ];

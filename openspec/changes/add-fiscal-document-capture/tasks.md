@@ -8,9 +8,9 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 
 - [x] 1.1 Adicionar coluna `password_encrypted` (text, nullable) em `client_certificates` e verificar que `php artisan migrate --force` roda em banco existente sem tocar nas linhas
 - [x] 1.2 Adicionar `password_encrypted` ao array `#[Fillable]` de `ClientCertificate` e o accessor `certificatePassword(): ?string` com `Crypt::decryptString`, espelhando `SerproConnection::certificatePassword()`; verificar com teste unitário que retorna a senha correta e `null` quando ausente
-- [ ] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
+- [x] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
 
-  > Reaberta (auditoria 2026-09-29): a senha é gravada, mas nenhum teste afirma que ela não aparece em log; o teste de vazamento só olha a resposta HTTP.
+  > Fechada (2026-09-29): `ClientCertificatePasswordVaultTest` captura todo `MessageLogged` no upload, na senha errada, na troca e na remoção, e afirma que a senha não aparece.
 - [x] 1.4 Garantir que `ClientCertificateResource` e qualquer `safeMetadata()` jamais exponham `password_encrypted`; verificar com teste de feature `assertJsonMissingPath` espelhando `SerproConnectionTest:24`
 - [x] 1.5 Ao remover ou substituir um certificado, apagar também a senha armazenada do anterior; verificar com teste de feature que a senha do certificado substituído não é mais descriptografável
 - [x] 1.6 Criar `ClientCertificateMaterializer` em `app/Services/Fiscal/`, espelhando `SerproCertificateMaterializer`: grava o PFX efêmero, `chmod 0600`, apaga o arquivo e zera a senha no `finally`, inclusive em exceção; verificar com teste unitário que o arquivo não existe depois de sucesso e depois de falha
@@ -26,9 +26,9 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 2.3 Registrar o disco `fiscal` em `config/filesystems.php` com `serve => false`, `throw => true` e `report => true`, apontando para `storage/app/private/fiscal`; verificar que `Storage::disk('fiscal')` resolve e que o diretório não é servido publicamente
 - [x] 2.4 Criar `FiscalDocument` e `FiscalCursor` com `BelongsToAccount`, casts e relações, mais factories; verificar com teste de feature que uma conta não enxerga documento nem cursor de outra
 - [x] 2.5 Remover `documents`: migration, model, factory, controller, request, resource, policy, binding em `AppServiceProvider`, rota `apiResource` e a relação em `Account`; verificar que `php artisan route:list` não mostra mais a rota e que a migration de remoção roda
-- [ ] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
+- [x] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
 
-  > Reaberta (auditoria 2026-09-29): não há registro de `EXPLAIN` nem índice `(account_id, model)`. A task é condicional e foi marcada sem evidência.
+  > Fechada (2026-09-29): o `EXPLAIN` no Postgres de dev mostrou a listagem varrendo o índice `(client_id, model, nsu)` inteiro com filtro em `account_id` (custo 2020). A migration `2026_09_29_131240` cria `(account_id, model, captured_at)`, e o plano passou a `Index Scan`/`Index Only Scan` (custo 6).
 
 ## 3. Núcleo de transporte e parsing
 
@@ -57,9 +57,9 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 4.4 Tratar `137` e a rejeição de consumo indevido como parada de uma hora, adotando a posição que vem no XML da rejeição; verificar com teste unitário usando fixture do `656` com posição embutida
 - [x] 4.5 Detectar a rejeição de posição à frente do serviço e marcar a posição como exigindo reconciliação sem descartar o valor armazenado; verificar com teste unitário
 - [x] 4.6 Tratar indisponibilidade do serviço e serviço paralisado como falha retentável, e a rejeição por CNPJ sem correspondência como falha de credencial do cliente; verificar com teste unitário para cada caso
-- [ ] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
+- [x] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
 
-  > Reaberta (auditoria 2026-09-29): `641` cai no mesmo caso de `640` (`FiscalFailure.php:34`, `NotInterested`), então não é motivo distinto.
+  > Fechada (2026-09-29): `641` virou `FiscalFailure::UnavailableToIssuer` (`unavailable_to_issuer` no `last_error`), sem retry nem bloqueio de uma hora; `FiscalFailureTest` fixa os dois eixos.
 
 ## 5. Persistência e execução da captura
 
@@ -145,6 +145,6 @@ contra um serviço que ninguém chamou — o gate de liberação, não este chec
 - [x] 10.2 Rodar `vendor/bin/pint --dirty --format agent` e confirmar que não há diff pendente
 - [x] 10.3 Rodar `pnpm lint`, `pnpm typecheck` e `node --test` no frontend
 - [x] 10.4 Validar a change e conferir que os três delta specs continuam consistentes com o que foi implementado
-- [ ] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
+- [x] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
 
-  > Reaberta (auditoria 2026-09-29): mesma lacuna da 1.3, sem asserção sobre log.
+  > Fechada (2026-09-29): além do teste da 1.3, `FiscalCaptureServiceTest` captura os logs de uma captura com documento gravado e entrada ilegível e afirma que a senha, o `storage_path` e XML bruto não aparecem.

@@ -9,8 +9,10 @@ use App\Models\ClientCertificate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -96,6 +98,43 @@ class ClientCertificatePasswordVaultTest extends TestCase
 
         $this->assertNull($certificate->refresh()->certificatePassword());
         $this->assertNull($this->storedCiphertext($certificate->getKey()));
+    }
+
+    /**
+     * A senha não aparece em nenhum registro de log, nem na mensagem nem no
+     * contexto. O ouvinte pega tudo o que passa pelo logger, então um canal
+     * novo ou um `Log::debug` esquecido cai aqui do mesmo jeito.
+     */
+    public function test_password_never_reaches_the_log(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->individual()->create(['account_id' => $account->getKey()]);
+        $this->actingAs($this->memberOf($account), 'sanctum');
+
+        $logged = [];
+        Event::listen(MessageLogged::class, function (MessageLogged $event) use (&$logged): void {
+            $logged[] = $event->message.' '.json_encode($event->context, JSON_PARTIAL_OUTPUT_ON_ERROR);
+        });
+
+        ['file' => $wrong] = $this->pfxUpload('errada.pfx', 'senhacerta-um');
+        $this->post("/api/clients/{$client->getKey()}/certificate", ['certificate' => $wrong, 'password' => 'senhaerrada-zz'], ['Accept' => 'application/json'])
+            ->assertStatus(422);
+
+        ['file' => $first] = $this->pfxUpload('a.pfx', 'senhacerta-um');
+        $this->post("/api/clients/{$client->getKey()}/certificate", ['certificate' => $first, 'password' => 'senhacerta-um'], ['Accept' => 'application/json'])
+            ->assertOk();
+
+        ['file' => $second] = $this->pfxUpload('b.pfx', 'senhacerta-dois');
+        $this->post("/api/clients/{$client->getKey()}/certificate", ['certificate' => $second, 'password' => 'senhacerta-dois'], ['Accept' => 'application/json'])
+            ->assertOk();
+
+        $this->delete("/api/clients/{$client->getKey()}/certificate", [], ['Accept' => 'application/json'])->assertNoContent();
+
+        foreach ($logged as $line) {
+            foreach (['senhacerta-um', 'senhacerta-dois', 'senhaerrada-zz'] as $password) {
+                $this->assertStringNotContainsString($password, $line);
+            }
+        }
     }
 
     /**

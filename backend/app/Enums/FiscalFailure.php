@@ -10,6 +10,12 @@ enum FiscalFailure: string
     case CursorAhead = 'cursor_ahead';
     case Unauthorized = 'unauthorized';
     case NotInterested = 'not_interested';
+    /**
+     * `641`: o documento existe e o fisco o nega a quem o emitiu. Não é
+     * credencial nem desinteresse do destinatário, e juntá-lo ao `640` diria ao
+     * operador que o cliente não é parte do documento quando ele é o emissor.
+     */
+    case UnavailableToIssuer = 'unavailable_to_issuer';
     case Rejected = 'rejected';
     case Upstream = 'upstream';
 
@@ -31,7 +37,8 @@ enum FiscalFailure: string
             '656', '678' => self::Blocked,
             '589' => self::CursorAhead,
             '593', '472', '473' => self::Unauthorized,
-            '640', '641' => self::NotInterested,
+            '640' => self::NotInterested,
+            '641' => self::UnavailableToIssuer,
             '215', '402', '404', '238', '239', '252', '214', '236', '217', '632', '653', '654', '999' => self::Rejected,
             default => $httpStatus === 0 || $httpStatus >= 500 ? self::Upstream : self::Rejected,
         };
