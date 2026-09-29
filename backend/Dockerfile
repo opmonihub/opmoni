@@ -2,9 +2,10 @@
 #
 # Targets:
 #   dev  (usado pelo docker-compose): toolchain + entrypoint.
-#        Código, vendor e node_modules vêm dos volumes — o entrypoint
-#        instala quando o volume está vazio ou o lock está mais novo.
-#   prod: assets compilados, sem devDependencies.
+#        Código e vendor vêm dos volumes — o entrypoint instala quando o
+#        volume está vazio ou o lock está mais novo.
+#   prod: vendor sem devDependencies, autoload otimizado. O backend é API
+#        pura — sem Node nem build de assets (a UI é o Nuxt em ../frontend).
 # Build prod: docker build --target prod -t opmoni/backend:prod ./backend
 #
 # Nenhum alvo publica porta no host: os dois expõem 9000 (FastCGI) e quem
@@ -40,17 +41,8 @@ RUN printf 'ping.path = /ping\nping.response = pong\n' > /usr/local/etc/php-fpm.
 # `queue` reusa a imagem; só troca o entrypoint (ver docker/queue-entrypoint.sh).
 COPY --chmod=755 docker/queue-entrypoint.sh /usr/local/bin/queue-entrypoint.sh
 
-# Node só entra nos alvos que rodam Vite ou compilam assets.
-FROM base AS with-node
-
-COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
-COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
-
-RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
-
 # ---------------- dev ----------------
-FROM with-node AS dev
+FROM base AS dev
 
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
@@ -62,7 +54,7 @@ ENTRYPOINT ["entrypoint.sh"]
 CMD ["php-fpm", "--nodaemonize"]
 
 # ---------------- prod ----------------
-FROM with-node AS prod
+FROM base AS prod
 
 ENV APP_ENV=production \
     APP_DEBUG=false
@@ -70,14 +62,9 @@ ENV APP_ENV=production \
 COPY composer.json composer.lock ./
 RUN composer install --no-scripts --no-interaction --prefer-dist --no-progress --no-dev --optimize-autoloader
 
-COPY package.json .npmrc ./
-RUN npm install --no-audit --no-fund
-
 COPY . .
 RUN composer dump-autoload --optimize --no-dev \
     && php artisan package:discover --ansi \
-    && npm run build \
-    && npm prune --omit=dev \
     && mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs \
     && chown -R www-data:www-data bootstrap/cache storage
 

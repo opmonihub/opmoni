@@ -23,7 +23,7 @@ cd frontend && pnpm install && pnpm dev    # use pnpm, nunca npm
 cd frontend && pnpm lint && pnpm typecheck && pnpm test
 ```
 
-Fora do Docker, o backend sobe com `composer setup && composer dev`.
+Fora do Docker, o backend sobe com `composer setup && php artisan serve`.
 
 ## Estilo e nomes
 

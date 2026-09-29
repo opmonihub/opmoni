@@ -29,7 +29,6 @@ x-backend: &backend
   volumes:
     - ./backend:/var/www/html
     - backend_vendor:/var/www/html/vendor
-    - backend_node_modules:/var/www/html/node_modules
   depends_on:
     postgres:
       condition: service_healthy
@@ -44,7 +43,7 @@ x-backend: &backend
     interval: 10s
     timeout: 5s
     retries: 5
-    # Fresh clone: composer + npm + migrate happen antes do FPM subir.
+    # Fresh clone: composer + migrate acontecem antes do FPM subir.
     start_period: 300s
   restart: unless-stopped
   networks:
@@ -191,7 +190,6 @@ networks:
 
 volumes:
   backend_vendor:
-  backend_node_modules:
   frontend_node_modules:
   frontend_nuxt:
   frontend_output:

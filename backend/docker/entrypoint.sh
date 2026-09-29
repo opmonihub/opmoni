@@ -36,10 +36,6 @@ if [ ! -f vendor/autoload.php ] \
     composer install --no-interaction --prefer-dist --no-progress
 fi
 
-if [ ! -x node_modules/.bin/vite ] || [ package.json -nt node_modules/.package-lock.json ]; then
-    npm install --no-audit --no-fund --no-package-lock
-fi
-
 if [ -f .env ] && ! grep -Eq '^APP_KEY=.+' .env; then
     php artisan key:generate --force --no-interaction --ansi
 fi

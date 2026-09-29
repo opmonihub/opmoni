@@ -6,9 +6,11 @@ use App\Models\Account;
 use App\Models\Plan;
 use App\Models\User;
 use Database\Seeders\PlanSeeder;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Testing\TestResponse;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Symfony\Component\HttpFoundation\Cookie;
 use Tests\TestCase;
 
@@ -181,6 +183,23 @@ class AuthTest extends TestCase
             'company' => 'HQ',
             'size' => 'Só eu',
         ];
+    }
+
+    /**
+     * A sessão do SPA só é segura com o middleware do Sanctum: é ele que
+     * restringe o cookie às origens de `sanctum.stateful` e valida o CSRF.
+     * Anexar só `StartSession` ao grupo `api` autentica por cookie sem essas
+     * duas guardas. O `ValidateCsrfToken` pula a checagem em teste unitário,
+     * então um 419 não provaria nada; a presença no grupo é o que se confere.
+     */
+    public function test_o_grupo_api_carrega_o_middleware_stateful_do_sanctum(): void
+    {
+        $groups = app(Kernel::class)->getMiddlewareGroups();
+
+        $this->assertContains(
+            EnsureFrontendRequestsAreStateful::class,
+            $groups['api'],
+        );
     }
 
     /**
