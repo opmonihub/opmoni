@@ -26,6 +26,8 @@ use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
+use App\Http\Controllers\Tenant\SerproMonitoringObligationController;
+use App\Http\Controllers\Tenant\SerproMonitoringOverviewController;
 use App\Http\Controllers\Tenant\SerproSyncRunController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
@@ -138,6 +140,21 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::get('serpro/sync-runs/{run}', [SerproSyncRunController::class, 'show']);
     Route::get('serpro/sync-runs/{run}/calls', [SerproSyncRunController::class, 'calls']);
     Route::post('serpro/sync-runs/{run}/resync', [SerproSyncRunController::class, 'resync']);
+
+    /*
+     * A leitura do monitoramento. O `{obligation}` carrega a barra do slug
+     * (`declaracoes/pgdas`), e por isso o `where('obligation', '.+')` — sem
+     * ele a rota quebraria o slug no primeiro `/` e a obrigação aninhada
+     * nunca resolveria.
+     *
+     * Só leitura tem rota aqui: abrir uma mensagem da caixa postal é ciência
+     * da intimação (D19), e `MSGDETALHAMENTO62` não entra sem um consentimento
+     * que nenhuma request desta lista declara — a ausência da rota é o que
+     * mantém o ato fora do acidental.
+     */
+    Route::get('serpro/monitoring/overview', SerproMonitoringOverviewController::class);
+    Route::get('serpro/monitoring/obligations/{obligation}', [SerproMonitoringObligationController::class, 'show'])
+        ->where('obligation', '.+');
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);
