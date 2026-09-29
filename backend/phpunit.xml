@@ -23,6 +23,9 @@
         </include>
     </source>
     <php>
+        <!-- A suíte roda num processo só e acumula memória até os testes de
+             carteira com 2.000 clientes; em 128M ela aborta dependendo da ordem. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
