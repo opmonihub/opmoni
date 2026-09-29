@@ -26,6 +26,7 @@ use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
+use App\Http\Controllers\Tenant\SerproMonitoringAssociationController;
 use App\Http\Controllers\Tenant\SerproMonitoringObligationController;
 use App\Http\Controllers\Tenant\SerproMonitoringOverviewController;
 use App\Http\Controllers\Tenant\SerproSyncRunController;
@@ -142,18 +143,23 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::post('serpro/sync-runs/{run}/resync', [SerproSyncRunController::class, 'resync']);
 
     /*
-     * A leitura do monitoramento. O `{obligation}` carrega a barra do slug
-     * (`declaracoes/pgdas`), e por isso o `where('obligation', '.+')` — sem
-     * ele a rota quebraria o slug no primeiro `/` e a obrigação aninhada
-     * nunca resolveria.
+     * A leitura do monitoramento, e uma só escrita: o POST de associação, que
+     * grava o vínculo `cliente × obrigação` e nada mais — nenhum job, nenhuma
+     * execução, nenhuma chamada ao provedor.
      *
-     * Só leitura tem rota aqui: abrir uma mensagem da caixa postal é ciência
-     * da intimação (D19), e `MSGDETALHAMENTO62` não entra sem um consentimento
-     * que nenhuma request desta lista declara — a ausência da rota é o que
-     * mantém o ato fora do acidental.
+     * O `{obligation}` carrega a barra do slug (`declaracoes/pgdas`), e por
+     * isso o `where('obligation', '.+')` — sem ele a rota quebraria o slug no
+     * primeiro `/` e a obrigação aninhada nunca resolveria.
+     *
+     * De fora fica a leitura de mensagem: abrir uma mensagem da caixa postal é
+     * ciência da intimação (D19), e `MSGDETALHAMENTO62` não entra sem um
+     * consentimento que nenhuma request desta lista declara — a ausência da
+     * rota é o que mantém o ato fora do acidental.
      */
     Route::get('serpro/monitoring/overview', SerproMonitoringOverviewController::class);
     Route::get('serpro/monitoring/obligations/{obligation}', [SerproMonitoringObligationController::class, 'show'])
+        ->where('obligation', '.+');
+    Route::post('serpro/monitoring/obligations/{obligation}/clients', [SerproMonitoringAssociationController::class, 'store'])
         ->where('obligation', '.+');
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);

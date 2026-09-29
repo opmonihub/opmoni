@@ -10,6 +10,7 @@ use App\Models\SerproMonitoring;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A leitura do monitoramento: quais linhas contam e o que os números dizem.
@@ -146,6 +147,63 @@ final class SerproMonitoringReader
                 ->map(fn (array $linha): array => $linha['row'])
                 ->all(),
         ];
+    }
+
+    /**
+     * A associação de cliente a obrigação: grava o vínculo e nada mais —
+     * nenhum job, nenhuma execução, nenhuma chamada ao provedor. A linha
+     * nasce `sem_dados` e com `source_at` nulo, o que a mantém fora dos
+     * números até a primeira resposta: associar é pedir, não é dado.
+     *
+     * O `404` do slug desconhecido e o `422` da obrigação sem fonte moram
+     * aqui pelo mesmo motivo que no `list` — a decisão é do catálogo, e
+     * o controller não a repete. `account_id` e `client_id` vão por
+     * `forceFill`: fora do `#[Fillable]` de propósito, e a conta nunca
+     * vem do `CurrentTenant`. A repetição é idempotente pela unique
+     * `(account_id, client_id, obligation)`.
+     *
+     * @param  array<int>  $clientIds
+     * @return array{associated: int, already: int}
+     */
+    public function associate(int $accountId, string $slug, array $clientIds): array
+    {
+        $obrigacao = $this->catalogo->get($slug);
+        abort_if($obrigacao === null, 404);
+        abort_unless(in_array($obrigacao['category'], self::CATEGORIAS_SERVIDAS, true), 422);
+
+        return DB::transaction(function () use ($accountId, $slug, $clientIds): array {
+            $associated = 0;
+            $already = 0;
+
+            foreach ($clientIds as $clientId) {
+                $record = SerproMonitoring::query()
+                    ->withoutGlobalScope('account')
+                    ->where('account_id', $accountId)
+                    ->where('client_id', $clientId)
+                    ->where('obligation', $slug)
+                    ->first();
+
+                if ($record !== null) {
+                    $already++;
+
+                    continue;
+                }
+
+                (new SerproMonitoring)
+                    ->forceFill([
+                        'account_id' => $accountId,
+                        'client_id' => $clientId,
+                        'obligation' => $slug,
+                        'state' => 'sem_dados',
+                        'source_at' => null,
+                    ])
+                    ->save();
+
+                $associated++;
+            }
+
+            return ['associated' => $associated, 'already' => $already];
+        });
     }
 
     /**
