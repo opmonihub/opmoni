@@ -20,10 +20,6 @@ The system SHALL accept a password-protected PFX/P12 certificate only when its p
 - **WHEN** the upload exceeds the allowed size or is not a valid PFX/P12 certificate
 - **THEN** the system rejects it without replacing the current valid certificate
 
-#### Scenario: Substituição de certificado
-- **WHEN** an authorized member uploads a new valid certificate for a client that already has one
-- **THEN** the new certificate and its encrypted password become current and no password of the replaced certificate remains stored
-
 #### Scenario: Senha inacessível em tempo de chamada
 - **WHEN** the stored password cannot be decrypted for an authorized outbound call
 - **THEN** the system fails that call without a partial write and reports the client as needing its certificate uploaded again
@@ -40,15 +36,15 @@ The system SHALL encrypt certificate contents before storage on a non-public dis
 - **THEN** the system responds 404 and reveals no certificate metadata
 
 ### Requirement: Substituição e remoção do certificado
-The system SHALL permit `admin` and `operador` members to replace or remove the current certificate while retaining non-secret historical metadata and deleting obsolete encrypted file contents.
+The system SHALL permit `admin` and `operador` members to replace or remove the current certificate while retaining non-secret historical metadata and deleting obsolete encrypted file contents and their stored password.
 
 #### Scenario: Substituição bem-sucedida
 - **WHEN** an authorized member uploads a new valid certificate for a client that already has one
-- **THEN** the new certificate becomes current, the old encrypted file is removed and its safe metadata remains historical
+- **THEN** the new certificate and its encrypted password become current, the old encrypted file and its password are removed, and its safe metadata remains historical
 
 #### Scenario: Remoção de certificado
 - **WHEN** an authorized member removes the current certificate
-- **THEN** its encrypted file is deleted and the client deadline status becomes not registered
+- **THEN** its encrypted file and password are deleted and the client deadline status becomes not registered
 
 ### Requirement: Controle da procuração e-CAC
 The system SHALL allow `admin` and `operador` members to register, update or remove a client's procuração e-CAC using start date, expiration date, the Serpro-issued procuração code and optional notes, SHALL keep the Serpro integration state of that procuração current, and SHALL still not require a procuração file in this version.

@@ -55,34 +55,26 @@ The system SHALL persist each run through the states queued, running, completed,
 - **THEN** the run is eventually moved to a terminal failed state rather than remaining running indefinitely
 
 ### Requirement: Estados por item de execução
-The system SHALL report each client's item of a run as one of `sincronizado`, `ignorado`, `falhou`, `indeterminado` or `nao_processado`, SHALL record the reason for every `ignorado` item, and SHALL NOT reuse the vocabulary of an obligation's situation for an item.
+The system SHALL report each client's item of a run as one of `sincronizado`, `ignorado`, `falhou`, `indeterminado` or `nao_processado`, SHALL record the reason for every `ignorado` item, and SHALL NOT reuse the vocabulary of an obligation's situation for an item. A client that is not eligible SHALL be reported as `ignorado` with the ineligibility as its reason, and SHALL be counted neither as synchronized nor as failed.
 
 #### Scenario: Item não processado
 - **WHEN** a run has not yet reached a client
 - **THEN** that client's item is reported as `nao_processado`, which is distinct from an item that was processed and skipped
 
-#### Scenario: Motivo do item ignorado
-- **WHEN** an item is `ignorado`
-- **THEN** the reason is reported, and a client with no valid power of attorney is reported as not eligible rather than as a failure
-
 #### Scenario: Item não elegível
-- **WHEN** a client has no valid power of attorney
+- **WHEN** a client is not eligible to be acted for
 - **THEN** the item is `ignorado` with the ineligibility as its reason, and is counted neither as synchronized nor as failed
 
 ### Requirement: Contagens por execução
-The system SHALL report, for each run, the total number of clients considered and the counts synchronized, skipped, failed, indeterminate and not_processed, and the total SHALL equal the sum of those five at every point of the run, including while it is still running.
+The system SHALL report, for each run, the total number of clients considered and the counts `synchronized`, `skipped`, `failed`, `indeterminate` and `not_processed`, and the total SHALL equal the sum of those five at every point of the run, including while it is still running. The count keys SHALL correspond one to one to the item states: `synchronized` to `sincronizado`, `skipped` to `ignorado`, `failed` to `falhou`, `indeterminate` to `indeterminado` and `not_processed` to `nao_processado`.
 
 #### Scenario: Consulta de uma execução
 - **WHEN** an authorized member requests a completed run
-- **THEN** the response includes total, synchronized, skipped, failed, indeterminate and not_processed counts that sum to the total considered
+- **THEN** the response includes `total`, `synchronized`, `skipped`, `failed`, `indeterminate` and `not_processed` counts that sum to the total considered
 
 #### Scenario: Indeterminado e pendente contam no total
 - **WHEN** a run has items still waiting and items whose provider call timed out after being sent
 - **THEN** `not_processed` and `indeterminate` are reported as counts of their own and neither is folded into `failed`
-
-#### Scenario: Cliente sem procuração é contado como ignorado
-- **WHEN** a client has no valid procuração
-- **THEN** it is counted as skipped and is not counted as synchronized or failed
 
 ### Requirement: Falha legível por execução
 The system SHALL map a Serpro return code or provider failure to a readable message for the member, and SHALL NOT expose the raw provider payload, the consumer secret or certificate contents.
@@ -170,23 +162,19 @@ The system SHALL record a provider timeout as a distinct indeterminate outcome, 
 - **THEN** no client that already produced an indeterminate outcome is called again within that same run
 
 ### Requirement: Falhas de configuração e permissão não são repetidas
-The system SHALL NOT retry a provider rejection that indicates a data, permission, authorization-term or configuration fault, and SHALL present it as a cause to be corrected rather than as a transient failure.
+The system SHALL NOT retry a provider rejection that indicates a data, permission, authorization-term or configuration fault, and SHALL present it as a cause to be corrected rather than as a transient failure. A provider quota rejection is not such a fault and follows the requirement on readable failures.
 
 #### Scenario: Falta de procuração e-CAC
 - **WHEN** the provider reports that the requesting party holds no procuração for the contributor
 - **THEN** the client is reported as not eligible, the run records the reason as a business condition, and the call is not repeated
 
 #### Scenario: Termo de autorização exigido ou recusado
-- **WHEN** the provider reports that an authorization term is required, is missing, is expired or was signed by another party
+- **WHEN** the provider reports that the office's authorization term is required, is missing, is expired or was signed by another party
 - **THEN** the run records the reason as a non-retryable term problem, identifies the client, and does not repeat the call
 
 #### Scenario: Divergência de documento do contratante
 - **WHEN** the provider reports that the contracting document does not match the certificate
 - **THEN** the run fails with a configuration reason naming the mismatch, and the call is not repeated
-
-#### Scenario: Limite do provedor
-- **WHEN** the provider rejects a request because a provider quota was reached
-- **THEN** the run records a recoverable reason and the affected clients are left to a later run rather than being reported as permanent failures
 
 ### Requirement: Rastreabilidade de custo por cliente
 The system SHALL attach a request tag identifying the requesting party, the subject and the service to every provider call, SHALL persist that tag together with the provider's response identifier, and SHALL be able to report the calls of a run so they can be reconciled against the provider's consumption report.

@@ -6,19 +6,19 @@ Permite que cada Account defina modelos de rotinas fiscais mensais com etapas co
 ## Requirements
 
 ### Requirement: Modelo pertence ao Account com recorrência mensal e cascata
-The system SHALL associate every process template with exactly one Account, storing name, optional description, monthly recurrence settings (generation day, due day, active flag), and a cascade flag that enforces sequential step execution.
+The system SHALL associate every process template with exactly one Account, storing name, optional description, monthly recurrence settings (generation day, due day, active flag), and a cascade flag that enforces sequential step execution. The template's due day SHALL set the due date of each generated process; the due day of each blueprint step SHALL set the due date of the task generated from it. Both SHALL be resolved as a fixed day of the reference month, capped at the month's length.
 
 #### Scenario: Criação de modelo PGDAS com cascata
 - **WHEN** an `admin` or `operador` creates a template named PGDAS with generation day 1, due day 20 and cascade enabled
 - **THEN** the system stores the template in the current Account and returns it with its recurrence and cascade settings
 
+#### Scenario: Vencimento do processo e prazo da task
+- **WHEN** a template with due day 20 and a step with due day 5 generates reference month 2026-03
+- **THEN** the process is due on 2026-03-20 and the task generated from that step is due on 2026-03-05
+
 #### Scenario: User tenta criar modelo
 - **WHEN** a `user` member attempts to create a template
 - **THEN** the system responds 403 and creates nothing
-
-#### Scenario: Isolamento entre escritórios
-- **WHEN** a member of Account A lists templates
-- **THEN** templates of Account B are never returned, and direct access to a foreign template id responds 404
 
 ### Requirement: Blueprint completo de tasks do modelo
 The system SHALL allow each template to hold an ordered list of blueprint steps with title, department as free text, optional description, due day as a fixed day-of-month (1–31), priority (`low|medium|high|urgent`, default `medium`), display order, and an optional default assignee who MUST be a member of the same Account.
@@ -79,10 +79,3 @@ The system SHALL allow activating and deactivating a template; the scheduler SHA
 #### Scenario: Modelo desativado
 - **WHEN** a template is deactivated and the scheduler runs past its generation day
 - **THEN** no automatic process is created for that month
-
-### Requirement: Auditoria de suporte
-The system SHALL record template, blueprint, rule, exception and generation writes performed in support mode in the support audit log.
-
-#### Scenario: Escrita em suporte auditada
-- **WHEN** a super_admin in support mode creates a template
-- **THEN** the write is recorded in the support log with resource, verb and identifiers

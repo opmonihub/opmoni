@@ -20,10 +20,6 @@ The system SHALL represent each task with its Account, process (whose client it 
 - **WHEN** a task assignment names a user who is not a member of the current Account
 - **THEN** the system rejects the request with a validation error
 
-#### Scenario: Isolamento entre escritórios
-- **WHEN** a member of Account A lists or updates a task of Account B
-- **THEN** the list omits it and direct access responds 404
-
 ### Requirement: Ciclo de vida da task
 The system SHALL support task statuses A fazer (`todo`), Em progresso (`doing`), Concluída (`done`) and Dispensada (`dismissed`); moving to Concluída SHALL stamp the completion time; moving to Dispensada SHALL stamp the completion time with a required reason; leaving Concluída or Dispensada SHALL clear the stamp.
 
@@ -97,13 +93,6 @@ The system SHALL provide a client-grouped task payload that the frontend renders
 #### Scenario: Agrupamento cliente-processo-task
 - **WHEN** the grouped payload is requested for March 2026
 - **THEN** each client entry lists its processes of the month and each process lists its tasks with statuses
-
-### Requirement: Auditoria de suporte
-The system SHALL record task writes performed in support mode in the support audit log.
-
-#### Scenario: Escrita em suporte auditada
-- **WHEN** a super_admin in support mode concludes a task
-- **THEN** the write is recorded in the support log with resource, verb and identifiers
 
 ### Requirement: Reagendamento do prazo via API
 

@@ -16,7 +16,7 @@ The system SHALL build the monitoring lists and the portfolio count from clients
 - **WHEN** an Account has no synchronized record at all
 - **THEN** the portfolio count is zero and every list presents an explicit empty state instead of example rows
 
-#### Scenario: Contribuinte pessoa jurídica fora do alcance da integração
+#### Scenario: Contribuinte pessoa física fora do alcance da integração
 - **WHEN** a client of the Account is a natural person
 - **THEN** that client is excluded from the total and from every list, because the integration only acts for company clients, and its exclusion is not reported as a failure of the integration
 
@@ -65,7 +65,7 @@ The system SHALL present, per monitored obligation that is classified as `direct
 ### Requirement: Situação nomeada por cliente e causa por trás do agregador
 The system SHALL present each client's situation on the row, and SHALL name the cause behind an aggregate counter rather than presenting only the aggregate. The system SHALL return the list of causes with a code for each, and the presentation of every cause SHALL be derived from that list rather than hardcoded in the client.
 
-#### Scenario: Atenção nomes a causa
+#### Scenario: Atenção nomeia a causa
 - **WHEN** the `atencao` counter of an obligation is greater than zero
 - **THEN** each client counted in it shows a named cause rather than the bare aggregate, and the named causes include the absence of a power of attorney, an invalid power of attorney, and the absence of a declaration
 
@@ -73,7 +73,7 @@ The system SHALL present each client's situation on the row, and SHALL name the 
 - **WHEN** a cause is presented
 - **THEN** its label and colour are resolved from the code supplied by the system, and adding a cause does not require redeploying the client
 
-#### Scenario: Pentência com e sem prazo
+#### Scenario: Pendência com e sem prazo
 - **WHEN** a client has an obligation that is due or approaching its due date
 - **THEN** the client is counted in `pendencias` with its due date shown, and a due date beyond thirty days does not by itself place the client in that counter
 

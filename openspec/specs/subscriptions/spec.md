@@ -13,11 +13,11 @@ The system SHALL provide exactly three plans — Básico (5 users, 50 clients, 1
 - **THEN** the three plans with their current limits are returned
 
 ### Requirement: Assinatura automática no Básico
-The system SHALL create an active subscription on the Basic plan automatically whenever an account is created.
+The system SHALL create an `ativa` subscription on the Básico plan automatically whenever an account is created.
 
 #### Scenario: Conta criada
 - **WHEN** a new account is created by any means
-- **THEN** it has exactly one active subscription on the Basic plan without manual action
+- **THEN** it has exactly one `ativa` subscription on the Básico plan without manual action
 
 ### Requirement: Bloqueio no estouro de limite
 The system SHALL reject with 422 any creation that would exceed the account's active plan limit, creating nothing.
@@ -27,8 +27,20 @@ The system SHALL reject with 422 any creation that would exceed the account's ac
 - **THEN** the system responds 422 and the client count remains 50
 
 ### Requirement: Gestão financeira global
-The system SHALL allow super_admins to change an account's plan and mark subscriptions as past_due or canceled; accounts with past_due or canceled subscriptions are blocked from writes like suspended accounts.
+The system SHALL allow only super_admins to change an account's plan and to set its subscription status to `ativa`, `inadimplente` or `cancelada`. While the account has no subscription, or its subscription is in any status other than `ativa`, every tenant write SHALL respond 403 and every tenant read SHALL keep responding. This block SHALL be distinct from account suspension, which blocks reads and writes alike.
 
-#### Scenario: Assinatura inadimplente
-- **WHEN** a subscription is marked past_due and a member attempts a write
-- **THEN** the write is rejected until the subscription is active again
+#### Scenario: Assinatura inadimplente bloqueia escrita
+- **WHEN** a subscription is `inadimplente` or `cancelada` and a member attempts a write
+- **THEN** the system responds 403 and nothing changes until the subscription is `ativa` again
+
+#### Scenario: Assinatura inadimplente mantém leitura
+- **WHEN** a subscription is `inadimplente` or `cancelada` and a member reads a tenant resource
+- **THEN** the system responds 200
+
+#### Scenario: Conta sem assinatura
+- **WHEN** an account has no subscription and a member attempts a write
+- **THEN** the system responds 403
+
+#### Scenario: Troca de plano
+- **WHEN** a super_admin moves an account from Básico to Profissional
+- **THEN** the new limits apply immediately to subsequent creations

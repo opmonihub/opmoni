@@ -6,14 +6,14 @@ Permite que pessoas criem conta, entrem e saiam do sistema com sessão segura, e
 ## Requirements
 
 ### Requirement: Registro via onboarding cria usuário, conta e assinatura
-The system SHALL, on a single registration request with name, email, password, company and team size, create the user, one account named after the company, an `admin` membership linking them, and a subscription on the Basic plan. Registration with credentials SHALL be available only during initial startup, i.e. when the database contains no users or no accounts; otherwise the system SHALL respond 403 and create nothing.
+The system SHALL, on a single registration request with name, email, password, company and team size, create the user, one account named after the company, an `admin` membership linking them, and an active subscription on the Básico plan. Registration with credentials SHALL be available only during initial startup, that is, when the database contains no users and no accounts; otherwise the system SHALL respond 403 and create nothing.
 
 #### Scenario: Primeiro registro da base
-- **WHEN** the users table is empty and a registration request arrives
+- **WHEN** the database has no users and no accounts and a registration request arrives
 - **THEN** the created user is flagged as super_admin in addition to the account, membership and subscription above
 
 #### Scenario: Registro com base já populada
-- **WHEN** users or accounts already exist and a registration request arrives
+- **WHEN** at least one user or one account exists and a registration request arrives
 - **THEN** the system responds 403 and creates nothing (later members are added by an account admin, not by self-registration)
 
 ### Requirement: Login e logout por sessão

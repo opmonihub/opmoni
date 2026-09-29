@@ -31,7 +31,7 @@ O nível que opera os recursos do account (criar, ler, atualizar, excluir), sem 
 _Avoid_:
 
 **User**:
-O nível que lê os recursos do account e executa apenas as próprias ações.
+O nível que lê todos os recursos do account e escreve apenas o que é seu (por exemplo, os próprios filtros salvos).
 _Avoid_:
 
 ### Comercial
@@ -69,8 +69,12 @@ Quem contrata o produto junto ao provedor e aparece como `contratante` no envelo
 _Avoid_: escritório, cliente
 
 **Procuração e-CAC**:
-O vínculo entre um cliente e o escritório, registrado pelo próprio escritório no e-CAC, com data de início e de fim. Diz o que o escritório cadastrou, e nada sobre o que o provedor reconheceu.
+O vínculo entre um cliente e o escritório, outorgado no e-CAC. O opmoni não a cadastra: lê do provedor, por família de serviço, o que foi outorgado e até quando vale (ver Família de serviço autorizada).
 _Avoid_: procuração, sem qualificação
+
+**Certificado do escritório**:
+O e-CNPJ de uma Account, enviado por `admin` ou `operador`, que assina o Termo de autorização. Não é credencial do provedor.
+_Avoid_: credencial do escritório
 
 **Família de serviço autorizada**:
 O que o provedor confirma que um cliente autorizou, por família de serviço, com o código emitido pelo e-CAC e um estado de integração. Um cliente pode ter uma família e não outra, e a mesma concessão pode cobrir duas famílias de uma vez.

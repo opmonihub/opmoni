@@ -17,11 +17,19 @@ The system SHALL allow a super_admin to enter any account for support and to exi
 - **THEN** the current account returns to their own account
 
 ### Requirement: Poder de admin com auditoria simples
-The system SHALL grant the super_admin in support mode the same powers as an account `admin`, and SHALL record every enter, exit and write (create, update, delete) with acting user, account, action, details and IP in an append-only log.
+The system SHALL grant the super_admin in support mode exactly the powers of an account `admin`, with no exception, including acts with legal or cost effect at the provider such as registering the ciência da intimação. The system SHALL record in an append-only log, with acting user, account, action, details and IP, every enter and exit, every tenant write (create, update, delete) and every act with effect at the provider (starting a synchronization, enabling or disabling the integration, reading a mailbox message). Other specs SHALL NOT restate this rule.
 
 #### Scenario: Escrita em suporte
 - **WHEN** a super_admin in support mode updates a client of account B
 - **THEN** the update is applied and an audit entry records who, where, what and when
+
+#### Scenario: Ato com efeito no provedor em suporte
+- **WHEN** a super_admin in support mode starts a synchronization or reads a mailbox message with ciência
+- **THEN** the act is performed as it would be for an `admin` and an audit entry records it
+
+#### Scenario: Membro fora do suporte não gera entrada
+- **WHEN** a regular member, or a super_admin inside an account where they hold a membership, performs a write
+- **THEN** no support audit entry is recorded
 
 #### Scenario: Log imutável
 - **WHEN** any client attempts to modify or delete audit entries through the application

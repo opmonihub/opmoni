@@ -25,12 +25,13 @@ context: |
   - Account (não "Conta"/"escritório"), Usuário (login global), Membro (vínculo
     usuário–Account com nível admin, operador ou user).
   - Papéis são strings (admin, operador, user); super_admin é users.is_super_admin.
-    O user só lê Work. Acesso de suporte (não "impersonação") escreve na Account
-    alheia com auditoria.
+    O user lê tudo no tenant e escreve só o que é seu (filtros salvos). Acesso de
+    suporte (não "impersonação") tem poder de admin sem exceção, com auditoria.
   - Plano, Assinatura (ativa, inadimplente, cancelada).
   - Integra Contador é o produto; SERPRO é o órgão. Credencial de plataforma é única
-    e o Contratante é sempre a plataforma. Procuração e-CAC (cadastrada) difere de
-    Família de serviço autorizada (confirmada pelo provedor).
+    e o Contratante é sempre a plataforma; o e-CNPJ do escritório é por Account e só
+    assina o termo. A procuração vem do provedor: a elegibilidade é a Família de
+    serviço autorizada, e não há cadastro manual de procuração.
   - Obrigação e Fonte da obrigação (direta, derivada, indisponível, extinta);
     Contadores (total, em dia, processando, pendências, atenção); Causa; Encerrado.
   - Execução (no máximo uma em andamento por Account) e Item de execução.
