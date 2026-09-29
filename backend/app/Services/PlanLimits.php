@@ -25,7 +25,6 @@ class PlanLimits
         $count = match ($key) {
             'users' => $account->members()->count(),
             'clients' => $account->clients()->count(),
-            'monitorings' => $account->monitorings()->count(),
         };
 
         if ($count >= $limit) {

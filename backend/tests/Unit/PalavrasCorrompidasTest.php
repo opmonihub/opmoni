@@ -482,7 +482,7 @@ final class PalavrasCorrompidasTest extends TestCase
      * conferido por
      * `MedidaDaRegraDeColagemTest::test_a_particao_dos_hapaxes_longos_e_completa`:
      *
-     * - **26** palavras de 14 caracteres ou mais aparecem uma vez só;
+     * - **27** palavras de 14 caracteres ou mais aparecem uma vez só;
      * - **15** delas a regra **acusaria** no instante em que a metade ausente
      *   aparecesse, porque a regra exige que **as duas** metades estejam no
      *   corpus e o corpus cresce com o próprio repositório. São treze com metade
@@ -497,9 +497,9 @@ final class PalavrasCorrompidasTest extends TestCase
      *   `identificadores` esperando `dores` — e mais **`infraestrutura` esperando `infra`**
      *   e **`programaticamente` esperando `programatica`**, cujas o único corte
      *   possível tem a metade **presente** isenta;
-     * - **11** não acusariam, e é a soma que fecha a partição.
+     * - **12** não acusariam, e é a soma que fecha a partição.
      *
-     * **15 + 11 = 26**, e a soma é a checagem de que a partição é completa.
+     * **15 + 12 = 27**, e a soma é a checagem de que a partição é completa.
      *
      * **A partição anterior deste parágrafo — `11 + 2 + 12` — estava errada
      * como partição, e a forma do erro importa.** O `2` era

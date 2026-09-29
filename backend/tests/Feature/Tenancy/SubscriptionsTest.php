@@ -6,7 +6,6 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\Plan;
-use App\Models\SerproMonitoring;
 use App\Models\User;
 use App\Services\PlanLimits;
 use App\Tenant\CurrentTenant;
@@ -16,7 +15,6 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class SubscriptionsTest extends TestCase
@@ -53,7 +51,7 @@ class SubscriptionsTest extends TestCase
         $this->assertSame('active', $account->subscription->status);
         $this->assertSame(Plan::bySlug('basico')->getKey(), $account->subscription->plan_id);
         $this->assertSame(
-            ['users' => 5, 'clients' => 50, 'monitorings' => 100],
+            ['users' => 5, 'clients' => 50],
             $account->subscription->plan->limits
         );
     }
@@ -106,23 +104,16 @@ class SubscriptionsTest extends TestCase
             ->assertOk();
     }
 
-    public function test_monitorings_limit_enforced_by_plan_limits_service(): void
+    public function test_chave_de_limite_desconhecida_nao_tem_contagem(): void
     {
         $account = Account::factory()->create();
-        resolve(CurrentTenant::class)->accountId = $account->getKey();
 
-        foreach (range(1, 100) as $i) {
-            SerproMonitoring::create(['name' => "Monitoramento {$i}"]);
-        }
+        // Não existe mais contagem de monitoramentos por plano: o que o limite
+        // cobria virou "cliente × obrigação", e uma chave que ninguém conta é
+        // ilimitada — nunca uma proibição silenciosa.
+        PlanLimits::assertCanCreate($account, 'monitorings');
 
-        try {
-            PlanLimits::assertCanCreate($account, 'monitorings');
-            $this->fail('Expected ValidationException when the monitorings limit is reached.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('limit', $exception->errors());
-        }
-
-        $this->assertSame(100, $account->monitorings()->count());
+        $this->assertSame(0, $account->monitorings()->count());
     }
 
     private function memberOf(Account $account, string $role): User

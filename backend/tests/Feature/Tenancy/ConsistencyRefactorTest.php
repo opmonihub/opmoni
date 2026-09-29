@@ -19,11 +19,11 @@ class ConsistencyRefactorTest extends TestCase
         $this->seed(PlanSeeder::class);
     }
 
-    public function test_monitorings_return_paginated_data_envelope(): void
+    public function test_tags_return_paginated_data_envelope(): void
     {
         $member = $this->memberOf(Account::factory()->create(), 'operador');
 
-        $this->actingAs($member, 'sanctum')->getJson('/api/monitorings')
+        $this->actingAs($member, 'sanctum')->getJson('/api/tags')
             ->assertOk()->assertJsonStructure(['data', 'meta']);
     }
 

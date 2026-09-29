@@ -26,7 +26,6 @@ use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
-use App\Http\Controllers\Tenant\SerproMonitoringController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
 use App\Models\SerproConnection;
@@ -67,7 +66,6 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::put('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'update']);
     Route::delete('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'destroy']);
     Route::apiResource('clients', ClientController::class);
-    Route::apiResource('monitorings', SerproMonitoringController::class);
     /*
      * O e-CNPJ do escritório é **da conta**, e por isso estas rotas ficam no
      * grupo `tenant` — ao contrário de `serpro/connection` mais abaixo, que é a

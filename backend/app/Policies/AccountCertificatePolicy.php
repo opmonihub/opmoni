@@ -12,8 +12,8 @@ use App\Policies\Concerns\HasTenantRole;
  * tela de integração do SERPRO publica, e escondê-lo de quem lê a conta seria
  * um `403` que não protege nada — o `admin` da conta lê a mesma tela.
  *
- * Gravar é de `admin` e `operador`, pelo mesmo motivo de `SerproMonitoring` e de
- * `Client`: o papel `user` é somente leitura na prática e não aparece em
+ * Gravar é de `admin` e `operador`, pelo mesmo motivo de `Client` e das
+ * demais escritas da conta: o papel `user` é somente leitura na prática e não aparece em
  * nenhuma policy de escrita do produto. E a mão que grava aqui grava um
  * segredo — o e-CNPJ que assina o termo em nome da conta —, o que faz de
  * "quem pode" uma pergunta de consequência, não de conveniência de tela.
