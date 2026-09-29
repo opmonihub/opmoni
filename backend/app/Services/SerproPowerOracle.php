@@ -58,6 +58,20 @@ final class SerproPowerOracle
             $token,
         );
 
+        $this->persist($accountId, $clientId, $result);
+    }
+
+    /**
+     * Grava o que o provedor respondeu, e nada mais.
+     *
+     * Separada de `refresh()` porque o `SyncSerproClientJob` já chama o
+     * serviço pelo `SerproCallRecorder` — a chamada dele é a que entra na
+     * auditoria de cobrança — e o que falta depois dela é só esta escrita.
+     * Um `persist` privado obrigaria o job a chamar o serviço duas vezes:
+     * uma para auditar, outra para gravar.
+     */
+    public function persist(int $accountId, int $clientId, SerproResult $result): void
+    {
         DB::transaction(function () use ($accountId, $clientId, $result): void {
             $granted = $this->familiasConcedidas($result->dados());
             $now = now();

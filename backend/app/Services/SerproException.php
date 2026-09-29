@@ -13,6 +13,10 @@ final class SerproException extends RuntimeException
         public readonly int $status,
         public readonly ?string $providerCode = null,
         public readonly ?string $responseId = null,
+        // A tag sai junto porque a tentativa também é auditada quando falha:
+        // o relatório de cobrança do provedor a indexa por ela, e uma exceção
+        // sem tag não chega ao `serpro_calls`.
+        public readonly ?string $requestTag = null,
     ) {
         parent::__construct($message);
     }
