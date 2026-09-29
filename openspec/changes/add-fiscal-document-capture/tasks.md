@@ -8,7 +8,9 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 
 - [x] 1.1 Adicionar coluna `password_encrypted` (text, nullable) em `client_certificates` e verificar que `php artisan migrate --force` roda em banco existente sem tocar nas linhas
 - [x] 1.2 Adicionar `password_encrypted` ao array `#[Fillable]` de `ClientCertificate` e o accessor `certificatePassword(): ?string` com `Crypt::decryptString`, espelhando `SerproConnection::certificatePassword()`; verificar com teste unitário que retorna a senha correta e `null` quando ausente
-- [x] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
+- [ ] 1.3 Gravar a senha criptografada em `ClientCertificateVault::replace()` junto ao conteúdo do certificado, mantendo a limpeza no `finally`; verificar com teste de feature que o registro gravado contém a senha e que a senha não aparece em nenhum log
+
+  > Reaberta (auditoria 2026-09-29): a senha é gravada, mas nenhum teste afirma que ela não aparece em log; o teste de vazamento só olha a resposta HTTP.
 - [x] 1.4 Garantir que `ClientCertificateResource` e qualquer `safeMetadata()` jamais exponham `password_encrypted`; verificar com teste de feature `assertJsonMissingPath` espelhando `SerproConnectionTest:24`
 - [x] 1.5 Ao remover ou substituir um certificado, apagar também a senha armazenada do anterior; verificar com teste de feature que a senha do certificado substituído não é mais descriptografável
 - [x] 1.6 Criar `ClientCertificateMaterializer` em `app/Services/Fiscal/`, espelhando `SerproCertificateMaterializer`: grava o PFX efêmero, `chmod 0600`, apaga o arquivo e zera a senha no `finally`, inclusive em exceção; verificar com teste unitário que o arquivo não existe depois de sucesso e depois de falha
@@ -18,15 +20,21 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 ## 2. Esquema
 
 - [x] 2.1 Criar migration de `fiscal_documents` com `account_id`, `client_id`, `source`, `model`, `kind`, `chave_acesso`, `event_id` NOT NULL default `''`, `nsu`, `emitente_cnpj`, `destinatario_cnpj`, `valor_total`, `emissao_at`, `evento_ocorrido_em_at`, `storage_path`, `sha256`, `xml_bytes`, `captured_at`, timestamps, e as restrições `UNIQUE (client_id, chave_acesso, event_id)`, `INDEX (client_id, model, nsu)`, `INDEX (account_id, captured_at)`; verificar que a unique rejeita documento duplicado e **aceita** múltiplos documentos sem evento
+
+  > Divergência (auditoria 2026-09-29): a unique final é `(client_id, chave_acesso, stage, event_id)`, trocada pela migration `000006`, que também acrescenta `schema`, `stage` e `digval`.
 - [x] 2.2 Criar migration de `fiscal_cursors` com `account_id`, `client_id`, `source`, `last_nsu`, `last_run_at`, `last_success_at`, `last_error`, `blocked_until`, `last_seen_at`, e `UNIQUE (client_id, source)`; verificar que a unique barra dois cursores para o mesmo cliente e fonte
 - [x] 2.3 Registrar o disco `fiscal` em `config/filesystems.php` com `serve => false`, `throw => true` e `report => true`, apontando para `storage/app/private/fiscal`; verificar que `Storage::disk('fiscal')` resolve e que o diretório não é servido publicamente
 - [x] 2.4 Criar `FiscalDocument` e `FiscalCursor` com `BelongsToAccount`, casts e relações, mais factories; verificar com teste de feature que uma conta não enxerga documento nem cursor de outra
 - [x] 2.5 Remover `documents`: migration, model, factory, controller, request, resource, policy, binding em `AppServiceProvider`, rota `apiResource` e a relação em `Account`; verificar que `php artisan route:list` não mostra mais a rota e que a migration de remoção roda
-- [x] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
+- [ ] 2.6 Adicionar os índices de performance em migration própria, se o plano de execução de `fiscal_documents` com filtro por conta e modelo mostrar seq scan; verificar com `EXPLAIN` que os filtros principais usam índice
+
+  > Reaberta (auditoria 2026-09-29): não há registro de `EXPLAIN` nem índice `(account_id, model)`. A task é condicional e foi marcada sem evidência.
 
 ## 3. Núcleo de transporte e parsing
 
 - [x] 3.1 Criar `FiscalFailure` como enum espelhando a forma de `SerproFailure`, com a separação entre o que não adianta repetir e o que adianta; verificar com teste unitário que `classify()` mapeia status HTTP e código do provedor para o caso certo
+
+  > Divergência (auditoria 2026-09-29): `NoCertificate` ficou em `FiscalSkipReason`, não em `FiscalFailure`.
 - [x] 3.2 Criar `DocZipDecoder` que higieniza whitespace do base64, decodifica, detecta por magic bytes e aceita a forma documentada e a alternativa observada em produção, decodificando entrada a entrada sem materializar o lote; verificar com teste unitário usando fixture real dos três formatos, mais payload corrompido
 - [x] 3.3 Criar `DfeSoapEnvelope` montando envelope SOAP 1.2 com namespace de serviço, `SOAPAction` e versão parametrizados por driver, sem cabeçalho SOAP, e `cUFAutor` siendo a UF do interessado; verificar com teste unitário comparando o envelope gerado contra uma fixture
 - [x] 3.4 Criar `DfeResponseParser` localizando `retDistDFeInt` por nome local, extraindo `cStat`, `xMotivo`, `ultNSU`, `maxNSU` e as entradas do lote; verificar com teste unitário que a extração é imune a prefixo de namespace
@@ -49,7 +57,9 @@ Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty
 - [x] 4.4 Tratar `137` e a rejeição de consumo indevido como parada de uma hora, adotando a posição que vem no XML da rejeição; verificar com teste unitário usando fixture do `656` com posição embutida
 - [x] 4.5 Detectar a rejeição de posição à frente do serviço e marcar a posição como exigindo reconciliação sem descartar o valor armazenado; verificar com teste unitário
 - [x] 4.6 Tratar indisponibilidade do serviço e serviço paralisado como falha retentável, e a rejeição por CNPJ sem correspondência como falha de credencial do cliente; verificar com teste unitário para cada caso
-- [x] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
+- [ ] 4.7 Tratar a rejeição de documento indisponível ao próprio emissor como motivo distinto, não como falha de captura; verificar com teste unitário
+
+  > Reaberta (auditoria 2026-09-29): `641` cai no mesmo caso de `640` (`FiscalFailure.php:34`, `NotInterested`), então não é motivo distinto.
 
 ## 5. Persistência e execução da captura
 
@@ -124,6 +134,8 @@ contra um serviço que ninguém chamou — o gate de liberação, não este chec
 ## 9. Reconciliação
 
 - [x] 9.1 Implementar a rotina de reconciliação que detecta posições faltantes na sequência armazenada e as recupera dentro do limite de consultas, com contador de tentativas; verificar com teste de feature
+
+  > Divergência a favor da spec (auditoria 2026-09-29): o código reconcilia só lacunas registradas em `fiscal_gaps`; buraco no meio da sequência armazenada não vira lacuna (`FiscalReconciliationTest.php:758`).
 - [x] 9.2 Tornar a reconciliação repetível sem efeito colateral quando não há lacuna; verificar com teste de feature rodando duas vezes
 - [x] 9.3 Agendar a reconciliação em horário fora do comercial, com fuso configurável; verificar com `php artisan schedule:list`
 
@@ -133,4 +145,6 @@ contra um serviço que ninguém chamou — o gate de liberação, não este chec
 - [x] 10.2 Rodar `vendor/bin/pint --dirty --format agent` e confirmar que não há diff pendente
 - [x] 10.3 Rodar `pnpm lint`, `pnpm typecheck` e `node --test` no frontend
 - [x] 10.4 Validar a change e conferir que os três delta specs continuam consistentes com o que foi implementado
-- [x] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
+- [ ] 10.5 Conferir que nenhuma senha de certificado, caminho interno de arquivo ou conteúdo bruto de XML aparece em resposta de API ou em log, com busca explícita no código e nos testes
+
+  > Reaberta (auditoria 2026-09-29): mesma lacuna da 1.3, sem asserção sobre log.
