@@ -21,7 +21,7 @@ dist/
 public/build
 public/hot
 
-# Logs / SO / IDE (não listar .agents: skills lá dentro devem ser commitadas)
+# Logs / SO / IDE
 *.log
 logs/
 .DS_Store
@@ -59,7 +59,12 @@ docker-compose.override.yml
 .codex/
 .cursor/
 .nova/
-.agents/skills/frontend-design/LICENSE.txt
+
+# Skills e droids de agente: instalados por ferramenta em cada máquina, não
+# versionados. Sem barra inicial para pegar também `backend/.agents/`.
+.agents/
+.factory/
+backend/.claude/skills/
 
 # Certificados A1 de dev (conteúdo criptografado — nunca versionar)
 backend/storage/app/private/certificates/
