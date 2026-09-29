@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Idioma
+
+O usuário fala português do Brasil. Toda comunicação com ele fica em pt-BR: respostas, perguntas, notas de progresso, resumos e descrições de PR. Isso vale mesmo quando a pergunta chega em outro idioma ou com erros de digitação.
+
 ## Estrutura do projeto
 
 Monorepo sem scripts na raiz. Cada pacote tem os seus.
@@ -42,6 +46,19 @@ Fora do Docker, o backend sobe com `composer setup && php artisan serve`.
 
 - Conventional Commits em português, com escopo: `feat(serpro): ...`, `fix(work): ...`, `test(guarda): ...`, `docs(plans): ...`.
 - O CI só existe em `frontend/.github/` e não roda testes. Rode as duas suítes localmente antes do PR e descreva no PR o que foi verificado.
+
+## Orquestração de agentes
+
+Os droids do projeto ficam em `.factory/droids/`: `explorer` (leitura), `log-detective` (stack rodando, leitura), `implementer` (escrita) e `griller` (entrevista de design).
+
+- Delegue trabalho independente, principalmente de leitura: exploração, diagnóstico e revisão. Tarefas sequenciais, com julgamento entre os passos, ficam na thread principal.
+- Isole cada agente por escopo de escrita. O briefing diz quais caminhos ele pode editar (por exemplo, `backend/app/Services/Fiscal/` e `backend/tests/Feature/Fiscal/`), e ele não toca o resto. Leitura é livre.
+- Nunca rode dois agentes escrevendo nos mesmos arquivos ao mesmo tempo.
+- Uma feature que cruza backend e frontend não vira dois agentes em paralelo logo de cara. Primeiro se fixa o contrato (rota, payload, status HTTP, tipos em `frontend/app/types/`) na spec ou no design. Só depois cada lado vai para um `implementer` com seu escopo.
+- Todo briefing traz: objetivo, contexto já levantado, escopo de escrita, o que não tocar, como validar e o formato do retorno.
+- O retorno é um resumo com evidência `arquivo:linha`, separando fato de inferência e listando o que foi verificado e o que ficou de fora. Nunca a transcrição.
+- A thread principal decide e fala com o usuário. O relatório do subagente é a fonte, e ninguém refaz a busca que ele já fez.
+- Subagentes seguem as mesmas armadilhas abaixo (tenancy, segredos, produção).
 
 ## Armadilhas
 
