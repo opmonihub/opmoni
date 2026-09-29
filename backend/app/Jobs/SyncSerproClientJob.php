@@ -81,6 +81,37 @@ final class SyncSerproClientJob implements ShouldQueue
         }
     }
 
+    /**
+     * O desfecho de um item que esgotou as tentativas ou morreu de forma
+     * que `handle()` não viu.
+     *
+     * Fronteira aberta (`attempted_at` gravado, resposta nunca registrada)
+     * é `indeterminado` — a chamada pode ter sido aplicada —; sem fronteira,
+     * é falha do trabalhador. Em nenhum dos dois sobe o texto da exceção:
+     * `Throwable` pode carregar segredo e documento, e o item é lido pela
+     * tela.
+     */
+    public function failed(?\Throwable $exception): void
+    {
+        $item = SerproSyncRunItem::query()
+            ->where('account_id', $this->accountId)
+            ->where('run_id', $this->runId)
+            ->where('client_id', $this->clientId)
+            ->first();
+
+        if ($item === null || $item->state !== SerproSyncItemState::NotProcessed) {
+            return;
+        }
+
+        $this->finish(
+            $item,
+            $item->attempted_at !== null
+                ? SerproSyncItemState::Indeterminate
+                : SerproSyncItemState::Failed,
+            $item->attempted_at !== null ? 'resposta_incerta' : 'falha_do_trabalhador',
+        );
+    }
+
     private function work(): void
     {
         $item = SerproSyncRunItem::query()

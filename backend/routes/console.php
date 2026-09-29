@@ -39,3 +39,12 @@ Schedule::command('serpro:renew-terms')
     ->dailyAt('01:00')
     ->timezone('America/Sao_Paulo')
     ->withoutOverlapping();
+
+/*
+ * O cão de guarda das execuções: uma passada a cada cinco minutos procura
+ * `running` sem progresso há mais de duas vezes o timeout do job. O
+ * `withoutOverlapping` impede duas varreduras sobre o mesmo conjunto.
+ */
+Schedule::command('serpro:fail-abandoned')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
