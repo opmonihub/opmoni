@@ -92,9 +92,9 @@ exposta na resposta.
 
 - [x] 6.5 Implementar o job de fan-out com `afterCommit`, carrying `accountId` explícito; verificar com `Queue::fake` que um job por cliente elegível foi despachado e nenhum pertence a outra conta
 
-- [ ] 6.6 Implementar o lock por cliente no job, de modo que duas execuções não chamem o mesmo cliente ao mesmo tempo; verificar com teste que a segunda chamada aguarda
+- [x] 6.6 Implementar o lock por cliente no job, de modo que duas execuções não chamem o mesmo cliente ao mesmo tempo; verificar com teste que a segunda chamada aguarda
 
-  > Aberta (auditoria 2026-09-29): o lock existe (`SerproClientLock`), mas a segunda entrega sai sem tocar no item em vez de aguardar (`SerproSyncJobsTest.php:175`). Decidir se a task muda ou o comportamento muda.
+  > Nota (2026-09-29): "aguarda" é pela fila, não bloqueando o worker. Com o lock ocupado, `SyncSerproClientJob` chama `release(15)` sem tocar no item; `SerproSyncJobsTest::test_o_lock_tomado_por_outro_entrega_o_item_intocado` afirma o `release` com esse atraso.
 
 - [x] 6.7 Implementar o job por cliente, idempotente, com `timeout` abaixo do `retry_after`, backoff, re-hidratação de `CurrentTenant` a partir de `accountId` e re-checagem de elegibilidade e de termo dentro de `handle()`; verificar que reentrega atualiza o item em vez de duplicar
 

@@ -172,7 +172,7 @@ class SerproSyncJobsTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_o_lock_tomado_por_outro_entrega_o_item_intocado(): void
+    public function test_o_lock_tomado_por_outro_devolve_o_job_a_fila_com_o_item_intocado(): void
     {
         [$account, $client, $run] = $this->cenarioChamavel();
         Http::fake($this->fakesDeSucesso());
@@ -181,10 +181,12 @@ class SerproSyncJobsTest extends TestCase
         $ocupado = $lock->acquire($account->getKey(), (string) $client->tax_id);
         $this->assertTrue($ocupado !== null);
 
-        (new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey()))->handle();
+        $job = (new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey()))->withFakeQueueInteractions();
+        $job->handle();
 
-        // O lock diz "outro entrega está trabalhando": nem chamada, nem
-        // estado novo — quem segura o lock termina o trabalho.
+        // O lock diz "outra entrega está trabalhando": nem chamada, nem
+        // estado novo. O job não é descartado: volta à fila e espera o lock.
+        $job->assertReleased(delay: 15);
         $this->assertSame(SerproSyncItemState::NotProcessed, $this->item($run, $client)->state);
         $this->assertSame(0, SerproCall::count());
         Http::assertNothingSent();
