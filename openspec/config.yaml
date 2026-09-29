@@ -1,32 +1,91 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Produto: opmoni, dashboard multi-tenant para escritórios contábeis brasileiros.
+  Cada escritório é uma Account e os dados ficam isolados por Account.
+  Frentes:
+  - Carteira: clientes por CPF/CNPJ, regime tributário, certificado A1 e
+    procuração e-CAC, com alertas de validade (a vencer, vencido, válido, sem cadastro).
+  - Work: rotinas mensais. Modelo (blueprint + regra de elegibilidade por regimes,
+    Tags e exceções added/removed) gera um processo por (modelo, cliente, competência);
+    cada processo tem tarefas com status, responsável, prazo e cascata opcional.
+  - Integra Contador (SERPRO) e Monitoramento: termo de autorização, procurações,
+    sincronização por execução, obrigações, contadores e caixa postal.
+  - Captura fiscal: DF-e (NF-e e CT-e) via SOAP com certificado do cliente, e reconciliação.
+  - Admin, Equipe (membros e departamentos), Assinaturas e Painel Global do super_admin.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Stack (monorepo sem scripts na raiz):
+  - backend/: Laravel 13, PHP ^8.3, Sanctum, filas Redis, PHPUnit (sqlite :memory:).
+    Serviços por domínio em app/Services/ (Fiscal/, Serpro*), jobs em app/Jobs/.
+  - frontend/: Nuxt 4, Vue 3, Nuxt UI, pnpm (nunca npm), testes com node --test.
+  - docker/nginx: /api, /sanctum e /up vão para o FPM, o resto para o Nuxt.
+  - NATS sobe no compose, mas nenhum código o usa (reservado).
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Domínio e vocabulário (CONTEXT.md é a fonte; PRODUCT.md e DESIGN.md também):
+  - Account (não "Conta"/"escritório"), Usuário (login global), Membro (vínculo
+    usuário–Account com nível admin, operador ou user).
+  - Papéis são strings (admin, operador, user); super_admin é users.is_super_admin.
+    O user só lê Work. Acesso de suporte (não "impersonação") escreve na Account
+    alheia com auditoria.
+  - Plano, Assinatura (ativa, inadimplente, cancelada).
+  - Integra Contador é o produto; SERPRO é o órgão. Credencial de plataforma é única
+    e o Contratante é sempre a plataforma. Procuração e-CAC (cadastrada) difere de
+    Família de serviço autorizada (confirmada pelo provedor).
+  - Obrigação e Fonte da obrigação (direta, derivada, indisponível, extinta);
+    Contadores (total, em dia, processando, pendências, atenção); Causa; Encerrado.
+  - Execução (no máximo uma em andamento por Account) e Item de execução.
+  - Ciência da intimação inicia prazo legal: nunca abrir mensagem sem intenção explícita.
+  - Status de tarefa: A fazer / Em progresso / Concluída / Dispensada
+    (todo/doing/done/dismissed). todo nunca é "Aberto".
+
+  Invariantes técnicas:
+  - Tenancy pela coluna account_id + trait BelongsToAccount. O escopo global não filtra
+    quando CurrentTenant está vazio (console, fila, seed): jobs gravam account_id explícito.
+  - config('fiscal.environment') tem produção como padrão; dev usa homologacao.
+  - Nunca registrar senha de certificado, XML bruto ou tokens. .env, *.pfx, *.p12,
+    *.pem fora do git.
+  - Testes que chamam o provedor real ficam no grupo PHPUnit serpro-trial (fora do padrão).
+  - Deploy e migrations de produção só com autorização explícita.
+
+  Convenções:
+  - Identificadores em inglês; comentários, nomes de teste e textos de UI em português.
+  - Commits: Conventional Commits em português com escopo (feat(serpro): ...).
+  - Frontend reusa tokens e componentes do DESIGN.md (panel.ts, pageShell.ts,
+    ErrorRetryAlert, useRetryableLoad).
+  - Não há ADRs; as decisões vivem na seção Decisions de cada design.md.
+  - Changes arquivadas: openspec/changes/archive/AAAA-MM-DD-<slug-kebab>.
+
+rules:
+  proposal:
+    - Escrever em português com as seções Why, What Changes, Capabilities e Impact.
+    - Em Capabilities, separar New e Modified; escrever "Nenhuma" quando vazio e usar os nomes kebab-case existentes em openspec/specs/.
+    - Em Impact, separar Backend, Frontend e Provedor, citando caminhos reais.
+    - Referenciar itens herdados de outra change como "(antiga N.M de <change>)".
+    - Usar o vocabulário do CONTEXT.md e evitar os termos que ele marca como proibidos.
+  design:
+    - Escrever em português, com Context, Goals / Non-Goals, Decisions, Risks / Trade-offs, Migration Plan e Open Questions.
+    - Numerar as decisões com título afirmativo (a decisão em si) seguido da justificativa e das alternativas descartadas.
+    - Declarar o impacto em tenancy (account_id, BelongsToAccount, jobs com account_id explícito), papéis, acesso de suporte e auditoria.
+    - Declarar o tratamento de segredos (certificado, tokens, XML bruto) sempre que houver integração externa.
+  specs:
+    - Títulos de Requirement e Scenario em português; corpo normativo em inglês com SHALL / SHALL NOT.
+    - Cenários no formato "- **WHEN** ..." / "- **THEN** ...".
+    - Cobrir isolamento entre Accounts, permissão por nível (ex. 403 para user) e ausência de segredos em respostas e logs quando aplicável.
+    - Nas APIs, fixar status HTTP esperados (200/201/403/404/422).
+  tasks:
+    - Escrever em português, grupos "## N. Título" por camada ou etapa e itens "- [ ] N.M" no imperativo.
+    - Cada item termina com "verificar ..." e o comando ou teste que prova a entrega.
+    - Abrir com baseline (git limpo, suítes verdes) e testes que falham antes da implementação (TDD RED).
+    - Não misturar backend e frontend no mesmo item.
+    - Chamadas reais ao provedor ficam em tasks próprias, no grupo serpro-trial.
+    - Fechar com um grupo de verificação que rode composer test, vendor/bin/pint --dirty --format agent, pnpm lint, pnpm typecheck, pnpm test, openspec validate e uma busca por segredos em logs e respostas.
+
+operations:
+  apply:
+    guidance:
+      - Implementar uma frente por vez e não avançar com teste quebrado.
+      - Registrar divergências do plano em uma subseção do tasks.md, explicando o porquê.
+  archive:
+    guidance:
+      - 'Fechar tasks com a nota "> Fechada (AAAA-MM-DD): ..." antes de arquivar.'
+      - Sincronizar os deltas em openspec/specs/ e resumir o resultado do arquivamento.
