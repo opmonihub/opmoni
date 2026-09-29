@@ -26,4 +26,14 @@ class SerproMonitoringPolicy
     {
         return in_array($this->tenantRole($user), ['admin', 'operador'], true);
     }
+
+    /**
+     * Abrir uma mensagem registra a ciência da intimação e abre prazo legal do
+     * escritório (D19). É ato em nome do cliente, não leitura do painel, e por
+     * isso é do mesmo par que escreve.
+     */
+    public function readMessage(User $user, ?SerproMonitoring $monitoring = null): bool
+    {
+        return in_array($this->tenantRole($user), ['admin', 'operador'], true);
+    }
 }

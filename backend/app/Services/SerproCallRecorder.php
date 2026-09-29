@@ -29,7 +29,7 @@ final class SerproCallRecorder
      * @throws SerproException a exceção da chamada, depois de registrada.
      */
     public function record(
-        int $runId,
+        ?int $runId,
         int $accountId,
         ?int $clientId,
         string $idSistema,
@@ -67,7 +67,7 @@ final class SerproCallRecorder
      * @param  array{status: SerproFailure, provider_code: ?string, response_id: ?string, request_tag: ?string, messages: ?array<int, array<string, mixed>>}  $outcome
      */
     private function persist(
-        int $runId,
+        ?int $runId,
         int $accountId,
         ?int $clientId,
         string $idSistema,

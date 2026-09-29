@@ -40,6 +40,19 @@ return [
         'SOLICITARPROTOCOLO91' => ['path' => 'Apoiar', 'versaoSistema' => '2.0', 'billable' => false],
         'RELATORIOSITFIS92' => ['path' => 'Emitir', 'versaoSistema' => '2.0', 'billable' => true],
         'MSGCONTRIBUINTE61' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * O detalhe de uma mensagem da caixa postal. Executá-lo **caracteriza
+         * ciência da intimação** (art. 23, § 2º, III, do Decreto 70.235/1972),
+         * e por isso nenhuma execução o chama: só `SerproMailboxReader`, depois
+         * da confirmação explícita do Membro (D19).
+         *
+         * `idSistema`, `idServico`, `versaoSistema` e o `dados` `{"isn": …}`
+         * são da documentação do serviço, lida em 2026-09-29. A página não
+         * publica o `path`; `Consultar` é o do serviço irmão da mesma caixa
+         * (`MSGCONTRIBUINTE61`) e não foi conferido contra o gateway.
+         */
+        'MSGDETALHAMENTO62' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
         'CONSDECLARACAO13' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
 
         /*

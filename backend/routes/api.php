@@ -28,6 +28,7 @@ use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
 use App\Http\Controllers\Tenant\SerproMonitoringAssociationController;
+use App\Http\Controllers\Tenant\SerproMonitoringMessageController;
 use App\Http\Controllers\Tenant\SerproMonitoringObligationController;
 use App\Http\Controllers\Tenant\SerproMonitoringOverviewController;
 use App\Http\Controllers\Tenant\SerproSyncRunController;
@@ -152,11 +153,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      * isso o `where('obligation', '.+')` — sem ele a rota quebraria o slug no
      * primeiro `/` e a obrigação aninhada nunca resolveria.
      *
-     * De fora fica a leitura de mensagem: abrir uma mensagem da caixa postal é
-     * ciência da intimação (D19), e `MSGDETALHAMENTO62` não entra sem um
-     * consentimento que nenhuma request desta lista declara — a ausência da
-     * rota é o que mantém o ato fora do acidental.
+     * A leitura de mensagem é a exceção, e é POST de propósito: abrir uma
+     * mensagem da caixa postal é ciência da intimação (D19). A request exige
+     * `ciencia: true` no corpo, e um GET, um prefetch ou um link não chegam ao
+     * `MSGDETALHAMENTO62`. Ela vem antes da listagem porque o `.+` do slug
+     * engoliria o resto do caminho.
      */
+    Route::post('serpro/monitoring/obligations/{obligation}/clients/{client}/messages/{message}', [SerproMonitoringMessageController::class, 'store'])
+        ->where(['obligation' => '.+', 'client' => '[0-9]+', 'message' => '[0-9]+']);
     Route::get('serpro/monitoring/overview', SerproMonitoringOverviewController::class);
     Route::get('serpro/monitoring/obligations/{obligation}', [SerproMonitoringObligationController::class, 'show'])
         ->where('obligation', '.+');

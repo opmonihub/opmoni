@@ -10,6 +10,8 @@ const props = defineProps<{
   open: boolean
   obligation: MonitoringObligation
   clientName: string
+  /** The provider knows a message by `isn` only inside one contributor's mailbox. */
+  clientId: number
   /**
    * What the list already knows about this message: the subject and the three
    * timestamps, not the body. A stub is enough to name what is about to happen.
@@ -29,6 +31,8 @@ const isOpen = computed({
 
 const toast = useToast()
 const { readMessage } = useSerpro()
+/** Registering ciência is an act on the client's behalf: `admin` and `operador` only. */
+const { canManageClients } = useAuth()
 
 const confirmed = ref(false)
 const message = ref<MonitoringMessage | null>(null)
@@ -73,7 +77,7 @@ async function confirm() {
   confirmed.value = true
   loading.value = true
   try {
-    message.value = await readMessage(props.obligation.slug, props.stub.id)
+    message.value = await readMessage(props.obligation.slug, props.clientId, props.stub.id)
     emit('read', props.stub.id)
   } catch {
     // Nothing was recorded, so the question stands again. A dialog left in the
@@ -113,6 +117,15 @@ async function confirm() {
           :description="stubDeadlinePassed
             ? `Registrada em ${formatMonitoringDate(stub.ciencia_em)}, com prazo encerrado em ${formatMonitoringDate(stub.prazo_limite)}. Reabrir a mensagem não muda essas datas.`
             : `Registrada em ${formatMonitoringDate(stub.ciencia_em)}, com prazo até ${formatMonitoringDate(stub.prazo_limite)}. Reabrir a mensagem não muda essas datas.`"
+        />
+
+        <UAlert
+          v-if="!canManageClients"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-lock"
+          title="Só administradores e operadores abrem mensagens"
+          description="Abrir a mensagem registra a ciência em nome do cliente. Peça a um administrador ou operador do escritório."
         />
 
         <p class="text-sm font-medium text-highlighted">
@@ -165,6 +178,7 @@ async function confirm() {
           @click="isOpen = false"
         />
         <UButton
+          v-if="canManageClients"
           :label="scienceRecorded ? 'Abrir mensagem' : 'Abrir e registrar ciência'"
           icon="i-lucide-mail-open"
           color="warning"

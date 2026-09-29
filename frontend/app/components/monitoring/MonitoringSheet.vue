@@ -353,10 +353,12 @@ async function afterAssociate() {
 const messageOpen = ref(false)
 const messageStub = ref<MonitoringMessageStub | null>(null)
 const messageClientName = ref('')
+const messageClientId = ref(0)
 
 function openMessage(row: MonitoringClient) {
   if (!row.message) return
   messageClientName.value = row.name
+  messageClientId.value = row.client_id
   messageStub.value = row.message
   messageOpen.value = true
 }
@@ -660,6 +662,7 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
       v-model:open="messageOpen"
       :obligation="obligation"
       :client-name="messageClientName"
+      :client-id="messageClientId"
       :stub="messageStub"
       @read="afterRead"
     />

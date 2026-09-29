@@ -61,6 +61,65 @@ final class SerproMonitoringMapper
     }
 
     /**
+     * A mensagem que `MSGDETALHAMENTO62` devolveu, na forma que a tela mostra.
+     *
+     * O corpo sai como texto puro: o provedor manda HTML de modelo com
+     * marcadores `++n++` que `variaveis` preenche, e a tela o mostra com
+     * `whitespace-pre-wrap`. Tirar as tags aqui é o que impede o HTML do
+     * provedor de chegar a um `v-html` no dia em que alguém o trocar.
+     *
+     * @return array{id: int, codigo: ?string, assunto: string, corpo: string, lida_em: ?string, ciencia_em: ?string, prazo_limite: ?string}
+     */
+    public function detalheMensagem(int $isn, mixed $dados): array
+    {
+        $dados = is_array($dados) ? $dados : [];
+        $mensagem = $this->primeiroObjeto($dados['conteudo'] ?? $dados);
+
+        $assunto = str_replace(
+            '++VARIAVEL++',
+            trim((string) ($mensagem['valorParametroAssunto'] ?? '')),
+            trim((string) ($mensagem['assuntoModelo'] ?? '')),
+        );
+
+        $controle = trim((string) ($mensagem['numeroControle'] ?? ''));
+
+        return [
+            'id' => $isn,
+            'codigo' => $controle === '' ? null : $controle,
+            'assunto' => $assunto,
+            'corpo' => $this->corpo(
+                (string) ($mensagem['corpoModelo'] ?? ''),
+                is_array($mensagem['variaveis'] ?? null) ? $mensagem['variaveis'] : [],
+            ),
+            'lida_em' => $this->instante($mensagem['dataLeitura'] ?? null, $mensagem['horaLeitura'] ?? null),
+            'ciencia_em' => $this->data($mensagem['dataCiencia'] ?? null),
+            'prazo_limite' => $this->data($mensagem['dataValidade'] ?? null)
+                ?? $this->data($mensagem['dataExpiracao'] ?? null),
+        ];
+    }
+
+    /**
+     * `++1++` recebe `variaveis[0]`, na ordem que a documentação do provedor
+     * define. As tags saem antes da troca, para que um valor com `<` não seja
+     * lido como marcação.
+     *
+     * @param  array<int, mixed>  $variaveis
+     */
+    private function corpo(string $modelo, array $variaveis): string
+    {
+        $texto = preg_replace('#<br\s*/?>|</p>\s*#i', "\n", $modelo) ?? '';
+        $texto = html_entity_decode(strip_tags($texto), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $texto = preg_replace_callback(
+            '/\+\+(\d+)\+\+/',
+            fn (array $m): string => (string) ($variaveis[(int) $m[1] - 1] ?? ''),
+            $texto,
+        ) ?? '';
+
+        return trim(preg_replace("/[ \t]*\n[ \t]*/", "\n", $texto) ?? '');
+    }
+
+    /**
      * `RegimeApuracao` é um objeto só: regime e instante da opção. O
      * `demonstrativoPdf` e o `textoResolucao` que acompanham são documento
      * do contribuinte em base64 e não têm coluna para morar.

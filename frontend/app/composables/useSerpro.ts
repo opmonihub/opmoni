@@ -48,10 +48,14 @@ export function useSerpro() {
    * fetched only after the member consents — never as a side effect of drawing
    * a row. Keeping one function that did both would make the legal act
    * unreachable to gate.
+   *
+   * `POST` with `ciencia: true`: the backend refuses the read without it, so a
+   * prefetch or a retried GET can never register the act.
    */
-  async function readMessage(obligation: string, id: number) {
+  async function readMessage(obligation: string, clientId: number, id: number) {
     const res = await $api<{ data: MonitoringMessage }>(
-      `/serpro/monitoring/obligations/${obligation}/messages/${id}`
+      `/serpro/monitoring/obligations/${obligation}/clients/${clientId}/messages/${id}`,
+      { method: 'POST', body: { ciencia: true } }
     )
     return res.data
   }
