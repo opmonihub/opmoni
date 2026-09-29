@@ -36,7 +36,7 @@ exposta na resposta.
 
 - [ ] 3.3 Gravar como fixture, a partir das chamadas reais ao trial, as respostas de `REGIMEAPURACAO`, `PGDASD`, `DTE` e `SITFIS`, incluindo o envelope completo e o `dados` decodificado; verificar que as fixtures contêm o payload documentado
 
-  > Aberta (auditoria 2026-09-29): `sitfis-relatorio.json` é exemplo documental, não resposta observada. Falta a captura real do SITFIS no trial.
+  > Aberta (auditoria 2026-09-29): `sitfis-relatorio.json` é exemplo documental, não resposta observada. Falta a captura real do SITFIS no trial. Movida para `serpro-contract-and-mailbox` (1.1).
 
 - [x] 3.4 Rodar a suíte determinística apenas com as fixtures, sem rede, e verificar que ela cobre envelope, decodificação dupla, `mensagens` e os dois formatos de erro
 
@@ -56,7 +56,7 @@ exposta na resposta.
 
 - [ ] 4.6a **Depende de teste de contrato real com o provedor, ainda não feito, e bloqueia a emissão.** Confirmar com o ambiente de demonstração que o termo é aceito, que os papéis do documento são os que o gateway espera, e que o reenvio de um termo válido responde `304` com o token no `ETag`. Dos três pontos que parecem erro no modelo de referência, **um é corrigido** — o espaço no nome `finalidade `, que **não sobrevive ao documento assinado** (o espaço existe na string que o modelo serializa; o que não acontece é ele chegar ao nome do elemento): `createElement('finalidade ')` lança `DOMException`, o `SimpleXMLElement` do modelo emite `<finalidade  texto=…/>` cujo `nodeName` já é `finalidade` sem o espaço, e o `loadXML`/`saveXML` da própria assinatura o apaga — **e dois são mantidos verbatim por decisão**: a canonicalização exclusiva do digest contra a `Reference` inclusiva e a vigência `+30 days`. **A documentação do termo do provedor foi lida em 2026-09-28 e responde `200`**, o que muda o registro e não o código: ela confirma o elemento `finalidade` sem o espaço e a canonicalização **inclusiva** que a `Reference` declara, de modo que as duas decisões da Task 4 passam de inferidas a documentadas. O que ela **não** resolve é a vigência — declara só o formato `AAAAMMDD`, sem número de dias e sem XSD — e os dois exemplos que publica duram 200 e 145 dias, de `20220614` e `20220808` até `20221231`. **O fim no mesmo dia prova menos do que parece, e o argumento não depende dele:** ele descarta uma **constante** de N dias e não descarta um período **calculado**, e o candidato calculado está à vista — 31 de dezembro é o término natural de um documento fiscal brasileiro, e os dois exemplos são de 2022, o que "válido até o fim do exercício" explica perfeitamente. O que o fim comum sustenta é mais fraco e é o bastante: **nem 145 nem 200 são inferíveis**, porque sob qualquer regra compatível com as amostras os dois números são artefato da regra. **O `+30 days` fica por assimetria de risco:** se a regra real for mais longa, um termo de trinta dias é mais curto que o máximo e provavelmente é aceito; se for mais curta, o termo é recusado, e essa falha é **tarde e recuperável** — a renovação diária continua, a recusa fica como `recusado` e a ação registrada é re-assinar. O inverso não vale: termo longo demais falha de imediato contra o gateway real, e recusa é o único estado que o produto não desfaz sem o e-CNPJ novo. **O contra-argumento fica ao lado e não escondido:** trinta dias é prazo curto para autorização feita para durar um exercício, e a documentação do provedor — a única coisa que um leitor não técnico leria — aponta para o fim do ano. O valor é **não confirmado**; trocar por 145 ou 200 seria promover uma amostra contraditória a regra. **Este item tem de pagar antes de qualquer prova de contrato ser gravada**, porque a constante entra em `formatDigest()` e trocá-la reabre o gate por si. Nenhum teste local prova aceitação; emitir termo sem isso é emitir termo sem prova de que o provedor o aceita
 
-  > Aberta (auditoria 2026-09-29): o único contrato real é `SerproTrialContractTest`, que cobre só a consulta de regime. Bloqueia a 4.8 em produção.
+  > Aberta (auditoria 2026-09-29): o único contrato real é `SerproTrialContractTest`, que cobre só a consulta de regime. Bloqueia a 4.8 em produção. Movida para `serpro-contract-and-mailbox` (2.1 e 2.2).
 
 - [x] 4.7 Gerar migration, model, factory, policy e resource de `serpro_authorization_terms`, com o documento assinado guardado verbatim, o token, o vencimento e o estado; verificar com rollback. **As colunas `term_format_sha256` e `term_format_proven_at` não são deste item**: elas alteram `serpro_connections`, que já existe, e pertencem ao 4.8, que é quem implementa o gate que as lê — juntá-las à migration de uma tabela nova misturia um `ALTER` de tabela existente numa migration de criação e confundiria a ordem de rollback
 
@@ -94,7 +94,7 @@ exposta na resposta.
 
 - [x] 6.6 Implementar o lock por cliente no job, de modo que duas execuções não chamem o mesmo cliente ao mesmo tempo; verificar com teste que a segunda chamada aguarda
 
-  > Nota (2026-09-29): "aguarda" é pela fila, não bloqueando o worker. Com o lock ocupado, `SyncSerproClientJob` chama `release(15)` sem tocar no item; `SerproSyncJobsTest::test_o_lock_tomado_por_outro_entrega_o_item_intocado` afirma o `release` com esse atraso.
+  > Nota (2026-09-29): "aguarda" é pela fila, não bloqueando o worker. Com o lock ocupado, `SyncSerproClientJob` chama `release(15)` sem tocar no item; `SerproSyncJobsTest::test_o_lock_tomado_por_outro_devolve_o_job_a_fila_com_o_item_intocado` afirma o `release` com esse atraso.
 
 - [x] 6.7 Implementar o job por cliente, idempotente, com `timeout` abaixo do `retry_after`, backoff, re-hidratação de `CurrentTenant` a partir de `accountId` e re-checagem de elegibilidade e de termo dentro de `handle()`; verificar que reentrega atualiza o item em vez de duplicar
 
@@ -122,7 +122,7 @@ exposta na resposta.
 
 - [ ] 7.5 Registrar as rotas novas em `routes/api.php` dentro do grupo `['auth:sanctum', 'tenant']`, sem versionamento, e verificar com `php artisan route:list`
 
-  > Aberta (auditoria 2026-09-29): `route:list` mostra 17 rotas `serpro/*`, mas falta `serpro/monitoring/obligations/{o}/messages/{id}`, chamada por `frontend/app/composables/useSerpro.ts:54`.
+  > Aberta (auditoria 2026-09-29): `route:list` mostra 17 rotas `serpro/*`, mas falta `serpro/monitoring/obligations/{o}/messages/{id}`, chamada por `frontend/app/composables/useSerpro.ts:54`. A ausência é deliberada: ler a mensagem registra a ciência e abre prazo (D19). Movida para `serpro-contract-and-mailbox` (3.1 e 3.2), com consentimento explícito.
 
 - [x] 7.6 Cobrir a suíte com `php artisan test --compact` e formatar com `vendor/bin/pint --dirty --format agent`, confirmando que nenhum teste novo e nenhum arquivo existente quebrou
 
