@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13 / PHP ^8.3 / Sanctum stateful (session cookie, sem JWT) / pgsql (prod) + sqlite :memory: (testes) / redis fila-cache / Nuxt 4 + Vue 3 + Nuxt UI / pnpm@12.5.1 / NATS provisionado (sem cliente PHP, não mexer no serviço).
 
-**Spec:** `PRODUCT.md`, `CONTEXT.md`, `openspec/specs/tenant/*` (accounts, auth, isolation, subscriptions, client-portfolio, client-fiscal-access A1, ecac, cnpj-lookup, member-directory, team-departments, work-templates/processes/tasks), `AGENTS.md` (raiz), `backend/AGENTS.md`, `docker-compose.yml`
+**Spec:** `PRODUCT.md`, `CONTEXT.md`, `openspec/specs/*` (accounts, auth, isolation, subscriptions, client-portfolio, client-fiscal-access A1, ecac, cnpj-lookup, member-directory, team-departments, work-templates/processes/tasks), `AGENTS.md` (raiz), `backend/AGENTS.md`, `docker-compose.yml`
 
 ## Global Constraints
 

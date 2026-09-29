@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13, PHP ^8.3, PHPUnit, existing `Http::fake()`, `Storage::fake('fiscal')` and `Storage::fake('certificates')`.
 
-**Spec:** `openspec/changes/add-fiscal-document-capture/specs/tenant/fiscal-capture/spec.md` (NF-e and CT-e, cursor, events), `openspec/changes/add-fiscal-document-capture/design.md` (decisions 1–4, 7 and CT-e notes).
+**Spec:** `openspec/changes/add-fiscal-document-capture/specs/fiscal-capture/spec.md` (NF-e and CT-e, cursor, events), `openspec/changes/add-fiscal-document-capture/design.md` (decisions 1–4, 7 and CT-e notes).
 
 ## Global Constraints
 

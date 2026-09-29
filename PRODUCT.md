@@ -59,7 +59,7 @@ O nome do produto é opmoni. A voz da interface é português direto, com o voca
 
 ## Evidence on Hand
 
-- Specs vigentes: `openspec/specs/tenant/` (carteira, contas, equipe, work-templates / work-processes / work-tasks / work-calendar, etc.).
+- Specs vigentes: `openspec/specs/` (carteira, contas, equipe, work-templates / work-processes / work-tasks / work-calendar, etc.).
 - Change arquivado de Work: `openspec/changes/archive/2026-09-24-work/` (+ redesenho de calendário e alinhamentos posteriores sob `openspec/changes/`).
 - Produto em execução no monorepo (API Laravel 13 / PHP ^8.3, dashboard Nuxt 4 + Nuxt UI). Superfícies Work: `frontend/app/pages/work/`, componentes e utilitários em `frontend/app/components/work/` e `frontend/app/utils/workGroupedTable.ts`, ações compartilhadas em `frontend/app/composables/useWorkTaskActions.ts`.
 - Referência visual somente-leitura TaskHub em `.ref/` (não importar às cegas).

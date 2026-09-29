@@ -14,7 +14,7 @@ Ver `proposal.md` para a motivação. O que segue é o estado atual que obriga a
 
 **Scaffolding a remover.** `documents` tem `Route::apiResource`, controller, request, resource, policy, factory e binding em `AppServiceProvider:72`, mas nenhum consumidor no frontend. É resíduo do template.
 
-**Achados de pesquisa que anulam premissas** (ver `specs/tenant/fiscal-capture/spec.md` para o comportamento resultante):
+**Achados de pesquisa que anulam premissas** (ver `specs/fiscal-capture/spec.md` para o comportamento resultante):
 
 - A requisição de Distribuição DF-e **não é assinada**. O XSD tem sequência fechada e rejeita assinatura injetada com `215`. O WS não tem grupo de regras de assinatura. Autenticação é mTLS.
 - NFC-e (modelo 65) **não chega** por esse serviço — regra H12 rejeita `mod` ≠ 55.

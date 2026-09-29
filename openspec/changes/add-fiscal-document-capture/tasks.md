@@ -1,6 +1,6 @@
 # Tasks — add-fiscal-document-capture
 
-Referência: `specs/tenant/fiscal-capture/spec.md`, `specs/tenant/fiscal-documents-ui/spec.md`, `specs/tenant/client-fiscal-access/spec.md`, `design.md`.
+Referência: `specs/fiscal-capture/spec.md`, `specs/fiscal-documents-ui/spec.md`, `specs/client-fiscal-access/spec.md`, `design.md`.
 
 Convenção de verificação em todas as etapas de PHP: `vendor/bin/pint --dirty --format agent` antes de considerar a tarefa concluída.
 

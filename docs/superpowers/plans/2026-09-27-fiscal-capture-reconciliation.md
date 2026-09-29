@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13, PHP ^8.3 (runtime 8.4), PostgreSQL in production, Redis cache/queue, PHPUnit, existing HTTP fake and filesystem fake.
 
-**Spec:** `openspec/changes/add-fiscal-document-capture/specs/tenant/fiscal-capture/spec.md` (cursor, consumption, reconciliation) and `openspec/changes/add-fiscal-document-capture/design.md` (decisions 5–7, 10–11).
+**Spec:** `openspec/changes/add-fiscal-document-capture/specs/fiscal-capture/spec.md` (cursor, consumption, reconciliation) and `openspec/changes/add-fiscal-document-capture/design.md` (decisions 5–7, 10–11).
 
 ## Global Constraints
 

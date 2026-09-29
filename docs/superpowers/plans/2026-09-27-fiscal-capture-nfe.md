@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13 / PHP 8.3, PostgreSQL, Redis (cache + fila), PHPUnit 12, Nuxt 4 + Vue 3 + Nuxt UI v4, `@tanstack/table-core`, `unovis`, `node --test`.
 
-**Spec:** `openspec/changes/add-fiscal-document-capture/` — `proposal.md`, `design.md`, `tasks.md`, e os deltas em `specs/tenant/{fiscal-capture,fiscal-documents-ui,client-fiscal-access}/spec.md`.
+**Spec:** `openspec/changes/add-fiscal-document-capture/` — `proposal.md`, `design.md`, `tasks.md`, e os deltas em `specs/{fiscal-capture,fiscal-documents-ui,client-fiscal-access}/spec.md`.
 
 ## Global Constraints
 

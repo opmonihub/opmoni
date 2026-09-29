@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 13, PHP ^8.3, Sanctum, PHPUnit, Nuxt 4, Vue 3, Nuxt UI v4, pnpm 12.5.1, `node --test` (not Vitest).
 
-**Spec:** `openspec/changes/add-fiscal-document-capture/specs/tenant/fiscal-documents-ui/spec.md`, `openspec/changes/add-fiscal-document-capture/specs/tenant/client-fiscal-access/spec.md`, `openspec/changes/add-fiscal-document-capture/design.md` (decisions 9–12 and 145–149).
+**Spec:** `openspec/changes/add-fiscal-document-capture/specs/fiscal-documents-ui/spec.md`, `openspec/changes/add-fiscal-document-capture/specs/client-fiscal-access/spec.md`, `openspec/changes/add-fiscal-document-capture/design.md` (decisions 9–12 and 145–149).
 
 ## Global Constraints
 
