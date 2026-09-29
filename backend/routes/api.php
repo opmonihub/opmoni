@@ -26,6 +26,7 @@ use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
+use App\Http\Controllers\Tenant\SerproSyncRunController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
 use App\Models\SerproConnection;
@@ -121,6 +122,22 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      */
     Route::get('serpro/enablement', [SerproAccountEnablementController::class, 'show']);
     Route::put('serpro/enablement', [SerproAccountEnablementController::class, 'update']);
+
+    /*
+     * As execuções de sincronização. O POST é o disparo manual — a rotina
+     * agendada nasce fora daqui — e a guarda "uma execução ativa por conta"
+     * mora no `SerproRunStarter`, sob lock da linha da conta. `resync` é
+     * POST de propósito: cria uma execução nova ligada à anterior, e não
+     * reabre a terminada — reabrir apagaria o histórico que a tela mostra.
+     * Escrever é de `admin`/`operador` (cada execução gasta a cota do
+     * provedor); ler é de qualquer Membro, e execução alheia é `404` pelo
+     * binding restrito da trait.
+     */
+    Route::get('serpro/sync-runs', [SerproSyncRunController::class, 'index']);
+    Route::post('serpro/sync-runs', [SerproSyncRunController::class, 'store']);
+    Route::get('serpro/sync-runs/{run}', [SerproSyncRunController::class, 'show']);
+    Route::get('serpro/sync-runs/{run}/calls', [SerproSyncRunController::class, 'calls']);
+    Route::post('serpro/sync-runs/{run}/resync', [SerproSyncRunController::class, 'resync']);
     Route::apiResource('processes', ProcessController::class);
     Route::get('account/members/directory', [AccountMemberController::class, 'directory']);
     Route::apiResource('process-templates', ProcessTemplateController::class);

@@ -23,6 +23,7 @@ class SerproSyncRunResource extends JsonResource
     {
         return [
             'id' => $this->getKey(),
+            'previous_run_id' => $this->previous_run_id,
             'state' => $this->state->value,
             'reason' => $this->reason,
             'total' => $this->total,
@@ -33,6 +34,7 @@ class SerproSyncRunResource extends JsonResource
             'not_processed' => $this->not_processed,
             'started_at' => $this->started_at?->toISOString(),
             'finished_at' => $this->finished_at?->toISOString(),
+            'items' => SerproSyncRunItemResource::collection($this->whenLoaded('items')),
         ];
     }
 }

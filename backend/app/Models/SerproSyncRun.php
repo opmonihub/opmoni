@@ -57,6 +57,15 @@ class SerproSyncRun extends Model
         return $this->belongsTo(User::class, 'requested_by');
     }
 
+    /**
+     * A execução que esta retentou, quando existe. Re-sync é execução nova,
+     * e esta relação é a linha do tempo que o id novo preservaria.
+     */
+    public function previous(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'previous_run_id');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(SerproSyncRunItem::class, 'run_id');
