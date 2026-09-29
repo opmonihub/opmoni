@@ -20,6 +20,6 @@ Nenhuma.
 
 ## Impact
 
-- Backend: `routes/api.php` (rota `serpro/monitoring/obligations/{o}/messages/{id}`), controller de monitoramento, fixtures em `tests/Fixtures/serpro/`, teste de contrato do grupo `serpro-trial`.
-- Frontend: `useSerpro.ts` já chama a rota. A tela precisa pedir a confirmação antes da chamada.
+- Backend: `routes/api.php` (rota `POST serpro/monitoring/obligations/{o}/clients/{client}/messages/{id}`, com `ciencia: true` no corpo), `SerproMailboxReader`, `SerproMonitoringMessageController`. As fixtures e o contrato do termo foram para `serpro-provider-contract`.
+- Frontend: `useSerpro.ts` manda o cliente e a confirmação; `MessageDetail.vue` só oferece a leitura a `admin` e `operador`.
 - Provedor: exige credenciais do trial e do ambiente de demonstração.
