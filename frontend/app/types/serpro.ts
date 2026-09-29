@@ -161,6 +161,32 @@ export interface MonitoringObligationSummary {
   attention_reasons: AttentionReason[]
 }
 
+/**
+ * The shape the API answers for an obligation the provider does not serve
+ * (`unavailable` or `extinct`). Every counter is `null`, not `0`: a zero
+ * would claim "nobody needs attention" about an obligation no client can be
+ * pending for, and `null` is what tells the panel not to draw one.
+ */
+export interface MonitoringObligationUnservedSummary {
+  obligation: string
+  category: 'unavailable' | 'extinct'
+  total: null
+  em_dia: null
+  processando: null
+  pendencias: null
+  atencao: null
+  encerrado: null
+  progress: null
+  current_page: 1
+  attention_reasons: []
+}
+
+/**
+ * What `listObligation` returns: the served summary, or the unserved variant
+ * when the category says the provider never answers for this obligation.
+ */
+export type MonitoringObligationResponse = MonitoringObligationSummary | MonitoringObligationUnservedSummary
+
 export interface MonitoringOverview {
   portfolio_total: number
   attention: Record<string, number>

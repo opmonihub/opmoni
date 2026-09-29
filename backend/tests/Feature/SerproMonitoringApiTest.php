@@ -2,16 +2,31 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SerproAuthorizationTermState;
 use App\Enums\SerproSyncItemState;
+use App\Enums\SerproSyncRunState;
+use App\Jobs\FanOutSerproRunJob;
+use App\Jobs\SyncSerproClientJob;
 use App\Models\Account;
+use App\Models\AccountCertificate;
 use App\Models\AccountUser;
 use App\Models\Client;
+use App\Models\SerproAuthorizationTerm;
+use App\Models\SerproClientAuthorization;
+use App\Models\SerproConnection;
 use App\Models\SerproMonitoring;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\SerproTokenPair;
+use App\Tenant\CurrentTenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -23,6 +38,24 @@ use Tests\TestCase;
 class SerproMonitoringApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        CarbonImmutable::setTestNow('2026-09-28 12:00:00');
+        Cache::flush();
+        Http::preventStrayRequests();
+        resolve(CurrentTenant::class)->accountId = null;
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        resolve(CurrentTenant::class)->accountId = null;
+
+        parent::tearDown();
+    }
 
     public function test_overview_conta_so_clientes_pj_com_registro_sincronizado(): void
     {
@@ -323,6 +356,116 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonPath('data.portfolio_total', 0);
     }
 
+    public function test_a_execucao_completa_povoa_a_leitura_e_a_conta_vizinha_fica_vazia(): void
+    {
+        Queue::fake();
+        CarbonImmutable::setTestNow('2026-09-28 12:00:00');
+
+        $account = $this->contaPronta();
+        $client = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '33683111000875',
+        ]);
+        $member = $this->memberOf($account, 'operador');
+
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => Http::response([
+                'expires_in' => 2008,
+                'access_token' => 'access-1',
+                'jwt_token' => 'jwt-1',
+            ]),
+            '*/integra-contador/v1/Consultar' => function ($request) {
+                $servico = $request->data()['pedidoDados']['idServico'] ?? '';
+
+                $dados = match ($servico) {
+                    // O oráculo concede a caixa postal e nada mais: a
+                    // outorga do PGDAS chega pela linha semeada abaixo —
+                    // `SerproPowerNames` ainda não conhece o nome que a
+                    // família 00146 teria na resposta, e semear antes do
+                    // oráculo a marcaria como recusada.
+                    'OBTERPROCURACAO41' => '[{"dtexpiracao":"20270101","nrsistemas":"1","sistemas":["Caixa Postal - Mensagens"]}]',
+                    'MSGCONTRIBUINTE61' => '{}',
+                    // Declaração retificadora mais recente que a original,
+                    // e um DAS pago: é o caminho cheio da projeção.
+                    'CONSDECLARACAO13' => '{"anocalendario":2026,"periodos":[{"periodoApuracao":202601,"operacoes":['
+                        .'{"tipoOperacao":"Original","indiceDeclaracao":{"numeroDeclaracao":"00000000202601001","dataHoraTransmissao":"20260220152512","malha":""},"indiceDas":null},'
+                        .'{"tipoOperacao":"Declaração Retificadora","indiceDeclaracao":{"numeroDeclaracao":"00000000202601002","dataHoraTransmissao":"20260301101010","malha":null},"indiceDas":null},'
+                        .'{"tipoOperacao":"Geração de DAS","indiceDeclaracao":null,"indiceDas":{"numeroDas":"07202215764027873","datahoraEmissaoDas":"20260306153456","dasPago":true}}]}]}',
+                    default => '{}',
+                };
+
+                return Http::response([
+                    'status' => 200,
+                    'dados' => $dados,
+                    'mensagens' => [['codigo' => 'Sucesso', 'texto' => 'Requisição efetuada com sucesso']],
+                    'responseId' => 'resp-'.$servico,
+                ]);
+            },
+        ]);
+
+        $run = SerproSyncRun::factory()->create(['account_id' => $account->getKey()]);
+        (new FanOutSerproRunJob($run->getKey(), $account->getKey()))->handle();
+
+        $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
+        $job->handle();
+
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'family' => '00146',
+            'code' => '00146',
+        ]);
+
+        $job->handle();
+        $job->handle();
+        $job->handle();
+
+        $run->refresh();
+        $this->assertSame(SerproSyncRunState::Completed, $run->state);
+        $this->assertSame(1, $run->synchronized);
+
+        $this->actingAs($member, 'sanctum')
+            ->getJson('/api/serpro/monitoring/overview')
+            ->assertOk()
+            ->assertJsonPath('data.portfolio_total', 1)
+            ->assertJsonPath('data.attention.declaracoes/pgdas', 0)
+            ->assertJsonPath('data.attention.caixas-postais/e-cac', 0);
+
+        $this->actingAs($member, 'sanctum')
+            ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.em_dia', 1)
+            ->assertJsonPath('data.atencao', 0)
+            ->assertJsonPath('data.progress.transmitted', 1)
+            ->assertJsonPath('data.progress.requested', 1)
+            ->assertJsonPath('data_rows.0.client_id', $client->getKey())
+            ->assertJsonPath('data_rows.0.tax_id', '33683111000875')
+            ->assertJsonPath('data_rows.0.situacao', 'em_dia')
+            ->assertJsonPath('data_rows.0.stale', false)
+            ->assertJsonPath('data_rows.0.fields.gi_declaracao', '00000000202601002')
+            ->assertJsonPath('data_rows.0.periods.0.period', '2026-01')
+            ->assertJsonPath('data_rows.0.periods.0.rectified', true)
+            ->assertJsonPath('data_rows.0.periods.0.slip_paid', true)
+            ->assertJsonPath('data_rows.0.periods.0.slip_number', '07202215764027873');
+
+        // A conta vizinha, com a mesma leitura, responde o vazio dela.
+        $vizinha = Account::factory()->create();
+        $membroDaVizinha = $this->memberOf($vizinha, 'admin');
+
+        $this->actingAs($membroDaVizinha, 'sanctum')
+            ->getJson('/api/serpro/monitoring/overview')
+            ->assertOk()
+            ->assertJsonPath('data.portfolio_total', 0);
+
+        $this->actingAs($membroDaVizinha, 'sanctum')
+            ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
+            ->assertOk()
+            ->assertJsonPath('data.total', 0)
+            ->assertJsonCount(0, 'data_rows');
+    }
+
     private function memberOf(Account $account, string $role): User
     {
         $user = User::factory()->create();
@@ -344,5 +487,74 @@ class SerproMonitoringApiTest extends TestCase
             'source_at' => '2026-09-26 10:00:00',
             ...$atributos,
         ]);
+    }
+
+    /**
+     * Conta com integração ligada, certificado e termo vigente: o que a fase
+     * de seleção do job exige antes da primeira chamada.
+     */
+    private function contaPronta(): Account
+    {
+        $account = Account::factory()->create(['settings' => ['serpro_enabled' => true]]);
+
+        if (SerproConnection::current() === null) {
+            SerproConnection::factory()->create([
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret_encrypted' => Crypt::encryptString('segredo'),
+                'certificate_encrypted' => Crypt::encryptString($this->pfxDaPlataforma()),
+                'certificate_password_encrypted' => Crypt::encryptString('senha'),
+                'contratante_numero' => '12345678000195',
+                'contratante_tipo' => 2,
+                'certificate_valid_until' => now()->addYear(),
+            ]);
+        }
+
+        SerproAuthorizationTerm::forceCreate([
+            'account_id' => $account->getKey(),
+            'author_document' => '12345678000195',
+            'document_encrypted' => Crypt::encryptString('<termo/>'),
+            'document_expires_on' => '2027-01-01',
+            'signed_at' => now(),
+            'state' => SerproAuthorizationTermState::Autenticado,
+            'token_encrypted' => Crypt::encryptString('token-do-termo'),
+            'token_expires_at' => CarbonImmutable::parse('2026-09-29'),
+        ]);
+
+        AccountCertificate::factory()->create([
+            'account_id' => $account->getKey(),
+            'document' => '12345678000195',
+        ]);
+
+        return $account;
+    }
+
+    /**
+     * O mesmo PFX que `SerproClientTest` gera em runtime: `assertIdentity()`
+     * recusa certificado de mentira antes de qualquer rede.
+     */
+    private function pfxDaPlataforma(): string
+    {
+        $config = file_exists('/etc/ssl/openssl.cnf') ? ['config' => '/etc/ssl/openssl.cnf'] : [];
+
+        $key = openssl_pkey_new(array_merge(
+            ['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA],
+            $config,
+        ));
+        $this->assertNotFalse($key);
+
+        $csr = openssl_csr_new(
+            ['CN' => 'SERPRO PLATAFORMA LTDA:12345678000195', 'serialNumber' => '12345678000195'],
+            $key,
+            array_merge(['digest_alg' => 'sha256'], $config),
+        );
+        $this->assertNotFalse($csr);
+
+        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $this->assertNotFalse($certificate);
+
+        $pfx = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $pfx, $key, 'senha'));
+
+        return $pfx;
     }
 }

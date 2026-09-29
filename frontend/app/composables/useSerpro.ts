@@ -1,7 +1,7 @@
 import type {
   MonitoringClient,
   MonitoringMessage,
-  MonitoringObligationSummary,
+  MonitoringObligationResponse,
   MonitoringOverview,
   MonitoringSituacao,
   SerproAccountCertificate,
@@ -36,7 +36,7 @@ export function useSerpro() {
    * that issued two calls to render one list could disagree with itself.
    */
   async function listObligation(obligation: string, params: ObligationListParams = {}) {
-    return $api<{ data: MonitoringObligationSummary, data_rows: MonitoringClient[] }>(
+    return $api<{ data: MonitoringObligationResponse, data_rows: MonitoringClient[] }>(
       `/serpro/monitoring/obligations/${obligation}`,
       { query: queryOf(params) }
     )
