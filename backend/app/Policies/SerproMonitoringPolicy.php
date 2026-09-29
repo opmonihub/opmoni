@@ -6,6 +6,13 @@ use App\Models\SerproMonitoring;
 use App\Models\User;
 use App\Policies\Concerns\HasTenantRole;
 
+/**
+ * Quem lê o monitoramento e quem associa clientes a uma obrigação. Ler é de
+ * qualquer Membro — o painel é de todos. Associar é escrita — o vínculo
+ * `cliente × obrigação` entra na próxima execução e passa a custar cota do
+ * provedor — e por isso é de `admin` e `operador`, o mesmo par que dispara
+ * a execução.
+ */
 class SerproMonitoringPolicy
 {
     use HasTenantRole;
@@ -15,25 +22,8 @@ class SerproMonitoringPolicy
         return $this->tenantRole($user) !== null;
     }
 
-    public function view(User $user, SerproMonitoring $monitoring): bool
-    {
-        return $this->tenantRole($user) !== null && $this->isTenantModel($monitoring->account_id);
-    }
-
-    public function create(User $user): bool
+    public function associate(User $user, ?SerproMonitoring $monitoring = null): bool
     {
         return in_array($this->tenantRole($user), ['admin', 'operador'], true);
-    }
-
-    public function update(User $user, SerproMonitoring $monitoring): bool
-    {
-        return in_array($this->tenantRole($user), ['admin', 'operador'], true)
-            && $this->isTenantModel($monitoring->account_id);
-    }
-
-    public function delete(User $user, SerproMonitoring $monitoring): bool
-    {
-        return in_array($this->tenantRole($user), ['admin', 'operador'], true)
-            && $this->isTenantModel($monitoring->account_id);
     }
 }

@@ -14,7 +14,7 @@ class AccountObserver
     {
         $plan = Plan::firstOrCreate(
             ['slug' => 'basico'],
-            ['name' => 'Básico', 'limits' => ['users' => 5, 'clients' => 50, 'monitorings' => 100]]
+            ['name' => 'Básico', 'limits' => ['users' => 5, 'clients' => 50]]
         );
 
         $account->subscription()->create(['plan_id' => $plan->getKey()]);

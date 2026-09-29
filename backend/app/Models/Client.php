@@ -99,6 +99,16 @@ class Client extends Model
         return $this->hasMany(FiscalGap::class);
     }
 
+    /**
+     * As autorizações por família observadas no provedor — o que o
+     * `SerproPowerOracle` viu da última vez, e nunca o que este sistema
+     * escreveu por conta própria.
+     */
+    public function serproAuthorizations(): HasMany
+    {
+        return $this->hasMany(SerproClientAuthorization::class);
+    }
+
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(Tag::class, 'client_tag')

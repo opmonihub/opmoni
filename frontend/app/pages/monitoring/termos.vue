@@ -3,6 +3,7 @@ import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproAccountCertificate, SerproAuthorizationTerm } from '~/types/serpro'
 import { formatMonitoringDate, serproCertificateRemoval, serproTermRequest, serproTermScreen, serproTermStatePresentation } from '~/utils/monitoringPresentation'
+import { enablementAction, enablementConfirm, enablementNotice, enablementState } from '~/utils/serproEnablement'
 import { pageDetailClass, pageRecordScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
@@ -14,9 +15,9 @@ definePageMeta({ middleware: 'auth' })
  * renovado pelo backend, com o certificado que o escritório entregou uma vez
  * (D3, e o cenário "Escritório não assina nada").
  */
-const { canManageClients } = useAuth()
+const { canManageClients, canManageMembers } = useAuth()
 const toast = useToast()
-const { authorizationTerm, accountCertificate, uploadAccountCertificate, removeAccountCertificate } = useSerpro()
+const { authorizationTerm, accountCertificate, uploadAccountCertificate, removeAccountCertificate, enablement, setEnablement } = useSerpro()
 
 /**
  * O termo, com `getCachedData: () => undefined` pelo mesmo motivo do
@@ -56,6 +57,51 @@ const { data: certificate, status: certificateStatus, error: certificateError, r
   },
   { default: () => null, getCachedData: () => undefined }
 )
+
+/**
+ * O interruptor do escritório. O GET responde `404` num backend que ainda não
+ * conhece a rota — o mesmo ramo das outras duas leituras desta tela — e a seção
+ * inteira some nesse caso, porque um interruptor `null` não é "desligado": é um
+ * backend que ainda não fala a língua, e pintar "desabilitada" sobre ele
+ * sugeriria uma decisão que ninguém tomou.
+ */
+const { data: enablementData, refresh: reloadEnablement } = await useAsyncData<{ enabled: boolean } | null>(
+  'serpro-enablement',
+  async () => {
+    try {
+      return await enablement()
+    } catch (e) {
+      if (apiStatus(e) === 404) return null
+      throw e
+    }
+  },
+  { default: () => null, getCachedData: () => undefined }
+)
+
+const enablementAvailable = computed(() => enablementData.value !== null)
+const isEnabled = computed(() => enablementData.value?.enabled ?? false)
+const enablementStateView = computed(() => enablementState(isEnabled.value))
+const confirmDisable = ref(false)
+const toggling = ref(false)
+
+async function toggleEnablement() {
+  // O `canManageMembers` é a segunda guarda do `v-if`: a policy devolve `403`
+  // para `operador` e `user`, e o que este clique nunca deve produzir é uma
+  // recusa anônima de quem não tinha o botão.
+  if (!canManageMembers.value) return
+  const target = !isEnabled.value
+  toggling.value = true
+  try {
+    const res = await setEnablement(target)
+    enablementData.value = res
+    confirmDisable.value = false
+    toast.add({ title: enablementNotice(res.enabled), color: 'success' })
+  } catch (err) {
+    toast.add({ title: 'Não foi possível alterar a habilitação', description: apiErrorMessage(err), color: 'error' })
+  } finally {
+    toggling.value = false
+  }
+}
 
 const hasCertificate = computed(() => certificate.value !== null)
 const termState = computed(() => term.value?.state ?? 'ausente')
@@ -139,7 +185,7 @@ const certificateFacts = computed<MetaListItem[]>(() => {
  */
 const { isLoading, showError, refresh, retry } = useRetryableLoad({
   refresh: async () => {
-    await Promise.all([reloadTerm(), reloadCertificate()])
+    await Promise.all([reloadTerm(), reloadCertificate(), reloadEnablement()])
   },
   error: computed(() => certificateError.value ?? termError.value),
   loading: computed(() => termStatus.value === 'pending' || certificateStatus.value === 'pending'),
@@ -277,6 +323,72 @@ async function confirmRemove() {
               </div>
             </div>
           </div>
+        </UCard>
+
+        <!--
+          O controle do escritório, e só para `admin`: é para ele que a spec
+          reserva a habilitação, e esta tela é o lugar porque a decisão é do
+          Account — o painel de plataforma em `/admin/serpro` cuida da
+          credencial compartilhada, que é outra coisa.
+        -->
+        <UCard
+          v-if="canManageMembers && enablementAvailable"
+          :ui="{ body: 'p-3 sm:p-4' }"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-highlighted">
+                  Integração com o Integra Contador
+                </h2>
+                <UBadge
+                  :color="isEnabled ? 'success' : 'neutral'"
+                  variant="subtle"
+                  size="sm"
+                  :label="enablementStateView.label"
+                />
+              </div>
+              <p class="mt-1 text-xs text-muted">
+                {{ enablementStateView.description }}
+              </p>
+            </div>
+            <UButton
+              :label="enablementAction(isEnabled)"
+              :color="isEnabled ? 'neutral' : 'primary'"
+              :variant="isEnabled ? 'subtle' : 'solid'"
+              type="button"
+              :loading="toggling"
+              @click="isEnabled ? (confirmDisable = true) : toggleEnablement()"
+            />
+          </div>
+
+          <template v-if="confirmDisable">
+            <UAlert
+              class="mt-3"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-power"
+              :title="enablementConfirm(true)?.title"
+              :description="enablementConfirm(true)?.description"
+            />
+            <div class="mt-3 flex justify-end gap-2">
+              <UButton
+                label="Manter habilitada"
+                color="neutral"
+                variant="subtle"
+                type="button"
+                @click="confirmDisable = false"
+              />
+              <UButton
+                :label="enablementAction(true)"
+                color="warning"
+                variant="solid"
+                type="button"
+                :loading="toggling"
+                @click="toggleEnablement"
+              />
+            </div>
+          </template>
         </UCard>
 
         <UAlert

@@ -69,11 +69,15 @@ The system SHALL report each client's item of a run as one of `sincronizado`, `i
 - **THEN** the item is `ignorado` with the ineligibility as its reason, and is counted neither as synchronized nor as failed
 
 ### Requirement: Contagens por execução
-The system SHALL report, for each run, the total number of clients considered, the number synchronized, the number skipped and the number failed.
+The system SHALL report, for each run, the total number of clients considered and the counts synchronized, skipped, failed, indeterminate and not_processed, and the total SHALL equal the sum of those five at every point of the run, including while it is still running.
 
 #### Scenario: Consulta de uma execução
 - **WHEN** an authorized member requests a completed run
-- **THEN** the response includes total, synchronized, skipped and failed counts that sum to the total considered
+- **THEN** the response includes total, synchronized, skipped, failed, indeterminate and not_processed counts that sum to the total considered
+
+#### Scenario: Indeterminado e pendente contam no total
+- **WHEN** a run has items still waiting and items whose provider call timed out after being sent
+- **THEN** `not_processed` and `indeterminate` are reported as counts of their own and neither is folded into `failed`
 
 #### Scenario: Cliente sem procuração é contado como ignorado
 - **WHEN** a client has no valid procuração

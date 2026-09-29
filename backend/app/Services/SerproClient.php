@@ -213,6 +213,7 @@ final class SerproClient
                 $response->status(),
                 $providerCode === '' ? null : $providerCode,
                 $envelope['response_id'],
+                $tag,
             );
         }
 

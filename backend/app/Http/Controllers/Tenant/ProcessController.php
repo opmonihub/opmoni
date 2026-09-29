@@ -35,7 +35,7 @@ class ProcessController extends Controller
             ->with(['template', 'client'])
             ->when(isset($filters['template_id']), fn (Builder $query) => $query->where('template_id', $filters['template_id']))
             ->when(isset($filters['reference_month']), function (Builder $query) use ($filters): Builder {
-                $month = Carbon::createFromFormat('Y-m', $filters['reference_month'])->startOfMonth();
+                $month = Carbon::createFromFormat('!Y-m', $filters['reference_month'])->startOfMonth();
 
                 return $query->whereDate('reference_month', $month->toDateString());
             })
@@ -63,7 +63,7 @@ class ProcessController extends Controller
         ]);
 
         if (isset($data['reference_month'])) {
-            $data['reference_month'] = Carbon::createFromFormat('Y-m', $data['reference_month'])->startOfMonth()->toDateString();
+            $data['reference_month'] = Carbon::createFromFormat('!Y-m', $data['reference_month'])->startOfMonth()->toDateString();
         }
 
         $process = Process::query()->create($data);

@@ -1,7 +1,7 @@
 import type {
   MonitoringClient,
   MonitoringMessage,
-  MonitoringObligationSummary,
+  MonitoringObligationResponse,
   MonitoringOverview,
   MonitoringSituacao,
   SerproAccountCertificate,
@@ -36,7 +36,7 @@ export function useSerpro() {
    * that issued two calls to render one list could disagree with itself.
    */
   async function listObligation(obligation: string, params: ObligationListParams = {}) {
-    return $api<{ data: MonitoringObligationSummary, data_rows: MonitoringClient[] }>(
+    return $api<{ data: MonitoringObligationResponse, data_rows: MonitoringClient[] }>(
       `/serpro/monitoring/obligations/${obligation}`,
       { query: queryOf(params) }
     )
@@ -154,6 +154,21 @@ export function useSerpro() {
     return res.data
   }
 
+  /**
+   * The current Account's switch. The GET is any member's; the PUT is the
+   * account `admin`'s — the backend answers `403` to anyone else, and this
+   * composable only transports the answer.
+   */
+  async function enablement() {
+    const res = await $api<{ data: { enabled: boolean } }>('/serpro/enablement')
+    return res.data
+  }
+
+  async function setEnablement(enabled: boolean) {
+    const res = await $api<{ data: { enabled: boolean } }>('/serpro/enablement', { method: 'PUT', body: { enabled } })
+    return res.data
+  }
+
   return {
     overview,
     listObligation,
@@ -168,6 +183,8 @@ export function useSerpro() {
     removeAccountCertificate,
     syncRuns,
     showSyncRun,
-    resyncRun
+    resyncRun,
+    enablement,
+    setEnablement
   }
 }

@@ -65,5 +65,166 @@ return [
          * lida em 2026-09-28.
          */
         'ENVIOXMLASSINADO81' => ['path' => 'Apoiar', 'versaoSistema' => '1.0', 'billable' => false],
+
+        // `CONSULTASITUACAODTE111` tem path e versão na fixture gravada
+        // `dte-consultar-situacao.json`. Nenhuma obrigação do mapa o consome
+        // ainda — a entrada existe para a leitura já estar pronta quando a
+        // projeção da situação DTE for implementada.
+        'CONSULTASITUACAODTE111' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+    ],
+
+    /*
+     * As dezenove obrigações que o painel mostra, classificadas pelo que o
+     * catálogo do SERPRO serve — a mesma lista que
+     * `frontend/app/utils/monitoringNav.ts` publica, e o teste de contrato
+     * do plano 05 garante que as duas continuam iguais.
+     *
+     * `service` é `SISTEMA/IDSERVICO` quando a leitura é uma chamada só;
+     * `procuracao` é a família (ou as famílias, com `+` para conjunção e `,`
+     * para alternativa) que `SerproEligibility` confere antes de cobrar.
+     * `sync_enabled = false` não é "não serve": é "o serviço existe, e o
+     * `path`/`versaoSistema` ainda não foi conferido no catálogo publicado"
+     * — ligar sem isso mandaria a chamada para um caminho chutado. As
+     * entradas `unavailable` e `extinct` não têm serviço porque o catálogo
+     * não publica nenhum, e nenhuma linha de cliente pode nascer delas.
+     */
+    'catalogue_revision' => '2026-09',
+
+    'obligations' => [
+        'simples-nacional' => [
+            'category' => 'direct',
+            'service' => 'REGIMEAPURACAO/CONSULTAROPCAOREGIME103',
+            'procuracao' => '00060',
+            'derived_from' => null,
+            'sync_enabled' => true,
+        ],
+        'mei' => [
+            'category' => 'direct',
+            'service' => 'PGMEI/DIVIDAATIVA24',
+            'procuracao' => null,
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'dctfweb' => [
+            'category' => 'direct',
+            'service' => 'DCTFWEB/CONSXMLDECLARACAO38',
+            'procuracao' => '00103',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'fgts-digital' => [
+            'category' => 'derived',
+            'service' => 'DCTFWEB/CONSXMLDECLARACAO38',
+            'procuracao' => '00103',
+            'derived_from' => 'o valor 1718 da declaração DCTFWeb',
+            'sync_enabled' => false,
+        ],
+        'parcelamentos/simples-nacional' => [
+            'category' => 'direct',
+            'service' => 'PARCSN',
+            'procuracao' => '00076+00188',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'parcelamentos/pgfn' => [
+            'category' => 'unavailable',
+            'service' => null,
+            'procuracao' => null,
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'parcelamentos/receita-federal' => [
+            'category' => 'derived',
+            'service' => 'PERTSN+RELPSN',
+            'procuracao' => '00149+10011, 00210+10036',
+            'derived_from' => 'os sistemas PERTSN e RELPSN',
+            'sync_enabled' => false,
+        ],
+        'parcelamentos/especiais' => [
+            'category' => 'direct',
+            'service' => 'PARCSN-ESP',
+            'procuracao' => '00125',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'situacao-fiscal/relatorio-fiscal' => [
+            'category' => 'direct',
+            'service' => 'SITFIS/RELATORIOSITFIS92',
+            'procuracao' => '00002',
+            'derived_from' => null,
+            // O relatório é dois passos (`SOLICITARPROTOCOLO91` + esta): a
+            // sequência entra junto com o escritor que a consome.
+            'sync_enabled' => false,
+        ],
+        'situacao-fiscal/certidoes' => [
+            'category' => 'derived',
+            'service' => 'SITFIS/RELATORIOSITFIS92',
+            'procuracao' => '00002',
+            'derived_from' => 'o relatório SITFIS, que já traz o número negativo, a emissão e a validade',
+            'sync_enabled' => false,
+        ],
+        'situacao-fiscal/comprovantes' => [
+            'category' => 'direct',
+            'service' => 'PAGTOWEB/PAGAMENTOS71',
+            'procuracao' => '00004',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'caixas-postais/e-cac' => [
+            'category' => 'direct',
+            'service' => 'CAIXAPOSTAL/MSGCONTRIBUINTE61',
+            'procuracao' => '00006',
+            'derived_from' => null,
+            'sync_enabled' => true,
+        ],
+        'caixas-postais/fgts-digital' => [
+            'category' => 'derived',
+            'service' => 'CAIXAPOSTAL',
+            'procuracao' => '00006',
+            'derived_from' => 'um filtro por assunto sobre a caixa postal e-CAC',
+            'sync_enabled' => false,
+        ],
+        'caixas-postais/det' => [
+            'category' => 'derived',
+            'service' => 'CAIXAPOSTAL',
+            'procuracao' => '00006',
+            'derived_from' => 'um filtro por assunto sobre a caixa postal e-CAC',
+            'sync_enabled' => false,
+        ],
+        'declaracoes/pgdas' => [
+            'category' => 'direct',
+            'service' => 'PGDASD/CONSDECLARACAO13',
+            'procuracao' => '00146',
+            'derived_from' => null,
+            'sync_enabled' => true,
+        ],
+        'declaracoes/dctfweb' => [
+            'category' => 'direct',
+            'service' => 'DCTFWEB/CONSXMLDECLARACAO38',
+            'procuracao' => '00103',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'declaracoes/fgts' => [
+            'category' => 'unavailable',
+            'service' => null,
+            'procuracao' => null,
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'declaracoes/defis' => [
+            'category' => 'direct',
+            'service' => 'DEFIS/CONSDECLARACAO142',
+            'procuracao' => '00146',
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
+        'declaracoes/dirf' => [
+            'category' => 'extinct',
+            'service' => null,
+            'procuracao' => null,
+            'derived_from' => null,
+            'sync_enabled' => false,
+        ],
     ],
 ];

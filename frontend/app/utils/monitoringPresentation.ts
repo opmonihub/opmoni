@@ -10,6 +10,7 @@ import type {
   ObligationCategory,
   SerproAuthorizationTermState,
   SerproRunItemState,
+  SerproSyncRun,
   SerproSyncRunState
 } from '~/types/serpro'
 
@@ -731,6 +732,15 @@ export function serproTermScreen(state: SerproAuthorizationTermState, hasCertifi
 /** The total is the sum of the four; `encerrado` is deliberately not in it. */
 export function monitoringCountersTotal(summary: Pick<MonitoringObligationSummary, 'em_dia' | 'processando' | 'pendencias' | 'atencao'>) {
   return summary.em_dia + summary.processando + summary.pendencias + summary.atencao
+}
+
+/**
+ * The run's total is the sum of all five outcome counts — `indeterminate` and
+ * `not_processed` included, because both are clients the run considered.
+ * `failed` is never a bucket for what the provider did not answer.
+ */
+export function serproRunCountersTotal(run: Pick<SerproSyncRun, 'synchronized' | 'skipped' | 'failed' | 'indeterminate' | 'not_processed'>) {
+  return run.synchronized + run.skipped + run.failed + run.indeterminate + run.not_processed
 }
 
 export function formatMonitoringCount(value: number) {

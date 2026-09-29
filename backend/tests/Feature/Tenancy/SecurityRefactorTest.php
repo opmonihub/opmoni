@@ -130,7 +130,7 @@ class SecurityRefactorTest extends TestCase
 
         $account = Account::factory()->create();
         $plan = Plan::bySlug('basico');
-        $plan->forceFill(['limits' => ['users' => 5, 'clients' => '1', 'monitorings' => 100]])->save();
+        $plan->forceFill(['limits' => ['users' => 5, 'clients' => '1']])->save();
 
         Client::factory()->create(['account_id' => $account->getKey()]);
 

@@ -13,8 +13,8 @@ class PlanSeeder extends Seeder
     public function run(): void
     {
         Plan::upsert([
-            ['slug' => 'basico', 'name' => 'Básico', 'limits' => json_encode(['users' => 5, 'clients' => 50, 'monitorings' => 100])],
-            ['slug' => 'profissional', 'name' => 'Profissional', 'limits' => json_encode(['users' => 20, 'clients' => 500, 'monitorings' => 1000])],
+            ['slug' => 'basico', 'name' => 'Básico', 'limits' => json_encode(['users' => 5, 'clients' => 50])],
+            ['slug' => 'profissional', 'name' => 'Profissional', 'limits' => json_encode(['users' => 20, 'clients' => 500])],
             ['slug' => 'empresarial', 'name' => 'Empresarial', 'limits' => json_encode([])],
         ], 'slug');
     }

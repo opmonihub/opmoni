@@ -108,7 +108,7 @@ class ProcessTemplateController extends Controller
 
         $data = $request->validate(['reference_month' => ['required', 'date_format:Y-m']]);
 
-        $month = Carbon::createFromFormat('Y-m', $data['reference_month'])->startOfMonth()->startOfDay();
+        $month = Carbon::createFromFormat('!Y-m', $data['reference_month'])->startOfMonth()->startOfDay();
         $processes = $service->generate($processTemplate, $month);
 
         SupportAudit::logWrite(

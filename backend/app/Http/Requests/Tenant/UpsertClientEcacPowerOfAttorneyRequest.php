@@ -24,6 +24,7 @@ class UpsertClientEcacPowerOfAttorneyRequest extends FormRequest
             'starts_at' => ['required', 'date'],
             'expires_at' => ['required', 'date', 'after_or_equal:starts_at'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'serpro_code' => ['nullable', 'string', 'max:32'],
         ];
     }
 }

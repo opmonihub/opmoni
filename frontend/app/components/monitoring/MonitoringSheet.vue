@@ -126,7 +126,19 @@ const { data, status, error, refresh: reload } = await useAsyncData(listKey, asy
   }
 }, { watch: [params], default: () => ({ data: emptySummary(props.obligation), data_rows: [] as MonitoringClient[] }) })
 
-const summary = computed(() => data.value?.data ?? emptySummary(props.obligation))
+/**
+ * The unserved variant arrives with every counter `null` — that is the API
+ * saying the provider never answers for this obligation, and the sheet never
+ * fetches it (`isUnserved` short-circuits the handler). The guard still
+ * narrows the union: what reaches `ObligationCounters` is the served summary,
+ * where each counter is a number.
+ */
+const summary = computed<MonitoringObligationSummary>(() => {
+  const loaded = data.value?.data
+  return loaded === null || loaded === undefined || loaded.total === null
+    ? emptySummary(props.obligation)
+    : loaded
+})
 
 const rows = ref<MonitoringClient[]>([])
 const total = ref(0)

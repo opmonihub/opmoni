@@ -11,6 +11,7 @@ import {
   monitoringProvenance,
   monitoringProvenanceLabels,
   monitoringSituacaoPresentation,
+  serproRunCountersTotal,
   serproRunItemStatePresentation,
   serproRunStatePresentation,
   serproTermGuidance,
@@ -166,6 +167,34 @@ describe('provenance of a derived obligation', () => {
   it('labels the two things a projection has to declare', () => {
     assert.ok(monitoringProvenanceLabels.origin.length > 0)
     assert.ok(monitoringProvenanceLabels.service.length > 0)
+  })
+})
+
+describe('run counters', () => {
+  it('sums the six reported counts, including the two that are not outcomes', () => {
+    const run = {
+      total: 9,
+      synchronized: 4,
+      skipped: 1,
+      failed: 1,
+      indeterminate: 1,
+      not_processed: 2
+    }
+    assert.equal(serproRunCountersTotal(run), 9)
+    assert.equal(serproRunCountersTotal(run), run.total)
+  })
+
+  it('counts indeterminate on its own, never inside failed', () => {
+    const run = {
+      total: 3,
+      synchronized: 1,
+      skipped: 0,
+      failed: 0,
+      indeterminate: 2,
+      not_processed: 0
+    }
+    assert.equal(run.failed, 0)
+    assert.equal(serproRunCountersTotal(run), 3)
   })
 })
 

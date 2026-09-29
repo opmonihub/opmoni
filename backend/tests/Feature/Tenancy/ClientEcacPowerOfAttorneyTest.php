@@ -79,6 +79,99 @@ class ClientEcacPowerOfAttorneyTest extends TestCase
         $this->deleteJson("/api/clients/{$client->getKey()}/ecac-power-of-attorney")->assertNotFound();
     }
 
+    public function test_operador_registra_codigo_serpro_e_o_estado_fica_pendente(): void
+    {
+        $account = Account::factory()->create();
+        $operator = $this->memberOf($account, 'operador');
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs($operator, 'sanctum')->putJson(
+            "/api/clients/{$client->getKey()}/ecac-power-of-attorney",
+            ['starts_at' => '2026-09-01', 'expires_at' => '2027-09-01', 'serpro_code' => '00146']
+        )->assertOk()
+            ->assertJsonPath('data.ecac_power_of_attorney.serpro_code', '00146')
+            ->assertJsonPath('data.ecac_power_of_attorney.integration_state', 'pending');
+
+        // O código registrado pelo Membro marca a procuração como pendente: a
+        // confirmação é do provedor, e nenhuma escrita local pode afirmar que
+        // ela está estabelecida.
+        $this->assertDatabaseHas('client_ecac_powers_of_attorney', [
+            'client_id' => $client->getKey(),
+            'serpro_code' => '00146',
+            'integration_state' => 'pending',
+        ]);
+    }
+
+    public function test_put_sem_codigo_preserva_codigo_e_estado_anteriores(): void
+    {
+        $account = Account::factory()->create();
+        $operator = $this->memberOf($account, 'operador');
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        $power = ClientEcacPowerOfAttorney::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'serpro_code' => '00146',
+        ]);
+        // O estado `established` não pode nascer de um save — o `saving` do
+        // model volta para `pending` ao ver o código mudar — porque no produto
+        // quem o escreve é o oracle lendo o provedor. A fixture precisa do
+        // mesmo atalho silencioso.
+        $power->forceFill(['integration_state' => 'established'])->saveQuietly();
+        $this->assertSame('established', $power->fresh()->integration_state->value);
+
+        $this->actingAs($operator, 'sanctum')->putJson(
+            "/api/clients/{$client->getKey()}/ecac-power-of-attorney",
+            ['starts_at' => '2027-01-01', 'expires_at' => '2028-01-01']
+        )->assertOk()
+            ->assertJsonPath('data.ecac_power_of_attorney.serpro_code', '00146')
+            ->assertJsonPath('data.ecac_power_of_attorney.integration_state', 'established');
+    }
+
+    public function test_trocar_o_codigo_volta_a_marcar_pendente(): void
+    {
+        $account = Account::factory()->create();
+        $operator = $this->memberOf($account, 'operador');
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        $power = ClientEcacPowerOfAttorney::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'serpro_code' => '00006',
+        ]);
+        $power->forceFill(['integration_state' => 'established'])->saveQuietly();
+
+        $this->actingAs($operator, 'sanctum')->putJson(
+            "/api/clients/{$client->getKey()}/ecac-power-of-attorney",
+            ['starts_at' => '2026-01-01', 'expires_at' => '2027-01-01', 'serpro_code' => '00146']
+        )->assertOk()
+            ->assertJsonPath('data.ecac_power_of_attorney.integration_state', 'pending');
+    }
+
+    public function test_procuracao_exposta_sem_caminho_nem_segredo(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        ClientEcacPowerOfAttorney::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'serpro_code' => '00146',
+            'integration_state' => 'pending',
+        ]);
+
+        $response = $this->actingAs($this->memberOf($account, 'user'), 'sanctum')
+            ->getJson("/api/clients/{$client->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.ecac_power_of_attorney.serpro_code', '00146')
+            ->assertJsonPath('data.ecac_power_of_attorney.integration_state', 'pending');
+
+        // Datas, código e estado entram; caminho de arquivo, credencial e
+        // qualquer material de armazenamento, não.
+        $power = $response->json('data.ecac_power_of_attorney');
+        $this->assertSame(
+            ['id', 'starts_at', 'expires_at', 'notes', 'status', 'serpro_code', 'integration_state'],
+            array_keys($power)
+        );
+    }
+
     public function test_destroy_returns_204_and_removes_metadata(): void
     {
         $account = Account::factory()->create();

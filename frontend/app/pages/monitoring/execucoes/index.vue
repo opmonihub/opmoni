@@ -87,13 +87,20 @@ async function loadMore() {
   }
 }
 
-/** The four counts of one run, in the order the table declares them. */
+/**
+ * The six counts of one run, in the order the table declares them.
+ * `indeterminate` and `not_processed` only appear when nonzero: both are
+ * events, not everyday outcomes, and a permanent pair of zeroes would
+ * teach the reader to stop seeing them.
+ */
 function runCounters(run: SerproSyncRun): MetaListItem[] {
   return [
     { label: 'Total', value: formatMonitoringCount(run.total), mono: true },
     { label: 'Sincr.', value: formatMonitoringCount(run.synchronized), mono: true },
     { label: 'Ignor.', value: formatMonitoringCount(run.skipped), mono: true },
-    { label: 'Falhos', value: formatMonitoringCount(run.failed), mono: true, tone: run.failed > 0 ? 'error' : 'default' }
+    { label: 'Falhos', value: formatMonitoringCount(run.failed), mono: true, tone: run.failed > 0 ? 'error' : 'default' },
+    { label: 'Indet.', value: formatMonitoringCount(run.indeterminate), mono: true, tone: run.indeterminate > 0 ? 'warning' : 'default', when: run.indeterminate > 0 },
+    { label: 'Pendentes', value: formatMonitoringCount(run.not_processed), mono: true, when: run.not_processed > 0 }
   ]
 }
 
@@ -108,6 +115,8 @@ const columns: TableColumn<SerproSyncRun>[] = [
   { id: 'synchronized', header: 'Sincronizados', meta: { class: countClass } },
   { id: 'skipped', header: 'Ignorados', meta: { class: countClass } },
   { id: 'failed', header: 'Falhos', meta: { class: countClass } },
+  { id: 'indeterminate', header: 'Indeterminados', meta: { class: countClass } },
+  { id: 'not_processed', header: 'Pendentes', meta: { class: countClass } },
   { id: 'started_at', header: 'Iniciada em', meta: { class: { th: 'whitespace-nowrap', td: 'tabular-nums' } } },
   { id: 'finished_at', header: 'Concluída em', meta: { class: { th: 'whitespace-nowrap', td: 'tabular-nums' } } },
   { id: 'actions', meta: { class: { th: 'w-12', td: 'w-12' } } }
@@ -238,6 +247,16 @@ onMounted(() => {
               <span :class="row.original.failed > 0 ? 'text-error' : undefined">
                 {{ formatMonitoringCount(row.original.failed) }}
               </span>
+            </template>
+
+            <template #indeterminate-cell="{ row }">
+              <span :class="row.original.indeterminate > 0 ? 'text-warning' : undefined">
+                {{ formatMonitoringCount(row.original.indeterminate) }}
+              </span>
+            </template>
+
+            <template #not_processed-cell="{ row }">
+              {{ formatMonitoringCount(row.original.not_processed) }}
             </template>
 
             <template #started_at-cell="{ row }">
