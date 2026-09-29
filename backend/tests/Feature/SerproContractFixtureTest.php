@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\SerproFailure;
 use App\Services\SerproEnvelope;
 use App\Services\SerproException;
+use App\Services\SerproMonitoringMapper;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -31,7 +32,6 @@ class SerproContractFixtureTest extends TestCase
     public static function documentais(): array
     {
         return [
-            ['sitfis-relatorio.json'],
             ['application-error.json'],
             ['procuracao-familias.json'],
         ];
@@ -52,6 +52,9 @@ class SerproContractFixtureTest extends TestCase
             ['regime-consultar-anos.json', 'CONSULTARANOSCALENDARIOS102'],
             ['pgdasd-consultar-declaracao.json', 'CONSDECLARACAO13'],
             ['dte-consultar-situacao.json', 'CONSULTASITUACAODTE111'],
+            ['sitfis-solicitar-protocolo.json', 'SOLICITARPROTOCOLO91'],
+            ['sitfis-relatorio.json', 'RELATORIOSITFIS92'],
+            ['caixapostal-detalhar-mensagem.json', 'MSGDETALHAMENTO62'],
         ];
     }
 
@@ -80,62 +83,43 @@ class SerproContractFixtureTest extends TestCase
     }
 
     /**
-     * Exemplo **documental** do `SITFIS/RELATORIOSITFIS92` — não é uma resposta
-     * observada.
+     * Os dois passos do SITFIS, gravados do trial em 2026-09-29. O protocolo
+     * volta com o `tempoEspera`, e o relatório volta como um PDF em base64 e
+     * nada mais.
      *
-     * Proveniência do que este arquivo afirma: a forma do envelope vem da
-     * descrição publicada do Integra Contador, e é a mesma que os outros
-     * serviços respondem — o envelope da requisição espelhado, mais `status`,
-     * `dados` como string, `mensagens` de `{codigo, texto}` e `responseId`, com
-     * o `dados` sendo a string escapada que carrega o JSON do serviço, em duas
-     * camadas como a requisição manda. `idSistema`, `idServico` e
-     * `versaoSistema` são os de `config/integra-contador.php`, que transcreve o
-     * catálogo do SERPRO.
-     *
-     * O que **não** é observado, e é o que impede este arquivo de passar por
-     * captura: o ambiente de demonstração não estava disponível — não há
-     * `SERPRO_TRIAL_TOKEN` neste ambiente —, então nenhum byte aqui veio do
-     * trial nem da produção, e a captura real segue como bloqueio explícito da
-     * tarefa 3.3. O `codigo` da mensagem segue a convenção
-     * `[Sucesso-<SISTEMA>]` que as duas fixtures gravadas mostram e não é um
-     * código observado do SITFIS; o `dados` tem um campo só, `protocolo`, o
-     * único nome de campo do SITFIS documentado no projeto, com valor de
-     * placeholder.
-     *
-     * E o trial, mesmo quando respondeu, não prova o que o SITFIS faz de mais:
-     * a máquina de espera, o `304` e o `503` continuam sem verificação até a
-     * captura real.
-     *
-     * O marker `_provenance` do arquivo repete o essencial disto, e é ele que
-     * acompanha o artefato: docblock não viaja com o JSON.
+     * O trial é um mock: não reproduz a máquina de espera, o `304` nem o `503`,
+     * e a resposta não traz `responseId`. O que ele prova é a forma do envelope
+     * e do `dados`.
      */
-    public function test_o_exemplo_documental_do_sitfis_tem_a_forma_publicada(): void
+    public function test_o_sitfis_gravado_entrega_protocolo_e_depois_pdf(): void
     {
-        $payload = $this->fixture('sitfis-relatorio.json');
+        $protocolo = (new SerproEnvelope)->parse($this->fixture('sitfis-solicitar-protocolo.json'));
 
-        $this->assertStringContainsString('não observado', $payload['_provenance']);
-        $this->assertSame('SITFIS', $payload['pedidoDados']['idSistema']);
-        $this->assertSame('RELATORIOSITFIS92', $payload['pedidoDados']['idServico']);
-        $this->assertSame('2.0', $payload['pedidoDados']['versaoSistema']);
-        $this->assertSame(200, $payload['status']);
-        $this->assertIsString($payload['dados']);
-        $this->assertSame(36, strlen((string) $payload['responseId']));
-        $this->assertSame(['codigo', 'texto'], array_keys($payload['mensagens'][0]));
+        $this->assertSame(200, $protocolo['status']);
+        $this->assertIsString($protocolo['dados']['protocoloRelatorio']);
+        $this->assertIsInt($protocolo['dados']['tempoEspera']);
+
+        $relatorio = (new SerproEnvelope)->parse($this->fixture('sitfis-relatorio.json'));
+
+        $this->assertSame(200, $relatorio['status']);
+        $this->assertSame(['pdf'], array_keys($relatorio['dados']));
+        $this->assertStringStartsWith('%PDF', (string) base64_decode($relatorio['dados']['pdf'], true));
     }
 
     /**
-     * O `dados` documentado do SITFIS é a string escapada dentro da string
-     * escapada. Uma passagem só entregaria a camada de fora, e o consumidor
-     * receberia um texto onde esperava o payload do serviço.
+     * O detalhe gravado do trial passa pelo mesmo mapper da rota de leitura: as
+     * variáveis entram no corpo e nenhuma tag sobra.
      */
-    public function test_o_dados_documental_do_sitfis_precisa_de_duas_passagens(): void
+    public function test_o_detalhe_de_mensagem_gravado_vira_texto_legivel(): void
     {
-        $result = (new SerproEnvelope)->parse($this->fixture('sitfis-relatorio.json'));
+        $result = (new SerproEnvelope)->parse($this->fixture('caixapostal-detalhar-mensagem.json'));
 
-        $this->assertSame(200, $result['status']);
-        $this->assertSame(['protocolo' => '000000000000000'], $result['dados']);
-        $this->assertSame('00000000-0000-0000-0000-000000000000', $result['response_id']);
-        $this->assertCount(1, $result['mensagens']);
+        $mensagem = (new SerproMonitoringMapper)->detalheMensagem(82838, $result['dados']);
+
+        $this->assertNotSame('', $mensagem['assunto']);
+        $this->assertStringNotContainsString('++VARIAVEL++', $mensagem['assunto']);
+        $this->assertNotSame('', $mensagem['corpo']);
+        $this->assertDoesNotMatchRegularExpression('/<[a-z\/][^>]*>|\+\+\d+\+\+/i', $mensagem['corpo']);
     }
 
     /**
@@ -284,6 +268,9 @@ class SerproContractFixtureTest extends TestCase
             ['regime-consultar-anos.json'],
             ['pgdasd-consultar-declaracao.json'],
             ['dte-consultar-situacao.json'],
+            ['sitfis-solicitar-protocolo.json'],
+            ['sitfis-relatorio.json'],
+            ['caixapostal-detalhar-mensagem.json'],
             ['gateway-429.json'],
         ];
     }

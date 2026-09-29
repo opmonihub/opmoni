@@ -1,0 +1,29 @@
+{
+  "_provenance": "resposta observada do ambiente de demonstração (integra-contador-trial/v1), CAIXAPOSTAL/MSGDETALHAMENTO62, gravada em 2026-09-29 com os contribuintes fictícios do cenário publicado",
+  "contratante": {
+    "numero": "00000000000000",
+    "tipo": 2
+  },
+  "autorPedidoDados": {
+    "numero": "00000000000000",
+    "tipo": 2
+  },
+  "contribuinte": {
+    "numero": "00000000000000",
+    "tipo": 2
+  },
+  "pedidoDados": {
+    "idSistema": "CAIXAPOSTAL",
+    "idServico": "MSGDETALHAMENTO62",
+    "versaoSistema": "1.0",
+    "dados": "{\"isn\" : \"0000082838\"}"
+  },
+  "status": 200,
+  "dados": "{\"codigo\":\"00\",\"conteudo\":[{\"codigoSistemaRemetente\":\"00014\",\"codigoModelo\":\"00009\",\"assuntoModelo\":\"[e-Processo] Dossiê: ++VARIAVEL++ - Abertura do Dossiê de Atendimento através do Chat RFB\",\"origemModelo\":\"1\",\"dataEnvio\":\"20220620\",\"valorParametroAssunto\":\"11111.111111/2022-11\",\"dataLeitura\":\"20220623\",\"horaLeitura\":\"170051\",\"dataExpiracao\":\"20230621\",\"numeroControle\":\"\",\"dataCiencia\":\"\",\"enquadramento\":\"0\",\"dataAcessoExterno\":\"\",\"horaAcessoExterno\":\"\",\"tipoAutenticacaoUsuario\":\"0\",\"codigoAcesso\":\"\",\"numeroSerieCertificadoDigital\":\"\",\"emissorCertificadoDigital\":\"\",\"tipoUsuario\":\"0\",\"niUsuario\":\"00000000000000\",\"papelUsuario\":\"0\",\"codigoAplicacao\":\"00000\",\"tipoOrigem\":\"0\",\"descricaoOrigem\":\"\",\"corpoModelo\":\"<p>Prezado(a) Contribuinte,</p>  <p>O seu Atendimento pelo Chat RFB&nbsp;n&ordm; ++1++, do dia/hora&nbsp;++2++ /&nbsp;++3++ (Hor&aacute;rio de Bras&iacute;lia), foi direcionado para solu&ccedil;&atilde;o por equipe interna da RFB e consta no Dossi&ecirc; descrito abaixo. Para acompanhar o atendimento interno do mesmo, o contribuinte deve acessar o Portal e-CAC e escolher a op&ccedil;&atilde;o &ldquo;Legisla&ccedil;&atilde;o e Processo &gt; Processos&nbsp;Digitais (e-Processo) &gt; Meus Processos&rdquo; ou pode utilizar o app e-Processo.</p>  <p>Atrav&eacute;s do app e-Processo, voc&ecirc; pode consultar as informa&ccedil;&otilde;es e acompanhar o andamento desse&nbsp;Dossi&ecirc;, bem como consultar os documentos. O app e-Processo est&aacute; dispon&iacute;vel para dispositivos m&oacute;veis nas lojas de aplicativos Google Play Store, para o sistema Android, e Apple Store, para o sistema iOS.</p>  <p>N&uacute;mero: ++4++</p>  <p>Interessado: ++5++</p>  <p>&Aacute;rea de Concentra&ccedil;&atilde;o do Servi&ccedil;o:&nbsp;++6++</p>  <p>Servi&ccedil;o:&nbsp;++7++</p>  <p>Tipo do Dossi&ecirc;: ++8++</p>  <p>Subtipo do Dossi&ecirc;: ++9++</p>  <p>Descri&ccedil;&atilde;o: ++10++</p>  <p>Respons&aacute;vel pela Solicita&ccedil;&atilde;o de Atendimento: ++11++</p>  <p>Perfil de Acesso: ++12++</p>  <p>IMPORTANTE: Sugerimos consultar o Manual que est&aacute; dispon&iacute;vel no Portal e-CAC, na op&ccedil;&atilde;o &ldquo;Legisla&ccedil;&atilde;o e Processo &gt; Processos Digitais (e-Processo)&rdquo; para&nbsp;obter as orienta&ccedil;&otilde;es de uso das funcionalidades do e-Processo.</p>  <p>O presente dossi&ecirc; de atendimento ser&aacute; exclu&iacute;do&nbsp;ap&oacute;s 3&nbsp;(tr&ecirc;s) dias &uacute;teis, caso a solicita&ccedil;&atilde;o de juntada, contendo os documentos necess&aacute;rios ao&nbsp;atendimento, n&atilde;o seja enviada.</p>\",\"variaveis\":[\"202200000263\",\"20/06/2022\",\"14:31:05\",\"11111.111111/2022-11\",\"03.763.656/0001-54 - HMBHFIHUV KXPHIKQX H UHIEQKXU DVNW\",\"ASSUNTOS ADUANEIROS\",\"CREDENCIAMENTO SISCOMEX/MERCANTE -PESSOA FÍSICA - DECLARAÇÃO SIMPLIFICADA, INCLUSIVE BAGAGEM DESACOMPANHADA - Inc. I do Art. 8º da Portaria COANA nº 123/2015\",\"ATENDIMENTO\",\"CHAT RFB\",\"Criado automaticamente pelo Chat RFB, resultado de um atendimento não conclusivo, para ser tratado internamente por equipe especializada na Área/Serviço do Atendimento.\",\"999.999.999-99 - AXVOMZ NLIVML UVIRZMR\",\"Responsável Legal\"]}]}",
+  "mensagens": [
+    {
+      "codigo": "[Sucesso-CAIXAPOSTAL]",
+      "texto": "Requisição efetuada com sucesso."
+    }
+  ]
+}
