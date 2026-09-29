@@ -138,19 +138,20 @@ final class PalavrasCorrompidasTest extends TestCase
      * do que as três palavras que a motivaram. **A lista nomeia doze palavras de
      * prosa, e é preciso dizer o que cada uma delas é**, porque a versão
      * anterior desta docblock dizia que as doze "seriam acusadas com `ISENTAS`
-     * vazia" e **a regra só acusa duas delas**. Medido nas seis raízes, em
-     * `2026-09-28`, e cada linha conferida por
-     * `MedidaDaRegraDeColagemTest::test_as_palavras_isentas_tem_o_comprimento_e_a_frequencia_que_a_docblock_declara`:
+     * vazia" e **a regra só acusa duas delas**. Os comprimentos são conferidos
+     * por
+     * `MedidaDaRegraDeColagemTest::test_as_palavras_isentas_citadas_tem_o_comprimento_que_a_docblock_declara`;
+     * a frequência de cada uma muda a cada comentário novo, e por isso não é
+     * escrita aqui:
      *
      * - **8 das 12 estão abaixo do piso de 14** e por isso a regra as descarta
      *   pela comprimento antes de consultar a isenta: `realmente` (9),
      *   `raramente` (9), `exatamente` (10), `localmente` (10),
      *   `corretamente` (12), `inteiramente` (12), `precisamente` (12),
      *   `separadamente` (13);
-     * - **6 das 12 não são hapax**, e o filtro as descarta antes disso:
-     *   `exatamente` (59×), `realmente` (5×), `deliberadamente` (4×),
-     *   `separadamente` (3×), `estruturalmente` (2×), `localmente` (2×);
-     * - **só 2 são ao mesmo tempo hapax e de 14 ou mais**, e são as duas que a
+     * - as que se repetem no corpus são descartadas pelo filtro de hapax antes
+     *   disso — `exatamente` e `realmente`, por exemplo;
+     * - **as de 14 ou mais que ainda forem hapax** são as que a
      *   regra de fato aciona com a lista vazia: `propositalmente` e
      *   `silenciosamente`, **ambas com 15 caracteres**.
      *
@@ -359,7 +360,6 @@ final class PalavrasCorrompidasTest extends TestCase
      */
     private const EXCLUIDOS = [
         ['tests/Unit/PalavrasCorrompidasTest.php', 'contém os radicais de `SUSPEITAS` e as isentas de `ISENTAS` escritas por extenso, na docblock de cada motivo e no exemplo de palavra colada — é a única razão de este arquivo existir, e tirá-lo da varredura é o que faria ele passar em silêncio sobre a própria corrupção'],
-        ['tests/Unit/MedidaDaRegraDeColagemTest.php', 'é o arquivo que **mede** a regra, e ele fica em `tests/`, que é raiz varrida. Escrevê-lo mudou o que é medido: acrescentá-lo à varredura levou o corpus de 357 para 358 arquivos, os hapaxes de 14+ de 25 para 24 e `exatamente` de 51 para 54 ocorrências, porque o arquivo repete em prosa as palavras que a medição confere. **Medir alterando a árvore medida é a mesma doença que escrever um achado e neutralizá-lo**, que é o que o `DIRETORIOS` registra — e a exclusão é a correção, não um contorno'],
     ];
 
     public function test_nenhuma_palavra_corrompida_em_comentario(): void
@@ -477,39 +477,15 @@ final class PalavrasCorrompidasTest extends TestCase
      * `correntes` + `produzem` — e não uma arbitrária.
      *
      * **O ruído desta camada é um piso que sobe, e ele é declarado aqui porque
-     * zero falso positivo hoje não é a mesma coisa que regra exata.** Medido
-     * nas seis raízes, na árvore de `2026-09-28` com o commit `47fc957`, e
-     * conferido por
-     * `MedidaDaRegraDeColagemTest::test_a_particao_dos_hapaxes_longos_e_completa`:
-     *
-     * - **27** palavras de 14 caracteres ou mais aparecem uma vez só;
-     * - **15** delas a regra **acusaria** no instante em que a metade ausente
-     *   aparecesse, porque a regra exige que **as duas** metades estejam no
-     *   corpus e o corpus cresce com o próprio repositório. São treze com metade
-     *   ausente comum — `autoalimentado` esperando `alimentado`,
-     *   `sobrescrevendo` esperando `sobr`, `contraditórias` esperando
-     *   `ditórias`, `diferentesariam` esperando `sariam`, `implementações`
-     *   esperando `implement`, `comportamentos` esperando `mentos`,
-     *   `sobrescrevesse` esperando `sobr`, `reautenticação` esperando
-     *   `reautentic`, `reclassificaria` esperando `reclassi`,
-     *   `reimplementação` esperando `reimplement`, `classifications`
-     *   esperando `ifications`, `synchronization` esperando `hronization` e
-     *   `identificadores` esperando `dores` — e mais **`infraestrutura` esperando `infra`**
-     *   e **`programaticamente` esperando `programatica`**, cujas o único corte
-     *   possível tem a metade **presente** isenta;
-     * - **12** não acusariam, e é a soma que fecha a partição.
-     *
-     * **15 + 12 = 27**, e a soma é a checagem de que a partição é completa.
-     *
-     * **A partição anterior deste parágrafo — `11 + 2 + 12` — estava errada
-     * como partição, e a forma do erro importa.** O `2` era
-     * `silenciosamente` e `propositalmente`, que a `ISENTAS` segura — e essas
-     * duas **também não acusam**, então o `2` é **subconjunto do 12** e não um
-     * balde à parte. A soma fechava porque 11 + 2 + 12 dá 25, e fechava por
-     * coincidência de aritmética, não porque os baldes fossem disjuntos. **Duas
-     * contagens que não são uma partição fecham por acaso**, e é por isso que
-     * a de agora tem dois conjuntos, um assertion de soma, e a lista dos
-     * nomes que cada um contém.
+     * zero falso positivo hoje não é a mesma coisa que regra exata.** A regra
+     * exige que **as duas** metades estejam no corpus, e o corpus cresce com o
+     * próprio repositório: um hapax longo correto passa hoje e passa a acusar no
+     * dia em que a metade ausente aparecer em outro comentário. Quantos hapaxes
+     * estão nessa situação é um número que muda a cada comentário, e por isso
+     * ele não é escrito aqui. O que é conferido, em
+     * `MedidaDaRegraDeColagemTest::test_a_previsao_de_acusacao_usa_o_predicado_da_regra`,
+     * é que a previsão "acusaria quando a metade faltasse" usa o mesmo
+     * predicado desta regra, e não uma reimplementação dele.
      *
      * **A consequência é aritmética e não é "~":** a cada palavra nova escrita
      * em comentário, a probabilidade de um falso positivo sobe. É por isso que

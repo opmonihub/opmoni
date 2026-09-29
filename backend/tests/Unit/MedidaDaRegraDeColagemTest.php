@@ -6,213 +6,164 @@ use ReflectionClass;
 use Tests\TestCase;
 
 /**
- * A **medição** da camada de colagem, reexecutável.
+ * A medição da camada de colagem de `PalavrasCorrompidasTest`.
  *
- * **Este arquivo não é guarda de corrupção — ele é o número.** A docblock da
- * regra de colagem afirma três contagens sobre os 27 hapaxes de 14+ caracteres,
- * e nos rounds anteriores elas foram medidas por um script **externo**, que é
- * uma reimplementação da regra: a cópia e o original divergiram em 11 e 13, e
- * a cópia ganhou. Aqui os números saem do corpus e dos cortes, com a mesma
- * predicado que `divisaoEmPalavrasConhecidas()` usa, e a soma é conferida.
+ * Nada aqui fixa contagem do corpus vivo. O corpus é todo comentário do
+ * repositório, e um número tirado dele fica velho no próximo comentário
+ * escrito, em qualquer arquivo. O que este arquivo confere é o que não muda
+ * com o corpus: o comportamento da regra sobre um corpus montado à mão, e a
+ * previsão de acusação feita com o próprio predicado da regra, e não com uma
+ * cópia dele.
  *
- * **Ele é uma classe à parte, e não uma quarta camada de `CAMADAS`** — a lista
- * de camadas mapeia nome-de-camada para método **dentro de
- * `PalavrasCorrompidasTest`**, e este arquivo não é essa classe, então o
- * meta-teste `test_as_camadas_declaradas_existem_como_teste` não o enxerga e
- * não precisa de isenção. Ele está em `EXCLUIDOS` da varredura, e o motivo
- * está escrito lá: acrescentá-lo à varredura levou o corpus de 357 para 358
- * arquivos, os hapaxes de 14+ de 25 para 24 e `exatamente` de 51 para 54
- * ocorrências, porque o arquivo repete em prosa as palavras que a medição
- * confere. **Medir alterando a árvore medida é a mesma doença que escrever um
- * achado e neutralizá-lo**, e a exclusão é a correção, não um contorno.
- *
- * Rodar: vendor/bin/phpunit tests/Unit/MedidaDaRegraDeColagemTest.php
+ * O predicado é lido por reflexão de `divisaoEmPalavrasConhecidas()`. Uma
+ * reimplementação aqui já divergiu do original uma vez: tratava como acusável
+ * o corte cuja metade direita presente é isenta, que a regra real cala.
  */
 final class MedidaDaRegraDeColagemTest extends TestCase
 {
-    /** As três isentas, lidas da regra em vez de repetidas aqui. */
-    private const ESPERADO_ISENTAS = ['mente', 'estrutura', 'ações'];
+    public function test_a_regra_acusa_colagem_e_cala_a_metade_direita_isenta(): void
+    {
+        $corpus = array_fill_keys(['continua', 'existindo', 'silenciosa', 'mente', 'infra', 'estrutura'], 1);
+
+        $this->assertSame(['continua', 'existindo'], $this->divisao('continuaexistindo', $corpus));
+        $this->assertNull($this->divisao('silenciosamente', $corpus));
+        $this->assertNull($this->divisao('infraestrutura', $corpus));
+    }
+
+    public function test_a_regra_exige_quatro_caracteres_em_cada_metade(): void
+    {
+        $corpus = array_fill_keys(['abc', 'defghijklmnopq', 'abcdefghijklmn', 'opq'], 1);
+
+        $this->assertNull($this->divisao('abcdefghijklmnopq', $corpus));
+    }
+
+    public function test_a_regra_devolve_o_primeiro_corte_que_fecha(): void
+    {
+        $corpus = array_fill_keys(['correntes', 'produzem', 'correntesprod', 'uzem'], 1);
+
+        $this->assertSame(['correntes', 'produzem'], $this->divisao('correntesproduzem', $corpus));
+    }
 
     /**
-     * A partição dos 27, com a definição que a docblock da regra declara.
-     *
-     * **A definição é "a regra passaria a acusar esta palavra no instante em
-     * que a metade ausente aparecesse"** — e ela é o que separa as duas metades
-     * de uma linha: a que falta, e não a que está. Ler o corte cuja metade
-     * *presente* é isenta como "não conta" é o que produz 11; ler como conta é o
-     * que produz 13, e **13 é o número certo** porque a pergunta é o que
-     * aconteceria sem a isenta.
-     *
-     * | conjunto | tamanho | o que é |
-     * | --- | --- | --- |
-     * | hapaxes de 14+ | 27 | a base |
-     * | acusariam quando a metade faltasse | **15** | 13 com metade ausente comum, mais `infraestrutura` e `programaticamente` |
-     * | não acusariam | **12** | as duas caladas por `ISENTAS` e as dez que não dividem |
-     *
-     * **15 + 12 = 27**, e a soma é a checagem de que a partição é completa.
-     *
-     * **A partição anterior do round 4 era `11 + 2 + 12`, e ela estava errada
-     * como partição:** o `2` — `silenciosamente` e `propositalmente` — é
-     * **subconjunto do 12**, não um balde à parte, porque as duas também não
-     * acusam. A conta 11 + 2 + 12 = 25 fechava por coincidência de aritmética
-     * e a leitura do parágrafo dava 13, que é o número que a definição
-     * sustenta. **Duas contagens que não são uma partição não fecham por
-     * acaso** — elas fecham porque alguém escolheu os baldes de forma que
-     * somassem, e a soma parou de significar o que a frase dizia.
+     * Toda palavra longa que aparece uma vez só cai em exatamente um de dois
+     * conjuntos: a regra passaria a acusá-la se a metade ausente de algum corte
+     * aparecesse no corpus, ou não passaria. A previsão simula a metade ausente
+     * e chama o predicado real.
      */
-    public function test_a_particao_dos_hapaxes_longos_e_completa(): void
+    public function test_a_previsao_de_acusacao_usa_o_predicado_da_regra(): void
     {
-        [$corpus] = $this->medir();
+        $corpus = $this->corpusVivo();
+        $minimo = $this->constante('COMPRIMENTO_MINIMO');
 
         $hapaxLongos = array_keys(array_filter(
             $corpus,
-            fn (int $n, string $p): bool => $n === 1 && mb_strlen($p) >= 14,
+            fn (int $vezes, string $palavra): bool => $vezes === 1 && mb_strlen($palavra) >= $minimo,
             ARRAY_FILTER_USE_BOTH,
         ));
 
-        $this->assertCount(27, $hapaxLongos, 'Os hapaxes de 14+ mudaram: as contagens da docblock da regra precisam ser recontadas.');
+        $this->assertNotSame([], $hapaxLongos, 'O corpus não tem palavra longa de ocorrência única: a varredura não abriu os comentários.');
 
-        $acusam = [];
-        $nunca = [];
+        $acusariam = [];
+        $naoAcusariam = [];
 
         foreach ($hapaxLongos as $palavra) {
-            $contaria = false;
+            $this->assertNull($this->divisao($palavra, $corpus), sprintf('`%s` já é acusada hoje, e a camada de colagem deveria ter falhado.', $palavra));
 
-            foreach ($this->cortes($palavra) as [$esquerda, $direita]) {
-                $temEsquerda = ($corpus[$esquerda] ?? 0) >= 1;
-                $temDireita = ($corpus[$direita] ?? 0) >= 1;
+            if ($this->acusariaComAMetadeAusente($palavra, $corpus)) {
+                $acusariam[] = $palavra;
+            } else {
+                $naoAcusariam[] = $palavra;
+            }
+        }
 
-                if (($temEsquerda xor $temDireita) && ! in_array($temEsquerda ? $direita : $esquerda, self::ESPERADO_ISENTAS, true)) {
-                    $contaria = true;
+        $this->assertSame([], array_intersect($acusariam, $naoAcusariam));
+        $this->assertCount(count($hapaxLongos), [...$acusariam, ...$naoAcusariam]);
+    }
 
-                    break;
+    /**
+     * A docblock de `ISENTAS` separa as doze palavras de prosa que a lista
+     * silencia pelo comprimento, que é fato da palavra e não do corpus.
+     */
+    public function test_as_palavras_isentas_citadas_tem_o_comprimento_que_a_docblock_declara(): void
+    {
+        $minimo = $this->constante('COMPRIMENTO_MINIMO');
+
+        $abaixoDoPiso = ['realmente', 'raramente', 'exatamente', 'localmente', 'corretamente', 'inteiramente', 'precisamente', 'separadamente'];
+        $noPisoOuAcima = ['deliberadamente', 'silenciosamente', 'propositalmente', 'estruturalmente'];
+
+        foreach ($abaixoDoPiso as $palavra) {
+            $this->assertLessThan($minimo, mb_strlen($palavra), sprintf('`%s` não está abaixo do piso.', $palavra));
+        }
+
+        foreach ($noPisoOuAcima as $palavra) {
+            $this->assertGreaterThanOrEqual($minimo, mb_strlen($palavra), sprintf('`%s` está abaixo do piso.', $palavra));
+        }
+
+        $this->assertSame(['mente', 'estrutura', 'ações'], $this->constante('ISENTAS'));
+    }
+
+    /**
+     * @param  array<string, int>  $corpus
+     */
+    private function acusariaComAMetadeAusente(string $palavra, array $corpus): bool
+    {
+        $tamanho = mb_strlen($palavra);
+
+        for ($corte = 4; $corte <= $tamanho - 4; $corte++) {
+            foreach ([mb_substr($palavra, 0, $corte), mb_substr($palavra, $corte)] as $metade) {
+                if (($corpus[$metade] ?? 0) === 0 && $this->divisao($palavra, [...$corpus, $metade => 1]) !== null) {
+                    return true;
                 }
             }
-
-            if ($contaria) {
-                $acusam[] = $palavra;
-            } else {
-                $nunca[] = $palavra;
-            }
         }
 
-        $this->assertCount(15, $acusam, sprintf('Os que acusariam quando a metade faltasse: %d agora, a docblock diz 15. São %s.', count($acusam), implode(', ', $acusam)));
-        $this->assertCount(12, $nunca, sprintf('Os que não acusariam: %d agora, a docblock diz 12. São %s.', count($nunca), implode(', ', $nunca)));
-        $this->assertSame(27, 15 + 12, 'A partição não fecha.');
-
-        // As duas que a isenta segura, e que são subconjunto do 12 — o ponto em
-        // que a partição do round 4 estava errada.
-        $this->assertContains('silenciosamente', $nunca);
-        $this->assertContains('propositalmente', $nunca);
-        $this->assertContains('infraestrutura', $acusam);
-        $this->assertContains('programaticamente', $acusam);
+        return false;
     }
 
     /**
-     * As doze palavras que a docblock de `ISENTAS` nomeia, com o motivo pelo
-     * qual cada uma não é caso da regra: comprimento e frequência.
-     *
-     * **O teste existe porque a lista foi o defeito.** A versão do round 4
-     *Citava doze palavras como "as que a regra acusaria com `ISENTAS` vazia", e
-     * **oito delas estão abaixo do piso de 14** — a regra as descarta pela
-     * comprimento antes de consultar a isenta — e seis delas **não são hapax**.
-     * Só duas são ao mesmo tempo hapax e de 14 ou mais: `propositalmente` e
-     * `silenciosamente`, as duas com 15 caracteres, e é isso que torna o piso em
-     * 16 uma saída e o piso em 14 necessário.
+     * @param  array<string, int>  $corpus
+     * @return array{0: string, 1: string}|null
      */
-    public function test_as_palavras_isentas_tem_o_comprimento_e_a_frequencia_que_a_docblock_declara(): void
+    private function divisao(string $palavra, array $corpus): ?array
     {
-        [$corpus] = $this->medir();
-
-        $esperado = [
-            'exatamente' => [10, 59],
-            'corretamente' => [12, 0],
-            'separadamente' => [13, 3],
-            'realmente' => [9, 5],
-            'raramente' => [9, 0],
-            'deliberadamente' => [15, 4],
-            'silenciosamente' => [15, 0],
-            'inteiramente' => [12, 0],
-            'localmente' => [10, 2],
-            'propositalmente' => [15, 0],
-            'estruturalmente' => [15, 2],
-            'precisamente' => [12, 0],
-        ];
-
-        $abaixo = [];
-        $naoHapax = [];
-
-        foreach ($esperado as $palavra => [$comprimento, $frequencia]) {
-            $vezes = $corpus[$palavra] ?? 0;
-
-            $this->assertSame($comprimento, mb_strlen($palavra), sprintf('`%s` tem %d caracteres e a docblock diz %d.', $palavra, mb_strlen($palavra), $comprimento));
-
-            if ($frequencia !== 0) {
-                $this->assertSame($frequencia, $vezes, sprintf('`%s` aparece %d vezes e a docblock diz %d.', $palavra, $vezes, $frequencia));
-            }
-
-            if ($comprimento < 14) {
-                $abaixo[] = $palavra;
-            }
-
-            if ($vezes > 1) {
-                $naoHapax[] = $palavra;
-            }
-        }
-
-        $this->assertCount(8, $abaixo, sprintf('A lista mudou de comprimento: %d abaixo do piso agora, a docblock diz 8. São %s.', count($abaixo), implode(', ', $abaixo)));
-        $this->assertCount(6, $naoHapax, sprintf('A lista mudou de frequência: %d não são hapax agora, a docblock diz 6. São %s.', count($naoHapax), implode(', ', $naoHapax)));
+        return (new ReflectionClass(PalavrasCorrompidasTest::class))
+            ->getMethod('divisaoEmPalavrasConhecidas')
+            ->invoke($this->regra(), $palavra, $corpus);
     }
 
     /**
-     * O corpus, montado pelos mesmos caminhos que a regra usa.
+     * O corpus montado pelos mesmos caminhos que a regra usa.
      *
-     * @return array{0: array<string, int>, 1: list<string>}
+     * @return array<string, int>
      */
-    private function medir(): array
+    private function corpusVivo(): array
     {
         $reflexao = new ReflectionClass(PalavrasCorrompidasTest::class);
-        $instancia = new PalavrasCorrompidasTest('test_nunca_chamado');
-
-        $arquivos = $reflexao->getMethod('arquivos');
-        $arquivos->setAccessible(true);
-        $comentario = $reflexao->getMethod('ehComentario');
-        $comentario->setAccessible(true);
-        $prosa = $reflexao->getMethod('palavrasDeProsa');
-        $prosa->setAccessible(true);
-
-        $lista = $arquivos->invoke($instancia);
+        $regra = $this->regra();
         $corpus = [];
 
-        foreach ($lista as $arquivo) {
+        foreach ($reflexao->getMethod('arquivos')->invoke($regra) as $arquivo) {
             foreach (file($arquivo) as $linha) {
-                if (! $comentario->invoke($instancia, $linha)) {
+                if (! $reflexao->getMethod('ehComentario')->invoke($regra, $linha)) {
                     continue;
                 }
 
-                foreach ($prosa->invoke($instancia, $linha) as $palavra) {
+                foreach ($reflexao->getMethod('palavrasDeProsa')->invoke($regra, $linha) as $palavra) {
                     $corpus[$palavra] = ($corpus[$palavra] ?? 0) + 1;
                 }
             }
         }
 
-        return [$corpus, $lista];
+        return $corpus;
     }
 
-    /**
-     * Os cortes de 4 a `len − 4`, que é a janela que a regra percorre.
-     *
-     * @return list<array{0: string, 1: string}>
-     */
-    private function cortes(string $palavra): array
+    private function constante(string $nome): mixed
     {
-        $cortes = [];
-        $tamanho = mb_strlen($palavra);
+        return (new ReflectionClass(PalavrasCorrompidasTest::class))->getConstant($nome);
+    }
 
-        for ($corte = 4; $corte <= $tamanho - 4; $corte++) {
-            $cortes[] = [mb_substr($palavra, 0, $corte), mb_substr($palavra, $corte)];
-        }
-
-        return $cortes;
+    private function regra(): PalavrasCorrompidasTest
+    {
+        return new PalavrasCorrompidasTest('test_nunca_chamado');
     }
 }
