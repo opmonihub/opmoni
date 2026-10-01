@@ -88,8 +88,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
      * **O upload é limitado, e pelo mesmo motivo do diagnóstico mais
      * abaixo.** Cada envio aceito agenda a emissão do termo, e a emissão é um
      * `submitTerm` de verdade contra o provedor, com `tries = 1` e sem
-     * unicidade: um `admin` ou `operador` que chame a rota em laço gasta a cota
-     * **do escritório dele**, que é a cota de um parceiro do SERPRO. Seis por
+     * unicidade: um `is_super_admin` que chame a rota em laço gasta a cota
+     * **do escritório corrente**, que é a cota de um parceiro do SERPRO. Seis por
      * minuto é folgado para o uso real — o e-CNPJ se entrega uma vez, e a
      * reentrega é rara — e curto o bastante para que a cota gasta por uma
      * sessão de teste seja irrelevante.
@@ -120,8 +120,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
 
     /*
      * A habilitação da integração é do escritório, e fica aqui — no grupo
-     * `tenant` — porque é a conta corrente que liga e desliga. Escrever é de
-     * `admin` (o `update` da `AccountPolicy` que o Form Request consulta):
+     * `tenant` — porque é a conta corrente que liga e desliga. Escrever é do
+     * `is_super_admin` (é o que o `authorize` do Form Request exige):
      * desligar um escritório é contenção, e a decisão não é de quem só
      * opera a rotina. Ler é de qualquer Membro, porque a tela de todos
      * precisa saber se a integração está ligada.

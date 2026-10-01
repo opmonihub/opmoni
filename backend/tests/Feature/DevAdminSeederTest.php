@@ -59,7 +59,7 @@ class DevAdminSeederTest extends TestCase
         $this->assertSame('admin', $admin->accountRole($account));
         $this->assertSame($account->getKey(), $admin->current_account_id);
 
-        $super = User::query()->where('email', 'super_admin@example.com')->first();
+        $super = User::query()->where('email', DevAdminSeeder::SUPER_ADMIN_EMAIL)->first();
 
         $this->assertNotNull($super, 'O seeder local precisa garantir o login super_admin@example.com.');
         $this->assertTrue((bool) $super->is_super_admin);
