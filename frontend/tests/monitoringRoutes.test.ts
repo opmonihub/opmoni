@@ -27,6 +27,12 @@ describe('monitoring routes', () => {
     assert.equal(listing?.obligation.slug, 'parcelamentos/pgfn')
   })
 
+  it('does not resolve the moved office-certificate screen', () => {
+    // The e-CNPJ screen lives in the Painel Global now: no static route claims
+    // `/monitoring/termos`, so the catch-all has to answer null.
+    assert.equal(parseMonitoringSlug(['termos']), null)
+  })
+
   it('resolves a situation segment and returns it', () => {
     const listing = parseMonitoringSlug(['caixas-postais', 'det', 'atencao'])
     assert.equal(listing?.obligation.slug, 'caixas-postais/det')
@@ -153,17 +159,23 @@ describe('the obligation registry', () => {
 })
 
 describe('the module navigation', () => {
-  it('offers Painel and the two integration screens as the module tabs', () => {
+  it('offers Painel and the integration screens as the module tabs', () => {
     assert.deepEqual(monitoringPages.map(page => page.to), [
       '/monitoring',
-      '/monitoring/termos',
       '/monitoring/execucoes'
     ])
   })
 
+  it('keeps the office certificate out of the module', () => {
+    // The e-CNPJ moved to the Painel Global; no module destination may still
+    // point at the old screen.
+    assert.equal(monitoringPages.some(page => page.to === '/monitoring/termos'), false)
+    assert.equal(monitoringIntegrationLinks.some(link => link.to === '/monitoring/termos'), false)
+  })
+
   it('spells an integration screen once, deriving the tabs from the panel links', () => {
-    // The panel's link cards and the module tab bar are the same two screens;
-    // two lists of them is how "Termo de autorização" becomes "Termos de autorização".
+    // The panel's link cards and the module tab bar are the same screen;
+    // two lists of it is how "Execuções" becomes "Execução".
     for (const link of monitoringIntegrationLinks) {
       assert.ok(
         monitoringPages.some(page => page.to === link.to && page.label === link.label),
@@ -175,7 +187,6 @@ describe('the module navigation', () => {
   it('lights exactly one tab per destination', () => {
     for (const path of [
       '/monitoring',
-      '/monitoring/termos',
       '/monitoring/execucoes',
       '/monitoring/execucoes/12',
       '/monitoring/simples-nacional',
@@ -189,7 +200,7 @@ describe('the module navigation', () => {
   })
 
   it('lights every obligation under Painel, the screen that indexes them', () => {
-    // A tab bar with nothing lit on 19 of the module's 21 screens is the defect
+    // A tab bar with nothing lit on 19 of the module's 20 screens is the defect
     // this rule exists to prevent, so it is asserted over the whole registry
     // rather than on a sample.
     for (const obligation of monitoringObligations) {
@@ -215,9 +226,8 @@ describe('the module navigation', () => {
   it('lists the sidebar in the same order as the tabs, obligations in between', () => {
     const children = monitoringSidebarChildren('/monitoring')
     assert.equal(children[0]?.label, 'Painel')
-    assert.equal(children[children.length - 2]?.label, 'Termo de autorização')
     assert.equal(children[children.length - 1]?.label, 'Execuções de sincronização')
-    // Painel + eight groups + two integration screens.
+    // Painel + eight groups + the integration screens.
     assert.equal(children.length, monitoringPages.length + monitoringGroups.length)
   })
 
@@ -227,7 +237,6 @@ describe('the module navigation', () => {
     // to go dark there — the two rules are deliberately different.
     const paths = [
       '/monitoring',
-      '/monitoring/termos',
       '/monitoring/execucoes',
       '/monitoring/execucoes/12',
       ...monitoringObligations.map(item => monitoringListPath(item)),
