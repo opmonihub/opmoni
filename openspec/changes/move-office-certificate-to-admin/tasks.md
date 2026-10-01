@@ -4,9 +4,15 @@
 
 ## 2. Backend, testes que falham
 
-- [ ] 2.1 Acrescentar em `SerproAccountCertificateTest` os casos de `admin` e `operador` da Account recebendo 403 no POST e no DELETE, e de super_admin gravando e removendo, verificar que `cd backend && php artisan test --compact --filter=SerproAccountCertificate` falha nesses casos antes da policy mudar.
-- [ ] 2.2 Acrescentar em `SerproAccountEnablementTest` os casos de `admin`, `operador` e `user` recebendo 403 no PUT, de super_admin alterando o flag, e de Membro lendo 200, verificar que `cd backend && php artisan test --compact --filter=SerproAccountEnablement` falha nesses casos antes do Form Request mudar.
-- [ ] 2.3 Acrescentar um teste do `DevAdminSeeder` em ambiente `local`: `admin@example.com` fica Membro `admin` com `is_super_admin` falso, e `super_admin@example.com` fica super_admin com a mesma Account corrente, verificar que `cd backend && php artisan test --compact --filter=DevAdminSeeder` falha antes do seeder mudar.
+- [x] 2.1 Acrescentar em `SerproAccountCertificateTest` os casos de `admin` e `operador` da Account recebendo 403 no POST e no DELETE, e de super_admin gravando e removendo, verificar que `cd backend && php artisan test --compact --filter=SerproAccountCertificate` falha nesses casos antes da policy mudar.
+- [x] 2.2 Acrescentar em `SerproAccountEnablementTest` os casos de `admin`, `operador` e `user` recebendo 403 no PUT, de super_admin alterando o flag, e de Membro lendo 200, verificar que `cd backend && php artisan test --compact --filter=SerproAccountEnablement` falha nesses casos antes do Form Request mudar.
+- [x] 2.3 Acrescentar um teste do `DevAdminSeeder` em ambiente `local`: `admin@example.com` fica Membro `admin` com `is_super_admin` falso, e `super_admin@example.com` fica super_admin com a mesma Account corrente, verificar que `cd backend && php artisan test --compact --filter=DevAdminSeeder` falha antes do seeder mudar.
+
+### Observações da implementação
+
+- O caso de `operador`/`user` recebendo 403 no PUT já existia (`test_operador_e_user_recebem_403_e_nada_muda`); o caso novo cobre o `admin`, e o conjunto fica completo.
+- Os casos de super_admin gravando (`test_super_admin_grava_e_remove_o_ecnpj_da_conta_corrente`, `test_super_admin_altera_o_flag_da_conta_corrente`) já passam hoje, porque `HasTenantRole::tenantRole` e `AccountPolicy::update` já tratam `isSuperAdmin()` como `admin`. Eles fixam o comportamento para a task 3 não regredir.
+- Na task 3, os testes existentes que escrevem como `admin`/`operador` (por exemplo `test_admin_e_operador_enviam_o_ecnpj_do_escritorio` e `test_admin_habilita_com_a_conexao_inteira`) vão falhar com o 403 novo e precisam ser migrados para o helper de super_admin — a mudança de regra é exatamente essa.
 
 ## 3. Backend, autorização
 
