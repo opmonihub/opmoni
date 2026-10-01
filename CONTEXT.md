@@ -73,7 +73,7 @@ O vínculo entre um cliente e o escritório, outorgado no e-CAC. O opmoni não a
 _Avoid_: procuração, sem qualificação
 
 **Certificado do escritório**:
-O e-CNPJ de uma Account, enviado por `admin` ou `operador`, que assina o Termo de autorização. Não é credencial do provedor.
+O e-CNPJ de uma Account, enviado pelo super_admin no Painel Global, que assina o Termo de autorização. Não é credencial do provedor.
 _Avoid_: credencial do escritório
 
 **Família de serviço autorizada**:
