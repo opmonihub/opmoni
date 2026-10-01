@@ -29,7 +29,13 @@
 
 ## 4. Seed local
 
-- [ ] 4.1 Ajustar `DevAdminSeeder` para reafirmar os dois logins só em `local`, sem copiar arquivo de `.ref/data/`, verificar `cd backend && php artisan test --compact --filter=DevAdminSeeder`.
+- [x] 4.1 Ajustar `DevAdminSeeder` para reafirmar os dois logins só em `local`, sem copiar arquivo de `.ref/data/`, verificar `cd backend && php artisan test --compact --filter=DevAdminSeeder`.
+
+### Observações da implementação
+
+- O e-mail do super_admin virou a constante `DevAdminSeeder::SUPER_ADMIN_EMAIL` (`super_admin@example.com`), no mesmo padrão de `EMAIL`/`PASSWORD` já publicados.
+- O seeder reafirma `is_super_admin` nos dois lados a cada execução: `false` no login de Membro e `true` no super_admin, então uma base dev antiga em que `admin@example.com` tinha o flag é corrigida pela próxima rodada do seed.
+- O super_admin não ganha vínculo em `account_user`: ele não é Membro, e o `current_account_id` só aponta a Account de desenvolvimento.
 
 ## 5. Frontend, testes que falham
 
