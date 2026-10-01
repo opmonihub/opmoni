@@ -39,7 +39,13 @@
 
 ## 5. Frontend, testes que falham
 
-- [ ] 5.1 Atualizar `frontend/tests/monitoringRoutes.test.ts` para não esperar `/monitoring/termos`, e cobrir em teste de `adminNav` a entrada "Certificado do escritório", verificar que `cd frontend && pnpm test` falha nesses casos antes da navegação mudar.
+- [x] 5.1 Atualizar `frontend/tests/monitoringRoutes.test.ts` para não esperar `/monitoring/termos`, e cobrir em teste de `adminNav` a entrada "Certificado do escritório", verificar que `cd frontend && pnpm test` falha nesses casos antes da navegação mudar.
+
+### Observações da implementação
+
+- `frontend/tests/adminNav.test.ts` é um arquivo novo: não existia cobertura do `adminNav`. Os 5 casos do describe "the office certificate entry" falham hoje (entrada inexistente), e voltam a passar na task 6.1.
+- Em `monitoringRoutes.test.ts`, os dois casos que falham são "offers Painel and the integration screens as the module tabs" (lista agora é `['/monitoring', '/monitoring/execucoes']`) e o novo "keeps the office certificate out of the module". O caso "does not resolve the moved office-certificate screen" (`parseMonitoringSlug(['termos']) === null`) já passa, porque o slug nunca foi obrigação — ele fixa o contrato do catch-all para depois da remoção da página.
+- O teste "keeps the office certificate out of the module" continuará verde após a mudança: ele passa a ser a guarda contra regressão, não só a falha vermelha.
 
 ## 6. Frontend, tela
 
