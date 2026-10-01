@@ -1487,7 +1487,7 @@ class SerproAuthorizationTermTest extends TestCase
 
         $conta = Account::factory()->create();
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post('/api/serpro/account-certificate', [
                 'certificate' => UploadedFile::fake()->createWithContent('escritorio.p12', (string) self::$pfx),
                 'password' => self::SENHA,
@@ -1673,7 +1673,7 @@ class SerproAuthorizationTermTest extends TestCase
 
         $this->assertSame(SerproTermProof::Ausente, SerproConnection::sole()->termProof());
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post('/api/serpro/account-certificate', [
                 'certificate' => UploadedFile::fake()->createWithContent('escritorio.p12', (string) self::$pfx),
                 'password' => self::SENHA,
@@ -2273,6 +2273,21 @@ class SerproAuthorizationTermTest extends TestCase
         $user->forceFill(['current_account_id' => $conta->getKey()])->save();
 
         return $user->refresh();
+    }
+
+    /**
+     * Um super_admin com a conta própria dele e a corrente apontando para a
+     * conta dada — o mesmo arranjo do modo suporte, que é a única forma de
+     * escrever o e-CNPJ do escritório.
+     */
+    private function superAdminDe(Account $conta): User
+    {
+        $super = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create(['account_id' => $casa->getKey(), 'user_id' => $super->getKey(), 'role' => 'admin']);
+        $super->forceFill(['current_account_id' => $conta->getKey()])->save();
+
+        return $super->refresh();
     }
 
     /**

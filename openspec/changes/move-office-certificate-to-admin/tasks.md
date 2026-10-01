@@ -16,8 +16,16 @@
 
 ## 3. Backend, autorização
 
-- [ ] 3.1 Restringir `create` e `delete` de `AccountCertificatePolicy` a `isSuperAdmin()`, mantendo `viewAny` para Membro, verificar `cd backend && php artisan test --compact --filter=SerproAccountCertificate`.
-- [ ] 3.2 Restringir `UpdateSerproEnablementRequest` a super_admin, sem alterar `AccountPolicy::update`, verificar `cd backend && php artisan test --compact --filter=SerproAccountEnablement`.
+- [x] 3.1 Restringir `create` e `delete` de `AccountCertificatePolicy` a `isSuperAdmin()`, mantendo `viewAny` para Membro, verificar `cd backend && php artisan test --compact --filter=SerproAccountCertificate`.
+- [x] 3.2 Restringir `UpdateSerproEnablementRequest` a super_admin, sem alterar `AccountPolicy::update`, verificar `cd backend && php artisan test --compact --filter=SerproAccountEnablement`.
+
+### Observações da implementação
+
+- `UpdateSerproEnablementRequest::authorize` checa `$user->isSuperAdmin()` direto, sem consultar `AccountPolicy::update` — a decisão do design é não restringir a edição da Account, que o `admin` da conta continua fazendo.
+- Os testes que escreviam como `admin`/`operador` migraram para `superAdminDe` (POST/DELETE do e-CNPJ e PUT do flag); os GETs seguem como Membro. Os nomes `test_admin_e_operador_enviam_o_ecnpj_do_escritorio` e `test_admin_habilita_com_a_conexao_inteira` viraram `test_super_admins_*` para não mentir o papel.
+- O helper foi padronizado em `superAdminDe` nos três arquivos (`SerproAccountCertificateTest`, `SerproAccountEnablementTest`, `SerproAuthorizationTermTest` — este último ganhou o helper novo).
+- `SupportAuditCoverageTest::test_membro_nao_gera_log_nas_mesmas_escritas` passou a afirmar `403` no PUT do flag: a recusa vem antes de qualquer `SupportAudit::logWrite`, e a invariante do caso (Membro não gera log) ficou ainda mais estrita.
+- `test_a_policy_do_ecnpj_nao_declara_verbos_que_enderecem_a_linha` teve a segunda metade atualizada: `admin`/`operador`/`user` não passam mais em `create`/`delete` no Gate; quem passa é `is_super_admin`.
 
 ## 4. Seed local
 

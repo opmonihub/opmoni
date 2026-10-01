@@ -181,18 +181,20 @@ class SerproAccountCertificateTest extends TestCase
 
         resolve(CurrentTenant::class)->accountId = $conta->getKey();
 
-        $this->assertTrue(Gate::forUser($this->membroDe($conta, 'admin'))->allows('create', AccountCertificate::class));
-        $this->assertTrue(Gate::forUser($this->membroDe($conta, 'operador'))->allows('delete', AccountCertificate::class));
+        $this->assertFalse(Gate::forUser($this->membroDe($conta, 'admin'))->allows('create', AccountCertificate::class));
+        $this->assertFalse(Gate::forUser($this->membroDe($conta, 'operador'))->allows('delete', AccountCertificate::class));
         $this->assertFalse(Gate::forUser($this->membroDe($conta, 'user'))->allows('create', AccountCertificate::class));
+        $this->assertTrue(Gate::forUser($this->superAdminDe($conta))->allows('create', AccountCertificate::class));
+        $this->assertTrue(Gate::forUser($this->superAdminDe($conta))->allows('delete', AccountCertificate::class));
     }
 
-    public function test_admin_e_operador_enviam_o_ecnpj_do_escritorio(): void
+    public function test_super_admins_enviam_o_ecnpj_do_escritorio(): void
     {
         $conta = Account::factory()->create();
-        foreach (['admin', 'operador'] as $papel) {
+        foreach ([1, 2] as $envio) {
             ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
 
-            $this->actingAs($this->membroDe($conta, $papel), 'sanctum')
+            $this->actingAs($this->superAdminDe($conta), 'sanctum')
                 ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
                 ->assertOk()
                 ->assertJsonPath('data.document', self::CNPJ)
@@ -229,7 +231,7 @@ class SerproAccountCertificateTest extends TestCase
         $senha = 'senha do escritorio';
         ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12', $senha);
 
-        $resposta = $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $resposta = $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => $senha], $this->jsonHeaders())
             ->assertOk();
 
@@ -269,12 +271,13 @@ class SerproAccountCertificateTest extends TestCase
     public function test_documento_vem_do_certificado_e_nao_da_requisicao(): void
     {
         $conta = Account::factory()->create();
+        $super = $this->superAdminDe($conta);
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
         // A `Account` não tem coluna de CNPJ: não há contra o que comparar, e o
         // documento do contratante precisa ser o que o certificado carrega. Um
         // campo no corpo da requisição é recusado, e não ignorado em silêncio.
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, [
                 'certificate' => $arquivo,
                 'password' => self::SENHA,
@@ -287,7 +290,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk()
             ->assertJsonPath('data.document', self::CNPJ);
@@ -298,9 +301,10 @@ class SerproAccountCertificateTest extends TestCase
     public function test_senha_errada_responde_422_sem_gravar_nem_substituir_o_que_esta_gravado(): void
     {
         $conta = Account::factory()->create();
+        $super = $this->superAdminDe($conta);
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => 'senha-errada'], $this->jsonHeaders())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('password');
@@ -315,7 +319,7 @@ class SerproAccountCertificateTest extends TestCase
         // recusa.
         ['file' => $primeiro] = $this->pfx('primeiro.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $primeiro, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -325,7 +329,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['file' => $segundo] = $this->pfx('segundo.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $segundo, 'password' => 'senha-errada'], $this->jsonHeaders())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('password');
@@ -351,9 +355,10 @@ class SerproAccountCertificateTest extends TestCase
     public function test_certificado_vencido_e_recusado_com_mensagem_proria(): void
     {
         $conta = Account::factory()->create();
+        $super = $this->superAdminDe($conta);
         ['file' => $arquivo] = $this->pfx('vencido.p12', self::SENHA, 0);
 
-        $recusa = $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $recusa = $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('certificate');
@@ -371,7 +376,7 @@ class SerproAccountCertificateTest extends TestCase
         // de novo — não é o mesmo nos dois casos.
         ['file' => $arquivo] = $this->pfx('valido.p12');
 
-        $senhaErrada = $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $senhaErrada = $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => 'senha-errada'], $this->jsonHeaders())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('password');
@@ -400,7 +405,7 @@ class SerproAccountCertificateTest extends TestCase
 
         $conta = Account::factory()->create();
 
-        $recusa = $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $recusa = $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, [
                 'certificate' => UploadedFile::fake()->createWithContent('legado.pfx', $bytes),
                 'password' => self::SENHA,
@@ -445,7 +450,7 @@ class SerproAccountCertificateTest extends TestCase
 
         $conta = Account::factory()->create(['name' => 'Escritorio Alheio Consultoria']);
 
-        $recusa = $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $recusa = $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, [
                 'certificate' => UploadedFile::fake()->createWithContent('legado.pfx', $bytes),
                 'password' => self::SENHA,
@@ -465,11 +470,11 @@ class SerproAccountCertificateTest extends TestCase
     public function test_substituicao_marca_a_linha_anterior_e_apaga_somente_o_ciphertext(): void
     {
         $conta = Account::factory()->create();
-        $operador = $this->membroDe($conta, 'operador');
+        $super = $this->superAdminDe($conta);
 
         ['bytes' => $bytesAntigos, 'file' => $primeiro] = $this->pfx('primeiro.p12', self::SENHA, 365, self::CNPJ_ALHEIO);
 
-        $this->actingAs($operador, 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $primeiro, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -477,7 +482,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['bytes' => $bytesNovos, 'file' => $segundo] = $this->pfx('segundo.p12');
 
-        $this->actingAs($operador, 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $segundo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -521,15 +526,16 @@ class SerproAccountCertificateTest extends TestCase
     public function test_remocao_apaga_o_conteudo_e_mantem_o_historico_legivel(): void
     {
         $conta = Account::factory()->create();
+        $super = $this->superAdminDe($conta);
         ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
         $id = AccountCertificate::query()->sole()->getKey();
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->deleteJson(self::ROTA)
             ->assertNoContent();
 
@@ -558,7 +564,7 @@ class SerproAccountCertificateTest extends TestCase
         $conta = Account::factory()->create();
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -614,7 +620,7 @@ class SerproAccountCertificateTest extends TestCase
         $conta = Account::factory()->create();
         ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -667,7 +673,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($minha, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($minha), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk()
             ->assertJsonPath('data.document', self::CNPJ);
@@ -749,7 +755,7 @@ class SerproAccountCertificateTest extends TestCase
         $conta = Account::factory()->create();
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -761,7 +767,7 @@ class SerproAccountCertificateTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.document', self::CNPJ);
 
-        // Gravar é do `admin` e do `operador`. O papel `user` não aparece em
+        // Gravar é só do `is_super_admin`. O papel `user` não aparece em
         // nenhuma policy do produto e é somente leitura na prática.
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
@@ -856,9 +862,9 @@ class SerproAccountCertificateTest extends TestCase
     public function test_arquivo_que_nao_e_pfx_e_arquivo_acima_de_2_mib_sao_recusados(): void
     {
         $conta = Account::factory()->create();
-        $operador = $this->membroDe($conta, 'operador');
+        $super = $this->superAdminDe($conta);
 
-        $this->actingAs($operador, 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, [
                 'certificate' => UploadedFile::fake()->createWithContent('certificado.txt', 'isto nao e um pkcs12'),
                 'password' => self::SENHA,
@@ -868,7 +874,7 @@ class SerproAccountCertificateTest extends TestCase
 
         // A escada de tamanho: `max:2048` são 2 MiB em kilobytes, e a recusa
         // acontece antes do cofre — o arquivo nem é lido.
-        $this->actingAs($operador, 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, [
                 'certificate' => UploadedFile::fake()->createWithContent('grande.pfx', str_repeat('a', 2 * 1024 * 1024 + 1)),
                 'password' => self::SENHA,
@@ -881,7 +887,7 @@ class SerproAccountCertificateTest extends TestCase
         // consegue abrir.
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($operador, 'sanctum')
+        $this->actingAs($super, 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo], $this->jsonHeaders())
             ->assertUnprocessable()
             ->assertJsonValidationErrors('password');
@@ -915,7 +921,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['file' => $arquivo] = $this->pfx($nomeLongo);
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -973,7 +979,7 @@ class SerproAccountCertificateTest extends TestCase
 
         // O e-CNPJ entra. Recusá-lo por causa do nome do sujeito seria trocar um
         // `500` por um `422` que o escritório não tem como corrigir.
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -1040,7 +1046,7 @@ class SerproAccountCertificateTest extends TestCase
 
         ['file' => $arquivo] = $this->pfx($nome);
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -1145,7 +1151,7 @@ class SerproAccountCertificateTest extends TestCase
         $conta = Account::factory()->create();
         ['bytes' => $bytes, 'file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -1262,7 +1268,7 @@ class SerproAccountCertificateTest extends TestCase
         $conta = Account::factory()->create();
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
             ->assertOk();
 
@@ -1292,7 +1298,7 @@ class SerproAccountCertificateTest extends TestCase
         $menorId = min($duplicata->getKey(), $original->getKey());
         $maiorId = max($duplicata->getKey(), $original->getKey());
 
-        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
             ->deleteJson(self::ROTA)
             ->assertNoContent();
 

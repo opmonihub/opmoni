@@ -12,8 +12,8 @@ use Tests\TestCase;
 
 /**
  * A habilitação da integração por escritório: um flag em `Account.settings`
- * que só `admin` escreve, que exige a credencial de plataforma íntegra para
- * ligar, e que desligar não apaga nada do histórico.
+ * que só o `is_super_admin` escreve, que exige a credencial de plataforma
+ * íntegra para ligar, e que desligar não apaga nada do histórico.
  */
 class SerproAccountEnablementTest extends TestCase
 {
@@ -29,12 +29,12 @@ class SerproAccountEnablementTest extends TestCase
             ->assertJsonPath('data.enabled', false);
     }
 
-    public function test_admin_habilita_com_a_conexao_inteira(): void
+    public function test_super_admin_habilita_com_a_conexao_inteira(): void
     {
         $account = Account::factory()->create();
         $this->conexao();
 
-        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($account), 'sanctum')
             ->putJson('/api/serpro/enablement', ['enabled' => true])
             ->assertOk()
             ->assertJsonPath('data.enabled', true);
@@ -49,7 +49,7 @@ class SerproAccountEnablementTest extends TestCase
         // Sem credencial de plataforma não há o que habilitar: a resposta é
         // de validação e o flag não nasce, para que um GET depois não
         // precise distinguir "habilitado quebrado" de "habilitado".
-        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($account), 'sanctum')
             ->putJson('/api/serpro/enablement', ['enabled' => true])
             ->assertUnprocessable();
 
@@ -95,7 +95,7 @@ class SerproAccountEnablementTest extends TestCase
         $account = Account::factory()->create();
         $this->conexao();
 
-        $this->actingAs($this->superAdminOf($account), 'sanctum')
+        $this->actingAs($this->superAdminDe($account), 'sanctum')
             ->putJson('/api/serpro/enablement', ['enabled' => true])
             ->assertOk()
             ->assertJsonPath('data.enabled', true);
@@ -126,7 +126,7 @@ class SerproAccountEnablementTest extends TestCase
         ]);
         $this->conexao();
 
-        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($account), 'sanctum')
             ->putJson('/api/serpro/enablement', ['enabled' => false])
             ->assertOk()
             ->assertJsonPath('data.enabled', false);
@@ -142,7 +142,7 @@ class SerproAccountEnablementTest extends TestCase
         $outraConta = Account::factory()->create(['settings' => ['serpro_enabled' => true]]);
         $this->conexao();
 
-        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+        $this->actingAs($this->superAdminDe($account), 'sanctum')
             ->putJson('/api/serpro/enablement', ['enabled' => true])
             ->assertOk();
 
@@ -163,7 +163,7 @@ class SerproAccountEnablementTest extends TestCase
      * Um super_admin com a conta própria dele e a corrente apontando para a
      * conta dada — o mesmo arranjo do modo suporte.
      */
-    private function superAdminOf(Account $account): User
+    private function superAdminDe(Account $account): User
     {
         $super = User::factory()->create(['is_super_admin' => true]);
         $casa = Account::factory()->create();

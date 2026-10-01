@@ -12,11 +12,11 @@ use App\Policies\Concerns\HasTenantRole;
  * tela de integração do SERPRO publica, e escondê-lo de quem lê a conta seria
  * um `403` que não protege nada — o `admin` da conta lê a mesma tela.
  *
- * Gravar é de `admin` e `operador`, pelo mesmo motivo de `Client` e das
- * demais escritas da conta: o papel `user` é somente leitura na prática e não aparece em
- * nenhuma policy de escrita do produto. E a mão que grava aqui grava um
- * segredo — o e-CNPJ que assina o termo em nome da conta —, o que faz de
- * "quem pode" uma pergunta de consequência, não de conveniência de tela.
+ * Gravar é só do `is_super_admin`, e não de papel da Account. O que se grava
+ * aqui é o e-CNPJ que assina o termo de autorização **em nome da plataforma**:
+ * nenhum Membro da conta assina nada, e por isso o `admin` e o `operador` —
+ * que escrevem em todo o resto da conta — não escrevem nesta. A escrita na
+ * conta corrente é a escrita do modo suporte, e ela já sai auditada.
  *
  * **Os dois verbos de escrita recebem a classe, e não a linha.** O e-CNPJ do
  * escritório é um por conta e as rotas não endereçam linha nenhuma: o upload
@@ -35,11 +35,11 @@ class AccountCertificatePolicy
 
     public function create(User $user): bool
     {
-        return in_array($this->tenantRole($user), ['admin', 'operador'], true);
+        return $user->isSuperAdmin();
     }
 
     public function delete(User $user): bool
     {
-        return in_array($this->tenantRole($user), ['admin', 'operador'], true);
+        return $user->isSuperAdmin();
     }
 }

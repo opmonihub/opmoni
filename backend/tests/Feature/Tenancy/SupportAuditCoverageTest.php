@@ -180,7 +180,12 @@ class SupportAuditCoverageTest extends TestCase
 
         $this->postJson('/api/clients/saved-filters', ['name' => 'Ativos', 'q' => 'ltda', 'filters' => []])->assertCreated();
         $this->postJson('/api/clients/selections', [])->assertOk();
-        $this->putJson('/api/serpro/enablement', ['enabled' => false])->assertOk();
+
+        // A escrita do flag de habilitação é só do super_admin: para o Membro
+        // ela é `403`, e continua sem gerar log — a recusa vem antes de
+        // qualquer `SupportAudit::logWrite`.
+        $this->putJson('/api/serpro/enablement', ['enabled' => false])->assertForbidden();
+
         $this->postJson('/api/serpro/monitoring/obligations/declaracoes/pgdas/clients', [
             'client_ids' => [$client->getKey()],
         ])->assertOk();
