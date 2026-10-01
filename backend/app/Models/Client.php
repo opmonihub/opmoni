@@ -7,7 +7,10 @@ use App\Enums\ClientPersonType;
 use App\Enums\ClientStatus;
 use App\Enums\DeadlineStatus;
 use App\Enums\TaxRegime;
+use App\Jobs\RefreshSerproPowersJob;
 use App\Services\BrazilianTaxId;
+use App\Services\ClientPowerOfAttorneySummary;
+use App\Services\SerproAccountEnablement;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 #[Fillable([
     'person_type',
@@ -79,11 +83,6 @@ class Client extends Model
             ->whereNull('replaced_at')
             ->whereNull('removed_at')
             ->latestOfMany();
-    }
-
-    public function ecacPowerOfAttorney(): HasOne
-    {
-        return $this->hasOne(ClientEcacPowerOfAttorney::class);
     }
 
     /**
@@ -215,9 +214,18 @@ class Client extends Model
 
     public function scopeWithPoaStatus(Builder $query, string|array|null $status): Builder
     {
-        return $this->whereAnyOf($query, $this->stringList($status), function (Builder $query, string $status): void {
-            $this->applyDocumentStatus($query, 'ecacPowerOfAttorney', 'expires_at', $status);
-        });
+        $statuses = array_values(array_filter(
+            $this->stringList($status),
+            fn (string $status): bool => DeadlineStatus::tryFrom($status) !== null,
+        ));
+
+        if ($statuses === []) {
+            return $query;
+        }
+
+        $summaries = resolve(ClientPowerOfAttorneySummary::class)->forQuery($query);
+
+        return $query->whereIntegerInRaw('clients.id', $summaries->whereIn('status', $statuses)->keys()->all());
     }
 
     public function scopeOrderByCurrentCertificate(Builder $query, string $direction): Builder
@@ -233,43 +241,55 @@ class Client extends Model
 
     public function scopeOrderByPowerOfAttorney(Builder $query, string $direction): Builder
     {
-        return $this->orderByDateSubquery($query, ClientEcacPowerOfAttorney::query()
-            ->select('expires_at')
-            ->whereColumn('client_ecac_powers_of_attorney.client_id', 'clients.id')
-            ->orderByDesc('client_ecac_powers_of_attorney.id')
-            ->limit(1), $direction);
+        $groups = resolve(ClientPowerOfAttorneySummary::class)->forQuery($query)
+            ->filter(fn (array $summary): bool => $summary['expires_on'] !== null)
+            ->groupBy('expires_on', preserveKeys: true)
+            ->sortKeys(descending: $direction === 'desc');
+
+        if ($groups->isEmpty()) {
+            return $query->orderBy('name');
+        }
+
+        $clauses = [];
+        foreach ($groups->values() as $position => $summaries) {
+            $ids = $summaries->keys()->map(fn (int|string $id): int => (int) $id)->implode(',');
+            $clauses[] = "when clients.id in ({$ids}) then {$position}";
+        }
+
+        return $query->orderByRaw('case '.implode(' ', $clauses).' else '.$groups->count().' end')
+            ->orderBy('name');
     }
 
     public function scopeWithDeadlineStatus(Builder $query, string|array|null $status): Builder
     {
-        return $this->whereAnyOf($query, $this->stringList($status), function (Builder $query, string $status): void {
-            $this->applyCombinedDeadlineStatus($query, $status);
+        $statuses = $this->stringList($status);
+
+        if ($statuses === []) {
+            return $query;
+        }
+
+        $summaries = resolve(ClientPowerOfAttorneySummary::class)->forQuery($query);
+
+        return $this->whereAnyOf($query, $statuses, function (Builder $query, string $status) use ($summaries): void {
+            $this->applyCombinedDeadlineStatus($query, $status, $summaries);
         });
     }
 
-    private function applyCombinedDeadlineStatus(Builder $query, string $status): void
+    /**
+     * @param  Collection<int, array{status: string, expires_on: ?string, families: array}>  $summaries
+     */
+    private function applyCombinedDeadlineStatus(Builder $query, string $status, Collection $summaries): void
     {
-        $today = now()->startOfDay();
-        $limit = $today->copy()->addDays(30)->endOfDay();
-        // Day-precision boundaries mirror DeadlineState (startOfDay today, +30d): whereDate/whereBetween/where(>, endOfDay) match expired/expiring/valid.
-        $column = fn (Builder $relation, string $name): Builder => match ($status) {
-            DeadlineStatus::Expired->value => $relation->whereDate($name, '<', $today),
-            DeadlineStatus::Expiring->value => $relation->whereBetween($name, [$today, $limit]),
-            DeadlineStatus::Valid->value => $relation->where($name, '>', $limit),
-            default => $relation,
-        };
-
-        if ($status === DeadlineStatus::Missing->value) {
-            $query->where(fn (Builder $query): Builder => $query
-                ->whereDoesntHave('currentCertificate')
-                ->orWhereDoesntHave('ecacPowerOfAttorney'));
-
+        if (DeadlineStatus::tryFrom($status) === null) {
             return;
         }
 
-        $query->where(fn (Builder $query): Builder => $query
-            ->whereHas('currentCertificate', fn (Builder $relation): Builder => $column($relation, 'valid_until'))
-            ->orWhereHas('ecacPowerOfAttorney', fn (Builder $relation): Builder => $column($relation, 'expires_at')));
+        $ids = $summaries->where('status', $status)->keys()->all();
+
+        $query->where(function (Builder $query) use ($status, $ids): void {
+            $this->applyDocumentStatus($query, 'currentCertificate', 'valid_until', $status);
+            $query->orWhereIntegerInRaw('clients.id', $ids);
+        });
     }
 
     /**
@@ -357,10 +377,11 @@ class Client extends Model
             return $query;
         }
 
-        $relation = $matches[1] === 'certificate' ? 'currentCertificate' : 'ecacPowerOfAttorney';
-        $column = $matches[1] === 'certificate' ? 'valid_until' : 'expires_at';
+        if ($matches[1] === 'certificate') {
+            return $this->applyDocumentStatus($query, 'currentCertificate', 'valid_until', $matches[2]);
+        }
 
-        return $this->applyDocumentStatus($query, $relation, $column, $matches[2]);
+        return $this->scopeWithPoaStatus($query, $matches[2]);
     }
 
     private function applyDocumentStatus(Builder $query, string $relation, string $column, string $status): Builder
@@ -394,5 +415,32 @@ class Client extends Model
             ->orderByRaw('('.$sql.') is null', $bindings)
             ->orderByRaw('('.$sql.') '.$direction, $bindings)
             ->orderBy('name');
+    }
+
+    /**
+     * O gatilho do oráculo na troca de documento: qualquer save que mude o
+     * `tax_id` de uma pessoa jurídica despacha o refresh com `force`, porque
+     * a resposta que a janela de vinte horas protege media outro
+     * contribuinte. Viver no `updated` e não no controller é o que pega a
+     * troca feita pelo cnpj-refresh — que é o único caminho que a reescreve —
+     * sem depender de o chamador lembrar do flag.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Client $client): void {
+            if (! $client->wasChanged('tax_id') || $client->person_type !== ClientPersonType::Company) {
+                return;
+            }
+
+            if (! resolve(SerproAccountEnablement::class)->enabled((int) $client->account_id)) {
+                return;
+            }
+
+            RefreshSerproPowersJob::dispatch(
+                (int) $client->account_id,
+                (int) $client->getKey(),
+                true,
+            )->afterCommit();
+        });
     }
 }

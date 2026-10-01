@@ -201,7 +201,7 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
 
     public function test_job_timeout_stays_below_the_worker_timeout(): void
     {
-        $job = new CaptureFiscalDocumentsJob(1, FiscalSource::NfeDistribuicao);
+        $job = new CaptureFiscalDocumentsJob(1, FiscalSource::NfeDistribuicao, 1);
 
         // Abaixo do retry_after do redis: um job que encosta na janela é
         // exatamente o que o redis reentrega enquanto o original ainda corre.
@@ -225,7 +225,7 @@ class CaptureFiscalDocumentsCommandTest extends TestCase
         // pior do que não capturar.
         $client->delete();
 
-        (new CaptureFiscalDocumentsJob((int) $client->getKey(), FiscalSource::NfeDistribuicao))
+        (new CaptureFiscalDocumentsJob((int) $client->getKey(), FiscalSource::NfeDistribuicao, (int) $account->getKey()))
             ->handle($this->app->make(FiscalCaptureService::class));
 
         // Nenhuma consulta de saída, nenhum cursor: o job de um cliente que

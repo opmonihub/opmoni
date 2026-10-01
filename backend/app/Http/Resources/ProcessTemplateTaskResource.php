@@ -17,7 +17,12 @@ class ProcessTemplateTaskResource extends JsonResource
         return [
             'id' => $this->getKey(),
             'title' => $this->title,
-            'department' => $this->department,
+            'department_id' => $this->department_id,
+            'department' => $this->department === null ? null : [
+                'id' => $this->department->getKey(),
+                'name' => $this->department->name,
+                'color' => $this->department->color,
+            ],
             'description' => $this->description,
             'due_day' => $this->due_day,
             'priority' => $this->priority,

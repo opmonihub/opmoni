@@ -75,7 +75,7 @@ function dayLabel(key: string) {
               · {{ task.process?.name ?? 'Processo' }}
             </span>
             <span class="truncate pl-3 text-xs text-muted">
-              {{ task.department || 'Sem depto' }}
+              {{ task.department?.name ?? 'Sem departamento' }}
               · {{ priorityPresentation(task.priority).label }}
               <template v-if="task.assignee_member_id"> · #{{ task.assignee_member_id }}</template>
             </span>

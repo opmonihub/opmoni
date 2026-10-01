@@ -7,7 +7,6 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\SerproConnection;
 use App\Models\User;
 use App\Services\SerproConnectivity;
@@ -50,7 +49,6 @@ class SerproConnectivityTest extends TestCase
      */
     private const CLIENT_TABLES = [
         'client_certificates',
-        'client_ecac_powers_of_attorney',
         'client_saved_filters',
         'client_tag',
         'clients',
@@ -73,7 +71,6 @@ class SerproConnectivityTest extends TestCase
         $account = Account::factory()->create();
         $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
         ClientCertificate::factory()->create(['client_id' => $client->getKey()]);
-        ClientEcacPowerOfAttorney::factory()->create(['client_id' => $client->getKey()]);
 
         $this->carteira = $this->carteira();
 
@@ -82,7 +79,6 @@ class SerproConnectivityTest extends TestCase
         // testigo.
         $this->assertNotEmpty($this->carteira['clients'], 'A carteira do setUp é o que dá sentido à comparação.');
         $this->assertNotEmpty($this->carteira['client_certificates']);
-        $this->assertNotEmpty($this->carteira['client_ecac_powers_of_attorney']);
     }
 
     protected function tearDown(): void

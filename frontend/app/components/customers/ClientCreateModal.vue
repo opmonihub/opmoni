@@ -2,7 +2,13 @@
 import * as z from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Client, ClientWritePayload, CnpjPreview } from '~/types/client'
+import type { ClientMonitoringModules } from '~/types/serpro'
 import { companyTaxIdEntry, canRegisterTypedCnpj, taxIdEditInvalidatesLookup } from '~/utils/taxId'
+import {
+  initialMonitoringModuleSelection,
+  monitoringModuleGroups,
+  monitoringModulesPayload
+} from '~/utils/monitoringModules'
 
 defineOptions({ inheritAttrs: false })
 
@@ -17,10 +23,14 @@ const emit = defineEmits<{
 
 const isOpen = computed({
   get: () => props.open,
-  set: value => emit('update:open', value)
+  set: (value) => {
+    if (!value) emitSaved()
+    emit('update:open', value)
+  }
 })
 
-const { lookupCnpj, create } = useClients()
+const { lookupCnpj, create, monitoringModules, confirmMonitoringModules } = useClients()
+const { canManageClients } = useAuth()
 const toast = useToast()
 
 const companySchema = z.object({
@@ -91,10 +101,23 @@ const state = reactive<ClientFormState>({
   state: ''
 })
 
-const step = ref<1 | 2>(1)
+const step = ref<1 | 2 | 3>(1)
 const preview = ref<CnpjPreview | null>(null)
 const lookingUp = ref(false)
 const submitting = ref(false)
+
+// Etapa de módulos: o cliente já foi salvo quando ela abre, e o que ela faz é
+// só associar obrigações. `savedClient` segura o 201 para o `saved` final —
+// pular a etapa emite o mesmo evento, porque o cadastro já aconteceu.
+const savedClient = shallowRef<Client | null>(null)
+const modules = shallowRef<ClientMonitoringModules | null>(null)
+const modulesLoading = ref(false)
+const modulesError = ref(false)
+const modulesSelected = ref<Set<string>>(new Set())
+const modulesSubmitting = ref(false)
+let formGeneration = 0
+
+const modulesGroups = computed(() => monitoringModuleGroups({ obligations: modules.value?.obligations ?? [] }))
 
 const regimeLocked = computed(() => {
   if (preview.value?.mei) return 'mei' as const
@@ -137,6 +160,7 @@ const canLookup = computed(() => state.person_type === 'company' && entry.value 
 const canRegisterTyped = computed(() => state.person_type === 'company' && canRegisterTypedCnpj(state.tax_id))
 
 function resetForm() {
+  formGeneration++
   state.person_type = 'company'
   state.tax_id = ''
   state.name = ''
@@ -155,9 +179,17 @@ function resetForm() {
   step.value = 1
   preview.value = null
   typedName.value = false
+  submitting.value = false
+  savedClient.value = null
+  modules.value = null
+  modulesLoading.value = false
+  modulesError.value = false
+  modulesSelected.value = new Set()
+  modulesSubmitting.value = false
 }
 
-watch(() => props.open, () => {
+watch(() => props.open, (open) => {
+  if (!open) emitSaved()
   resetForm()
 })
 
@@ -216,16 +248,98 @@ function onRegisterTyped() {
 }
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
+  const generation = formGeneration
   submitting.value = true
   try {
     const saved = await create(event.data as ClientWritePayload)
     toast.add({ title: 'Cliente cadastrado', color: 'success' })
-    emit('saved', saved)
-    isOpen.value = false
+
+    if (generation !== formGeneration || !isOpen.value) {
+      emit('saved', saved)
+      return
+    }
+
+    savedClient.value = saved
+
+    // Pessoa física e `user` não têm etapa de módulos — a spec fecha o fluxo
+    // aqui para os dois. Para `admin`/`operador` com pessoa jurídica, o
+    // cadastro continua na conferência das obrigações sugeridas.
+    if (saved.person_type === 'individual' || !canManageClients.value) {
+      finishSaved()
+      return
+    }
+
+    step.value = 3
+    await loadModules(saved.id)
   } catch {
     toast.add({ title: 'Não foi possível salvar o cliente', color: 'error' })
   } finally {
-    submitting.value = false
+    if (generation === formGeneration) submitting.value = false
+  }
+}
+
+async function loadModules(clientId: number) {
+  const generation = formGeneration
+  modulesLoading.value = true
+  modulesError.value = false
+  try {
+    const data = await monitoringModules(clientId)
+    if (generation !== formGeneration || savedClient.value?.id !== clientId) return
+    modules.value = data
+    modulesSelected.value = initialMonitoringModuleSelection(data)
+  } catch {
+    if (generation === formGeneration && savedClient.value?.id === clientId) modulesError.value = true
+  } finally {
+    if (generation === formGeneration && savedClient.value?.id === clientId) modulesLoading.value = false
+  }
+}
+
+function toggleModule(slug: string, checked: boolean | 'indeterminate') {
+  const next = new Set(modulesSelected.value)
+  if (checked === true) next.add(slug)
+  else next.delete(slug)
+  modulesSelected.value = next
+}
+
+/**
+ * Fechar a etapa sem confirmar não descarta o cliente: o 201 já aconteceu, e
+ * a spec é explícita — pular mantém o cadastro sem nenhuma associação e emite
+ * o mesmo `saved` do confirmar.
+ */
+function emitSaved() {
+  const saved = savedClient.value
+  if (!saved) return
+  savedClient.value = null
+  emit('saved', saved)
+}
+
+function finishSaved() {
+  emitSaved()
+  isOpen.value = false
+}
+
+async function confirmModules() {
+  if (!savedClient.value || !modules.value) return
+  const clientId = savedClient.value.id
+  const generation = formGeneration
+  const obligations = monitoringModulesPayload(modules.value, modulesSelected.value)
+  // `obligations min:1` no backend: postar `[]` é um 422 garantido. Nada
+  // marcado segue o mesmo caminho de "Concluir sem associar" — o 201 já
+  // aconteceu, e pular mantém o cadastro sem nenhuma associação.
+  if (obligations.length === 0) {
+    finishSaved()
+    return
+  }
+  modulesSubmitting.value = true
+  try {
+    await confirmMonitoringModules(clientId, obligations)
+    if (generation !== formGeneration || savedClient.value?.id !== clientId) return
+    toast.add({ title: 'Obrigações de monitoramento associadas', color: 'success' })
+    finishSaved()
+  } catch {
+    if (generation === formGeneration && savedClient.value?.id === clientId) modulesError.value = true
+  } finally {
+    if (generation === formGeneration && savedClient.value?.id === clientId) modulesSubmitting.value = false
   }
 }
 </script>
@@ -234,12 +348,76 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   <UModal
     v-bind="$attrs"
     v-model:open="isOpen"
-    title="Novo cliente"
-    description="Informe o documento e confirme os dados cadastrais"
+    :title="step === 3 ? 'Obrigações de monitoramento' : 'Novo cliente'"
+    :description="step === 3
+      ? (savedClient ? `Associe ${savedClient.name} às obrigações que a integração acompanha` : 'Associe o cliente às obrigações que a integração acompanha')
+      : 'Informe o documento e confirme os dados cadastrais'"
     :ui="{ content: 'sm:max-w-lg' }"
   >
     <template #body>
-      <div class="space-y-4">
+      <div v-if="step === 3" class="space-y-4">
+        <div v-if="modulesLoading" class="space-y-2">
+          <USkeleton v-for="index in 5" :key="index" class="h-9 w-full" />
+        </div>
+
+        <template v-else-if="modules">
+          <p class="text-xs text-muted">
+            As sugeridas para o regime do cliente já vêm marcadas. Confirmar não
+            chama o provedor — a primeira leitura acontece na próxima
+            sincronização. Sem opção de captura de XML: todo cliente entra nela.
+          </p>
+
+          <ErrorRetryAlert
+            v-if="modulesError"
+            title="Não foi possível associar as obrigações"
+            description="A seleção foi mantida e o cliente continua cadastrado. Tente novamente ou conclua sem associar."
+            :loading="modulesSubmitting"
+            @retry="confirmModules"
+          />
+
+          <div v-for="group in modulesGroups" :key="group.id" class="space-y-1.5">
+            <p class="text-xs font-semibold text-muted">
+              {{ group.label }}
+            </p>
+            <ul class="divide-y divide-default rounded-lg ring ring-default">
+              <li
+                v-for="item in group.items"
+                :key="item.slug"
+                class="flex items-center gap-3 px-3 py-2"
+              >
+                <UCheckbox
+                  :model-value="modulesSelected.has(item.slug)"
+                  :aria-label="`Associar ${item.label}`"
+                  @update:model-value="toggleModule(item.slug, $event)"
+                />
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm text-default">
+                    {{ item.label }}
+                  </p>
+                  <p v-if="item.associated" class="text-xs text-muted">
+                    Já associada
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <p v-if="modulesGroups.length === 0" class="text-sm text-muted">
+            Nenhuma obrigação servida pela integração para este cliente.
+          </p>
+        </template>
+
+        <template v-else-if="modulesError">
+          <ErrorRetryAlert
+            title="Não foi possível carregar as obrigações"
+            description="O cliente continua cadastrado. Tente carregar de novo ou conclua sem associar — dá para associar depois pelo Monitoramento."
+            :loading="modulesLoading"
+            @retry="savedClient && loadModules(savedClient.id)"
+          />
+        </template>
+      </div>
+
+      <div v-else class="space-y-4">
         <UFormField label="Tipo de pessoa" name="person_type">
           <USelect
             v-model="state.person_type"
@@ -459,27 +637,46 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     </template>
 
     <template #footer="{ close }">
-      <UButton
-        v-if="step === 2 && state.person_type === 'company'"
-        label="Voltar"
-        color="neutral"
-        variant="subtle"
-        type="button"
-        @click="step = 1"
-      />
-      <UButton
-        label="Cancelar"
-        color="neutral"
-        variant="outline"
-        @click="close"
-      />
-      <UButton
-        v-if="step === 2 || state.person_type === 'individual'"
-        label="Cadastrar cliente"
-        type="submit"
-        form="client-create-form"
-        :loading="submitting"
-      />
+      <template v-if="step === 3">
+        <UButton
+          label="Concluir sem associar"
+          color="neutral"
+          variant="outline"
+          :disabled="modulesSubmitting"
+          @click="finishSaved"
+        />
+        <UButton
+          label="Confirmar obrigações"
+          color="primary"
+          variant="solid"
+          :loading="modulesSubmitting"
+          :disabled="!modules || modulesLoading"
+          @click="confirmModules"
+        />
+      </template>
+      <template v-else>
+        <UButton
+          v-if="step === 2 && state.person_type === 'company'"
+          label="Voltar"
+          color="neutral"
+          variant="subtle"
+          type="button"
+          @click="step = 1"
+        />
+        <UButton
+          label="Cancelar"
+          color="neutral"
+          variant="outline"
+          @click="close"
+        />
+        <UButton
+          v-if="step === 2 || state.person_type === 'individual'"
+          label="Cadastrar cliente"
+          type="submit"
+          form="client-create-form"
+          :loading="submitting"
+        />
+      </template>
     </template>
   </UModal>
 </template>

@@ -103,7 +103,7 @@ export function useClientListExport(options: UseClientListExportOptions) {
         { header: 'e-CAC', value: client => choiceLabel(clientDocumentStateOptions, client.ecac_power_of_attorney_status) },
         {
           header: 'Validade da procuração',
-          value: client => client.ecac_power_of_attorney?.expires_at ? formatDate(client.ecac_power_of_attorney.expires_at) : ''
+          value: client => client.ecac_power_of_attorney?.expires_on ? formatDate(client.ecac_power_of_attorney.expires_on) : ''
         }
       )
     }

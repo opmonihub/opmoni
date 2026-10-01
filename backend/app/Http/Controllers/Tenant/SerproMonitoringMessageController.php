@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\ReadSerproMessageRequest;
 use App\Services\SerproException;
 use App\Services\SerproMailboxReader;
+use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
 
@@ -36,6 +37,12 @@ class SerproMonitoringMessageController extends Controller
         } catch (SerproException $exception) {
             return response()->json(['message' => $exception->failure->label()], 502);
         }
+
+        // Só depois do sucesso: é aí que a ciência correu no provedor.
+        SupportAudit::logWrite($request, 'serpro_messages', 'ciencia', $message, [
+            'obligation' => $obligation,
+            'client_id' => $client,
+        ]);
 
         return response()->json(['data' => $data]);
     }

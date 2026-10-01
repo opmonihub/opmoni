@@ -33,6 +33,7 @@ import {
   fiscalMonthLabel,
   fiscalNoAttention,
   fiscalMonthSeries,
+  fiscalSituacaoPresentation,
   fiscalSourceLabel,
   fiscalStageLabel,
   fiscalStateCopy,
@@ -743,6 +744,38 @@ describe('a coluna de certificado do cliente', () => {
     for (const status of ['missing', 'expired', 'password_missing', 'expiring', 'valid'] as const) {
       assert.ok(tons.includes(fiscalClientCertificatePresentation(status).color), `tom de ${status} fora da paleta`)
     }
+  })
+
+  it('pinta a situação com a apresentação e a usa na folha de detalhe', () => {
+    assert.equal(fiscalSituacaoPresentation('autorizada').label, 'Autorizada')
+    assert.equal(fiscalSituacaoPresentation('autorizada').color, 'success')
+    assert.equal(fiscalSituacaoPresentation('cancelada').label, 'Cancelada')
+    assert.equal(fiscalSituacaoPresentation('cancelada').color, 'error')
+    assert.equal(fiscalSituacaoPresentation('resumo').label, 'Resumo')
+    assert.equal(fiscalSituacaoPresentation('resumo').color, 'neutral')
+
+    // O módulo acima é a decisão; a página e a folha são o que pintam, e um
+    // `.vue` não é importável. A leitura de fonte é o precedente deste arquivo:
+    // um template que voltasse a não chamar a apresentação passaria por toda a
+    // bateria acima.
+    const page = readFileSync(new URL('../app/pages/fiscal/documentos.vue', import.meta.url), 'utf8')
+    const sheet = readFileSync(new URL('../app/components/fiscal/FiscalDocumentSheet.vue', import.meta.url), 'utf8')
+
+    assert.match(page, /fiscalSituacaoPresentation\(row\.original\.situacao\)/)
+    assert.match(sheet, /fiscalSituacaoPresentation\(target\.situacao\)/)
+  })
+
+  it('a tabela de documentos mostra o certificado como indicador ao lado do cliente', () => {
+    // O módulo testado acima é a decisão; a página é o que pinta, e um `.vue`
+    // não é importável. A leitura de fonte é o precedente deste arquivo: o
+    // certificado voltou a ser indicador (ponto + tooltip) ao lado do nome, e
+    // não mais uma coluna própria — uma coluna `Certificado` de volta passaria
+    // por toda a bateria acima.
+    const page = readFileSync(new URL('../app/pages/fiscal/documentos.vue', import.meta.url), 'utf8')
+
+    assert.match(page, /fiscalClientCertificatePresentation\(row\.original\.client_certificate_status\)/)
+    assert.doesNotMatch(page, /header:\s*'Certificado'/)
+    assert.doesNotMatch(page, /id:\s*'certificado'/)
   })
 })
 

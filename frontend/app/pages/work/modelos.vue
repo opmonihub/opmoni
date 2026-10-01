@@ -40,8 +40,8 @@ function recurrenceLabel(template: WorkTemplate): string {
 }
 
 function departmentSummary(template: WorkTemplate): string {
-  const departments = [...new Set((template.steps ?? []).map(step => step.department).filter(Boolean))]
-  if (departments.length === 0) return '—'
+  const departments = [...new Set((template.steps ?? []).map(step => step.department?.name).filter((name): name is string => Boolean(name)))]
+  if (departments.length === 0) return 'Sem departamento'
   if (departments.length <= 2) return departments.join(', ')
   return `${departments.slice(0, 2).join(', ')} +${departments.length - 2}`
 }

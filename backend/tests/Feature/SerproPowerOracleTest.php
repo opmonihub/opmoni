@@ -7,7 +7,6 @@ use App\Enums\SerproPowerOfAttorneyState;
 use App\Models\Account;
 use App\Models\AccountCertificate;
 use App\Models\Client;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproClientAuthorization;
 use App\Models\SerproConnection;
@@ -20,9 +19,9 @@ use Tests\TestCase;
 
 /**
  * O oráculo de autorização: a única leitura que transforma o que o SERPRO
- * respondeu em `serpro_client_authorizations` e no `integration_state` da
- * procuração. Toda chamada é contra o gateway de mentira — o contrato do
- * serviço é a fixture documental, e nenhum teste aqui chega perto da rede.
+ * respondeu em `serpro_client_authorizations`. Toda chamada é contra o
+ * gateway de mentira — o contrato do serviço é a fixture documental, e
+ * nenhum teste aqui chega perto da rede.
  */
 class SerproPowerOracleTest extends TestCase
 {
@@ -59,11 +58,6 @@ class SerproPowerOracleTest extends TestCase
             $this->assertSame('2027-01-01', $autorizacao->expires_on?->toDateString());
             $this->assertNotNull($autorizacao->verified_at);
         }
-
-        $this->assertSame(
-            SerproPowerOfAttorneyState::Established,
-            $client->ecacPowerOfAttorney->fresh()->integration_state,
-        );
     }
 
     public function test_nome_de_sistema_desconhecido_nao_autoriza(): void
@@ -89,7 +83,7 @@ class SerproPowerOracleTest extends TestCase
         ]);
     }
 
-    public function test_outorga_vencida_marca_a_autorizacao_e_a_procuracao_como_expiradas(): void
+    public function test_outorga_vencida_marca_a_autorizacao_como_expirada(): void
     {
         [$account, $client] = $this->escritorioComTermo();
         $this->fakeProvider($this->envelopeComDados([
@@ -104,26 +98,20 @@ class SerproPowerOracleTest extends TestCase
             'state' => 'expired',
             'expires_on' => '2020-01-01 00:00:00',
         ]);
-        $this->assertSame(
-            SerproPowerOfAttorneyState::Expired,
-            $client->ecacPowerOfAttorney->fresh()->integration_state,
-        );
     }
 
-    public function test_resposta_sem_outorga_recusa_a_integracao(): void
+    public function test_resposta_sem_outorga_nao_grava_nada(): void
     {
         [$account, $client] = $this->escritorioComTermo();
         $this->fakeProvider($this->envelopeComDados([]));
 
         resolve(SerproPowerOracle::class)->refresh($account->getKey(), $client->getKey());
 
+        // O provedor disse "não consta" e a escrita respeita: nenhuma linha
+        // nasce, e nenhuma das que existiam é apagada — a que não veio na
+        // resposta fica `rejected`, que é a forma de dizer isso sem fingir
+        // que a consulta nunca aconteceu.
         $this->assertDatabaseCount('serpro_client_authorizations', 0);
-        $this->assertSame(
-            SerproPowerOfAttorneyState::Rejected,
-            $client->ecacPowerOfAttorney->fresh()->integration_state,
-        );
-        // As datas que o Membro registrou não são do oracle e ninguém as toca.
-        $this->assertSame('2027-09-01', $client->ecacPowerOfAttorney->fresh()->expires_at->toDateString());
     }
 
     public function test_familia_que_sumiu_da_resposta_e_marcada_recusada(): void
@@ -160,30 +148,24 @@ class SerproPowerOracleTest extends TestCase
     public function test_sem_token_de_termo_nenhuma_chamada_sai(): void
     {
         [$account, $client] = $this->escritorioComTermo();
-        $client->ecacPowerOfAttorney->forceFill(['integration_state' => null])->saveQuietly();
         SerproAuthorizationTerm::query()->where('account_id', $account->getKey())->delete();
 
         $this->fakeProvider();
 
         resolve(SerproPowerOracle::class)->refresh($account->getKey(), $client->getKey());
 
-        // Sem token não há chamada autenticada possível, e a procuração fica
-        // como estava — `pending` por omissão de verificação, não `rejected`
-        // por uma resposta que nunca chegou.
+        // Sem token não há chamada autenticada possível, e nenhuma linha é
+        // tocada: `pending` por omissão de verificação, não `rejected` por
+        // uma resposta que nunca chegou.
         Http::assertNotSent(fn ($request) => str_contains((string) $request->url(), '/Consultar'));
-        $this->assertNull($client->ecacPowerOfAttorney->fresh()->integration_state);
         $this->assertDatabaseCount('serpro_client_authorizations', 0);
     }
 
-    public function test_a_leitura_de_um_cliente_nao_toca_na_procuracao_de_outra_conta(): void
+    public function test_a_leitura_de_um_cliente_nao_toca_na_autorizacao_de_outra_conta(): void
     {
         [$account, $client] = $this->escritorioComTermo();
         $outraConta = Account::factory()->create();
         $alheio = Client::factory()->company()->create(['account_id' => $outraConta->getKey()]);
-        $procuracaoAlheia = ClientEcacPowerOfAttorney::factory()->create([
-            'account_id' => $outraConta->getKey(),
-            'client_id' => $alheio->getKey(),
-        ]);
         SerproClientAuthorization::factory()->create([
             'account_id' => $outraConta->getKey(),
             'client_id' => $alheio->getKey(),
@@ -204,13 +186,11 @@ class SerproPowerOracleTest extends TestCase
             'family' => '00006',
             'state' => 'rejected',
         ]);
-        $this->assertNull($procuracaoAlheia->fresh()->integration_state);
     }
 
     /**
      * O escritório completo, pronto para a consulta: conta, e-CNPJ corrente,
-     * termo com token válido e cliente com a procuração que o Membro
-     * registrou.
+     * termo com token válido e cliente PJ.
      *
      * @return array{0: Account, 1: Client}
      */
@@ -240,13 +220,6 @@ class SerproPowerOracleTest extends TestCase
         $client = Client::factory()->company()->create([
             'account_id' => $account->getKey(),
             'tax_id' => '99999999999999',
-        ]);
-        ClientEcacPowerOfAttorney::factory()->create([
-            'account_id' => $account->getKey(),
-            'client_id' => $client->getKey(),
-            'starts_at' => '2026-01-01',
-            'expires_at' => '2027-09-01',
-            'serpro_code' => '00146',
         ]);
 
         return [$account, $client];

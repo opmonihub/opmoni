@@ -110,6 +110,7 @@ return [
             'procuracao' => '00060',
             'derived_from' => null,
             'sync_enabled' => true,
+            'label' => 'Simples Nacional',
         ],
         'mei' => [
             'category' => 'direct',
@@ -117,6 +118,7 @@ return [
             'procuracao' => null,
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'MEI',
         ],
         'dctfweb' => [
             'category' => 'direct',
@@ -124,6 +126,7 @@ return [
             'procuracao' => '00103',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'DCTFWeb',
         ],
         'fgts-digital' => [
             'category' => 'derived',
@@ -131,6 +134,7 @@ return [
             'procuracao' => '00103',
             'derived_from' => 'o valor 1718 da declaração DCTFWeb',
             'sync_enabled' => false,
+            'label' => 'FGTS Digital',
         ],
         'parcelamentos/simples-nacional' => [
             'category' => 'direct',
@@ -138,6 +142,7 @@ return [
             'procuracao' => '00076+00188',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'Simples Nacional',
         ],
         'parcelamentos/pgfn' => [
             'category' => 'unavailable',
@@ -152,6 +157,7 @@ return [
             'procuracao' => '00149+10011, 00210+10036',
             'derived_from' => 'os sistemas PERTSN e RELPSN',
             'sync_enabled' => false,
+            'label' => 'Receita Federal',
         ],
         'parcelamentos/especiais' => [
             'category' => 'direct',
@@ -159,6 +165,7 @@ return [
             'procuracao' => '00125',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'Especiais',
         ],
         'situacao-fiscal/relatorio-fiscal' => [
             'category' => 'direct',
@@ -168,6 +175,7 @@ return [
             // O relatório é dois passos (`SOLICITARPROTOCOLO91` + esta): a
             // sequência entra junto com o escritor que a consome.
             'sync_enabled' => false,
+            'label' => 'Relatório Fiscal',
         ],
         'situacao-fiscal/certidoes' => [
             'category' => 'derived',
@@ -175,6 +183,7 @@ return [
             'procuracao' => '00002',
             'derived_from' => 'o relatório SITFIS, que já traz o número negativo, a emissão e a validade',
             'sync_enabled' => false,
+            'label' => 'Certidões',
         ],
         'situacao-fiscal/comprovantes' => [
             'category' => 'direct',
@@ -182,6 +191,7 @@ return [
             'procuracao' => '00004',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'Comprovantes',
         ],
         'caixas-postais/e-cac' => [
             'category' => 'direct',
@@ -189,6 +199,7 @@ return [
             'procuracao' => '00006',
             'derived_from' => null,
             'sync_enabled' => true,
+            'label' => 'e-CAC',
         ],
         'caixas-postais/fgts-digital' => [
             'category' => 'derived',
@@ -196,6 +207,7 @@ return [
             'procuracao' => '00006',
             'derived_from' => 'um filtro por assunto sobre a caixa postal e-CAC',
             'sync_enabled' => false,
+            'label' => 'FGTS Digital',
         ],
         'caixas-postais/det' => [
             'category' => 'derived',
@@ -203,6 +215,7 @@ return [
             'procuracao' => '00006',
             'derived_from' => 'um filtro por assunto sobre a caixa postal e-CAC',
             'sync_enabled' => false,
+            'label' => 'DET',
         ],
         'declaracoes/pgdas' => [
             'category' => 'direct',
@@ -210,6 +223,7 @@ return [
             'procuracao' => '00146',
             'derived_from' => null,
             'sync_enabled' => true,
+            'label' => 'PGDAS',
         ],
         'declaracoes/dctfweb' => [
             'category' => 'direct',
@@ -217,6 +231,7 @@ return [
             'procuracao' => '00103',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'DCTFWeb',
         ],
         'declaracoes/fgts' => [
             'category' => 'unavailable',
@@ -231,6 +246,7 @@ return [
             'procuracao' => '00146',
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'DEFIS',
         ],
         'declaracoes/dirf' => [
             'category' => 'extinct',
@@ -238,6 +254,50 @@ return [
             'procuracao' => null,
             'derived_from' => null,
             'sync_enabled' => false,
+            'label' => 'DIRF',
         ],
+    ],
+
+    /*
+     * O mapa regime → obrigações da etapa de módulos do cadastro: a sugestão
+     * que o GET devolve marcada para o operador conferir. O valor é uma lista
+     * de slugs do mapa acima — só `direct` e `derived`, porque o teste do
+     * catálogo impede que um slug de `unavailable` ou `extinct` entre aqui —
+     * e a regra é da plataforma inteira: duas Accounts com o mesmo regime
+     * recebem a mesma sugestão, e nenhuma a personaliza.
+     */
+    'regime_suggestions' => [
+        'simple_national' => [
+            'simples-nacional',
+            'declaracoes/pgdas',
+            'declaracoes/defis',
+            'parcelamentos/simples-nacional',
+            'caixas-postais/e-cac',
+            'situacao-fiscal/relatorio-fiscal',
+        ],
+        'mei' => [
+            'mei',
+            'caixas-postais/e-cac',
+            'situacao-fiscal/relatorio-fiscal',
+        ],
+        'presumed_profit' => [
+            'dctfweb',
+            'declaracoes/dctfweb',
+            'fgts-digital',
+            'caixas-postais/e-cac',
+            'situacao-fiscal/relatorio-fiscal',
+        ],
+        'actual_profit' => [
+            'dctfweb',
+            'declaracoes/dctfweb',
+            'fgts-digital',
+            'caixas-postais/e-cac',
+            'situacao-fiscal/relatorio-fiscal',
+        ],
+        'other' => [
+            'caixas-postais/e-cac',
+            'situacao-fiscal/relatorio-fiscal',
+        ],
+        'not_applicable' => [],
     ],
 ];

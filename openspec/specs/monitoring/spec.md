@@ -181,19 +181,98 @@ The system SHALL derive collection-slip status from the synchronized declaration
 
 ### Requirement: Leitura de mensagem exige confirmação da ciência
 
-The system SHALL read a mailbox message from the provider only when the member explicitly confirms that reading it registers the ciência da intimação and starts the legal deadline. The system SHALL NOT read a message as a side effect of listing or opening the monitoring screen.
+The system SHALL read a mailbox message from the provider only when the member explicitly confirms that reading it registers the ciência da intimação and starts the legal deadline. The system SHALL NOT read a message as a side effect of listing or opening the monitoring screen. The read SHALL be a `POST` to `serpro/monitoring/obligations/{obligation}/clients/{client}/messages/{message}` carrying `ciencia: true` in the body, and SHALL be allowed to `admin` and `operador` members and to a super_admin in support mode, like any other `admin` act. Every refusal SHALL happen before the provider is called, because the call itself is the legal act and a refusal after it cannot undo the ciência. The system SHALL accept a message id only when it is among the messages already synchronized for that client and that obligation. The system SHALL record who read the message and when. A provider failure SHALL answer with the readable failure label and SHALL NOT expose the provider's own text. Reopening a message already read SHALL call the provider again.
 
 #### Scenario: Leitura sem confirmação
 
-- **WHEN** a member requests a mailbox message without confirming the ciência
-- **THEN** the system refuses the request and does not call the provider
+- **WHEN** a member requests a mailbox message without `ciencia: true` in the body
+- **THEN** the system responds 422 and does not call the provider
 
 #### Scenario: Leitura com confirmação
 
-- **WHEN** a member confirms the ciência and requests a mailbox message
-- **THEN** the system reads the message from the provider and returns its content
+- **WHEN** an `admin` or `operador` member confirms the ciência and requests a message synchronized for that client
+- **THEN** the system reads the message from the provider, responds 200 with its subject, plain-text body, reading date, ciência date and deadline, marks the message as read in the list, and records the member who read it
 
 #### Scenario: Listagem não lê mensagens
 
 - **WHEN** a member opens the monitoring screen or lists the mailbox
 - **THEN** the system does not read any message from the provider
+
+#### Scenario: User não registra ciência
+
+- **WHEN** a `user` member requests a message with `ciencia: true`
+- **THEN** the system responds 403 and does not call the provider
+
+#### Scenario: Suporte registra ciência com auditoria
+
+- **WHEN** a super_admin in support mode confirms the ciência and requests a message
+- **THEN** the system reads the message as it would for an `admin` and records the act in the support audit log
+
+#### Scenario: Mensagem fora da caixa sincronizada
+
+- **WHEN** the message id is not among the synchronized messages of that client for that obligation, the obligation has no mailbox, or the client belongs to another Account
+- **THEN** the system responds 404 and does not call the provider
+
+#### Scenario: Escritório sem termo ou sem e-CNPJ
+
+- **WHEN** the Account has no valid authorization term or no stored e-CNPJ certificate
+- **THEN** the system responds 409 naming what is missing and does not call the provider
+
+#### Scenario: Falha do provedor
+
+- **WHEN** the provider rejects the read
+- **THEN** the system responds 502 with the readable failure label, the response contains no provider text, and the message stays unread in the list
+
+### Requirement: Mapa fixo de obrigações sugeridas por regime
+The system SHALL keep, in the obligation catalogue, one fixed map from tax regime to suggested monitoring obligations that is the same for every Account, SHALL include in it only obligations classified as `direct` or `derived`, and SHALL NOT let an Account edit the map. The map SHALL suggest PGDAS for Simples Nacional, PGMEI for MEI, no Simples Nacional routine for Lucro Presumido or Lucro Real, and no obligation for a natural person.
+
+#### Scenario: Sugestão para Simples Nacional
+- **WHEN** the suggested obligations for a Simples Nacional company are requested
+- **THEN** PGDAS is suggested and no obligation classified as `unavailable` or `extinct` is suggested
+
+#### Scenario: Sugestão para MEI
+- **WHEN** the suggested obligations for a MEI company are requested
+- **THEN** PGMEI is suggested and PGDAS is not
+
+#### Scenario: Sugestão para Lucro Presumido ou Real
+- **WHEN** the suggested obligations for a Lucro Presumido or Lucro Real company are requested
+- **THEN** neither PGDAS, PGMEI nor any other Simples Nacional routine is suggested
+
+#### Scenario: Mesma sugestão em todas as Accounts
+- **WHEN** two Accounts request the suggestion for clients of the same tax regime
+- **THEN** both receive the same list of obligations
+
+### Requirement: Associação no cadastro do cliente
+The system SHALL expose `GET /api/clients/{client}/monitoring-modules`, returning with 200 each obligation the integration serves with its slug, label, category, whether it is suggested for the client's tax regime and whether the client is already associated with it, and `POST /api/clients/{client}/monitoring-modules` with a list of obligation slugs, creating with 200 one client × obligation association per slug that does not exist yet and returning how many were associated and how many already existed. The association SHALL be created without source data, SHALL enter the next synchronization, SHALL NOT issue any provider call and SHALL NOT consume provider quota. The system SHALL respond 403 to a `user` member on the POST, 404 when the client belongs to another Account, and 422 for an unknown slug, a slug classified as `unavailable` or `extinct`, or a natural-person client. The system SHALL NOT remove an existing association through this endpoint.
+
+#### Scenario: Confirmação dos módulos
+- **WHEN** an `admin` or `operador` posts PGDAS and the e-CAC mailbox for a company client of the current Account
+- **THEN** the system responds 200 with `associated` equal to 2, both associations exist without source data, and no provider call is recorded
+
+#### Scenario: Associação repetida
+- **WHEN** a member posts an obligation the client is already associated with
+- **THEN** the system responds 200, counts it as already associated and creates no duplicate
+
+#### Scenario: Obrigação não servida
+- **WHEN** a member posts a slug classified as `unavailable` or `extinct`, or a slug that does not exist
+- **THEN** the system responds 422 and creates no association
+
+#### Scenario: User tenta associar
+- **WHEN** a `user` member posts modules for a client
+- **THEN** the system responds 403 and creates no association
+
+#### Scenario: Cliente de outra Account
+- **WHEN** a member addresses the modules endpoints with the id of a client of another Account
+- **THEN** the system responds 404 and reveals no obligation or association of that client
+
+#### Scenario: Leitura dos módulos
+- **WHEN** any member of the current Account, including a `user`, requests the modules of a client
+- **THEN** the system responds 200 with the served obligations, the suggestion for the client's regime and the current associations
+
+#### Scenario: Associação entra na próxima execução
+- **WHEN** a synchronization runs after the modules were confirmed and the client is eligible for the obligation's family
+- **THEN** the client is synchronized for the associated obligations
+
+#### Scenario: Acesso de suporte
+- **WHEN** a super_admin in support access confirms the modules of a client
+- **THEN** the associations are created as for an `admin`, and a support audit entry records the client id and the associated slugs

@@ -18,12 +18,12 @@ const props = defineProps<{
   processId: number | null
   clientId: number | null
   assigneeId: number | null
-  department: string
+  departmentId: number | null
   priority: WorkTaskPriority | ''
   processOptions: { label: string, value: number }[]
   clientOptions: { label: string, value: number }[]
   assigneeOptions: { label: string, value: number }[]
-  departmentOptions: { label: string, value: string }[]
+  departmentOptions: { label: string, value: number }[]
 }>()
 
 const emit = defineEmits<{
@@ -32,7 +32,7 @@ const emit = defineEmits<{
   'update:processId': [value: number | null]
   'update:clientId': [value: number | null]
   'update:assigneeId': [value: number | null]
-  'update:department': [value: string]
+  'update:departmentId': [value: number | null]
   'update:priority': [value: WorkTaskPriority | '']
   'clear': []
 }>()
@@ -54,7 +54,7 @@ const activeFilterCount = computed(() => countActiveCalendarFilters({
   processId: props.processId,
   clientId: props.clientId,
   assigneeId: props.assigneeId,
-  department: props.department,
+  departmentId: props.departmentId,
   priority: props.priority
 }))
 
@@ -164,14 +164,14 @@ function toggleStatus(key: WorkTaskStatus, on: boolean | 'indeterminate') {
           </UFormField>
           <UFormField label="Departamento">
             <USelectMenu
-              :model-value="department || undefined"
+              :model-value="departmentId"
               :items="departmentOptions"
               value-key="value"
               label-key="label"
               placeholder="Todos"
               clear
               class="w-full"
-              @update:model-value="emit('update:department', typeof $event === 'string' ? $event : '')"
+              @update:model-value="emit('update:departmentId', ($event as number | null) ?? null)"
             />
           </UFormField>
           <UFormField label="Prioridade">

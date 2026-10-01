@@ -82,6 +82,8 @@ final class SerproCallRecorder
             'account_id' => $accountId,
             'run_id' => $runId,
             'client_id' => $clientId,
+            // Nulo fora de requisição: a fila e o agendador não têm usuário.
+            'user_id' => auth()->id(),
             'id_sistema' => $idSistema,
             'id_servico' => $idServico,
             'version' => $service['versaoSistema'] ?? null,

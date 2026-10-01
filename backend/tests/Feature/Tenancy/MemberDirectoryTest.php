@@ -59,8 +59,14 @@ class MemberDirectoryTest extends TestCase
 
         AccountUser::create(['account_id' => $other->getKey(), 'user_id' => $ana->getKey(), 'role' => 'admin']);
 
-        $fiscal = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal', 'color' => 'success']);
-        $pessoal = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Pessoal', 'color' => 'primary']);
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $pessoal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Pessoal')
+            ->sole();
         $fiscal->members()->attach($ana->getKey(), ['account_id' => $account->getKey()]);
         $pessoal->members()->attach($ana->getKey(), ['account_id' => $account->getKey()]);
 
@@ -81,7 +87,7 @@ class MemberDirectoryTest extends TestCase
                     'role' => 'user',
                     'departments' => [
                         ['id' => $fiscal->getKey(), 'name' => 'Fiscal', 'color' => 'success'],
-                        ['id' => $pessoal->getKey(), 'name' => 'Pessoal', 'color' => 'primary'],
+                        ['id' => $pessoal->getKey(), 'name' => 'Pessoal', 'color' => 'info'],
                     ],
                 ],
                 [

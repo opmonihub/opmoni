@@ -6,7 +6,6 @@ use App\Enums\TaxRegime;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
-use App\Models\Department;
 use App\Models\ProcessTemplate;
 use App\Models\SupportAccessLog;
 use App\Models\User;
@@ -28,7 +27,7 @@ class WorkSupportAuditTest extends TestCase
     {
         $superAdmin = $this->superAdminWithOwnAccount();
         $target = Account::factory()->create();
-        Department::factory()->create(['account_id' => $target->getKey(), 'name' => 'Fiscal']);
+        // O departamento Fiscal já vem semeado com a Account.
 
         $this->actingAs($superAdmin, 'sanctum')
             ->postJson("/api/support/accounts/{$target->getKey()}/enter")
@@ -107,7 +106,7 @@ class WorkSupportAuditTest extends TestCase
     public function test_member_writes_on_work_do_not_log(): void
     {
         $account = Account::factory()->create();
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        // O departamento Fiscal já vem semeado com a Account.
         $this->actingAs($this->memberOf($account, 'admin'), 'sanctum');
 
         $templateId = $this->postJson('/api/process-templates', [

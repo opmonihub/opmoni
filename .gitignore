@@ -84,6 +84,7 @@ backend/storage/app/private/certificates/
 # SQLite acidental (testes usam :memory:; nunca commitar arquivo)
 *.sqlite
 database/database.sqlite
+/backend/opmoni
 
 # Pacotes de extensão baixados localmente
 /*.vsix

@@ -3,6 +3,8 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 import type { DataTableFilterModel } from '~/components/data-table/Filter.vue'
 import type { ClientSavedFilter } from '~/types/client'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   search: string
   filters: DataTableFilterModel[]
@@ -104,6 +106,7 @@ onMounted(load)
 <template>
   <UDropdownMenu :items="items" :content="{ align: 'end' }">
     <UButton
+      v-bind="$attrs"
       :label="compact ? undefined : 'Salvos'"
       icon="i-lucide-bookmark"
       trailing-icon="i-lucide-chevron-down"

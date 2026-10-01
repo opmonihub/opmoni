@@ -53,8 +53,7 @@ class WorkTemplateTest extends TestCase
         $operador = $this->memberOf($account, 'operador');
         $user = $this->memberOf($account, 'user');
 
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
-
+        // O departamento Fiscal já vem semeado com a Account.
         $payload = [
             'name' => 'PGDAS',
             'cascade' => true,
@@ -194,62 +193,105 @@ class WorkTemplateTest extends TestCase
         $this->assertDatabaseCount('process_templates', 0);
     }
 
-    public function test_template_rejects_step_with_unknown_department(): void
+    public function test_etapa_com_department_id_da_account_e_persistida_e_retornada(): void
     {
         $account = Account::factory()->create();
         $operador = $this->memberOf($account, 'operador');
         $this->actingAs($operador, 'sanctum');
 
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
 
-        $payload = [
+        $id = $this->postJson('/api/process-templates', [
             'name' => 'PGDAS',
             'steps' => [
-                ['title' => 'Apurar', 'department' => 'Inexistente', 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
+                ['title' => 'Apurar', 'department_id' => $department->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
             ],
-        ];
+        ])->assertCreated()->json('data.id');
 
-        $this->postJson('/api/process-templates', $payload)
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'steps.0.department' => 'O departamento informado não está cadastrado nesta conta.',
-            ]);
+        $this->assertDatabaseHas('process_template_tasks', [
+            'template_id' => $id,
+            'title' => 'Apurar',
+            'department_id' => $department->getKey(),
+        ]);
+
+        // O payload devolve o id e o objeto com o nome atual.
+        $this->getJson("/api/process-templates/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.steps.0.department_id', $department->getKey())
+            ->assertJsonPath('data.steps.0.department.id', $department->getKey())
+            ->assertJsonPath('data.steps.0.department.name', 'Fiscal')
+            ->assertJsonPath('data.steps.0.department.color', 'success');
+    }
+
+    public function test_etapa_sem_departamento_e_aceita_e_retorna_null(): void
+    {
+        $account = Account::factory()->create();
+        $operador = $this->memberOf($account, 'operador');
+        $this->actingAs($operador, 'sanctum');
+
+        $id = $this->postJson('/api/process-templates', [
+            'name' => 'PGDAS',
+            'steps' => [
+                ['title' => 'Apurar', 'department_id' => null, 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->assertDatabaseHas('process_template_tasks', [
+            'template_id' => $id,
+            'title' => 'Apurar',
+            'department_id' => null,
+        ]);
+
+        $this->getJson("/api/process-templates/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.steps.0.department_id', null)
+            ->assertJsonPath('data.steps.0.department', null);
+    }
+
+    public function test_etapa_com_department_id_de_outra_account_responde_422(): void
+    {
+        $account = Account::factory()->create();
+        $other = Account::factory()->create();
+        $operador = $this->memberOf($account, 'operador');
+        $this->actingAs($operador, 'sanctum');
+
+        $foreign = Department::withoutGlobalScopes()
+            ->where('account_id', $other->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+
+        $this->postJson('/api/process-templates', [
+            'name' => 'PGDAS',
+            'steps' => [
+                ['title' => 'Apurar', 'department_id' => $foreign->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['steps.0.department_id']);
 
         $this->assertDatabaseCount('process_templates', 0);
         $this->assertDatabaseCount('process_template_tasks', 0);
     }
 
-    public function test_template_accepts_registered_department_case_insensitive(): void
+    public function test_template_update_rejeita_department_id_de_outra_account(): void
     {
         $account = Account::factory()->create();
+        $other = Account::factory()->create();
         $operador = $this->memberOf($account, 'operador');
         $this->actingAs($operador, 'sanctum');
 
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
-
-        $payload = [
-            'name' => 'PGDAS',
-            'steps' => [
-                ['title' => 'Apurar', 'department' => '  fIScaL  ', 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
-            ],
-        ];
-
-        $this->postJson('/api/process-templates', $payload)->assertCreated();
-
-        $this->assertDatabaseCount('process_template_tasks', 1);
-    }
-
-    public function test_template_update_rejects_unknown_department(): void
-    {
-        $account = Account::factory()->create();
-        $operador = $this->memberOf($account, 'operador');
-        $this->actingAs($operador, 'sanctum');
+        $foreign = Department::withoutGlobalScopes()
+            ->where('account_id', $other->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
 
         $template = ProcessTemplate::factory()->create(['account_id' => $account->getKey()]);
 
         $this->patchJson("/api/process-templates/{$template->getKey()}", [
             'steps' => [
-                ['title' => 'Apurar', 'department' => 'Fantasma', 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
+                ['title' => 'Apurar', 'department_id' => $foreign->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1],
             ],
         ])->assertUnprocessable();
 
@@ -264,13 +306,16 @@ class WorkTemplateTest extends TestCase
 
         $outsider = $this->memberOf($account, 'user');
         $insider = $this->memberOf($account, 'user');
-        $department = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $department->members()->attach($insider->getKey(), ['account_id' => $account->getKey()]);
 
         $this->postJson('/api/process-templates', [
             'name' => 'PGDAS',
             'steps' => [
-                ['title' => 'Apurar', 'department' => 'Fiscal', 'due_day' => 3, 'priority' => 'medium', 'order' => 1, 'default_assignee_member_id' => $outsider->getKey()],
+                ['title' => 'Apurar', 'department_id' => $department->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1, 'default_assignee_member_id' => $outsider->getKey()],
             ],
         ])->assertUnprocessable()
             ->assertJsonValidationErrors([
@@ -287,13 +332,16 @@ class WorkTemplateTest extends TestCase
         $this->actingAs($operador, 'sanctum');
 
         $insider = $this->memberOf($account, 'user');
-        $department = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $department->members()->attach($insider->getKey(), ['account_id' => $account->getKey()]);
 
         $this->postJson('/api/process-templates', [
             'name' => 'PGDAS',
             'steps' => [
-                ['title' => 'Apurar', 'department' => 'fiscal', 'due_day' => 3, 'priority' => 'medium', 'order' => 1, 'default_assignee_member_id' => $insider->getKey()],
+                ['title' => 'Apurar', 'department_id' => $department->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1, 'default_assignee_member_id' => $insider->getKey()],
             ],
         ])->assertCreated();
     }

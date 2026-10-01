@@ -2,10 +2,11 @@ import type { DataTableFilterColumn, DataTableFilterModel } from '../components/
 import {
   WORK_CASCADE_FACET,
   WORK_CLIENT_FACET,
-  WORK_DEPARTMENT_FACET,
   WORK_STATUS_FACET,
   filterWorkFacetLeaves,
   hasWorkActiveFilters,
+  workDepartmentFacetColumn,
+  workDepartmentKey,
   workFixedFacetColumn,
   workValueFacetColumn
 } from './workFacetFilters.ts'
@@ -22,7 +23,8 @@ export type WorkClientesFilterLeaf = {
   order: number
   title: string
   status: WorkTaskStatus | null
-  department: string
+  department_id: number | null
+  departmentName: string
   due_on: string | null
   empty: boolean
   taskId: number | null
@@ -33,7 +35,7 @@ function readLeafValue(leaf: WorkClientesFilterLeaf, columnId: string): unknown 
     case 'status':
       return leaf.status ?? ''
     case 'department':
-      return leaf.department
+      return workDepartmentKey(leaf)
     case 'cascade':
       return String(leaf.cascade)
     case 'client':
@@ -44,7 +46,7 @@ function readLeafValue(leaf: WorkClientesFilterLeaf, columnId: string): unknown 
 }
 
 function searchHaystack(leaf: WorkClientesFilterLeaf): string {
-  return [leaf.clientName, leaf.processName, leaf.title, leaf.department].join(' ')
+  return [leaf.clientName, leaf.processName, leaf.title, leaf.departmentName].join(' ')
 }
 
 /**
@@ -53,7 +55,8 @@ function searchHaystack(leaf: WorkClientesFilterLeaf): string {
  */
 export function workClientesFilterColumns(
   leaves: readonly WorkClientesFilterLeaf[],
-  models: readonly DataTableFilterModel[]
+  models: readonly DataTableFilterModel[],
+  departments: Iterable<{ id: number, name: string }> = []
 ): DataTableFilterColumn[] {
   const columns: DataTableFilterColumn[] = []
 
@@ -63,7 +66,7 @@ export function workClientesFilterColumns(
       models,
       leaves.filter(leaf => leaf.status).map(leaf => leaf.status as string)
     ),
-    workValueFacetColumn(WORK_DEPARTMENT_FACET, models, leaves.map(leaf => leaf.department)),
+    workDepartmentFacetColumn(models, departments),
     workFixedFacetColumn(WORK_CASCADE_FACET, models, leaves.map(leaf => String(leaf.cascade))),
     workValueFacetColumn(WORK_CLIENT_FACET, models, leaves.map(leaf => leaf.clientName))
   ]) {

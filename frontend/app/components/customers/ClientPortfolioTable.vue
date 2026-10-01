@@ -37,7 +37,6 @@ const emit = defineEmits<{
   'header-toggle': [value: boolean | 'indeterminate']
   'toggle-sort': [key: SortKey]
   'open-certificate': [client: ClientSheet]
-  'open-power-of-attorney': [client: ClientSheet]
   'remember-focus': []
 }>()
 
@@ -197,12 +196,14 @@ onMounted(() => {
       </template>
 
       <template #ecac_power_of_attorney-cell="{ row }">
+        <!--
+          Somente leitura: a procuração é derivada das famílias autorizadas que
+          o provedor confirmou — não há mais cadastro manual para abrir daqui.
+        -->
         <CustomersDocumentStatus
           :status="row.original.ecac_power_of_attorney_status"
-          :value="row.original.ecac_power_of_attorney?.expires_at"
+          :value="row.original.ecac_power_of_attorney?.expires_on"
           kind="poa"
-          :actionable="canManageClients"
-          @action="emit('open-power-of-attorney', row.original)"
         />
       </template>
 

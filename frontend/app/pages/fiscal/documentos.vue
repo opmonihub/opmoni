@@ -12,9 +12,12 @@ import type {
   FiscalSort
 } from '~/types/fiscal'
 import { appliedFiscalFilters, availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
+import { fiscalCompetenciaLabel, fiscalNumeroLabel } from '~/utils/fiscalClients'
 import {
+  fiscalClientCertificatePresentation,
   fiscalEventCount,
   fiscalKindLabel,
+  fiscalSituacaoPresentation,
   formatFiscalAmount,
   formatFiscalCount,
   formatFiscalDay,
@@ -39,7 +42,8 @@ import { formatTaxId } from '~/utils/taxId'
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const { list } = useFiscal()
+const { list, download } = useFiscal()
+const toast = useToast()
 
 /**
  * A URL é a fonte da verdade do filtro, e o módulo puro é quem a traduz.
@@ -345,25 +349,45 @@ function openDetail(row: FiscalDocumentRow) {
 }
 
 /* ------------------------------------------------------------------ *
- * A tabela
+ * Download direto por linha
  * ------------------------------------------------------------------ */
 
 /**
- * O veredito do digest da chave, e os três estados que ele tem.
- *
- * `null` é o terceiro, e não "divergiu": é a outra etapa da distribuição que
- * ainda não chegou, e a tela que pintasse isso de vermelho acusaria um documento
- * íntegro de estar corrompido.
+ * O XML direto da linha, sem abrir a folha: mesma chamada autenticada que a
+ * folha usa, com o mesmo acordo (Blob + clique programático + URL revogada).
+ * O erro usa o toast existente, e não um alerta novo — um download que falhou
+ * não é a lista que quebrou.
  */
-const digestConfere = { label: 'Confere', color: 'success' as const, icon: 'i-lucide-circle-check' }
-const digestDiverge = { label: 'Diverge', color: 'error' as const, icon: 'i-lucide-circle-alert' }
-const digestPendente = { label: 'Ainda não conferido', color: 'neutral' as const, icon: 'i-lucide-circle-minus' }
+const downloadingId = ref<number | null>(null)
 
-function digestOf(row: FiscalDocumentRow) {
-  if (row.digval_confere === true) return digestConfere
-  if (row.digval_confere === false) return digestDiverge
-  return digestPendente
+async function downloadRow(row: FiscalDocumentRow) {
+  if (downloadingId.value !== null) return
+
+  downloadingId.value = row.id
+  try {
+    const blob = await download(row.id)
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${row.chave_acesso}.xml`
+      link.rel = 'noopener'
+      document.body.append(link)
+      link.click()
+      link.remove()
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  } catch {
+    toast.add({ title: 'Não foi possível baixar o XML', color: 'error' })
+  } finally {
+    downloadingId.value = null
+  }
 }
+
+/* ------------------------------------------------------------------ *
+ * A tabela
+ * ------------------------------------------------------------------ */
 
 /**
  * O botão de ordenação, só nas colunas que a API sabe ordenar.
@@ -395,15 +419,16 @@ function sortableHeader(label: string, key: FiscalSort) {
  */
 const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
   { id: 'cliente', header: 'Cliente', meta: { class: { th: 'min-w-52', td: 'max-w-0' } } },
+  { id: 'numero', header: 'Nº', meta: { class: { th: 'whitespace-nowrap tabular-nums', td: 'whitespace-nowrap tabular-nums' } } },
+  { id: 'situacao', header: 'Situação', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
+  { id: 'competencia', header: 'Competência', meta: { class: { th: 'whitespace-nowrap tabular-nums', td: 'whitespace-nowrap tabular-nums' } } },
   { id: 'modelo', header: 'Modelo', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
-  { id: 'chave', header: 'Chave de acesso', meta: { class: { th: 'min-w-44', td: 'max-w-0' } } },
   { id: 'emitente', header: 'Emitente', meta: { class: { th: 'min-w-40', td: 'max-w-0' } } },
   { id: 'destinatario', header: 'Destinatário', meta: { class: { th: 'min-w-40', td: 'max-w-0' } } },
   { id: 'valor', header: 'Valor', meta: { class: { th: 'whitespace-nowrap text-right', td: 'text-right tabular-nums' } } },
   { id: 'emissao', header: () => sortableHeader('Emissão', 'emissao_at'), meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
   { id: 'eventos', header: 'Eventos', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
-  { id: 'digest', header: 'Digest', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
-  { id: 'acoes', meta: { class: { th: 'w-12', td: 'w-12' } } }
+  { id: 'acoes', meta: { class: { th: 'w-24', td: 'w-24' } } }
 ])
 </script>
 
@@ -554,7 +579,7 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
         />
 
         <template v-else>
-          <!-- Mobile: cartões, porque nove colunas numa tela de bolso é rolagem lateral. -->
+          <!-- Mobile: cartões, porque oito colunas numa tela de bolso é rolagem lateral. -->
           <div class="min-h-0 flex-1 space-y-3 overflow-y-auto md:hidden">
             <UCard
               v-for="row in rows"
@@ -563,10 +588,29 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
               :ui="{ root: 'overflow-visible', body: 'p-4' }"
             >
               <div class="flex items-start justify-between gap-3">
-                <DataTableIdentity
-                  :title="row.client.name"
-                  :meta="row.client.tax_id ? formatTaxId(row.client.tax_id) : ''"
-                />
+                <!--
+                  O certificado é um indicador ao lado do nome, e não uma
+                  coluna: o ponto pinta o estado do A1 e o tooltip nomeia —
+                  `title` nativo, que é o que o telefone também lê.
+                -->
+                <div class="flex min-w-0 items-start gap-1.5">
+                  <span
+                    class="mt-1.5 size-2 shrink-0 rounded-full"
+                    :class="{
+                      'bg-error': fiscalClientCertificatePresentation(row.client_certificate_status).color === 'error',
+                      'bg-warning': fiscalClientCertificatePresentation(row.client_certificate_status).color === 'warning',
+                      'bg-success': fiscalClientCertificatePresentation(row.client_certificate_status).color === 'success',
+                      'bg-elevated': fiscalClientCertificatePresentation(row.client_certificate_status).color === 'neutral'
+                    }"
+                    :title="`Certificado: ${fiscalClientCertificatePresentation(row.client_certificate_status).label}`"
+                    role="img"
+                    :aria-label="`Certificado: ${fiscalClientCertificatePresentation(row.client_certificate_status).label}`"
+                  />
+                  <DataTableIdentity
+                    :title="row.client.name"
+                    :meta="row.client.tax_id ? formatTaxId(row.client.tax_id) : ''"
+                  />
+                </div>
                 <div class="flex shrink-0 items-center gap-1">
                   <UBadge
                     :label="modelLabel(row.model)"
@@ -577,7 +621,7 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
                     icon="i-lucide-chevron-right"
                     color="neutral"
                     variant="ghost"
-                    :aria-label="`Abrir documento ${row.chave_acesso}`"
+                    :aria-label="`Abrir documento ${fiscalNumeroLabel(row.numero, row.serie)}`"
                     @click="openDetail(row)"
                   />
                 </div>
@@ -585,19 +629,18 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
 
               <div class="mt-3 flex flex-wrap items-center gap-1.5">
                 <UBadge
+                  :label="fiscalSituacaoPresentation(row.situacao).label"
+                  :color="fiscalSituacaoPresentation(row.situacao).color"
+                  variant="subtle"
+                  size="sm"
+                />
+                <UBadge
                   :label="fiscalKindLabel(row.kind)"
                   variant="subtle"
                   size="sm"
                 />
                 <UBadge
                   :label="fiscalEventCount(row)"
-                  variant="subtle"
-                  size="sm"
-                />
-                <UBadge
-                  :label="digestOf(row).label"
-                  :color="digestOf(row).color"
-                  :icon="digestOf(row).icon"
                   variant="subtle"
                   size="sm"
                 />
@@ -610,12 +653,21 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
                 />
               </div>
 
-              <p class="mt-3 truncate text-xs tabular-nums text-muted" :title="row.chave_acesso">
-                {{ row.chave_acesso }}
-              </p>
+              <div class="mt-3 flex items-center justify-between gap-3 text-xs tabular-nums text-muted">
+                <span>Nº {{ fiscalNumeroLabel(row.numero, row.serie) }} · {{ fiscalCompetenciaLabel(row.competencia) }}</span>
+                <span>{{ formatFiscalAmount(row.valor_total) }}</span>
+              </div>
               <div class="mt-1 flex items-center justify-between gap-3 text-xs tabular-nums text-muted">
                 <span>{{ formatFiscalDay(row.emissao_at) }}</span>
-                <span>{{ formatFiscalAmount(row.valor_total) }}</span>
+                <UButton
+                  icon="i-lucide-download"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  :loading="downloadingId === row.id"
+                  :aria-label="`Baixar XML do documento ${fiscalNumeroLabel(row.numero, row.serie)}`"
+                  @click="downloadRow(row)"
+                />
               </div>
             </UCard>
           </div>
@@ -630,10 +682,47 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
               :ui="sheetTableUi"
             >
               <template #cliente-cell="{ row }">
-                <DataTableIdentity
-                  :title="row.original.client.name"
-                  :meta="row.original.client.tax_id ? formatTaxId(row.original.client.tax_id) : ''"
+                <!--
+                  O certificado é um indicador ao lado do nome, e não uma
+                  coluna: o ponto pinta o estado do A1 e o tooltip nomeia —
+                  `title` nativo, que é o que o leitor de tela também lê via
+                  `aria-label`.
+                -->
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="{
+                      'bg-error': fiscalClientCertificatePresentation(row.original.client_certificate_status).color === 'error',
+                      'bg-warning': fiscalClientCertificatePresentation(row.original.client_certificate_status).color === 'warning',
+                      'bg-success': fiscalClientCertificatePresentation(row.original.client_certificate_status).color === 'success',
+                      'bg-elevated': fiscalClientCertificatePresentation(row.original.client_certificate_status).color === 'neutral'
+                    }"
+                    :title="`Certificado: ${fiscalClientCertificatePresentation(row.original.client_certificate_status).label}`"
+                    role="img"
+                    :aria-label="`Certificado: ${fiscalClientCertificatePresentation(row.original.client_certificate_status).label}`"
+                  />
+                  <DataTableIdentity
+                    :title="row.original.client.name"
+                    :meta="row.original.client.tax_id ? formatTaxId(row.original.client.tax_id) : ''"
+                  />
+                </div>
+              </template>
+
+              <template #numero-cell="{ row }">
+                {{ fiscalNumeroLabel(row.original.numero, row.original.serie) }}
+              </template>
+
+              <template #situacao-cell="{ row }">
+                <UBadge
+                  :label="fiscalSituacaoPresentation(row.original.situacao).label"
+                  :color="fiscalSituacaoPresentation(row.original.situacao).color"
+                  variant="subtle"
+                  :ui="{ base: 'max-w-full', label: 'truncate' }"
                 />
+              </template>
+
+              <template #competencia-cell="{ row }">
+                {{ fiscalCompetenciaLabel(row.original.competencia) }}
               </template>
 
               <template #modelo-cell="{ row }">
@@ -659,17 +748,6 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
                 </div>
               </template>
 
-              <template #chave-cell="{ row }">
-                <button
-                  type="button"
-                  class="block w-full truncate text-left tabular-nums text-highlighted hover:text-primary"
-                  :title="row.original.chave_acesso"
-                  @click="openDetail(row.original)"
-                >
-                  {{ row.original.chave_acesso }}
-                </button>
-              </template>
-
               <template #emitente-cell="{ row }">
                 <span class="tabular-nums">{{ formatTaxId(row.original.emitente_cnpj) }}</span>
               </template>
@@ -690,23 +768,21 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
                 {{ fiscalEventCount(row.original) }}
               </template>
 
-              <template #digest-cell="{ row }">
-                <UBadge
-                  :label="digestOf(row.original).label"
-                  :color="digestOf(row.original).color"
-                  :icon="digestOf(row.original).icon"
-                  variant="subtle"
-                  :ui="{ base: 'max-w-full', label: 'truncate' }"
-                />
-              </template>
-
               <template #acoes-cell="{ row }">
-                <div class="text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <UButton
+                    icon="i-lucide-download"
+                    color="neutral"
+                    variant="ghost"
+                    :loading="downloadingId === row.original.id"
+                    :aria-label="`Baixar XML do documento ${fiscalNumeroLabel(row.original.numero, row.original.serie)}`"
+                    @click="downloadRow(row.original)"
+                  />
                   <UButton
                     icon="i-lucide-chevron-right"
                     color="neutral"
                     variant="ghost"
-                    :aria-label="`Abrir documento ${row.original.chave_acesso}`"
+                    :aria-label="`Abrir documento ${fiscalNumeroLabel(row.original.numero, row.original.serie)}`"
                     @click="openDetail(row.original)"
                   />
                 </div>

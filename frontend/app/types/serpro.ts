@@ -285,3 +285,25 @@ export interface SerproAssociateResult {
   associated: number
   already: number
 }
+
+/**
+ * Uma obrigação de monitoramento na etapa de módulos do cadastro.
+ *
+ * `suggested` é o mapa fixo regime → obrigações do catálogo (o mesmo em toda
+ * Account), `associated` é o que o cliente já tem — as duas são leituras
+ * diferentes, e a etapa marca por `suggested` mas nunca desmarca uma
+ * `associated` para o operador.
+ */
+export interface MonitoringModuleItem {
+  slug: string
+  label: string
+  category: ObligationCategory
+  suggested: boolean
+  associated: boolean
+}
+
+/** `GET /api/clients/{client}/monitoring-modules`. */
+export interface ClientMonitoringModules {
+  regime: string | null
+  obligations: MonitoringModuleItem[]
+}

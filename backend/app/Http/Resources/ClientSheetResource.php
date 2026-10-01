@@ -31,10 +31,8 @@ class ClientSheetResource extends JsonResource
                 'valid_until' => $this->currentCertificate->valid_until->toISOString(),
             ],
             'certificate_status' => $deadlines->for($this->currentCertificate?->valid_until)->value,
-            'ecac_power_of_attorney' => $this->ecacPowerOfAttorney === null ? null : [
-                'expires_at' => $this->ecacPowerOfAttorney->expires_at->toDateString(),
-            ],
-            'ecac_power_of_attorney_status' => $deadlines->for($this->ecacPowerOfAttorney?->expires_at)->value,
+            'ecac_power_of_attorney' => $this->power_summary ?? null,
+            'ecac_power_of_attorney_status' => ($this->power_summary ?? ['status' => 'missing'])['status'],
             'tags' => $this->whenLoaded('tags', fn () => $this->tags->map(fn ($tag) => [
                 'id' => $tag->id,
                 'name' => $tag->name,

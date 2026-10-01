@@ -71,11 +71,9 @@ class UpdateTaskRequest extends FormRequest
                 return;
             }
 
-            $departmentId = DepartmentMembership::findId($accountId, $task->department);
-
-            // Departamento pode ter sido excluído depois da geração (snapshot
-            // congelado): sem cadastro, não há vínculo a verificar.
-            if ($departmentId !== null && ! DepartmentMembership::memberBelongs($accountId, $departmentId, (int) $assignee)) {
+            // Departamento excluído libera a task (nullOnDelete): sem vínculo,
+            // não há pertencimento a verificar.
+            if ($task->department_id !== null && ! DepartmentMembership::memberBelongs($accountId, (int) $task->department_id, (int) $assignee)) {
                 $validator->errors()->add('assignee_member_id', 'O responsável precisa pertencer ao departamento da tarefa.');
             }
         });

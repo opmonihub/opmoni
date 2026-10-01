@@ -23,7 +23,6 @@ const emit = defineEmits<{
   'load-more': []
   'set-selected': [id: number, selected: boolean | 'indeterminate']
   'open-certificate': [client: ClientSheet]
-  'open-power-of-attorney': [client: ClientSheet]
   'remember-focus': []
 }>()
 
@@ -149,12 +148,11 @@ onMounted(() => {
                   <p class="text-sm text-muted">
                     e-CAC
                   </p>
+                  <!-- Somente leitura: a procuração é derivada das famílias autorizadas. -->
                   <CustomersDocumentStatus
                     :status="client.ecac_power_of_attorney_status"
-                    :value="client.ecac_power_of_attorney?.expires_at"
+                    :value="client.ecac_power_of_attorney?.expires_on"
                     kind="poa"
-                    :actionable="canManageClients"
-                    @action="emit('open-power-of-attorney', client)"
                   />
                 </div>
               </div>

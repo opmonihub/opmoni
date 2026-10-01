@@ -420,41 +420,119 @@ class WorkTaskTest extends TestCase
             ->assertJsonPath('data.assignee_member_id', $assignee->getKey());
     }
 
-    public function test_task_department_filter_rejects_unknown_department(): void
+    public function test_task_filter_por_department_id_de_outra_account_responde_422(): void
     {
         $account = Account::factory()->create();
+        $other = Account::factory()->create();
         $member = $this->memberOf($account, 'admin');
         $this->actingAs($member, 'sanctum');
 
-        $this->getJson('/api/tasks?department=Inexistente')
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'department' => 'O departamento informado não está cadastrado nesta conta.',
-            ]);
+        $foreign = Department::withoutGlobalScopes()
+            ->where('account_id', $other->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
 
-        $this->getJson('/api/work/calendar?from=2026-03-01&to=2026-03-31&department=Inexistente')
-            ->assertUnprocessable();
+        $this->getJson("/api/tasks?department_id={$foreign->getKey()}")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['department_id']);
+
+        $this->getJson("/api/work/calendar?from=2026-03-01&to=2026-03-31&department_id={$foreign->getKey()}")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['department_id']);
     }
 
-    public function test_task_department_filter_accepts_registered_department(): void
+    public function test_task_filter_por_department_id_retorna_so_as_tasks_do_departamento(): void
     {
         $account = Account::factory()->create();
         $member = $this->memberOf($account, 'admin');
         $this->actingAs($member, 'sanctum');
 
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $pessoal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Pessoal')
+            ->sole();
 
         $process = Process::factory()->create(['account_id' => $account->getKey()]);
         Task::factory()->create([
             'account_id' => $account->getKey(),
             'process_id' => $process->getKey(),
             'title' => 'Etapa fiscal',
-            'department' => 'Fiscal',
+            'department_id' => $fiscal->getKey(),
+        ]);
+        Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'title' => 'Etapa pessoal',
+            'department_id' => $pessoal->getKey(),
+        ]);
+        // Task sem departamento fica de fora do filtro por departamento.
+        Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'title' => 'Sem departamento',
+            'department_id' => null,
         ]);
 
-        $this->getJson('/api/tasks?department=fISCAL')
+        $this->getJson("/api/tasks?department_id={$pessoal->getKey()}")
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Etapa pessoal');
+    }
+
+    public function test_task_payload_embuti_o_departamento_com_nome_atual(): void
+    {
+        $account = Account::factory()->create();
+        $member = $this->memberOf($account, 'admin');
+        $this->actingAs($member, 'sanctum');
+
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+
+        $process = Process::factory()->create(['account_id' => $account->getKey()]);
+        $task = Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'department_id' => $department->getKey(),
+        ]);
+
+        $this->getJson("/api/tasks/{$task->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.department_id', $department->getKey())
+            ->assertJsonPath('data.department.id', $department->getKey())
+            ->assertJsonPath('data.department.name', 'Fiscal')
+            ->assertJsonPath('data.department.color', 'success');
+
+        // Renomear o departamento reflete no payload da task já gerada.
+        $department->update(['name' => 'Tributário']);
+
+        $this->getJson("/api/tasks/{$task->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.department.name', 'Tributário');
+    }
+
+    public function test_task_sem_departamento_devolve_department_null(): void
+    {
+        $account = Account::factory()->create();
+        $member = $this->memberOf($account, 'admin');
+        $this->actingAs($member, 'sanctum');
+
+        $process = Process::factory()->create(['account_id' => $account->getKey()]);
+        $task = Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'department_id' => null,
+        ]);
+
+        $this->getJson("/api/tasks/{$task->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.department_id', null)
+            ->assertJsonPath('data.department', null);
     }
 
     public function test_task_reassign_rejects_assignee_outside_task_department(): void
@@ -465,14 +543,17 @@ class WorkTaskTest extends TestCase
 
         $outsider = $this->memberOf($account, 'operador');
         $insider = $this->memberOf($account, 'operador');
-        $department = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $department->members()->attach($insider->getKey(), ['account_id' => $account->getKey()]);
 
         $process = Process::factory()->create(['account_id' => $account->getKey()]);
         $task = Task::factory()->create([
             'account_id' => $account->getKey(),
             'process_id' => $process->getKey(),
-            'department' => 'Fiscal',
+            'department_id' => $department->getKey(),
         ]);
 
         $this->patchJson("/api/tasks/{$task->getKey()}", ['assignee_member_id' => $outsider->getKey()])

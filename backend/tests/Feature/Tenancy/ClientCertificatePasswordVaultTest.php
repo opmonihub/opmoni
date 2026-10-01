@@ -13,6 +13,8 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -24,6 +26,10 @@ class ClientCertificatePasswordVaultTest extends TestCase
     {
         parent::setUp();
         Storage::fake('certificates');
+        // O upload enfileira a captura: a fila é falsa aqui porque o job que
+        // roda de verdade é o que fala com o fisco.
+        Queue::fake();
+        Http::preventStrayRequests();
     }
 
     public function test_upload_stores_password_usable_later(): void

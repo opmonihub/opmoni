@@ -1,7 +1,7 @@
 # client-fiscal-access Specification
 
 ## Purpose
-Centraliza o certificado digital A1 e a procuração e-CAC de cada cliente, protegendo segredos e tornando vencimentos e ausências visíveis na carteira do escritório.
+Centraliza o certificado digital A1 de cada cliente, protegendo segredos e tornando vencimentos e ausências visíveis na carteira do escritório. A procuração e-CAC é lida do provedor por família de serviço autorizada — não há cadastro manual.
 
 ## Requirements
 
@@ -46,55 +46,20 @@ The system SHALL permit `admin` and `operador` members to replace or remove the 
 - **WHEN** an authorized member removes the current certificate
 - **THEN** its encrypted file and password are deleted and the client deadline status becomes not registered
 
-### Requirement: Controle da procuração e-CAC
-The system SHALL allow `admin` and `operador` members to register, update or remove a client's procuração e-CAC using start date, expiration date, the Serpro-issued procuração code and optional notes, SHALL keep the Serpro integration state of that procuração current, and SHALL still not require a procuração file in this version.
-
-#### Scenario: Procuração cadastrada
-- **WHEN** an authorized member provides a valid start date and an expiration date on or after it
-- **THEN** the procuração metadata is associated with the client and its deadline status is returned
-
-#### Scenario: Datas incoerentes
-- **WHEN** the expiration date precedes the start date
-- **THEN** the system responds with a validation error and preserves the previous procuração data
-
-#### Scenario: Código de procuração do SERPRO registrado
-- **WHEN** an authorized member provides the procuração code issued by the Serpro service for a client
-- **THEN** the code is associated with the client, is returned as non-secret metadata, and the client's eligibility to be acted upon is reported as pending until the Serpro side confirms it
-
-#### Scenario: Confirmação da procuração pelo SERPRO
-- **WHEN** the Serpro service confirms that the procuração of a client is established
-- **THEN** the stored integration state for that client becomes established and the client becomes eligible to be acted upon
-
-#### Scenario: Procuração recusada pelo SERPRO
-- **WHEN** the Serpro service rejects a procuração submitted for a client
-- **THEN** the client is marked as not eligible, no data is requested on its behalf, and the rejection is presented as a readable reason
-
-#### Scenario: Procuração não aplicável a pessoa física
-- **WHEN** a member registers a procuração for a client that is a natural person and the Serpro service does not accept that authorization form
-- **THEN** the system keeps the client's eligibility unchanged, does not present the integration as established, and does not discard the stored dates
-
-#### Scenario: Remoção da procuração
-- **WHEN** an authorized member removes a client's procuração
-- **THEN** the client immediately stops being eligible to be acted upon and previously synchronized data is retained rather than deleted
-
-#### Scenario: Procuração expira
-- **WHEN** a client's procuração expiration date is earlier than the current date
-- **THEN** the client is reported as not eligible, the monitoring view marks it as not covered by the integration, and its previously synchronized data is retained and labelled as out of date
-
-#### Scenario: Segredo da procuração não exposto
-- **WHEN** a member requests a client that has a procuração with a Serpro code
-- **THEN** the response contains the dates, the code and the integration state but no procuração file, no stored credential and no internal storage path
-
 ### Requirement: Estados derivados de validade
-The system SHALL derive certificate and procuração states as not registered, valid, expiring within 30 calendar days, or expired using the application date.
+The system SHALL derive the certificate state as not registered, valid, expiring within 30 calendar days, or expired using the application date. The system SHALL derive the procuração e-CAC state in the same four states exclusively from the authorized service families the provider confirmed for the client, and SHALL NOT derive it from any date, code or note typed by a member.
 
 #### Scenario: Vencimento em trinta dias
-- **WHEN** a certificate or procuração expires between today and 30 calendar days from today inclusive
+- **WHEN** a certificate, or the earliest expiration among the authorized service families that make up a client's procuração e-CAC, falls between today and 30 calendar days from today inclusive
 - **THEN** its state is returned and displayed as expiring soon with the expiration date
 
 #### Scenario: Item vencido
-- **WHEN** its expiration date is earlier than today
+- **WHEN** the expiration date of the certificate, or of any authorized service family that makes up the client's procuração e-CAC, is earlier than today
 - **THEN** its state is returned and displayed as expired
+
+#### Scenario: Procuração sem família confirmada
+- **WHEN** the provider has not confirmed, as established, any authorized service family that the client's procuração e-CAC depends on
+- **THEN** the procuração state is returned as not registered, even if the client once had procuração data typed by a member
 
 ### Requirement: Remoção do cliente elimina segredos ativos
 The system SHALL delete active encrypted certificate contents when a client is logically deleted while retaining only non-secret metadata required for history and support auditing.

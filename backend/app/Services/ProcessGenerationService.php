@@ -85,7 +85,7 @@ class ProcessGenerationService
                 'account_id' => $template->account_id,
                 'process_id' => $process->getKey(),
                 'title' => $step->title,
-                'department' => $step->department,
+                'department_id' => $step->department_id,
                 'description' => $step->description,
                 'status' => TaskStatus::Todo->value,
                 'due_on' => Carbon::parse($this->resolveDueDate($reference, (int) $step->due_day))->toDateTimeString(),
@@ -184,14 +184,12 @@ class ProcessGenerationService
             return null;
         }
 
-        $departmentId = DepartmentMembership::findId($accountId, $step->department);
-
-        if ($departmentId !== null && ! DepartmentMembership::memberBelongs($accountId, $departmentId, (int) $assignee)) {
+        if ($step->department_id !== null && ! DepartmentMembership::memberBelongs($accountId, (int) $step->department_id, (int) $assignee)) {
             Log::warning('work.generation.assignee_outside_department', [
                 'account_id' => $accountId,
                 'template_id' => $step->template_id,
                 'step_id' => $step->getKey(),
-                'department' => $step->department,
+                'department_id' => $step->department_id,
                 'assignee_member_id' => (int) $assignee,
             ]);
 

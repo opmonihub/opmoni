@@ -24,7 +24,7 @@ class ProcessTemplateTaskFactory extends Factory
             'account_id' => Account::factory(),
             'template_id' => ProcessTemplate::factory(),
             'title' => fake()->words(3, true),
-            'department' => 'Fiscal',
+            'department_id' => null,
             'description' => fake()->optional()->sentence(),
             'due_day' => fake()->numberBetween(1, 28),
             'priority' => TaskPriority::Medium->value,

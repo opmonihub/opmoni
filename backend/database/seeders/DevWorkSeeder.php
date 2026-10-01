@@ -34,15 +34,15 @@ class DevWorkSeeder extends Seeder
             ? Carbon::createFromFormat('Y-m', $month)->startOfMonth()->startOfDay()
             : now()->startOfMonth()->startOfDay();
 
-        $departments = collect(['Fiscal', 'Contábil', 'Pessoal'])->map(
-            fn (string $name): Department => Department::withoutGlobalScopes()->firstOrCreate(
+        $departments = collect(['Fiscal', 'Contábil', 'Pessoal'])->mapWithKeys(
+            fn (string $name): array => [$name => Department::withoutGlobalScopes()->firstOrCreate(
                 ['account_id' => $accountId, 'name' => $name],
                 ['color' => match ($name) {
                     'Fiscal' => 'primary',
                     'Contábil' => 'success',
                     default => 'info',
                 }]
-            )
+            )]
         );
 
         $marker = Tag::withoutGlobalScopes()->firstOrCreate(
@@ -63,6 +63,7 @@ class DevWorkSeeder extends Seeder
                     ['title' => 'Apurar PGDAS', 'department' => 'Fiscal', 'due_day' => 10, 'priority' => 'high', 'order' => 1],
                     ['title' => 'Transmitir PGDAS', 'department' => 'Fiscal', 'due_day' => 20, 'priority' => 'urgent', 'order' => 2],
                 ],
+
             ],
             [
                 'name' => 'Modelo Dev Folha',
@@ -72,7 +73,7 @@ class DevWorkSeeder extends Seeder
                     ['title' => 'Enviar eSocial', 'department' => 'Pessoal', 'due_day' => 15, 'priority' => 'high', 'order' => 2],
                 ],
             ],
-        ])->map(function (array $blueprint) use ($accountId) {
+        ])->map(function (array $blueprint) use ($accountId, $departments) {
             $template = ProcessTemplate::withoutGlobalScopes()->create([
                 'account_id' => $accountId,
                 'name' => $blueprint['name'],
@@ -84,7 +85,13 @@ class DevWorkSeeder extends Seeder
             ]);
 
             foreach ($blueprint['steps'] as $step) {
-                $template->steps()->create(array_merge(['account_id' => $accountId], $step));
+                $departmentId = $departments->get($step['department'])?->getKey();
+                unset($step['department']);
+
+                $template->steps()->create(array_merge(
+                    ['account_id' => $accountId, 'department_id' => $departmentId],
+                    $step
+                ));
             }
 
             return $template;
@@ -95,7 +102,7 @@ class DevWorkSeeder extends Seeder
 
         $this->command?->info(sprintf(
             'Work dev: %d departamentos, %d modelos, %d processos em %s na conta %d (%s).',
-            $departments->count(),
+            $departments->keys()->count(),
             $templates->count(),
             $generated->count(),
             $reference->format('Y-m'),

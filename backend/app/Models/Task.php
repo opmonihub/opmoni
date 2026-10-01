@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['process_id', 'title', 'department', 'description', 'status', 'due_on', 'priority', 'assignee_member_id', 'completed_at', 'dismissal_reason', 'order'])]
+#[Fillable(['process_id', 'title', 'department_id', 'description', 'status', 'due_on', 'priority', 'assignee_member_id', 'completed_at', 'dismissal_reason', 'order'])]
 class Task extends Model
 {
     /** @use HasFactory<Task> */
@@ -30,6 +30,11 @@ class Task extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 
     public function process(): BelongsTo
@@ -73,13 +78,9 @@ class Task extends Model
         return $assigneeMemberId === null ? $query : $query->where('assignee_member_id', $assigneeMemberId);
     }
 
-    public function scopeOfDepartment(Builder $query, ?string $department): Builder
+    public function scopeOfDepartment(Builder $query, ?int $departmentId): Builder
     {
-        if ($department === null || trim($department) === '') {
-            return $query;
-        }
-
-        return $query->whereRaw('LOWER(department) = ?', [mb_strtolower(trim($department))]);
+        return $departmentId === null ? $query : $query->where('department_id', $departmentId);
     }
 
     public function scopeOfPriority(Builder $query, string|array|null $priority): Builder

@@ -17,7 +17,7 @@ use App\Http\Controllers\Tenant\ClientCertificateController;
 use App\Http\Controllers\Tenant\ClientCnpjLookupController;
 use App\Http\Controllers\Tenant\ClientCnpjRefreshController;
 use App\Http\Controllers\Tenant\ClientController;
-use App\Http\Controllers\Tenant\ClientEcacPowerOfAttorneyController;
+use App\Http\Controllers\Tenant\ClientMonitoringModuleController;
 use App\Http\Controllers\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Tenant\ClientSelectionController;
 use App\Http\Controllers\Tenant\ClientTagAssignmentController;
@@ -70,8 +70,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::post('clients/{client}/cnpj-refresh', [ClientCnpjRefreshController::class, 'update']);
     Route::post('clients/{client}/certificate', [ClientCertificateController::class, 'store']);
     Route::delete('clients/{client}/certificate', [ClientCertificateController::class, 'destroy']);
-    Route::put('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'update']);
-    Route::delete('clients/{client}/ecac-power-of-attorney', [ClientEcacPowerOfAttorneyController::class, 'destroy']);
+    Route::get('clients/{client}/monitoring-modules', [ClientMonitoringModuleController::class, 'index']);
+    Route::post('clients/{client}/monitoring-modules', [ClientMonitoringModuleController::class, 'store']);
     Route::apiResource('clients', ClientController::class);
     /*
      * O e-CNPJ do escritório é **da conta**, e por isso estas rotas ficam no

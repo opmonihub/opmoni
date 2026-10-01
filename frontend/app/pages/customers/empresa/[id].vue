@@ -44,7 +44,6 @@ const tabItems: TabsItem[] = [
 const cadastroOpen = ref(false)
 const contactOpen = ref(false)
 const certificateOpen = ref(false)
-const powerOfAttorneyOpen = ref(false)
 const tagsOpen = ref(false)
 const deleteOpen = ref(false)
 
@@ -229,22 +228,45 @@ const barClass: Record<DeadlineStatus, string> = {
 }
 
 const certDays = computed(() => daysUntil(client.value?.certificate?.valid_until))
-const poaDays = computed(() => daysUntil(client.value?.ecac_power_of_attorney?.expires_at))
+const poaDays = computed(() => daysUntil(client.value?.ecac_power_of_attorney?.expires_on))
 const certHint = computed(() => deadlineHint(certDays.value))
 const poaHint = computed(() => deadlineHint(poaDays.value))
 const certPct = computed(() => progressBetween(client.value?.certificate?.valid_from, client.value?.certificate?.valid_until))
-const poaPct = computed(() => progressBetween(client.value?.ecac_power_of_attorney?.starts_at, client.value?.ecac_power_of_attorney?.expires_at))
 
 const certManageLabel = computed(() => {
   if (certStatus.value === 'missing') return 'Cadastrar certificado'
   if (certStatus.value === 'expired') return 'Renovar certificado'
   return 'Gerenciar certificado'
 })
-const poaManageLabel = computed(() => {
-  if (poaStatus.value === 'missing') return 'Cadastrar procuração'
-  if (poaStatus.value === 'expired') return 'Renovar procuração'
-  return 'Gerenciar procuração'
-})
+
+/**
+ * As famílias que compõem a procuração derivada, já com o estado de cada uma.
+ * `family` é o código do provedor; o rótulo é o que `SerproPowerNames`
+ * conhece, e o código fica visível quando não há nome — o detalhe não inventa
+ * um nome para uma família que o provedor ainda não nomeou.
+ */
+const poaFamilyStateLabel: Record<string, string> = {
+  established: 'Em vigor',
+  expired: 'Vencida',
+  rejected: 'Recusada',
+  pending: 'Pendente'
+}
+
+const poaFamilyStateColor: Record<string, 'success' | 'error' | 'warning' | 'neutral'> = {
+  established: 'success',
+  expired: 'error',
+  rejected: 'error',
+  pending: 'warning'
+}
+
+const poaFamilies = computed(() => client.value?.ecac_power_of_attorney?.families ?? [])
+
+function poaFamilyLabel(family: { family: string, state: string }): { label: string, color: 'success' | 'error' | 'warning' | 'neutral' } {
+  return {
+    label: poaFamilyStateLabel[family.state] ?? family.state,
+    color: poaFamilyStateColor[family.state] ?? 'neutral'
+  }
+}
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—'
@@ -275,8 +297,7 @@ const timeline = computed<TimelineItem[]>(() => {
   if (c.opened_at) items.push({ key: 'opened', title: 'Abertura da empresa', date: c.opened_at, detail: c.primary_activity?.description ?? null, icon: 'i-lucide-building-2', dot: 'bg-neutral' })
   if (c.certificate?.valid_from) items.push({ key: 'cert-from', title: 'Certificado A1 emitido', date: c.certificate.valid_from, detail: c.certificate.subject, icon: 'i-lucide-key-round', dot: 'bg-success' })
   if (c.certificate?.valid_until) items.push({ key: 'cert-until', title: certStatus.value === 'expired' ? 'Certificado A1 venceu' : 'Certificado A1 vence', date: c.certificate.valid_until, detail: certHint.value || null, icon: 'i-lucide-key-round', dot: barClass[certStatus.value] })
-  if (c.ecac_power_of_attorney?.starts_at) items.push({ key: 'poa-from', title: 'Procuração e-CAC passou a valer', date: c.ecac_power_of_attorney.starts_at, detail: null, icon: 'i-lucide-file-key-2', dot: 'bg-neutral' })
-  if (c.ecac_power_of_attorney?.expires_at) items.push({ key: 'poa-until', title: poaStatus.value === 'expired' ? 'Procuração e-CAC venceu' : 'Procuração e-CAC vence', date: c.ecac_power_of_attorney.expires_at, detail: poaHint.value || null, icon: 'i-lucide-file-key-2', dot: barClass[poaStatus.value] })
+  if (c.ecac_power_of_attorney?.expires_on) items.push({ key: 'poa-until', title: poaStatus.value === 'expired' ? 'Procuração e-CAC venceu' : 'Procuração e-CAC vence', date: c.ecac_power_of_attorney.expires_on, detail: poaHint.value || null, icon: 'i-lucide-file-key-2', dot: barClass[poaStatus.value] })
   if (c.looked_up_at) items.push({ key: 'lookup', title: 'Última consulta à Receita', date: c.looked_up_at, detail: null, icon: 'i-lucide-refresh-cw', dot: 'bg-neutral' })
   items.push({ key: 'created', title: 'Cliente entrou para a carteira', date: c.created_at, detail: null, icon: 'i-lucide-plus', dot: 'bg-neutral' })
   return items
@@ -296,7 +317,7 @@ const summaryText = computed(() => {
     `Endereço: ${hasAddress.value ? [addressLine1.value, c.address?.district, cityLabel.value, addressCep.value ? `CEP ${addressCep.value}` : null].filter(Boolean).join(', ') : '—'}`,
     `Email: ${c.email ?? '—'} · Telefone: ${phoneDigits.value ? phoneLabel.value : '—'}`,
     `Certificado A1: ${c.certificate ? `válido até ${formatDate(c.certificate.valid_until)} (${certHint.value})` : 'não cadastrado'}`,
-    `Procuração e-CAC: ${c.ecac_power_of_attorney ? `válida até ${formatDate(c.ecac_power_of_attorney.expires_at)} (${poaHint.value})` : 'não cadastrada'}`
+    `Procuração e-CAC: ${c.ecac_power_of_attorney?.expires_on ? `válida até ${formatDate(c.ecac_power_of_attorney.expires_on)} (${poaHint.value})` : deadlinePresentation[poaStatus.value].label}`
   ]
   return lines.join('\n')
 })
@@ -508,8 +529,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             variant="subtle"
             icon="i-lucide-circle-alert"
             title="Procuração e-CAC vencida"
-            :description="client.ecac_power_of_attorney ? `Venceu em ${formatDate(client.ecac_power_of_attorney.expires_at)} (${poaHint}).` : 'Cadastre a procuração para operar no e-CAC.'"
-            :actions="canManageClients ? [{ label: 'Renovar agora', color: 'error', variant: 'solid', onClick: () => { powerOfAttorneyOpen = true } }] : undefined"
+            :description="client.ecac_power_of_attorney?.expires_on ? `Venceu em ${formatDate(client.ecac_power_of_attorney.expires_on)} (${poaHint}). A outorga precisa ser renovada no e-CAC.` : 'A procuração que o provedor confirmou está vencida. A outorga precisa ser renovada no e-CAC.'"
           />
           <UAlert
             v-if="certStatus !== 'expired' && poaStatus !== 'expired' && (certStatus === 'expiring' || poaStatus === 'expiring')"
@@ -519,7 +539,7 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
             title="Atenção aos vencimentos"
             :description="[
               certStatus === 'expiring' && client.certificate ? `Certificado ${certHint} (${formatDate(client.certificate.valid_until)}).` : null,
-              poaStatus === 'expiring' && client.ecac_power_of_attorney ? `Procuração ${poaHint} (${formatDate(client.ecac_power_of_attorney.expires_at)}).` : null
+              poaStatus === 'expiring' && client.ecac_power_of_attorney?.expires_on ? `Procuração ${poaHint} (${formatDate(client.ecac_power_of_attorney.expires_on)}).` : null
             ].filter(Boolean).join(' ')"
           />
 
@@ -621,57 +641,41 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
                 />
               </div>
 
-              <template v-if="client.ecac_power_of_attorney">
+              <template v-if="client.ecac_power_of_attorney?.expires_on">
                 <p class="text-sm tabular-nums text-highlighted">
-                  Vigente até {{ formatDate(client.ecac_power_of_attorney.expires_at) }}
+                  Vigente até {{ formatDate(client.ecac_power_of_attorney.expires_on) }}
                 </p>
                 <p class="text-xs text-muted">
                   {{ poaHint }}
                 </p>
-                <div
-                  class="h-1.5 overflow-hidden rounded-full bg-muted"
-                  role="progressbar"
-                  :aria-valuenow="poaPct"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                  aria-label="Vigência da procuração"
-                >
-                  <div class="h-full rounded-full" :class="barClass[poaStatus]" :style="{ width: `${poaPct}%` }" />
-                </div>
-                <dl class="space-y-1.5 text-xs">
-                  <div class="flex justify-between gap-3">
-                    <dt class="shrink-0 text-muted">
-                      Início
-                    </dt>
-                    <dd class="tabular-nums text-default">
-                      {{ formatDate(client.ecac_power_of_attorney.starts_at) }}
-                    </dd>
-                  </div>
-                  <div v-if="client.ecac_power_of_attorney.notes" class="space-y-1">
-                    <dt class="text-muted">
-                      Observações
-                    </dt>
-                    <dd class="text-default">
-                      {{ client.ecac_power_of_attorney.notes }}
-                    </dd>
-                  </div>
-                </dl>
               </template>
               <p v-else class="text-sm text-muted">
-                Nenhuma procuração registrada. Sem ela, o escritório não opera no e-CAC.
+                O provedor ainda não confirmou uma outorga para este cliente. A procuração é concedida no e-CAC e lida aqui — não há cadastro manual.
               </p>
 
-              <UButton
-                v-if="canManageClients"
-                :label="poaManageLabel"
-                icon="i-lucide-file-key-2"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                block
-                class="mt-auto"
-                @click="powerOfAttorneyOpen = true"
-              />
+              <div v-if="poaFamilies.length > 0" class="space-y-1.5">
+                <p class="text-xs font-medium text-muted">
+                  Famílias de serviço
+                </p>
+                <ul class="space-y-1">
+                  <li
+                    v-for="family in poaFamilies"
+                    :key="family.family"
+                    class="flex items-center justify-between gap-3 text-xs"
+                  >
+                    <span class="min-w-0 truncate font-mono text-[11px] text-default" :title="`Família ${family.family}`">
+                      {{ family.family }}
+                    </span>
+                    <UBadge
+                      :label="poaFamilyLabel(family).label"
+                      :color="poaFamilyLabel(family).color"
+                      variant="subtle"
+                      size="sm"
+                      class="shrink-0"
+                    />
+                  </li>
+                </ul>
+              </div>
             </UCard>
           </div>
         </div>
@@ -1088,11 +1092,6 @@ const overflowItems = computed<DropdownMenuItem[][]>(() => {
     />
     <CustomersCertificateModal
       v-model:open="certificateOpen"
-      :client="client"
-      @saved="onSaved"
-    />
-    <CustomersEcacPowerOfAttorneyModal
-      v-model:open="powerOfAttorneyOpen"
       :client="client"
       @saved="onSaved"
     />

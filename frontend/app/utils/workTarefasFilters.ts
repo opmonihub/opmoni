@@ -14,16 +14,22 @@ export type WorkTarefasLeaf = {
   order: number
   title: string
   status: WorkTaskStatus
-  department: string
+  department_id: number | null
+  departmentName: string
   due_on: string | null
   priority: WorkTaskPriority
   assignee_member_id: number | null
 }
 
+export type WorkDepartmentFilterOption = {
+  id: number
+  name: string
+}
+
 export type WorkTarefasFilterOptions = {
   clients: Array<{ id: number, name: string }>
   processes: Array<{ id: number, name: string }>
-  departments: string[]
+  departments: WorkDepartmentFilterOption[]
   assignees: Array<{ id: number | null, label: string }>
   includeAssignee: boolean
 }
@@ -65,7 +71,10 @@ export function workTarefasFilterColumns(options: WorkTarefasFilterOptions): Dat
       label: 'Departamento',
       icon: 'i-lucide-building-2',
       type: 'option',
-      options: options.departments.map(name => ({ label: name, value: name }))
+      options: [
+        ...options.departments.map(department => ({ label: department.name, value: String(department.id) })),
+        { label: 'Sem departamento', value: 'none' }
+      ]
     },
     {
       id: 'clientId',
@@ -115,11 +124,15 @@ export function workTarefasFilterColumns(options: WorkTarefasFilterOptions): Dat
   return columns
 }
 
+function taskDepartmentKey(task: Pick<WorkTask, 'department_id'>): string {
+  return task.department_id === null ? 'none' : String(task.department_id)
+}
+
 function readLeaf(leaf: WorkTarefasLeaf, columnId: string): unknown {
   switch (columnId) {
     case 'status': return leaf.status
     case 'priority': return leaf.priority
-    case 'department': return leaf.department
+    case 'department': return leaf.department_id === null ? 'none' : String(leaf.department_id)
     case 'clientId': return String(leaf.clientId)
     case 'processId': return String(leaf.processId)
     case 'cascade': return leaf.cascade ? 'true' : 'false'
@@ -132,7 +145,7 @@ function readTask(task: WorkTask, columnId: string): unknown {
   switch (columnId) {
     case 'status': return task.status
     case 'priority': return task.priority
-    case 'department': return task.department
+    case 'department': return taskDepartmentKey(task)
     case 'clientId': return String(task.process?.client?.id ?? 0)
     case 'processId': return String(task.process?.id ?? 0)
     case 'cascade': return task.process?.cascade ? 'true' : 'false'
@@ -165,7 +178,8 @@ export function filterWorkTarefasLeaves(
   return leaves.filter((leaf) => {
     if (term && !leaf.title.toLocaleLowerCase('pt-BR').includes(term)
       && !leaf.clientName.toLocaleLowerCase('pt-BR').includes(term)
-      && !leaf.processName.toLocaleLowerCase('pt-BR').includes(term)) {
+      && !leaf.processName.toLocaleLowerCase('pt-BR').includes(term)
+      && !leaf.departmentName.toLocaleLowerCase('pt-BR').includes(term)) {
       return false
     }
     if (!filters.length) return true
@@ -189,9 +203,11 @@ export function filterWorkTasks(
     if (!matchesDueRange(task.due_on, dueRange)) return false
     const clientName = task.process?.client?.name ?? ''
     const processName = task.process?.name ?? ''
+    const departmentName = workDepartmentLabel(task)
     if (term && !task.title.toLocaleLowerCase('pt-BR').includes(term)
       && !clientName.toLocaleLowerCase('pt-BR').includes(term)
-      && !processName.toLocaleLowerCase('pt-BR').includes(term)) {
+      && !processName.toLocaleLowerCase('pt-BR').includes(term)
+      && !departmentName.toLocaleLowerCase('pt-BR').includes(term)) {
       return false
     }
     if (!filters.length) return true
@@ -242,6 +258,10 @@ export function tasksForWorkScope(groups: WorkGroupedClient[], unscoped: WorkTas
   ]
 }
 
+export function workDepartmentLabel(task: Pick<WorkTask, 'department'>): string {
+  return task.department?.name ?? 'Sem departamento'
+}
+
 export function tasksToLeaves(tasks: WorkTask[]): WorkTarefasLeaf[] {
   return tasks.map(task => ({
     id: task.id,
@@ -254,7 +274,8 @@ export function tasksToLeaves(tasks: WorkTask[]): WorkTarefasLeaf[] {
     order: task.order,
     title: task.title,
     status: task.status,
-    department: task.department,
+    department_id: task.department_id,
+    departmentName: workDepartmentLabel(task),
     due_on: task.due_on,
     priority: task.priority,
     assignee_member_id: task.assignee_member_id

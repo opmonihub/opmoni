@@ -172,6 +172,13 @@ export interface FiscalDocumentClient {
 /** A direção do documento em relação ao cliente dono da linha. */
 export type FiscalClientDirection = 'saida' | 'entrada'
 
+/**
+ * A situação do documento, derivada no backend sem coluna nova: `cancelada`
+ * quando existe evento de cancelamento na mesma chave, `autorizada` quando a
+ * etapa é o documento, `resumo` quando só o resumo da distribuição chegou.
+ */
+export type FiscalDocumentSituacao = 'autorizada' | 'cancelada' | 'resumo'
+
 /** Uma linha da tabela de documentos capturados. */
 export interface FiscalDocumentRow {
   id: number
@@ -188,6 +195,29 @@ export interface FiscalDocumentRow {
   chave_acesso: string
   emitente_cnpj: string | null
   destinatario_cnpj: string | null
+  /**
+   * O número da nota (`ide/nNF`), ou `null` quando o XML ainda não foi lido
+   * para a coluna: o backfill dos documentos antigos é `null`, e a tela mostra
+   * o traço do valor ausente em vez de inventar número.
+   */
+  numero: string | null
+  /**
+   * A série da nota (`ide/serie`), ou `null` pelo mesmo motivo de `numero`.
+   */
+  serie: string | null
+  /**
+   * A situação do documento, derivada no backend sem coluna nova: `cancelada`
+   * quando existe evento de cancelamento na mesma chave, `autorizada` quando a
+   * etapa é o documento, `resumo` quando só o resumo da distribuição chegou.
+   * `null` na linha de evento, que não é linha de documento.
+   */
+  situacao: FiscalDocumentSituacao | null
+  /**
+   * A competência da emissão em `YYYY-MM`, ou `null` quando o documento não tem
+   * data de emissão: sem mês a linha não entra na série, pelo mesmo contrato de
+   * `FiscalSummaryDocuments.over_time`.
+   */
+  competencia: string | null
   /**
    * Texto decimal, e nunca número: a coluna é `decimal(14,2)` e o Laravel a
    * devolve com o cast `decimal:2`, porque um float de JSON não representa
@@ -209,6 +239,15 @@ export interface FiscalDocumentRow {
    * da distribuição ainda não chegou", que não é o mesmo que digest corrompido.
    */
   digval_confere: boolean | null
+  /**
+   * O estado do certificado A1 do cliente dono da linha.
+   *
+   * `null` quando a linha ainda não carrega o certificado (a coluna nasce
+   * agora): a tabela trata como "não informado" e não como `missing`, porque
+   * um `missing` pintado sobre um campo que a API não mandou seria a mesma
+   * mentira do em-dash-trocado-por-zero.
+   */
+  client_certificate_status: FiscalClientCertificateStatus | null
 }
 
 /** Uma linha da linha do tempo de uma chave de acesso. */
@@ -312,6 +351,8 @@ export interface FiscalPage {
    */
   available_models: string[]
 }
+
+/** O aceite da fila de `POST /api/fiscal/clients/{id}/capture`. */
 
 /** O resumo de um cliente em `GET /api/fiscal/clients`. */
 export interface FiscalClientSummary {

@@ -7,6 +7,7 @@ use App\Enums\TaxRegime;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
+use App\Models\Department;
 use App\Models\Process;
 use App\Models\ProcessTemplate;
 use App\Models\Task;
@@ -100,6 +101,45 @@ class WorkProcessTest extends TestCase
             ->assertJsonPath('data.progress.dismissed', 1)
             ->assertJsonPath('data.progress.open', 2)
             ->assertJsonPath('data.progress.ratio', 0.25);
+    }
+
+    public function test_detalhe_do_processo_retorna_o_departamento_atual_das_tarefas_e_null_para_tarefas_sem_departamento(): void
+    {
+        $account = Account::factory()->create();
+        $member = $this->memberOf($account, 'admin');
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $process = Process::factory()->create(['account_id' => $account->getKey()]);
+        Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'department_id' => $department->getKey(),
+            'due_on' => '2026-03-03',
+            'order' => 1,
+        ]);
+        Task::factory()->create([
+            'account_id' => $account->getKey(),
+            'process_id' => $process->getKey(),
+            'department_id' => null,
+            'due_on' => '2026-03-05',
+            'order' => 2,
+        ]);
+        $department->update(['name' => 'Tributário']);
+
+        $this->actingAs($member, 'sanctum')
+            ->getJson("/api/processes/{$process->getKey()}")
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['tasks' => ['*' => ['department_id', 'department']]]])
+            ->assertJsonPath('data.tasks.0.department_id', $department->getKey())
+            ->assertJsonPath('data.tasks.0.department', [
+                'id' => $department->getKey(),
+                'name' => 'Tributário',
+                'color' => 'success',
+            ])
+            ->assertJsonPath('data.tasks.1.department_id', null)
+            ->assertJsonPath('data.tasks.1.department', null);
     }
 
     private function memberOf(Account $account, string $role): User

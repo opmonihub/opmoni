@@ -2,14 +2,18 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Jobs\CaptureFiscalDocumentsJob;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Models\SerproClientAuthorization;
 use App\Models\User;
 use App\Services\ClientCertificateVault;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -21,6 +25,8 @@ class ClientCertificateTest extends TestCase
     {
         parent::setUp();
         Storage::fake('certificates');
+        Queue::fake([CaptureFiscalDocumentsJob::class]);
+        Http::preventStrayRequests();
     }
 
     public function test_operador_uploads_valid_certificate_encrypted(): void
@@ -46,6 +52,30 @@ class ClientCertificateTest extends TestCase
         $this->assertNotSame($bytes, $stored);
         $this->assertSame(hash('sha256', $bytes), $record->sha256);
         $this->assertNotNull($record->subject);
+    }
+
+    public function test_upload_responde_com_o_resumo_da_procuracao(): void
+    {
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'family' => '00006',
+            'code' => '00006',
+            'expires_on' => today()->addYear()->toDateString(),
+        ]);
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum');
+
+        ['file' => $file] = $this->pfxUpload('cliente.pfx', 'secret');
+
+        $this->post(
+            "/api/clients/{$client->getKey()}/certificate",
+            ['certificate' => $file, 'password' => 'secret'],
+            ['Accept' => 'application/json']
+        )->assertOk()
+            ->assertJsonPath('data.ecac_power_of_attorney.status', 'valid')
+            ->assertJsonPath('data.ecac_power_of_attorney_status', 'valid');
     }
 
     public function test_wrong_password_returns_422_without_record_or_file(): void

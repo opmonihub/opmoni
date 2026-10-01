@@ -80,7 +80,7 @@ class ProcessController extends Controller
         $process->load([
             'template',
             'client',
-            'tasks' => fn ($query) => $query->ordered(),
+            'tasks' => fn ($query) => $query->with('department')->ordered(),
         ]);
 
         $process->setAttribute('progress', $this->progressOf($process));

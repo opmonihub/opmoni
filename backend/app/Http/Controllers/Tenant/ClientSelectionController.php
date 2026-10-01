@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\StoreClientSelectionRequest;
 use App\Services\ClientPortfolio;
 use App\Services\ClientSelectionStore;
+use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,8 @@ class ClientSelectionController extends Controller
             $filters,
             $ids,
         );
+
+        SupportAudit::logWrite($request, 'client_selections', 'create', null, ['count' => count($ids)]);
 
         return response()->json(['data' => [
             'id' => $selectionId,

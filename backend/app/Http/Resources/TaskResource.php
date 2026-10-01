@@ -19,7 +19,12 @@ class TaskResource extends JsonResource
         return [
             'id' => $this->getKey(),
             'title' => $this->title,
-            'department' => $this->department,
+            'department_id' => $this->department_id,
+            'department' => $this->whenLoaded('department', fn (): ?array => $this->department === null ? null : [
+                'id' => $this->department->getKey(),
+                'name' => $this->department->name,
+                'color' => $this->department->color,
+            ]),
             'description' => $this->description,
             'status' => $this->status instanceof \BackedEnum ? $this->status->value : $this->status,
             'due_on' => $this->due_on?->toDateString(),

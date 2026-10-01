@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\UpdateSerproEnablementRequest;
 use App\Models\Account;
 use App\Services\SerproAccountEnablement;
+use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -27,7 +28,9 @@ class SerproAccountEnablementController extends Controller
 
     public function update(UpdateSerproEnablementRequest $request, SerproAccountEnablement $enablement): JsonResponse
     {
-        $enablement->set($this->account()->getKey(), (bool) $request->validated('enabled'));
+        $enabled = (bool) $request->validated('enabled');
+        $enablement->set($this->account()->getKey(), $enabled);
+        SupportAudit::logWrite($request, 'serpro_enablement', 'update', null, ['enabled' => $enabled]);
 
         return response()->json(['data' => ['enabled' => $enablement->enabled($this->account()->getKey())]]);
     }

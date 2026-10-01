@@ -25,6 +25,7 @@ x-backend: &backend
     REDIS_CLIENT: phpredis
     REDIS_HOST: redis
     REDIS_PORT: 6379
+    REDIS_PASSWORD: ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env da raiz}
     NATS_URL: nats://nats:4222
   volumes:
     - ./backend:/var/www/html
@@ -132,6 +133,11 @@ services:
 
   # Portas locais abaixo são só para ferramenta de desenvolvimento (psql, redis-cli,
   # nats CLI no host). O nginx é a única entrada web.
+  #
+  # Todas ligadas a 127.0.0.1: publicadas em 0.0.0.0, o Redis sem senha deste
+  # compose foi reconfigurado como réplica de um servidor remoto por um IP da
+  # internet (ataque "rogue master"). O Docker publica por cima do firewall do
+  # host, então só o bind protege.
   postgres:
     image: postgres:15
     environment:
@@ -139,7 +145,7 @@ services:
       POSTGRES_USER: opmoni
       POSTGRES_PASSWORD: opmoni
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -153,9 +159,12 @@ services:
 
   redis:
     image: redis:7
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env da raiz}"]
+    environment:
+      # O redis-cli lê a senha daqui, e ela não aparece na linha de comando do probe.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env da raiz}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -171,8 +180,8 @@ services:
     image: nats:2.11-alpine
     command: ["nats-server", "--jetstream", "--http_port", "8222", "--store_dir", "/data"]
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
     volumes:
       - nats_data:/data
     healthcheck:

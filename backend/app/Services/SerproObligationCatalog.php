@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\TaxRegime;
+
 /**
  * A leitura do mapa `integra-contador.obligations`.
  *
@@ -47,6 +49,49 @@ final class SerproObligationCatalog
     public function get(string $slug): ?array
     {
         return $this->all()[$slug] ?? null;
+    }
+
+    /**
+     * As obrigações que a etapa de módulos marca por padrão para um regime.
+     *
+     * Cliente legado ou sem regime não tem sugestão: o catálogo continua
+     * servido no GET, mas nada vem marcado para o operador.
+     *
+     * A lista é a mesma para toda Account, porque é configuração da
+     * plataforma: duas contas com `simple_national` recebem a mesma sugestão,
+     * e a única coisa que muda é o regime do cliente. O valor devolvido é a
+     * interseção do que o mapa sugere com o que o catálogo serve — um slug
+     * fora do mapa, ou um que não é `direct`/`derived`, é recusado no
+     * `suggestedFor` como seria no `POST` de associação.
+     *
+     * @return list<string>
+     */
+    public function suggestedFor(?TaxRegime $regime): array
+    {
+        if ($regime === null) {
+            return [];
+        }
+
+        $mapa = config('integra-contador.regime_suggestions', []);
+        $slugs = $mapa[$regime->value] ?? [];
+
+        $servidas = [];
+
+        foreach ($slugs as $slug) {
+            $obrigacao = $this->all()[$slug] ?? null;
+
+            // O teste do catálogo é o que garante que este `continue` nunca
+            // dispara: um slug que não existe ou não é servido é impedido ali,
+            // não aqui — e a exceção silenciosa é o que tornaria o contrato
+            // entre o mapa e o GET dependente de uma validação que ninguém roda.
+            if ($obrigacao === null || ! in_array($obrigacao['category'], ['direct', 'derived'], true)) {
+                continue;
+            }
+
+            $servidas[] = $slug;
+        }
+
+        return $servidas;
     }
 
     /**

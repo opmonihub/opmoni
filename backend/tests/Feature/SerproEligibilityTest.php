@@ -6,7 +6,6 @@ use App\Enums\SerproAuthorizationTermState;
 use App\Enums\SerproPowerOfAttorneyState;
 use App\Models\Account;
 use App\Models\Client;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproClientAuthorization;
 use App\Services\SerproEligibility;
@@ -21,6 +20,9 @@ use Tests\TestCase;
  * A elegibilidade por família: a resposta read-only que decide se o cliente
  * pode ser chamado naquele serviço. Cada recusa tem um código próprio, e
  * "de uma família" nunca empresta para a outra.
+ *
+ * A única fonte que decide é a família que o provedor confirmou: nenhum dado
+ * digitado pelo Membro — data, código ou nota — altera a resposta.
  */
 class SerproEligibilityTest extends TestCase
 {
@@ -100,40 +102,18 @@ class SerproEligibilityTest extends TestCase
         );
     }
 
-    public function test_procuracao_do_membro_que_comeca_amanha_ainda_nao_vale(): void
+    public function test_dado_digitado_nao_altera_a_elegibilidade(): void
     {
+        // O provedor disse que a outorga vale até 2027: a resposta é
+        // elegível, e não há cadastro manual que possa contrariá-la — a
+        // tabela que levava as datas do Membro não existe mais.
         $account = Account::factory()->create();
         $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
         $this->termoVigente($account);
         $this->autorizacao($account, $client, '00002', SerproPowerOfAttorneyState::Established, '2027-12-31');
-        ClientEcacPowerOfAttorney::factory()->create([
-            'account_id' => $account->getKey(),
-            'client_id' => $client->getKey(),
-            'starts_at' => '2026-09-28',
-            'expires_at' => '2027-12-31',
-        ]);
 
         $this->assertSame(
-            ['eligible' => false, 'reason' => 'procuracao_invalida', 'expires_on' => '2027-12-31'],
-            resolve(SerproEligibility::class)->for($account->getKey(), $client->getKey(), '00002'),
-        );
-    }
-
-    public function test_procuracao_do_membro_vencida_ontem_nao_vale(): void
-    {
-        $account = Account::factory()->create();
-        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
-        $this->termoVigente($account);
-        $this->autorizacao($account, $client, '00002', SerproPowerOfAttorneyState::Established, '2027-12-31');
-        ClientEcacPowerOfAttorney::factory()->create([
-            'account_id' => $account->getKey(),
-            'client_id' => $client->getKey(),
-            'starts_at' => '2026-01-01',
-            'expires_at' => '2026-09-26',
-        ]);
-
-        $this->assertSame(
-            ['eligible' => false, 'reason' => 'procuracao_invalida', 'expires_on' => '2027-12-31'],
+            ['eligible' => true, 'reason' => null, 'expires_on' => '2027-12-31'],
             resolve(SerproEligibility::class)->for($account->getKey(), $client->getKey(), '00002'),
         );
     }

@@ -11,6 +11,7 @@ use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproCall;
 use App\Models\SerproConnection;
 use App\Models\SerproMonitoring;
+use App\Models\SupportAccessLog;
 use App\Models\User;
 use App\Services\SerproTokenPair;
 use App\Tenant\CurrentTenant;
@@ -144,7 +145,9 @@ class SerproMailboxReadTest extends TestCase
             ]),
         ]);
 
-        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum')
+        $operador = $this->memberOf($account, 'operador');
+
+        $this->actingAs($operador, 'sanctum')
             ->postJson($this->rota($client, 82838), ['ciencia' => true])
             ->assertOk()
             ->assertJsonPath('data.id', 82838)
@@ -172,6 +175,52 @@ class SerproMailboxReadTest extends TestCase
         $this->assertNull($call->run_id);
         $this->assertSame('MSGDETALHAMENTO62', $call->id_servico);
         $this->assertSame($client->getKey(), $call->client_id);
+        // A ciência é ato de alguém: a chamada guarda quem a registrou.
+        $this->assertSame($operador->getKey(), $call->user_id);
+    }
+
+    public function test_suporte_registra_ciencia_e_o_ato_vai_para_a_auditoria(): void
+    {
+        [$account, $client] = $this->cenario();
+        $this->fakeLeituraComSucesso();
+
+        $superAdmin = User::factory()->create();
+        $superAdmin->forceFill(['is_super_admin' => true])->save();
+        $casa = Account::factory()->create();
+        AccountUser::create(['account_id' => $casa->getKey(), 'user_id' => $superAdmin->getKey(), 'role' => 'admin']);
+        $superAdmin->forceFill(['current_account_id' => $casa->getKey()])->save();
+        $superAdmin->refresh();
+
+        $this->actingAs($superAdmin, 'sanctum')
+            ->postJson("/api/support/accounts/{$account->getKey()}/enter")
+            ->assertOk();
+
+        $this->actingAs($superAdmin, 'sanctum')
+            ->postJson($this->rota($client, 82838), ['ciencia' => true])
+            ->assertOk()
+            ->assertJsonPath('data.id', 82838);
+
+        $this->assertTrue(
+            SupportAccessLog::query()
+                ->where('super_admin_user_id', $superAdmin->getKey())
+                ->where('account_id', $account->getKey())
+                ->where('action', 'ciencia')
+                ->where('metadata->resource', 'serpro_messages')
+                ->where('metadata->resource_id', 82838)
+                ->exists(),
+        );
+    }
+
+    public function test_membro_que_registra_ciencia_nao_gera_log_de_suporte(): void
+    {
+        [$account, $client] = $this->cenario();
+        $this->fakeLeituraComSucesso();
+
+        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+            ->postJson($this->rota($client, 82838), ['ciencia' => true])
+            ->assertOk();
+
+        $this->assertSame(0, SupportAccessLog::count());
     }
 
     public function test_falha_do_provedor_responde_o_rotulo_e_nao_o_texto_dele(): void
@@ -235,6 +284,27 @@ class SerproMailboxReadTest extends TestCase
         Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         return [$account, $client];
+    }
+
+    private function fakeLeituraComSucesso(): void
+    {
+        Http::fake([
+            '*/integra-contador/v1/Consultar' => Http::response([
+                'status' => 200,
+                'dados' => json_encode([
+                    'codigo' => '00',
+                    'conteudo' => [[
+                        'isn' => '0000082838',
+                        'assuntoModelo' => 'Intimação',
+                        'dataCiencia' => '20260928',
+                        'dataExpiracao' => '20261028',
+                        'corpoModelo' => '<p>Texto</p>',
+                    ]],
+                ]),
+                'mensagens' => [['codigo' => '00', 'texto' => 'Recuperação OK.']],
+                'responseId' => 'resp-62',
+            ]),
+        ]);
     }
 
     private function rota(Client $client, int $isn): string

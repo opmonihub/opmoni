@@ -78,7 +78,7 @@ const assignItems = computed<DropdownMenuItem[][]>(() => {
           <UIcon name="i-lucide-calendar" class="size-3.5 shrink-0" />
           {{ dueLabel }}
         </span>
-        <UBadge color="neutral" variant="outline" :label="task.department" />
+        <UBadge color="neutral" variant="outline" :label="task.department?.name ?? 'Sem departamento'" />
       </div>
 
       <p class="text-xs text-muted">

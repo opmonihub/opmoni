@@ -53,7 +53,7 @@ class UpdateProcessTemplateRequest extends FormRequest
             'steps' => ['sometimes', 'array'],
             'steps.*.id' => ['sometimes', 'integer'],
             'steps.*.title' => ['required', 'string', 'max:255'],
-            'steps.*.department' => ['required', 'string', 'max:120'],
+            'steps.*.department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where(fn ($query) => $query->where('account_id', $accountId))],
             'steps.*.due_day' => ['required', 'integer', 'min:1', 'max:31'],
             'steps.*.priority' => ['required', Rule::in(TaskPriority::values())],
             'steps.*.order' => ['required', 'integer', 'min:1'],
@@ -78,17 +78,9 @@ class UpdateProcessTemplateRequest extends FormRequest
             $accountId = resolve(CurrentTenant::class)->accountId;
 
             foreach ($steps as $index => $step) {
-                $department = is_array($step) ? ($step['department'] ?? null) : null;
-                $departmentId = is_string($department)
-                    ? DepartmentMembership::findId($accountId, $department)
+                $departmentId = is_array($step) && isset($step['department_id'])
+                    ? (int) $step['department_id']
                     : null;
-
-                if (is_string($department) && trim($department) !== '' && $departmentId === null) {
-                    $validator->errors()->add(
-                        "steps.$index.department",
-                        'O departamento informado não está cadastrado nesta conta.'
-                    );
-                }
 
                 $assignee = is_array($step) ? ($step['default_assignee_member_id'] ?? null) : null;
 

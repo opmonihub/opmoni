@@ -1,6 +1,7 @@
 import type {
   Client,
   ClientBulkDeletion,
+  ClientCertificateUpload,
   ClientSheet,
   ClientListParams,
   ClientPortfolioAnalytics,
@@ -13,9 +14,9 @@ import type {
   ClientUpdatePayload,
   ClientWritePayload,
   CnpjPreview,
-  CnpjRefreshPreview,
-  PowerOfAttorneyPayload
+  CnpjRefreshPreview
 } from '~/types/client'
+import type { ClientMonitoringModules, SerproAssociateResult } from '~/types/serpro'
 import { queryOf } from './useApiQuery'
 
 export function useClients() {
@@ -129,22 +130,24 @@ export function useClients() {
     const body = new FormData()
     body.append('certificate', file)
     body.append('password', password)
-    const response = await $api<{ data: Client }>(`/clients/${id}/certificate`, { method: 'POST', body })
-    return response.data
+    return $api<ClientCertificateUpload>(`/clients/${id}/certificate`, { method: 'POST', body })
   }
 
   async function removeCertificate(id: number) {
     await $api(`/clients/${id}/certificate`, { method: 'DELETE' })
   }
 
-  async function upsertPowerOfAttorney(id: number, payload: PowerOfAttorneyPayload) {
-    const response = await $api<{ data: Client }>(`/clients/${id}/ecac-power-of-attorney`, { method: 'PUT', body: payload })
+  async function monitoringModules(id: number) {
+    const response = await $api<{ data: ClientMonitoringModules }>(`/clients/${id}/monitoring-modules`)
     return response.data
   }
 
-  async function removePowerOfAttorney(id: number) {
-    await $api(`/clients/${id}/ecac-power-of-attorney`, { method: 'DELETE' })
+  async function confirmMonitoringModules(id: number, obligations: string[]) {
+    const response = await $api<{ data: SerproAssociateResult }>(`/clients/${id}/monitoring-modules`, {
+      method: 'POST', body: { obligations }
+    })
+    return response.data
   }
 
-  return { list, show, portfolioSummary, portfolioAnalytics, lookupCnpj, create, update, refreshPreview, refreshCnpj, remove, createSelection, selectionPresence, bulkDelete, bulkDeletion, listSavedFilters, createSavedFilter, deleteSavedFilter, listTags, createTag, updateTag, deleteTag, assignTags, uploadCertificate, removeCertificate, upsertPowerOfAttorney, removePowerOfAttorney }
+  return { list, show, portfolioSummary, portfolioAnalytics, lookupCnpj, create, update, refreshPreview, refreshCnpj, remove, createSelection, selectionPresence, bulkDelete, bulkDeletion, listSavedFilters, createSavedFilter, deleteSavedFilter, listTags, createTag, updateTag, deleteTag, assignTags, uploadCertificate, removeCertificate, monitoringModules, confirmMonitoringModules }
 }

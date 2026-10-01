@@ -31,8 +31,14 @@ class WorkFreezeTest extends TestCase
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'admin'), 'sanctum');
 
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
-        Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Contábil']);
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $contabil = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Contábil')
+            ->sole();
 
         $tag = Tag::factory()->create(['account_id' => $account->getKey()]);
         $template = ProcessTemplate::factory()->create([
@@ -43,7 +49,7 @@ class WorkFreezeTest extends TestCase
         ]);
         $template->tags()->attach($tag->getKey(), ['account_id' => $account->getKey()]);
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department' => 'Fiscal',
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(),
             'due_day' => 5, 'priority' => 'medium', 'order' => 1,
         ]);
 
@@ -64,7 +70,7 @@ class WorkFreezeTest extends TestCase
         $template->tags()->detach();
         $template->steps()->delete();
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Nova etapa', 'department' => 'Contábil',
+            'account_id' => $account->getKey(), 'title' => 'Nova etapa', 'department_id' => $contabil->getKey(),
             'due_day' => 2, 'priority' => 'high', 'order' => 1,
         ]);
         $excluded = Client::factory()->company()->create([
@@ -78,7 +84,7 @@ class WorkFreezeTest extends TestCase
         $this->assertDatabaseCount('processes', 1);
         $this->assertSame('2026-03-20', $again->first()->refresh()->due_on->toDateString());
         $this->assertSame(['Apurar'], $again->first()->tasks()->ordered()->pluck('title')->all());
-        $this->assertSame('Fiscal', $again->first()->tasks()->sole()->department);
+        $this->assertSame($fiscal->getKey(), $again->first()->tasks()->sole()->department_id);
 
         $april = Carbon::create(2026, 4, 1)->startOfDay();
         $next = app(ProcessGenerationService::class)->generate($template->refresh(), $april);
@@ -94,11 +100,15 @@ class WorkFreezeTest extends TestCase
         $account = Account::factory()->create();
         $this->actingAs($this->memberOf($account, 'admin'), 'sanctum');
 
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $template = ProcessTemplate::factory()->create([
             'account_id' => $account->getKey(), 'name' => 'EFD', 'regimes' => null,
         ]);
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Etapa', 'department' => 'Fiscal',
+            'account_id' => $account->getKey(), 'title' => 'Etapa', 'department_id' => $fiscal->getKey(),
             'due_day' => 5, 'priority' => 'medium', 'order' => 1,
         ]);
         $client = Client::factory()->company()->create([

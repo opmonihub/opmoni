@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\SerproPowerOfAttorneyState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\SerproClientAuthorization;
 use Illuminate\Support\Facades\DB;
 
@@ -32,8 +31,19 @@ final class SerproPowerOracle
         private readonly SerproClient $client,
         private readonly SerproPowerNames $names,
         private readonly SerproTermManager $terms,
+        private readonly SerproCallRecorder $recorder,
     ) {}
 
+    /**
+     * A consulta ao oráculo fora de uma execução: por `account_id` explícito,
+     * e a chamada entra na auditoria de cobrança pelo `SerproCallRecorder`
+     * com `run_id` nulo — é a forma de dizer "esta chamada saiu do refresh,
+     * não de uma execução de sincronização".
+     *
+     * O lock do contribuinte não mora aqui: quem decide o que fazer quando a
+     * chave está ocupada é o job, que devolve a execução à fila. O oráculo
+     * assume que quem o chamou já serializou.
+     */
     public function refresh(int $accountId, int $clientId): void
     {
         $token = $this->terms->validToken($accountId);
@@ -44,18 +54,25 @@ final class SerproPowerOracle
             return;
         }
 
-        $result = $this->client->call(
+        $result = $this->recorder->record(
+            null,
+            $accountId,
+            $clientId,
             'PROCURACOES',
             'OBTERPROCURACAO41',
-            [
-                'outorgante' => $client->tax_id,
-                'tipoOutorgante' => '2',
-                'outorgado' => $certificate->document,
-                'tipoOutorgado' => '2',
-            ],
-            $certificate->document,
-            $client->tax_id,
-            $token,
+            fn (): SerproResult => $this->client->call(
+                'PROCURACOES',
+                'OBTERPROCURACAO41',
+                [
+                    'outorgante' => $client->tax_id,
+                    'tipoOutorgante' => '2',
+                    'outorgado' => $certificate->document,
+                    'tipoOutorgado' => '2',
+                ],
+                $certificate->document,
+                $client->tax_id,
+                $token,
+            ),
         );
 
         $this->persist($accountId, $clientId, $result);
@@ -109,8 +126,6 @@ final class SerproPowerOracle
                 ->where('client_id', $clientId)
                 ->whereNotIn('family', array_keys($granted))
                 ->update(['state' => SerproPowerOfAttorneyState::Rejected->value, 'verified_at' => $now]);
-
-            $this->refletirNaProcuracao($accountId, $clientId, $granted);
         });
     }
 
@@ -186,43 +201,5 @@ final class SerproPowerOracle
         }
 
         return SerproPowerOfAttorneyState::Established;
-    }
-
-    /**
-     * O `integration_state` da procuração que o Membro registrou espelha o
-     * que o provedor respondeu: `established` quando há família concedida em
-     * vigor, `expired` quando só sobrou outorga vencida, `rejected` quando a
-     * resposta não trouxe nenhuma — inclusive a lista vazia, que é o provedor
-     * dizendo "não consta", e não uma ausência de resposta.
-     *
-     * Datas e código do Membro não são deste método: quem os escreveu foi a
-     * request do operador, e o oracle só fala do estado.
-     *
-     * @param  array<string, string|null>  $granted
-     */
-    private function refletirNaProcuracao(int $accountId, int $clientId, array $granted): void
-    {
-        $procuracao = ClientEcacPowerOfAttorney::query()
-            ->withoutGlobalScope('account')
-            ->where('account_id', $accountId)
-            ->where('client_id', $clientId)
-            ->first();
-
-        if ($procuracao === null) {
-            return;
-        }
-
-        $estado = match (true) {
-            $granted === [] => SerproPowerOfAttorneyState::Rejected,
-            collect($granted)->contains(
-                fn (?string $expiresOn) => $expiresOn === null || $expiresOn >= today()->toDateString()
-            ) => SerproPowerOfAttorneyState::Established,
-            default => SerproPowerOfAttorneyState::Expired,
-        };
-
-        // `forceFill` + `saveQuietly`: o `saving` do model devolveria
-        // `pending` se `serpro_code` aparecesse sujo, e o estado não passa
-        // por `Fillable` — quem o escreve aqui é a resposta do provedor.
-        $procuracao->forceFill(['integration_state' => $estado])->saveQuietly();
     }
 }

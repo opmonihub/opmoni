@@ -98,7 +98,7 @@ function formatDue(due: string | null) {
 
       <span class="w-24 text-end text-sm text-muted">Departamento</span>
       <span class="truncate text-sm text-highlighted">
-        {{ task.department || '—' }}
+        {{ task.department?.name ?? 'Sem departamento' }}
       </span>
 
       <span class="w-24 text-end text-sm text-muted">Prioridade</span>

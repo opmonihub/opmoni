@@ -56,6 +56,7 @@ const { grouped, updateTask } = useWork()
 const { canManageWork } = useAuth()
 const { referenceMonth } = useWorkReferenceMonth()
 const { memberOptions } = useDirectory()
+const { list: listDepartments } = useDepartments()
 
 const UBadge = resolveComponent('UBadge')
 const UButton = resolveComponent('UButton')
@@ -68,6 +69,12 @@ const { data, status, error, refresh: reload } = await useAsyncData<WorkGroupedC
 )
 
 const groups = computed<WorkGroupedClient[]>(() => data.value ?? [])
+
+const { data: departments } = await useAsyncData(
+  'work-processos-departments',
+  () => listDepartments(),
+  { default: () => [] }
+)
 
 /**
  * The `refresh` below is the composable's, not `reload`'s: the toolbar button and
@@ -111,7 +118,8 @@ interface ProcessTaskLeaf {
   taskId: number | null
   title: string
   status: WorkTaskStatus | null
-  department: string
+  department_id: number | null
+  departmentName: string
   due_on: string | null
   empty: boolean
 }
@@ -146,7 +154,8 @@ const allRows = computed<ProcessTaskLeaf[]>(() => {
           taskId: null,
           title: '',
           status: null,
-          department: '',
+          department_id: null,
+          departmentName: 'Sem departamento',
           due_on: null,
           empty: true
         })
@@ -173,7 +182,8 @@ const allRows = computed<ProcessTaskLeaf[]>(() => {
           taskId: task.id,
           title: task.title,
           status: task.status,
-          department: task.department,
+          department_id: task.department_id,
+          departmentName: task.department?.name ?? 'Sem departamento',
           due_on: task.due_on,
           empty: false
         })
@@ -200,7 +210,7 @@ const hasActiveFilters = computed(() =>
 )
 
 const filterColumns = computed(() =>
-  workProcessosFilterColumns(allRows.value, filterModels.value)
+  workProcessosFilterColumns(allRows.value, filterModels.value, departments.value ?? [])
 )
 
 const sorting = ref<SortingState>([])
@@ -329,13 +339,13 @@ const columns = computed<TableColumn<ProcessTaskLeaf>[]>(() => {
       }
     },
     {
-      accessorKey: 'department',
+      accessorKey: 'departmentName',
       enableSorting: true,
       header: ({ column }) => sortableHeader('Depto.', column),
       meta: { class: { th: 'w-28 whitespace-nowrap', td: 'w-28' } },
       cell: ({ row }) => {
         if (row.getIsGrouped() || row.original.empty) return '—'
-        return row.original.department || '—'
+        return row.original.departmentName || 'Sem departamento'
       }
     },
     {
@@ -742,7 +752,7 @@ watch([filterModels, search, referenceMonth], () => {
                       variant="subtle"
                       :label="statusPresentation(leaf.status).label"
                     />
-                    <span v-if="leaf.department" class="text-xs text-muted">{{ leaf.department }}</span>
+                    <span class="text-xs text-muted">{{ leaf.departmentName }}</span>
                     <span class="text-xs text-muted">{{ formatDueOn(leaf.due_on) }}</span>
                   </div>
                 </div>

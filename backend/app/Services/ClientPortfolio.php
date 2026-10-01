@@ -86,6 +86,7 @@ class ClientPortfolio
         unset($filters['view']);
         $base = $this->filtered($filters);
         $statuses = array_map(fn (DeadlineStatus $status): string => $status->value, DeadlineStatus::cases());
+        $powerCounts = resolve(ClientPowerOfAttorneySummary::class)->forQuery($base)->countBy('status')->all();
 
         $bucket = function (string $document) use ($base, $statuses): array {
             $counts = [];
@@ -102,7 +103,7 @@ class ClientPortfolio
             'active' => (clone $base)->where('status', ClientStatus::Active)->count(),
             'inactive' => (clone $base)->where('status', ClientStatus::Inactive)->count(),
             'certificate' => $bucket('certificate'),
-            'poa' => $bucket('poa'),
+            'poa' => array_replace(array_fill_keys($statuses, 0), $powerCounts),
         ];
     }
 
@@ -304,20 +305,23 @@ class ClientPortfolio
             }
 
             $remaining = $limit - count($items);
-            $relation = $document === 'certificate' ? 'currentCertificate' : 'ecacPowerOfAttorney';
 
             /** @var Collection<int, Client> $clients */
             $clients = (clone $base)
                 ->withPortfolioView("{$document}_{$status}")
-                ->with([$relation])
+                ->when($document === 'certificate', fn (Builder $query): Builder => $query->with('currentCertificate'))
                 ->orderBy('name')
                 ->limit($remaining)
-                ->get(['id', 'name', 'tax_id']);
+                ->get(['id', 'account_id', 'name', 'tax_id']);
+
+            $summaries = $document === 'poa'
+                ? resolve(ClientPowerOfAttorneySummary::class)->forClients($clients)
+                : collect();
 
             foreach ($clients as $client) {
                 $expiresAt = $document === 'certificate'
                     ? $client->currentCertificate?->valid_until
-                    : $client->ecacPowerOfAttorney?->expires_at;
+                    : $summaries->get($client->getKey())['expires_on'];
 
                 $items[] = [
                     'id' => $client->getKey(),

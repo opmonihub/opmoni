@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\AssociateSerproClientsRequest;
 use App\Services\SerproMonitoringReader;
+use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
 
@@ -18,12 +19,17 @@ class SerproMonitoringAssociationController extends Controller
 {
     public function store(string $obligation, AssociateSerproClientsRequest $request, SerproMonitoringReader $reader): JsonResponse
     {
-        return response()->json([
-            'data' => $reader->associate(
-                (int) resolve(CurrentTenant::class)->accountId,
-                $obligation,
-                $request->validated('client_ids'),
-            ),
+        $result = $reader->associate(
+            (int) resolve(CurrentTenant::class)->accountId,
+            $obligation,
+            $request->validated('client_ids'),
+        );
+
+        SupportAudit::logWrite($request, 'serpro_monitorings', 'associate', null, [
+            'obligation' => $obligation,
+            'client_ids' => $request->validated('client_ids'),
         ]);
+
+        return response()->json(['data' => $result]);
     }
 }

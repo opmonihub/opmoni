@@ -40,8 +40,12 @@ class WorkGenerationTest extends TestCase
             'regimes' => [TaxRegime::SimpleNational->value], 'cascade' => true,
         ]);
         $template->tags()->attach($tag->getKey(), ['account_id' => $account->getKey()]);
-        $template->steps()->create(['account_id' => $account->getKey(), 'title' => 'Apurar', 'department' => 'Fiscal', 'due_day' => 3, 'priority' => 'medium', 'order' => 1]);
-        $template->steps()->create(['account_id' => $account->getKey(), 'title' => 'Transmitir', 'department' => 'Fiscal', 'due_day' => 31, 'priority' => 'high', 'order' => 2]);
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $template->steps()->create(['account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(), 'due_day' => 3, 'priority' => 'medium', 'order' => 1]);
+        $template->steps()->create(['account_id' => $account->getKey(), 'title' => 'Transmitir', 'department_id' => $fiscal->getKey(), 'due_day' => 31, 'priority' => 'high', 'order' => 2]);
 
         $ok = Client::factory()->company()->create(['account_id' => $account->getKey(), 'tax_regime' => TaxRegime::SimpleNational, 'status' => 'active']);
         $ok->tags()->attach($tag->getKey(), ['account_id' => $account->getKey()]);
@@ -70,8 +74,12 @@ class WorkGenerationTest extends TestCase
             'account_id' => $account->getKey(), 'name' => 'PGDAS',
             'regimes' => [TaxRegime::SimpleNational->value],
         ]);
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department' => 'Fiscal',
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(),
             'due_day' => 3, 'priority' => 'medium', 'order' => 1,
         ]);
 
@@ -110,17 +118,20 @@ class WorkGenerationTest extends TestCase
 
         $outsider = $this->memberOf($account, 'operador');
         $insider = $this->memberOf($account, 'operador');
-        $department = Department::factory()->create(['account_id' => $account->getKey(), 'name' => 'Fiscal']);
+        $department = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
         $department->members()->attach($insider->getKey(), ['account_id' => $account->getKey()]);
 
         $template = ProcessTemplate::factory()->create(['account_id' => $account->getKey(), 'name' => 'PGDAS']);
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department' => 'Fiscal',
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $department->getKey(),
             'due_day' => 3, 'priority' => 'medium', 'order' => 1,
             'default_assignee_member_id' => $outsider->getKey(),
         ]);
         $template->steps()->create([
-            'account_id' => $account->getKey(), 'title' => 'Transmitir', 'department' => 'Fiscal',
+            'account_id' => $account->getKey(), 'title' => 'Transmitir', 'department_id' => $department->getKey(),
             'due_day' => 5, 'priority' => 'medium', 'order' => 2,
             'default_assignee_member_id' => $insider->getKey(),
         ]);
@@ -135,6 +146,112 @@ class WorkGenerationTest extends TestCase
         $tasks = $processes->first()->tasks()->ordered()->get();
         $this->assertNull($tasks[0]->assignee_member_id);
         $this->assertSame($insider->getKey(), $tasks[1]->assignee_member_id);
+    }
+
+    public function test_geracao_copia_o_department_id_da_etapa_para_a_task(): void
+    {
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum');
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+
+        $template = ProcessTemplate::factory()->create(['account_id' => $account->getKey(), 'name' => 'PGDAS']);
+        $template->steps()->create([
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(),
+            'due_day' => 3, 'priority' => 'medium', 'order' => 1,
+        ]);
+        $template->steps()->create([
+            'account_id' => $account->getKey(), 'title' => 'Sem depto', 'department_id' => null,
+            'due_day' => 5, 'priority' => 'medium', 'order' => 2,
+        ]);
+
+        Client::factory()->company()->create([
+            'account_id' => $account->getKey(), 'tax_regime' => TaxRegime::SimpleNational, 'status' => 'active',
+        ]);
+
+        $processes = app(ProcessGenerationService::class)->generate($template->refresh(), Carbon::create(2026, 3, 1)->startOfDay());
+
+        $tasks = $processes->first()->tasks()->ordered()->get();
+        $this->assertSame($fiscal->getKey(), $tasks[0]->department_id);
+        $this->assertNull($tasks[1]->department_id);
+    }
+
+    public function test_renomear_departamento_reflete_na_task_gerada(): void
+    {
+        $account = Account::factory()->create();
+        $member = $this->memberOf($account, 'admin');
+        $this->actingAs($member, 'sanctum');
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+
+        $template = ProcessTemplate::factory()->create(['account_id' => $account->getKey(), 'name' => 'PGDAS']);
+        $template->steps()->create([
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(),
+            'due_day' => 3, 'priority' => 'medium', 'order' => 1,
+        ]);
+
+        Client::factory()->company()->create([
+            'account_id' => $account->getKey(), 'tax_regime' => TaxRegime::SimpleNational, 'status' => 'active',
+        ]);
+
+        $processes = app(ProcessGenerationService::class)->generate($template->refresh(), Carbon::create(2026, 3, 1)->startOfDay());
+        $task = $processes->first()->tasks()->sole();
+
+        $fiscal->update(['name' => 'Tributário']);
+
+        // O nome é sempre o atual: a task gerada acompanha a renomeação.
+        $this->getJson("/api/tasks/{$task->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.department_id', $fiscal->getKey())
+            ->assertJsonPath('data.department.id', $fiscal->getKey())
+            ->assertJsonPath('data.department.name', 'Tributário')
+            ->assertJsonPath('data.department.color', 'success');
+    }
+
+    public function test_trocar_o_departamento_da_etapa_nao_altera_o_gerado(): void
+    {
+        $account = Account::factory()->create();
+        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum');
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+
+        $fiscal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Fiscal')
+            ->sole();
+        $pessoal = Department::withoutGlobalScopes()
+            ->where('account_id', $account->getKey())
+            ->where('name', 'Pessoal')
+            ->sole();
+
+        $template = ProcessTemplate::factory()->create(['account_id' => $account->getKey(), 'name' => 'PGDAS']);
+        $step = $template->steps()->create([
+            'account_id' => $account->getKey(), 'title' => 'Apurar', 'department_id' => $fiscal->getKey(),
+            'due_day' => 3, 'priority' => 'medium', 'order' => 1,
+        ]);
+
+        Client::factory()->company()->create([
+            'account_id' => $account->getKey(), 'tax_regime' => TaxRegime::SimpleNational, 'status' => 'active',
+        ]);
+
+        $march = Carbon::create(2026, 3, 1)->startOfDay();
+        $generated = app(ProcessGenerationService::class)->generate($template->refresh(), $march);
+        $task = $generated->first()->tasks()->sole();
+
+        $step->update(['department_id' => $pessoal->getKey()]);
+
+        // Março continua apontando para Fiscal; abril usa Pessoal.
+        $this->assertSame($fiscal->getKey(), $task->refresh()->department_id);
+
+        $april = app(ProcessGenerationService::class)->generate($template->refresh(), Carbon::create(2026, 4, 1)->startOfDay());
+        $this->assertSame($pessoal->getKey(), $april->first()->tasks()->sole()->department_id);
     }
 
     private function memberOf(Account $account, string $role): User

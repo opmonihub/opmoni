@@ -6,7 +6,6 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\ClientSavedFilter;
 use App\Models\Department;
 use App\Models\Plan;
@@ -66,7 +65,6 @@ class SecurityRefactorTest extends TestCase
         $guarded = [
             Client::class,
             ClientCertificate::class,
-            ClientEcacPowerOfAttorney::class,
             ProcessTemplate::class,
             ProcessTemplateTask::class,
             Tag::class,

@@ -40,7 +40,7 @@ export function useWork() {
     client_id?: number
     status?: string
     assignee_member_id?: number
-    department?: string
+    department_id?: number
     priority?: string
     due_from?: string
     due_to?: string
@@ -62,7 +62,7 @@ export function useWork() {
     client_id?: number
     status?: string
     assignee_member_id?: number
-    department?: string
+    department_id?: number
     priority?: string
   } = {}) {
     const res = await $api<{ data: WorkTask[] }>('/work/calendar', {

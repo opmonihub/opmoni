@@ -31,12 +31,33 @@ export interface ClientCertificate {
   status: DeadlineStatus
 }
 
+/**
+ * Uma família de serviço que compõe a procuração e-CAC do cliente, como o
+ * provedor a confirmou. `state` é o que `serpro_client_authorizations` gravou
+ * (`established`, `rejected`, `expired`, `pending`); `expires_on` é a
+ * `dtexpiracao` da outorga, e `null` é uma outorga sem validade — não "sem
+ * data de hoje".
+ */
+export interface ClientPowerOfAttorneyFamily {
+  family: string
+  state: string
+  expires_on: string | null
+}
+
+/**
+ * A procuração e-CAC derivada das famílias autorizadas.
+ *
+ * Não há `id`, `starts_at`, `notes` nem nada digitado pelo Membro: a tabela da
+ * procuração manual não existe mais, e o que a tela mostra é a menor validade
+ * entre as famílias que a procuração exige. `expires_on` é a menor validade em
+ * vigor entre as famílias consideradas, e `null` quando nenhuma família foi
+ * confirmada — o `status` continua em `ecac_power_of_attorney_status` para o
+ * filtro, o badge e a ordenação lerem o mesmo estado.
+ */
 export interface ClientEcacPowerOfAttorney {
-  id: number
-  starts_at: string
-  expires_at: string
-  notes: string | null
   status: DeadlineStatus
+  expires_on: string | null
+  families: ClientPowerOfAttorneyFamily[]
 }
 
 export interface ClientSheet {
@@ -48,7 +69,7 @@ export interface ClientSheet {
   tax_regime: TaxRegime | null
   certificate: { valid_until: string } | null
   certificate_status: DeadlineStatus
-  ecac_power_of_attorney: { expires_at: string } | null
+  ecac_power_of_attorney: { expires_on: string | null } | null
   ecac_power_of_attorney_status: DeadlineStatus
   tags?: ClientTag[]
 }
@@ -208,10 +229,28 @@ export interface ClientWritePayload {
 
 export type ClientUpdatePayload = Partial<Omit<ClientWritePayload, 'person_type' | 'tax_id'>>
 
-export interface PowerOfAttorneyPayload {
-  starts_at: string
-  expires_at: string
-  notes?: string
+/**
+ * O `meta.capture` da resposta do upload do A1 (`POST clients/{id}/certificate`).
+ *
+ * Diz o que o pedido fez com a captura imediata, e nunca o que o lote vai
+ * trazer: `queued` enfileirou um job por fonte habilitada, `blocked` não
+ * enfileirou nada porque a janela do fisco ainda corre (`blocked_until` é o
+ * fim dela), `not_capturable` não enfileirou porque o certificado novo não
+ * serve para consulta (`reason` é o código, sem senha nem conteúdo do
+ * certificado).
+ */
+export type ClientCertificateCaptureStatus = 'queued' | 'blocked' | 'not_capturable'
+
+export interface ClientCertificateCapture {
+  status: ClientCertificateCaptureStatus
+  sources: string[]
+  blocked_until: string | null
+  reason: string | null
+}
+
+export interface ClientCertificateUpload {
+  data: Client
+  meta?: { capture?: ClientCertificateCapture }
 }
 
 export interface PaginatedResponse<T> {

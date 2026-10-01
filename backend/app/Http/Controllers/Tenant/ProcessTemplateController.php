@@ -24,7 +24,7 @@ class ProcessTemplateController extends Controller
         Gate::authorize('viewAny', ProcessTemplate::class);
 
         return ProcessTemplateResource::collection(
-            ProcessTemplate::query()->with(['tags', 'exceptions', 'steps'])->orderBy('name')->get()
+            ProcessTemplate::query()->with(['tags', 'exceptions', 'steps.department'])->orderBy('name')->get()
         );
     }
 
@@ -46,14 +46,14 @@ class ProcessTemplateController extends Controller
 
         SupportAudit::logWrite($request, 'process_templates', 'create', $template->getKey(), ['name' => $template->name]);
 
-        return (new ProcessTemplateResource($template->load(['tags', 'exceptions', 'steps'])))->response()->setStatusCode(201);
+        return (new ProcessTemplateResource($template->load(['tags', 'exceptions', 'steps.department'])))->response()->setStatusCode(201);
     }
 
     public function show(ProcessTemplate $processTemplate): ProcessTemplateResource
     {
         Gate::authorize('view', $processTemplate);
 
-        return new ProcessTemplateResource($processTemplate->load(['tags', 'exceptions', 'steps']));
+        return new ProcessTemplateResource($processTemplate->load(['tags', 'exceptions', 'steps.department']));
     }
 
     public function update(UpdateProcessTemplateRequest $request, ProcessTemplate $processTemplate): ProcessTemplateResource
@@ -72,7 +72,7 @@ class ProcessTemplateController extends Controller
 
         SupportAudit::logWrite($request, 'process_templates', 'update', $processTemplate->getKey(), ['name' => $processTemplate->name]);
 
-        return new ProcessTemplateResource($processTemplate->load(['tags', 'exceptions', 'steps']));
+        return new ProcessTemplateResource($processTemplate->load(['tags', 'exceptions', 'steps.department']));
     }
 
     public function destroy(Request $request, ProcessTemplate $processTemplate): Response

@@ -58,7 +58,11 @@ final class CaptureFiscalDocuments extends Command
 
         $query->chunkById(100, function ($clients) use ($source, &$dispatched): void {
             foreach ($clients as $client) {
-                CaptureFiscalDocumentsJob::dispatch($client->getKey(), $source);
+                CaptureFiscalDocumentsJob::dispatch(
+                    (int) $client->getKey(),
+                    $source,
+                    (int) $client->account_id,
+                );
                 $dispatched++;
             }
         });

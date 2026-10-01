@@ -3,12 +3,13 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\ClientStatus;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\TaxRegime;
 use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientEcacPowerOfAttorney;
+use App\Models\SerproClientAuthorization;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -137,11 +138,13 @@ class ClientPortfolioAnalyticsTest extends TestCase
             'valid_from' => '2026-01-01',
             'valid_until' => '2026-10-10',
         ]);
-        ClientEcacPowerOfAttorney::factory()->create([
+        SerproClientAuthorization::factory()->create([
             'account_id' => $account->getKey(),
             'client_id' => $sp->getKey(),
-            'starts_at' => '2026-01-01',
-            'expires_at' => '2026-08-01',
+            'family' => '00006',
+            'code' => '00006',
+            'state' => SerproPowerOfAttorneyState::Established,
+            'expires_on' => '2026-08-01',
         ]);
 
         $this->actingAs($this->memberOf($account), 'sanctum');

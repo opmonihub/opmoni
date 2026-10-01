@@ -16,7 +16,8 @@ function task(id: number, dueOn: string | null): WorkTask {
   return {
     id,
     title: `Tarefa ${id}`,
-    department: 'Fiscal',
+    department_id: 7,
+    department: { id: 7, name: 'Fiscal', color: 'neutral' },
     description: null,
     status: 'todo',
     due_on: dueOn,
@@ -82,7 +83,8 @@ describe('Work process filters', () => {
       cascade: true,
       title: 'Conferir folha',
       status: 'todo' as const,
-      department: 'Pessoal',
+      department_id: 9,
+      departmentName: 'Pessoal',
       due_on: '2026-09-10',
       empty: false,
       taskId: 1
@@ -101,7 +103,8 @@ describe('Work process filters', () => {
       cascade: false,
       title: 'Transmitir obrigação',
       status: 'done' as const,
-      department: 'Fiscal',
+      department_id: 7,
+      departmentName: 'Fiscal',
       due_on: '2026-09-18',
       empty: false,
       taskId: 2
@@ -109,7 +112,7 @@ describe('Work process filters', () => {
   ]
 
   it('exposes template and process-status facets from grouped process metadata', () => {
-    const columns = workProcessosFilterColumns(leaves, [])
+    const columns = workProcessosFilterColumns(leaves, [], [{ id: 7, name: 'Fiscal' }, { id: 9, name: 'Pessoal' }])
 
     assert.deepEqual(
       columns.find(column => column.id === 'template')?.options?.map(option => option.value),
@@ -147,7 +150,8 @@ describe('Work client filters', () => {
       order: 1,
       title: 'Conferir folha',
       status: 'todo' as const,
-      department: 'Pessoal',
+      department_id: 9,
+      departmentName: 'Pessoal',
       due_on: '2026-09-10',
       empty: false,
       taskId: 1
@@ -163,7 +167,8 @@ describe('Work client filters', () => {
       order: 1,
       title: 'Transmitir obrigação',
       status: 'done' as const,
-      department: 'Fiscal',
+      department_id: 7,
+      departmentName: 'Fiscal',
       due_on: '2026-09-18',
       empty: false,
       taskId: 2
@@ -172,7 +177,7 @@ describe('Work client filters', () => {
 
   it('offers the four shared Work facets in bar order', () => {
     assert.deepEqual(
-      workClientesFilterColumns(leaves, []).map(column => column.id),
+      workClientesFilterColumns(leaves, [], [{ id: 7, name: 'Fiscal' }, { id: 9, name: 'Pessoal' }]).map(column => column.id),
       ['status', 'department', 'cascade', 'client']
     )
   })
@@ -201,7 +206,7 @@ describe('Work client filters', () => {
   })
 
   it('narrows cascade and status to the values the leaves actually hold', () => {
-    const columns = workClientesFilterColumns(leaves, [])
+    const columns = workClientesFilterColumns(leaves, [], [{ id: 7, name: 'Fiscal' }, { id: 9, name: 'Pessoal' }])
 
     assert.deepEqual(
       columns.find(column => column.id === 'cascade')?.options?.map(option => option.value),
@@ -221,7 +226,7 @@ describe('Work client filters', () => {
 
   it('combines a facet filter with the search term', () => {
     const filters: DataTableFilterModel[] = [
-      { columnId: 'department', type: 'option', operator: 'is', values: ['Pessoal'] }
+      { columnId: 'department', type: 'option', operator: 'is', values: ['9'] }
     ]
 
     assert.deepEqual(filterWorkClientesLeaves(leaves, filters, '').map(leaf => leaf.id), ['1'])

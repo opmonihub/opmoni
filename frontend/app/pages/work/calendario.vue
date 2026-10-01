@@ -39,7 +39,7 @@ const statusVisible = ref<Record<WorkTaskStatus, boolean>>({
 const processId = ref<number | null>(null)
 const clientId = ref<number | null>(null)
 const assigneeId = ref<number | null>(null)
-const department = ref('')
+const departmentId = ref<number | null>(null)
 const priority = ref<WorkTaskPriority | ''>('')
 
 const range = computed(() => periodRange(view.value, focusDate.value))
@@ -49,7 +49,7 @@ const rangeKey = computed(() => JSON.stringify([
   processId.value,
   clientId.value,
   assigneeId.value,
-  department.value,
+  departmentId.value,
   priority.value
 ]))
 
@@ -59,7 +59,7 @@ const { data, status, error, refresh: reload } = await useAsyncData(
     process_id: processId.value ?? undefined,
     client_id: clientId.value ?? undefined,
     assignee_member_id: assigneeId.value ?? undefined,
-    department: department.value || undefined,
+    department_id: departmentId.value ?? undefined,
     priority: priority.value || undefined
   }),
   { watch: [rangeKey] }
@@ -163,7 +163,7 @@ function clearFilters() {
   processId.value = null
   clientId.value = null
   assigneeId.value = null
-  department.value = ''
+  departmentId.value = null
   priority.value = ''
   statusVisible.value = { todo: true, doing: true, done: true, dismissed: true }
 }
@@ -201,7 +201,7 @@ const assigneeOptions = computed(() => (filterSources.value?.members ?? []).map(
 
 const departmentOptions = computed(() => (filterSources.value?.departments ?? []).map(d => ({
   label: d.name,
-  value: d.name
+  value: d.id
 })))
 
 function apiMessage(error: unknown): string | undefined {
@@ -407,7 +407,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         :process-id="processId"
         :client-id="clientId"
         :assignee-id="assigneeId"
-        :department="department"
+        :department-id="departmentId"
         :priority="priority"
         :process-options="processOptions"
         :client-options="clientOptions"
@@ -418,7 +418,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         @update:process-id="processId = $event"
         @update:client-id="clientId = $event"
         @update:assignee-id="assigneeId = $event"
-        @update:department="department = $event"
+        @update:department-id="departmentId = $event"
         @update:priority="priority = $event"
         @clear="clearFilters"
       />

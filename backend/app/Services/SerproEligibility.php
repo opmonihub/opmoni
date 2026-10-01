@@ -18,8 +18,7 @@ use App\Models\SerproClientAuthorization;
  * - `sem_procuracao` — o provedor nunca respondeu uma outorga para a
  *   família;
  * - `procuracao_invalida` — a outorga existe e não vale: pendente,
- *   recusada, vencida, ou fora do intervalo que o Membro registrou na
- *   procuração e-CAC;
+ *   recusada ou vencida;
  * - `sem_termo` — o escritório não tem token de autorização vigente, e
  *   aí nenhuma procuração importa.
  *
@@ -74,17 +73,6 @@ final class SerproEligibility
 
         if ($authorization->state !== SerproPowerOfAttorneyState::Established
             || ($expiresOn !== null && $expiresOn < $hoje)) {
-            return ['eligible' => false, 'reason' => 'procuracao_invalida', 'expires_on' => $expiresOn];
-        }
-
-        // O provedor disse que a outorga existe; o intervalo que o Membro
-        // registrou é a segunda metade da validade — uma procuração que só
-        // começa amanhã, ou que venceu ontem no cadastro, não autoriza hoje
-        // nem que o oráculo ainda não tenha observado isso.
-        $procuracao = $client->ecacPowerOfAttorney;
-
-        if ($procuracao !== null
-            && ($procuracao->starts_at->toDateString() > $hoje || $procuracao->expires_at->toDateString() < $hoje)) {
             return ['eligible' => false, 'reason' => 'procuracao_invalida', 'expires_on' => $expiresOn];
         }
 

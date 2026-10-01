@@ -96,6 +96,8 @@ final class FiscalDocumentWriter
             // quando o documento chegou mascarado é uma afirmação falsa ao lado
             // de uma verdade.
             'mascarado' => $document->mascarado,
+            'numero' => $document->numero,
+            'serie' => $document->serie,
             'xml_bytes' => strlen($document->xml),
             'captured_at' => now(),
         ]);

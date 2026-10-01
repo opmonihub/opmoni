@@ -32,15 +32,21 @@ final class CaptureFiscalDocumentsJob implements ShouldQueue
     public function __construct(
         public int $clientId,
         public FiscalSource $source,
+        public int $accountId,
     ) {}
 
     public function handle(FiscalCaptureService $capture): void
     {
-        // `find` sem `withoutGlobalScopes`: o escopo de conta só existe com
-        // tenant, e o de exclusão lógica é o que impede capturar cliente
-        // apagado. Um cliente que saiu da carteira entre o despacho e a
-        // execução é nada, não erro.
-        $client = Client::query()->find($this->clientId);
+        // `account_id` explícito e escopo global desligado: o worker herda o
+        // `CurrentTenant` do job anterior, e uma busca que dependesse dele
+        // acharia o cliente da conta errada — ou nenhum. O `account_id` vem
+        // junto no `where` porque a unicidade do id não prova a conta, e a
+        // prova de conta é o que impede a captura de sair pelo tenant de
+        // outro.
+        $client = Client::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->find($this->clientId);
 
         if ($client === null) {
             return;

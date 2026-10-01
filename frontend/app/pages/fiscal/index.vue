@@ -79,10 +79,9 @@ const referenceNow = useState('fiscal-panel-now', () => new Date().toISOString()
  * Uma busca só, no servidor e no cliente, com a chave estável do módulo.
  *
  * O shell em `pages/fiscal.vue` não busca nada: quem busca é a página filha, e
- * é por isso que trocar de aba não repete a chamada. `getCachedData: () =>
- * undefined` força o dado a vir da API em cada entrada em vez de reaproveitar o
- * payload de um SSR antigo — um painel de captura que mostra a cobertura de
- * ontem é a mesma mentira de um gráfico de ontem.
+ * é por isso que trocar de aba não repete a chamada. A hidratação reaproveita o
+ * payload SSR para manter o primeiro DOM igual ao do servidor. Nas próximas
+ * entradas, o dado volta à API em vez de reaproveitar um resumo antigo.
  *
  * O relógio é reancorado aqui, dentro da busca, e não num `watch` do botão:
  * toda resposta nova invalida o relógio velho, e o caminho que chega a
@@ -97,7 +96,7 @@ const { data, status, error, refresh: reload } = await useAsyncData<FiscalSummar
     referenceNow.value = new Date().toISOString()
     return fresh
   },
-  { getCachedData: () => undefined }
+  { getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined }
 )
 
 const { isLoading, showError, refresh, retry } = useRetryableLoad({

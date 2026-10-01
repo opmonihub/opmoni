@@ -102,6 +102,8 @@ final class DfeEntryCollector
                 // serviço declarou, e nenhum dos dois diz se o fisco mascarou as
                 // chaves transportadas deste documento.
                 mascarado: $extracted->mascarado,
+                numero: $extracted->numero,
+                serie: $extracted->serie,
             );
         }
 

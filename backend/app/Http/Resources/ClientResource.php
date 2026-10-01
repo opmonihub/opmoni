@@ -17,6 +17,11 @@ class ClientResource extends JsonResource
     {
         $deadlines = once(fn (): DeadlineState => resolve(DeadlineState::class));
 
+        // A procuração derivada vem pré-calculada pelo controller, no atributo
+        // `power_summary` — uma leitura em lote, e não uma relação que a
+        // linha carregaria sozinha.
+        $power = $this->power_summary ?? ['status' => 'missing', 'expires_on' => null, 'families' => []];
+
         return [
             'id' => $this->getKey(),
             'person_type' => $this->person_type?->value,
@@ -51,11 +56,8 @@ class ClientResource extends JsonResource
                 fn () => $this->currentCertificate === null ? null : new ClientCertificateResource($this->currentCertificate)
             ),
             'certificate_status' => $deadlines->for($this->currentCertificate?->valid_until)->value,
-            'ecac_power_of_attorney' => $this->whenLoaded(
-                'ecacPowerOfAttorney',
-                fn () => $this->ecacPowerOfAttorney === null ? null : new ClientEcacPowerOfAttorneyResource($this->ecacPowerOfAttorney)
-            ),
-            'ecac_power_of_attorney_status' => $deadlines->for($this->ecacPowerOfAttorney?->expires_at)->value,
+            'ecac_power_of_attorney' => $power,
+            'ecac_power_of_attorney_status' => $power['status'],
             'source_updated_at' => $this->source_updated_at?->toISOString(),
             'looked_up_at' => $this->looked_up_at?->toISOString(),
             'tags' => $this->whenLoaded('tags', fn () => $this->tags->map(fn ($tag) => [

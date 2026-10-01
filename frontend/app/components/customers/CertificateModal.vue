@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client } from '~/types/client'
+import type { Client, ClientCertificateCapture } from '~/types/client'
 
 defineOptions({ inheritAttrs: false })
 
@@ -29,14 +29,53 @@ const confirmingRemove = ref(false)
 
 const canSubmit = computed(() => !!props.client && !!file.value && password.value.length > 0)
 
+/**
+ * O aviso do que o upload fez com a captura imediata.
+ *
+ * O texto afirma o que o pedido fez — enfileirou, ficou de fora por bloqueio,
+ * ou não tinha como consultar — e nunca o que o lote vai trazer. É a mesma
+ * disciplina de `captureQueuedCopy` do painel fiscal: prometer documento a um
+ * cliente que a captura não alcança é a mentira que o motivo de atenção existe
+ * para corrigir.
+ */
+function captureToast(capture: ClientCertificateCapture | undefined): { title: string, description: string, color: 'warning' | 'neutral' } | null {
+  if (!capture) return null
+
+  if (capture.status === 'queued') {
+    return {
+      title: 'Captura de documentos enfileirada',
+      description: 'A consulta deste cliente entrou na fila para cada fonte habilitada. O que o lote encontrar aparece na tabela de documentos quando ele terminar.',
+      color: 'neutral'
+    }
+  }
+
+  if (capture.status === 'blocked') {
+    const fim = capture.blocked_until ? ` A janela termina em ${formatDate(capture.blocked_until)}.` : ''
+    return {
+      title: 'Captura ainda bloqueada pelo fisco',
+      description: `O certificado foi guardado, mas este CNPJ está dentro da janela de bloqueio e nenhuma consulta foi enfileirada.${fim}`,
+      color: 'warning'
+    }
+  }
+
+  const motivo = capture.reason ? ` (${capture.reason})` : ''
+  return {
+    title: 'Captura não enfileirada',
+    description: `O certificado foi guardado, mas ele não serve para consultar o fisco agora${motivo}. A lista de atenção do painel fiscal mostra o motivo.`,
+    color: 'warning'
+  }
+}
+
 async function submitCertificate() {
   if (!props.client || !file.value || !password.value) return
   uploading.value = true
   try {
-    const saved = await uploadCertificate(props.client.id, file.value, password.value)
-    emit('saved', saved)
+    const response = await uploadCertificate(props.client.id, file.value, password.value)
+    emit('saved', response.data)
     isOpen.value = false
     toast.add({ title: 'Certificado A1 atualizado', color: 'success' })
+    const aviso = captureToast(response.meta?.capture)
+    if (aviso) toast.add(aviso)
   } catch {
     toast.add({ title: 'Não foi possível validar o certificado', description: 'Confira o arquivo e a senha.', color: 'error' })
   } finally {

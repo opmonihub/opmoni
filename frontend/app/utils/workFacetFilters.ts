@@ -61,6 +61,43 @@ export const WORK_CASCADE_FILTER_OPTIONS: DataTableFilterOption[] = [
 
 /** The facets every Work grouped table offers, in the order the filter bar shows them. */
 export const WORK_DEPARTMENT_FACET: WorkValueFacet = { id: 'department', label: 'Depto.', icon: 'i-lucide-building-2' }
+export const WORK_NO_DEPARTMENT_VALUE = 'none'
+export const WORK_NO_DEPARTMENT_LABEL = 'Sem departamento'
+
+/** Leaf mínimo para o facet de departamento por id: o id cruza com o catálogo. */
+export type WorkDepartmentLeaf = {
+  department_id: number | null
+}
+
+/** Opções do facet de departamento: catálogo da Account + Sem departamento. */
+export function workDepartmentOptions(departments: Iterable<{ id: number, name: string }>): DataTableFilterOption[] {
+  const options = [...departments]
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    .map(department => ({ label: department.name, value: String(department.id), color: 'neutral' as const }))
+  return [...options, { label: WORK_NO_DEPARTMENT_LABEL, value: WORK_NO_DEPARTMENT_VALUE, color: 'neutral' as const }]
+}
+
+/** Chave de filtro de um leaf: o id como string, ou `none` sem departamento. */
+export function workDepartmentKey(leaf: WorkDepartmentLeaf): string {
+  return leaf.department_id === null ? WORK_NO_DEPARTMENT_VALUE : String(leaf.department_id)
+}
+
+/**
+ * Coluna do facet de departamento por id, ou `null` sem catálogo.
+ *
+ * Ao contrário dos facets fixed/value, as opções vêm do catálogo da Account
+ * (mais `Sem departamento`), não dos leaves — por isso não há estreitamento
+ * via `workFacetChoices` aqui: a seleção nunca esconde opções do catálogo.
+ * `_models` só mantém a assinatura igual às chamadas.
+ */
+export function workDepartmentFacetColumn(
+  _models: readonly DataTableFilterModel[],
+  departments: Iterable<{ id: number, name: string }>
+): DataTableFilterColumn | null {
+  const options = workDepartmentOptions(departments)
+  if (options.length <= 1) return null
+  return { id: WORK_DEPARTMENT_FACET.id, label: WORK_DEPARTMENT_FACET.label, icon: WORK_DEPARTMENT_FACET.icon, options }
+}
 export const WORK_CASCADE_FACET: WorkFixedFacet = { id: 'cascade', label: 'Cascata', icon: 'i-lucide-git-branch', options: WORK_CASCADE_FILTER_OPTIONS }
 export const WORK_STATUS_FACET: WorkFixedFacet = { id: 'status', label: 'Status', icon: 'i-lucide-circle-dot', options: WORK_STATUS_FILTER_OPTIONS }
 export const WORK_CLIENT_FACET: WorkValueFacet = { id: 'client', label: 'Cliente', icon: 'i-lucide-users' }

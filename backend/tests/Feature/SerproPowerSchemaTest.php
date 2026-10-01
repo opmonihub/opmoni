@@ -22,10 +22,11 @@ class SerproPowerSchemaTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_colunas_de_procuracao_existem_na_procuracao_ecac(): void
+    public function test_tabela_da_procuracao_manual_nao_existe_mais(): void
     {
-        $this->assertTrue(Schema::hasColumn('client_ecac_powers_of_attorney', 'serpro_code'));
-        $this->assertTrue(Schema::hasColumn('client_ecac_powers_of_attorney', 'integration_state'));
+        // A procuração digitada virou a autorização derivada do provedor —
+        // a tabela que a guardava é removida pela migration de drop.
+        $this->assertFalse(Schema::hasTable('client_ecac_powers_of_attorney'));
     }
 
     public function test_tabela_de_autorizacoes_por_familia_existe_com_as_colunas(): void

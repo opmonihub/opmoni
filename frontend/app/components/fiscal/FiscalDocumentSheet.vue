@@ -7,6 +7,7 @@ import {
   fiscalEventCount,
   fiscalKindLabel,
   fiscalMissingValue,
+  fiscalSituacaoPresentation,
   fiscalSourceLabel,
   fiscalStageLabel,
   formatFiscalAmount,
@@ -15,6 +16,7 @@ import {
   formatFiscalDay,
   modelLabel
 } from '~/utils/fiscalPresentation'
+import { fiscalCompetenciaLabel, fiscalNumeroLabel } from '~/utils/fiscalClients'
 import { formatTaxId } from '~/utils/taxId'
 
 /**
@@ -86,6 +88,9 @@ const detailFacts = computed<MetaListItem[]>(() => {
 
   return [
     { label: 'Chave de acesso', value: target.chave_acesso, mono: true },
+    { label: 'Nº da nota', value: fiscalNumeroLabel(target.numero, target.serie), mono: true },
+    { label: 'Situação', value: fiscalSituacaoPresentation(target.situacao).label },
+    { label: 'Competência', value: fiscalCompetenciaLabel(target.competencia), mono: true },
     { label: 'Modelo', value: modelLabel(target.model) },
     { label: 'Tipo', value: fiscalKindLabel(target.kind) },
     { label: 'Etapa', value: fiscalStageLabel(target.stage) },

@@ -73,5 +73,7 @@ final readonly class PulledDocument
         public ?CarbonImmutable $eventoOcorridoEmAt,
         public string $xml,
         public bool $mascarado = false,
+        public ?string $numero = null,
+        public ?string $serie = null,
     ) {}
 }

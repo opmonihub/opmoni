@@ -27,6 +27,8 @@
              carteira com 2.000 clientes; em 128M ela aborta dependendo da ordem. -->
         <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
+        <!-- Os erros que os testes provocam de propósito não entram no laravel.log do runtime. -->
+        <env name="LOG_CHANNEL" value="null" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="BROADCAST_CONNECTION" value="null" force="true"/>

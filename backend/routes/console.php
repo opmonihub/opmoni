@@ -92,6 +92,18 @@ Schedule::command('serpro:renew-terms')
     ->withoutOverlapping();
 
 /*
+ * O oráculo de autorização, uma vez por dia, às duas da manhã no fuso de
+ * Brasília — depois da renovação do termo, porque a consulta de procuração
+ * precisa do token que ela mantém vivo. Cada chamada é cobrável, e a janela
+ * de vinte horas dentro do job é o que impede a rotina de pagar de novo um
+ * cliente que acabou de ser cadastrado.
+ */
+Schedule::command('serpro:refresh-powers')
+    ->dailyAt('02:00')
+    ->timezone('America/Sao_Paulo')
+    ->withoutOverlapping();
+
+/*
  * O cão de guarda das execuções: uma passada a cada cinco minutos procura
  * `running` sem progresso há mais de duas vezes o timeout do job. O
  * `withoutOverlapping` impede duas varreduras sobre o mesmo conjunto.

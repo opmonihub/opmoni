@@ -1,7 +1,9 @@
 export type WorkTaskStatus = 'todo' | 'doing' | 'done' | 'dismissed'
 export type WorkTaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
-export interface WorkTemplateStep { id: number, title: string, department: string, description: string | null, due_day: number, priority: WorkTaskPriority, order: number, default_assignee_member_id: number | null }
+export interface WorkDepartmentRef { id: number, name: string, color: string }
+
+export interface WorkTemplateStep { id: number, title: string, department_id: number | null, department: WorkDepartmentRef | null, description: string | null, due_day: number, priority: WorkTaskPriority, order: number, default_assignee_member_id: number | null }
 
 export interface WorkTemplateException { client_id: number, kind: 'added' | 'removed' }
 
@@ -24,9 +26,9 @@ export interface WorkTemplatePayload {
   regimes?: string[]
   tag_ids?: number[]
   exceptions?: WorkTemplateException[]
-  steps?: { id?: number, title: string, department: string, description?: string | null, due_day: number, priority: WorkTaskPriority, order: number, default_assignee_member_id?: number | null }[]
+  steps?: { id?: number, title: string, department_id: number | null, description?: string | null, due_day: number, priority: WorkTaskPriority, order: number, default_assignee_member_id?: number | null }[]
 }
-export interface WorkTask { id: number, title: string, department: string, description: string | null, status: WorkTaskStatus, due_on: string | null, priority: WorkTaskPriority, assignee_member_id: number | null, order: number, cascade_locked?: boolean, process?: { id: number, name: string, cascade?: boolean | null, client?: { id: number, name: string } } }
+export interface WorkTask { id: number, title: string, department_id: number | null, department: WorkDepartmentRef | null, description: string | null, status: WorkTaskStatus, due_on: string | null, priority: WorkTaskPriority, assignee_member_id: number | null, order: number, cascade_locked?: boolean, process?: { id: number, name: string, cascade?: boolean | null, client?: { id: number, name: string } } }
 export interface WorkProcessDetail extends WorkProcess { tasks: WorkTask[] }
 export interface WorkGroupedProcess {
   process: {

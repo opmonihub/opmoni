@@ -25,7 +25,7 @@ class TaskFactory extends Factory
             'account_id' => Account::factory(),
             'process_id' => Process::factory(),
             'title' => fake()->words(3, true),
-            'department' => 'Fiscal',
+            'department_id' => null,
             'description' => fake()->optional()->sentence(),
             'status' => TaskStatus::Todo->value,
             'due_on' => null,

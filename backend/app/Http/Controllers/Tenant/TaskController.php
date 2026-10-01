@@ -28,21 +28,21 @@ class TaskController extends Controller
             'client_id' => ['sometimes', 'integer'],
             'status' => ['sometimes', 'string'],
             'assignee_member_id' => ['sometimes', 'integer'],
-            'department' => ['sometimes', 'string'],
+            'department_id' => ['sometimes', 'nullable', 'integer'],
             'priority' => ['sometimes', 'string'],
             'due_from' => ['sometimes', 'date'],
             'due_to' => ['sometimes', 'date'],
         ]);
 
-        $this->ensureDepartmentExists($filters['department'] ?? null);
+        $this->ensureDepartmentExists(isset($filters['department_id']) ? (int) $filters['department_id'] : null);
 
         $tasks = Task::query()
-            ->with(['process.client', 'process.template'])
+            ->with(['process.client', 'process.template', 'department'])
             ->ofProcess(isset($filters['process_id']) ? (int) $filters['process_id'] : null)
             ->ofClient(isset($filters['client_id']) ? (int) $filters['client_id'] : null)
             ->withStatus($filters['status'] ?? null)
             ->ofAssignee(isset($filters['assignee_member_id']) ? (int) $filters['assignee_member_id'] : null)
-            ->ofDepartment($filters['department'] ?? null)
+            ->ofDepartment(isset($filters['department_id']) ? (int) $filters['department_id'] : null)
             ->ofPriority($filters['priority'] ?? null)
             ->withDueRange($filters['due_from'] ?? null, $filters['due_to'] ?? null)
             ->ordered()
@@ -56,7 +56,7 @@ class TaskController extends Controller
     {
         Gate::authorize('view', $task);
 
-        return new TaskResource($task->load(['process.client', 'process.template']));
+        return new TaskResource($task->load(['process.client', 'process.template', 'department']));
     }
 
     public function update(UpdateTaskRequest $request, Task $task): TaskResource
@@ -111,7 +111,7 @@ class TaskController extends Controller
 
         SupportAudit::logWrite($request, 'tasks', 'update', $task->getKey(), ['status' => $to]);
 
-        return new TaskResource($task->load(['process.client', 'process.template']));
+        return new TaskResource($task->load(['process.client', 'process.template', 'department']));
     }
 
     public function calendar(Request $request): AnonymousResourceCollection
@@ -125,17 +125,16 @@ class TaskController extends Controller
             'client_id' => ['sometimes', 'integer'],
             'status' => ['sometimes', 'string'],
             'assignee_member_id' => ['sometimes', 'integer'],
-            'department' => ['sometimes', 'string'],
+            'department_id' => ['sometimes', 'nullable', 'integer'],
             'priority' => ['sometimes', 'string'],
         ]);
 
-        $this->ensureDepartmentExists($filters['department'] ?? null);
+        $this->ensureDepartmentExists(isset($filters['department_id']) ? (int) $filters['department_id'] : null);
 
         // filteredQuery já aplica whereDate no intervalo; whereBetween com
         // bound de data pura cortaria o último dia se due_on tiver horário.
         return TaskResource::collection($this->filteredQuery($filters)
             ->limit(2000)
-            ->with(['process.client', 'process.template'])
             ->get());
     }
 
@@ -150,7 +149,7 @@ class TaskController extends Controller
         $month = Carbon::createFromFormat('!Y-m', $filters['reference_month'])->startOfMonth();
 
         $processes = Process::query()
-            ->with(['client', 'template', 'tasks' => fn ($query) => $query->ordered()])
+            ->with(['client', 'template', 'tasks' => fn ($query) => $query->with('department')->ordered()])
             ->whereDate('reference_month', $month->toDateString())
             ->orderBy('name')
             ->get();
@@ -221,7 +220,7 @@ class TaskController extends Controller
                     $tasks->orWhereNull('due_on');
                 }
             })
-            ->with(['process.client', 'process.template'])
+            ->with(['process.client', 'process.template', 'department'])
             ->ordered()
             ->get());
     }
@@ -265,7 +264,7 @@ class TaskController extends Controller
     private function filteredQuery(array $filters): Builder
     {
         return Task::query()
-            ->with(['process.client', 'process.template'])
+            ->with(['process.client', 'process.template', 'department'])
             ->whereNotNull('due_on')
             ->whereDate('due_on', '>=', $filters['from'])
             ->whereDate('due_on', '<=', $filters['to'])
@@ -273,7 +272,7 @@ class TaskController extends Controller
             ->ofClient(isset($filters['client_id']) ? (int) $filters['client_id'] : null)
             ->withStatus($filters['status'] ?? null)
             ->ofAssignee(isset($filters['assignee_member_id']) ? (int) $filters['assignee_member_id'] : null)
-            ->ofDepartment($filters['department'] ?? null)
+            ->ofDepartment(isset($filters['department_id']) ? (int) $filters['department_id'] : null)
             ->ofPriority($filters['priority'] ?? null)
             ->ordered();
     }
@@ -288,20 +287,16 @@ class TaskController extends Controller
         return $process->status instanceof \BackedEnum ? $process->status->value : (string) $process->status;
     }
 
-    private function ensureDepartmentExists(?string $department): void
+    private function ensureDepartmentExists(?int $departmentId): void
     {
-        if ($department === null || trim($department) === '') {
+        if ($departmentId === null) {
             return;
         }
 
-        $exists = Department::query()
-            ->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($department))])
-            ->exists();
-
-        if (! $exists) {
+        if (! Department::query()->whereKey($departmentId)->exists()) {
             abort(response()->json([
                 'message' => 'O departamento informado não está cadastrado nesta conta.',
-                'errors' => ['department' => ['O departamento informado não está cadastrado nesta conta.']],
+                'errors' => ['department_id' => ['O departamento informado não está cadastrado nesta conta.']],
             ], 422));
         }
     }

@@ -59,7 +59,6 @@ const {
   certificateFilter,
   poaFilter,
   columnFilters,
-  hasActiveFilters,
   filterColumns,
   filterModels,
   activeFilterCount,
@@ -158,7 +157,6 @@ const { data: summary } = await useAsyncData(
   { watch: [summaryParams] }
 )
 
-const total = computed(() => matchingTotal.value)
 const isLoading = computed(() => status.value === 'pending')
 
 const selectionParams = computed(() => ({
@@ -240,7 +238,6 @@ function toggleSort(key: SortKey) {
 const target = shallowRef<Client | null>(null)
 const formOpen = ref(false)
 const certificateOpen = ref(false)
-const powerOfAttorneyOpen = ref(false)
 const deleteOpen = ref(false)
 const deleteTarget = shallowRef<ClientSheet | null>(null)
 
@@ -296,14 +293,6 @@ async function openCertificate(client: ClientSheet) {
   certificateOpen.value = true
 }
 
-async function openPowerOfAttorney(client: ClientSheet) {
-  rememberFocus()
-  const full = await loadClient(client.id)
-  if (!full) return
-  target.value = full
-  powerOfAttorneyOpen.value = true
-}
-
 function openDelete(client: ClientSheet) {
   rememberFocus()
   deleteTarget.value = client
@@ -327,7 +316,6 @@ function rowActions(client: ClientSheet) {
     ...items,
     { label: 'Editar', icon: 'i-lucide-pencil', onSelect: () => openEdit(client) },
     { label: 'Certificado A1', icon: 'i-lucide-key-round', onSelect: () => openCertificate(client) },
-    { label: 'Procuração e-CAC', icon: 'i-lucide-file-key-2', onSelect: () => openPowerOfAttorney(client) },
     { type: 'separator' as const },
     { label: client.status === 'active' ? 'Inativar' : 'Ativar', icon: 'i-lucide-power', onSelect: () => toggleStatus(client) },
     { label: 'Excluir', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => openDelete(client) }
@@ -426,6 +414,36 @@ const canLoadMore = computed(() =>
         @retry="refresh"
       />
 
+      <div
+        v-else-if="isLoading && !rows.length"
+        class="min-h-0 flex-1 overflow-y-auto"
+        role="status"
+        aria-label="Carregando clientes"
+      >
+        <div class="flex flex-col gap-3" aria-hidden="true">
+          <USkeleton class="hidden h-11 w-full shrink-0 rounded-lg md:block" />
+          <USkeleton
+            v-for="index in 6"
+            :key="index"
+            class="h-40 w-full shrink-0 rounded-lg md:h-12"
+          />
+        </div>
+      </div>
+
+      <CustomersClientPortfolioEmpty
+        v-else-if="!rows.length"
+        :document="documentTab"
+        :status="documentStatus"
+        :portfolio-total="summary?.total"
+        :search="debouncedSearch"
+        :has-filters="activeFilterCount > 0"
+        :can-manage-clients="canManageClients"
+        @create="openCreate"
+        @clear-filters="clearAppliedFilters"
+        @clear-search="clearSearch"
+        @refresh="refresh"
+      />
+
       <template v-else>
         <CustomersClientPortfolioMobileList
           :rows="rows"
@@ -439,7 +457,6 @@ const canLoadMore = computed(() =>
           @load-more="loadMore"
           @set-selected="setClientSelected"
           @open-certificate="openCertificate"
-          @open-power-of-attorney="openPowerOfAttorney"
           @remember-focus="rememberFocus"
         />
 
@@ -462,43 +479,7 @@ const canLoadMore = computed(() =>
           @header-toggle="onHeaderToggle"
           @toggle-sort="toggleSort"
           @open-certificate="openCertificate"
-          @open-power-of-attorney="openPowerOfAttorney"
           @remember-focus="rememberFocus"
-        />
-
-        <UEmpty
-          v-if="!isLoading && total === 0 && !hasActiveFilters"
-          icon="i-lucide-users"
-          title="Nenhum cliente na carteira"
-          description="Cadastre o primeiro cliente para começar a gerenciar a carteira."
-          variant="naked"
-          :actions="canManageClients ? [{
-            label: 'Cadastrar cliente',
-            icon: 'i-lucide-plus',
-            onClick: openCreate
-          }] : undefined"
-        />
-
-        <UEmpty
-          v-else-if="!isLoading && total === 0"
-          icon="i-lucide-search-x"
-          title="Nenhum cliente encontrado"
-          description="Ajuste a busca ou limpe os filtros aplicados."
-          variant="naked"
-          :actions="[
-            ...(activeFilterCount ? [{
-              label: 'Limpar filtros',
-              color: 'neutral' as const,
-              variant: 'outline' as const,
-              onClick: clearAppliedFilters
-            }] : []),
-            ...(search ? [{
-              label: 'Limpar busca',
-              color: 'neutral' as const,
-              variant: 'outline' as const,
-              onClick: clearSearch
-            }] : [])
-          ]"
         />
       </template>
 
@@ -528,12 +509,6 @@ const canLoadMore = computed(() =>
     />
     <CustomersCertificateModal
       v-model:open="certificateOpen"
-      :client="target"
-      :content="overlayContent"
-      @saved="onSaved"
-    />
-    <CustomersEcacPowerOfAttorneyModal
-      v-model:open="powerOfAttorneyOpen"
       :client="target"
       :content="overlayContent"
       @saved="onSaved"

@@ -47,11 +47,13 @@ class FiscalDocuments
             // `client` já vem com `withTrashed()` na relação do modelo, que é
             // onde essa regra mora: repetir o `withTrashed()` aqui criaria uma
             // segunda cópia que a próxima pessoa poderia remover sem ver que
-            // desliga a linha histórica.
-            'rows' => $this->preencheOsEventos($accountId, $this->sorted($filtrada, $filters)
-                ->with(['client'])
+            // desliga a linha histórica. O `currentCertificate` junto é a
+            // leitura em lote do `client_certificate_status` — uma consulta
+            // para a página, e não uma por linha.
+            'rows' => $this->preencheASituacao($accountId, $this->preencheOsEventos($accountId, $this->sorted($filtrada, $filters)
+                ->with(['client.currentCertificate'])
                 ->paginate($this->porPagina($filters))
-                ->withQueryString()),
+                ->withQueryString())),
             'available_models' => $modelos,
         ];
     }
@@ -292,6 +294,97 @@ class FiscalDocuments
             ->orderBy($ocorrencia)
             ->orderBy((new FiscalDocument)->qualifyColumn('id'))
             ->get();
+    }
+
+    /**
+     * A situação de cada linha da página: `cancelada` quando a linha do tempo
+     * da chave tem um evento `110111` (o cancelamento da NF-e e do CT-e, que
+     * usam o mesmo `tpEvento`), `autorizada` quando chegou o documento
+     * completo, `resumo` quando só o resumo chegou. A linha de evento não é
+     * linha de documento, e por isso fica nula.
+     *
+     * A consulta é uma só para a página, como a de `preencheOsEventos`: o par
+     * que define a linha do tempo é o mesmo — cliente e chave de acesso. O
+     * `LIKE '110111%'` casa o `nSeqEvento` junto (`110111-1`), que é a forma
+     * que o `event_id` guarda; o prefixo é texto fixo do fisco, e não entrada
+     * do operador.
+     *
+     * @param  LengthAwarePaginator<FiscalDocument>  $pagina
+     * @return LengthAwarePaginator<FiscalDocument>
+     */
+    public function preencheASituacao(int $accountId, LengthAwarePaginator $pagina): LengthAwarePaginator
+    {
+        $linhas = $pagina->getCollection();
+
+        if ($linhas->isEmpty()) {
+            return $pagina;
+        }
+
+        $canceladas = FiscalDocument::query()
+            ->where('account_id', $accountId)
+            ->where('stage', FiscalStage::Event->value)
+            ->where('event_id', 'like', '110111%')
+            ->where(function (Builder $query) use ($linhas): void {
+                foreach ($linhas as $document) {
+                    $query->orWhere(function (Builder $par) use ($document): void {
+                        $par->where('client_id', (int) $document->client_id)
+                            ->where('chave_acesso', (string) $document->chave_acesso);
+                    });
+                }
+            })
+            ->selectRaw('client_id, chave_acesso')
+            ->toBase()
+            ->get()
+            ->map(fn (mixed $linha): string => $linha->client_id.'|'.$linha->chave_acesso)
+            ->all();
+
+        $canceladas = array_fill_keys($canceladas, true);
+
+        foreach ($linhas as $document) {
+            $document->situacao = $this->situacaoDe($accountId, $document, null, $canceladas);
+        }
+
+        return $pagina;
+    }
+
+    /**
+     * A situação de uma linha: `cancelada` quando a linha do tempo da chave
+     * tem um evento `110111`, `autorizada` quando chegou o documento completo,
+     * `resumo` quando só o resumo chegou. A linha de evento não é linha de
+     * documento, e por isso é nula.
+     *
+     * O detalhe passa a linha do tempo que já carregou, e a lista passa o mapa
+     * que já consultou: nenhum dos dois reconsulta o que já tem, e os dois
+     * respondem a mesma pergunta com a mesma regra.
+     *
+     * @param  Collection<int, FiscalDocument>|null  $eventos
+     * @param  array<string, true>|null  $canceladas
+     */
+    public function situacaoDe(int $accountId, FiscalDocument $document, ?Collection $eventos = null, ?array $canceladas = null): ?string
+    {
+        if ($document->stage === FiscalStage::Event) {
+            return null;
+        }
+
+        if ($canceladas === null) {
+            $eventos ??= $this->eventsOf($accountId, $document);
+
+            $canceladas = [];
+
+            foreach ($eventos as $evento) {
+                if (str_starts_with((string) $evento->event_id, '110111')) {
+                    $canceladas[(int) $document->client_id.'|'.$document->chave_acesso] = true;
+
+                    break;
+                }
+            }
+        }
+
+        return match (true) {
+            isset($canceladas[(int) $document->client_id.'|'.$document->chave_acesso]) => 'cancelada',
+            $document->stage === FiscalStage::Document => 'autorizada',
+            default => 'resumo',
+        };
     }
 
     /**

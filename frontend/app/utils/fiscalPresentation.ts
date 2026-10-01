@@ -3,13 +3,13 @@ import type {
   FiscalAttentionReason,
   FiscalClientCertificateStatus,
   FiscalCoverage,
+  FiscalDocumentSituacao,
   FiscalKind,
   FiscalLastCapture,
   FiscalSource,
   FiscalStage,
   FiscalSummary
 } from '../types/fiscal.ts'
-
 /**
  * A apresentação do painel fiscal: os quatro estados da carteira, os dez
  * motivos de atenção e as leituras que o resumo devolve.
@@ -635,6 +635,25 @@ const certificateStatusCopy: Record<FiscalClientCertificateStatus, { label: stri
 export function fiscalClientCertificatePresentation(status: FiscalClientCertificateStatus | null | undefined): { label: string, color: FiscalTone, icon: string } {
   if (!status) return { label: fiscalMissingValue, color: 'neutral', icon: 'i-lucide-minus' }
   return certificateStatusCopy[status]
+}
+
+/**
+ * A situação do documento, e as três cores que ela tem.
+ *
+ * `Record` sobre a união, e não ternário, pelo mesmo motivo de `kindLabels`: a
+ * situação é uma lista fechada, e um membro novo que caísse num padrão viraria
+ * a cor errada sem erro de tipo e sem teste quebrado. O `Record` faz o
+ * compilador pedir a palavra.
+ */
+const situacaoCopy: Record<FiscalDocumentSituacao, { label: string, color: FiscalTone }> = {
+  autorizada: { label: 'Autorizada', color: 'success' },
+  cancelada: { label: 'Cancelada', color: 'error' },
+  resumo: { label: 'Resumo', color: 'neutral' }
+}
+
+export function fiscalSituacaoPresentation(situacao: FiscalDocumentSituacao | null | undefined): { label: string, color: FiscalTone } {
+  if (!situacao) return { label: fiscalMissingValue, color: 'neutral' }
+  return situacaoCopy[situacao]
 }
 
 /**

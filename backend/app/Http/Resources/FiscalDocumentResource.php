@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\FiscalDocument;
+use App\Services\Fiscal\Read\FiscalCoverage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -46,8 +47,24 @@ class FiscalDocumentResource extends JsonResource
             // e um float não representa `0.01` exatamente.
             'valor_total' => $this->valor_total,
             'emissao_at' => $this->emissao_at?->toISOString(),
+            // O número e a série do XML (`ide/nNF`, `ide/serie`): nulos no
+            // documento antigo, que mostra traço — nunca um número inventado.
+            'numero' => $this->numero,
+            'serie' => $this->serie,
+            // Derivada e sem coluna: `cancelada` quando a linha do tempo tem um
+            // evento `110111`, `autorizada` quando chegou o documento completo,
+            // `resumo` quando só o resumo chegou. Nula na linha de evento.
+            'situacao' => $this->situacao,
+            // `YYYY-MM` da emissão, nulo fora da série — o mesmo contrato de
+            // `over_time` da cobertura: sem mês, não há mês a atribuir.
+            'competencia' => $this->emissao_at?->format('Y-m'),
             'event_count' => $this->event_count,
             'mascarado' => $this->mascarado,
+            // O estado do A1 do cliente, na mesma palavra que a cobertura usa
+            // — é o que explica a linha ter parado de receber documento.
+            'client_certificate_status' => $this->client === null
+                ? null
+                : resolve(FiscalCoverage::class)->certificateStatus($this->client),
             // Terceiro estado preservado: `null` é "a outra etapa ainda não
             // chegou", e não um digest que não confere.
             'digval_confere' => $this->digval_confere,

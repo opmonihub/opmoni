@@ -5,7 +5,7 @@ namespace Tests\Feature\Tenancy;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientEcacPowerOfAttorney;
+use App\Models\SerproClientAuthorization;
 use App\Models\Tag;
 use App\Models\User;
 use Database\Seeders\DevClientPortfolioSeeder;
@@ -54,7 +54,7 @@ class DevClientPortfolioSeederTest extends TestCase
         );
         $this->assertGreaterThan(
             0,
-            ClientEcacPowerOfAttorney::withoutGlobalScopes()->where('account_id', $account->getKey())->count()
+            SerproClientAuthorization::withoutGlobalScopes()->where('account_id', $account->getKey())->count()
         );
 
         $marker = Tag::query()->where('account_id', $account->getKey())->where('name', 'seed-dev')->firstOrFail();

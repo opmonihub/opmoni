@@ -4,12 +4,13 @@ namespace Database\Seeders;
 
 use App\Enums\ClientPersonType;
 use App\Enums\ClientStatus;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\TaxRegime;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\ClientCertificate;
-use App\Models\ClientEcacPowerOfAttorney;
 use App\Models\Plan;
+use App\Models\SerproClientAuthorization;
 use App\Models\Tag;
 use App\Services\BrazilianTaxId;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -142,7 +143,7 @@ class DevClientPortfolioSeeder extends Seeder
 
         if ($clientIds !== []) {
             DB::table('client_tag')->whereIn('client_id', $clientIds)->delete();
-            ClientEcacPowerOfAttorney::withoutGlobalScopes()->whereIn('client_id', $clientIds)->delete();
+            SerproClientAuthorization::withoutGlobalScopes()->whereIn('client_id', $clientIds)->delete();
             ClientCertificate::withoutGlobalScopes()->whereIn('client_id', $clientIds)->forceDelete();
             Client::withoutGlobalScopes()->whereIn('id', $clientIds)->forceDelete();
         }
@@ -254,12 +255,14 @@ class DevClientPortfolioSeeder extends Seeder
             return;
         }
 
-        ClientEcacPowerOfAttorney::withoutGlobalScopes()->create([
+        SerproClientAuthorization::withoutGlobalScopes()->create([
             'account_id' => $accountId,
             'client_id' => $client->getKey(),
-            'starts_at' => (clone $expiresAt)->subMonths(fake()->numberBetween(3, 14)),
-            'expires_at' => $expiresAt,
-            'notes' => fake()->optional(0.3)->sentence(),
+            'family' => '00006',
+            'code' => '00006',
+            'state' => SerproPowerOfAttorneyState::Established,
+            'expires_on' => $expiresAt,
+            'verified_at' => now()->subDays(fake()->numberBetween(1, 10)),
         ]);
     }
 

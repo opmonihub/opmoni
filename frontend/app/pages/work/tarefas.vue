@@ -122,15 +122,12 @@ const filterColumns = computed<DataTableFilterColumn[]>(() => {
     if (processId && processName) processes.set(processId, processName)
   }
 
-  const departmentNames = new Set<string>([
-    ...(departments.value ?? []).map(department => department.name),
-    ...allTasks.value.map(task => task.department).filter(Boolean)
-  ])
+  const departmentCatalog = (departments.value ?? []).map(department => ({ id: department.id, name: department.name }))
 
   return workTarefasFilterColumns({
     clients: [...clients.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     processes: [...processes.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    departments: [...departmentNames].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    departments: departmentCatalog,
     assignees: [
       { id: null, label: 'Sem responsável' },
       ...memberOptions.value.map(option => ({ id: option.value, label: option.label }))
@@ -271,10 +268,10 @@ const tableColumns = computed<TableColumn<WorkTarefasLeaf>[]>(() => {
       }
     },
     {
-      accessorKey: 'department',
+      accessorKey: 'departmentName',
       header: ({ column }) => sortableHeader('Depto.', column),
       meta: { class: { th: 'hidden w-28 whitespace-nowrap xl:table-cell', td: 'hidden w-28 xl:table-cell' } },
-      cell: ({ row }) => row.original.department || '—'
+      cell: ({ row }) => row.original.departmentName || 'Sem departamento'
     },
     {
       accessorKey: 'due_on',
@@ -774,7 +771,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
                   variant="subtle"
                   :label="priorityPresentation(task.priority).label"
                 />
-                <UBadge color="neutral" variant="outline" :label="task.department" />
+                <UBadge color="neutral" variant="outline" :label="task.department?.name ?? 'Sem departamento'" />
                 <UBadge
                   v-if="showCascadeBadge(task.process?.cascade)"
                   size="sm"

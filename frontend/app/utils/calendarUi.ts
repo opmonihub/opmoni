@@ -4,7 +4,7 @@ export interface CalendarFilterSelection {
   processId: number | null
   clientId: number | null
   assigneeId: number | null
-  department: string
+  departmentId: number | null
   priority: string
 }
 
@@ -20,9 +20,9 @@ export function countActiveCalendarFilters(selection: CalendarFilterSelection) {
     selection.processId,
     selection.clientId,
     selection.assigneeId,
-    selection.department.trim(),
+    selection.departmentId,
     selection.priority
-  ].filter(Boolean).length
+  ].filter(value => value !== null && value !== undefined && value !== '').length
 }
 
 export function accessibleDateLabel(dateKey: string, locale = 'pt-BR') {

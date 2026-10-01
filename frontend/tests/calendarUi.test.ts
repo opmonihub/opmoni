@@ -8,7 +8,7 @@ describe('calendar UI helpers', () => {
       processId: null,
       clientId: null,
       assigneeId: null,
-      department: '',
+      departmentId: null,
       priority: ''
     }), 0)
 
@@ -16,7 +16,7 @@ describe('calendar UI helpers', () => {
       processId: 42,
       clientId: 7,
       assigneeId: null,
-      department: 'Fiscal',
+      departmentId: 3,
       priority: 'urgent'
     }), 4)
   })

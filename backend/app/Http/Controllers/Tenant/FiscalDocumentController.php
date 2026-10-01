@@ -9,15 +9,13 @@ use App\Http\Resources\FiscalDocumentDetailResource;
 use App\Http\Resources\FiscalDocumentResource;
 use App\Jobs\CaptureFiscalDocumentsJob;
 use App\Models\Client;
-use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
-use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
+use App\Services\Fiscal\Capture\FiscalCaptureDispatcher;
 use App\Services\Fiscal\Read\FiscalCoverage;
 use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Services\Fiscal\Support\FiscalXmlEncoding;
 use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
-use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -104,6 +102,11 @@ class FiscalDocumentController extends Controller
         // aqui colocaria dois números na mesma tela para a mesma chave.
         $fiscalDocument->event_count = $eventos->count();
 
+        // A situação do detalhe sai da mesma consulta da lista: a linha do
+        // tempo e a `situacao` respondem a mesma pergunta, e duas contas
+        // colocariam dois rótulos na mesma tela para a mesma chave.
+        $fiscalDocument->situacao = $documents->situacaoDe($accountId, $fiscalDocument, $eventos);
+
         $resource = new FiscalDocumentDetailResource($fiscalDocument->load('client'));
         $resource->events = $eventos;
         $resource->xml_preview = $this->previa($fiscalDocument, $encoding);
@@ -161,7 +164,7 @@ class FiscalDocumentController extends Controller
      * está desligado, porque "não aconteceu nada" sem nome é a ambiguidade
      * que este módulo não aceita.
      */
-    public function capture(Request $request, Client $client, FiscalConnectorRegistry $connectors): JsonResponse
+    public function capture(Request $request, Client $client, FiscalCaptureDispatcher $dispatcher): JsonResponse
     {
         Gate::authorize('capture', [FiscalDocument::class, $client]);
 
@@ -170,13 +173,14 @@ class FiscalDocumentController extends Controller
         ]);
         $source = FiscalSource::from($validated['source'] ?? FiscalSource::NfeDistribuicao->value);
 
-        $recusa = $this->recusaDeFonte($connectors, $source);
+        $recusa = $dispatcher->recusaDeFonte($source);
 
         if ($recusa !== null) {
             return response()->json(['message' => $recusa], 409);
         }
 
-        $bloqueio = $this->bloqueioDe($client, $source);
+        $accountId = (int) resolve(CurrentTenant::class)->accountId;
+        $bloqueio = $dispatcher->bloqueioDe($accountId, $client, $source);
 
         if ($bloqueio !== null) {
             return response()->json([
@@ -185,7 +189,7 @@ class FiscalDocumentController extends Controller
             ], 409);
         }
 
-        CaptureFiscalDocumentsJob::dispatch((int) $client->getKey(), $source);
+        CaptureFiscalDocumentsJob::dispatch((int) $client->getKey(), $source, $accountId);
 
         // A escrita de suporte é registrada depois do despacho e com o mínimo:
         // o id do cliente e a fonte. O material do cofre do cliente não entra
@@ -195,63 +199,6 @@ class FiscalDocumentController extends Controller
         return response()->json([
             'data' => ['queued' => true, 'client_id' => $client->getKey()],
         ], 202);
-    }
-
-    /**
-     * A fonte que esta instalação não captura agora, e a frase que o operador lê
-     * quando a captura não foi enfileirada.
-     *
-     * São duas recusas e elas não são a mesma coisa:
-     *
-     * - **Fonte sem conector** é defeito de versão. Quem responde é o registro,
-     *   e a frase é a mesma que o comando imprime — uma fonte que o registro
-     *   não serve não entra por esta porta, e também não entra por nenhuma outra.
-     * - **CT-e com a chave desligada** é decisão de instalação. Os parâmetros do
-     *   serviço de CT-e não foram verificados deste checkout (o bloco em
-     *   `config/fiscal.php` diz isso), então um clique aqui mandaria um pedido
-     *   montado com valores transcritos ao serviço nacional de produção, e a
-     *   rejeição repetida desse pedido é o que produz o bloqueio de consumo
-     *   indevido. A chave existe para o canário rodar quando — e só quando — for
-     *   autorizado.
-     *
-     * A recusa é 409 **sem** `blocked_until`, de propósito: o painel tem um
-     * caminho que transforma a espera do fisco num aviso com horário, e
-     * reaproveitar esse corpo aqui faria o operador ler "o fisco parou este
-     * cliente" quando a verdade é outra coisa. Sem o campo, a resposta cai no
-     * aviso genérico de "não foi possível enfileirar", com a frase de baixo.
-     */
-    private function recusaDeFonte(FiscalConnectorRegistry $connectors, FiscalSource $source): ?string
-    {
-        if (! $connectors->has($source)) {
-            return "A fonte {$source->label()} não tem conector nesta versão.";
-        }
-
-        if ($source === FiscalSource::CteDistribuicao && ! config('fiscal.cte_enabled', false)) {
-            return 'A captura de CT-e está desligada nesta instalação (fiscal.cte_enabled). Nada foi enfileirado.';
-        }
-
-        return null;
-    }
-
-    /**
-     * O cursor parado daquele par cliente e fonte, ou `null`.
-     *
-     * A parada é por fonte — o bloqueio do CT-e não impede a consulta de NF-e —
-     * e por tempo: `blocked_until` no passado já passou, e um bloqueio vencido
-     * com a marca de consumo indevido é histórico, não recusa. A condição é a
-     * mesma de `FiscalCursor::isBlocked()`, que é a que o job aplicaria de
-     * qualquer jeito: recusar o que o job recusaria é o que evita a captura
-     * enfileirada que não faz nada.
-     */
-    private function bloqueioDe(Client $client, FiscalSource $source): ?CarbonInterface
-    {
-        $cursor = FiscalCursor::query()
-            ->where('account_id', (int) resolve(CurrentTenant::class)->accountId)
-            ->where('client_id', (int) $client->getKey())
-            ->where('source', $source->value)
-            ->first();
-
-        return $cursor?->isBlocked() === true ? $cursor->blocked_until : null;
     }
 
     /**

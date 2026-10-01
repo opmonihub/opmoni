@@ -2,10 +2,11 @@ import type { DataTableFilterColumn, DataTableFilterModel, DataTableFilterOption
 import {
   WORK_CASCADE_FACET,
   WORK_CLIENT_FACET,
-  WORK_DEPARTMENT_FACET,
   WORK_STATUS_FACET,
   filterWorkFacetLeaves,
   hasWorkActiveFilters,
+  workDepartmentFacetColumn,
+  workDepartmentKey,
   workFixedFacetColumn,
   workValueFacetColumn
 } from './workFacetFilters.ts'
@@ -25,7 +26,8 @@ export type WorkProcessosFilterLeaf = {
   cascade: boolean
   title: string
   status: WorkTaskStatus | null
-  department: string
+  department_id: number | null
+  departmentName: string
   due_on: string | null
   empty: boolean
   taskId: number | null
@@ -71,7 +73,8 @@ function templateColumn(leaves: readonly WorkProcessosFilterLeaf[]): DataTableFi
  */
 export function workProcessosFilterColumns(
   leaves: readonly WorkProcessosFilterLeaf[],
-  models: readonly DataTableFilterModel[]
+  models: readonly DataTableFilterModel[],
+  departments: Iterable<{ id: number, name: string }> = []
 ): DataTableFilterColumn[] {
   const columns: DataTableFilterColumn[] = []
 
@@ -89,7 +92,7 @@ export function workProcessosFilterColumns(
       models,
       leaves.filter(leaf => leaf.status).map(leaf => leaf.status as string)
     ),
-    workValueFacetColumn(WORK_DEPARTMENT_FACET, models, leaves.map(leaf => leaf.department)),
+    workDepartmentFacetColumn(models, departments),
     workFixedFacetColumn(WORK_CASCADE_FACET, models, leaves.map(leaf => String(leaf.cascade)))
   ]) {
     if (facet) columns.push(facet)
@@ -111,7 +114,7 @@ function readLeafValue(leaf: WorkProcessosFilterLeaf, columnId: string): unknown
     case 'status':
       return leaf.status ?? ''
     case 'department':
-      return leaf.department
+      return workDepartmentKey(leaf)
     case 'cascade':
       return String(leaf.cascade)
     default:
@@ -120,7 +123,7 @@ function readLeafValue(leaf: WorkProcessosFilterLeaf, columnId: string): unknown
 }
 
 function searchHaystack(leaf: WorkProcessosFilterLeaf): string {
-  return [leaf.processName, leaf.templateName, leaf.clientName, leaf.title, leaf.department].join(' ')
+  return [leaf.processName, leaf.templateName, leaf.clientName, leaf.title, leaf.departmentName].join(' ')
 }
 
 export function matchesWorkProcessosSearch(leaf: WorkProcessosFilterLeaf, search: string): boolean {

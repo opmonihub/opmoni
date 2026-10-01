@@ -35,7 +35,7 @@ class SerproClientAuthorizationFactory extends Factory
 
     public function configure(): static
     {
-        // A mesma disciplina do ClientEcacPowerOfAttorneyFactory: a autorização
+        // A autorização pertence à conta do cliente: uma factory que deixasse
         // pertence à conta do cliente, e uma factory que deixasse os dois
         // divergirem fabricaria exatamente o dado que a unicidade existe
         // para impedir.

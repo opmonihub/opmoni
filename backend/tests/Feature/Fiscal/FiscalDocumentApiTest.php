@@ -16,6 +16,7 @@ use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Models\SupportAccessLog;
 use App\Models\User;
+use App\Services\Fiscal\Capture\FiscalCaptureDispatcher;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Services\Fiscal\Read\FiscalCoverage;
@@ -1068,7 +1069,9 @@ class FiscalDocumentApiTest extends TestCase
 
         $this->assertSame([
             'id', 'client', 'model', 'kind', 'stage', 'chave_acesso', 'emitente_cnpj',
-            'destinatario_cnpj', 'valor_total', 'emissao_at', 'event_count', 'mascarado', 'digval_confere',
+            'destinatario_cnpj', 'valor_total', 'emissao_at', 'numero', 'serie',
+            'situacao', 'competencia', 'event_count', 'mascarado',
+            'client_certificate_status', 'digval_confere',
         ], array_keys($linha));
         $this->assertSame(['id', 'name', 'tax_id'], array_keys($linha['client']));
 
@@ -1847,7 +1850,7 @@ class FiscalDocumentApiTest extends TestCase
         app(FiscalDocumentController::class)->capture(
             Request::create("/api/fiscal/clients/{$cliente->getKey()}/capture", 'POST'),
             $cliente,
-            resolve(FiscalConnectorRegistry::class),
+            resolve(FiscalCaptureDispatcher::class),
         );
     }
 

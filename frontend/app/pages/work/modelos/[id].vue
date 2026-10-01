@@ -34,7 +34,7 @@ interface StepDraft {
   key: number
   id?: number
   title: string
-  department: string
+  department_id: number | null
   due_day: number
   priority: WorkTaskPriority
   order: number
@@ -64,7 +64,7 @@ let stepKey = 1
 function blankStep(order: number): StepDraft {
   return {
     default_assignee_member_id: null,
-    department: 'Fiscal',
+    department_id: null,
     due_day: 20,
     key: stepKey++,
     order,
@@ -87,7 +87,7 @@ function syncFromTemplate(template: WorkTemplate) {
     key: stepKey++,
     id: step.id,
     title: step.title,
-    department: step.department,
+    department_id: step.department_id,
     due_day: step.due_day,
     priority: step.priority,
     order: step.order,
@@ -139,6 +139,18 @@ const { data: tagCatalog } = await useAsyncData<ClientTag[]>(
 )
 
 const { memberOptions } = useDirectory()
+const { list: listDepartments } = useDepartments()
+
+const { data: departmentCatalog } = await useAsyncData(
+  'work-model-departments',
+  () => listDepartments(),
+  { default: () => [] }
+)
+
+const departmentItems = computed(() => [
+  { label: 'Sem departamento', value: null },
+  ...(departmentCatalog.value ?? []).map(department => ({ label: department.name, value: department.id }))
+])
 
 const previewKey = computed(() => (isNew.value ? 'new' : String(templateId.value)))
 const previewEnabled = computed(() => !isNew.value)
@@ -247,7 +259,7 @@ function buildPayload(): WorkTemplatePayload {
       .map((step, index) => ({
         ...(step.id ? { id: step.id } : {}),
         title: step.title.trim(),
-        department: step.department.trim() || 'Fiscal',
+        department_id: step.department_id,
         description: null,
         due_day: step.due_day,
         priority: step.priority,
@@ -640,9 +652,13 @@ async function onGenerate() {
                   />
                 </UFormField>
                 <UFormField label="Departamento" :name="`step-${step.key}-dept`">
-                  <UInput
-                    v-model="step.department"
-                    placeholder="Fiscal"
+                  <USelectMenu
+                    v-model="step.department_id"
+                    :items="departmentItems"
+                    value-key="value"
+                    label-key="label"
+                    placeholder="Sem departamento"
+                    clear
                     class="w-full"
                     :disabled="!canManageWork"
                   />

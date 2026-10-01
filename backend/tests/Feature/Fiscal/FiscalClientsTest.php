@@ -300,6 +300,78 @@ class FiscalClientsTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_linha_traz_numero_situacao_e_competencia(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        $this->documento($cliente, [
+            'numero' => '123',
+            'serie' => '1',
+            'stage' => FiscalStage::Document,
+            'emissao_at' => '2026-09-05 10:00:00',
+        ]);
+
+        $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonPath('data.0.numero', '123')
+            ->assertJsonPath('data.0.serie', '1')
+            ->assertJsonPath('data.0.situacao', 'autorizada')
+            ->assertJsonPath('data.0.competencia', '2026-09');
+    }
+
+    public function test_cancelada_quando_ha_evento_110111(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        $documento = $this->documento($cliente, ['stage' => FiscalStage::Document]);
+        FiscalDocument::factory()->event('110111-1')->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $account->getKey(),
+            'chave_acesso' => $documento->chave_acesso,
+        ]);
+
+        $resposta = $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+            ->getJson('/api/fiscal/documents?per_page=100')
+            ->assertOk()
+            ->json('data');
+
+        $porChave = [];
+
+        foreach ($resposta as $linha) {
+            $porChave[$linha['chave_acesso']][] = $linha;
+        }
+
+        // O documento e o evento convivem na mesma página: a situação
+        // cancelada está na linha do documento, e a do evento é nula.
+        $linhaDoDocumento = collect($porChave[$documento->chave_acesso])->firstWhere('stage', 'document');
+        $linhaDoEvento = collect($porChave[$documento->chave_acesso])->firstWhere('stage', 'event');
+        $this->assertSame('cancelada', $linhaDoDocumento['situacao']);
+        $this->assertNull($linhaDoEvento['situacao']);
+    }
+
+    public function test_resumo_sem_documento_e_documento_antigo_sem_numero(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+        $this->documento($cliente, [
+            'stage' => FiscalStage::Summary,
+            'numero' => null,
+            'serie' => null,
+            'emissao_at' => null,
+        ]);
+
+        $this->actingAs($this->membroDe($account, 'user'), 'sanctum')
+            ->getJson('/api/fiscal/documents?per_page=100')
+            ->assertOk()
+            ->assertJsonPath('data.0.numero', null)
+            ->assertJsonPath('data.0.situacao', 'resumo')
+            ->assertJsonPath('data.0.competencia', null);
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
     private function linhas(Account $account): array
     {
         $corpo = $this->actingAs($this->membroDe($account, 'user'), 'sanctum')

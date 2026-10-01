@@ -204,6 +204,10 @@ final class FiscalXmlMetadata
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
             mascarado: $this->isMascarado($xpath),
+            // O número e a série do `ide`: o resumo e o evento não têm `ide`,
+            // e aí a coluna fica nula — nunca um número inventado.
+            numero: $this->firstText($xpath, ['ide/nNF', 'ide/nCT']),
+            serie: $this->firstText($xpath, ['ide/serie']),
         );
     }
 

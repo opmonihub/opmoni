@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientCertificate;
+use App\Models\SerproClientAuthorization;
 use App\Models\Tag;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -145,7 +146,21 @@ class ClientListingTest extends TestCase
             ->assertJsonPath('data.0.name', 'Alpha')
             ->assertJsonPath('data.0.certificate_status', 'valid')
             ->assertJsonPath('data.0.tags.0.name', 'Prioridade')
-            ->assertJsonPath('data.0.tags.0.color', 'warning');
+            ->assertJsonPath('data.0.tags.0.color', 'warning')
+            ->assertJsonPath('data.0.ecac_power_of_attorney_status', 'missing');
+
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $alpha->getKey(),
+            'family' => '00006',
+            'code' => '00006',
+            'expires_on' => now()->addYear()->toDateString(),
+        ]);
+
+        $this->getJson('/api/clients?sheet=1&status=active&sort=name&direction=asc')->assertOk()
+            ->assertJsonPath('data.0.ecac_power_of_attorney_status', 'valid')
+            ->assertJsonPath('data.0.ecac_power_of_attorney.status', 'valid')
+            ->assertJsonPath('data.0.ecac_power_of_attorney.families.0.family', '00006');
 
         $row = $response->json('data.0');
         $this->assertArrayNotHasKey('address', $row);
@@ -162,11 +177,22 @@ class ClientListingTest extends TestCase
         $other = Account::factory()->create();
         $this->insertClients($account, 5, 'active');
         $foreign = Client::factory()->create(['account_id' => $other->getKey(), 'name' => 'Alheio', 'status' => 'active']);
+        $firstId = Client::query()->where('account_id', $account->getKey())->orderBy('name')->limit(1)->value('id');
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $firstId,
+            'family' => '00006',
+            'code' => '00006',
+            'expires_on' => now()->addYear()->toDateString(),
+        ]);
         $this->actingAs($this->memberOf($account), 'sanctum');
 
         $this->getJson('/api/clients?sheet=1&status=active&sort=name')->assertOk()
             ->assertJsonPath('meta.mode', 'paged')
             ->assertJsonPath('meta.total', 5)
+            ->assertJsonPath('data.0.id', $firstId)
+            ->assertJsonPath('data.0.ecac_power_of_attorney_status', 'valid')
+            ->assertJsonPath('data.1.ecac_power_of_attorney_status', 'missing')
             ->assertJsonCount(2, 'data');
 
         $this->getJson('/api/clients?sheet=1&status=active&sort=name&page=3')->assertOk()

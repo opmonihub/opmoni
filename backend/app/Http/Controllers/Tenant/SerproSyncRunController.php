@@ -8,6 +8,7 @@ use App\Http\Resources\SerproCallResource;
 use App\Http\Resources\SerproSyncRunResource;
 use App\Models\SerproSyncRun;
 use App\Services\SerproRunStarter;
+use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,11 +35,12 @@ class SerproSyncRunController extends Controller
         return SerproSyncRunResource::collection($runs);
     }
 
-    public function store(SerproRunStarter $starter): JsonResponse
+    public function store(Request $request, SerproRunStarter $starter): JsonResponse
     {
         Gate::authorize('create', SerproSyncRun::class);
 
         $run = $starter->start($this->accountId(), (int) auth()->id());
+        SupportAudit::logWrite($request, 'serpro_sync_runs', 'create', $run->getKey());
 
         return response()->json(['data' => new SerproSyncRunResource($run)], 202);
     }
@@ -61,7 +63,7 @@ class SerproSyncRunController extends Controller
         return SerproCallResource::collection($calls);
     }
 
-    public function resync(SerproSyncRun $run, SerproRunStarter $starter): JsonResponse
+    public function resync(Request $request, SerproSyncRun $run, SerproRunStarter $starter): JsonResponse
     {
         Gate::authorize('resync', $run);
 
@@ -73,6 +75,7 @@ class SerproSyncRunController extends Controller
         }
 
         $nova = $starter->start($run->account_id, (int) auth()->id(), $run->getKey());
+        SupportAudit::logWrite($request, 'serpro_sync_runs', 'resync', $nova->getKey(), ['previous_run_id' => $run->getKey()]);
 
         return response()->json(['data' => new SerproSyncRunResource($nova)], 202);
     }

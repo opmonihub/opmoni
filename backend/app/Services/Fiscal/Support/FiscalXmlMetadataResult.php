@@ -28,6 +28,10 @@ use Carbon\CarbonImmutable;
  * transporta" e "o documento referencia, e o fisco não disse quais" — e a
  * coluna existe para o painel poder distinguir as duas, porque só o parser sabe
  * qual das duas aconteceu e o writer não reparseia o XML.
+ *
+ * `numero` e `serie` são o número da nota e a série (`ide/nNF`, `ide/serie` na
+ * NF-e; `ide/serie` no CT-e quando existir). Nulos quando o XML não os traz —
+ * que é o caso do resumo, do evento e do documento antigo.
  */
 final readonly class FiscalXmlMetadataResult
 {
@@ -45,5 +49,7 @@ final readonly class FiscalXmlMetadataResult
         public ?CarbonImmutable $emissaoAt,
         public ?CarbonImmutable $eventoOcorridoEmAt,
         public bool $mascarado,
+        public ?string $numero = null,
+        public ?string $serie = null,
     ) {}
 }

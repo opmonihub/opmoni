@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['client_id', 'source', 'model', 'kind', 'stage', 'chave_acesso', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
+#[Fillable(['client_id', 'source', 'model', 'kind', 'stage', 'chave_acesso', 'numero', 'serie', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
 class FiscalDocument extends Model
 {
     /** @use HasFactory<FiscalDocumentFactory> */
@@ -31,6 +31,14 @@ class FiscalDocument extends Model
      * evento.
      */
     public int $event_count = 0;
+
+    /**
+     * A situação da linha, derivada e sem coluna: `cancelada` quando existe um
+     * evento `110111` na mesma linha do tempo, `autorizada` quando chegou o
+     * documento completo, `resumo` quando só o resumo chegou. A linha de evento
+     * não é linha de documento, e por isso não tem situação — é nula.
+     */
+    public ?string $situacao = null;
 
     protected function casts(): array
     {

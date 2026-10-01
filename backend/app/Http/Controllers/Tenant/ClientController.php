@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\ClientPersonType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\IndexClientRequest;
 use App\Http\Requests\Tenant\StoreClientRequest;
 use App\Http\Requests\Tenant\UpdateClientRequest;
 use App\Http\Resources\ClientResource;
 use App\Http\Resources\ClientSheetResource;
+use App\Jobs\RefreshSerproPowersJob;
 use App\Models\Account;
 use App\Models\Client;
 use App\Services\ClientManager;
 use App\Services\ClientPortfolio;
+use App\Services\ClientPowerOfAttorneySummary;
 use App\Services\CnpjLookupException;
+use App\Services\SerproAccountEnablement;
 use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +25,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 
 class ClientController extends Controller
@@ -40,20 +45,24 @@ class ClientController extends Controller
         $perPage = (int) ($data['per_page'] ?? 25);
 
         $clients = $portfolio->sorted(
-            $portfolio->filtered($data)->with(['currentCertificate', 'ecacPowerOfAttorney', 'tags']),
+            $portfolio->filtered($data)->with(['currentCertificate', 'tags']),
             $sort,
             $direction,
         );
 
         if ($request->boolean('all')) {
             $clients = $clients->limit((int) config('clients.sheet_limit'))->get();
+            $this->withPowerSummary($clients);
 
             return ClientResource::collection($clients)->additional([
                 'meta' => ['total' => $clients->count()],
             ]);
         }
 
-        return ClientResource::collection($clients->paginate($perPage)->withQueryString());
+        $clients = $clients->paginate($perPage)->withQueryString();
+        $this->withPowerSummary($clients->getCollection());
+
+        return ClientResource::collection($clients);
     }
 
     /**
@@ -70,12 +79,14 @@ class ClientController extends Controller
         $query = $portfolio->sorted($this->sheetColumns($filtered), $sort, $direction);
 
         if ($total > (int) config('clients.sheet_limit')) {
-            return ClientSheetResource::collection(
-                $query->paginate((int) config('clients.sheet_page_size'))->withQueryString(),
-            )->additional(['meta' => ['mode' => 'paged']]);
+            $paginator = $query->paginate((int) config('clients.sheet_page_size'))->withQueryString();
+            $this->withPowerSummary($paginator->getCollection());
+
+            return ClientSheetResource::collection($paginator)->additional(['meta' => ['mode' => 'paged']]);
         }
 
         $clients = $query->get();
+        $this->withPowerSummary($clients);
 
         return ClientSheetResource::collection($clients)->additional([
             'meta' => ['total' => $clients->count(), 'mode' => 'sheet'],
@@ -101,11 +112,6 @@ class ClientController extends Controller
                 'client_certificates.id',
                 'client_certificates.client_id',
                 'client_certificates.valid_until',
-            ]),
-            'ecacPowerOfAttorney' => fn (Relation $query) => $query->select([
-                'client_ecac_powers_of_attorney.id',
-                'client_ecac_powers_of_attorney.client_id',
-                'client_ecac_powers_of_attorney.expires_at',
             ]),
             'tags' => fn (Relation $query) => $query->select(['tags.id', 'tags.name', 'tags.color']),
         ]);
@@ -152,16 +158,21 @@ class ClientController extends Controller
             return response()->json(['message' => $exception->getMessage()], $exception->status);
         }
 
-        SupportAudit::logWrite($request, 'clients', 'create', $client->getKey(), $this->auditContext($client));
+        $enfileirado = $this->queuePowerRefresh($client);
 
-        return (new ClientResource($client->loadMissing(['currentCertificate', 'ecacPowerOfAttorney', 'tags'])))->response()->setStatusCode(201);
+        SupportAudit::logWrite($request, 'clients', 'create', $client->getKey(), $this->auditContext($client, $enfileirado));
+        $this->withPowerSummary(collect([$client]));
+
+        return (new ClientResource($client->loadMissing(['currentCertificate', 'tags'])))
+            ->response()->setStatusCode(201);
     }
 
     public function show(Client $client): ClientResource
     {
         Gate::authorize('view', $client);
 
-        $client->loadMissing(['currentCertificate', 'ecacPowerOfAttorney', 'tags']);
+        $client->loadMissing(['currentCertificate', 'tags']);
+        $client->power_summary = resolve(ClientPowerOfAttorneySummary::class)->for($client);
 
         return new ClientResource($client);
     }
@@ -174,9 +185,13 @@ class ClientController extends Controller
             return response()->json(['message' => $exception->getMessage()], $exception->status);
         }
 
-        SupportAudit::logWrite($request, 'clients', 'update', $client->getKey(), $this->auditContext($client));
+        // O update comum não paga a chamada: `tax_id` é proibido aqui, e a
+        // única via que o reescreve — o cnpj-refresh — dispara o `updated`
+        // do model, que enfileira com `force`. A edição de e-mail não mede.
+        SupportAudit::logWrite($request, 'clients', 'update', $client->getKey(), $this->auditContext($client, false));
+        $this->withPowerSummary(collect([$client]));
 
-        return new ClientResource($client->loadMissing(['currentCertificate', 'ecacPowerOfAttorney', 'tags']));
+        return new ClientResource($client->loadMissing(['currentCertificate', 'tags']));
     }
 
     public function destroy(Request $request, Client $client): Response
@@ -194,13 +209,54 @@ class ClientController extends Controller
     }
 
     /**
-     * @return array<string, string|null>
+     * O resumo derivado da procuração, calculado em lote e pendurado em cada
+     * linha antes de ela virar resource — três consultas para a página
+     * inteira, e nenhuma por cliente.
+     *
+     * @param  Collection<int, Client>  $clients
      */
-    private function auditContext(Client $client): array
+    private function withPowerSummary(Collection $clients): void
+    {
+        $summaries = resolve(ClientPowerOfAttorneySummary::class)->forClients($clients);
+
+        foreach ($clients as $client) {
+            $client->power_summary = $summaries->get($client->getKey());
+        }
+    }
+
+    /**
+     * O gatilho do oráculo no salvamento: pessoa jurídica em conta
+     * habilitada, e depois do commit — uma falha do provedor nunca desfaz
+     * o cadastro, e a conta desligada não paga a chamada.
+     */
+    private function queuePowerRefresh(Client $client, bool $force = false): bool
+    {
+        if ($client->person_type !== ClientPersonType::Company) {
+            return false;
+        }
+
+        if (! resolve(SerproAccountEnablement::class)->enabled((int) $client->account_id)) {
+            return false;
+        }
+
+        RefreshSerproPowersJob::dispatch(
+            (int) $client->account_id,
+            (int) $client->getKey(),
+            $force,
+        )->afterCommit();
+
+        return true;
+    }
+
+    /**
+     * @return array<string, string|bool|null>
+     */
+    private function auditContext(Client $client, bool $powerRefreshQueued = false): array
     {
         return [
             'person_type' => $client->person_type?->value,
             'status' => $client->status?->value,
+            'power_refresh_queued' => $powerRefreshQueued,
         ];
     }
 }
