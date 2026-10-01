@@ -49,8 +49,16 @@
 
 ## 6. Frontend, tela
 
-- [ ] 6.1 Mover o cadastro de `frontend/app/pages/monitoring/termos.vue` para `frontend/app/pages/admin/certificado.vue` e registrá-lo em `adminNav.ts`, verificar `cd frontend && pnpm test`.
-- [ ] 6.2 Tirar o link de `monitoringIntegrationLinks` e o título correspondente em `monitoring.vue`, mantendo execuções e obrigações, verificar `cd frontend && pnpm test`.
+- [x] 6.1 Mover o cadastro de `frontend/app/pages/monitoring/termos.vue` para `frontend/app/pages/admin/certificado.vue` e registrá-lo em `adminNav.ts`, verificar `cd frontend && pnpm test`.
+- [x] 6.2 Tirar o link de `monitoringIntegrationLinks` e o título correspondente em `monitoring.vue`, mantendo execuções e obrigações, verificar `cd frontend && pnpm test`.
+
+### Observações da implementação
+
+- A página foi movida com `git mv` (94% de similaridade). O `definePageMeta` próprio saiu — o shell `pages/admin.vue` já aplica `['auth', 'super-admin']` — e o `useMonitoringActions` saiu junto: a navbar do Admin não tem o contador `monitoring-refresh`. O `useRetryableLoad` continua e mantém o `ErrorRetryAlert` + `retry`; a tela não oferece botão de atualizar na navbar, como as demais páginas do Admin.
+- `canWriteCertificate` segue sobre `canManageClients` (verdadeiro para `is_super_admin` via `can()`), e o bloco de habilitação segue sobre `canManageMembers`. As guards de escrita que ficavam no código e nos comentários foram reescritas para dizer `is_super_admin`, que é o que `AccountCertificatePolicy` e `UpdateSerproEnablementRequest` exigem agora — os textos antigos diziam `admin`/`operador` e estariam mentindo.
+- A entrada em `adminPages` ficou logo depois de `Serpro` (`i-lucide-file-signature`), porque as duas são a superfície do Integra Contador no Painel Global.
+- A seção Integração do painel de monitoramento ficou com um cartão só, então o grid virou coluna única (`grid gap-3`) em vez de um cartão ocupando metade de um `sm:grid-cols-2`; o subtítulo passou a falar só do histórico de sincronizações.
+- Comentários que diziam "duas telas de integração" em `monitoringNav.ts` e a referência a `termos.vue` em `monitoringPresentation.ts` foram atualizados para o estado novo.
 
 ## 7. Glossário
 
