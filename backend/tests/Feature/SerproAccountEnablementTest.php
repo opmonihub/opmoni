@@ -70,6 +70,55 @@ class SerproAccountEnablementTest extends TestCase
         }
     }
 
+    /**
+     * O `admin` da Account também não liga a integração: quem habilita o
+     * SERPRO é o super_admin da plataforma, e não um papel do escritório.
+     */
+    public function test_admin_recebe_403_ao_alterar_o_flag(): void
+    {
+        $account = Account::factory()->create();
+        $this->conexao();
+
+        $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
+            ->putJson('/api/serpro/enablement', ['enabled' => true])
+            ->assertForbidden();
+
+        $this->assertNull($account->fresh()->settings['serpro_enabled'] ?? null);
+    }
+
+    /**
+     * O super_admin escreve na Account corrente, que continua sendo o
+     * endereço do flag — o mesmo arranjo do modo suporte.
+     */
+    public function test_super_admin_altera_o_flag_da_conta_corrente(): void
+    {
+        $account = Account::factory()->create();
+        $this->conexao();
+
+        $this->actingAs($this->superAdminOf($account), 'sanctum')
+            ->putJson('/api/serpro/enablement', ['enabled' => true])
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+
+        $this->assertTrue((bool) ($account->fresh()->settings['serpro_enabled'] ?? false));
+    }
+
+    /**
+     * Ler o flag não é operar a conta: qualquer papel de Membro vê se a
+     * integração está habilitada.
+     */
+    public function test_qualquer_membro_le_o_flag(): void
+    {
+        $account = Account::factory()->create();
+
+        foreach (['admin', 'operador', 'user'] as $role) {
+            $this->actingAs($this->memberOf($account, $role), 'sanctum')
+                ->getJson('/api/serpro/enablement')
+                ->assertOk()
+                ->assertJsonPath('data.enabled', false);
+        }
+    }
+
     public function test_desligar_preserva_historico_e_demais_chaves_de_settings(): void
     {
         $account = Account::factory()->create([
@@ -108,6 +157,20 @@ class SerproAccountEnablementTest extends TestCase
         $user->forceFill(['current_account_id' => $account->getKey()])->save();
 
         return $user->refresh();
+    }
+
+    /**
+     * Um super_admin com a conta própria dele e a corrente apontando para a
+     * conta dada — o mesmo arranjo do modo suporte.
+     */
+    private function superAdminOf(Account $account): User
+    {
+        $super = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create(['account_id' => $casa->getKey(), 'user_id' => $super->getKey(), 'role' => 'admin']);
+        $super->forceFill(['current_account_id' => $account->getKey()])->save();
+
+        return $super->refresh();
     }
 
     /**

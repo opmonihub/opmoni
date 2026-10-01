@@ -780,6 +780,79 @@ class SerproAccountCertificateTest extends TestCase
         $this->assertSame(1, AccountCertificate::query()->count());
     }
 
+    /**
+     * A escrita do e-CNPJ do escritório é da plataforma, e não do escritório.
+     *
+     * O que se grava aqui é o certificado que assina o termo de autorização
+     * **em nome da plataforma**: nenhum Membro da conta assina nada, e por
+     * isso o `admin` e o `operador` da Account — que escrevem em todo o resto
+     * da conta — recebem `403` nesta rota. Quem grava é o `is_super_admin`,
+     * na Account corrente.
+     */
+    public function test_admin_e_operador_da_conta_recebem_403_no_upload_do_ecnpj(): void
+    {
+        $conta = Account::factory()->create();
+
+        foreach (['admin', 'operador'] as $papel) {
+            ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+            $this->actingAs($this->membroDe($conta, $papel), 'sanctum')
+                ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+                ->assertForbidden();
+        }
+
+        // A recusa é antes de qualquer escrita: nenhuma linha nasce de um POST
+        // proibido.
+        $this->assertDatabaseCount('account_certificates', 0);
+        $this->assertNull(AccountCertificate::currentFor($conta->getKey()));
+    }
+
+    public function test_admin_e_operador_da_conta_recebem_403_na_remocao_do_ecnpj(): void
+    {
+        $conta = Account::factory()->create();
+        AccountCertificate::factory()->create(['account_id' => $conta->getKey()]);
+
+        foreach (['admin', 'operador'] as $papel) {
+            $this->actingAs($this->membroDe($conta, $papel), 'sanctum')
+                ->deleteJson(self::ROTA)
+                ->assertForbidden();
+        }
+
+        // O certificado que estava valendo continua valendo, com o conteúdo
+        // cifrado intacto: um DELETE proibido não marca a linha nem apaga o
+        // segredo.
+        $linha = AccountCertificate::currentFor($conta->getKey());
+
+        $this->assertNotNull($linha);
+        $this->assertNull($linha->removed_at);
+        $this->assertNull($linha->replaced_at);
+        $this->assertNotNull($linha->certificate_encrypted);
+    }
+
+    /**
+     * O super_admin escreve na Account corrente — a mesma que o Membro
+     * endereçaria —, sem rota nova nem seletor de conta.
+     */
+    public function test_super_admin_grava_e_remove_o_ecnpj_da_conta_corrente(): void
+    {
+        $conta = Account::factory()->create();
+        $super = $this->superAdminDe($conta);
+
+        ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($super, 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.document', self::CNPJ);
+
+        $this->assertSame(self::CNPJ, AccountCertificate::currentFor($conta->getKey())?->document);
+
+        $this->actingAs($super, 'sanctum')->deleteJson(self::ROTA)->assertNoContent();
+
+        $this->assertNull(AccountCertificate::currentFor($conta->getKey()));
+        $this->assertNotNull(AccountCertificate::query()->sole()->removed_at);
+    }
+
     public function test_arquivo_que_nao_e_pfx_e_arquivo_acima_de_2_mib_sao_recusados(): void
     {
         $conta = Account::factory()->create();
@@ -1538,5 +1611,19 @@ class SerproAccountCertificateTest extends TestCase
         $user->forceFill(['current_account_id' => $conta->getKey()])->save();
 
         return $user->refresh();
+    }
+
+    /**
+     * Um super_admin com a conta própria dele e a corrente apontando para a
+     * conta dada — o mesmo arranjo do modo suporte.
+     */
+    private function superAdminDe(Account $conta): User
+    {
+        $super = User::factory()->create(['is_super_admin' => true]);
+        $casa = Account::factory()->create();
+        AccountUser::create(['account_id' => $casa->getKey(), 'user_id' => $super->getKey(), 'role' => 'admin']);
+        $super->forceFill(['current_account_id' => $conta->getKey()])->save();
+
+        return $super->refresh();
     }
 }

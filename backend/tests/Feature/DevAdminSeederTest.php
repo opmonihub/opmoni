@@ -38,4 +38,31 @@ class DevAdminSeederTest extends TestCase
 
         $this->assertFalse(User::query()->where('email', DevAdminSeeder::EMAIL)->exists());
     }
+
+    /**
+     * Em `local` existem os dois logins, e eles não são o mesmo papel: o
+     * `admin@example.com` fica Membro `admin` **sem** `is_super_admin`, e o
+     * `super_admin@example.com` fica super_admin apontando para a mesma
+     * Account de desenvolvimento — que é onde ele grava o e-CNPJ e o flag do
+     * SERPRO.
+     */
+    public function test_em_local_admin_fica_membro_sem_super_admin_e_super_admin_divide_a_mesma_account(): void
+    {
+        $this->app['env'] = 'local';
+        $account = Account::factory()->create();
+
+        $this->seed(DevAdminSeeder::class);
+
+        $admin = User::query()->where('email', DevAdminSeeder::EMAIL)->sole();
+
+        $this->assertFalse((bool) $admin->is_super_admin, 'O login de Membro não pode ser super_admin.');
+        $this->assertSame('admin', $admin->accountRole($account));
+        $this->assertSame($account->getKey(), $admin->current_account_id);
+
+        $super = User::query()->where('email', 'super_admin@example.com')->first();
+
+        $this->assertNotNull($super, 'O seeder local precisa garantir o login super_admin@example.com.');
+        $this->assertTrue((bool) $super->is_super_admin);
+        $this->assertSame($account->getKey(), $super->current_account_id);
+    }
 }
