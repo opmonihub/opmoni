@@ -205,17 +205,17 @@ class FiscalCoverage
      */
     private function motivoDoCertificado(Client $cliente, array $cursores): ?string
     {
-        $certificado = $cliente->currentCertificate;
+        $status = $this->certificateStatus($cliente);
 
-        if ($certificado === null) {
+        if ($status === 'missing') {
             return 'certificate_absent';
         }
 
-        if ($certificado->valid_until->isPast()) {
+        if ($status === 'expired') {
             return 'certificate_expired';
         }
 
-        if ($certificado->password_encrypted === null || $certificado->password_encrypted === '') {
+        if ($status === 'password_missing') {
             return 'certificate_password_missing';
         }
 
@@ -224,6 +224,33 @@ class FiscalCoverage
         }
 
         return null;
+    }
+
+    /**
+     * O estado do certificado do cliente, como palavra da escala da linha.
+     *
+     * `missing`/`expired`/`password_missing` são o que tira o cliente da
+     * cobertura; `expiring`/`valid` são o que fica — e `expiring` é a que a
+     * cobertura não tem porque "capturável" não distingue validade perto de
+     * acabar. A linha precisa dela porque "a vencer" é o que o operador lê.
+     */
+    public function certificateStatus(Client $cliente): string
+    {
+        $certificado = $cliente->currentCertificate;
+
+        if ($certificado === null) {
+            return 'missing';
+        }
+
+        if ($certificado->valid_until->isPast()) {
+            return 'expired';
+        }
+
+        if ($certificado->password_encrypted === null || $certificado->password_encrypted === '') {
+            return 'password_missing';
+        }
+
+        return $certificado->valid_until->lte(now()->addDays(30)->endOfDay()) ? 'expiring' : 'valid';
     }
 
     /**

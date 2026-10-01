@@ -146,12 +146,31 @@ export interface FiscalSummary {
   last_capture: FiscalLastCapture | null
 }
 
+/**
+ * O estado do certificado do cliente dono da linha, pelo mesmo critério da
+ * cobertura de captura.
+ *
+ * É um código, e não um segredo: a resposta nunca traz conteúdo do certificado,
+ * senha nem caminho de armazenamento. Os cinco valores espelham
+ * `FiscalCoverage::certificateStatus` — `missing`, `expired`,
+ * `password_missing`, `expiring`, `valid`.
+ */
+export type FiscalClientCertificateStatus
+  = | 'missing'
+    | 'expired'
+    | 'password_missing'
+    | 'expiring'
+    | 'valid'
+
 /** O dono do documento. */
 export interface FiscalDocumentClient {
   id: number
   name: string
   tax_id: string | null
 }
+
+/** A direção do documento em relação ao cliente dono da linha. */
+export type FiscalClientDirection = 'saida' | 'entrada'
 
 /** Uma linha da tabela de documentos capturados. */
 export interface FiscalDocumentRow {
@@ -292,6 +311,34 @@ export interface FiscalPage {
    * tocar.
    */
   available_models: string[]
+}
+
+/** O resumo de um cliente em `GET /api/fiscal/clients`. */
+export interface FiscalClientSummary {
+  client: FiscalDocumentClient
+  total: number
+  saidas: { qtd: number, valor: string | null }
+  entradas: { qtd: number, valor: string | null }
+  /**
+   * Volume por modelo, e só com o modelo que tem documento: um modelo ausente
+   * do mapa é "nada capturado desse modelo ainda", não zero — o mesmo contrato
+   * de `FiscalSummaryDocuments.models`.
+   */
+  por_modelo: Record<string, number>
+  ultima_emissao_at: string | null
+  certificado_status: FiscalClientCertificateStatus
+}
+
+/** `GET /api/fiscal/clients`, com os mesmos filtros de emissão da lista. */
+export interface FiscalClientsFilters {
+  model?: FiscalModel[] | null
+  issued_from?: string | null
+  issued_to?: string | null
+}
+
+/** `GET /api/fiscal/clients` — a lista agregada por cliente. */
+export interface FiscalClientsPage {
+  data: FiscalClientSummary[]
 }
 
 /** O aceite da fila de `POST /api/fiscal/clients/{id}/capture`. */

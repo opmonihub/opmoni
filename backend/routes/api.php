@@ -22,6 +22,7 @@ use App\Http\Controllers\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Tenant\ClientSelectionController;
 use App\Http\Controllers\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\FiscalClientSummaryController;
 use App\Http\Controllers\Tenant\FiscalDocumentController;
 use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
@@ -173,6 +174,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::post('process-templates/{process_template}/generate', [ProcessTemplateController::class, 'generate']);
     Route::apiResource('tasks', TaskController::class)->only(['index', 'show', 'update']);
     Route::get('fiscal/summary', [FiscalDocumentController::class, 'summary']);
+    Route::get('fiscal/clients', [FiscalClientSummaryController::class, 'index']);
     Route::get('fiscal/documents', [FiscalDocumentController::class, 'index']);
     // As específicas antes da genérica: `fiscal/documents/{fiscalDocument}` é
     // a rota que engole qualquer coisa abaixo de `fiscal/documents/`, e a

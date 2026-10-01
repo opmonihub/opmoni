@@ -17,6 +17,7 @@ export interface FiscalNavItem {
 
 export const fiscalNav: readonly FiscalNavItem[] = [
   { label: 'Painel', icon: 'i-lucide-layout-dashboard', to: '/fiscal' },
+  { label: 'Clientes', icon: 'i-lucide-building-2', to: '/fiscal/clientes' },
   { label: 'Documentos', icon: 'i-lucide-files', to: '/fiscal/documentos' }
 ]
 

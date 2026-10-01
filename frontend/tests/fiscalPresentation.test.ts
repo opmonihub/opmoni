@@ -13,7 +13,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import type { FiscalAttentionItem, FiscalAttentionReason, FiscalSummary } from '../app/types/fiscal.ts'
+import type { FiscalTone } from '../app/utils/fiscalPresentation.ts'
+import type { FiscalAttentionItem, FiscalAttentionReason, FiscalClientCertificateStatus, FiscalSummary } from '../app/types/fiscal.ts'
 import {
   attentionDescription,
   attentionGroups,
@@ -25,6 +26,7 @@ import {
   coverageShare,
   coverageState,
   documentsOverTimeHeader,
+  fiscalClientCertificatePresentation,
   fiscalEventCount,
   fiscalKindLabel,
   fiscalMissingValue,
@@ -700,6 +702,47 @@ describe('a leitura das células do documento', () => {
     assert.equal(fiscalStageLabel('summary'), 'Resumo da distribuição')
     assert.equal(fiscalStageLabel('document'), 'Documento autorizado')
     assert.equal(fiscalStageLabel('event'), 'Evento autorizado')
+  })
+})
+
+describe('a coluna de certificado do cliente', () => {
+  // Os cinco códigos que `GET /api/fiscal/documents` devolve em
+  // `client_certificate_status` — o mesmo critério de `FiscalCoverage`, mas um
+  // código a mais que a carteira não tem (`password_missing`).
+
+  it('nomeia os cinco estados com a cor semântica de cada um', () => {
+    const casos: Array<[FiscalClientCertificateStatus, string, FiscalTone]> = [
+      ['missing', 'Sem certificado', 'error'],
+      ['expired', 'Vencido', 'error'],
+      ['password_missing', 'Sem senha armazenada', 'warning'],
+      ['expiring', 'A vencer', 'warning'],
+      ['valid', 'Válido', 'success']
+    ]
+
+    for (const [status, label, tone] of casos) {
+      const apresentacao = fiscalClientCertificatePresentation(status)
+      assert.equal(apresentacao.label, label, `${status} deve rotular "${label}"`)
+      assert.equal(apresentacao.color, tone, `${status} deve pintar ${tone}`)
+    }
+  })
+
+  it('trata o campo ausente como valor ausente, e não como "sem certificado"', () => {
+    // `null` na linha é "a listagem não mandou o campo", e um `missing`
+    // pintado ali afirmaria que o cliente não tem A1 — uma afirmação que a
+    // resposta não fez.
+    const ausente = fiscalClientCertificatePresentation(null)
+    assert.equal(ausente.label, fiscalMissingValue)
+    assert.equal(ausente.color, 'neutral')
+    assert.equal(fiscalClientCertificatePresentation(undefined).label, fiscalMissingValue)
+  })
+
+  it('não devolve um objeto com tom fora da paleta semântica', () => {
+    // A Status Is Semantic Rule: a coluna só pode usar as cores de estado que
+    // o resto do produto usa. Um tom fora da lista é um segundo idioma de cor.
+    const tons: FiscalTone[] = ['neutral', 'success', 'warning', 'error']
+    for (const status of ['missing', 'expired', 'password_missing', 'expiring', 'valid'] as const) {
+      assert.ok(tons.includes(fiscalClientCertificatePresentation(status).color), `tom de ${status} fora da paleta`)
+    }
   })
 })
 

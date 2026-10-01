@@ -1,6 +1,7 @@
 import type {
   FiscalAttentionItem,
   FiscalAttentionReason,
+  FiscalClientCertificateStatus,
   FiscalCoverage,
   FiscalKind,
   FiscalLastCapture,
@@ -604,6 +605,36 @@ export function fiscalMonthLabel(month: string): string {
 /** A série de emissão pronta para o eixo e para o tooltip. */
 export function fiscalMonthSeries(overTime: readonly { month: string, total: number }[]): { label: string, total: number }[] {
   return overTime.map(point => ({ label: fiscalMonthLabel(point.month), total: point.total }))
+}
+
+/**
+ * A coluna "Certificado" da tabela de documentos, pelo código que a API manda.
+ *
+ * São cinco estados e não os quatro da carteira porque `password_missing` não
+ * tem irmão lá — o critério é o mesmo de `FiscalCoverage::certificateStatus`,
+ * e as cores seguem a Status Is Semantic Rule: vermelho para o que impede a
+ * consulta de existir (ausente, vencido), amarelo para o que precisa de ação
+ * sem ser um prazo morto (sem senha, a vencer), verde para o utilizável.
+ *
+ * `Record` sobre a união, e não ternário: o sexto código que o backend criar
+ * precisa parar no compilador e não cair num "válido" disfarçado.
+ */
+const certificateStatusCopy: Record<FiscalClientCertificateStatus, { label: string, color: FiscalTone, icon: string }> = {
+  missing: { label: 'Sem certificado', color: 'error', icon: 'i-lucide-file-x' },
+  expired: { label: 'Vencido', color: 'error', icon: 'i-lucide-calendar-x' },
+  password_missing: { label: 'Sem senha armazenada', color: 'warning', icon: 'i-lucide-key-round' },
+  expiring: { label: 'A vencer', color: 'warning', icon: 'i-lucide-clock-alert' },
+  valid: { label: 'Válido', color: 'success', icon: 'i-lucide-circle-check' }
+}
+
+/**
+ * O rótulo e o tom da célula. `null` — a linha que ainda não carrega o campo —
+ * vira o traço do valor ausente, e não `missing`: um "sem certificado" pintado
+ * sobre um campo que a API não mandou seria uma afirmação que ninguém fez.
+ */
+export function fiscalClientCertificatePresentation(status: FiscalClientCertificateStatus | null | undefined): { label: string, color: FiscalTone, icon: string } {
+  if (!status) return { label: fiscalMissingValue, color: 'neutral', icon: 'i-lucide-minus' }
+  return certificateStatusCopy[status]
 }
 
 /**

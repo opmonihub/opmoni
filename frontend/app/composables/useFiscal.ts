@@ -1,5 +1,7 @@
 import type {
   FiscalCaptureAccepted,
+  FiscalClientSummary,
+  FiscalClientsFilters,
   FiscalDetail,
   FiscalListFilters,
   FiscalPage,
@@ -28,6 +30,21 @@ export function useFiscal() {
     return response.data
   }
 
+  /**
+   * A visão agregada por cliente: totais, saídas, entradas, volume por modelo,
+   * última emissão e o estado do A1 de cada um.
+   *
+   * Devolve o envelope `{ data }` como o resumo, e os filtros vão pelo mesmo
+   * `queryOf` da lista: vazio, `null` ou `undefined` é descartado. Um 404 aqui
+   * é "o backend ainda não subiu" — e quem chama trata, porque a página tem um
+   * estado próprio para isso em vez de um alerta genérico.
+   */
+  async function clients(filters: FiscalClientsFilters = {}) {
+    const response = await $api<{ data: FiscalClientSummary[] }>('/fiscal/clients', {
+      query: queryOf(filters)
+    })
+    return response.data
+  }
   /**
    * A tabela única de documentos capturados, filtrada e paginada.
    *
@@ -76,5 +93,5 @@ export function useFiscal() {
     return response.data
   }
 
-  return { summary, list, show, download, capture }
+  return { summary, clients, list, show, download, capture }
 }
