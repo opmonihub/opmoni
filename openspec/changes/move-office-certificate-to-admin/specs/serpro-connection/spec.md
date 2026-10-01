@@ -77,11 +77,11 @@ The system SHALL require an Account to be explicitly enabled before any of its c
 - **WHEN** a synchronization is requested for an Account that is not enabled
 - **THEN** the system refuses the request, reports that the office is not enabled, and creates no run
 
-#### Scenario: Habilitação pelo super_admin
+#### Scenario: Habilitação pelo administrador
 - **WHEN** a super_admin enables the integration for the current Account and the platform connection is usable
 - **THEN** the office becomes enabled and a synchronization can be requested
 
-#### Scenario: Membro da Account tenta habilitar
+#### Scenario: Membro sem papel de administrador
 - **WHEN** an `admin`, `operador` or `user` member who is not a super_admin attempts to enable or disable the integration
 - **THEN** the system responds 403 and the enablement state is unchanged
 
