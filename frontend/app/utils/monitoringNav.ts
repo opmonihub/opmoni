@@ -356,7 +356,6 @@ export const monitoringObligations: readonly MonitoringObligation[] = monitoring
 
 /** Static siblings, resolved by Nuxt ahead of the `[...slug].vue` catch-all. */
 export const monitoringIntegrationLinks = [
-  { label: 'Termo de autorização', icon: 'i-lucide-file-signature', to: '/monitoring/termos' },
   { label: 'Execuções de sincronização', icon: 'i-lucide-refresh-cw', to: '/monitoring/execucoes' }
 ] as const
 
@@ -424,9 +423,9 @@ export interface MonitoringPage {
  * Every module in the shell (Admin, Work, Equipe, Clientes) owns a
  * `UDashboardToolbar` of `UNavigationMenu highlight` tabs listing where the module
  * can go, and Monitoramento was the one without one: its toolbar was conditional
- * on being inside a multi-obligation group, so 7 of its 11 destinations
- * (Painel, Termo, Execuções, the four single-obligation groups) had no module
- * navigation at all, and the slot was spent on the *second* level.
+ * on being inside a multi-obligation group, so the destinations outside the
+ * obligations (Painel and Execuções) had no module navigation at all, and the
+ * slot was spent on the *second* level.
  *
  * The obligations are the second level and stay second: they are reachable from
  * the sidebar, from the panel, and from the sub-tab row that this leaves free.
@@ -445,7 +444,7 @@ export const monitoringPages: readonly MonitoringPage[] = [
  * `/work/processos/12`. Matching `/monitoring` exactly instead would leave the
  * module tab bar with nothing lit on 19 of its 21 screens.
  *
- * The two integration screens are siblings, not children, so they take the tab
+ * The integration screens are siblings, not children, so they take the tab
  * away from Painel along with their own sub-paths.
  */
 export function monitoringPageActive(path: string, page: MonitoringPage) {
@@ -490,7 +489,7 @@ export function monitoringTabs(path: string): NavigationMenuItem[][] {
 export function monitoringSidebarChildren(path: string): NavigationMenuItem[] {
   const [painel, ...integrations] = monitoringPages
 
-  // Painel leads, the obligations follow, and the two screens that are about the
+  // Painel leads, the obligations follow, and the screens that are about the
   // integration rather than an obligation close the list. The obligations stay in
   // the middle because they are the bulk of the module.
   const items: NavigationMenuItem[] = painel ? [monitoringSidebarItem(painel, path)] : []

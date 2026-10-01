@@ -6,21 +6,25 @@ import { formatMonitoringDate, serproCertificateRemoval, serproTermRequest, serp
 import { enablementAction, enablementConfirm, enablementNotice, enablementState } from '~/utils/serproEnablement'
 import { pageDetailClass, pageRecordScrollClass } from '~/utils/pageShell'
 
-definePageMeta({ middleware: 'auth' })
-
 /**
  * O e-CNPJ é do escritório, e o termo é da plataforma. Esta tela é o único lugar
  * onde o primeiro é entregue e onde se acompanha o segundo — e a única coisa que
  * ela jamais pede é uma assinatura: o termo é montado, assinado, enviado e
  * renovado pelo backend, com o certificado que o escritório entregou uma vez
  * (D3, e o cenário "Escritório não assina nada").
+ *
+ * A tela mora no Painel Global porque a entrega e a habilitação escrevem em nome
+ * da plataforma, na Account corrente — quem escreve é o `is_super_admin`, e o
+ * shell `pages/admin.vue` já aplica `middleware: ['auth', 'super-admin']` a tudo
+ * sob `/admin`, então aqui não há `definePageMeta` nem checagem de papel a
+ * repetir.
  */
 const { canManageClients, canManageMembers } = useAuth()
 const toast = useToast()
 const { authorizationTerm, accountCertificate, uploadAccountCertificate, removeAccountCertificate, enablement, setEnablement } = useSerpro()
 
 /**
- * O termo, com `getCachedData: () => undefined` pelo mesmo motivo do
+ * O termo, com `getCachedData: () => undefined` pelo mesmo motivo das telas de
  * monitoramento: um termo renovado há minutos não pode ser lido do payload do
  * SSR. O `404` é a tolerância do mesmo tipo do certificado abaixo — a rota ainda
  * não existir é o estado inerte, e não uma falha para gritar.
@@ -85,8 +89,8 @@ const confirmDisable = ref(false)
 const toggling = ref(false)
 
 async function toggleEnablement() {
-  // O `canManageMembers` é a segunda guarda do `v-if`: a policy devolve `403`
-  // para `operador` e `user`, e o que este clique nunca deve produzir é uma
+  // A guarda fica no código e não só no `v-if`: aqui quem escreve é o
+  // `is_super_admin`, e um clique que a API recusaria com `403` viraria uma
   // recusa anônima de quem não tinha o botão.
   if (!canManageMembers.value) return
   const target = !isEnabled.value
@@ -134,10 +138,11 @@ const screen = computed(() => serproTermScreen(termState.value, hasCertificate.v
 const presentation = computed(() => serproTermStatePresentation[term.value!.state])
 
 /**
- * Quem entrega e quem remove: `admin` e `operador`, que é o que
- * `AccountCertificatePolicy` concede para `create` e para `delete`. O papel `user`
- * é somente leitura na prática e não aparece em nenhuma policy de escrita — por
- * isso o formulário inteiro some para ele, e não apenas o botão.
+ * Quem entrega e quem remove é só o `is_super_admin`: é o que
+ * `AccountCertificatePolicy` concede para `create` e para `delete`. O shell já
+ * barra o resto pela rota, e a guarda continua explícita aqui porque a recusa do
+ * backend não pode ser a primeira coisa que um clique produz — e se a tela um
+ * dia for aberta a quem só lê, o formulário inteiro some, e não apenas o botão.
  */
 const canWriteCertificate = canManageClients
 
@@ -182,8 +187,10 @@ const certificateFacts = computed<MetaListItem[]>(() => {
 /**
  * Os dois carregamentos compartilham um alerta e um esqueleto, porque aparecem
  * juntos e um erro em qualquer um dos dois deixa a tela inteira inutilizável.
+ * A atualização é a da própria tela: a navbar do Admin não tem o botão do
+ * monitoramento, e a tela não declara ações de navbar para o módulo.
  */
-const { isLoading, showError, refresh, retry } = useRetryableLoad({
+const { isLoading, showError, retry } = useRetryableLoad({
   refresh: async () => {
     await Promise.all([reloadTerm(), reloadCertificate(), reloadEnablement()])
   },
@@ -193,8 +200,6 @@ const { isLoading, showError, refresh, retry } = useRetryableLoad({
   refreshErrorTitle: 'Não foi possível atualizar o termo',
   ignoreStatus: 404
 })
-
-useMonitoringActions({ refresh, loading: isLoading })
 
 /**
  * `shallowRef` e não `ref`: o `File` é enviado tal como foi escolhido, e a
@@ -326,10 +331,10 @@ async function confirmRemove() {
         </UCard>
 
         <!--
-          O controle do escritório, e só para `admin`: é para ele que a spec
-          reserva a habilitação, e esta tela é o lugar porque a decisão é do
-          Account — o painel de plataforma em `/admin/serpro` cuida da
-          credencial compartilhada, que é outra coisa.
+          O controle do escritório, e só para `is_super_admin`: é para ele que a
+          spec reserva a habilitação, e esta tela é o lugar porque a decisão é da
+          plataforma sobre a Account corrente — `/admin/serpro`, ao lado, cuida
+          da credencial compartilhada, que é outra coisa.
         -->
         <UCard
           v-if="canManageMembers && enablementAvailable"

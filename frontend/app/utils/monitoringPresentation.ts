@@ -602,7 +602,8 @@ export const serproCertificateReplacement = {
 /**
  * The sentences that are **not** state-conditional, and the one that is.
  *
- * They live here, and not in `termos.vue`, for a reason that is about testing and
+ * They live here, and not in the page that renders them (`admin/certificado.vue`),
+ * for a reason that is about testing and
  * not about tidiness: `node --test` cannot import a `.vue`, so a sentence written
  * in a template is a sentence no oracle can read. The screen's copy is the
  * product's copy, and the product's copy is data.

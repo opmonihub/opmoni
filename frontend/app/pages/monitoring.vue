@@ -32,7 +32,6 @@ const onRunDetail = computed(() => /^\/monitoring\/execucoes\/[^/]+/.test(route.
 const title = computed(() => {
   if (onRunDetail.value) return detailTitle.value || 'Execução'
   if (currentGroup.value) return currentGroup.value.label
-  if (route.path.startsWith('/monitoring/termos')) return 'Termo de autorização'
   if (route.path.startsWith('/monitoring/execucoes')) return 'Execuções de sincronização'
   return 'Monitoramento'
 })

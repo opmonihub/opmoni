@@ -195,11 +195,11 @@ function attentionFor(obligation: MonitoringObligation) {
             Integração
           </h3>
           <span class="hidden truncate text-xs text-muted sm:inline">
-            Termo do escritório e histórico de sincronizações.
+            Histórico de sincronizações da carteira.
           </span>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-3">
           <UCard
             v-for="link in monitoringIntegrationLinks"
             :key="link.to"
