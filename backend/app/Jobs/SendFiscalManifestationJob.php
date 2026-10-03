@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\FiscalFailure;
 use App\Enums\FiscalManifestationEventType;
 use App\Enums\FiscalManifestationOutcome;
 use App\Enums\FiscalSource;
@@ -14,6 +15,7 @@ use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
 use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -121,6 +123,17 @@ final class SendFiscalManifestationJob implements ShouldQueue
                 'Manifestação não enviada: condição do cliente não atendida.',
             );
         } catch (FiscalException $exception) {
+            // O `656` é parada do CNPJ inteiro, e a janela só passa a existir
+            // quando alguém a grava: a guarda de bloqueio acima lê o cursor,
+            // e um `blocked_until` que ninguém escreveu é uma reentrega que
+            // reexecuta e reenvia dentro da janela — o uso indevido que ela
+            // existe para impedir. Mesma coluna e mesmo token da captura, da
+            // reconciliação e do resync, porque o `656` vale para o CNPJ, não
+            // para o caminho que o descobriu.
+            if ($exception->failure === FiscalFailure::Blocked) {
+                $this->bloquear($client);
+            }
+
             // A recusa transitória do serviço re-enfileira: a fila decide a
             // hora, e a guarda de bloqueio acima decide se ela chegou. A
             // definitiva fica `pending` — o registro é o que o fisco respondeu,
@@ -146,6 +159,27 @@ final class SendFiscalManifestationJob implements ShouldQueue
             ->first();
 
         return $cursor?->isBlocked() === true;
+    }
+
+    /**
+     * A parada do fisco gravada no cursor — a mesma escrita da captura, da
+     * reconciliação e do resync: `blocked_until` mais `block_minutes` e o
+     * token `blocked_consumption` no `last_error`, que é o que o painel lê
+     * para nomear o bloqueio. Um cursor que não existe não é criado — sem
+     * linha da captura, a pausa não teria quem a lesse.
+     */
+    private function bloquear(Client $client): void
+    {
+        FiscalCursor::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->where('client_id', $client->getKey())
+            ->where('source', FiscalSource::NfeDistribuicao)
+            ->first()
+            ?->forceFill([
+                'blocked_until' => CarbonImmutable::now()->addMinutes((int) config('fiscal.block_minutes', 60)),
+                'last_error' => 'blocked_consumption',
+            ])->save();
     }
 
     /**

@@ -35,6 +35,22 @@ final class FiscalManifestationStore
 
         // `account_id` não é mass-assignável: jobs gravam a conta de forma explícita.
         $registro->account_id = $accountId;
+
+        // Um veredito já gravado é final: o fisco (ou a nossa impossibilidade
+        // de pedir) já respondeu por esta chave, e a re-entrega do resumo não
+        // o refaz. Resetar para `pending` reenviaria o evento — o fisco
+        // responderia `573` e o registro seria rebaixado para o que ele já é.
+        // O pedido é registrado de novo (`requested_*` anda), e o resto fica.
+        if ($registro->exists && $registro->outcome->isVerdict()) {
+            $registro->fill([
+                'requested_by' => $requestedBy,
+                'requested_at' => $requestedAt,
+            ]);
+            $registro->save();
+
+            return $registro;
+        }
+
         $registro->fill([
             'requested_by' => $requestedBy,
             'outcome' => FiscalManifestationOutcome::Pending,

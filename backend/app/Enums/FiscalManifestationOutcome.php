@@ -20,4 +20,27 @@ enum FiscalManifestationOutcome: string
      * envio.
      */
     case DeadlineMissed = 'deadline_missed';
+
+    /**
+     * Veredito é o estado que o conector grava quando o fisco (ou a nossa
+     * impossibilidade de pedir) já respondeu: `sent`, `already_manifested`,
+     * `deadline_missed` e `not_sendable`. Uma re-entrega do resumo não o
+     * refaz — enviar de novo provocaria o `573` e rebaixaria o registro —
+     * então o `registrarPedido` o preserva e o dispatcher não enfileira
+     * outro job.
+     *
+     * `Failed` fica de fora de propósito: nenhum caminho o grava hoje, e um
+     * registro que parasse nele seria reenviado por uma re-entrega — que é
+     * a recuperação pretendida, não uso indevido.
+     */
+    public function isVerdict(): bool
+    {
+        return match ($this) {
+            self::Sent,
+            self::AlreadyManifested,
+            self::DeadlineMissed,
+            self::NotSendable => true,
+            default => false,
+        };
+    }
 }

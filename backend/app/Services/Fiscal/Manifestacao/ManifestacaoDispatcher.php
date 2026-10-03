@@ -26,7 +26,7 @@ final class ManifestacaoDispatcher
             return false;
         }
 
-        $this->store->registrarPedido(
+        $pedido = $this->store->registrarPedido(
             accountId: $accountId,
             clientId: (int) $client->getKey(),
             chaveAcesso: $chaveAcesso,
@@ -34,6 +34,16 @@ final class ManifestacaoDispatcher
             eventSeq: 1,
             requestedBy: 'job:SendFiscalManifestationJob',
         );
+
+        // O veredito já gravado dispensa o job: a deduplicação na execução o
+        // encontraria e sairia sem fazer nada, e o enqueue mais barato é o
+        // que não acontece. O `touch` deixa a re-entrega visível no registro
+        // — um segundo pedido sem movimento pareceria um pedido que não chegou.
+        if ($pedido->outcome->isVerdict()) {
+            $pedido->touch();
+
+            return true;
+        }
 
         SendFiscalManifestationJob::dispatch(
             accountId: $accountId,

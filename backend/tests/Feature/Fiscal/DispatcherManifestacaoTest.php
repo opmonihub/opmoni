@@ -223,6 +223,132 @@ class DispatcherManifestacaoTest extends TestCase
         $this->assertNull($registro->sent_at);
     }
 
+    public function test_o_656_na_manifestacao_para_o_cnpj_no_cursor(): void
+    {
+        config(['fiscal.manifestacao_enabled' => true]);
+
+        [$cliente] = $this->clienteComCertificado();
+
+        $resumo = $this->resumo(100, self::CHAVE);
+
+        FiscalDocument::factory()->create([
+            'account_id' => $cliente->account_id,
+            'client_id' => $cliente->getKey(),
+            'source' => FiscalSource::NfeDistribuicao,
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Summary,
+            'chave_acesso' => self::CHAVE,
+            'emissao_at' => $resumo->emissaoAt,
+        ]);
+
+        $this->bindConnector(fn (): PullResult => $this->lote([$resumo]));
+
+        // A captura roda inteira: é ela que cria o cursor que o job vai
+        // marcar — cliente sem cursor é cliente que a captura não rodou, e
+        // um `656` que não grava nada é um `656` que nada lê. `Bus::fake`
+        // segura o job na fila para a resposta `656` entrar antes da execução.
+        Bus::fake();
+
+        $this->capture()->capture($cliente, FiscalSource::NfeDistribuicao);
+
+        $cursor = FiscalCursor::query()
+            ->where('client_id', $cliente->getKey())
+            ->where('source', FiscalSource::NfeDistribuicao)
+            ->sole();
+
+        $this->assertFalse($cursor->isBlocked());
+
+        // O serviço de eventos responde o `656`: consumo indevido, o CNPJ
+        // inteiro parado por uma hora — a recusa transitória que re-enfileira.
+        Http::fake(['*' => Http::response(
+            $this->retEnvEvento('656', 'Rejeicao: Consumo Indevido'),
+            200,
+        )]);
+
+        $job = new SendFiscalManifestationJob(
+            accountId: (int) $cliente->account_id,
+            clientId: (int) $cliente->getKey(),
+            chaveAcesso: self::CHAVE,
+            eventType: FiscalManifestationEventType::CienciaEmissao,
+            eventSeq: 1,
+        );
+
+        $job->handle(
+            resolve(FiscalManifestationStore::class),
+            resolve(RecepcaoEventoConnector::class),
+        );
+
+        // A reentrega na hora não decide nada sozinha: a guarda de bloqueio
+        // do job lê `blocked_until`, e um `656` que não grava a janela
+        // reexecuta e reenvia dentro dela — o uso indevido que ela existe
+        // para impedir.
+        $cursor->refresh();
+        $this->assertTrue($cursor->isBlocked());
+        $this->assertSame('blocked_consumption', $cursor->last_error);
+
+        // O evento saiu (`sent_at`) e a resposta é rejeição transitória, não
+        // veredito: o registro fica onde o `marcarEnfileirado` o deixou, à
+        // espera da reentrega depois da janela.
+        $registro = FiscalManifestation::withoutGlobalScope('account')->sole();
+        $this->assertSame(FiscalManifestationOutcome::Queued, $registro->outcome);
+        $this->assertNotNull($registro->sent_at);
+    }
+
+    public function test_a_reentrega_do_resumo_depois_do_envio_nao_refaz_o_veredito(): void
+    {
+        config(['fiscal.manifestacao_enabled' => true]);
+
+        [$cliente] = $this->clienteComCertificado();
+
+        $resumo = $this->resumo(100, self::CHAVE);
+
+        FiscalDocument::factory()->create([
+            'account_id' => $cliente->account_id,
+            'client_id' => $cliente->getKey(),
+            'source' => FiscalSource::NfeDistribuicao,
+            'model' => FiscalModel::Nfe,
+            'kind' => FiscalKind::Document,
+            'stage' => FiscalStage::Summary,
+            'chave_acesso' => self::CHAVE,
+            'emissao_at' => $resumo->emissaoAt,
+        ]);
+
+        // A captura reentrega o resumo da mesma chave e o serviço de eventos
+        // já está com a ciência registrada de outra execução: a resposta é
+        // o `573`, e o veredito gravado é `already_manifested`.
+        Http::fake(['*' => Http::response(
+            $this->retEnvEvento('128', 'Lote de Evento Processado', '573', 'Rejeicao: Duplicidade de Evento'),
+            200,
+        )]);
+
+        $this->bindConnector(fn (): PullResult => $this->lote([$resumo]));
+
+        $this->capture()->capture($cliente, FiscalSource::NfeDistribuicao);
+
+        $registro = FiscalManifestation::withoutGlobalScope('account')->sole();
+        $this->assertSame(FiscalManifestationOutcome::AlreadyManifested, $registro->outcome);
+        $sentAt = $registro->sent_at;
+        $this->assertNotNull($sentAt);
+        $this->assertSame('573', $registro->result_code);
+
+        Http::assertSentCount(1);
+
+        // O fisco reentrega o resumo — posição parada, lote repetido — e a
+        // captura roda de novo. O veredito é final: nem o registro volta a
+        // `pending` nem um segundo evento sai para a rede, porque o `573`
+        // que ele provocaria rebaixaria o registro para o que ele já é.
+        $this->capture()->capture($cliente, FiscalSource::NfeDistribuicao);
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::AlreadyManifested, $registro->outcome);
+        $this->assertSame('573', $registro->result_code);
+        $this->assertTrue($registro->sent_at->equalTo($sentAt));
+        $this->assertNotNull($registro->resulted_at);
+
+        Http::assertSentCount(1);
+    }
+
     /** @return array{0: Client} */
     private function clienteComCertificado(): array
     {
