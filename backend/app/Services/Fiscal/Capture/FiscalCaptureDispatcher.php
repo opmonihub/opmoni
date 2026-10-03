@@ -45,6 +45,10 @@ final class FiscalCaptureDispatcher
             return 'A captura de CT-e está desligada nesta instalação (fiscal.cte_enabled). Nada foi enfileirado.';
         }
 
+        if ($source === FiscalSource::NfseAdn && ! config('fiscal.nfse_enabled', false)) {
+            return 'A captura de NFS-e está desligada nesta instalação (fiscal.nfse_enabled). Nada foi enfileirado.';
+        }
+
         return null;
     }
 

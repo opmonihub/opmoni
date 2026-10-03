@@ -6,6 +6,7 @@ use App\Enums\FiscalSource;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Cte\CteDistributionConnector;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
+use App\Services\Fiscal\Nfse\NfseAdnConnector;
 use RuntimeException;
 
 /**
@@ -41,6 +42,7 @@ final class FiscalConnectorRegistry
     private const CATALOGO = [
         'nfe_distribuicao' => NfeDistributionConnector::class,
         'cte_distribuicao' => CteDistributionConnector::class,
+        'nfse_adn' => NfseAdnConnector::class,
     ];
 
     /**

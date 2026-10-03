@@ -1,0 +1,10 @@
+{
+    "_hipotese": "Fim de fila da ADN contribuintes, sintético: o canário recebeu apenas `StatusProcessamento: DOCUMENTOS_LOCALIZADOS` (lote com itens), e o texto do status para 'nenhum documento' é HIPÓTESE — nunca observado em resposta real. A leitura classifica corpo de negócio com `LoteDFe` vazio como fila vazia, com bloqueio de uma hora, sem depender do texto do status.",
+    "StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO",
+    "LoteDFe": [],
+    "Alertas": [],
+    "Erros": [],
+    "TipoAmbiente": "PRODUCAO",
+    "VersaoAplicativo": "1.0.0.0",
+    "DataHoraProcessamento": "2026-10-03T13:42:00.406539-03:00"
+}

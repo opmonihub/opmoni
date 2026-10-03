@@ -67,6 +67,16 @@ final class FiscalXmlMetadata
         'cteOSProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
         'GTVeProc' => ['infCte/chCTe', 'protCTe/infProt/chCTe'],
         'procEventoCTe' => ['infEvento/chCTe'],
+        // NFS-e nacional: nomes de raízes **observadas** pelo canário ADN
+        // (`fiscal:nfse-probe`, Auto Center, HTTP 200 em produção): o lote
+        // entrega `NFSe` (documento, chave em `infNFSe/@Id` com 50 dígitos) e
+        // `evento` (aviso sobre a nota, chave em `chNFSe` dentro do `infEvento`).
+        'NFSe' => ['infNFSe/chNFSe'],
+        'evento' => ['infEvento/chNFSe', 'chNFSe'],
+        'procNFSe' => ['NFSe/infNFSe/chNFSe', 'infNFSe/chNFSe'],
+        'resNFSe' => ['chNFSe'],
+        'eventoNFSe' => ['infEvento/chNFSe'],
+        'procEventoNFSe' => ['infEvento/chNFSe'],
     ];
 
     /**
@@ -138,6 +148,28 @@ final class FiscalXmlMetadata
      */
     private const CHAVE_NA_RAIZ_DESCONHECIDA = ['chNFe', 'chCTe'];
 
+    /**
+     * O mesmo comportamento permissivo do NF-e, na família da NFS-e: uma raiz
+     * de fora do catálogo não recusa, porque o leiaute nacional da NFS-e não
+     * está versionado neste checkout e a recusa seria uma afirmação sem
+     * sustentação — a primeira resposta real da ADN é o que fecha a lista.
+     *
+     * `chNFSe` é o nome de elemento mais provável para a chave; o caminho
+     * `infNFSe/chNFSe` cobre a raiz que traz a chave dentro do próprio
+     * documento quando a raiz do lote embrulha um `NFSe`.
+     */
+    private const CHAVE_NA_RAIZ_DESCONHECIDA_NFSE = ['chNFSe', 'infNFSe/chNFSe', 'NFSe/infNFSe/chNFSe'];
+
+    /**
+     * As raízes de NFS-e nacional que são **documento** e não resumo: a ADN
+     * entrega o XML da nota, e o leiaute não tem protocolo de autorização
+     * (`protNFe`/`protCTe`) para a leitura de etapa dos outros dois serviços
+     * reconhecer. `resNFSe`, se existir como resumo na distribuição, fica de
+     * fora de propósito: sem a confirmação do canário de que ele existe e da
+     * forma que tem, classificá-lo como documento seria gravar etapa errada.
+     */
+    private const NFSE_RAIZ_DE_DOCUMENTO = ['NFSe', 'procNFSe'];
+
     public function extract(string $xml, FiscalModel $model): FiscalXmlMetadataResult
     {
         $dom = new DOMDocument;
@@ -169,6 +201,20 @@ final class FiscalXmlMetadata
         $tpEvento = $this->firstText($xpath, ['tpEvento']);
         $nSeqEvento = $this->firstText($xpath, ['nSeqEvento']);
 
+        // O evento da NFS-e nacional não tem `tpEvento` em elemento nenhum: o
+        // código do evento vem no sufixo do `Id` do `infEvento`, depois da
+        // chave de 50 posições. O canário observou `EVT` + chave + código +
+        // sequência (e a variante `PRE` no `pedRegEvento` interno) — o XML não
+        // diz "isto é um evento" em campo nenhum, e o `Id` é a única fonte
+        // nomeada.
+        if ($tpEvento === null) {
+            $nfseEvento = $this->tpEventoDoIdNfse($xpath);
+
+            if ($nfseEvento !== null) {
+                [$tpEvento, $nSeqEvento] = $nfseEvento;
+            }
+        }
+
         $chave = $this->firstText($xpath, $paths)
             ?? $this->chaveFromId($xpath, $nSeqEvento)
             ?? throw new RuntimeException('O documento capturado não expõe chave de acesso.');
@@ -189,12 +235,12 @@ final class FiscalXmlMetadata
             chave: $chave,
             model: $model,
             kind: $isEvent ? FiscalKind::Event : FiscalKind::Document,
-            stage: $this->stageOf($xpath, $isEvent),
+            stage: $this->stageOf($xpath, $isEvent, $schema),
             eventId: $isEvent ? $tpEvento.'-'.($nSeqEvento ?? '1') : '',
             schema: $schema,
             emitenteCnpj: $this->firstText($xpath, ['emit/CNPJ', 'prest/CNPJ', 'CNPJ']),
-            destinatarioCnpj: $this->firstText($xpath, ['dest/CNPJ', 'toma/CNPJ', 'destinatario/CNPJ']),
-            valorTotal: $this->firstText($xpath, ['vNF', 'vTPrest', 'vLiq']),
+            destinatarioCnpj: $this->firstText($xpath, ['dest/CNPJ', 'toma/CNPJ', 'destinatario/CNPJ', 'tomador/CNPJ']),
+            valorTotal: $this->firstText($xpath, ['vNF', 'vTPrest', 'vLiq', 'vServPrest/vServ']),
             // O mesmo digest nas duas etapas da distribuição, em lugares
             // diferentes: o resumo o traz no topo, o documento autorizado no
             // protocolo. O caminho específico vem primeiro porque é o protocolo
@@ -202,11 +248,11 @@ final class FiscalXmlMetadata
             // resumo. Evento não tem digest, e aí a coluna fica nula.
             digVal: $this->firstText($xpath, ['protNFe/infProt/digVal', 'protCTe/infProt/digVal', 'digVal']),
             emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
-            eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento'])),
+            eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento', 'dhRegEvento'])),
             mascarado: $this->isMascarado($xpath),
             // O número e a série do `ide`: o resumo e o evento não têm `ide`,
             // e aí a coluna fica nula — nunca um número inventado.
-            numero: $this->firstText($xpath, ['ide/nNF', 'ide/nCT']),
+            numero: $this->firstText($xpath, ['ide/nNF', 'ide/nCT', 'nNFSe']),
             serie: $this->firstText($xpath, ['ide/serie']),
         );
     }
@@ -283,6 +329,16 @@ final class FiscalXmlMetadata
             throw new RuntimeException("Raiz de documento fora do catálogo: {$root}.");
         }
 
+        // A família da NFS-e também é permissiva na raiz desconhecida: sem
+        // schema versionado do leiaute nacional, recusar seria travar uma
+        // posição de produção com uma afirmação que ninguém verificou. A
+        // procura vai pelos nomes comuns de chave da NFS-e antes dos da NF-e —
+        // a chave da NFS-e nacional tem 50 posições e DV próprio, e a validação
+        // do dígito é o que separa as duas famílias no final.
+        if (in_array(FiscalModel::Nfse, $expected->family(), true)) {
+            return self::CHAVE_NA_RAIZ_DESCONHECIDA_NFSE;
+        }
+
         return self::CHAVE_NA_RAIZ_DESCONHECIDA;
     }
 
@@ -341,11 +397,22 @@ final class FiscalXmlMetadata
      *
      * A ordem importa: um evento não tem protocolo, e classificá-lo pelo
      * `tpEvento` primeiro é o que impede que ele caia na etapa de documento.
+     *
+     * A NFS-e nacional não tem protocolo de autorização no leiaute — a ADN
+     * entrega o documento —, então um XML cuja raiz é de documento NFS-e é
+     * `Document` e não pode cair na leitura do protocolo dos outros dois
+     * serviços (que o classificaria resumo por ausência). As raízes conferidas
+     * são as do catálogo, e uma raiz de fora continua na leitura do protocolo —
+     * que a classificará resumo até o canário confirmar o formato.
      */
-    private function stageOf(DOMXPath $xpath, bool $isEvent): FiscalStage
+    private function stageOf(DOMXPath $xpath, bool $isEvent, string $schema = ''): FiscalStage
     {
         if ($isEvent) {
             return FiscalStage::Event;
+        }
+
+        if (in_array($schema, self::NFSE_RAIZ_DE_DOCUMENTO, true)) {
+            return FiscalStage::Document;
         }
 
         $isAuthorised = XmlQuery::first($xpath, 'protNFe/infProt') !== null
@@ -372,10 +439,26 @@ final class FiscalXmlMetadata
      * acima é o que recusa o que ninguém nomeou, sem que o `null` vire um
      * modelo de reserva em qualquer ponto deste arquivo.
      *
+     * A chave da NFS-e nacional tem **50** posições e o leiaute delas não está
+     * confirmado — não há posição de modelo que este código saiba ler. Por isso
+     * o caminho bifurca no comprimento: uma chave de 50 posições vale como
+     * NFS-e **só** dentro da família dela, e o modelo volta como o pedido — o
+     * conector da família é quem garante a etiqueta. Uma chave de 50 entregue a
+     * outro conector é um documento real com etiqueta errada, e recusa como o
+     * `resCTe` do exemplo de cima.
+     *
      * @return FiscalModel o modelo que a chave do próprio documento carrega
      */
     private function guardModel(string $chave, FiscalModel $expected): FiscalModel
     {
+        if (strlen($chave) === 50) {
+            if (! in_array(FiscalModel::Nfse, $expected->family(), true)) {
+                throw new RuntimeException("Chave de acesso de 50 posições (NFS-e) onde se esperava {$expected->label()}: {$chave}.");
+            }
+
+            return FiscalModel::Nfse;
+        }
+
         $code = substr($chave, 20, 2);
         $found = FiscalModel::fromDocumentModel($code);
 
@@ -391,26 +474,51 @@ final class FiscalXmlMetadata
     }
 
     /**
-     * Dígito verificador módulo 11 sobre os 43 primeiros dígitos, pesos
-     * cíclicos de 2 a 9 da direita para a esquerda.
+     * O dígito verificador bifurca no comprimento, porque são dois leiautes:
+     *
+     * - **44** — NF-e, NFC-e e CT-e: módulo 11 sobre os 43 primeiros dígitos,
+     *   pesos cíclicos de 2 a 9 da direita para a esquerda, resto menor que 2
+     *   vale 0.
+     * - **50** — NFS-e nacional: módulo 11 sobre as 49 primeiras posições, com
+     *   os mesmos pesos cíclicos e a mesma regra de resto. ⚠️ Os pesos e a
+     *   regra do resto são inferidos do DV dos demais leiautes nacionais — o
+     *   manual da NFS-e nacional confirma módulo 11, mas o desdobramento
+     *   exato é uma das coisas que o canário da ADN confirma com a primeira
+     *   chave real. Uma chave de 50 que feche este DV é aceita; a que não
+     *   feche, recusada com o erro nomeado de dígito.
      */
     public static function isValidChave(string $chave): bool
     {
-        if (preg_match('/^\d{44}$/', $chave) !== 1) {
+        return match (strlen($chave)) {
+            44 => self::isValidChaveDeDigitos($chave, 43),
+            50 => self::isValidChaveDeDigitos($chave, 49),
+            default => false,
+        };
+    }
+
+    /**
+     * A soma módulo 11 sobre os `$baseLength` primeiros dígitos, com o dígito
+     * verificador na posição seguinte. Pesos cíclicos de 2 a 9, da direita
+     * para a esquerda; resto menor que 2 vale 0, e o que sobra é 11 menos o
+     * resto. É a mesma conta dos dois leiautes; o comprimento é o que muda.
+     */
+    private static function isValidChaveDeDigitos(string $chave, int $baseLength): bool
+    {
+        if (preg_match('/^\d{'.strlen($chave).'}$/', $chave) !== 1) {
             return false;
         }
 
         $weights = [2, 3, 4, 5, 6, 7, 8, 9];
         $sum = 0;
 
-        for ($i = 42, $w = 0; $i >= 0; $i--, $w++) {
+        for ($i = $baseLength - 1, $w = 0; $i >= 0; $i--, $w++) {
             $sum += ((int) $chave[$i]) * $weights[$w % 8];
         }
 
         $mod = $sum % 11;
         $expected = $mod < 2 ? 0 : 11 - $mod;
 
-        return $expected === (int) $chave[43];
+        return $expected === (int) $chave[$baseLength];
     }
 
     private function schemaOf(DOMDocument $dom): string
@@ -434,6 +542,36 @@ final class FiscalXmlMetadata
         }
 
         return null;
+    }
+
+    /**
+     * O código do evento da NFS-e nacional, derivado do sufixo do `Id` do
+     * `infEvento`: `EVT` + chave de 50 posições + código de 6 dígitos +
+     * sequência — a forma observada pelo canário (`EVT…101101001`), com a
+     * variante `PRE` no `infPedReg` interno que o XPath do primeiro `@Id` não
+     * alcança (o `infEvento` vem antes dele no percurso).
+     *
+     * O que guarda a leitura não é o prefixo `EVT` — é a tipagem: 50 posições
+     * que fecham o dígito verificador do leiaute NFS-e, um código de 6 e uma
+     * sequência de 1 a 10. Um `Id` que não fecha essa forma devolve `null`, e
+     * o documento segue sem `tpEvento` — classificado pelo que ele é, e não
+     * pelo que um sufixo sugere.
+     *
+     * @return array{0: string, 1: string}|null o `[tpEvento, nSeqEvento]` do Id
+     */
+    private function tpEventoDoIdNfse(DOMXPath $xpath): ?array
+    {
+        $node = XmlQuery::firstBy($xpath, '//*[@Id]');
+
+        if ($node === null || preg_match('/^(?:[A-Z]+)?(\d{50})(\d{6})(\d{1,10})$/', $node->getAttribute('Id'), $matches) !== 1) {
+            return null;
+        }
+
+        if (! self::isValidChave($matches[1])) {
+            return null;
+        }
+
+        return [$matches[2], $matches[3]];
     }
 
     /**
@@ -461,7 +599,15 @@ final class FiscalXmlMetadata
 
         $digits = $matches[0];
 
-        // O `Id` de um documento é a chave pura; o de um evento nunca é.
+        // O `Id` de um documento é a chave pura; o de um evento nunca é. A
+        // chave da NFS-e nacional tem 50 posições e o DV dela é o que separa
+        // esta chave de um `Id` de evento da NF-e que por acaso tenha 50
+        // dígitos de sobra — o dígito é o que decide, e um `Id` que não feche
+        // não vira chave.
+        if (strlen($digits) === 50) {
+            return self::isValidChave($digits) ? $digits : null;
+        }
+
         if (strlen($digits) === 44) {
             return $digits;
         }

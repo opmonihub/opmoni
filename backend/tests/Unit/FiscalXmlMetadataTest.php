@@ -29,6 +29,73 @@ class FiscalXmlMetadataTest extends TestCase
         $this->assertFalse(FiscalXmlMetadata::isValidChave(str_repeat('A', 44)));
     }
 
+    /**
+     * A chave da NFS-e nacional tem 50 posições e o DV bifurca no comprimento:
+     * a validação de 50 é a mesma conta módulo 11 sobre as 49 primeiras
+     * posições. A chave abaixo fecha o dígito que o próprio módulo calcula.
+     */
+    public function test_accepts_a_valid_fifty_digit_nfse_key(): void
+    {
+        $this->assertTrue(FiscalXmlMetadata::isValidChave('35260911222333000181000100000012345678901234567892'));
+    }
+
+    public function test_rejects_a_fifty_digit_key_with_wrong_check_digit(): void
+    {
+        $this->assertFalse(FiscalXmlMetadata::isValidChave('35260911222333000181000100000012345678901234567895'));
+    }
+
+    public function test_rejects_a_forty_nine_digit_string(): void
+    {
+        // A largura entre 44 e 50 não é aceitável por aproximação: só os dois
+        // leiautes com DV próprio são chave de acesso.
+        $this->assertFalse(FiscalXmlMetadata::isValidChave('3526091122233300018100010000001234567890123456789'));
+    }
+
+    public function test_extracts_metadata_from_an_nfse(): void
+    {
+        $xml = <<<'XML'
+            <NFSe versao="1.00">
+              <infNFSe Id="NFSe35260911222333000181000100000012345678901234567892">
+                <emit><CNPJ>99999999999999</CNPJ></emit>
+                <valores><vLiq>710.00</vLiq></valores>
+                <dhEmi>2026-10-01T10:00:00-03:00</dhEmi>
+                <chNFSe>35260911222333000181000100000012345678901234567892</chNFSe>
+                <nNFSe>123</nNFSe>
+              </infNFSe>
+            </NFSe>
+            XML;
+
+        $result = (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfse);
+
+        $this->assertSame(FiscalModel::Nfse, $result->model);
+        $this->assertSame(FiscalKind::Document, $result->kind);
+        $this->assertSame(FiscalStage::Document, $result->stage);
+        $this->assertSame('35260911222333000181000100000012345678901234567892', $result->chave);
+        $this->assertSame('99999999999999', $result->emitenteCnpj);
+        $this->assertSame('710.00', $result->valorTotal);
+        $this->assertSame('123', $result->numero);
+        $this->assertSame('', $result->eventId);
+    }
+
+    public function test_the_model_guard_refuses_a_fifty_digit_key_outside_the_nfse_family(): void
+    {
+        // Uma chave de 50 entregue a outro conector é um documento real com
+        // etiqueta errada: entraria na unicidade sem conflito nenhum, porque a
+        // chave é de outro documento.
+        $xml = <<<'XML'
+            <NFSe versao="1.00">
+              <infNFSe>
+                <chNFSe>35260911222333000181000100000012345678901234567892</chNFSe>
+              </infNFSe>
+            </NFSe>
+            XML;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Chave de acesso de 50 posições (NFS-e)');
+
+        (new FiscalXmlMetadata)->extract($xml, FiscalModel::Nfe);
+    }
+
     public function test_extracts_summary_metadata(): void
     {
         $xml = file_get_contents(base_path('tests/Fixtures/fiscal/resNFe.xml'));

@@ -129,6 +129,37 @@ return [
      */
     'cte_scheduled' => filter_var(env('FISCAL_CTE_SCHEDULED', false), FILTER_VALIDATE_BOOL),
 
+    /*
+     * A captura de NFS-e padrão nacional pela ADN contribuintes — o botão da
+     * tela e o `fiscal:nfse-probe` — nasce desligada, e é a chave que o canário
+     * liga, no mesmo espírito de `cte_enabled` acima.
+     *
+     * Ela é uma chave e não duas: **não existe** `nfse_scheduled`. A agenda de
+     * NFS-e não entra enquanto o canário de um cliente (Auto Center) não
+     * passar o checklist do design — documentado na change
+     * `add-nfse-adn-capture` —, e sem a entrada em `routes/console.php` não
+     * existe segunda chave para ligar tráfego automático. Quando a agenda
+     * existir, ela será uma entrada própria, como `cte_scheduled` é.
+     *
+     * O motivo da chave: o contrato REST da ADN contribuintes (shape do JSON do
+     * lote, formato do NSU, códigos de vazio) ainda não foi observado em
+     * resposta real deste checkout — só o manual publicado. A leitura está
+     * isolada no leitor de `App\Services\Fiscal\Nfse\`, e o canário é o que a
+     * confirma. Ligar isto é ato de quem autorizou o canário, e não DEFAULT de
+     * deployment.
+     *
+     * A leitura é a mesma da `cte_enabled`: `filter_var(...,
+     * FILTER_VALIDATE_BOOL)`, vocabulário fechado (`true`, `1`, `on`, `yes`
+     * ligam; todo o resto — inclusive `sim`, `off`, `não`, vazio — desliga),
+     * e a chave não aparece no `.env.example`.
+     *
+     * Como no CT-e, a **captura** direta (`CaptureFiscalDocumentsJob` e
+     * `FiscalCaptureService`) consulta o registro de conectores e nunca esta
+     * chave; o gate está na fronteira de despacho (`FiscalCaptureDispatcher::
+     * recusaDeFonte()`), no comando de probe e no upload do certificado.
+     */
+    'nfse_enabled' => filter_var(env('FISCAL_NFSE_ENABLED', false), FILTER_VALIDATE_BOOL),
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*
@@ -243,6 +274,26 @@ return [
             'soap_action' => 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse',
             'holder' => 'cteDadosMsg',
             'xsd_service' => 'cte',
+        ],
+
+        /*
+         * ⚠️ ESTE BLOCO É A BASE PUBLICADA, NÃO UMA RESPOSTA OBSERVADA.
+         *
+         * As duas URLs vêm do Swagger oficial da ADN contribuintes (o ambiente
+         * de homologação da NFS-e nacional chama-se "produção restrita"), e é
+         * tudo o que este checkout verificou: o shape do JSON do lote, o formato
+         * do NSU no caminho (`/DFe/{UltimoNSU}`) e os códigos de "nenhum
+         * documento" ainda não foram observados em resposta real. A leitura
+         * está isolada em `NfseAdnPullReader`, e o `fiscal:nfse-probe` é o
+         * comando que a confirma — um GET por execução, sem fila, sem escrita.
+         *
+         * O teto do lote da ADN é o mesmo 50 de `fiscal.batch_limit`, e não
+         * precisa de chave própria: o conector não parametriza o tamanho, e
+         * quem chama já lê o teto de cima.
+         */
+        'nfse_adn' => [
+            'producao' => 'https://adn.nfse.gov.br/contribuintes',
+            'homologacao' => 'https://adn.producaorestrita.nfse.gov.br/contribuintes',
         ],
     ],
 

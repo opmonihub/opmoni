@@ -289,7 +289,8 @@ export function fiscalStageLabel(stage: FiscalStage): string {
  */
 const sourceLabels: Record<FiscalSource, string> = {
   nfe_distribuicao: 'NF-e',
-  cte_distribuicao: 'CT-e'
+  cte_distribuicao: 'CT-e',
+  nfse_adn: 'NFS-e'
 }
 
 export function fiscalSourceLabel(source: FiscalSource | null): string {

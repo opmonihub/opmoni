@@ -11,6 +11,7 @@ use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\Capture\FiscalXmlPath;
+use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -303,6 +304,23 @@ class FiscalSchemaTest extends TestCase
         $this->assertSame(FiscalStage::Event, $event->stage);
         $this->assertNotSame('', $event->event_id);
         $this->assertNotNull($event->evento_ocorrido_em_at);
+    }
+
+    /**
+     * A largura de 50 é da NFS-e nacional, e a coluna alargada pela migration é
+     * o que a faz entrar: uma factory que truca a chave esconderia o INSERT
+     * quebrado do schema antigo.
+     */
+    public function test_nfse_state_carries_a_fifty_digit_key_with_valid_check_digit(): void
+    {
+        $document = FiscalDocument::factory()->nfse()->create();
+
+        $this->assertSame(FiscalSource::NfseAdn, $document->source);
+        $this->assertSame(FiscalModel::Nfse, $document->model);
+        $this->assertSame(50, strlen($document->chave_acesso));
+        // O dígito verificador da chave criada é o que o módulo valida — a
+        // mesma conta que a captura real aplica antes de gravar.
+        $this->assertTrue(FiscalXmlMetadata::isValidChave($document->chave_acesso));
     }
 
     public function test_summary_state_marks_the_document_as_a_summary_stage(): void

@@ -15,6 +15,7 @@ class FiscalEnumsTest extends TestCase
     {
         $this->assertSame('nfe_distribuicao', FiscalSource::NfeDistribuicao->value);
         $this->assertSame('cte_distribuicao', FiscalSource::CteDistribuicao->value);
+        $this->assertSame('nfse_adn', FiscalSource::NfseAdn->value);
     }
 
     public function test_model_values(): void
@@ -86,6 +87,7 @@ class FiscalEnumsTest extends TestCase
     {
         $this->assertSame('Distribuição NF-e', FiscalSource::NfeDistribuicao->label());
         $this->assertSame('Distribuição CT-e', FiscalSource::CteDistribuicao->label());
+        $this->assertSame('ADN NFS-e', FiscalSource::NfseAdn->label());
         $this->assertSame('NF-e', FiscalModel::Nfe->label());
         $this->assertSame('NFC-e', FiscalModel::Nfce->label());
         $this->assertSame('CT-e', FiscalModel::Cte->label());

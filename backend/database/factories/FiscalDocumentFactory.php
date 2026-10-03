@@ -91,6 +91,21 @@ class FiscalDocumentFactory extends Factory
     }
 
     /**
+     * Documento da NFS-e nacional capturado pela ADN: chave de 50 posições com
+     * o dígito verificador conferido, modelo `nfse` e fonte `nfse_adn`. A
+     * largura de 50 é o que a coluna alargada pela migration aceita — uma
+     * factory que truca a chave esconderia o INSERT quebrado do schema antigo.
+     */
+    public function nfse(): static
+    {
+        return $this->state(fn (): array => [
+            'source' => FiscalSource::NfseAdn,
+            'model' => FiscalModel::Nfse,
+            'chave_acesso' => self::chaveNfse(),
+        ]);
+    }
+
+    /**
      * Documento capturado de verdade: grava o XML no disco `fiscal` e alinha
      * `sha256` e `xml_bytes` aos bytes efetivamente gravados, para que
      * qualquer consumidor possa ler o arquivo e conferir as duas colunas sem
@@ -190,6 +205,28 @@ class FiscalDocumentFactory extends Factory
         $remainder = $sum % 11;
 
         return $remainder === 0 || $remainder === 1 ? 0 : 11 - $remainder;
+    }
+
+    /**
+     * Chave de acesso da NFS-e nacional: 49 dígitos de base e o dígito
+     * verificador módulo 11 na quinquagésima posição — a mesma conta da
+     * `FiscalXmlMetadata::isValidChave()`, que é quem vai aceitar a linha.
+     *
+     * O leiaute exato das 50 posições ainda não está confirmado (o probe da
+     * ADN é quem o fecha), então o que o esqueleto garante é o comprimento, os
+     * dígitos e o DV — e nada mais é afirmado.
+     */
+    private static function chaveNfse(): string
+    {
+        $base = str_pad(substr(sprintf(
+            '%02d%s%s%s',
+            fake()->numberBetween(11, 53),
+            now()->format('ym'),
+            fake()->numerify('##############'),
+            fake()->numerify('#############################'),
+        ), 0, 49), 49, '0');
+
+        return $base.self::digitoVerificador($base);
     }
 
     /**
