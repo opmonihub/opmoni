@@ -57,8 +57,28 @@ Tenancy: probes e jobs devem carregar `account_id` explicitamente quando rodarem
 2. Documentar no change/tasks como rodar: `FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 cd backend && php artisan serpro:probe-pgdas` e `php artisan test --compact --group=serpro-trial`.
 3. Rollback: remover comando e testes; comportamento de sync/monitoramento inalterado se probes forem apenas aditivos.
 
+## Runbook — loop PGDAS homologação
+
+Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma (`65396736000176`), e-CNPJ/termo do escritório **G A CONT** (`48123272000105`), cliente canário **AUTO CENTER** (`30288513000100`) com procuração **00146**.
+
+```bash
+cd backend
+php artisan config:show fiscal.environment   # deve ser homologacao
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas
+# ou com Account explícita:
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas --account=ID
+
+# Suíte opt-in (homologação real; respeitar intervalo entre execuções — cota SERPRO):
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan test --compact --group=serpro-trial --filter=Pgdas
+```
+
+Saída: status por etapa (`gate`, `credencial`, `termo`, `elegibilidade`, `consulta`, `projecao`). Exit `0` = pass, `2` = skip (cota/procuração/pré-requisito), `1` = fail. Não usar `-vvv` com dump de payload.
+
+**Serviços adicionais (fora do índice v1):** catálogo PGDASD Apicenter — extrato [`CONSEXTRATO16`](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/solucoes/integra-sn/pgdasd/), declaração [`CONSDECREC15`](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/solucoes/integra-sn/pgdasd/) / [`CONSULTIMADECREC14`](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/solucoes/integra-sn/pgdasd/).
+
 ## Open Questions
 
-- ~~Quais `idServico` retornam extrato e declaração?~~ **Resolvido (Apicenter):** extrato `CONSEXTRATO16`; declaração/recibo `CONSULTIMADECREC14` / `CONSDECREC15`. Falta decidir se v1 do change só valida índice + opcional download sanitizado em probe, ou se entra persistência/API Opmoni (fora do escopo atual de monitoramento).
+- ~~Quais `idServico` retornam extrato e declaração?~~ **Resolvido (Apicenter, spike 1.1):** extrato `CONSEXTRATO16` (`numeroDas`); declaração/recibo `CONSULTIMADECREC14` (última do PA) e `CONSDECREC15` (por `numeroDeclaracao`). **v1 do change:** probe valida só o índice via `CONSDECLARACAO13`; downloads sanitizados dos serviços acima ficam opcionais e fora de persistência/API.
+- **Gaps mapper × spec de monitoramento (nota 1.2):** `CONSDECLARACAO13` já projeta períodos, DAS emitido (`slip_*`) e `sem_declaracao`. Extrato PDF (`CONSEXTRATO16`) e declaração/recibo detalhados (`CONSULTIMADECREC14`/`CONSDECREC15`) não têm colunas no monitoramento — dependem de serviço adicional documentado acima.
 - Homologação devolve os mesmos períodos/DAS que produção para o AUTO CENTER? Se não, ajustar ano-calendário ou competência fixa no probe.
 - Swagger “Referência da API” retornou 500 na pesquisa inicial — confirmar URL estável antes de automatizar contrato OpenAPI.

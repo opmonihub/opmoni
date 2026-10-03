@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\SerproConnection;
 use App\Services\SerproPgdasHomologationProbe;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
@@ -34,6 +36,15 @@ class SerproPgdasHomologationProbeTest extends TestCase
 
         if (! config('serpro_probes.enabled', false)) {
             $this->markTestSkipped('SERPRO_PROBE_ENABLED não está ligado.');
+        }
+
+        if (! Schema::hasTable('serpro_connections')) {
+            $this->markTestSkipped('Suíte sqlite :memory: — use stack dev com postgres para trial real.');
+        }
+
+        $connection = SerproConnection::current();
+        if ($connection === null || ! $connection->isConfigured()) {
+            $this->markTestSkipped('Credencial de plataforma não configurada neste ambiente.');
         }
 
         $report = resolve(SerproPgdasHomologationProbe::class)->run(null);
