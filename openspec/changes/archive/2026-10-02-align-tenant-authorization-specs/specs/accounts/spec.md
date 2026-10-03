@@ -1,9 +1,4 @@
-# accounts Specification
-
-## Purpose
-Define os escritórios como unidades isoladas de operação, com membros em três níveis e criação restrita à plataforma.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Níveis de membro por conta
 The system SHALL support exactly three membership roles per account: `admin`, `operador` and `user`, and every other spec SHALL state only its exceptions to the matrix in `tenant-authorization`. The summary below SHALL remain consistent with that matrix.
@@ -43,17 +38,3 @@ The system SHALL support exactly three membership roles per account: `admin`, `o
 #### Scenario: Admin da Account tenta habilitar integração
 - **WHEN** a member with role `admin` who is not a super_admin changes the SERPRO enablement
 - **THEN** the system responds 403 and nothing changes
-
-### Requirement: Criação de contas restrita ao super_admin
-The system SHALL allow account creation only to super_admins, either via the global panel or the resulting membership of the initial onboarding.
-
-#### Scenario: Usuário comum tenta criar conta
-- **WHEN** a regular user requests account creation
-- **THEN** the system responds 403 and no account is created
-
-### Requirement: Suspensão em vez de exclusão
-The system SHALL support suspending and reactivating accounts instead of deleting them; a suspended account blocks all tenant access but preserves its data.
-
-#### Scenario: Conta suspensa
-- **WHEN** an account is suspended and a member requests any tenant resource
-- **THEN** the system responds 403 until the account is reactivated

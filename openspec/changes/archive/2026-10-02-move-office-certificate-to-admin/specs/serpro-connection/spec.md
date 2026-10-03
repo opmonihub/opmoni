@@ -1,5 +1,32 @@
 ## MODIFIED Requirements
 
+### Requirement: Credencial única de plataforma
+The system SHALL store the Integra Contador consumer key and consumer secret as one platform-level credential shared by every Account, SHALL require the contracting document in that credential to match the document presented to the provider, and SHALL NOT require, hold or forward a platform credential per Account. The contracting certificate SHALL be either the office e-CNPJ already stored for account 1, without a second copy of that file, or a distinct certificate stored only when a super_admin supplies a different file.
+
+#### Scenario: Credencial de plataforma cadastrada
+- **WHEN** a super_admin saves the consumer key and consumer secret and selects the office e-CNPJ already stored for account 1
+- **THEN** the credential is stored once, is writable only from the global panel, uses that certificate without duplicating it, and is available to every Account
+
+#### Scenario: Certificado da integração diferente do da conta 1
+- **WHEN** a super_admin uploads a contracting certificate that is not the office e-CNPJ of account 1
+- **THEN** that file becomes the contracting certificate, the office e-CNPJ of account 1 is unchanged, and no second copy of the account 1 file is stored
+
+#### Scenario: Credencial é rotacionável
+- **WHEN** a super_admin submits a new consumer secret, leaving the certificate and the contracting document untouched
+- **THEN** only the secret is replaced and the rest of the credential is preserved
+
+#### Scenario: Escritório não informa credencial de plataforma
+- **WHEN** a member of an Account configures its monitoring without providing any consumer key, consumer secret or contracting certificate
+- **THEN** the configuration is accepted and the Account uses the platform credential
+
+#### Scenario: Membro não grava credencial de plataforma
+- **WHEN** a member of an Account, whatever the role, attempts to store a consumer key, consumer secret or contracting certificate
+- **THEN** the system responds 403 and persists nothing
+
+#### Scenario: Documento divergente do certificado
+- **WHEN** the configured contracting document does not match the document of the stored certificate
+- **THEN** the system reports the mismatch as a configuration fault before any provider call is attempted, and does not retry
+
 ### Requirement: Certificado do escritório armazenado com disciplina de segredo
 The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL validate that the supplied password opens a parseable certificate, SHALL store the certificate and its password encrypted in the database following the same encrypt-then-base64 convention already applied to other secrets, SHALL NOT keep a filesystem path for it, and SHALL NOT return certificate contents, password, storage path or signing material through the API. Storage in the database is deliberate: the container filesystem is ephemeral in production, so a file-based office certificate would be lost on every deploy and the office would be asked to authorize again. Only a super_admin SHALL upload or remove that certificate for the current Account. Any member of the current Account SHALL read its non-secret metadata. A client certificate SHALL NOT be accepted as the office certificate and SHALL NOT be required to issue the authorization term.
 

@@ -6,11 +6,15 @@ Permite ao opmoni, na posição de software house, manter uma única credencial 
 ## Requirements
 
 ### Requirement: Credencial única de plataforma
-The system SHALL store the Integra Contador consumer key, consumer secret and contracting e-CNPJ certificate as one platform-level credential shared by every Account, SHALL require the contracting document in that credential to match the document presented to the provider, and SHALL NOT require, hold or forward a platform credential per Account. The office's own e-CNPJ certificate, which signs the Account's authorization term, is a separate record governed by its own requirement and is not a platform credential.
+The system SHALL store the Integra Contador consumer key and consumer secret as one platform-level credential shared by every Account, SHALL require the contracting document in that credential to match the document presented to the provider, and SHALL NOT require, hold or forward a platform credential per Account. The contracting certificate SHALL be either the office e-CNPJ already stored for account 1, without a second copy of that file, or a distinct certificate stored only when a super_admin supplies a different file.
 
 #### Scenario: Credencial de plataforma cadastrada
-- **WHEN** a super_admin saves the consumer key, consumer secret and contracting certificate for the platform
-- **THEN** the credential is stored once, is writable only from the global panel, and is available to every Account without being duplicated per Account
+- **WHEN** a super_admin saves the consumer key and consumer secret and selects the office e-CNPJ already stored for account 1
+- **THEN** the credential is stored once, is writable only from the global panel, uses that certificate without duplicating it, and is available to every Account
+
+#### Scenario: Certificado da integração diferente do da conta 1
+- **WHEN** a super_admin uploads a contracting certificate that is not the office e-CNPJ of account 1
+- **THEN** that file becomes the contracting certificate, the office e-CNPJ of account 1 is unchanged, and no second copy of the account 1 file is stored
 
 #### Scenario: Credencial é rotacionável
 - **WHEN** a super_admin submits a new consumer secret, leaving the certificate and the contracting document untouched
@@ -82,10 +86,10 @@ The system SHALL derive the access token and the authorization token together fr
 - **THEN** the system reports the incomplete response and does not issue a request without it, even though the provider's demonstration environment does not demand it
 
 ### Requirement: Certificado do escritório armazenado com disciplina de segredo
-The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL validate that the supplied password opens a parseable certificate, SHALL store the certificate and its password encrypted in the database following the same encrypt-then-base64 convention already applied to other secrets, SHALL NOT keep a filesystem path for it, and SHALL NOT return certificate contents, password, storage path or signing material through the API. Storage in the database is deliberate: the container filesystem is ephemeral in production, so a file-based office certificate would be lost on every deploy and the office would be asked to authorize again.
+The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL validate that the supplied password opens a parseable certificate, SHALL store the certificate and its password encrypted in the database following the same encrypt-then-base64 convention already applied to other secrets, SHALL NOT keep a filesystem path for it, and SHALL NOT return certificate contents, password, storage path or signing material through the API. Storage in the database is deliberate: the container filesystem is ephemeral in production, so a file-based office certificate would be lost on every deploy and the office would be asked to authorize again. Only a member whose role in the current Account is `admin`, or a super_admin acting as `admin` in that Account per `support-access`, SHALL upload or remove that certificate. Any member of the current Account SHALL read its non-secret metadata. A client certificate SHALL NOT be accepted as the office certificate and SHALL NOT be required to issue the authorization term.
 
 #### Scenario: Certificado do escritório válido
-- **WHEN** an authorized member uploads a valid certificate for the current Account
+- **WHEN** a member with role `admin` in the current Account uploads a valid certificate
 - **THEN** the encrypted copy is stored, only non-secret metadata is returned, and the office becomes able to authorize the integration
 
 #### Scenario: Senha incorreta
@@ -101,23 +105,31 @@ The system SHALL accept the office's e-CNPJ certificate once per Account, SHALL 
 - **THEN** the record carries no filesystem path, and the response exposes no such field
 
 #### Scenario: Substituição do certificado
-- **WHEN** an authorized member uploads a new valid certificate for an office that already has one
+- **WHEN** a member with role `admin` in the current Account uploads a new valid certificate for an office that already has one
 - **THEN** the new certificate becomes current, the previous encrypted copy is deleted and its non-secret metadata is retained
 
 #### Scenario: Remoção do certificado
-- **WHEN** an authorized member removes the office certificate
+- **WHEN** a member with role `admin` in the current Account removes the office certificate
 - **THEN** the encrypted copy is deleted, the office stops being able to authorize the integration, and previously recorded runs remain readable
 
 #### Scenario: Material de assinatura fora de log
 - **WHEN** signing or a provider call fails
 - **THEN** the recorded failure contains no certificate content, no password and no signed document
 
+#### Scenario: Operador tenta gravar o e-CNPJ
+- **WHEN** a member whose role in the current Account is `operador` uploads or removes the office certificate
+- **THEN** the system responds 403 and the stored certificate is unchanged
+
+#### Scenario: Membro lê os metadados
+- **WHEN** a member of the current Account requests the office certificate metadata
+- **THEN** the system responds 200 with the non-secret metadata, or reports that none is stored, and the response contains no certificate content, password or storage path
+
 ### Requirement: Termo de autorização emitido uma vez por escritório
-The system SHALL build, sign, submit and renew the authorization term on behalf of an office, using that office's stored certificate, SHALL treat the term as belonging to the office rather than to an individual client, and SHALL NOT require any further action from the office once its certificate is stored.
+The system SHALL build, sign, submit and renew the authorization term on behalf of an office, using that office's stored certificate, SHALL treat the term as belonging to the office rather than to an individual client, and SHALL NOT require any further action from the office once its certificate is stored. The client's procuração e-CAC SHALL remain the per-client gate and SHALL NOT be replaced by a certificate of the client.
 
 #### Scenario: Escritório sem certificado não tem termo
 - **WHEN** an office has no stored certificate
-- **THEN** the system reports the missing certificate as an action belonging to the office, and does not attempt to produce a term
+- **THEN** the system reports the missing certificate as an action for the account `admin` on the current Account, and does not attempt to produce a term
 
 #### Scenario: Emissão automática do termo
 - **WHEN** an office stores a valid certificate and the recorded proof covers the current term document format, as read by the named predicate in the requirement on the proof's address below
@@ -137,7 +149,7 @@ The system SHALL build, sign, submit and renew the authorization term on behalf 
 
 #### Scenario: Validade do termo vencida
 - **WHEN** the stored term's own validity has lapsed
-- **THEN** the office is reported as no longer authorized, the reason names the expired term, and the office is asked to act
+- **THEN** the office is reported as no longer authorized, the reason names the expired term, and replacing the certificate is an account `admin` action
 
 #### Scenario: Termo rejeitado
 - **WHEN** the provider rejects the generated term
@@ -232,23 +244,27 @@ The system SHALL refresh a company client's authorized service families from the
 - **THEN** the client remains saved, the previously recorded families are unchanged, and the failure record contains no token, certificate content or password
 
 ### Requirement: Habilitação da integração por escritório
-The system SHALL require an Account to be explicitly enabled before any of its clients is synchronized, SHALL allow only `admin` members to enable or disable it, and SHALL keep already recorded runs and synchronized data when it is disabled.
+The system SHALL require an Account to be explicitly enabled before any of its clients is synchronized, SHALL allow only a super_admin to enable or disable it for the current Account, SHALL let any member of the current Account read that flag, and SHALL keep already recorded runs and synchronized data when it is disabled.
 
 #### Scenario: Escritório ainda não habilitado
 - **WHEN** a synchronization is requested for an Account that is not enabled
 - **THEN** the system refuses the request, reports that the office is not enabled, and creates no run
 
 #### Scenario: Habilitação pelo administrador
-- **WHEN** an `admin` member enables the integration for the current Account and the platform connection is usable
+- **WHEN** a super_admin enables the integration for the current Account and the platform connection is usable
 - **THEN** the office becomes enabled and a synchronization can be requested
 
 #### Scenario: Membro sem papel de administrador
-- **WHEN** an `operador` or `user` member attempts to enable or disable the integration
+- **WHEN** an `admin`, `operador` or `user` member who is not a super_admin attempts to enable or disable the integration
 - **THEN** the system responds 403 and the enablement state is unchanged
 
 #### Scenario: Escritório desabilitado
-- **WHEN** an `admin` member disables the integration for an Account
+- **WHEN** a super_admin disables the integration for an Account
 - **THEN** new synchronization requests for that Account are refused while previously recorded runs and synchronized data remain readable
+
+#### Scenario: Membro lê a habilitação
+- **WHEN** a member of the current Account requests the integration flag
+- **THEN** the system responds 200 with the flag and no secret
 
 ### Requirement: Escrita restrita a papéis autorizados
 The system SHALL permit only a super_admin to create, update or remove the platform connection, SHALL expose no write path for an authorization term to any member of an Account, and SHALL let every member of the current Account read the term. Issuing the term is the platform's, renewing it is the scheduler's, and reading it is every member's.

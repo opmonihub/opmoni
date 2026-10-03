@@ -1,6 +1,6 @@
 ## 1. Baseline
 
-- [ ] 1.1 Confirmar a árvore limpa o bastante para a change e as suítes atuais verdes, verificar `git status --short` e `cd backend && php artisan test --compact` e `cd frontend && pnpm test`.
+- [x] 1.1 Confirmar a árvore limpa o bastante para a change e as suítes atuais verdes, verificar `git status --short` e `cd backend && php artisan test --compact` e `cd frontend && pnpm test`.
 
 ## 2. Backend, testes que falham
 
@@ -30,12 +30,13 @@
 ## 4. Seed local
 
 - [x] 4.1 Ajustar `DevAdminSeeder` para reafirmar os dois logins só em `local`, sem copiar arquivo de `.ref/data/`, verificar `cd backend && php artisan test --compact --filter=DevAdminSeeder`.
+- [x] 4.2 Fazer `admin@example.com` o único login da conta 1, com `is_super_admin` e vínculo `admin`, apagar `super_admin@example.com`, e cobrir no teste que essa Account corrente não é acesso de suporte, verificar `cd backend && php artisan test --compact --filter=DevAdminSeeder`.
 
 ### Observações da implementação
 
 - O e-mail do super_admin virou a constante `DevAdminSeeder::SUPER_ADMIN_EMAIL` (`super_admin@example.com`), no mesmo padrão de `EMAIL`/`PASSWORD` já publicados.
 - O seeder reafirma `is_super_admin` nos dois lados a cada execução: `false` no login de Membro e `true` no super_admin, então uma base dev antiga em que `admin@example.com` tinha o flag é corrigida pela próxima rodada do seed.
-- O super_admin não ganha vínculo em `account_user`: ele não é Membro, e o `current_account_id` só aponta a Account de desenvolvimento.
+- A task 4.2 substitui o segundo e-mail: `admin@example.com` passa a ser super_admin e Membro da conta 1, e `super_admin@example.com` sai. Sem o vínculo, a conta própria aparece como acesso de suporte.
 
 ## 5. Frontend, testes que falham
 
@@ -51,6 +52,8 @@
 
 - [x] 6.1 Mover o cadastro de `frontend/app/pages/monitoring/termos.vue` para `frontend/app/pages/admin/certificado.vue` e registrá-lo em `adminNav.ts`, verificar `cd frontend && pnpm test`.
 - [x] 6.2 Tirar o link de `monitoringIntegrationLinks` e o título correspondente em `monitoring.vue`, mantendo execuções e obrigações, verificar `cd frontend && pnpm test`.
+- [x] 6.3 Tirar "Certificado do escritório" de `adminNav.ts` e de `/admin/certificado`, e colocá-lo em `frontend/app/pages/settings/certificado.vue` só com arquivo e senha, sem termo e sem interruptor, na toolbar de `settings.vue` e nos filhos de Configurações do sidebar, só para super_admin, verificar `cd frontend && pnpm test`.
+- [x] 6.4 Em `/admin/serpro`, permitir usar o e-CNPJ da conta 1 sem segunda cópia ou enviar outro arquivo, verificar `cd frontend && pnpm test`.
 
 ### Observações da implementação
 
@@ -59,13 +62,18 @@
 - A entrada em `adminPages` ficou logo depois de `Serpro` (`i-lucide-file-signature`), porque as duas são a superfície do Integra Contador no Painel Global.
 - A seção Integração do painel de monitoramento ficou com um cartão só, então o grid virou coluna única (`grid gap-3`) em vez de um cartão ocupando metade de um `sm:grid-cols-2`; o subtítulo passou a falar só do histórico de sincronizações.
 - Comentários que diziam "duas telas de integração" em `monitoringNav.ts` e a referência a `termos.vue` em `monitoringPresentation.ts` foram atualizados para o estado novo.
+- A task 6.3 desfaz a aba no Painel Global e deixa em Configurações só o arquivo. A task 6.4 faz `/admin/serpro` usar o e-CNPJ da conta 1 ou outro arquivo.
+- **6.3**: a tela virou `frontend/app/pages/settings/certificado.vue`, com `middleware: ['auth', 'super-admin']` próprio porque o shell `pages/settings.vue` é só `auth`. O termo e o interruptor saíram — ficam o cartão de metadados, a remoção com confirmação e o formulário de arquivo+senha. A navegação foi extraída para `frontend/app/utils/settingsNav.ts` (`settingsPages`, `settingsTabs`, `settingsSidebarChildren`), que a toolbar de `settings.vue` e o sidebar de `layouts/default.vue` compartilham, com a aba entrando só quando `isSuperAdmin`. Cobertura nova em `frontend/tests/settingsNav.test.ts`; `adminNav.test.ts` passou a afirmar a ausência da entrada e a manter a cobertura de `/admin/serpro`.
+- **6.4**: o `PUT /api/serpro/connection` ganhou `use_account_certificate` (boolean). Com a flag, `SerproConnectionManager` grava `contracting_account_id` apontando para a primeira `Account` e zera as colunas de certificado próprio — os bytes e a senha moram na linha corrente de `account_certificates`, resolvidos por leitura em `SerproConnection::contractingCertificate()`, então trocar o e-CNPJ em Configurações não exige reenvio aqui. Arquivo novo encerra o vínculo; os dois juntos são 422. `SerproConnectivity` passou a conferir `hasCertificate()` em vez da coluna, e a resource lê os metadados da linha emprestada. Migração `2026_10_02_000000_add_contracting_account_to_serpro_connections_table`.
+- **4.2**: `DevAdminSeeder` agora garante `admin@example.com` como `is_super_admin` + Membro `admin` da primeira Account e apaga `super_admin@example.com` se existir; `SUPER_ADMIN_EMAIL` virou a constante do que remover.
+- **7.1**: a frase do `CONTEXT.md` já dizia "enviado pelo super_admin" desde o commit `9d27e50`; nada a mudar.
 
 ## 7. Glossário
 
-- [ ] 7.1 Ajustar em `CONTEXT.md` a frase do certificado do escritório para dizer que quem envia é o super_admin, verificar que a frase não cita mais `admin` ou `operador` como quem envia.
+- [x] 7.1 Ajustar em `CONTEXT.md` a frase do certificado do escritório para dizer que quem envia é o super_admin, verificar que a frase não cita mais `admin` ou `operador` como quem envia.
 
 ## 8. Verificação
 
-- [ ] 8.1 Rodar a suíte PHP e o formatador, verificar `cd backend && composer test` e `cd backend && vendor/bin/pint --dirty --format agent`.
-- [ ] 8.2 Rodar lint, tipos e testes do frontend, verificar `cd frontend && pnpm lint && pnpm typecheck && pnpm test`.
-- [ ] 8.3 Validar a change e procurar segredo em log ou resposta nova, verificar `openspec validate --change move-office-certificate-to-admin` e uma busca no diff por senha de certificado, XML do termo e token.
+- [x] 8.1 Rodar a suíte PHP e o formatador, verificar `cd backend && composer test` e `cd backend && vendor/bin/pint --dirty --format agent`.
+- [x] 8.2 Rodar lint, tipos e testes do frontend, verificar `cd frontend && pnpm lint && pnpm typecheck && pnpm test`.
+- [x] 8.3 Validar a change e procurar segredo em log ou resposta nova, verificar `openspec validate --change move-office-certificate-to-admin` e uma busca no diff por senha de certificado, XML do termo e token.
