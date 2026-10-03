@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Read;
 
+use App\Enums\FiscalModel;
 use App\Enums\FiscalStage;
 use App\Models\FiscalDocument;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -50,10 +51,10 @@ class FiscalDocuments
             // desliga a linha histórica. O `currentCertificate` junto é a
             // leitura em lote do `client_certificate_status` — uma consulta
             // para a página, e não uma por linha.
-            'rows' => $this->preencheASituacao($accountId, $this->preencheOsEventos($accountId, $this->sorted($filtrada, $filters)
+            'rows' => $this->preencheACompletude($accountId, $this->preencheASituacao($accountId, $this->preencheOsEventos($accountId, $this->sorted($filtrada, $filters)
                 ->with(['client.currentCertificate'])
                 ->paginate($this->porPagina($filters))
-                ->withQueryString())),
+                ->withQueryString()))),
             'available_models' => $modelos,
         ];
     }
@@ -416,6 +417,104 @@ class FiscalDocuments
             $document->stage === FiscalStage::Document => 'autorizada',
             default => 'resumo',
         };
+    }
+
+    /**
+     * A completude de cada linha da página: `complete` quando a chave tem o
+     * documento autorizado, `summary_awaiting_xml` quando só o resumo chegou,
+     * `null` quando a pergunta não se aplica à linha.
+     *
+     * É a chave que responde a pergunta, e não a linha: o resumo que já tem o
+     * documento completo ao lado não está mais aguardando XML. Por isso a
+     * consulta é por `(client_id, chave_acesso)` sobre a página inteira — uma
+     * só consulta, no mesmo molde de `preencheOsEventos` — e a decisão por
+     * linha fica em `completudeDe`.
+     *
+     * A completude é derivada dos registros de distribuição da chave, e nunca
+     * da tabela de manifestação: ela diz o que a distribuição entregou, não o
+     * que o escritório declarou ao fisco.
+     *
+     * @param  LengthAwarePaginator<FiscalDocument>  $pagina
+     * @return LengthAwarePaginator<FiscalDocument>
+     */
+    public function preencheACompletude(int $accountId, LengthAwarePaginator $pagina): LengthAwarePaginator
+    {
+        $linhas = $pagina->getCollection();
+
+        if ($linhas->isEmpty()) {
+            return $pagina;
+        }
+
+        $entregas = FiscalDocument::query()
+            ->where('account_id', $accountId)
+            ->whereIn('stage', [FiscalStage::Summary->value, FiscalStage::Document->value])
+            ->where(function (Builder $query) use ($linhas): void {
+                foreach ($linhas as $document) {
+                    $query->orWhere(function (Builder $par) use ($document): void {
+                        $par->where('client_id', (int) $document->client_id)
+                            ->where('chave_acesso', (string) $document->chave_acesso);
+                    });
+                }
+            })
+            ->selectRaw('client_id, chave_acesso, stage')
+            ->toBase()
+            ->get();
+
+        $etapas = [];
+
+        foreach ($entregas as $entrega) {
+            $etapas[$entrega->client_id.'|'.$entrega->chave_acesso][(string) $entrega->stage] = true;
+        }
+
+        foreach ($linhas as $document) {
+            $document->completude = $this->completudeDe(
+                $document,
+                $etapas[(int) $document->client_id.'|'.$document->chave_acesso] ?? []
+            );
+        }
+
+        return $pagina;
+    }
+
+    /**
+     * A completude de uma linha, dado o mapa de etapas que a própria chave
+     * recebeu: `complete` quando chegou o documento autorizado,
+     * `summary_awaiting_xml` quando só o resumo chegou.
+     *
+     * `null` quando a pergunta não se aplica: a linha de evento (que não é
+     * linha de documento), os modelos fora da NF-e — o "aguardando XML" é a
+     * pergunta que a manifestação do destinatário responde, e ela é um
+     * mecanismo da NF-e — e a nota emitida pelo próprio CNPJ do cliente, na
+     * qual não existe terceiro que destrave XML nenhum.
+     *
+     * A linha que carrega o documento completo da própria chave também vale
+     * `complete`: a célula diz o que a distribuição entregou para aquela
+     * chave, e a pergunta "falta o XML?" continua com uma resposta só.
+     *
+     * @param  array<string, true>  $etapas
+     */
+    public function completudeDe(FiscalDocument $document, array $etapas): ?string
+    {
+        if ($document->stage === FiscalStage::Event) {
+            return null;
+        }
+
+        if ($document->model !== FiscalModel::Nfe) {
+            return null;
+        }
+
+        // A nota emitida pelo próprio CNPJ do cliente não tem XML de terceiro
+        // a destravar: "aguardando XML" nela sugeriria uma manifestação contra
+        // a própria emissão. O `emitente_cnpj` pode vir nulo na linha de
+        // evento, e a comparação estrita com o `tax_id` do cliente é o que
+        // impede que um emitente ausente case com um CNPJ ausente.
+        if ($document->emitente_cnpj !== null
+            && $document->client?->tax_id !== null
+            && $document->emitente_cnpj === $document->client->tax_id) {
+            return null;
+        }
+
+        return isset($etapas[FiscalStage::Document->value]) ? 'complete' : 'summary_awaiting_xml';
     }
 
     /**
