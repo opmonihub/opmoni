@@ -1,3 +1,26 @@
+export interface AdminListPaginationMeta {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+/** Laravel Resource::collection paginator (`data` + `meta`, não campos flat). */
+export function readPaginatedMeta(
+  response: { meta?: Partial<AdminListPaginationMeta> | null } & Partial<AdminListPaginationMeta>
+): AdminListPaginationMeta {
+  const source = response.meta ?? response
+  const currentPage = Number(source.current_page)
+  const lastPage = Number(source.last_page)
+
+  return {
+    current_page: Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1,
+    last_page: Number.isFinite(lastPage) && lastPage > 0 ? lastPage : 1,
+    per_page: Number(source.per_page) > 0 ? Number(source.per_page) : 15,
+    total: Number.isFinite(Number(source.total)) ? Number(source.total) : 0
+  }
+}
+
 export function adminListParams(
   page: number,
   search: string,
@@ -14,7 +37,10 @@ export function adminListParams(
 }
 
 export function pageWithinLastPage(currentPage: number, lastPage: number): number {
-  return Math.min(currentPage, Math.max(1, lastPage))
+  const safeLast = Math.max(1, Number.isFinite(lastPage) ? lastPage : 1)
+  const safeCurrent = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1
+
+  return Math.min(safeCurrent, safeLast)
 }
 
 interface LatestRequestHandlers<T> {

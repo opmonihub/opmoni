@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\SubscriptionController as AdminSubscriptionContro
 use App\Http\Controllers\Admin\SupportLogController as AdminSupportLogController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\FirstAccessController;
 use App\Http\Controllers\SupportAccessController;
 use App\Http\Controllers\Tenant\AccountCertificateController;
 use App\Http\Controllers\Tenant\AccountMemberController;
@@ -44,6 +45,8 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::get('/registration-status', [AuthController::class, 'registrationStatus'])->middleware('throttle:30,1');
+Route::get('/first-access/status', [FirstAccessController::class, 'status'])->middleware('throttle:30,1');
+Route::post('/first-access', [FirstAccessController::class, 'store'])->middleware('throttle:10,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');

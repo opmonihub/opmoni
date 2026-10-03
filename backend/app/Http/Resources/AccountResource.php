@@ -18,7 +18,9 @@ class AccountResource extends JsonResource
             'id' => $this->getKey(),
             'name' => $this->name,
             'status' => $this->status,
-            'settings' => $this->settings,
+            'settings' => $this->settingsVisibleToTenant(),
+            'platform_billing_contact' => $this->platformBillingContact(),
+            'platform_owner_invite' => $this->pendingOwnerInvitePreview(),
             'members_count' => $this->whenCounted('members'),
             'subscription' => $this->whenLoaded('subscription', fn () => $this->subscription === null ? null : [
                 'id' => $this->subscription->getKey(),

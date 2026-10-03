@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\IndexAccountRequest;
+use App\Http\Requests\Admin\StoreAccountRequest;
+use App\Http\Requests\Admin\UpdateAccountRequest;
 use App\Http\Resources\AccountResource;
 use App\Models\Account;
+use App\Services\AdminAccountProvisioner;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
 
@@ -27,21 +29,14 @@ class AccountController extends Controller
         return AccountResource::collection($accounts);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreAccountRequest $request, AdminAccountProvisioner $provisioner): JsonResponse
     {
-        Gate::authorize('create', Account::class);
+        $result = $provisioner->create($request->provisionerPayload());
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'status' => ['sometimes', 'in:active,suspended'],
-            'settings' => ['nullable', 'array'],
-        ]);
-
-        $account = Account::create($data);
-        $account->load('subscription.plan');
-        $account->loadCount('members');
-
-        return (new AccountResource($account))->response()->setStatusCode(201);
+        return response()->json([
+            'data' => new AccountResource($result['account']),
+            'first_access' => $result['first_access'],
+        ], 201);
     }
 
     public function show(Account $account): AccountResource
@@ -54,20 +49,30 @@ class AccountController extends Controller
         return new AccountResource($account);
     }
 
-    public function update(Request $request, Account $account): AccountResource
+    public function update(UpdateAccountRequest $request, Account $account, AdminAccountProvisioner $provisioner): JsonResponse|AccountResource
     {
-        Gate::authorize('update', $account);
+        if ($request->has('status') && ! $request->hasAny(['name', 'phone', 'city', 'state', 'login_email', 'owner_name'])) {
+            $account->update(['status' => $request->validated('status')]);
+            $account->load('subscription.plan');
+            $account->loadCount('members');
 
-        $data = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'status' => ['sometimes', 'required', 'in:active,suspended'],
-            'settings' => ['nullable', 'array'],
+            return new AccountResource($account);
+        }
+
+        $payload = [
+            'name' => $request->validated('name'),
+            'billing_contact' => $request->billingContact(),
+        ];
+
+        if ($request->has('login_email')) {
+            $payload = array_merge($payload, $request->accessPayload());
+        }
+
+        $result = $provisioner->update($account, $payload);
+
+        return response()->json([
+            'data' => new AccountResource($result['account']),
+            'first_access' => $result['first_access'],
         ]);
-
-        $account->update($data);
-        $account->load('subscription.plan');
-        $account->loadCount('members');
-
-        return new AccountResource($account);
     }
 }

@@ -236,13 +236,25 @@ class RolesTest extends TestCase
         $superAdmin->forceFill(['is_super_admin' => true])->save();
 
         $this->actingAs($superAdmin, 'sanctum')
-            ->postJson('/api/admin/accounts', ['name' => 'Filial Nova'])
+            ->postJson('/api/admin/accounts', [
+                'name' => 'Filial Nova',
+                'phone' => '11999998888',
+                'phone_whatsapp' => true,
+                'state' => 'sp',
+                'city' => 'São Paulo',
+            ])
             ->assertCreated();
 
         $created = Account::firstWhere('name', 'Filial Nova');
         $this->assertNotNull($created);
         $this->assertSame(1, $created->subscription()->count());
         $this->assertSame('active', $created->subscription->status);
+        $this->assertSame([
+            'phone' => '11999998888',
+            'phone_whatsapp' => true,
+            'state' => 'SP',
+            'city' => 'São Paulo',
+        ], $created->settings['platform']['billing_contact']);
     }
 
     /**
