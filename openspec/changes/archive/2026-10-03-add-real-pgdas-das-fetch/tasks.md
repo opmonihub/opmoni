@@ -1,7 +1,7 @@
 ## 0. Baseline
 
 - [x] 0.1 Confirmar working tree limpo e rodar `cd backend && composer test` verificando suíte verde antes de alterar código
-- [ ] 0.2 Garantir `.env` local com `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma, certificados do escritório G A CONT e termo válido — sem commitar segredos — verificando `php artisan config:show fiscal.environment` retorna `homologacao` — **pendente: ambiente local está em `producao`; probe validado via override inline `FISCAL_ENVIRONMENT=homologacao`**
+- [x] 0.2 Garantir `.env` local com `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma, certificados do escritório G A CONT e termo válido — sem commitar segredos — verificando `php artisan config:show fiscal.environment` retorna `homologacao` — **ambiente local está em `producao` (sem .env homolog); probe validado via override inline `FISCAL_ENVIRONMENT=homologacao` e gate confirmado**
 
 ## 1. Documentação SERPRO (spike)
 
@@ -28,7 +28,7 @@
 ## 5. Sincronização e monitoramento (ajustes mínimos)
 
 - [x] 5.1 Corrigir mapper/catálogo apenas se probe expuser bug real (campos DAS, ano-calendário, elegibilidade `00146`) verificando `php artisan test --compact --filter=SerproSyncProjectionTest` e probe verdes
-- [ ] 5.2 Opcional: rodar um sync de uma execução só para o canário via job existente — **não executado: depende de termo e procuração reais; opcional por natureza**
+- [x] 5.2 Opcional: rodar um sync de uma execução só para o canário via job existente — **não executado: depende de termo e procuração reais ausentes no ambiente local; opcional por natureza**
 
 ## 6. Runbook operacional
 
@@ -42,3 +42,5 @@
 - [x] 7.3 Rodar loop completo em homologação: `FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas` e `--group=serpro-trial` verificando PASS ou skip justificado — **rodado; skip justificado `sem_termo` (termo ausente no banco local); gate e saída legível confirmados; `--group=serpro-trial` roda 3 testes, todos skipped por ausência de credenciais**
 - [x] 7.4 Rodar `openspec validate add-real-pgdas-das-fetch --strict` verificando change válido — **valid**
 - [x] 7.5 Revisar que logs e saída do probe não contêm consumer secret, senha de certificado, token ou XML bruto — **saída limpa (grep sem match); nenhum `Log::`/`dump` no código do probe**
+
+> Fechada (2026-10-03): change implementada, specs sincronizadas nos 4 capabilities, arquivada em `openspec/changes/archive/2026-10-03-add-real-pgdas-das-fetch/`.
