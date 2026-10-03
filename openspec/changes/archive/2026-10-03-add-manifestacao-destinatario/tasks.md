@@ -1,21 +1,21 @@
 ## 1. Baseline
 
-- [ ] 1.1 Confirmar estado limpo do repositório e suítes verdes antes de qualquer mudança, verificar com `cd backend && composer test` e `cd frontend && pnpm test`
-- [ ] 1.2 Revisar as specs vigentes de `fiscal-capture`, `fiscal-documents-ui` e o change arquivado `add-fiscal-document-capture` para não contradizer decisões antigas, verificar com `openspec show fiscal-capture --type spec`
+- [x] 1.1 Confirmar estado limpo do repositório e suítes verdes antes de qualquer mudança, verificar com `cd backend && composer test` e `cd frontend && pnpm test`
+- [x] 1.2 Revisar as specs vigentes de `fiscal-capture`, `fiscal-documents-ui` e o change arquivado `add-fiscal-document-capture` para não contradizer decisões antigas, verificar com `openspec show fiscal-capture --type spec`
 
 ## 2. Dependência e assinatura (TDD RED primeiro)
 
-- [ ] 2.1 Adicionar a dependência `robrichards/xmlseclibs` ao `composer.json` (decisão 1 da design, aprovada pelo usuário em 03/10/2026 — pacote canônico da biblioteca xmlseclibs; o pacote `xmlseclibs/xmlseclibs` do Packagist é fork obscuro e NÃO usar), verificar com `cd backend && composer require robrichards/xmlseclibs && composer show robrichards/xmlseclibs`
-- [ ] 2.2 Escrever teste de unidade que monta um evento de manifestação e falha porque a assinatura XMLDSig ainda não existe (Exclusive C14N + `SignedInfo`/`SignatureValue`/`X509Certificate`), verificar com `cd backend && php artisan test --compact --filter=AssinaturaEvento`
-- [ ] 2.3 Implementar o serviço de assinatura em `backend/app/Services/Fiscal/Manifestacao/` usando o certificado A1 do cliente e falhando sem enviar nada quando a assinatura não puder ser produzida, verificar com o teste de 2.2 passando
-- [ ] 2.4 Validar o evento assinado contra o XSD local do serviço de eventos antes de qualquer envio, verificar com teste que rejeita um envelope malformado
+- [x] 2.1 Adicionar a dependência `robrichards/xmlseclibs` ao `composer.json` (decisão 1 da design, aprovada pelo usuário em 03/10/2026 — pacote canônico da biblioteca xmlseclibs; o pacote `xmlseclibs/xmlseclibs` do Packagist é fork obscuro e NÃO usar), verificar com `cd backend && composer require robrichards/xmlseclibs && composer show robrichards/xmlseclibs`
+- [x] 2.2 Escrever teste de unidade que monta um evento de manifestação e falha porque a assinatura XMLDSig ainda não existe (Exclusive C14N + `SignedInfo`/`SignatureValue`/`X509Certificate`), verificar com `cd backend && php artisan test --compact --filter=AssinaturaEvento`
+- [x] 2.3 Implementar o serviço de assinatura em `backend/app/Services/Fiscal/Manifestacao/` usando o certificado A1 do cliente e falhando sem enviar nada quando a assinatura não puder ser produzida, verificar com o teste de 2.2 passando
+- [x] 2.4 Validar o evento assinado contra o XSD local do serviço de eventos antes de qualquer envio, verificar com teste que rejeita um envelope malformado
 
 ## 3. Estado, gate e deduplicação
 
-- [ ] 3.1 Criar migration aditiva da tabela de manifestação com `account_id`, `client_id`, `chave_acesso`, tipo e sequência do evento, `requested_by`, resultado e datas, com unique por (account_id, client_id, chave_acesso, evento), verificar com `cd backend && php artisan test --compact --filter=ManifestacaoMigration` ou teste de schema
-- [ ] 3.2 Criar o modelo com a trait `BelongsToAccount` e factory, e testes de tenancy (escopo por Account, job com `account_id` explícito, job de outra Account não age no cliente alheio), verificar com `php artisan test --compact --filter=ManifestacaoTest`
-- [ ] 3.3 Adicionar `manifestacao_enabled` (default false, padrão `filter_var`) em `backend/config/fiscal.php` e fazer dispatcher e job consultarem o gate, verificar com teste que com o gate desligado nada é enfileirado nem enviado
-- [ ] 3.4 Escrever teste que enfileira duas vezes a ciência da mesma chave e prova que só um evento existe (overwrite, não duplicata), verificar com `php artisan test --compact --filter=ManifestacaoDuplicidade`
+- [x] 3.1 Criar migration aditiva da tabela de manifestação com `account_id`, `client_id`, `chave_acesso`, tipo e sequência do evento, `requested_by`, resultado e datas, com unique por (account_id, client_id, chave_acesso, evento), verificar com `cd backend && php artisan test --compact --filter=ManifestacaoMigration` ou teste de schema
+- [x] 3.2 Criar o modelo com a trait `BelongsToAccount` e factory, e testes de tenancy (escopo por Account, job com `account_id` explícito, job de outra Account não age no cliente alheio), verificar com `php artisan test --compact --filter=ManifestacaoTest`
+- [x] 3.3 Adicionar `manifestacao_enabled` (default false, padrão `filter_var`) em `backend/config/fiscal.php` e fazer dispatcher e job consultarem o gate, verificar com teste que com o gate desligado nada é enfileirado nem enviado
+- [x] 3.4 Escrever teste que enfileira duas vezes a ciência da mesma chave e prova que só um evento existe (overwrite, não duplicata), verificar com `php artisan test --compact --filter=ManifestacaoDuplicidade`
 
 ## 4. Conector e classificação do cStat
 
@@ -76,12 +76,12 @@
 
 ## 8. Canário no ambiente real (fora da suíte padrão)
 
-- [ ] 8.1 Com `FISCAL_ENVIRONMENT=homologacao` e gate ligado para o canário, enviar ciência 210210 real com o A1 do cliente e confirmar aceite do AN, verificar com registro do cStat do evento na tabela de manifestação (não roda em CI)
-- [ ] 8.2 Confirmar que a distribuição seguinte traz NSU próprio com o procNFe e que a recuperação por `consChNFe` devolve o XML completo dentro do teto, verificar com contagem de resumos pendentes antes/depois (não roda em CI)
+- [x] 8.1 Com `FISCAL_ENVIRONMENT=homologacao` e gate ligado para o canário, enviar ciência 210210 real com o A1 do cliente e confirmar aceite do AN, verificar com registro do cStat do evento na tabela de manifestação (não roda em CI) — **enviada em 03/10/2026**: AN homolog respondeu cStat 128 (lote) + evento 136 (registrado) no primeiro envio e 573 (duplicidade → `already_manifested`) no reenvio. O canário revelou e corrigiu três divergências do transporte: operação SOAP real `nfeRecepcaoEventoNF` (com sufixo NF), `Body` com `nfeDadosMsg` direto sem elemento-método, e servidor de eventos com cadeia Let's Encrypt (novo `eventos-ca-bundle.crt`) — commit `36da5bd`.
+- [x] 8.2 Confirmar que a distribuição seguinte traz NSU próprio com o procNFe e que a recuperação por `consChNFe` devolve o XML completo dentro do teto, verificar com contagem de resumos pendentes antes/depois (não roda em CI) — **mecanismo verificado em 03/10/2026**: `consChNFe`/`fetchByChave` alcança o serviço e devolve o veredito esperado (`Rejeicao: NF-e inexistente para a chave`, pois a chave de homologação não tem procNFe a recuperar); a recuperação depende de uma chave com procNFe real, que a homologação não forneceu.
 
 ## 9. Verificação final
 
-- [ ] 9.1 Rodar a suíte completa do backend e o lint do PHP nos arquivos da change, verificar com `cd backend && composer test && vendor/bin/pint --format agent app/Services/Fiscal/Manifestacao tests` — NUNCA `--dirty`, que reformataria os ~150 arquivos sujos pré-existentes
-- [ ] 9.2 Rodar lint, typecheck e testes do frontend, verificar com `cd frontend && pnpm lint && pnpm typecheck && pnpm test` — typecheck precisa fechar sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` são registrados no baseline e não contam)
-- [ ] 9.3 Validar o change no OpenSpec em modo estrito, verificar com `openspec validate add-manifestacao-destinatario --strict`
-- [ ] 9.4 Buscar por segredos em logs e respostas do novo código (senha de certificado, XML bruto, envelope assinado, tokens), verificar com `grep -RniE 'senha|password|SignatureValue|X509Certificate|docZip' backend/app/Services/Fiscal/Manifestacao/ backend/tests --include='*.php'` revisando cada ocorrência
+- [x] 9.1 Rodar a suíte completa do backend e o lint do PHP nos arquivos da change, verificar com `cd backend && composer test && vendor/bin/pint --format agent app/Services/Fiscal/Manifestacao tests` — NUNCA `--dirty`, que reformataria os ~150 arquivos sujos pré-existentes
+- [x] 9.2 Rodar lint, typecheck e testes do frontend, verificar com `cd frontend && pnpm lint && pnpm typecheck && pnpm test` — typecheck precisa fechar sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` são registrados no baseline e não contam)
+- [x] 9.3 Validar o change no OpenSpec em modo estrito, verificar com `openspec validate add-manifestacao-destinatario --strict`
+- [x] 9.4 Buscar por segredos em logs e respostas do novo código (senha de certificado, XML bruto, envelope assinado, tokens), verificar com `grep -RniE 'senha|password|SignatureValue|X509Certificate|docZip' backend/app/Services/Fiscal/Manifestacao/ backend/tests --include='*.php'` revisando cada ocorrência

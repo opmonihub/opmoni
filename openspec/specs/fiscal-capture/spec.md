@@ -171,12 +171,16 @@ The system SHALL store distribution records together with the event they belong 
 - **THEN** the system records that as a distinct reason and does not treat it as a capture failure
 
 ### Requirement: Módulos fora do escopo
-The system SHALL NOT emit documents, SHALL NOT send a recipient manifestation, and SHALL NOT render a printable document from the government service.
+The system SHALL NOT emit documents and SHALL NOT render a printable document from the government service. Sending a recipient manifestation SHALL no longer be prohibited by this capability — it SHALL follow the `fiscal-manifestacao` capability and its configuration gate — while this capability itself SHALL NOT send the confirmation of operation (210200) automatically.
 
 #### Scenario: Documento capturado
 - **WHEN** a document is captured
-- **THEN** no manifestation event is sent and no fiscal document is printed on the office's behalf
+- **THEN** no fiscal document is printed on the office's behalf
+
+#### Scenario: Manifestação do destinatário
+- **WHEN** a summary is stored and the manifestation gate is enabled
+- **THEN** the sending of the recipient manifestation follows the `fiscal-manifestacao` capability, and this capability performs no additional outbound call for it beyond queuing
 
 #### Scenario: Decisão de manifestar
 - **WHEN** a member wishes to confirm receipt of a captured document
-- **THEN** the system does not offer to send the manifestation in this version
+- **THEN** the system offers no manual confirmation of operation (210200), because automating it would prevent the issuer from cancelling the document
