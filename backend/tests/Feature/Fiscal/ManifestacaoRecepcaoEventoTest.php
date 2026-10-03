@@ -114,6 +114,29 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'hom.nfe.fazenda.gov.br'));
     }
 
+    public function test_ambiente_fora_da_lista_recusa_a_montagem_sem_sair_para_a_rede(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // Um `fiscal.environment` fora da lista — typo, `production`, caixa
+        // errada — não pode cair em homologação em silêncio: o evento sairia
+        // assinado com o A1 real contra o ambiente errado. A seleção é
+        // fail-closed: valor inesperado é recusa antes do primeiro byte.
+        config(['fiscal.environment' => 'production']);
+
+        Http::fake(['*' => Http::response('', 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Um ambiente fora da lista deveria recusar a montagem.');
+        } catch (FiscalRequestNotSent) {
+            // esperado: o evento não existe para o fisco.
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
     public function test_a_verificacao_do_servidor_apoia_no_bundle_icp_brasil(): void
     {
         [$cliente, $registro] = $this->pedidoRegistrado();
@@ -189,6 +212,31 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
 
         $registro->refresh();
         $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+    }
+
+    public function test_a_rejeicao_definitiva_grava_o_que_o_fisco_respondeu(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // `214` é rejeição definitiva do evento — não retentável e não estado
+        // conhecido. A exceção sobe para quem decide retry, mas antes disso o
+        // registro leva o `Failed` com o cStat e o motivo: sem eles a
+        // auditoria teria um `pending` eterno e nenhuma pista da resposta.
+        Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '214', 'Rejeicao: Duplicidade de registro'), 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Uma rejeição definitiva deveria virar FiscalException não retentável.');
+        } catch (FiscalException $exception) {
+            $this->assertFalse($exception->failure->retryable());
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Failed, $registro->outcome);
+        $this->assertSame('214', $registro->result_code);
+        $this->assertStringContainsString('Duplicidade', (string) $registro->result_message);
+        $this->assertNotNull($registro->resulted_at);
     }
 
     public function test_lote_recusado_por_indisponibilidade_e_retentavel(): void

@@ -9,6 +9,7 @@ use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Support\ClientCertificateMaterializer;
 use App\Services\Fiscal\Support\DfeEndpoint;
+use App\Services\Fiscal\Support\FiscalEnvironment;
 use App\Services\Fiscal\Support\XmlQuery;
 use App\Support\HttpPkcs12ClientOptions;
 use DOMDocument;
@@ -75,7 +76,10 @@ final class ManifestationEventTransport
     {
         // As chaves do bloco são conferidas de novo aqui, antes de qualquer
         // byte — a mesma última linha que o transporte de distribuição segura.
-        $environment = config('fiscal.environment') === 'producao' ? 'producao' : 'homologacao';
+        // A seleção de ambiente é fail-closed: um `fiscal.environment` fora da
+        // lista lança `FiscalRequestNotSent` em vez de assinar contra a
+        // homologação por engano.
+        $environment = FiscalEnvironment::selecionar();
         $url = DfeEndpoint::value($endpoint, $environment);
 
         $certificate = $this->requireCertificate($client);

@@ -505,13 +505,19 @@ class FiscalDocuments
 
         // A nota emitida pelo próprio CNPJ do cliente não tem XML de terceiro
         // a destravar: "aguardando XML" nela sugeriria uma manifestação contra
-        // a própria emissão. O `emitente_cnpj` pode vir nulo na linha de
-        // evento, e a comparação estrita com o `tax_id` do cliente é o que
-        // impede que um emitente ausente case com um CNPJ ausente.
+        // a própria emissão. A comparação é por dígitos — o `tax_id` é campo
+        // editável e pode vir mascarado (`12.345.678/0001-90`) contra o
+        // `emitente_cnpj` puro do resumo, e a estrita pintaria a própria
+        // emissão como pendente. Um lado sem dígitos não casa com nada, como
+        // o `null` estrito que vinha antes.
         if ($document->emitente_cnpj !== null
-            && $document->client?->tax_id !== null
-            && $document->emitente_cnpj === $document->client->tax_id) {
-            return null;
+            && $document->client?->tax_id !== null) {
+            $emitente = preg_replace('/\D/', '', (string) $document->emitente_cnpj);
+            $cliente = preg_replace('/\D/', '', (string) $document->client->tax_id);
+
+            if ($emitente !== '' && $emitente === $cliente) {
+                return null;
+            }
         }
 
         return isset($etapas[FiscalStage::Document->value]) ? 'complete' : 'summary_awaiting_xml';

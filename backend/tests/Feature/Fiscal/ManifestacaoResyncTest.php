@@ -20,6 +20,7 @@ use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -263,6 +264,54 @@ class ManifestacaoResyncTest extends TestCase
         }
 
         $this->assertFalse($budget->reserve($cliente));
+    }
+
+    public function test_manifestacao_orfa_em_fila_e_reenfileirada_pelo_resync(): void
+    {
+        [$cliente] = $this->clienteComCertificado();
+
+        $this->resumoGravado($cliente, self::CHAVE);
+
+        // O job morreu entre o `marcarEnfileirado` e o veredito — restart do
+        // worker na hora do `post`: o registro fica `queued` com `sent_at`
+        // nulo e nenhuma execução o encontra. A passada do resync é quem o
+        // re-despacha; a deduplicação por chave torna a re-entrega segura.
+        $registro = $this->pedidoDeCiencia($cliente, self::CHAVE, FiscalManifestationOutcome::Queued);
+        $registro->forceFill([
+            'requested_at' => now()->subMinutes((int) config('fiscal.manifestacao_orphan_grace_minutes', 60) + 5),
+        ])->save();
+
+        Bus::fake();
+
+        Artisan::call('fiscal:resync-manifestacoes');
+
+        Bus::assertDispatched(
+            SendFiscalManifestationJob::class,
+            fn (SendFiscalManifestationJob $job): bool => $job->accountId === (int) $cliente->account_id
+                && $job->clientId === (int) $cliente->getKey()
+                && $job->chaveAcesso === self::CHAVE,
+        );
+
+        Http::assertNothingSent();
+    }
+
+    public function test_manifestacao_pendente_recente_nao_e_reenfileirada(): void
+    {
+        [$cliente] = $this->clienteComCertificado();
+
+        $this->resumoGravado($cliente, self::CHAVE);
+
+        // Recém-enfileirada ainda tem execução a caminho: re-despachar agora
+        // duplicaria a entrega. A graça do resync é o que distingue a órfã
+        // da que ainda vai rodar.
+        $this->pedidoDeCiencia($cliente, self::CHAVE, FiscalManifestationOutcome::Queued);
+
+        Bus::fake();
+
+        Artisan::call('fiscal:resync-manifestacoes');
+
+        Bus::assertNotDispatched(SendFiscalManifestationJob::class);
+        Http::assertNothingSent();
     }
 
     private function resumoGravado(Client $cliente, string $chave): FiscalDocument

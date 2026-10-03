@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Manifestacao;
 
 use App\Enums\FiscalManifestationEventType;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
+use App\Services\Fiscal\Support\FiscalEnvironment;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use Carbon\CarbonInterface;
 
@@ -70,7 +71,10 @@ final class ManifestationEventBuilder
 
         $agora ??= now();
         $id = 'ID'.$eventType->value.$chaveAcesso.str_pad((string) $eventSeq, 2, '0', STR_PAD_LEFT);
-        $tpAmb = config('fiscal.environment') === 'producao' ? '1' : '2';
+        // O `tpAmb` é fail-closed como a URL do transporte: um ambiente fora
+        // da lista recusa a montagem em vez de mandar o evento assinado para
+        // a homologação por engano.
+        $tpAmb = FiscalEnvironment::tpAmb();
         // O fisco espera o horário do fuso do Brasil (-03:00), não o do
         // servidor: o `dhEvento` é escrito no fuso de São Paulo mesmo quando o
         // processo roda em UTC.

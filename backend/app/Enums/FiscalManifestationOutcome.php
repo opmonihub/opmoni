@@ -29,9 +29,10 @@ enum FiscalManifestationOutcome: string
      * então o `registrarPedido` o preserva e o dispatcher não enfileira
      * outro job.
      *
-     * `Failed` fica de fora de propósito: nenhum caminho o grava hoje, e um
-     * registro que parasse nele seria reenviado por uma re-entrega — que é
-     * a recuperação pretendida, não uso indevido.
+     * `Failed` fica de fora de propósito: a rejeição definitiva do fisco o
+     * grava com o cStat e o motivo, mas não é veredito — uma re-entrega do
+     * resumo reenvia a manifestação, que é a recuperação pretendida, não uso
+     * indevido.
      */
     public function isVerdict(): bool
     {

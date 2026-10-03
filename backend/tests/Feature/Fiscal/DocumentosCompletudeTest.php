@@ -135,6 +135,32 @@ class DocumentosCompletudeTest extends TestCase
             ->assertJsonPath('data.0.completude', null);
     }
 
+    public function test_nfe_do_proprio_cliente_com_tax_id_mascarado_nao_tem_completude(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Emitente Mascarado');
+
+        // O `tax_id` é campo editável e pode guardar a máscara que o operador
+        // digitou: `12.345.678/0001-90` é o mesmo CNPJ de `12345678000190`, e
+        // a comparação que decide "nota emitida pelo próprio cliente" tem de
+        // ler os dígitos — a estrita pintaria `summary_awaiting_xml` numa nota
+        // da própria emissão, o falso positivo que o `null` existe para
+        // suprimir.
+        $digitos = (string) $cliente->tax_id;
+        $cliente->forceFill([
+            'tax_id' => substr($digitos, 0, 2).'.'.substr($digitos, 2, 3).'.'
+                .substr($digitos, 5, 3).'/'.substr($digitos, 8, 4).'-'.substr($digitos, 12, 2),
+        ])->save();
+
+        $resumo = $this->resumo($cliente, ['emitente_cnpj' => $digitos]);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/documents')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $resumo->getKey())
+            ->assertJsonPath('data.0.completude', null);
+    }
+
     public function test_documento_de_outra_account_nao_preenche_completude_da_pagina(): void
     {
         $account = Account::factory()->create();

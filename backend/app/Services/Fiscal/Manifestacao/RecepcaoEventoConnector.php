@@ -114,12 +114,40 @@ final class RecepcaoEventoConnector
             fn () => $this->store->marcarEnviado($manifestation),
         );
 
-        $veredito = $this->result->classify(
-            $resposta['lote_cstat'],
-            $resposta['lote_xmotivo'],
-            $resposta['evento_cstat'],
-            $resposta['evento_xmotivo'],
-        );
+        try {
+            $veredito = $this->result->classify(
+                $resposta['lote_cstat'],
+                $resposta['lote_xmotivo'],
+                $resposta['evento_cstat'],
+                $resposta['evento_xmotivo'],
+            );
+        } catch (FiscalException $exception) {
+            // A rejeição definitiva do evento já é resposta do fisco — e uma
+            // resposta não é pendência: sem o `Failed` com cStat e motivo, a
+            // auditoria teria um `pending` eterno e nenhuma pista do que o
+            // serviço disse. A exceção ainda sobe, porque a decisão de não
+            // repetir é de quem enfileirou — o que muda é que o registro já
+            // guardou o desfecho.
+            //
+            // O `128` do lote é a guarda: recusa do lote inteiro não diz nada
+            // sobre a chave — e num `retEnvEvento` sem `cStat` próprio o
+            // `evento_cstat` pode ser o de um `retEvento` solto, que gravar
+            // como veredito é o roubo que o classificador existe para impedir.
+            // A transitória (`108`, `109`, `656`) passa direto: quem decide a
+            // espera é a fila, e o `sent_at` já marcou a tentativa.
+            if (! $exception->failure->retryable()
+                && $resposta['lote_cstat'] === '128'
+                && $resposta['evento_cstat'] !== null) {
+                $this->store->veredito(
+                    $manifestation,
+                    FiscalManifestationOutcome::Failed,
+                    $resposta['evento_cstat'],
+                    $resposta['evento_xmotivo'],
+                );
+            }
+
+            throw $exception;
+        }
 
         $this->store->veredito($manifestation, $veredito->outcome, $veredito->cStat, $veredito->xMotivo);
 

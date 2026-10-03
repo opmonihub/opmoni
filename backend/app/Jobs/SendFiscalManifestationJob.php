@@ -53,6 +53,21 @@ final class SendFiscalManifestationJob implements ShouldQueue
         public int $eventSeq = 1,
     ) {}
 
+    /**
+     * O teto da reentrega manual. `release()` volta ao final da fila sem
+     * esgotar `attempts`, então `tries = 1` não limita nada do que este job
+     * se impõe — um cliente em `blocked_until` renovável ou um `656`
+     * recorrente reentregaria a cada `block_minutes` para sempre. O teto é de
+     * tempo, não de tentativa: passado um dia do despacho, o worker falha a
+     * reentrega em vez de devolvê-la — a desistência que o churn de fila
+     * não sinalizava. É generoso de propósito: o evento tem prazo legal de
+     * 90 dias e o que desiste cedo é quem perde a manifestação.
+     */
+    public function retryUntil(): int
+    {
+        return CarbonImmutable::now()->addDay()->getTimestamp();
+    }
+
     public function handle(
         FiscalManifestationStore $store,
         RecepcaoEventoConnector $conector,
@@ -136,8 +151,9 @@ final class SendFiscalManifestationJob implements ShouldQueue
 
             // A recusa transitória do serviço re-enfileira: a fila decide a
             // hora, e a guarda de bloqueio acima decide se ela chegou. A
-            // definitiva fica `pending` — o registro é o que o fisco respondeu,
-            // e a ressincronização não a consulta.
+            // rejeição definitiva já gravou o `Failed` com cStat e motivo no
+            // conector — o registro fica como o que o fisco respondeu, e a
+            // ressincronização não a consulta.
             if ($exception->failure->retryable()) {
                 $this->release((int) config('fiscal.block_minutes', 60) * 60);
             }

@@ -6,6 +6,7 @@ use App\Enums\FiscalFailure;
 use App\Enums\FiscalManifestationOutcome;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Jobs\SendFiscalManifestationJob;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalManifestation;
@@ -58,6 +59,11 @@ final class ManifestacaoResync
      */
     public function run(): int
     {
+        // A retomada vem antes da recuperação: a manifestação órfã é quem
+        // destrava o resumo, e recuperar o XML de uma chave ainda não
+        // manifestada seria vaga do teto gasta à toa.
+        $this->retomarOrfas();
+
         $recuperados = 0;
 
         $this->pendentes()
@@ -80,6 +86,54 @@ final class ManifestacaoResync
             });
 
         return $recuperados;
+    }
+
+    /**
+     * As manifestações que pararam entre o enqueue e o veredito.
+     *
+     * O job morre entre o `marcarEnfileirado` e a resposta quando o worker
+     * reinicia na hora do `post`, e o registro fica `Queued` para sempre —
+     * a deduplicação na execução só sai cedo dos vereditos, e nenhuma
+     * rotina olhava para quem ficou no meio. O que distingue a órfã da que
+     * ainda vai rodar é o tempo: `requested_at` mais antigo que a graça e
+     * `sent_at` nulo dizem que nenhuma tentativa foi à rede.
+     *
+     * O re-despacho é seguro por construção: a chave lógica deduplica o
+     * registro e a segunda execução que encontra `Queued` passa adiante —
+     * o pior caso é um segundo evento, que o fisco responde `573`, estado
+     * conhecido que não rebaixa nada.
+     */
+    private function retomarOrfas(): int
+    {
+        $limite = CarbonImmutable::now()
+            ->subMinutes((int) config('fiscal.manifestacao_orphan_grace_minutes', 60));
+
+        $reentregues = 0;
+
+        FiscalManifestation::query()
+            ->withoutGlobalScope('account')
+            ->whereIn('outcome', [
+                FiscalManifestationOutcome::Pending,
+                FiscalManifestationOutcome::Queued,
+            ])
+            ->whereNull('sent_at')
+            ->where('requested_at', '<', $limite)
+            ->orderBy('requested_at')
+            ->chunkById(100, function ($manifestacoes) use (&$reentregues): void {
+                foreach ($manifestacoes as $manifestation) {
+                    SendFiscalManifestationJob::dispatch(
+                        accountId: (int) $manifestation->account_id,
+                        clientId: (int) $manifestation->client_id,
+                        chaveAcesso: (string) $manifestation->chave_acesso,
+                        eventType: $manifestation->event_type,
+                        eventSeq: (int) $manifestation->event_seq,
+                    );
+
+                    $reentregues++;
+                }
+            });
+
+        return $reentregues;
     }
 
     /**

@@ -228,6 +228,18 @@ return [
     'manifestacao_resync_max_attempts' => 3,
 
     /*
+     * A graça antes de a ressincronização re-despachar uma manifestação que
+     * ficou presa em `Pending`/`Queued`. É o que distingue a órfã — o job
+     * morreu entre o enqueue e o veredito — da que ainda vai rodar: menor que
+     * uma execução legítima na fila e a passada duplicaria a entrega, maior
+     * que o `block_minutes` e a reentrega presa na janela de bloqueio seria
+     * confundida com abandono. Uma hora cobre os dois: quem espera um
+     * `blocked_until` já não é órfã, e quem perdeu o worker ganha o reenvio
+     * na passada seguinte.
+     */
+    'manifestacao_orphan_grace_minutes' => 60,
+
+    /*
      * Quando a volta atrás roda. Uma vez ao dia, fora do expediente, e no fuso
      * dela: a reconciliação é consulta pontual ao CNPJ — orçamento que o fisco
      * conta por hora — e a janela dela é a noite, quando ninguém está esperando

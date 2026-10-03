@@ -349,6 +349,25 @@ class DispatcherManifestacaoTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_a_reentrega_do_evento_tem_teto_de_tempo(): void
+    {
+        // `release()` volta ao final da fila sem esgotar `attempts`, e
+        // `tries = 1` não limita as reentregas manuais: um cliente em
+        // `blocked_until` renovável reentregaria o job para sempre. O teto é
+        // de tempo, não de tentativa — o worker falha a reentrega depois do
+        // horizonte, que é a desistência registrada.
+        $job = new SendFiscalManifestationJob(
+            accountId: 1,
+            clientId: 1,
+            chaveAcesso: self::CHAVE,
+            eventType: FiscalManifestationEventType::CienciaEmissao,
+            eventSeq: 1,
+        );
+
+        $this->assertNotNull($job->retryUntil());
+        $this->assertTrue($job->retryUntil() > now()->getTimestamp());
+    }
+
     /** @return array{0: Client} */
     private function clienteComCertificado(): array
     {
