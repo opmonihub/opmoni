@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
+use App\Support\HttpPkcs12ClientOptions;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -183,11 +184,10 @@ final class SerproClient
             return $post(Http::acceptJson()
                 ->withHeaders($headers)
                 ->withToken($pair->accessToken())
-                ->withOptions(['curl' => [
-                    CURLOPT_SSLCERT => $certificatePath,
-                    CURLOPT_SSLCERTPASSWD => $connection->certificatePassword() ?? '',
-                    CURLOPT_SSLCERTTYPE => 'P12',
-                ]])
+                ->withOptions(HttpPkcs12ClientOptions::forPath(
+                    $certificatePath,
+                    $connection->certificatePassword(),
+                ))
                 ->timeout((int) config('integra-contador.timeout', 25)));
         } catch (ConnectionException) {
             throw new SerproException(

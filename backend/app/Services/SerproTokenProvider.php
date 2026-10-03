@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
+use App\Support\HttpPkcs12ClientOptions;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -152,11 +153,10 @@ final class SerproTokenProvider
             $response = Http::asForm()
                 ->withBasicAuth($connection->consumer_key, $this->secretOf($connection))
                 ->withHeaders(['Role-Type' => 'TERCEIROS'])
-                ->withOptions(['curl' => [
-                    CURLOPT_SSLCERT => $certificatePath,
-                    CURLOPT_SSLCERTPASSWD => $connection->certificatePassword() ?? '',
-                    CURLOPT_SSLCERTTYPE => 'P12',
-                ]])
+                ->withOptions(HttpPkcs12ClientOptions::forPath(
+                    $certificatePath,
+                    $connection->certificatePassword(),
+                ))
                 ->timeout((int) config('integra-contador.timeout', 25))
                 ->post((string) config('integra-contador.auth_url'), ['grant_type' => 'client_credentials']);
         } catch (ConnectionException) {
