@@ -18,8 +18,9 @@ final class SerproProbePgdas extends Command
     protected $signature = 'serpro:probe-pgdas
         {--account= : ID da Account do escritório}
         {--client= : CNPJ do cliente (default: canário de config)}
-        {--force : Ignora SERPRO_PROBE_ENABLED desligado}
-        {--json : Saída JSON compacta}';
+        {--year= : Ano-calendário da consulta (default: ano corrente)}
+        {--force : Ignora SERPRO_PROBE_ENABLED desligado — nunca libera produção}
+        {--json : Saída JSON}';
 
     protected $description = 'Probe de homologação PGDAS (CONSDECLARACAO13) para o cliente canário';
 
@@ -29,11 +30,13 @@ final class SerproProbePgdas extends Command
         $accountId = is_numeric($accountOption) ? (int) $accountOption : null;
         $clientCnpj = $this->option('client');
         $clientCnpj = is_string($clientCnpj) && $clientCnpj !== '' ? preg_replace('/\D/', '', $clientCnpj) : null;
+        $year = $this->option('year');
+        $calendarYear = is_numeric($year) ? (int) $year : null;
 
-        $report = $probe->run($accountId, $clientCnpj, (bool) $this->option('force'));
+        $report = $probe->run($accountId, $clientCnpj, $calendarYear, (bool) $this->option('force'));
 
         if ($this->option('json')) {
-            $this->line(json_encode($report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             return $this->exitFromOutcome($report['outcome']);
         }

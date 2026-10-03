@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+/**
+ * Gate e saída do `serpro:probe-pgdas` — sem rede (`Http::preventStrayRequests`).
+ */
 class SerproProbePgdasCommandTest extends TestCase
 {
     use RefreshDatabase;
@@ -55,7 +58,17 @@ class SerproProbePgdasCommandTest extends TestCase
         $exit = Artisan::call('serpro:probe-pgdas');
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('homologação', Artisan::output());
+        $this->assertStringContainsString('homologacao', Artisan::output());
+        Http::assertNothingSent();
+    }
+
+    public function test_recusa_probe_desligado_sem_force(): void
+    {
+        config(['serpro_probes.enabled' => false]);
+
+        $exit = Artisan::call('serpro:probe-pgdas');
+
+        $this->assertSame(1, $exit);
         Http::assertNothingSent();
     }
 
@@ -131,7 +144,7 @@ class SerproProbePgdasCommandTest extends TestCase
         $exit = Artisan::call('serpro:probe-pgdas', ['--account' => $account->getKey()]);
 
         $this->assertSame(SerproProbePgdas::EXIT_SKIP, $exit);
-        $this->assertStringContainsString('throttle', strtolower(Artisan::output()));
+        $this->assertStringContainsString('900807', Artisan::output());
     }
 
     /**

@@ -2,10 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\SerproConnection;
 use App\Services\SerproPgdasHomologationProbe;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
@@ -15,6 +16,30 @@ use Tests\TestCase;
 #[Group('serpro-trial')]
 class SerproPgdasHomologationProbeTest extends TestCase
 {
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'fiscal.environment' => 'homologacao',
+            'serpro_probes.enabled' => true,
+            'serpro_probes.homologation_canary_cnpj' => '30288513000100',
+            'serpro_probes.homologation_account_cnpj' => '48123272000105',
+        ]);
+    }
+
+    public function test_sem_credencial_da_skip_sem_http(): void
+    {
+        Http::preventStrayRequests();
+
+        $report = resolve(SerproPgdasHomologationProbe::class)->run(null);
+
+        $this->assertSame(SerproPgdasHomologationProbe::OUTCOME_SKIP, $report['outcome']);
+        Http::assertNothingSent();
+    }
+
     public function test_recusa_sem_homologacao_e_sem_http(): void
     {
         config(['fiscal.environment' => 'producao']);
@@ -38,16 +63,21 @@ class SerproPgdasHomologationProbeTest extends TestCase
             $this->markTestSkipped('SERPRO_PROBE_ENABLED não está ligado.');
         }
 
-        if (! Schema::hasTable('serpro_connections')) {
-            $this->markTestSkipped('Suíte sqlite :memory: — use stack dev com postgres para trial real.');
-        }
-
         $connection = SerproConnection::current();
         if ($connection === null || ! $connection->isConfigured()) {
-            $this->markTestSkipped('Credencial de plataforma não configurada neste ambiente.');
+            $this->markTestSkipped('SerproConnection real ausente ou incompleta (seed/.env homolog).');
         }
 
-        $report = resolve(SerproPgdasHomologationProbe::class)->run(null);
+        $canary = (string) config('serpro_probes.homologation_canary_cnpj');
+        $client = Client::query()->where('tax_id', $canary)->first();
+        if ($client === null) {
+            $this->markTestSkipped("Cliente canário {$canary} não encontrado neste banco.");
+        }
+
+        $report = resolve(SerproPgdasHomologationProbe::class)->run(
+            $client->account_id,
+            $canary,
+        );
 
         if ($report['outcome'] === SerproPgdasHomologationProbe::OUTCOME_SKIP) {
             $detail = json_encode($report['steps'], JSON_UNESCAPED_UNICODE);

@@ -29,6 +29,7 @@ final class SerproPgdasHomologationProbe
         private readonly SerproClient $client,
         private readonly SerproCallRecorder $recorder,
         private readonly SerproMonitoringMapper $mapper,
+        private readonly SerproObligationCatalog $catalog,
     ) {}
 
     /**
@@ -38,15 +39,16 @@ final class SerproPgdasHomologationProbe
      *     projection?: array<string, mixed>
      * }
      */
-    public function run(?int $accountId, ?string $clientCnpj = null, bool $forceGate = false): array
+    public function run(?int $accountId = null, ?string $clientCnpj = null, ?int $calendarYear = null, bool $forceGate = false): array
     {
         $steps = [];
         $canary = (string) config('serpro_probes.homologation_canary_cnpj');
         $clientCnpj = $clientCnpj ?? $canary;
+        $calendarYear ??= (int) now()->year;
 
-        $refusal = $this->gate->refusalReason($forceGate);
+        $refusal = $this->gate->blockReason($forceGate);
         if ($refusal !== null) {
-            $steps[] = ['step' => 'gate', 'status' => 'fail', 'detail' => $refusal];
+            $steps[] = ['step' => 'gate', 'status' => 'fail', 'detail' => $this->gate->humanMessage($refusal)];
 
             return ['outcome' => self::OUTCOME_FAIL, 'steps' => $steps];
         }
@@ -94,10 +96,51 @@ final class SerproPgdasHomologationProbe
             }
             $steps[] = ['step' => 'cliente', 'status' => 'ok', 'detail' => (string) $client->getKey()];
 
-            $elegibilidade = $this->eligibility->for($resolvedAccountId, $client->getKey(), '00146');
-            if ($elegibilidade['eligible'] !== true) {
-                $motivo = (string) ($elegibilidade['reason'] ?? 'inelegivel');
-                $steps[] = ['step' => 'elegibilidade', 'status' => 'skip', 'detail' => $motivo];
+            $obrigacao = $this->catalog->get('declaracoes/pgdas');
+            if ($obrigacao === null || $obrigacao['service'] === null) {
+                $steps[] = ['step' => 'elegibilidade', 'status' => 'fail', 'detail' => 'Obrigação declaracoes/pgdas ausente no catálogo.'];
+
+                return ['outcome' => self::OUTCOME_FAIL, 'steps' => $steps];
+            }
+
+            // Elegibilidade percorre as alternativas do mapa como o sync faz —
+            // cada uma é um conjunto de famílias (`+` conjunção, `,` alternativa)
+            // que precisa estar inteiro concedido.
+            $alternativas = $this->catalog->procuracaoAlternatives($obrigacao['procuracao'] ?? null);
+            $familias = implode(', ', array_map(
+                fn (array $alt): string => implode('+', $alt),
+                $alternativas,
+            ));
+
+            $inelegivel = null;
+            foreach ($alternativas as $alternativa) {
+                $concedida = collect($alternativa)->every(
+                    fn (string $family): bool => $this->eligibility
+                        ->for($resolvedAccountId, $client->getKey(), $family)['eligible'],
+                );
+
+                if ($concedida) {
+                    $inelegivel = null;
+                    break;
+                }
+
+                $primeira = $alternativa[0] ?? null;
+                if ($inelegivel === null && $primeira !== null) {
+                    $inelegivel = $this->eligibility->for(
+                        $resolvedAccountId,
+                        $client->getKey(),
+                        $primeira,
+                    )['reason'];
+                }
+            }
+
+            if ($inelegivel !== null) {
+                $motivo = (string) $inelegivel;
+                $steps[] = [
+                    'step' => 'elegibilidade',
+                    'status' => 'skip',
+                    'detail' => "Procuração {$familias}: {$motivo}".$this->dicaProcuracao($motivo, $familias),
+                ];
 
                 return ['outcome' => self::OUTCOME_SKIP, 'steps' => $steps];
             }
@@ -110,31 +153,31 @@ final class SerproPgdasHomologationProbe
                 return ['outcome' => self::OUTCOME_SKIP, 'steps' => $steps];
             }
 
+            [$idSistema, $idServico] = $this->splitService((string) $obrigacao['service']);
+            $payload = array_merge(
+                $this->mapper->payload($idServico),
+                ['anoCalendario' => (string) $calendarYear],
+            );
+
             try {
                 $result = $this->recorder->record(
                     null,
                     $resolvedAccountId,
                     $client->getKey(),
-                    'PGDASD',
-                    'CONSDECLARACAO13',
+                    $idSistema,
+                    $idServico,
                     fn (): SerproResult => $this->client->call(
-                        'PGDASD',
-                        'CONSDECLARACAO13',
-                        $this->mapper->payload('CONSDECLARACAO13'),
+                        $idSistema,
+                        $idServico,
+                        $payload,
                         (string) $certificate->document,
                         (string) $client->tax_id,
                         $token,
                     ),
                 );
             } catch (SerproException $exception) {
-                if ($exception->failure === SerproFailure::Throttled) {
-                    $steps[] = ['step' => 'consulta', 'status' => 'skip', 'detail' => 'Cota ou limite do provedor (throttle).'];
-
-                    return ['outcome' => self::OUTCOME_SKIP, 'steps' => $steps];
-                }
-
-                if ($exception->providerCode === 'AcessoNegado-ICGERENCIADOR-022') {
-                    $steps[] = ['step' => 'consulta', 'status' => 'skip', 'detail' => 'Procuração ausente ou insuficiente para PGDAS.'];
+                if ($this->shouldSkipProviderFailure($exception)) {
+                    $steps[] = ['step' => 'consulta', 'status' => 'skip', 'detail' => $this->safeProviderDetail($exception)];
 
                     return ['outcome' => self::OUTCOME_SKIP, 'steps' => $steps];
                 }
@@ -142,7 +185,7 @@ final class SerproPgdasHomologationProbe
                 $steps[] = [
                     'step' => 'consulta',
                     'status' => 'fail',
-                    'detail' => $exception->failure->value.($exception->providerCode !== null ? ':'.$exception->providerCode : ''),
+                    'detail' => $this->safeProviderDetail($exception),
                 ];
 
                 return ['outcome' => self::OUTCOME_FAIL, 'steps' => $steps];
@@ -151,18 +194,15 @@ final class SerproPgdasHomologationProbe
             $steps[] = ['step' => 'auth', 'status' => 'ok'];
             $steps[] = ['step' => 'consulta', 'status' => 'ok', 'detail' => 'HTTP '.$result->status()];
 
-            $projection = $this->mapper->project('CONSDECLARACAO13', $result);
-            $steps[] = ['step' => 'projecao', 'status' => 'ok'];
-
-            $periodCount = count($projection['periods'] ?? []);
+            $projection = $this->mapper->project($idServico, $result);
+            $periods = is_array($projection['periods'] ?? null) ? $projection['periods'] : [];
+            $comDas = collect($periods)->whereNotNull('slip_number')->count();
             $cause = $projection['cause'] ?? null;
-            if ($periodCount === 0 && $cause === 'sem_declaracao') {
-                $steps[] = ['step' => 'resultado', 'status' => 'ok', 'detail' => 'sem_declaracao'];
-            } elseif ($periodCount > 0) {
-                $steps[] = ['step' => 'resultado', 'status' => 'ok', 'detail' => $periodCount.' periodo(s)'];
-            } else {
-                $steps[] = ['step' => 'resultado', 'status' => 'ok', 'detail' => 'sem periodos'];
-            }
+            $detail = $cause === 'sem_declaracao'
+                ? 'sem_declaracao (sem períodos no ano consultado)'
+                : count($periods)." período(s), {$comDas} com DAS emitido";
+
+            $steps[] = ['step' => 'projecao', 'status' => 'ok', 'detail' => $detail];
 
             return [
                 'outcome' => self::OUTCOME_PASS,
@@ -191,6 +231,43 @@ final class SerproPgdasHomologationProbe
             ->first();
 
         return $certificate?->account_id;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function splitService(string $service): array
+    {
+        $partes = explode('/', $service, 2);
+
+        return [$partes[0], $partes[1] ?? ''];
+    }
+
+    private function dicaProcuracao(string $motivo, string $familias): string
+    {
+        if (! in_array($motivo, ['sem_procuracao', 'procuracao_invalida'], true)) {
+            return '';
+        }
+
+        return " — confira procuração e-CAC {$familias} no e-CAC ou rode sync do cliente.";
+    }
+
+    private function shouldSkipProviderFailure(SerproException $exception): bool
+    {
+        if ($exception->failure === SerproFailure::Throttled) {
+            return true;
+        }
+
+        return ($exception->providerCode ?? '') === '900807'
+            || ($exception->providerCode ?? '') === 'AcessoNegado-ICGERENCIADOR-022';
+    }
+
+    private function safeProviderDetail(SerproException $exception): string
+    {
+        $code = $exception->providerCode ?? '';
+        $prefix = $code !== '' ? "[{$code}] " : '';
+
+        return $prefix.$exception->failure->label();
     }
 
     /**

@@ -3,23 +3,33 @@
 namespace App\Services;
 
 /**
- * Trava de ambiente para probes SERPRO: homologação fiscal e flag explícita.
+ * Porta dupla antes de qualquer probe SERPRO: ambiente fiscal e flag explícita.
+ *
+ * O default de `config/fiscal.php` é produção; confiar só na URL do gateway
+ * seria perigoso — por isso a checagem de `homologacao` mora aqui.
+ * `--force` ignora a flag `SERPRO_PROBE_ENABLED` mas NUNCA o ambiente.
  */
 final class SerproProbeGate
 {
-    /**
-     * @return null quando o probe pode seguir; string legível quando deve parar antes de HTTP
-     */
-    public function refusalReason(bool $force = false): ?string
+    public function blockReason(bool $force = false): ?string
     {
         if (config('fiscal.environment') !== 'homologacao') {
-            return 'O ambiente fiscal não é homologação (fiscal.environment='.config('fiscal.environment').').';
+            return 'ambiente_nao_homologacao';
         }
 
-        if (! config('serpro_probes.enabled', false) && ! $force) {
-            return 'Probes desligados (defina SERPRO_PROBE_ENABLED=true ou use --force).';
+        if (! $force && ! config('serpro_probes.enabled')) {
+            return 'probe_desligado';
         }
 
         return null;
+    }
+
+    public function humanMessage(string $reason): string
+    {
+        return match ($reason) {
+            'ambiente_nao_homologacao' => 'Probes SERPRO só rodam com FISCAL_ENVIRONMENT=homologacao.',
+            'probe_desligado' => 'Probe desligado: defina SERPRO_PROBE_ENABLED=1 ou use --force.',
+            default => $reason,
+        };
     }
 }
