@@ -137,9 +137,8 @@ class FiscalPointLookupTest extends TestCase
             === 'application/soap+xml; charset=utf-8; action="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse"');
 
         $this->assertSame(config('fiscal.ca_bundle'), $guzzle['verify']);
-        $this->assertSame('P12', $guzzle['curl'][CURLOPT_SSLCERTTYPE]);
-        $this->assertSame('segredo-unico-9f2b', $guzzle['curl'][CURLOPT_SSLCERTPASSWD]);
-        $this->assertNotEmpty($guzzle['curl'][CURLOPT_SSLCERT]);
+        $this->assertSame('segredo-unico-9f2b', $guzzle['cert'][1] ?? null);
+        $this->assertNotEmpty($guzzle['cert'][0] ?? null);
     }
 
     public function test_a_consulta_por_posicao_nao_move_a_posicao_armazenada(): void

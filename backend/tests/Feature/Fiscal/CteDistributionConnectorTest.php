@@ -447,20 +447,19 @@ class CteDistributionConnectorTest extends TestCase
     public function test_a_senha_do_certificado_chega_ao_curl(): void
     {
         $client = $this->clientWithCertificate(password: 'segredo-unico-9f2b');
-        $curl = [];
+        $captured = [];
 
-        Http::fake(['*' => function (Request $request, array $options) use (&$curl) {
-            $curl = $options['curl'] ?? [];
+        Http::fake(['*' => function (Request $request, array $options) use (&$captured) {
+            $captured = $options;
 
             return Http::response($this->responseWith('137', 'Nenhum documento localizado', 0), 200);
         }]);
 
         $this->connector()->pull($client, 0, 50);
 
-        $this->assertSame('P12', $curl[CURLOPT_SSLCERTTYPE]);
-        $this->assertSame('segredo-unico-9f2b', $curl[CURLOPT_SSLCERTPASSWD]);
-        $this->assertNotEmpty($curl[CURLOPT_SSLCERT]);
-        $this->assertFileDoesNotExist($curl[CURLOPT_SSLCERT]);
+        $this->assertSame('segredo-unico-9f2b', $captured['cert'][1] ?? null);
+        $this->assertNotEmpty($captured['cert'][0] ?? null);
+        $this->assertFileDoesNotExist($captured['cert'][0]);
     }
 
     public function test_a_verificacao_do_servidor_apoia_no_bundle_versionado(): void

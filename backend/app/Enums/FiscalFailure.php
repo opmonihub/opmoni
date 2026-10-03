@@ -16,6 +16,14 @@ enum FiscalFailure: string
      * operador que o cliente não é parte do documento quando ele é o emissor.
      */
     case UnavailableToIssuer = 'unavailable_to_issuer';
+    /**
+     * `658`: a UF informada na consulta por chave diverge da UF da própria
+     * chave. A recusa é sobre o pedido, e não sobre o CNPJ: repetir devolve a
+     * mesma resposta, nenhum CNPJ merece ser bloqueado por ela e nenhuma hora
+     * de espera a resolve — é a UF do pedido que precisa mudar. Distinta da
+     * rejeição genérica para o operador ler a causa real.
+     */
+    case UfMismatch = 'uf_mismatch';
     case Rejected = 'rejected';
     case Upstream = 'upstream';
 
@@ -36,6 +44,7 @@ enum FiscalFailure: string
             '108', '109' => self::Upstream,
             '656', '678' => self::Blocked,
             '589' => self::CursorAhead,
+            '658' => self::UfMismatch,
             '593', '472', '473' => self::Unauthorized,
             '640' => self::NotInterested,
             '641' => self::UnavailableToIssuer,

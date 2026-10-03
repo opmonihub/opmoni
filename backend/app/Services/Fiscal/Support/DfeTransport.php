@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
+use App\Support\HttpPkcs12ClientOptions;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Http\Client\ConnectionException;
@@ -141,22 +142,19 @@ final class DfeTransport
         $environment = config('fiscal.environment') === 'producao' ? 'producao' : 'homologacao';
 
         try {
+            $pkcs12 = HttpPkcs12ClientOptions::forPath($certificatePath, $certificate->certificatePassword());
+
             return Http::withOptions([
                 // `verify` apontando para o bundle versionado: a verificação do
                 // servidor continua ligada, e a cadeia é a da ICP-Brasil do
                 // repositório, não o trust store da máquina.
                 'verify' => config('fiscal.ca_bundle'),
-                'curl' => [
-                    CURLOPT_SSLCERT => $certificatePath,
-                    CURLOPT_SSLCERTTYPE => 'P12',
-                    // O `libcurl` só recebe caminho para o certificado e a senha
-                    // pelo option: sem ela um PKCS#12 cifrado não abre, e a
-                    // autenticação é justamente esse certificado. O
-                    // materializador já recusou o caso de senha ausente antes
-                    // de chegar aqui, então nunca é string vazia.
-                    CURLOPT_SSLCERTPASSWD => $certificate->certificatePassword() ?? '',
-                    CURLOPT_SSLVERSION => CURL_SSLVERSION_TLSv1_2,
-                ],
+                ...$pkcs12,
+                // O piso de TLS 1.2: no Guzzle 8 é a opção de requisição
+                // `crypto_method` que vira o `CURLOPT_SSLVERSION` — e sem ela o
+                // piso já seria 1.2, mas explicitado o intent não depende de
+                // default de biblioteca.
+                'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             ])
                 ->timeout((int) config('fiscal.timeout', 60))
                 ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)

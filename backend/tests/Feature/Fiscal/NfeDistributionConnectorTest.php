@@ -525,22 +525,21 @@ class NfeDistributionConnectorTest extends TestCase
     public function test_a_senha_do_certificado_chega_ao_curl(): void
     {
         $client = $this->clientWithCertificate(password: 'segredo-unico-9f2b');
-        $curl = [];
+        $captured = [];
 
-        Http::fake(['*' => function (Request $request, array $options) use (&$curl) {
-            $curl = $options['curl'] ?? [];
+        Http::fake(['*' => function (Request $request, array $options) use (&$captured) {
+            $captured = $options;
 
             return Http::response($this->responseWith('137', 'Nenhum documento localizado', 0), 200);
         }]);
 
         $this->connector()->pull($client, 0, 50);
 
-        $this->assertSame('P12', $curl[CURLOPT_SSLCERTTYPE]);
-        $this->assertSame('segredo-unico-9f2b', $curl[CURLOPT_SSLCERTPASSWD]);
-        $this->assertNotEmpty($curl[CURLOPT_SSLCERT]);
-        // O caminho entregue ao `curl` é o arquivo efêmero, e não o cofre: o
-        // material temporário já foi apagado quando a requisição termina.
-        $this->assertFileDoesNotExist($curl[CURLOPT_SSLCERT]);
+        $this->assertSame('segredo-unico-9f2b', $captured['cert'][1] ?? null);
+        $this->assertNotEmpty($captured['cert'][0] ?? null);
+        // O caminho entregue ao cliente HTTP é o arquivo efêmero, e não o cofre:
+        // o material temporário já foi apagado quando a requisição termina.
+        $this->assertFileDoesNotExist($captured['cert'][0]);
     }
 
     public function test_a_verificacao_do_servidor_apoia_no_bundle_versionado(): void
@@ -816,6 +815,27 @@ class NfeDistributionConnectorTest extends TestCase
         $exception = $this->pullComRejeicao('215');
 
         $this->assertSame(FiscalFailure::Rejected, $exception->failure);
+    }
+
+    public function test_a_uf_divergente_na_consulta_por_chave_e_uma_recusa_propria(): void
+    {
+        // `658` acontece na consulta por chave: a UF do interessado diverge da
+        // UF da chave consultada. A recusa é sobre o pedido, e não sobre o
+        // CNPJ — não vira bloqueio de uma hora nem retry, e não se confunde
+        // com a rejeição genérica que o `default` produziria.
+        $client = $this->clientWithCertificate();
+
+        Http::fake(['*' => Http::response($this->fixture('retDistDFeInt_658.xml'), 200)]);
+
+        try {
+            $this->connector()->fetchByChave($client, self::CHAVE);
+
+            $this->fail('Uma UF divergente deveria virar FiscalException própria.');
+        } catch (FiscalException $exception) {
+            $this->assertSame(FiscalFailure::UfMismatch, $exception->failure);
+            $this->assertFalse($exception->failure->retryable());
+            $this->assertFalse($exception->failure->blocksForAnHour());
+        }
     }
 
     public function test_indisponibilidade_do_servico_e_retentavel_e_nao_bloqueia(): void

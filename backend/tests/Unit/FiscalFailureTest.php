@@ -44,6 +44,19 @@ class FiscalFailureTest extends TestCase
         $this->assertFalse(FiscalFailure::CursorAhead->blocksForAnHour());
     }
 
+    public function test_a_mismatched_uf_in_a_key_lookup_is_its_own_reason(): void
+    {
+        // `658` fala sobre o pedido — a UF do interessado diverge da UF da
+        // chave — e não sobre o CNPJ: nem retry, que devolveria a mesma
+        // recusa, nem bloqueio, que puniria uma hora de carteira por um
+        // parâmetro. E é razão própria, distinta do `589` e da rejeição
+        // genérica, para quem lê saber que a UF do pedido está errada.
+        $this->assertSame(FiscalFailure::UfMismatch, FiscalFailure::classify(200, '658'));
+        $this->assertNotSame(FiscalFailure::classify(200, '658'), FiscalFailure::classify(200, '589'));
+        $this->assertFalse(FiscalFailure::UfMismatch->retryable());
+        $this->assertFalse(FiscalFailure::UfMismatch->blocksForAnHour());
+    }
+
     public function test_credential_mismatch_is_unauthorized(): void
     {
         $this->assertSame(FiscalFailure::Unauthorized, FiscalFailure::classify(200, '593'));
@@ -115,6 +128,7 @@ class FiscalFailureTest extends TestCase
             'no_documents' => [true, false],
             'blocked' => [true, true],
             'cursor_ahead' => [false, false],
+            'uf_mismatch' => [false, false],
             'unauthorized' => [false, false],
             'not_interested' => [false, false],
             'unavailable_to_issuer' => [false, false],
