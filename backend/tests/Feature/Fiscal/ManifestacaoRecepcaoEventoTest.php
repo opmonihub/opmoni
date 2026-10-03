@@ -84,7 +84,7 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
         Http::assertSent(function (Request $request): bool {
             // A ação SOAP viaja no `Content-Type`, como na distribuição.
             $this->assertSame(
-                'application/soap+xml; charset=utf-8; action="http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento/nfeRecepcaoEvento"',
+                'application/soap+xml; charset=utf-8; action="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEventoNF"',
                 $request->header('Content-Type')[0],
             );
 
@@ -111,7 +111,7 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
 
         config(['fiscal.environment' => 'homologacao']);
         $this->conector()->cienciaDaEmissao($cliente, $this->registro(), CarbonImmutable::parse(self::EMISSAO));
-        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'hom.nfe.fazenda.gov.br'));
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'hom1.nfe.fazenda.gov.br'));
     }
 
     public function test_ambiente_fora_da_lista_recusa_a_montagem_sem_sair_para_a_rede(): void
@@ -137,7 +137,7 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
         }
     }
 
-    public function test_a_verificacao_do_servidor_apoia_no_bundle_icp_brasil(): void
+    public function test_a_verificacao_do_servidor_apoia_no_bundle_de_eventos(): void
     {
         [$cliente, $registro] = $this->pedidoRegistrado();
         $options = [];
@@ -150,7 +150,9 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
 
         $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
 
-        $this->assertSame(config('fiscal.ca_bundle'), $options['verify']);
+        // O servidor de eventos usa Let's Encrypt, não ICP-Brasil: o bundle
+        // de verificação é o combinado de eventos, que cobre as duas cadeias.
+        $this->assertSame(config('fiscal.eventos_ca_bundle'), $options['verify']);
         $this->assertFileExists($options['verify']);
     }
 

@@ -113,13 +113,15 @@ final class ManifestationEventTransport
         try {
             $pkcs12 = HttpPkcs12ClientOptions::forPath($certificatePath, $certificate->certificatePassword());
 
-            $inner = '<'.DfeEndpoint::value($endpoint, 'method')
-                .' xmlns="'.DfeEndpoint::value($endpoint, 'namespace').'">'
-                .'<'.DfeEndpoint::value($endpoint, 'holder')
+            // O serviço de eventos difere do de distribuição num ponto
+            // estrutural: o `Body` carrega o `nfeDadosMsg` diretamente, sem o
+            // elemento-método (`<nfeRecepcaoEventoNF>`) por cima. Envelopar o
+            // holder no método — o que a distribuição faz — derruba o ASMX de
+            // eventos num `Object reference` no servidor.
+            $inner = '<'.DfeEndpoint::value($endpoint, 'holder')
                 .' xmlns="'.DfeEndpoint::value($endpoint, 'namespace').'">'
                 .$envEventoXml
-                .'</'.DfeEndpoint::value($endpoint, 'holder').'>'
-                .'</'.DfeEndpoint::value($endpoint, 'method').'>';
+                .'</'.DfeEndpoint::value($endpoint, 'holder').'>';
 
             $body = '<?xml version="1.0" encoding="UTF-8"?>'
                 .'<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">'
@@ -127,7 +129,11 @@ final class ManifestationEventTransport
                 .'</soap:Envelope>';
 
             $response = Http::withOptions([
-                'verify' => config('fiscal.ca_bundle'),
+                // O servidor de eventos é Let's Encrypt, não ICP-Brasil: o
+                // bundle é o de eventos, que cobre as duas cadeias — ver
+                // `fiscal.eventos_ca_bundle`. A autenticação mTLS é o A1 do
+                // cliente (`$pkcs12`), independente da cadeia do servidor.
+                'verify' => config('fiscal.eventos_ca_bundle'),
                 ...$pkcs12,
                 'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             ])

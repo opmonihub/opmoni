@@ -20,6 +20,11 @@ class ManifestacaoGateTest extends TestCase
 
     public function test_manifestacao_enabled_nasce_desligada(): void
     {
+        // O default do config é desligado — o gate precisa ser ligado de
+        // propósito. O `.env` local pode ligá-lo para o canário, então o teste
+        // fixa o valor que interessa em vez de ler o ambiente.
+        config(['fiscal.manifestacao_enabled' => false]);
+
         $this->assertFalse(config('fiscal.manifestacao_enabled'));
     }
 

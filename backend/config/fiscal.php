@@ -336,12 +336,12 @@ return [
          */
         'nfe_recepcao_evento' => [
             'producao' => 'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
-            'homologacao' => 'https://hom.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
-            'namespace' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento',
+            'homologacao' => 'https://hom1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+            'namespace' => 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4',
             'payload_namespace' => 'http://www.portalfiscal.inf.br/nfe',
             'version' => '1.00',
-            'method' => 'nfeRecepcaoEvento',
-            'soap_action' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento/nfeRecepcaoEvento',
+            'method' => 'nfeRecepcaoEventoNF',
+            'soap_action' => 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEventoNF',
             'holder' => 'nfeDadosMsg',
             'xsd_service' => 'nfe',
         ],
@@ -375,4 +375,19 @@ return [
      * formato de chave.
      */
     'ca_bundle' => resource_path('icp-brasil/ca-bundle.crt'),
+
+    /*
+     * A cadeia do **servidor** do `nfeRecepcaoEvento` é outra: o Ambiente
+     * Nacional serve a recepção de eventos (`www`/`hom.nfe.fazenda.gov.br`)
+     * com certificado Let's Encrypt, e não ICP-Brasil como a distribuição
+     * (`www1`). O bundle do transporte de eventos precisa cobrir as raízes
+     * ISRG **e** a ICP-Brasil — a autenticação mTLS continua sendo o A1 do
+     * cliente, mas a verificação do certificado do servidor é independente.
+     *
+     * O bundle combina as raízes ISRG (X1/X2, de letsencrypt.org/certs) com a
+     * cadeia ICP-Brasil versionada, e é ele que o transporte de eventos
+     * aponta em `verify` — não o `ca_bundle` da distribuição, que rejeitaria
+     * o servidor com "SSL peer certificate was not OK".
+     */
+    'eventos_ca_bundle' => resource_path('icp-brasil/eventos-ca-bundle.crt'),
 ];
