@@ -172,6 +172,21 @@ return [
      */
     'nfse_live_client' => ($nfseLiveClient = env('FISCAL_NFSE_LIVE_CLIENT')) === null ? null : (int) $nfseLiveClient,
 
+    /*
+     * A manifestação do destinatário de NF-e (ciência da emissão, 210210) —
+     * enfileirada após resumo capturado — nasce desligada, no mesmo espírito
+     * de `cte_enabled` e `nfse_enabled`. Evento assinado é ato perante o fisco;
+     * nunca deve sair sem decisão explícita de quem autorizou o canário.
+     *
+     * Lida pelo despacho pós-resumo (`ManifestacaoDispatcher`) e pelo job de
+     * envio (`SendFiscalManifestationJob`). A captura incremental não consulta
+     * esta chave.
+     *
+     * `filter_var(..., FILTER_VALIDATE_BOOL)`: só `true`, `1`, `on` e `yes`
+     * ligam; todo o resto — inclusive vazio — desliga.
+     */
+    'manifestacao_enabled' => filter_var(env('FISCAL_MANIFESTACAO_ENABLED', false), FILTER_VALIDATE_BOOL),
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*
@@ -214,6 +229,27 @@ return [
      * ao CNPJ, que é o recurso que o fisco conta.
      */
     'reconcile_max_attempts' => 3,
+
+    /*
+     * Quantas `consChNFe` a ressincronização tenta por chave manifestada antes
+     * de parar com ela. Mesma disciplina da reconciliação: a consulta gasta a
+     * vaga do teto horário do CNPJ, e uma chave que o serviço não devolve três
+     * vezes não é uma chave que mais três devolveriam — o registro fica, com
+     * as tentativas, e a vaga volta para quem ainda pode entrar.
+     */
+    'manifestacao_resync_max_attempts' => 3,
+
+    /*
+     * A graça antes de a ressincronização re-despachar uma manifestação que
+     * ficou presa em `Pending`/`Queued`. É o que distingue a órfã — o job
+     * morreu entre o enqueue e o veredito — da que ainda vai rodar: menor que
+     * uma execução legítima na fila e a passada duplicaria a entrega, maior
+     * que o `block_minutes` e a reentrega presa na janela de bloqueio seria
+     * confundida com abandono. Uma hora cobre os dois: quem espera um
+     * `blocked_until` já não é órfã, e quem perdeu o worker ganha o reenvio
+     * na passada seguinte.
+     */
+    'manifestacao_orphan_grace_minutes' => 60,
 
     /*
      * Quando a volta atrás roda. Uma vez ao dia, fora do expediente, e no fuso
@@ -286,6 +322,28 @@ return [
             'soap_action' => 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse',
             'holder' => 'cteDadosMsg',
             'xsd_service' => 'cte',
+        ],
+
+        /*
+         * O serviço `nfeRecepcaoEvento` do Ambiente Nacional, que registra a
+         * Manifestação do Destinatário. Não é distribuição: o corpo é um lote
+         * `envEvento` **assinado**, e o endpoint é único por ambiente porque é
+         * sempre o AN (`cOrgao` 91) quem recebe o evento.
+         *
+         * O bloco segue o contrato de `DfeEndpoint::CHAVES` para ser conferido
+         * pelo mesmo `of()` das distribuições: o que muda é só quem lê —
+         * `ManifestationEventTransport` —, e não a forma do bloco.
+         */
+        'nfe_recepcao_evento' => [
+            'producao' => 'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+            'homologacao' => 'https://hom.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+            'namespace' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento',
+            'payload_namespace' => 'http://www.portalfiscal.inf.br/nfe',
+            'version' => '1.00',
+            'method' => 'nfeRecepcaoEvento',
+            'soap_action' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento/nfeRecepcaoEvento',
+            'holder' => 'nfeDadosMsg',
+            'xsd_service' => 'nfe',
         ],
 
         /*

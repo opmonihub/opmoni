@@ -19,29 +19,60 @@
 
 ## 4. Conector e classificação do cStat
 
-- [ ] 4.1 Escrever teste que monta o evento 210210 a partir do resumo capturado e rejeita documentos fora do prazo de 90 dias, verificar com `php artisan test --compact --filter=CienciaPrazo`
-- [ ] 4.2 Escrever teste que falha porque o conector `nfeRecepcaoEvento` não existe, cobrindo aceite (cStat do evento), rejeição transitória e rejeição 573 mapeada para estado conhecido "já manifestado" (não `FiscalFailure`), verificar com `php artisan test --compact --filter=RecepcaoEvento`
-- [ ] 4.3 Implementar o conector em `backend/app/Services/Fiscal/Manifestacao/` reutilizando `HttpPkcs12ClientOptions`, bundle ICP-Brasil e regras de fault condensado, sem esticar `DfeTransport`, verificar com o teste de 4.2 passando
-- [ ] 4.4 Garantir que nenhum log ou registro de auditoria contém senha do certificado, XML do evento (assim ou não), envelope assinado ou tokens, verificar com teste que inspeciona mensagens registradas em cenários de falha
+- [x] 4.1 Escrever teste que monta o evento 210210 a partir do resumo capturado e rejeita documentos fora do prazo de 90 dias, verificar com `php artisan test --compact --filter=CienciaPrazo`
+- [x] 4.2 Escrever teste que falha porque o conector `nfeRecepcaoEvento` não existe, cobrindo aceite (cStat do evento), rejeição transitória e rejeição 573 mapeada para estado conhecido "já manifestado" (não `FiscalFailure`), verificar com `php artisan test --compact --filter=RecepcaoEvento`
+- [x] 4.3 Implementar o conector em `backend/app/Services/Fiscal/Manifestacao/` reutilizando `HttpPkcs12ClientOptions`, bundle ICP-Brasil e regras de fault condensado, sem esticar `DfeTransport`, verificar com o teste de 4.2 passando
+- [x] 4.4 Garantir que nenhum log ou registro de auditoria contém senha do certificado, XML do evento (assim ou não), envelope assinado ou tokens, verificar com teste que inspeciona mensagens registradas em cenários de falha
+
+#### Divergências da seção 4
+
+- O `dhEvento` é escrito no fuso de São Paulo (`-03:00`) em vez do fuso do servidor: o leiaute espera o horário do Brasil e o brief fixa `-03:00`; `ManifestationEventBuilder` converte o instante para `America/Sao_Paulo`.
+- O bloco `nfe_recepcao_evento` foi adicionado em `config/fiscal.php` com as 9 chaves de `DfeEndpoint::CHAVES`, e `DfeEndpoint::of()` confere o bloco como nas distribuições.
+- `ClientCertificateMaterializer` ganhou `withCertificateBytes($cert, Closure($bytes, $password))` (Ruling 6): entrega os bytes do PKCS#12 e a senha no callback e zera ambos no `finally`, para a assinatura não precisar de arquivo temporário.
+- `FiscalManifestationOutcome` foi estendido com `NotSendable` e `DeadlineMissed` (Ruling 4); `FiscalManifestationStore` ganhou `veredito()` que grava outcome, `result_code`, `result_message`, `sent_at` e `resulted_at` — e funciona sobre modelo não persistido, para o teste de unidade de prazo.
+- A leitura do `retEnvEvento` usa busca de filho direto (`directChildText`) para `cStat`/`xMotivo` do lote: `XmlQuery::first` com escopo gera `//` absoluto e capturaria o `cStat` do `retEvento` quando o lote veio sem o seu.
 
 ## 5. Job e integração com a captura
 
-- [ ] 5.1 Escrever teste que falha porque gravar um resumo ainda não enfileira a ciência da emissão, cobrindo gate ligado, cliente dentro do prazo e bloqueio respeitado na execução (não só no enqueue), verificar com `php artisan test --compact --filter=DispatcherManifestacao`
-- [ ] 5.2 Implementar o job `ManifestarCiencia` (carregando `account_id` e id do cliente, checando gate, deduplicação, prazo e janela de bloqueio no momento da execução) e o hook no dispatcher pós-resumo, verificar com o teste de 5.1 passando
-- [ ] 5.3 Implementar o tratamento da 573 no job: gravar estado "já manifestado" e liberar a recuperação por `consChNFe` sem retry, verificar com teste do fluxo 573 ponta a ponta com transporte fake
-- [ ] 5.4 Garantir que a manifestação não debita `FiscalLookupBudget` e que a recuperação do XML pós-ciência passa pelo caminho de consulta pontual existente com teto de 20/h e limite por chave na ressincronização, verificar com teste de orçamento após manifestação
-- [ ] 5.5 Implementar a rotina agendada de ressincronização que recupera, via consulta pontual por chave, o XML completo dos resumos com ciência já registrada (spec `fiscal-manifestacao`), com teto de 20/h, limite por chave e deduplicação, verificar com teste do fluxo agendado ponta a ponta com transporte fake
+- [x] 5.1 Escrever teste que falha porque gravar um resumo ainda não enfileira a ciência da emissão, cobrindo gate ligado, cliente dentro do prazo e bloqueio respeitado na execução (não só no enqueue), verificar com `php artisan test --compact --filter=DispatcherManifestacao`
+- [x] 5.2 Implementar o job `ManifestarCiencia` (carregando `account_id` e id do cliente, checando gate, deduplicação, prazo e janela de bloqueio no momento da execução) e o hook no dispatcher pós-resumo, verificar com o teste de 5.1 passando
+- [x] 5.3 Implementar o tratamento da 573 no job: gravar estado "já manifestado" e liberar a recuperação por `consChNFe` sem retry, verificar com teste do fluxo 573 ponta a ponta com transporte fake
+- [x] 5.4 Garantir que a manifestação não debita `FiscalLookupBudget` e que a recuperação do XML pós-ciência passa pelo caminho de consulta pontual existente com teto de 20/h e limite por chave na ressincronização, verificar com teste de orçamento após manifestação
+- [x] 5.5 Implementar a rotina agendada de ressincronização que recupera, via consulta pontual por chave, o XML completo dos resumos com ciência já registrada (spec `fiscal-manifestacao`), com teto de 20/h, limite por chave e deduplicação, verificar com teste do fluxo agendado ponta a ponta com transporte fake
+
+#### Divergências da seção 5
+
+- Nome do job: o stub `SendFiscalManifestationJob` foi mantido como executor (Ruling A), em vez de criar `ManifestarCiencia`. A spec/design usam o nome de plano; o arquivo já estava commitado e referenciado pelo dispatcher.
+- Janela de bloqueio no job usa `release(block_minutes*60)` com `tries=1`: no Redis o release não esgota tentativas, então a reentrega é por delay, não por retry — deliberado, para a manifestação esperar a janela do fisco expirar sem falhar o job. O `registro` fica `pending`/`queued` e uma re-entrega posterior (ou outro resumo re-entregue pela captura) a reencontra.
+- O gate do resync foi colocado no comando (`ResyncFiscalManifestations::handle`), espelhando `cte_scheduled`, e a agenda registra a entrada incondicionalmente — a leitura da chave é da execução, não da agenda.
+- Rastreio por chave via colunas aditivas `resync_attempts` + `xml_recovered_at` em `fiscal_manifestations` (opção da Ruling 8/Ruling F), em vez de derivar só do par summary/document — torna a rotina segura a repetição e dá o limite por chave (`manifestacao_resync_max_attempts=3`).
+- `ManifestacaoResync::run()` carrega todos os pendentes com `get()` agrupado por `client_id`, sem chunking: aceito porque o volume é limitado pelo teto de 20 consultas/h por CNPJ e pela própria taxa de manifestação; a lista encolhe conforme `xml_recovered_at` é marcado. Documentado como débito de escala.
+- `registrarPedido` reseta `outcome` para `Pending` incondicionalmente no `firstOrNew()->fill()` — um resumo re-entregue pela captura depois do `Sent` já gravado volta o registro a `pending` e re-enfileira. Comportamento da deduplicação (overwrite) já testado em 3.4; registrado como efeito conhecido, não corrigido nesta seção.
+- `handle()` do job ganhou a assinatura `(FiscalManifestationStore, RecepcaoEventoConnector)`; os testes de gate e tenancy (seção 3) foram atualizados para injetar o conector.
 
 ## 6. Auditoria e acesso de suporte
 
-- [ ] 6.1 Escrever teste que falha porque a manifestação ainda não registra quem/operação/data para job e para `super_admin` em acesso de suporte, verificar com `php artisan test --compact --filter=AuditoriaManifestacao`
-- [ ] 6.2 Implementar o registro de auditoria (cliente, chave, tipo de evento, resultado, requisitante) no fluxo do job, com entrada de auditoria de suporte quando originada por suporte, verificar com o teste de 6.1 passando
+- [x] 6.1 Escrever teste que falha porque a manifestação ainda não registra quem/operação/data para job e para `super_admin` em acesso de suporte, verificar com `php artisan test --compact --filter=AuditoriaManifestacao`
+- [x] 6.2 Implementar o registro de auditoria (cliente, chave, tipo de evento, resultado, requisitante) no fluxo do job, com entrada de auditoria de suporte quando originada por suporte, verificar com o teste de 6.1 passando
+
+#### Divergências da seção 6
+
+- O teste `AuditoriaManifestacao` nasceu verde de primeira — o registro de auditoria pedido em 6.2 (cliente, chave, tipo de evento, resultado, requisitante) já era a própria linha `fiscal_manifestations`, gravada por `registrarPedido`/`veredito` nas seções anteriores; nenhum campo novo foi necessário.
+- "Entrada de auditoria de suporte" não se aplica neste desenho: não existe endpoint de disparo manual — a manifestação é automática (o dispatcher a enfileira ao gravar o resumo), então um `super_admin` não tem ação que "origine" o envio numa request; `SupportAudit::logWrite` exige `Request`+`CurrentTenant` e não roda em job. O gatilho humano futuro entra como valor de `requested_by` (`membro:...`/`suporte:...`), campo que o teste já fixa como "quem". Nenhuma tabela append-only ou endpoint foi criado.
 
 ## 7. Frontend: estado de completude
 
-- [ ] 7.1 Adicionar o código de completude (`summary_awaiting_xml`/`complete`) derivado dos registros de distribuição da chave na resposta da listagem de documentos, com teste de feature que cobre isolamento entre Accounts e ausência de segredos, verificar com `cd backend && php artisan test --compact --filter=DocumentosCompletude`
-- [ ] 7.2 Escrever teste em `frontend/tests/` que falha porque a coluna de estado ("resumo aguardando XML" versus "XML completo") não existe na tabela, verificar com `cd frontend && pnpm test`
-- [ ] 7.3 Implementar a coluna na tabela de `/fiscal/documentos` com cores semânticas do DESIGN.md e textos em português, sem ação de disparo de manifestação na linha, verificar com o teste de 7.2 e `cd frontend && pnpm typecheck` sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` não contam — registrar antes e depois)
+- [x] 7.1 Adicionar o código de completude (`summary_awaiting_xml`/`complete`) derivado dos registros de distribuição da chave na resposta da listagem de documentos, com teste de feature que cobre isolamento entre Accounts e ausência de segredos, verificar com `cd backend && php artisan test --compact --filter=DocumentosCompletude`
+- [x] 7.2 Escrever teste em `frontend/tests/` que falha porque a coluna de estado ("resumo aguardando XML" versus "XML completo") não existe na tabela, verificar com `cd frontend && pnpm test`
+- [x] 7.3 Implementar a coluna na tabela de `/fiscal/documentos` com cores semânticas do DESIGN.md e textos em português, sem ação de disparo de manifestação na linha, verificar com o teste de 7.2 e `cd frontend && pnpm typecheck` sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` não contam — registrar antes e depois)
+
+#### Divergências da seção 7
+
+- **Baseline do typecheck**: os 4 erros pré-existentes de `admin/contas.vue` citados na task não existem mais neste worktree — foram corrigidos em `9d5ebad fix(admin)` antes desta seção rodar. Antes e depois: `pnpm typecheck` sai com exit 0 e saída idêntica (0 erros), ou seja, nenhum erro novo.
+- **Cabeçalho da coluna**: o header ficou `XML` (curto, para caber na tabela densa sem quebrar a largura das vizinhas), e o rótulo do badge carrega o texto completo ("Resumo aguardando XML" / "XML completo"). O menu de colunas ocultáveis repete `XML`.
+- **Completude na linha `document`**: a célula da linha que é o próprio documento completo também responde `complete` — a pergunta é da chave, não da linha isolada; um `null` ali diria "a pergunta não se aplica", que não é verdade.
+- **NFS-e fora da completude**: `completudeDe` responde `null` para qualquer modelo que não seja `nfe` (CT-e, NFC-e, NFS-e...), porque "aguardando XML" é a pergunta que a manifestação do destinatário responde, e ela é um mecanismo da NF-e. NFC-e fica `null` pela mesma regra — é nota de consumidor final, emitida pelo próprio estabelecimento.
+- **Allowlist do Resource**: o teste `test_lista_devolve_apenas_as_chaves_declaradas_sem_caminho_do_xml` fixa a lista exata de chaves da linha; `completude` foi acrescentada a ela como parte do contrato fixado na spec.
 
 ## 8. Canário no ambiente real (fora da suíte padrão)
 

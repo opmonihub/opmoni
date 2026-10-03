@@ -5,6 +5,7 @@ namespace App\Services\Fiscal\Capture;
 use App\Enums\FiscalFailure;
 use App\Enums\FiscalSkipReason;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
 use App\Models\Client;
 use App\Models\ClientCertificate;
 use App\Models\FiscalCursor;
@@ -12,6 +13,7 @@ use App\Models\FiscalGap;
 use App\Services\Fiscal\Contracts\FiscalConnector;
 use App\Services\Fiscal\Contracts\PullResult;
 use App\Services\Fiscal\Exceptions\FiscalException;
+use App\Services\Fiscal\Manifestacao\ManifestacaoDispatcher;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -57,6 +59,7 @@ final class FiscalCaptureService
         private readonly FiscalConnectorRegistry $connectors,
         private readonly FiscalDocumentWriter $writer,
         private readonly FiscalCteGate $gate,
+        private readonly ManifestacaoDispatcher $manifestacao,
     ) {}
 
     public function capture(Client $client, FiscalSource $source): FiscalCaptureOutcome
@@ -320,6 +323,19 @@ final class FiscalCaptureService
             try {
                 $this->writer->store($client, $source, $document);
                 $stored++;
+
+                // O resumo gravado é o gatilho da ciência da emissão: o XML
+                // completo da NF-e de terceiro só é liberado depois que o
+                // destinatário se manifesta, e a ciência cedo é o que destrava
+                // tanto o NSU próprio quanto o `consChNFe`. O dispatcher decide
+                // a fila; a decisão de enviar é do job, na execução.
+                if ($document->stage === FiscalStage::Summary && $source === FiscalSource::NfeDistribuicao) {
+                    $this->manifestacao->enfileirarCiencia(
+                        (int) $client->account_id,
+                        $client,
+                        $document->chave,
+                    );
+                }
             } catch (RuntimeException $exception) {
                 $this->reportUnreadableEntry(
                     $client,

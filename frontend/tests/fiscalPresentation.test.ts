@@ -27,6 +27,7 @@ import {
   coverageState,
   documentsOverTimeHeader,
   fiscalClientCertificatePresentation,
+  fiscalCompletudePresentation,
   fiscalEventCount,
   fiscalKindLabel,
   fiscalMissingValue,
@@ -763,6 +764,34 @@ describe('a coluna de certificado do cliente', () => {
 
     assert.match(page, /fiscalSituacaoPresentation\(row\.original\.situacao\)/)
     assert.match(sheet, /fiscalSituacaoPresentation\(target\.situacao\)/)
+  })
+
+  it('pinta a completude com a apresentação e a coluna existe na tabela de documentos', () => {
+    assert.equal(fiscalCompletudePresentation('summary_awaiting_xml').label, 'Resumo aguardando XML')
+    assert.equal(fiscalCompletudePresentation('summary_awaiting_xml').color, 'warning')
+    assert.equal(fiscalCompletudePresentation('complete').label, 'XML completo')
+    assert.equal(fiscalCompletudePresentation('complete').color, 'neutral')
+
+    // `null` é a linha em que a pergunta não se aplica — CT-e, evento, nota do
+    // próprio CNPJ. Um rótulo ali seria uma afirmação que a distribuição não
+    // fez, e a célula fica com o traço do valor ausente.
+    const ausente = fiscalCompletudePresentation(null)
+    assert.equal(ausente.label, fiscalMissingValue)
+    assert.equal(ausente.color, 'neutral')
+    assert.equal(fiscalCompletudePresentation(undefined).label, fiscalMissingValue)
+
+    // O módulo acima é a decisão; a página é o que pinta, e um `.vue` não é
+    // importável. A leitura de fonte é o precedente deste arquivo: uma coluna
+    // que voltasse a derivar `stage` cru ou a não chamar a apresentação
+    // passaria por toda a bateria acima.
+    const page = readFileSync(new URL('../app/pages/fiscal/documentos.vue', import.meta.url), 'utf8')
+
+    assert.match(page, /fiscalCompletudePresentation\(row\.original\.completude\)/)
+    assert.match(page, /id:\s*'completude'/)
+    // Sem ação de manifestação na linha: a spec e o design dizem que a UI só
+    // expõe o estado, e um botão de "manifestar" passaria em todos os asserts
+    // de apresentação acima.
+    assert.doesNotMatch(page, /manifestar/i)
   })
 
   it('a tabela de documentos mostra o certificado como indicador ao lado do cliente', () => {

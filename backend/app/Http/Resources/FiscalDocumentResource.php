@@ -55,6 +55,12 @@ class FiscalDocumentResource extends JsonResource
             // evento `110111`, `autorizada` quando chegou o documento completo,
             // `resumo` quando só o resumo chegou. Nula na linha de evento.
             'situacao' => $this->situacao,
+            // Derivada dos registros de distribuição da chave, e não da tabela
+            // de manifestação: `complete` quando a chave tem o documento
+            // autorizado, `summary_awaiting_xml` quando só o resumo chegou,
+            // `null` quando a pergunta não se aplica à linha (CT-e, linha de
+            // evento, nota emitida pelo próprio CNPJ do cliente).
+            'completude' => $this->completude,
             // `YYYY-MM` da emissão, nulo fora da série — o mesmo contrato de
             // `over_time` da cobertura: sem mês, não há mês a atribuir.
             'competencia' => $this->emissao_at?->format('Y-m'),

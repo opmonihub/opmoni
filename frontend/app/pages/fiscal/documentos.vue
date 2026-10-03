@@ -17,6 +17,7 @@ import { availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters }
 import { fiscalCompetenciaLabel, fiscalNumeroLabel } from '~/utils/fiscalClients'
 import {
   fiscalClientCertificatePresentation,
+  fiscalCompletudePresentation,
   fiscalEventCount,
   fiscalKindLabel,
   fiscalSituacaoPresentation,
@@ -311,6 +312,7 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
   { id: 'cliente', header: 'Cliente', meta: { class: { th: 'min-w-52', td: 'max-w-0' } } },
   { id: 'numero', header: 'Nº', meta: { class: { th: 'whitespace-nowrap tabular-nums', td: 'whitespace-nowrap tabular-nums' } } },
   { id: 'situacao', header: 'Situação', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
+  { id: 'completude', header: 'XML', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
   { id: 'competencia', header: 'Competência', meta: { class: { th: 'whitespace-nowrap tabular-nums', td: 'whitespace-nowrap tabular-nums' } } },
   { id: 'modelo', header: 'Modelo', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
   { id: 'emitente', header: 'Emitente', meta: { class: { th: 'min-w-40', td: 'max-w-0' } } },
@@ -327,6 +329,7 @@ const hideableColumns = [
   { id: 'cliente', label: 'Cliente' },
   { id: 'numero', label: 'Nº' },
   { id: 'situacao', label: 'Situação' },
+  { id: 'completude', label: 'XML' },
   { id: 'competencia', label: 'Competência' },
   { id: 'modelo', label: 'Modelo' },
   { id: 'emitente', label: 'Emitente' },
@@ -459,6 +462,13 @@ const hideableColumns = [
                   size="sm"
                 />
                 <UBadge
+                  v-if="row.completude"
+                  :label="fiscalCompletudePresentation(row.completude).label"
+                  :color="fiscalCompletudePresentation(row.completude).color"
+                  variant="subtle"
+                  size="sm"
+                />
+                <UBadge
                   :label="fiscalKindLabel(row.kind)"
                   variant="subtle"
                   size="sm"
@@ -541,6 +551,22 @@ const hideableColumns = [
                 <UBadge
                   :label="fiscalSituacaoPresentation(row.original.situacao).label"
                   :color="fiscalSituacaoPresentation(row.original.situacao).color"
+                  variant="subtle"
+                  :ui="{ base: 'max-w-full', label: 'truncate' }"
+                />
+              </template>
+
+              <template #completude-cell="{ row }">
+                <!--
+                  `null` na completude é a linha em que a pergunta não se
+                  aplica — CT-e, evento, nota do próprio CNPJ — e a célula
+                  fica com o traço do valor ausente, nunca com uma cor
+                  inventada. Sem ação de manifestação aqui: a tela expõe o
+                  estado, e o disparo mora fora da tabela.
+                -->
+                <UBadge
+                  :label="fiscalCompletudePresentation(row.original.completude).label"
+                  :color="fiscalCompletudePresentation(row.original.completude).color"
                   variant="subtle"
                   :ui="{ base: 'max-w-full', label: 'truncate' }"
                 />

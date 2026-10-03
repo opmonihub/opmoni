@@ -40,6 +40,17 @@ class FiscalDocument extends Model
      */
     public ?string $situacao = null;
 
+    /**
+     * A completude do XML da chave, derivada e sem coluna: `complete` quando a
+     * distribuição entregou o documento autorizado, `summary_awaiting_xml`
+     * quando só o resumo chegou. `null` quando a pergunta não se aplica à
+     * linha: o CT-e (que não depende de manifestação do destinatário), a linha
+     * de evento e a NF-e que o próprio cliente emitiu — nela não há terceiro
+     * que destrave XML nenhum. Preenchido pelo serviço de leitura, no mesmo
+     * molde de `situacao`.
+     */
+    public ?string $completude = null;
+
     protected function casts(): array
     {
         return [

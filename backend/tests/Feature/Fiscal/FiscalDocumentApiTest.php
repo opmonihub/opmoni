@@ -1070,7 +1070,7 @@ class FiscalDocumentApiTest extends TestCase
         $this->assertSame([
             'id', 'client', 'model', 'kind', 'stage', 'chave_acesso', 'emitente_cnpj',
             'destinatario_cnpj', 'valor_total', 'emissao_at', 'numero', 'serie',
-            'situacao', 'competencia', 'event_count', 'mascarado',
+            'situacao', 'completude', 'competencia', 'event_count', 'mascarado',
             'client_certificate_status', 'digval_confere',
         ], array_keys($linha));
         $this->assertSame(['id', 'name', 'tax_id'], array_keys($linha['client']));
