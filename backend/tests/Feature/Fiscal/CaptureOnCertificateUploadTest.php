@@ -74,6 +74,58 @@ class CaptureOnCertificateUploadTest extends TestCase
         );
     }
 
+    /**
+     * Com `nfse_enabled` ligada, o upload enfileira a ADN junto da NF-e — e é
+     * o mesmo `meta.capture.sources` que a resposta publica e que o log de
+     * suporte registra.
+     */
+    public function test_upload_com_nfse_ligada_enfileira_a_fonte_e_publica_no_meta(): void
+    {
+        config(['fiscal.nfse_enabled' => true]);
+
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum')
+            ->post("/api/clients/{$client->getKey()}/certificate", [
+                'password' => 'senha-do-certificado',
+                'certificate' => $this->pfxUpload('cliente.pfx', 'senha-do-certificado'),
+            ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('meta.capture.status', 'queued')
+            ->assertJsonPath('meta.capture.sources', ['nfe_distribuicao', 'nfse_adn']);
+
+        Queue::assertPushed(CaptureFiscalDocumentsJob::class, 2);
+    }
+
+    /**
+     * Com `nfse_enabled` desligada — o nascer da chave —, a ADN fica de fora
+     * das fontes que o upload enfileira e publica. A recusa é da fonte, não
+     * do cliente: a NF-e segue capturável.
+     */
+    public function test_upload_com_nfse_desligada_nao_enfileira_a_fonte(): void
+    {
+        config(['fiscal.nfse_enabled' => false]);
+
+        $account = Account::factory()->create();
+        $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs($this->memberOf($account, 'operador'), 'sanctum')
+            ->post("/api/clients/{$client->getKey()}/certificate", [
+                'password' => 'senha-do-certificado',
+                'certificate' => $this->pfxUpload('cliente.pfx', 'senha-do-certificado'),
+            ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('meta.capture.status', 'queued')
+            ->assertJsonPath('meta.capture.sources', ['nfe_distribuicao']);
+
+        Queue::assertPushed(CaptureFiscalDocumentsJob::class, 1);
+        Queue::assertNotPushed(
+            CaptureFiscalDocumentsJob::class,
+            fn (CaptureFiscalDocumentsJob $job): bool => $job->source->value === 'nfse_adn',
+        );
+    }
+
     public function test_recusa_de_validacao_nao_despacha_e_nao_toca_o_cofre(): void
     {
         $account = Account::factory()->create();

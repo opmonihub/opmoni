@@ -69,6 +69,17 @@ class FiscalReconciliationTest extends TestCase
     private const CHAVE_QUE_NAO_FECHA = '33333333333333333333333333333333333333332004';
 
     /**
+     * Chaves de 50 posições da NFS-e nacional, com o dígito verificador que o
+     * módulo 11 do próprio módulo calcula — a mesma conta de
+     * `FiscalXmlMetadata::isValidChave()`, que o writer aplica a toda linha.
+     */
+    private const CHAVE_NFSE_100 = '35260911222333000181000100000012345678901234567892';
+
+    private const CHAVE_NFSE_101 = '35260911222333000181000100000012345678901234567990';
+
+    private const CHAVE_NFSE_102 = '35260911222333000181000100000012345678901234567000';
+
+    /**
      * As posições pedidas uma a uma, na ordem em que saíram. É a única prova de
      * que a reconciliação foi ao fisco: uma posição que ninguém pediu é um
      * buraco que ninguém fechou, e uma posição pedida a mais é consulta
@@ -278,6 +289,113 @@ class FiscalReconciliationTest extends TestCase
             'source' => FiscalSource::CteDistribuicao->value,
             'nsu' => 101,
         ]);
+    }
+
+    /**
+     * A volta atrás de NFS-e com a captura desligada **não vai ao fisco**.
+     *
+     * A mesma pergunta que a de CT-e acima, com a chave que a ADN responde:
+     * `fiscal.nfse_enabled` desligada pula a lacuna sem consulta — nenhum GET
+     * sai contra a API cujo contrato ainda não foi observado de perto —, sem
+     * gastar tentativa e sem segurar a posição. E ela é a resposta única, na
+     * mesma linha de `cte_enabled`, com a fonte e a chave nomeadas.
+     */
+    public function test_a_reconciliacao_de_nfse_desligada_nao_consulta_e_nao_cobra_tentativa(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101, ['source' => FiscalSource::NfseAdn]);
+
+        $this->bindConnector($this->noPull(), source: FiscalSource::NfseAdn);
+
+        $this->assertFalse(config('fiscal.nfse_enabled'), 'A captura de NFS-e precisa nascer desligada.');
+
+        Log::spy();
+
+        $this->assertSame(0, $this->reconciliation()->run($client, FiscalSource::NfseAdn));
+
+        $this->assertSame([], $this->lookups, 'Nenhuma consulta por posição pode sair para a ADN.');
+        $this->assertSame(0, $this->gapOf($client, 101, FiscalSource::NfseAdn)->attempts);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context): bool => $message === 'fiscal.reconciliacao.fonte_pausada'
+                && $context['fonte'] === FiscalSource::NfseAdn->value
+                && $context['client_id'] === $client->getKey()
+                && str_contains($context['reason'], 'nfse_enabled'));
+    }
+
+    /**
+     * Com a porta ligada, a volta atrás de NFS-e recupera a posição como
+     * sempre: a mesma lacuna, a mesma consulta `fetchByNsu` e o documento do
+     * modelo certo entrando pelo writer.
+     */
+    public function test_a_reconciliacao_de_nfse_ligada_recupera_a_posicao_pendente(): void
+    {
+        $client = $this->tenant();
+        $this->cursor($client, 100);
+        $this->createGap($client, 101, ['source' => FiscalSource::NfseAdn]);
+
+        $this->bindConnector(
+            $this->noPull(),
+            fn (): ?PulledDocument => $this->pulled(101, self::CHAVE_NFSE_101, FiscalModel::Nfse),
+            FiscalSource::NfseAdn,
+        );
+
+        config(['fiscal.nfse_enabled' => true]);
+
+        $this->assertSame(1, $this->reconciliation()->run($client, FiscalSource::NfseAdn));
+
+        $this->assertSame([101], $this->lookups);
+        $this->assertDatabaseMissing('fiscal_gaps', [
+            'client_id' => $client->getKey(),
+            'source' => FiscalSource::NfseAdn->value,
+            'nsu' => 101,
+        ]);
+
+        $documento = FiscalDocument::query()
+            ->where('source', FiscalSource::NfseAdn)
+            ->where('nsu', 101)
+            ->sole();
+
+        $this->assertSame(FiscalModel::Nfse, $documento->model);
+        $this->assertSame(self::CHAVE_NFSE_101, (string) $documento->chave_acesso);
+    }
+
+    /**
+     * A lacuna pausada não segura a posição de NFS-e: a captura adota a
+     * posição que o fisco autorizou mesmo com a posição ilegível registrada,
+     * e marca `gap_paused` — a perda adiada, nomeada, e não a perda que
+     * cresce com a pausa.
+     */
+    public function test_a_lacuna_pausada_de_nfse_nao_segura_a_posicao_da_captura(): void
+    {
+        $client = $this->tenant();
+
+        $this->assertFalse(config('fiscal.nfse_enabled'), 'A volta atrás de NFS-e começa pausada.');
+
+        $this->bindConnector(
+            fn (): PullResult => $this->batch(
+                [$this->pulled(100, self::CHAVE_NFSE_100, FiscalModel::Nfse), $this->pulled(102, self::CHAVE_NFSE_102, FiscalModel::Nfse)],
+                200,
+                false,
+                failures: [new FailedEntry(101, 'NFSE', 'FiscalXmlMetadata rejeitou o documento decodificado.')],
+            ),
+            source: FiscalSource::NfseAdn,
+        );
+
+        $this->capture()->capture($client, FiscalSource::NfseAdn);
+
+        $cursor = $this->cursorOf($client, FiscalSource::NfseAdn);
+        $this->assertSame(200, $cursor->last_nsu);
+        $this->assertSame('gap_paused', $cursor->last_error);
+
+        // A linha fica, sem contagem e sem prazo — devida assim que a chave
+        // voltar, e nunca uma posição que a captura teria de reentregar para
+        // sempre.
+        $lacuna = $this->gapOf($client, 101, FiscalSource::NfseAdn);
+        $this->assertSame(0, $lacuna->attempts);
+        $this->assertNull($lacuna->next_attempt_at);
     }
 
     /**
@@ -1207,12 +1325,12 @@ class FiscalReconciliationTest extends TestCase
         return $cursor;
     }
 
-    private function cursorOf(Client $client): FiscalCursor
+    private function cursorOf(Client $client, FiscalSource $source = FiscalSource::NfeDistribuicao): FiscalCursor
     {
         return FiscalCursor::query()
             ->withoutGlobalScope('account')
             ->where('client_id', $client->getKey())
-            ->where('source', FiscalSource::NfeDistribuicao)
+            ->where('source', $source)
             ->firstOrFail();
     }
 
@@ -1279,7 +1397,11 @@ class FiscalReconciliationTest extends TestCase
             valorTotal: null,
             digVal: null,
             nsu: $nsu,
-            schema: $model === FiscalModel::Nfe ? 'resNFe_v1.01.xsd' : 'procCTe_v4.00.xsd',
+            schema: match ($model) {
+                FiscalModel::Nfe => 'resNFe_v1.01.xsd',
+                FiscalModel::Cte => 'procCTe_v4.00.xsd',
+                default => 'NFSE',
+            },
             emissaoAt: now()->toImmutable(),
             eventoOcorridoEmAt: null,
             xml: '<resNFe/>',

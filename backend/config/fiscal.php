@@ -156,7 +156,10 @@ return [
      * Como no CT-e, a **captura** direta (`CaptureFiscalDocumentsJob` e
      * `FiscalCaptureService`) consulta o registro de conectores e nunca esta
      * chave; o gate está na fronteira de despacho (`FiscalCaptureDispatcher::
-     * recusaDeFonte()`), no comando de probe e no upload do certificado.
+     * recusaDeFonte()`), no comando de probe e no upload do certificado — e a
+     * **volta atrás** lê a mesma chave: `FiscalReconciliation::run()` pula as
+     * lacunas de NFS-e com ela desligada, sem gastar tentativa e sem segurar
+     * a posição, pela mesma `FiscalCteGate::isPaused()` que o CT-e usa.
      */
     'nfse_enabled' => filter_var(env('FISCAL_NFSE_ENABLED', false), FILTER_VALIDATE_BOOL),
 

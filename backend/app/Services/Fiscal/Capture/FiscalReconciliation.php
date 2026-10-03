@@ -118,12 +118,13 @@ final class FiscalReconciliation
     /**
      * A fonte que a instalação pausou.
      *
-     * Só CT-e tem porta, e a porta é a mesma da captura manual
-     * (`fiscal.cte_enabled`). A agenda (`fiscal.cte_scheduled`) é a terceira
-     * decisão e **não** entra aqui — ela decide se alguém agenda a captura, e é
-     * a agenda ligada com esta chave desligada que produz a pausa. A resposta vem
-     * de `FiscalCteGate`, que é o leitor único dessa pergunta e documenta a
-     * diferença entre as três decisões.
+     * CT-e e NFS-e têm porta, e a porta é a mesma da captura manual
+     * (`fiscal.cte_enabled`, `fiscal.nfse_enabled`). A agenda
+     * (`fiscal.cte_scheduled`) é a terceira decisão e **não** entra aqui —
+     * ela decide se alguém agenda a captura, e é a agenda ligada com a chave
+     * desligada que produz a pausa. A resposta vem de `FiscalCteGate`, que é o
+     * leitor único dessa pergunta e documenta a diferença entre as três
+     * decisões.
      */
     private function isPaused(FiscalSource $source): bool
     {
@@ -470,7 +471,22 @@ final class FiscalReconciliation
             'account_id' => (int) $client->account_id,
             'client_id' => (int) $client->getKey(),
             'fonte' => $source->value,
-            'reason' => 'captura desta fonte desligada nesta instalação (fiscal.cte_enabled).',
+            'reason' => 'captura desta fonte desligada nesta instalação ('.$this->gateKeyOf($source).').',
         ]);
+    }
+
+    /**
+     * A chave de instalação que pausou a fonte, nomeada na linha do aviso:
+     * quem lê o log descobre por que a lacuna ficou parada sem abrir o
+     * `FiscalCteGate`, e uma fonte pausada por outra chave não sai com a chave
+     * errada na frase.
+     */
+    private function gateKeyOf(FiscalSource $source): string
+    {
+        return match ($source) {
+            FiscalSource::CteDistribuicao => 'fiscal.cte_enabled',
+            FiscalSource::NfseAdn => 'fiscal.nfse_enabled',
+            default => 'fiscal.cte_enabled',
+        };
     }
 }

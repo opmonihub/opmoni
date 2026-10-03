@@ -80,6 +80,76 @@ class FiscalDocumentSearchTest extends TestCase
         $this->assertNotContains($deOutraChave->getKey(), $ids);
     }
 
+    /**
+     * A chave de 50 posições é a identidade da NFS-e nacional, e entra pela
+     * mesma regra da de 44: igualdade exata, o documento e as linhas da
+     * linha do tempo do mesmo cliente — e nada além.
+     */
+    public function test_busca_pela_chave_de_50_digitos_traz_o_documento_nfse_e_sua_linha_do_tempo(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = $this->cliente($account, 'Cliente 1 Com NFS-e');
+        $outro = $this->cliente($account, 'Cliente 2 Sem Essa Nota');
+
+        $documento = FiscalDocument::factory()->nfse()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $account->getKey(),
+        ]);
+        $chave = (string) $documento->chave_acesso;
+        $this->assertSame(50, strlen($chave), 'A factory precisa produzir a chave de 50 posições.');
+
+        $evento = $this->evento($cliente, $chave, '101501-1', 950);
+        $deOutraChave = $this->documento($cliente);
+        $deOutroCliente = FiscalDocument::factory()->nfse()->create([
+            'client_id' => $outro->getKey(),
+            'account_id' => $account->getKey(),
+        ]);
+
+        $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/documents?q='.$chave)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+
+        $ids = collect($resposta->json('data'))->pluck('id')->all();
+        $this->assertContains($documento->getKey(), $ids);
+        $this->assertContains($evento->getKey(), $ids);
+        $this->assertNotContains($deOutraChave->getKey(), $ids);
+        $this->assertNotContains($deOutroCliente->getKey(), $ids);
+    }
+
+    /**
+     * A chave de 50 posições de outra conta não atravessa: a busca por
+     * igualdade é sobre a conta corrente, e a chave da NFS-e alheia não é
+     * exceção.
+     */
+    public function test_busca_pela_chave_de_50_digitos_de_outra_conta_nao_vaza(): void
+    {
+        $account = Account::factory()->create();
+        $alheia = Account::factory()->create();
+
+        $cliente = $this->cliente($account, 'Cliente 1 Da Casa');
+        $clienteAlheio = $this->cliente($alheia, 'Cliente 2 Alheio');
+
+        $daCasa = FiscalDocument::factory()->nfse()->create([
+            'client_id' => $cliente->getKey(),
+            'account_id' => $account->getKey(),
+        ]);
+
+        // A mesma chave nas duas contas — distribuição é por contribuinte, e
+        // a chave que chega para a outra conta é a mesma sequência de dígitos.
+        FiscalDocument::factory()->nfse()->create([
+            'client_id' => $clienteAlheio->getKey(),
+            'account_id' => $alheia->getKey(),
+            'chave_acesso' => (string) $daCasa->chave_acesso,
+        ]);
+
+        $this->actingAs($this->membroDe($account, 'operador'), 'sanctum')
+            ->getJson('/api/fiscal/documents?q='.(string) $daCasa->chave_acesso)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $daCasa->getKey());
+    }
+
     public function test_busca_pelo_nome_do_cliente_e_insensivel_a_caixa(): void
     {
         $account = Account::factory()->create();
