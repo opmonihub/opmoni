@@ -160,6 +160,21 @@ return [
      */
     'nfse_enabled' => filter_var(env('FISCAL_NFSE_ENABLED', false), FILTER_VALIDATE_BOOL),
 
+    /*
+     * A manifestação do destinatário de NF-e (ciência da emissão, 210210) —
+     * enfileirada após resumo capturado — nasce desligada, no mesmo espírito
+     * de `cte_enabled` e `nfse_enabled`. Evento assinado é ato perante o fisco;
+     * nunca deve sair sem decisão explícita de quem autorizou o canário.
+     *
+     * Lida pelo despacho pós-resumo (`ManifestacaoDispatcher`) e pelo job de
+     * envio (`SendFiscalManifestationJob`). A captura incremental não consulta
+     * esta chave.
+     *
+     * `filter_var(..., FILTER_VALIDATE_BOOL)`: só `true`, `1`, `on` e `yes`
+     * ligam; todo o resto — inclusive vazio — desliga.
+     */
+    'manifestacao_enabled' => filter_var(env('FISCAL_MANIFESTACAO_ENABLED', false), FILTER_VALIDATE_BOOL),
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*
