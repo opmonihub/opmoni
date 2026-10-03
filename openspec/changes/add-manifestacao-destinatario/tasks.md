@@ -62,9 +62,17 @@
 
 ## 7. Frontend: estado de completude
 
-- [ ] 7.1 Adicionar o código de completude (`summary_awaiting_xml`/`complete`) derivado dos registros de distribuição da chave na resposta da listagem de documentos, com teste de feature que cobre isolamento entre Accounts e ausência de segredos, verificar com `cd backend && php artisan test --compact --filter=DocumentosCompletude`
-- [ ] 7.2 Escrever teste em `frontend/tests/` que falha porque a coluna de estado ("resumo aguardando XML" versus "XML completo") não existe na tabela, verificar com `cd frontend && pnpm test`
-- [ ] 7.3 Implementar a coluna na tabela de `/fiscal/documentos` com cores semânticas do DESIGN.md e textos em português, sem ação de disparo de manifestação na linha, verificar com o teste de 7.2 e `cd frontend && pnpm typecheck` sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` não contam — registrar antes e depois)
+- [x] 7.1 Adicionar o código de completude (`summary_awaiting_xml`/`complete`) derivado dos registros de distribuição da chave na resposta da listagem de documentos, com teste de feature que cobre isolamento entre Accounts e ausência de segredos, verificar com `cd backend && php artisan test --compact --filter=DocumentosCompletude`
+- [x] 7.2 Escrever teste em `frontend/tests/` que falha porque a coluna de estado ("resumo aguardando XML" versus "XML completo") não existe na tabela, verificar com `cd frontend && pnpm test`
+- [x] 7.3 Implementar a coluna na tabela de `/fiscal/documentos` com cores semânticas do DESIGN.md e textos em português, sem ação de disparo de manifestação na linha, verificar com o teste de 7.2 e `cd frontend && pnpm typecheck` sem erros novos (os 4 erros pré-existentes de `frontend/app/pages/admin/contas.vue` não contam — registrar antes e depois)
+
+#### Divergências da seção 7
+
+- **Baseline do typecheck**: os 4 erros pré-existentes de `admin/contas.vue` citados na task não existem mais neste worktree — foram corrigidos em `9d5ebad fix(admin)` antes desta seção rodar. Antes e depois: `pnpm typecheck` sai com exit 0 e saída idêntica (0 erros), ou seja, nenhum erro novo.
+- **Cabeçalho da coluna**: o header ficou `XML` (curto, para caber na tabela densa sem quebrar a largura das vizinhas), e o rótulo do badge carrega o texto completo ("Resumo aguardando XML" / "XML completo"). O menu de colunas ocultáveis repete `XML`.
+- **Completude na linha `document`**: a célula da linha que é o próprio documento completo também responde `complete` — a pergunta é da chave, não da linha isolada; um `null` ali diria "a pergunta não se aplica", que não é verdade.
+- **NFS-e fora da completude**: `completudeDe` responde `null` para qualquer modelo que não seja `nfe` (CT-e, NFC-e, NFS-e...), porque "aguardando XML" é a pergunta que a manifestação do destinatário responde, e ela é um mecanismo da NF-e. NFC-e fica `null` pela mesma regra — é nota de consumidor final, emitida pelo próprio estabelecimento.
+- **Allowlist do Resource**: o teste `test_lista_devolve_apenas_as_chaves_declaradas_sem_caminho_do_xml` fixa a lista exata de chaves da linha; `completude` foi acrescentada a ela como parte do contrato fixado na spec.
 
 ## 8. Canário no ambiente real (fora da suíte padrão)
 
