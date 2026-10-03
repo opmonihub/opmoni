@@ -59,7 +59,7 @@ Tenancy: probes e jobs devem carregar `account_id` explicitamente quando rodarem
 
 ## Runbook (loop de manutenção)
 
-Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma (`SerproConnection`), e-CNPJ e termo vigentes na Account do escritório (`48123272000105`), procuração `00146` para o canário `30288513000100`.
+Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma (`SerproConnection`), e-CNPJ e termo vigentes na Account do escritório (`48123272000105`), procuração `00146` para o canário `30288513000100` (via sync `OBTERPROCURACAO41` ou seed manual — sem ela a elegibilidade do probe faz skip).
 
 ```bash
 cd backend

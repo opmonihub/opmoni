@@ -17,7 +17,7 @@ Banco principal: postgres do `docker-compose.yml` (`opmoni/opmoni` em `:5432`); 
 
 Loop de manutenção contra o Integra Contador em homologação — **não** entra no `composer test` padrão. Detalhes e CNPJs canário: [`openspec/changes/add-real-pgdas-das-fetch/design.md`](../openspec/changes/add-real-pgdas-das-fetch/design.md) (Runbook).
 
-Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma, e-CNPJ e termo na Account do escritório (`48123272000105`), procuração `00146` para o cliente AUTO CENTER (`30288513000100`).
+Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma, e-CNPJ e termo na Account do escritório (`48123272000105`), procuração e-CAC `00146` para o cliente AUTO CENTER (`30288513000100`) — obtenha com sync `OBTERPROCURACAO41` ou seed manual antes do probe passar elegibilidade.
 
 ```bash
 php artisan config:show fiscal.environment   # deve ser homologacao
