@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'requested_at',
     'sent_at',
     'resulted_at',
+    'resync_attempts',
+    'xml_recovered_at',
 ])]
 class FiscalManifestation extends Model
 {
@@ -38,6 +40,8 @@ class FiscalManifestation extends Model
             'requested_at' => 'datetime',
             'sent_at' => 'datetime',
             'resulted_at' => 'datetime',
+            'resync_attempts' => 'integer',
+            'xml_recovered_at' => 'datetime',
         ];
     }
 

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Resposta de uma consulta por posição (`consNSU`), e não de um lote.
+
+  O `retDistDFeInt_138.xml` é a forma do `distNSU`: o serviço devolve o que
+  pertence ao CNPJ consultado a partir de uma posição, e a posição devolvida é a
+  seguinte do ambiente, não a pedida. Uma `consNSU` devolve o documento **daquela
+  posição** ou nada (`137`) — nunca a vizinha. Testar a consulta por posição com
+  a fixture do lote fixa, como contrato esperado, "uma consulta por posição pode
+  devolver documento de outra posição", e o próximo que chamar o método confia
+  nisso.
+-->
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <nfeDistDFeInteresseResponse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
+      <nfeDistDFeInteresseResult>
+        <retDistDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+          <tpAmb>1</tpAmb>
+          <verAplic>SVRS20260927101233</verAplic>
+          <cStat>138</cStat>
+          <xMotivo>Documento localizado</xMotivo>
+          <dhResp>2026-09-27T10:12:33-03:00</dhResp>
+          <ultNSU>000000000000100</ultNSU>
+          <maxNSU>000000000000100</maxNSU>
+          <lote NSU="000000000000100">
+            <docZip NSU="000000000000100" schema="procNFe_v4.00.xsd">H4sIAAAAAAACA7VWbXOjNhD+fr+C8fcYCYMTZ7BuiMEtHQdTY2fuKzFywoyNfFh5aX99dwUYycn1
+2pnW4xlW+zxarbQr7fpf3w9765XXp1JU0wEdkoHFq60oyuppOtis51c3g6/si3+sxTaZc8XMxXTg
+DgkwYW51mg6epTze2vbb29vwKGqZ73flaZvvh2W1Gz7WdrXjA/bFsnwwgF+QAPloLS6mA9COPMch
+7sT4eR4hlBCHqB91XOJ54zFMauyhxYJ3Moy2mzkbeb6NX02bzBl1Rq43vr4BLNGxKpfLI3uIkjCw
+wsi6j1azIFyu4sC3G6inHkTBPDCO31574nXJGfXtRtAsN6uCHWPB4jk6lMwhjnNFXPivKb313Ft3
+ckVGt4T4dkPoJ8gjGvJt9e3VZRHyk0SglbT93r9U81/gIDwyIrjjZqybjA/HxiYKOgBrnxpESZrR
+8IGBd/jR+cHhsaGj0AO7ssKoA9JKmuNVMS+rfI/WzrIBpzVXPnRiD2I64unA1E7sQciqFJRMHA+i
+Kq8gp32703XpYmv54vNDqR/bLEl/Y2b++bZS9pz3RBw4yzZptGpTxYq+RffpYmkt1iEkTUPQJszz
+Sn46AbgK67m8KngdGU6hhcVTzVabQJuHGp1S1YLBNYH9omRMvsvLGnSzKFmvcGo71jmYHmayGDBc
+pSz1bf1G4WFFKcOr2SyLI8NkmmMaEQ8NKtlwSmnuVkEWL8AlE/ftT47BjyNGYSnXcSeEUte3QaFF
+brVmcNHwcw60Hly/MC+ICiqljuOMRiN8WG7oDyIdxtl6Fd9tYngTAmu2xBjGP4q1cty8i138Anhh
+4vBnMXS8vwlhnIQbdCZY/NdhdL3rm/8pjBcvE9zoOFK6ibre7eAfxRleRo3rSyGNdyOe3WdrYR79
+692MjR0yxL2hbGA4gU1GDagGH2BwTlSM9JRGYfDms7RjoHiJQcS41AjN2GDBA1X0bqqRaaXmkp9N
+qIGBZ/ypQ1E0MHB424FKNvcYnzcXXyBpD6UfsZC/ir1GaMbmruIMMmdIx7in+OJwZ8t5nGTMmwxH
+EONuaFCWLxISvF2iGRg4FMNr2sJGYbQvMgGKk54qvqzz6nRR15tTnajabpwwTDbo/jF/0os5l2lu
+HjkWLVC15esCVGwKPcSHaa+oOG/IQDHxdT7Uvm6Ai+za8urbnQClUX5os/oODDJMqqYrDj/ruejP
+m67Pyz4W4OC4L7cse1hl2OEQl7iUemPiqErcgB17+4z+/puuDx6hZ62XgFZqxbePUlx2U+Nb4vTd
+VMvpJlW4fUbVut0C2KQp9dly+fQAKVM69fckD8f198Ns9/zt1z/Wdzv3ndP48PsUTDek834ymUss
+w+CmEjvg/V7I8lWw4EWKuvwzL4QlrJeTsIrcSuZXHN7OltHHtPNG9TlSbbppeZT4F/r4O0G+CwAA</docZip>
+          </lote>
+        </retDistDFeInt>
+      </nfeDistDFeInteresseResult>
+    </nfeDistDFeInteresseResponse>
+  </soap:Body>
+</soap:Envelope>

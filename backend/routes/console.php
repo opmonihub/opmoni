@@ -66,6 +66,24 @@ Schedule::command('fiscal:reconcile')
     ->withoutOverlapping();
 
 /*
+ * A ressincronização dos resumos manifestados: a ciência da emissão já
+ * registrada libera a `consChNFe`, que traz o XML completo que a distribuição
+ * ainda não entregou. Consulta pontual como a reconciliação — mesmo teto de
+ * 20/h por CNPJ, mesma trava por cliente e fonte —, e por isso uma passada na
+ * noite, depois da volta atrás, e não a cada hora: a chave que espera uma hora
+ * não perde nada, e a vaga do teto é da recuperação.
+ *
+ * O gate é o da feature (`manifestacao_enabled`), lido dentro do comando: a
+ * agenda registra a entrada, e o serviço decide se a varredura existe. Não há
+ * `manifestacao_scheduled` separada porque a decisão que liga a manifestação é
+ * a mesma que liga a recuperação dela — uma chave só, como `nfse_enabled`.
+ */
+Schedule::command('fiscal:resync-manifestacoes')
+    ->dailyAt(sprintf('%02d:30', (int) config('fiscal.reconcile_hour')))
+    ->timezone((string) config('fiscal.reconcile_timezone'))
+    ->withoutOverlapping();
+
+/*
  * A renovação do termo de autorização, uma vez por dia, à uma da manhã no
  * fuso de Brasília.
  *

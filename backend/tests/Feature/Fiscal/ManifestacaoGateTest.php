@@ -9,6 +9,7 @@ use App\Models\Client;
 use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
 use App\Services\Fiscal\Manifestacao\ManifestacaoDispatcher;
+use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
@@ -61,7 +62,10 @@ class ManifestacaoGateTest extends TestCase
             eventSeq: 1,
         );
 
-        $job->handle(resolve(FiscalManifestationStore::class));
+        $job->handle(
+            resolve(FiscalManifestationStore::class),
+            resolve(RecepcaoEventoConnector::class),
+        );
 
         $registro = FiscalManifestation::withoutGlobalScope('account')->firstOrFail();
 

@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
+use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -74,7 +75,10 @@ class ManifestacaoTest extends TestCase
             eventSeq: 1,
         );
 
-        $job->handle(resolve(FiscalManifestationStore::class));
+        $job->handle(
+            resolve(FiscalManifestationStore::class),
+            resolve(RecepcaoEventoConnector::class),
+        );
 
         $registro = FiscalManifestation::withoutGlobalScope('account')->firstOrFail();
 
@@ -109,10 +113,17 @@ class ManifestacaoTest extends TestCase
             eventSeq: 1,
         );
 
-        $job->handle(resolve(FiscalManifestationStore::class));
+        $job->handle(
+            resolve(FiscalManifestationStore::class),
+            resolve(RecepcaoEventoConnector::class),
+        );
 
         $registro = FiscalManifestation::withoutGlobalScope('account')->firstOrFail();
 
-        $this->assertSame(FiscalManifestationOutcome::Queued, $registro->outcome);
+        // O cliente foi achado e o job executou: sem resumo gravado para a
+        // chave, `emissao_at` é nulo e o conector lê ausência de data como
+        // prazo não verificável — o veredito `deadline_missed` é a prova de
+        // que a execução chegou ao conector, coisa que `pending` não provaria.
+        $this->assertSame(FiscalManifestationOutcome::DeadlineMissed, $registro->outcome);
     }
 }

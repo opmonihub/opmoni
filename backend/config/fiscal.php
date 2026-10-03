@@ -219,6 +219,15 @@ return [
     'reconcile_max_attempts' => 3,
 
     /*
+     * Quantas `consChNFe` a ressincronização tenta por chave manifestada antes
+     * de parar com ela. Mesma disciplina da reconciliação: a consulta gasta a
+     * vaga do teto horário do CNPJ, e uma chave que o serviço não devolve três
+     * vezes não é uma chave que mais três devolveriam — o registro fica, com
+     * as tentativas, e a vaga volta para quem ainda pode entrar.
+     */
+    'manifestacao_resync_max_attempts' => 3,
+
+    /*
      * Quando a volta atrás roda. Uma vez ao dia, fora do expediente, e no fuso
      * dela: a reconciliação é consulta pontual ao CNPJ — orçamento que o fisco
      * conta por hora — e a janela dela é a noite, quando ninguém está esperando
