@@ -1,22 +1,11 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import { settingsTabs } from '~/utils/settingsNav'
 
 definePageMeta({ middleware: 'auth' })
 
-const links = [[{
-  label: 'Geral',
-  icon: 'i-lucide-user',
-  to: '/settings',
-  exact: true
-}, {
-  label: 'Notificações',
-  icon: 'i-lucide-bell',
-  to: '/settings/notifications'
-}, {
-  label: 'Segurança',
-  icon: 'i-lucide-shield',
-  to: '/settings/security'
-}]] satisfies NavigationMenuItem[][]
+const { canManageMembers } = useAuth()
+
+const links = computed(() => settingsTabs(canManageMembers.value))
 </script>
 
 <template>

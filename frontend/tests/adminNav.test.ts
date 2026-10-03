@@ -10,39 +10,47 @@ import {
 } from '../app/utils/adminNav.ts'
 
 describe('the office certificate entry', () => {
-  const certificate = adminPages.find(page => page.to === '/admin/certificado')
+  it('is not in the global panel: it moved to Configurações', () => {
+    // O e-CNPJ do escritório saiu do Painel Global e foi para
+    // `/settings/certificado`: quem o entrega é o super_admin na Account
+    // corrente, e a tela dele fica onde ficam as preferências da conta.
+    assert.equal(adminPages.some(page => page.to === '/admin/certificado'), false)
+    assert.equal(adminPages.some(page => page.label === 'Certificado do escritório'), false)
+  })
+})
 
-  it('registers the screen in the global panel', () => {
-    // The office e-CNPJ screen moved out of Monitoramento; the Painel Global is
-    // where a super_admin uploads it against the current Account.
-    assert.ok(certificate, 'adminPages has no /admin/certificado entry')
-    assert.equal(certificate.label, 'Certificado do escritório')
-    assert.ok(certificate.icon, 'the entry carries no icon')
+describe('the Serpro screen', () => {
+  const serpro = adminPages.find(page => page.to === '/admin/serpro')
+
+  it('stays in the global panel, where the platform credential lives', () => {
+    assert.ok(serpro, 'adminPages has no /admin/serpro entry')
+    assert.equal(serpro.label, 'Serpro')
+    assert.ok(serpro.icon, 'the entry carries no icon')
   })
 
   it('lights its own tab, and only its own', () => {
-    assert.ok(certificate)
-    const [group] = adminTabs('/admin/certificado')
+    assert.ok(serpro)
+    const [group] = adminTabs('/admin/serpro')
     const active = group.filter(item => item.active)
-    assert.equal(active.length, 1, `/admin/certificado lights ${active.map(i => i.label).join(', ') || 'nothing'}`)
-    assert.equal(active[0]?.label, 'Certificado do escritório')
+    assert.equal(active.length, 1, `/admin/serpro lights ${active.map(i => i.label).join(', ') || 'nothing'}`)
+    assert.equal(active[0]?.label, 'Serpro')
   })
 
   it('claims a sub-path of the screen without claiming the module index', () => {
-    assert.ok(certificate)
-    assert.equal(adminPageActive('/admin/certificado', certificate), true)
-    assert.equal(adminPageActive('/admin', certificate), false)
-    assert.equal(adminPageActive('/admin/certificado', adminPages[0]!), false)
+    assert.ok(serpro)
+    assert.equal(adminPageActive('/admin/serpro', serpro), true)
+    assert.equal(adminPageActive('/admin', serpro), false)
+    assert.equal(adminPageActive('/admin/serpro', adminPages[0]!), false)
   })
 
   it('names the screen in the navbar', () => {
-    assert.equal(adminNavbarTitle('/admin/certificado'), 'Certificado do escritório')
+    assert.equal(adminNavbarTitle('/admin/serpro'), 'Serpro')
   })
 
   it('marks the position in the sidebar', () => {
-    const children = adminSidebarChildren('/admin/certificado')
+    const children = adminSidebarChildren('/admin/serpro')
     const active = children.filter(child => child.active)
     assert.equal(active.length, 1)
-    assert.equal(active[0]?.label, 'Certificado do escritório')
+    assert.equal(active[0]?.label, 'Serpro')
   })
 })

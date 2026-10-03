@@ -181,7 +181,7 @@ class SerproAccountCertificateTest extends TestCase
 
         resolve(CurrentTenant::class)->accountId = $conta->getKey();
 
-        $this->assertFalse(Gate::forUser($this->membroDe($conta, 'admin'))->allows('create', AccountCertificate::class));
+        $this->assertTrue(Gate::forUser($this->membroDe($conta, 'admin'))->allows('create', AccountCertificate::class));
         $this->assertFalse(Gate::forUser($this->membroDe($conta, 'operador'))->allows('delete', AccountCertificate::class));
         $this->assertFalse(Gate::forUser($this->membroDe($conta, 'user'))->allows('create', AccountCertificate::class));
         $this->assertTrue(Gate::forUser($this->superAdminDe($conta))->allows('create', AccountCertificate::class));
@@ -767,8 +767,7 @@ class SerproAccountCertificateTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.document', self::CNPJ);
 
-        // Gravar é só do `is_super_admin`. O papel `user` não aparece em
-        // nenhuma policy do produto e é somente leitura na prática.
+        // Gravar é do `admin` da Account. O papel `user` não escreve aqui.
         ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
         $this->actingAs($leitor, 'sanctum')
@@ -786,20 +785,24 @@ class SerproAccountCertificateTest extends TestCase
         $this->assertSame(1, AccountCertificate::query()->count());
     }
 
-    /**
-     * A escrita do e-CNPJ do escritório é da plataforma, e não do escritório.
-     *
-     * O que se grava aqui é o certificado que assina o termo de autorização
-     * **em nome da plataforma**: nenhum Membro da conta assina nada, e por
-     * isso o `admin` e o `operador` da Account — que escrevem em todo o resto
-     * da conta — recebem `403` nesta rota. Quem grava é o `is_super_admin`,
-     * na Account corrente.
-     */
-    public function test_admin_e_operador_da_conta_recebem_403_no_upload_do_ecnpj(): void
+    public function test_admin_da_conta_envia_o_ecnpj_do_escritorio(): void
+    {
+        $conta = Account::factory()->create();
+        ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.document', self::CNPJ);
+
+        $this->assertSame(self::CNPJ, AccountCertificate::currentFor($conta->getKey())?->document);
+    }
+
+    public function test_operador_e_user_da_conta_recebem_403_no_upload_do_ecnpj(): void
     {
         $conta = Account::factory()->create();
 
-        foreach (['admin', 'operador'] as $papel) {
+        foreach (['operador', 'user'] as $papel) {
             ['file' => $arquivo] = $this->pfx('escritorio.p12');
 
             $this->actingAs($this->membroDe($conta, $papel), 'sanctum')
@@ -813,16 +816,30 @@ class SerproAccountCertificateTest extends TestCase
         $this->assertNull(AccountCertificate::currentFor($conta->getKey()));
     }
 
-    public function test_admin_e_operador_da_conta_recebem_403_na_remocao_do_ecnpj(): void
+    public function test_admin_da_conta_remove_o_ecnpj_do_escritorio(): void
+    {
+        $conta = Account::factory()->create();
+        ['file' => $arquivo] = $this->pfx('escritorio.p12');
+
+        $this->actingAs($this->superAdminDe($conta), 'sanctum')
+            ->post(self::ROTA, ['certificate' => $arquivo, 'password' => self::SENHA], $this->jsonHeaders())
+            ->assertOk();
+
+        $this->actingAs($this->membroDe($conta, 'admin'), 'sanctum')
+            ->deleteJson(self::ROTA)
+            ->assertNoContent();
+
+        $this->assertNull(AccountCertificate::currentFor($conta->getKey()));
+    }
+
+    public function test_operador_da_conta_recebe_403_na_remocao_do_ecnpj(): void
     {
         $conta = Account::factory()->create();
         AccountCertificate::factory()->create(['account_id' => $conta->getKey()]);
 
-        foreach (['admin', 'operador'] as $papel) {
-            $this->actingAs($this->membroDe($conta, $papel), 'sanctum')
-                ->deleteJson(self::ROTA)
-                ->assertForbidden();
-        }
+        $this->actingAs($this->membroDe($conta, 'operador'), 'sanctum')
+            ->deleteJson(self::ROTA)
+            ->assertForbidden();
 
         // O certificado que estava valendo continua valendo, com o conteúdo
         // cifrado intacto: um DELETE proibido não marca a linha nem apaga o

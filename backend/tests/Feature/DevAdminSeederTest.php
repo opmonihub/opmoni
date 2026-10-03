@@ -40,13 +40,12 @@ class DevAdminSeederTest extends TestCase
     }
 
     /**
-     * Em `local` existem os dois logins, e eles não são o mesmo papel: o
-     * `admin@example.com` fica Membro `admin` **sem** `is_super_admin`, e o
-     * `super_admin@example.com` fica super_admin apontando para a mesma
-     * Account de desenvolvimento — que é onde ele grava o e-CNPJ e o flag do
-     * SERPRO.
+     * Em `local` há um login só, e ele é os dois papéis: o `admin@example.com`
+     * é super_admin **e** Membro `admin` da primeira Account — que é onde ele
+     * grava o e-CNPJ e o flag do SERPRO como dono do escritório, sem que a
+     * própria conta pareça acesso de suporte.
      */
-    public function test_em_local_admin_fica_membro_sem_super_admin_e_super_admin_divide_a_mesma_account(): void
+    public function test_em_local_admin_e_super_admin_e_membro_da_primeira_account(): void
     {
         $this->app['env'] = 'local';
         $account = Account::factory()->create();
@@ -55,14 +54,25 @@ class DevAdminSeederTest extends TestCase
 
         $admin = User::query()->where('email', DevAdminSeeder::EMAIL)->sole();
 
-        $this->assertFalse((bool) $admin->is_super_admin, 'O login de Membro não pode ser super_admin.');
+        $this->assertTrue((bool) $admin->is_super_admin, 'O login da conta 1 é o super_admin.');
         $this->assertSame('admin', $admin->accountRole($account));
         $this->assertSame($account->getKey(), $admin->current_account_id);
+    }
 
-        $super = User::query()->where('email', DevAdminSeeder::SUPER_ADMIN_EMAIL)->first();
+    public function test_em_local_o_login_super_admin_separado_deixa_de_existir(): void
+    {
+        $this->app['env'] = 'local';
+        Account::factory()->create();
 
-        $this->assertNotNull($super, 'O seeder local precisa garantir o login super_admin@example.com.');
-        $this->assertTrue((bool) $super->is_super_admin);
-        $this->assertSame($account->getKey(), $super->current_account_id);
+        // Uma base dev antiga ainda tem o segundo login: o seed o apaga, porque
+        // a conta 1 é de uma pessoa só.
+        User::factory()->create(['email' => DevAdminSeeder::SUPER_ADMIN_EMAIL, 'is_super_admin' => true]);
+
+        $this->seed(DevAdminSeeder::class);
+
+        $this->assertFalse(
+            User::query()->where('email', DevAdminSeeder::SUPER_ADMIN_EMAIL)->exists(),
+            'O login super_admin@example.com tinha de ser removido pelo seed.',
+        );
     }
 }

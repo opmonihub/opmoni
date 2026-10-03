@@ -8,13 +8,18 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * Os logins de desenvolvimento, ambos com a senha pública `password`:
+ * O login de desenvolvimento, com a senha pública `password`:
  *
- * - `admin@example.com`: Membro `admin` da primeira Account, sem
- *   `is_super_admin`;
- * - `super_admin@example.com`: `is_super_admin`, com `current_account_id`
- *   apontando para a mesma Account de desenvolvimento — é por ele que se
- *   grava o e-CNPJ e o flag do SERPRO na Account.
+ * - `admin@example.com`: `is_super_admin` **e** Membro `admin` da primeira
+ *   Account — um login só, que é o dono do escritório e quem entrega o
+ *   e-CNPJ e liga a integração. `current_account_id` aponta para ela, e o
+ *   vínculo `admin` é o que faz a conta própria não acender o banner de
+ *   acesso de suporte: ele aparece quando o super_admin entra numa Account da
+ *   qual não é Membro.
+ *
+ * O segundo e-mail que existia, `super_admin@example.com`, deixou de existir:
+ * se uma base dev antiga ainda o tiver, a próxima rodada deste seeder o apaga
+ * — a conta 1 tem uma pessoa só, e dois logins diriam que são duas.
  *
  * Idempotente: a segunda execução só reafirma senha, flags e vínculo.
  *
@@ -25,6 +30,11 @@ class DevAdminSeeder extends Seeder
 {
     public const EMAIL = 'admin@example.com';
 
+    /**
+     * O login que a versão anterior deste seeder criava, e que a conta 1 não
+     * usa mais: a constante fica para que o seeder saiba o que apagar, e para
+     * que o teste afirme a remoção pelo nome.
+     */
     public const SUPER_ADMIN_EMAIL = 'super_admin@example.com';
 
     public const PASSWORD = 'password';
@@ -44,7 +54,7 @@ class DevAdminSeeder extends Seeder
             'password' => self::PASSWORD,
             'email_verified_at' => $user->email_verified_at ?? now(),
             'current_account_id' => $account->getKey(),
-            'is_super_admin' => false,
+            'is_super_admin' => true,
         ])->save();
 
         AccountUser::query()->updateOrCreate(
@@ -52,13 +62,9 @@ class DevAdminSeeder extends Seeder
             ['role' => 'admin'],
         );
 
-        $superAdmin = User::query()->firstOrNew(['email' => self::SUPER_ADMIN_EMAIL]);
-        $superAdmin->forceFill([
-            'name' => 'Super Admin Dev',
-            'password' => self::PASSWORD,
-            'email_verified_at' => $superAdmin->email_verified_at ?? now(),
-            'current_account_id' => $account->getKey(),
-            'is_super_admin' => true,
-        ])->save();
+        // O login extra some: na conta 1 quem é super_admin é o próprio admin
+        // do escritório, e um `super_admin@` separado descreveria uma pessoa
+        // que não existe.
+        User::query()->where('email', self::SUPER_ADMIN_EMAIL)->delete();
     }
 }
