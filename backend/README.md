@@ -12,3 +12,18 @@ Fora do Docker, sirva a API com `php artisan serve` (a UI é o Nuxt em `../front
 
 Regras do agente: ver `AGENTS.md` (raiz) e `backend/AGENTS.md`.
 Banco principal: postgres do `docker-compose.yml` (`opmoni/opmoni` em `:5432`); `.env`/`.env.example` usam `pgsql` + `redis`. Testes usam sqlite `:memory:` (só para testar).
+
+### Probe PGDAS (homologação, opt-in)
+
+Loop de manutenção contra o Integra Contador em homologação — **não** entra no `composer test` padrão. Detalhes e CNPJs canário: [`openspec/changes/add-real-pgdas-das-fetch/design.md`](../openspec/changes/add-real-pgdas-das-fetch/design.md) (Runbook).
+
+Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, credencial de plataforma, e-CNPJ e termo na Account do escritório (`48123272000105`), procuração `00146` para o cliente AUTO CENTER (`30288513000100`).
+
+```bash
+php artisan config:show fiscal.environment   # deve ser homologacao
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas --json
+php artisan test --compact --group=serpro-trial --filter=Pgdas
+```
+
+Evite loops apertados (429 / código `900807` → skip). Use `--year=2025` se homologação não devolver períodos no ano corrente. Não use `-vvv` com dump de payload — probes não devem logar token, senha de certificado, consumer secret ou XML bruto.
