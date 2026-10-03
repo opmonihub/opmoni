@@ -90,7 +90,10 @@ class SerproPgdasHomologationProbe
         $elegibilidade = $this->eligibility->for($account->getKey(), $client->getKey(), '00146');
         if (! $elegibilidade['eligible']) {
             $motivo = (string) ($elegibilidade['reason'] ?? 'inelegivel');
-            $steps['elegibilidade'] = ['status' => 'skip', 'detail' => 'Procuração 00146: '.$motivo];
+            $steps['elegibilidade'] = [
+                'status' => 'skip',
+                'detail' => 'Procuração 00146: '.$motivo.$this->dicaProcuracao($motivo),
+            ];
 
             return $this->finish('skip', $motivo, $account->getKey(), $client->getKey(), $steps);
         }
@@ -178,6 +181,15 @@ class SerproPgdasHomologationProbe
         $partes = explode('/', $service, 2);
 
         return [$partes[0], $partes[1] ?? ''];
+    }
+
+    private function dicaProcuracao(string $motivo): string
+    {
+        if (! in_array($motivo, ['sem_procuracao', 'procuracao_invalida'], true)) {
+            return '';
+        }
+
+        return ' — confira procuração e-CAC 00146 no e-CAC ou rode sync do cliente.';
     }
 
     private function shouldSkipProviderFailure(SerproException $exception): bool
