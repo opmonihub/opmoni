@@ -23,7 +23,10 @@ use Carbon\CarbonInterface;
  * Não escreve estado intermediário: o registro sai de `Pending`/`Queued`
  * direto para o veredito (`Sent`, `AlreadyManifested`, `DeadlineMissed`,
  * `NotSendable`) ou fica onde estava quando a resposta é rejeição — quem
- * decide retry é quem enfileirou, com a `FiscalException` na mão.
+ * decide retry é quem enfileirou, com a `FiscalException` na mão. O único
+ * registro pré-veredito é o `sent_at`, marcado quando a requisição sai
+ * para a rede: tentativa que foi ao fisco é tentativa gasta, com ou sem
+ * resposta classificável.
  *
  * Não consome `FiscalLookupBudget` de propósito: `nfeRecepcaoEvento` não é
  * consulta e o fisco não publica teto de eventos por hora — o orçamento é da
@@ -101,7 +104,15 @@ final class RecepcaoEventoConnector
             ),
         );
 
-        $resposta = $this->transport->send($client, $endpoint, $envEvento);
+        // O `sent_at` marca a tentativa que saiu para a rede — o transporte o
+        // dispara logo após o envio, então uma rejeição do fisco (que sobe
+        // como `FiscalException` e nunca chega ao `veredito`) também conta.
+        $resposta = $this->transport->send(
+            $client,
+            $endpoint,
+            $envEvento,
+            fn () => $this->store->marcarEnviado($manifestation),
+        );
 
         $veredito = $this->result->classify(
             $resposta['lote_cstat'],

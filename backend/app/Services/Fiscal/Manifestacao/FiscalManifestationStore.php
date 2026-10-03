@@ -65,6 +65,22 @@ final class FiscalManifestationStore
     }
 
     /**
+     * Marca que a tentativa saiu para a rede — chamado pelo transporte logo
+     * após o envio, para que `sent_at` exista mesmo quando a resposta do
+     * fisco é recusa e nunca vira veredito. Idempotente: um `sent_at` já
+     * gravado não é reescrito, e sobre modelo não persistido só atualiza em
+     * memória (o `veredito` ainda não sabe que vai rodar).
+     */
+    public function marcarEnviado(FiscalManifestation $manifestation): void
+    {
+        $manifestation->sent_at ??= now();
+
+        if ($manifestation->exists) {
+            $manifestation->save();
+        }
+    }
+
+    /**
      * O veredito do evento no registro — chamado só quando o fisco respondeu
      * (ou quando a resposta é conhecida sem chamada, como o prazo perdido).
      * `result_code`/`result_message` levam o cStat e o motivo já condensado;

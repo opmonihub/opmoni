@@ -376,6 +376,142 @@ class ManifestacaoRecepcaoEventoTest extends TestCase
         }
     }
 
+    public function test_o_ret_env_evento_for_do_body_nao_e_veredito(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // Um `retEnvEvento` fora do `Body` — num `detail` de fault, num anexo,
+        // num header — não é a resposta do serviço. Sem escopo a busca
+        // `//retEnvEvento` pega o primeiro em ordem de documento e este aceite
+        // de mentira viraria veredito.
+        Http::fake(['*' => Http::response(
+            '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">'
+            .'<retEnvEvento xmlns="'.self::NAMESPACE_NFE.'" versao="1.00">'
+            .'<idLote>1</idLote><cOrgao>91</cOrgao><cStat>128</cStat><xMotivo>Lote de Evento Processado</xMotivo>'
+            .'<retEvento versao="1.00"><infEvento>'
+            .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            .'<cStat>135</cStat><xMotivo>Evento registrado</xMotivo><dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
+            .'</infEvento></retEvento>'
+            .'</retEnvEvento>'
+            .'<soap:Body><outraCoisa/></soap:Body></soap:Envelope>',
+            200,
+        )]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Um retEnvEvento fora do Body não pode virar veredito.');
+        } catch (FiscalException) {
+            // esperado: a resposta não é o retEnvEvento do serviço.
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+        $this->assertNull($registro->result_code);
+    }
+
+    public function test_o_ret_env_evento_de_um_detail_nao_e_veredito(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // Variante do mesmo caso com o fault estruturado como SOAP 1.1 (code
+        // que o `faultOf` não lê): o `retEnvEvento` dentro do `detail` não é a
+        // resposta do serviço, por mais bem formado que esteja.
+        Http::fake(['*' => Http::response(
+            '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>'
+            .'<soap:Fault><faultcode>soap:Server</faultcode>'
+            .'<detail><retEnvEvento xmlns="'.self::NAMESPACE_NFE.'" versao="1.00">'
+            .'<idLote>1</idLote><cOrgao>91</cOrgao><cStat>128</cStat><xMotivo>Lote de Evento Processado</xMotivo>'
+            .'<retEvento versao="1.00"><infEvento>'
+            .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            .'<cStat>135</cStat><xMotivo>Evento registrado</xMotivo><dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
+            .'</infEvento></retEvento>'
+            .'</retEnvEvento></detail>'
+            .'</soap:Fault></soap:Body></soap:Envelope>',
+            200,
+        )]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Um retEnvEvento dentro de detail não pode virar veredito.');
+        } catch (FiscalException) {
+            // esperado: a resposta não é o retEnvEvento do serviço.
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+        $this->assertNull($registro->result_code);
+    }
+
+    public function test_a_rejeicao_do_evento_ainda_marca_sent_at(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // A requisição viajou e o fisco respondeu com rejeição: a tentativa
+        // saiu e `sent_at` é a marca dela, veredito ou não.
+        Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '108', 'Servico paralisado momentaneamente'), 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Uma rejeição transitória deveria virar FiscalException retentável.');
+        } catch (FiscalException) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+        $this->assertNotNull($registro->sent_at);
+        $this->assertNull($registro->resulted_at);
+    }
+
+    public function test_o_200_sem_ret_env_evento_ainda_marca_sent_at(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        // Resposta fora do contrato, mas a chamada saiu e voltou — `sent_at`
+        // registra a ida à rede mesmo sem veredito do fisco.
+        Http::fake(['*' => Http::response('<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><outraCoisa/></soap:Body></soap:Envelope>', 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Uma resposta fora do contrato não pode virar veredito.');
+        } catch (FiscalException) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertNotNull($registro->sent_at);
+    }
+
+    public function test_a_recusa_antes_do_envio_nao_marca_sent_at(): void
+    {
+        $account = Account::factory()->create();
+        $cliente = Client::factory()->company()->create([
+            'account_id' => $account->getKey(),
+            'tax_id' => '00000000000191',
+        ]);
+        $registro = $this->registroPersistido($cliente);
+
+        // Sem certificado a requisição morre antes do primeiro byte — e
+        // `sent_at` tem que continuar nulo, porque nada foi ao fisco.
+        Http::fake(['*' => Http::response('', 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+
+            $this->fail('Cliente sem certificado deveria ser recusado antes da chamada.');
+        } catch (FiscalRequestNotSent) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertNull($registro->sent_at);
+        Http::assertNothingSent();
+    }
+
     public function test_o_cstat_do_lote_nao_e_o_do_evento(): void
     {
         [$cliente, $registro] = $this->pedidoRegistrado();

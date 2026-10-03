@@ -17,6 +17,7 @@ use DOMXPath;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 /**
  * O transporte do `nfeRecepcaoEvento`: a mesma disciplina do `DfeTransport` —
@@ -58,6 +59,11 @@ final class ManifestationEventTransport
      * classificador ler.
      *
      * @param  array<string, string>  $endpoint
+     * @param  callable|null  $sentAtMarker  chamado uma única vez logo após a
+     *                                       requisição ir para a rede — quem
+     *                                       enfileirou usa para marcar a
+     *                                       tentativa que saiu, com veredito
+     *                                       ou sem
      * @return array{lote_cstat: string, lote_xmotivo: string, evento_cstat: ?string, evento_xmotivo: ?string}
      *
      * @throws FiscalRequestNotSent sem certificado utilizável, ou quando o lote
@@ -65,7 +71,7 @@ final class ManifestationEventTransport
      * @throws FiscalException quando o serviço respondeu fora do contrato ou
      *                         recusou a chamada
      */
-    public function send(Client $client, array $endpoint, string $envEventoXml): array
+    public function send(Client $client, array $endpoint, string $envEventoXml, ?callable $sentAtMarker = null): array
     {
         // As chaves do bloco são conferidas de novo aqui, antes de qualquer
         // byte — a mesma última linha que o transporte de distribuição segura.
@@ -76,13 +82,13 @@ final class ManifestationEventTransport
 
         $response = $this->materializer->withCertificate(
             $certificate,
-            function (string $path) use ($certificate, $endpoint, $envEventoXml, $url): Response {
+            function (string $path) use ($certificate, $endpoint, $envEventoXml, $url, $sentAtMarker): Response {
                 // O lote é conferido contra o XSD do serviço de eventos dentro
                 // do escopo do material — depois da validação nada sensível fica
                 // pendurado na stack.
                 $this->validator->validate($envEventoXml);
 
-                return $this->request($certificate, $path, $endpoint, $url, $envEventoXml);
+                return $this->request($certificate, $path, $endpoint, $url, $envEventoXml, $sentAtMarker);
             },
         );
 
@@ -98,6 +104,7 @@ final class ManifestationEventTransport
         array $endpoint,
         string $url,
         string $envEventoXml,
+        ?callable $sentAtMarker,
     ): Response {
         try {
             $pkcs12 = HttpPkcs12ClientOptions::forPath($certificatePath, $certificate->certificatePassword());
@@ -115,7 +122,7 @@ final class ManifestationEventTransport
                 .'<soap:Body>'.$inner.'</soap:Body>'
                 .'</soap:Envelope>';
 
-            return Http::withOptions([
+            $response = Http::withOptions([
                 'verify' => config('fiscal.ca_bundle'),
                 ...$pkcs12,
                 'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
@@ -127,6 +134,19 @@ final class ManifestationEventTransport
                     'application/soap+xml; charset=utf-8; action="'.DfeEndpoint::value($endpoint, 'soap_action').'"',
                 )
                 ->post($url);
+
+            // A tentativa saiu para a rede a partir daqui — com veredito ou
+            // com recusa, quem contabiliza retries precisa do `sent_at`. Um
+            // marker que falha não pode derrubar a resposta que já voltou.
+            if ($sentAtMarker !== null) {
+                try {
+                    $sentAtMarker();
+                } catch (Throwable) {
+                    // A marca é contábil; a resposta do fisco vale mais.
+                }
+            }
+
+            return $response;
         } catch (ConnectionException) {
             // A exceção do Guzzle pode ecoar o caminho do PFX ou pedaços do
             // pedido; a mensagem que sobe é só a nossa.
@@ -175,7 +195,15 @@ final class ManifestationEventTransport
         }
 
         $xpath = new DOMXPath($dom);
-        $retEnvEvento = XmlQuery::first($xpath, 'retEnvEvento');
+        $bodyElement = XmlQuery::first($xpath, 'Body');
+
+        // O veredito só é veredito dentro do `Body`: um `retEnvEvento`
+        // solto num `detail` de fault, num header ou num anexo casa a busca
+        // `//retEnvEvento` inteira — e o primeiro em ordem de documento
+        // passaria a ser "a resposta".
+        $retEnvEvento = $bodyElement === null
+            ? null
+            : XmlQuery::first($xpath, 'retEnvEvento', $bodyElement);
 
         if ($retEnvEvento === null) {
             throw new FiscalException(
