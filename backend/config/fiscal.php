@@ -163,6 +163,15 @@ return [
      */
     'nfse_enabled' => filter_var(env('FISCAL_NFSE_ENABLED', false), FILTER_VALIDATE_BOOL),
 
+    /*
+     * O cliente do canário opt-in `nfse-live` (`NfseAdnLiveProbeTest`), fora da
+     * suíte padrão. É o `id` de um cliente capturável do banco de desenvolvimento
+     * — com A1 vigente e senha gravada —, e não entra no `.env.example` pelo
+     * mesmo motivo das demais `FISCAL_*`: só faz sentido para quem está
+     * canariando, e nulo significa "nenhum canário preparado".
+     */
+    'nfse_live_client' => ($nfseLiveClient = env('FISCAL_NFSE_LIVE_CLIENT')) === null ? null : (int) $nfseLiveClient,
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*
