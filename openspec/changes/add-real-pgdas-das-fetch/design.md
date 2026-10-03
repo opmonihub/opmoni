@@ -66,8 +66,10 @@ cd backend
 php artisan config:show fiscal.environment   # deve ser homologacao
 FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas --json
 php artisan test --compact --group=serpro-trial --filter=Pgdas
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 SERPRO_PROBE_REAL=1 php artisan test --compact --group=serpro-trial --filter=Pgdas
 ```
 
+- `SERPRO_PROBE_REAL=1`: único modo em que o teste trial chama homologação de verdade (banco local); sem a flag, skip esperado.
 - Intervalo: evitar loops apertados — tratar `429` / código `900807` como skip, não fail.
 - Ano-calendário: `--year=2025` quando homologação não devolver períodos no ano corrente.
 - Extrato (`CONSEXTRATO16`) e declaração/recibo (`CONSULTIMADECREC14` / `CONSDECREC15`) exigem serviços adicionais; v1 do probe valida só o índice via `CONSDECLARACAO13`. Catálogo: [PGDASD Integra SN](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/solucoes/integra-sn/pgdasd/).

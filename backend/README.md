@@ -23,7 +23,13 @@ Pré-requisitos locais (não commitar): `FISCAL_ENVIRONMENT=homologacao`, creden
 php artisan config:show fiscal.environment   # deve ser homologacao
 FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas
 FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 php artisan serpro:probe-pgdas --json
+# Simulação (Http::fake) — suíte padrão com `--group=serpro-trial` incluído; sem HTTP real.
 php artisan test --compact --group=serpro-trial --filter=Pgdas
+
+# Homologação real no PHPUnit (opt-in; usa banco/.env local, não sqlite :memory: da suíte padrão):
+FISCAL_ENVIRONMENT=homologacao SERPRO_PROBE_ENABLED=1 SERPRO_PROBE_REAL=1 php artisan test --compact --group=serpro-trial --filter=Pgdas
 ```
+
+Sem `SERPRO_PROBE_REAL=1`, o teste trial acima só registra skip — comportamento esperado no CI.
 
 Evite loops apertados (429 / código `900807` → skip). Use `--year=2025` se homologação não devolver períodos no ano corrente. Não use `-vvv` com dump de payload — probes não devem logar token, senha de certificado, consumer secret ou XML bruto.
