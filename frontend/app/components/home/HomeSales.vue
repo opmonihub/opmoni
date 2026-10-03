@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
+import { panelTableUi } from '~/components/data-table/panel'
 import type { Period, Range, Sale } from '~/types'
 
 const props = defineProps<{
@@ -40,6 +42,16 @@ const { data } = await useAsyncData('sales', async () => {
   watch: [() => props.period, () => props.range],
   default: () => []
 })
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'id', label: 'ID' },
+  { id: 'date', label: 'Data' },
+  { id: 'status', label: 'Status' },
+  { id: 'email', label: 'E-mail' },
+  { id: 'amount', label: 'Valor' }
+]
 
 const columns: TableColumn<Sale>[] = [
   {
@@ -101,16 +113,20 @@ const columns: TableColumn<Sale>[] = [
 </script>
 
 <template>
-  <UTable
-    :data="data"
-    :columns="columns"
-    class="shrink-0"
-    :ui="{
-      base: 'table-fixed border-separate border-spacing-0',
-      thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-      tbody: '[&>tr]:last:[&>td]:border-b-0',
-      th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-      td: 'border-b border-default'
-    }"
-  />
+  <div class="flex flex-col gap-3">
+    <div class="flex justify-end">
+      <DataTableColumnMenu
+        v-model="columnVisibility"
+        :columns="hideableColumns"
+        class="shrink-0"
+      />
+    </div>
+    <UTable
+      v-model:column-visibility="columnVisibility"
+      :data="data"
+      :columns="columns"
+      class="shrink-0"
+      :ui="panelTableUi"
+    />
+  </div>
 </template>

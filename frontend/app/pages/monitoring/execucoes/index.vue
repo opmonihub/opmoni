@@ -2,6 +2,7 @@
 import { useInfiniteScroll } from '@vueuse/core'
 import type { TableColumn } from '@nuxt/ui'
 import type { ComponentPublicInstance } from 'vue'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
 import { apiStatus } from '~/composables/useApiError'
@@ -122,6 +123,21 @@ const columns: TableColumn<SerproSyncRun>[] = [
   { id: 'actions', meta: { class: { th: 'w-12', td: 'w-12' } } }
 ]
 
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'id', label: 'Execução' },
+  { id: 'state', label: 'Estado' },
+  { id: 'total', label: 'Total' },
+  { id: 'synchronized', label: 'Sincronizados' },
+  { id: 'skipped', label: 'Ignorados' },
+  { id: 'failed', label: 'Falhos' },
+  { id: 'indeterminate', label: 'Indeterminados' },
+  { id: 'not_processed', label: 'Pendentes' },
+  { id: 'started_at', label: 'Iniciada em' },
+  { id: 'finished_at', label: 'Concluída em' }
+]
+
 function runPath(run: SerproSyncRun) {
   return `/monitoring/execucoes/${run.id}`
 }
@@ -201,9 +217,17 @@ onMounted(() => {
         </div>
 
         <!-- Desktop -->
-        <div class="hidden min-h-0 min-w-0 flex-1 flex-col md:flex">
+        <div class="hidden min-h-0 min-w-0 flex-1 flex-col gap-3 md:flex">
+          <div class="flex shrink-0 justify-end">
+            <DataTableColumnMenu
+              v-model="columnVisibility"
+              :columns="hideableColumns"
+              class="shrink-0"
+            />
+          </div>
           <UTable
             ref="table"
+            v-model:column-visibility="columnVisibility"
             sticky
             :data="runs"
             :columns="columns"

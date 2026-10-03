@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { TableColumn, TabsItem } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
+import { readPaginatedMeta } from '~/utils/adminListFilters'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
@@ -24,10 +26,12 @@ interface SupportLog {
 
 interface Paginated<T> {
   data: T[]
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
 }
 
 const ACTION_META: Record<string, { label: string, color: 'info' | 'neutral' | 'success' | 'warning' | 'error' }> = {
@@ -77,6 +81,16 @@ const logColumns: TableColumn<SupportLog>[] = [
   { accessorKey: 'ip', header: 'IP' }
 ]
 
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'created', label: 'Quando' },
+  { id: 'actor', label: 'Super admin' },
+  { id: 'account', label: 'Conta' },
+  { id: 'action', label: 'Ação' },
+  { id: 'ip', label: 'IP' }
+]
+
 function isOwnAccount(id: number) {
   return accounts.value.some(a => a.id === id)
 }
@@ -112,7 +126,7 @@ async function search() {
       let lastPage = 1
       do {
         const res = await $api<Paginated<AdminAccount>>('/admin/accounts', { params: { page } })
-        lastPage = res.last_page
+        lastPage = readPaginatedMeta(res).last_page
         matches.push(...res.data.filter(a => a.name.toLowerCase().includes(lower)))
         page += 1
       } while (page <= lastPage)
@@ -129,16 +143,38 @@ async function search() {
   }
 }
 
+/**
+ * Falha fatal de carga inicial x falha de refresh da auditoria: sem carga
+ * bem-sucedida ainda, o alerta com retry toma o corpo do painel; depois, falha
+ * de paginação ou filtro é só toast, e a última boa lista fica visível.
+ */
+const loadLogsError = ref<unknown>(null)
+const logsLoaded = ref(false)
+
+const { showError: showLogsError, retry: retryLogs } = useRetryableLoad({
+  refresh: loadLogs,
+  error: loadLogsError,
+  loading: loadingLogs,
+  loadErrorTitle: 'Não foi possível carregar os logs',
+  refreshErrorTitle: 'Não foi possível atualizar os logs'
+})
+
 async function loadLogs() {
   loadingLogs.value = true
+  loadLogsError.value = null
   try {
     const params: Record<string, number> = { page: logsPage.value }
     if (logsAccountId.value) params.account_id = logsAccountId.value
     const res = await $api<Paginated<SupportLog>>('/admin/support/logs', { params })
     logs.value = res.data
-    logsTotal.value = res.total
-  } catch {
-    toast.add({ title: 'Não foi possível carregar os logs', color: 'error' })
+    logsTotal.value = readPaginatedMeta(res).total
+    logsLoaded.value = true
+  } catch (err) {
+    if (logsLoaded.value) {
+      toast.add({ title: 'Não foi possível atualizar os logs', color: 'error' })
+    } else {
+      loadLogsError.value = err
+    }
   } finally {
     loadingLogs.value = false
   }
@@ -190,6 +226,12 @@ function actionMeta(action: string) {
           :loading="searching"
           @click="search"
         />
+        <DataTableColumnMenu
+          v-if="tab === 'auditoria'"
+          v-model="columnVisibility"
+          :columns="hideableColumns"
+          class="shrink-0"
+        />
       </div>
     </template>
 
@@ -227,54 +269,64 @@ function actionMeta(action: string) {
     </div>
 
     <div v-else :class="panelBodyClass">
-      <UTable
-        :data="logs"
-        :columns="logColumns"
+      <ErrorRetryAlert
+        v-if="showLogsError"
+        title="Não foi possível carregar os logs"
         :loading="loadingLogs"
-        class="shrink-0"
-        :ui="panelTableUi"
-      >
-        <template #created-cell="{ row }">
-          {{ new Date(row.original.created_at).toLocaleString('pt-BR') }}
-        </template>
+        @retry="retryLogs"
+      />
 
-        <template #actor-cell="{ row }">
-          <p class="font-medium text-highlighted">
-            {{ row.original.super_admin?.name ?? '—' }}
-          </p>
-        </template>
+      <template v-else>
+        <UTable
+          v-model:column-visibility="columnVisibility"
+          :data="logs"
+          :columns="logColumns"
+          :loading="loadingLogs"
+          class="shrink-0"
+          :ui="panelTableUi"
+        >
+          <template #created-cell="{ row }">
+            {{ new Date(row.original.created_at).toLocaleString('pt-BR') }}
+          </template>
 
-        <template #account-cell="{ row }">
-          {{ row.original.account?.name ?? '—' }}
-        </template>
+          <template #actor-cell="{ row }">
+            <p class="font-medium text-highlighted">
+              {{ row.original.super_admin?.name ?? '—' }}
+            </p>
+          </template>
 
-        <template #action-cell="{ row }">
-          <UBadge :color="actionMeta(row.original.action).color" variant="subtle">
-            {{ actionMeta(row.original.action).label }}
-          </UBadge>
-        </template>
+          <template #account-cell="{ row }">
+            {{ row.original.account?.name ?? '—' }}
+          </template>
 
-        <template #ip-cell="{ row }">
-          <span class="text-muted">{{ row.original.ip ?? '—' }}</span>
-        </template>
+          <template #action-cell="{ row }">
+            <UBadge :color="actionMeta(row.original.action).color" variant="subtle">
+              {{ actionMeta(row.original.action).label }}
+            </UBadge>
+          </template>
 
-        <template #empty>
-          <DataTablePanelTableEmpty
-            icon="i-lucide-scroll-text"
-            label="Nenhum evento encontrado."
-          />
-        </template>
-      </UTable>
+          <template #ip-cell="{ row }">
+            <span class="text-muted">{{ row.original.ip ?? '—' }}</span>
+          </template>
 
-      <div :class="panelFooterClass">
-        <div :class="panelFooterCountClass">
-          {{ logsTotal }} evento(s)
+          <template #empty>
+            <DataTablePanelTableEmpty
+              icon="i-lucide-scroll-text"
+              label="Nenhum evento encontrado."
+            />
+          </template>
+        </UTable>
+
+        <div :class="panelFooterClass">
+          <div :class="panelFooterCountClass">
+            {{ logsTotal }} evento(s)
+          </div>
+
+          <div :class="panelPaginationClass">
+            <UPagination v-model:page="logsPage" :total="logsTotal" :items-per-page="logsPerPage" />
+          </div>
         </div>
-
-        <div :class="panelPaginationClass">
-          <UPagination v-model:page="logsPage" :total="logsTotal" :items-per-page="logsPerPage" />
-        </div>
-      </div>
+      </template>
     </div>
   </DataTablePanelList>
 </template>

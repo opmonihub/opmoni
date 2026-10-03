@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import type { WorkTemplate } from '~/types/work'
 import { taxRegimeLabel } from '~/utils/portfolioLabels'
 import { pageScrollClass } from '~/utils/pageShell'
+import { workTableUi } from '~/utils/workGroupedTable'
 import type { TaxRegime } from '~/types/client'
 
 definePageMeta({ middleware: 'auth' })
@@ -45,6 +47,17 @@ function departmentSummary(template: WorkTemplate): string {
   if (departments.length <= 2) return departments.join(', ')
   return `${departments.slice(0, 2).join(', ')} +${departments.length - 2}`
 }
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'name', label: 'Título' },
+  { id: 'regimes', label: 'Regimes' },
+  { id: 'tags', label: 'Categorias/Tags' },
+  { id: 'steps', label: 'Departamentos' },
+  { id: 'clients', label: 'Clientes' },
+  { id: 'recurrence', label: 'Recorrência' }
+]
 
 function clientSummary(template: WorkTemplate): string {
   const added = (template.exceptions ?? []).filter(exception => exception.kind === 'added').length
@@ -106,64 +119,75 @@ function clientSummary(template: WorkTemplate): string {
       :actions="canManageWork ? [{ label: 'Criar modelo', icon: 'i-lucide-plus', to: '/work/modelos/novo' }] : [{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />
 
-    <UCard v-else variant="subtle" :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable
-        :data="templates"
-        :columns="[
-          { accessorKey: 'name', header: 'Título' },
-          { accessorKey: 'regimes', header: 'Regimes' },
-          { accessorKey: 'tags', header: 'Categorias/Tags' },
-          { accessorKey: 'steps', header: 'Departamentos' },
-          { id: 'clients', header: 'Clientes' },
-          { id: 'recurrence', header: 'Recorrência' }
-        ]"
-      >
-        <template #name-cell="{ row }">
-          <div class="flex min-w-0 items-center gap-2">
-            <NuxtLink :to="`/work/modelos/${row.original.id}`" class="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline" :title="row.original.name">
-              {{ row.original.name }}
-            </NuxtLink>
-            <UBadge
-              v-if="!row.original.is_active"
-              color="neutral"
-              variant="subtle"
-              label="Inativo"
-            />
-          </div>
-        </template>
-        <template #regimes-cell="{ row }">
-          <div class="flex max-w-52 flex-wrap gap-1">
-            <UBadge
-              v-for="label in regimeBadges(row.original)"
-              :key="label"
-              color="info"
-              variant="subtle"
-              :label="label"
-            />
-          </div>
-        </template>
-        <template #tags-cell="{ row }">
-          <div class="flex max-w-52 flex-wrap gap-1">
-            <span v-if="!row.original.tags || row.original.tags.length === 0" class="text-xs text-muted">—</span>
-            <UBadge
-              v-for="tag in (row.original.tags ?? [])"
-              :key="tag.id"
-              color="neutral"
-              variant="subtle"
-              :label="tag.name"
-            />
-          </div>
-        </template>
-        <template #steps-cell="{ row }">
-          <span class="text-sm text-muted">{{ departmentSummary(row.original) }}</span>
-        </template>
-        <template #clients-cell="{ row }">
-          <span class="text-sm text-muted">{{ clientSummary(row.original) }}</span>
-        </template>
-        <template #recurrence-cell="{ row }">
-          <span class="text-sm text-muted">{{ recurrenceLabel(row.original) }}</span>
-        </template>
-      </UTable>
-    </UCard>
+    <div v-else class="flex min-w-0 flex-col gap-3">
+      <div class="flex justify-end">
+        <DataTableColumnMenu
+          v-model="columnVisibility"
+          :columns="hideableColumns"
+          class="shrink-0"
+        />
+      </div>
+      <UCard variant="subtle" :ui="{ body: 'p-0 sm:p-0' }">
+        <UTable
+          v-model:column-visibility="columnVisibility"
+          :data="templates"
+          :columns="[
+            { accessorKey: 'name', header: 'Título' },
+            { accessorKey: 'regimes', header: 'Regimes' },
+            { accessorKey: 'tags', header: 'Categorias/Tags' },
+            { accessorKey: 'steps', header: 'Departamentos' },
+            { id: 'clients', header: 'Clientes' },
+            { id: 'recurrence', header: 'Recorrência' }
+          ]"
+          :ui="workTableUi"
+        >
+          <template #name-cell="{ row }">
+            <div class="flex min-w-0 items-center gap-2">
+              <NuxtLink :to="`/work/modelos/${row.original.id}`" class="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline" :title="row.original.name">
+                {{ row.original.name }}
+              </NuxtLink>
+              <UBadge
+                v-if="!row.original.is_active"
+                color="neutral"
+                variant="subtle"
+                label="Inativo"
+              />
+            </div>
+          </template>
+          <template #regimes-cell="{ row }">
+            <div class="flex max-w-52 flex-wrap gap-1">
+              <UBadge
+                v-for="label in regimeBadges(row.original)"
+                :key="label"
+                color="info"
+                variant="subtle"
+                :label="label"
+              />
+            </div>
+          </template>
+          <template #tags-cell="{ row }">
+            <div class="flex max-w-52 flex-wrap gap-1">
+              <span v-if="!row.original.tags || row.original.tags.length === 0" class="text-xs text-muted">—</span>
+              <UBadge
+                v-for="tag in (row.original.tags ?? [])"
+                :key="tag.id"
+                color="neutral"
+                variant="subtle"
+                :label="tag.name"
+              />
+            </div>
+          </template>
+          <template #steps-cell="{ row }">
+            <span class="text-sm text-muted">{{ departmentSummary(row.original) }}</span>
+          </template>
+          <template #clients-cell="{ row }">
+            <span class="text-sm text-muted">{{ clientSummary(row.original) }}</span>
+          </template>
+          <template #recurrence-cell="{ row }">
+            <span class="text-sm text-muted">{{ recurrenceLabel(row.original) }}</span>
+          </template>
+        </UTable>
+      </UCard>
+    </div>
   </div>
 </template>

@@ -227,6 +227,7 @@ describe('the module navigation', () => {
     const children = monitoringSidebarChildren('/monitoring')
     assert.equal(children[0]?.label, 'Painel')
     assert.equal(children[children.length - 1]?.label, 'Execuções de sincronização')
+    assert.equal(children.every(child => child.icon == null), true)
     // Painel + eight groups + the integration screens.
     assert.equal(children.length, monitoringPages.length + monitoringGroups.length)
   })

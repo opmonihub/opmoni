@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
@@ -29,6 +30,15 @@ const columns: TableColumn<AdminPlan>[] = [
   { id: 'actions' }
 ]
 
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'name', label: 'Plano' },
+  { id: 'users', label: 'Usuários' },
+  { id: 'clients', label: 'Clientes' },
+  { id: 'monitorings', label: 'Monitoramentos' }
+]
+
 const rows = computed(() => {
   const term = q.value.trim().toLowerCase()
   if (!term) return plans.value
@@ -40,12 +50,34 @@ function limitValue(plan: AdminPlan, key: string) {
   return value === undefined || value === null ? null : value
 }
 
+/**
+ * Falha fatal de carga inicial x falha de refresh: sem carga bem-sucedida ainda,
+ * o alerta com retry toma o corpo do painel; depois, falha de refresh é só
+ * toast, e a última boa lista fica visível.
+ */
+const loadError = ref<unknown>(null)
+const hasLoaded = ref(false)
+
+const { isLoading, showError, retry } = useRetryableLoad({
+  refresh: load,
+  error: loadError,
+  loading,
+  loadErrorTitle: 'Não foi possível carregar os planos',
+  refreshErrorTitle: 'Não foi possível atualizar os planos'
+})
+
 async function load() {
   loading.value = true
+  loadError.value = null
   try {
     plans.value = await $api<AdminPlan[]>('/admin/plans')
-  } catch {
-    toast.add({ title: 'Não foi possível carregar os planos', color: 'error' })
+    hasLoaded.value = true
+  } catch (err) {
+    if (hasLoaded.value) {
+      toast.add({ title: 'Não foi possível atualizar os planos', color: 'error' })
+    } else {
+      loadError.value = err
+    }
   } finally {
     loading.value = false
   }
@@ -120,87 +152,102 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         icon="i-lucide-search"
         placeholder="Filtrar por nome ou slug..."
       />
+      <DataTableColumnMenu
+        v-model="columnVisibility"
+        :columns="hideableColumns"
+        class="ms-auto shrink-0"
+      />
     </template>
 
     <div :class="panelBodyClass">
-      <UTable
-        :data="rows"
-        :columns="columns"
-        :loading="loading"
-        class="shrink-0"
-        :ui="panelTableUi"
-      >
-        <template #name-cell="{ row }">
-          <p class="font-medium text-highlighted">
-            {{ row.original.name }}
-          </p>
-          <p class="text-muted">
-            {{ row.original.slug }}
-          </p>
-        </template>
+      <ErrorRetryAlert
+        v-if="showError"
+        title="Não foi possível carregar os planos"
+        :loading="isLoading"
+        @retry="retry"
+      />
 
-        <template #users-header>
-          <div class="text-right">
-            Usuários
-          </div>
-        </template>
-        <template #clients-header>
-          <div class="text-right">
-            Clientes
-          </div>
-        </template>
-        <template #monitorings-header>
-          <div class="text-right">
-            Monitoramentos
-          </div>
-        </template>
+      <template v-else>
+        <UTable
+          v-model:column-visibility="columnVisibility"
+          :data="rows"
+          :columns="columns"
+          :loading="loading"
+          class="shrink-0"
+          :ui="panelTableUi"
+        >
+          <template #name-cell="{ row }">
+            <p class="font-medium text-highlighted">
+              {{ row.original.name }}
+            </p>
+            <p class="text-muted">
+              {{ row.original.slug }}
+            </p>
+          </template>
 
-        <template #users-cell="{ row }">
-          <div class="text-right">
-            <UBadge v-if="limitValue(row.original, 'users') === null" color="neutral" variant="subtle">
-              Ilimitado
-            </UBadge>
-            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'users') }}</span>
-          </div>
-        </template>
-        <template #clients-cell="{ row }">
-          <div class="text-right">
-            <UBadge v-if="limitValue(row.original, 'clients') === null" color="neutral" variant="subtle">
-              Ilimitado
-            </UBadge>
-            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'clients') }}</span>
-          </div>
-        </template>
-        <template #monitorings-cell="{ row }">
-          <div class="text-right">
-            <UBadge v-if="limitValue(row.original, 'monitorings') === null" color="neutral" variant="subtle">
-              Ilimitado
-            </UBadge>
-            <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'monitorings') }}</span>
-          </div>
-        </template>
+          <template #users-header>
+            <div class="text-right">
+              Usuários
+            </div>
+          </template>
+          <template #clients-header>
+            <div class="text-right">
+              Clientes
+            </div>
+          </template>
+          <template #monitorings-header>
+            <div class="text-right">
+              Monitoramentos
+            </div>
+          </template>
 
-        <template #actions-cell="{ row }">
-          <DataTableRowActionsMenu
-            :items="planActions(row.original)"
-            :label="`Ações de ${row.original.name}`"
-            flush
-          />
-        </template>
+          <template #users-cell="{ row }">
+            <div class="text-right">
+              <UBadge v-if="limitValue(row.original, 'users') === null" color="neutral" variant="subtle">
+                Ilimitado
+              </UBadge>
+              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'users') }}</span>
+            </div>
+          </template>
+          <template #clients-cell="{ row }">
+            <div class="text-right">
+              <UBadge v-if="limitValue(row.original, 'clients') === null" color="neutral" variant="subtle">
+                Ilimitado
+              </UBadge>
+              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'clients') }}</span>
+            </div>
+          </template>
+          <template #monitorings-cell="{ row }">
+            <div class="text-right">
+              <UBadge v-if="limitValue(row.original, 'monitorings') === null" color="neutral" variant="subtle">
+                Ilimitado
+              </UBadge>
+              <span v-else class="font-medium text-highlighted tabular-nums">{{ limitValue(row.original, 'monitorings') }}</span>
+            </div>
+          </template>
 
-        <template #empty>
-          <DataTablePanelTableEmpty
-            icon="i-lucide-layers"
-            label="Nenhum plano encontrado."
-          />
-        </template>
-      </UTable>
+          <template #actions-cell="{ row }">
+            <DataTableRowActionsMenu
+              :items="planActions(row.original)"
+              :label="`Ações de ${row.original.name}`"
+              flush
+            />
+          </template>
 
-      <div :class="panelFooterClass">
-        <div :class="panelFooterCountClass">
-          {{ rows.length }} de {{ plans.length }} plano(s)
+          <template #empty>
+            <DataTablePanelTableEmpty
+              icon="i-lucide-layers"
+              label="Nenhum plano encontrado."
+            />
+          </template>
+        </UTable>
+
+        <div :class="panelFooterClass">
+          <div :class="panelFooterCountClass">
+            {{ rows.length }} de {{ plans.length }} plano(s)
+          </div>
         </div>
-      </div>
+      </template>
     </div>
   </DataTablePanelList>
 

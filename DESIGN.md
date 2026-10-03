@@ -276,6 +276,30 @@ A dashboard page body has three shapes and no shared name for any of them, so `a
 
 `sheetBodyClass` in `components/data-table/sheet.ts` is a fourth, separate token: the windowed data-table sheet.
 
+#### Matriz rota → token
+
+Mapa de consumo por frente — escolha daqui, nunca copiando classes de outra página:
+
+| Rota (grupo) | Shell | Painel | Tabela |
+|---|---|---|---|
+| `/` (home) | shell do dashboard (`layouts/default.vue`) | — | `panelTableUi` (`HomeSales`) |
+| `/monitoring` | `pageScrollClass` | — | — |
+| `/monitoring/execucoes` | `sheetBodyClass` | — | `sheetTableUi` |
+| `/monitoring/execucoes/[id]` | `pageRecordScrollClass` + `pageDetailClass` | — | `sheetTableUi` (lista de itens) |
+| `/fiscal` (Carteira › Painel) | `pageScrollClass` | — | — |
+| `/fiscal/clientes` | `pageTableClass` | — | `sheetTableUi` (+ `min-w-7xl` no `base`) |
+| `/fiscal/documentos` | `sheetBodyClass` | — | `sheetTableUi` |
+| `/customers/painel` | `pageScrollClass` | — | — |
+| `/customers/[documento]/[[situacao]]` | `sheetBodyClass` | — | `sheetTableUi` (`ClientPortfolioTable`) |
+| `/work/modelos` (lista e ficha) | `pageScrollClass` | — | `workTableUi` (lista) |
+| `/work/clientes`, `/work/processos` | `pageTableClass` | — | `workTableUi` |
+| `/work/tarefas` | `pageScrollClass` | — | `workFlatTableUi` |
+| `/work/calendario` | calendário dedicado | — | — |
+| `/admin/**` (listas de painel) | shell do dashboard | `DataTablePanelList` + `panelCardUi` | `panelTableUi` |
+| `/equipe/**` (listas de painel) | shell do dashboard | `DataTablePanelList` + `panelCardUi` | `panelTableUi` |
+| `/settings/certificado` | `pageScrollClass` | — | — |
+| `/settings/**` (demais seções) | seções `UForm`/`UPageCard` | — | — |
+
 ### Panel list page (signature)
 `DataTablePanelList` + `app/components/data-table/panel.ts`. The bordered-card list page: a naked horizontal header card (title, description, one `#action`) above a `UPageCard` whose header slot is the `#toolbar`. Shared by the six Admin lists and the two Equipe lists.
 
@@ -315,5 +339,5 @@ Chrome lives in `panel.ts` and is imported, never retyped: `panelTableUi`, `pane
 - **Don't** reset group expand state on every data refresh (`autoResetExpanded` must stay false).
 - **Don't** extend frosted glass beyond calendar chrome without an explicit product decision.
 - **Don't** treat `.ref/` TaskHub screenshots as copy-paste authority — match incumbent opmoni tokens and patterns first.
-- **Don't** hand-roll a `UAlert` retry block, a `dl` fact grid, a page root, or a panel table's `:ui` — those are the extracted components above.
+- **Don't** hand-roll a `UAlert` retry block, a `dl` fact grid, a page root, or a panel table's `:ui` — those are the extracted components above. The page-to-token choice lives in the "Matriz rota → token" table under **Page shell (roots)**; a root or `:ui` typed by hand is a duplicate of what that matrix already decides.
 - **Don't** leave a `DataTableRowActionsMenu` without a `label`; an unlabelled icon button is announced as "button".

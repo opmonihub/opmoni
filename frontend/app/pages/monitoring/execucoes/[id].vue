@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import DataTableIdentity from '~/components/data-table/Identity.vue'
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { sheetTableUi } from '~/components/data-table/sheet'
@@ -133,6 +134,16 @@ const itemColumns: TableColumn<SerproSyncRunItem>[] = [
   { id: 'obligation', header: 'Obrigação', meta: { class: { th: 'min-w-32 whitespace-nowrap', td: '' } } },
   { id: 'reason', header: 'Motivo', meta: { class: { th: 'min-w-40 whitespace-nowrap', td: '' } } },
   { id: 'updated_at', header: 'Atualizado em', meta: { class: { th: 'whitespace-nowrap', td: 'tabular-nums' } } }
+]
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'client', label: 'Cliente' },
+  { id: 'state', label: 'Estado' },
+  { id: 'obligation', label: 'Obrigação' },
+  { id: 'reason', label: 'Motivo' },
+  { id: 'updated_at', label: 'Atualizado em' }
 ]
 
 /**
@@ -327,6 +338,11 @@ const progressBarClass = computed(() => barClass[runState.value?.color ?? 'neutr
                 class="tabular-nums"
                 :label="formatMonitoringCount(items.length)"
               />
+              <DataTableColumnMenu
+                v-model="columnVisibility"
+                :columns="hideableColumns"
+                class="hidden shrink-0 md:flex"
+              />
             </div>
           </template>
 
@@ -362,6 +378,7 @@ const progressBarClass = computed(() => barClass[runState.value?.color ?? 'neutr
             </ul>
 
             <UTable
+              v-model:column-visibility="columnVisibility"
               :data="items"
               :columns="itemColumns"
               class="hidden p-3 md:block"

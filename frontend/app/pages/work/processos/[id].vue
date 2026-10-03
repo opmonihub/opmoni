@@ -2,6 +2,7 @@
 import type { AccordionItem } from '@nuxt/ui'
 import type { WorkProcessDetail, WorkTask } from '~/types/work'
 import { statusPresentation } from '~/composables/useWorkPresentation'
+import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -99,7 +100,7 @@ const accordionItems = computed<TaskAccordionItem[]>(() => tasks.value.map((task
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:gap-5 sm:p-4 lg:p-5">
+  <div :class="pageScrollClass">
     <header class="flex min-w-0 flex-wrap items-center gap-2">
       <UButton
         icon="i-lucide-arrow-left"

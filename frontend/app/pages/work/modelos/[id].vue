@@ -4,6 +4,7 @@ import { apiMessage } from '~/composables/useApiError'
 import type { ClientTag, TaxRegime } from '~/types/client'
 import type { WorkPreviewRow, WorkTaskPriority, WorkTemplate, WorkTemplatePayload } from '~/types/work'
 import { taxRegimeLabel } from '~/utils/portfolioLabels'
+import { pageScrollClass } from '~/utils/pageShell'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -307,7 +308,7 @@ async function onGenerate() {
 </script>
 
 <template>
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-3 sm:gap-5 sm:p-4 lg:p-5">
+  <div :class="pageScrollClass">
     <header class="flex min-w-0 flex-wrap items-center gap-2">
       <UButton
         icon="i-lucide-arrow-left"

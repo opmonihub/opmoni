@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
@@ -50,12 +51,39 @@ const columns: TableColumn<SupportLog>[] = [
   { accessorKey: 'account', header: 'Conta' }
 ]
 
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'created_at', label: 'Quando' },
+  { id: 'actor', label: 'Super admin' },
+  { id: 'action', label: 'Ação' },
+  { id: 'account', label: 'Conta' }
+]
+
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
 
+/**
+ * Falha fatal de carga inicial x falha de refresh: sem carga bem-sucedida ainda,
+ * o alerta com retry toma a página inteira — cartões zerados diriam que não há
+ * nada no sistema. Depois de carregado, falha de refresh é só toast, e o último
+ * bom resumo fica visível.
+ */
+const loadError = ref<unknown>(null)
+const hasLoaded = ref(false)
+
+const { isLoading, showError, retry } = useRetryableLoad({
+  refresh: load,
+  error: loadError,
+  loading,
+  loadErrorTitle: 'Não foi possível carregar o resumo',
+  refreshErrorTitle: 'Não foi possível atualizar o resumo'
+})
+
 async function load() {
   loading.value = true
+  loadError.value = null
   try {
     const [accountsRes, usersRes, subsRes, plansRes, logsRes] = await Promise.all([
       $api<{ total: number }>('/admin/accounts', { params: { page: 1 } }),
@@ -71,8 +99,13 @@ async function load() {
       plans: plansRes.length
     }
     recentLogs.value = logsRes.data.slice(0, 5)
-  } catch {
-    toast.add({ title: 'Não foi possível carregar o resumo', color: 'error' })
+    hasLoaded.value = true
+  } catch (err) {
+    if (hasLoaded.value) {
+      toast.add({ title: 'Não foi possível atualizar o resumo', color: 'error' })
+    } else {
+      loadError.value = err
+    }
   } finally {
     loading.value = false
   }
@@ -82,7 +115,15 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 sm:gap-6">
+  <ErrorRetryAlert
+    v-if="showError"
+    title="Não foi possível carregar o resumo"
+    :loading="isLoading"
+    class="mt-4"
+    @retry="retry"
+  />
+
+  <div v-else class="flex flex-col gap-4 sm:gap-6">
     <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
       <MetricCard
         v-for="card in cards"
@@ -101,8 +142,16 @@ onMounted(load)
         title="Acessos de suporte recentes"
         description="Últimos eventos registrados na auditoria."
       >
+        <template #toolbar>
+          <DataTableColumnMenu
+            v-model="columnVisibility"
+            :columns="hideableColumns"
+            class="ms-auto shrink-0"
+          />
+        </template>
         <div class="p-4 sm:p-6">
           <UTable
+            v-model:column-visibility="columnVisibility"
             :data="recentLogs"
             :columns="columns"
             :loading="loading"

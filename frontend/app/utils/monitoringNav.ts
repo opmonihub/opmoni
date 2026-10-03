@@ -460,13 +460,13 @@ export function monitoringPageActive(path: string, page: MonitoringPage) {
  * The sidebar answers "exactly where am I", which is a stricter question than the
  * tab bar's, so it gets its own rule. The obligations are the sidebar's own
  * children: inside one, the group is the position and Painel must go dark, or the
- * rail claims two positions at once.
+ * rail claims two positions at once. Submenu items stay text-only; the icon
+ * belongs to the parent trigger and to the module tab bar.
  */
 function monitoringSidebarItem(page: MonitoringPage, path: string): NavigationMenuItem {
   const isIndex = page.to === '/monitoring'
   return {
     label: page.label,
-    icon: page.icon,
     to: page.to,
     exact: isIndex,
     active: isIndex ? path === page.to : monitoringPageActive(path, page)
