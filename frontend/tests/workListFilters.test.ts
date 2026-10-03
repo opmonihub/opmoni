@@ -44,6 +44,40 @@ describe('Work task filters', () => {
 
     assert.deepEqual(filtered.map(item => item.id), [2, 3])
   })
+
+  it('filtra vencimento pelo intervalo gravado no modelo', () => {
+    const tasks = [
+      task(1, '2026-09-09'),
+      task(2, '2026-09-10'),
+      task(3, '2026-09-20'),
+      task(4, '2026-09-21'),
+      task(5, null)
+    ]
+    const filters: DataTableFilterModel[] = [{
+      columnId: 'due_on',
+      type: 'date',
+      operator: 'is between',
+      values: ['2026-09-10', '2026-09-20']
+    }]
+
+    assert.deepEqual(filterWorkTasks(tasks, filters, [], '').map(item => item.id), [2, 3])
+  })
+
+  it('exclui um status quando o operador é de negação', () => {
+    const tasks = [
+      { ...task(1, '2026-09-10'), status: 'todo' as const },
+      { ...task(2, '2026-09-11'), status: 'done' as const }
+    ]
+    const columns = [{ id: 'status', label: 'Status', icon: 'i-lucide-circle-dot', type: 'option' as const }]
+    const filters: DataTableFilterModel[] = [{
+      columnId: 'status',
+      type: 'multiOption',
+      operator: 'exclude',
+      values: ['done']
+    }]
+
+    assert.deepEqual(filterWorkTasks(tasks, filters, columns, '').map(item => item.id), [1])
+  })
 })
 
 describe('Work task scope', () => {

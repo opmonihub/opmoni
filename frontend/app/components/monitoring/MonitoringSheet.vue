@@ -2,7 +2,9 @@
 import { refDebounced, useInfiniteScroll } from '@vueuse/core'
 import type { TableColumn } from '@nuxt/ui'
 import type { ComponentPublicInstance } from 'vue'
-import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
+import type { FilterPanelColumn } from '~/utils/filterPanel'
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
 import { apiStatus } from '~/composables/useApiError'
@@ -187,26 +189,27 @@ const canLoadMore = computed(() =>
 
 const { data: tagCatalog } = await useAsyncData('serpro-monitoring-tags', () => listTags())
 
-const filterColumns = computed<DataTableFilterColumn[]>(() => [
-  { id: 'q', label: 'Busca', icon: 'i-lucide-search', type: 'text' },
+const filterColumns = computed<FilterPanelColumn[]>(() => [
   {
     id: 'tag_id',
     label: 'Tags',
     icon: 'i-lucide-tags',
-    type: 'multiOption',
+    control: 'multi',
     options: (tagCatalog.value?.data ?? []).map(tag => ({ label: tag.name, value: String(tag.id) }))
   }
 ])
 
 const filterModels = computed<DataTableFilterModel[]>(() => {
-  const models: DataTableFilterModel[] = []
-  if (debouncedSearch.value.trim()) models.push({ columnId: 'q', type: 'text', operator: 'contains', values: [debouncedSearch.value.trim()] })
-  if (tagFilter.value.length) models.push({ columnId: 'tag_id', type: 'multiOption', operator: 'include', values: tagFilter.value.map(String) })
-  return models
+  if (!tagFilter.value.length) return []
+  return [{
+    columnId: 'tag_id',
+    type: 'multiOption',
+    operator: tagFilter.value.length > 1 ? 'include any of' : 'include',
+    values: tagFilter.value.map(String)
+  }]
 })
 
 function onFilters(models: DataTableFilterModel[]) {
-  search.value = String(models.find(model => model.columnId === 'q')?.values[0] ?? '')
   tagFilter.value = (models.find(model => model.columnId === 'tag_id')?.values ?? []).map(Number).filter(Number.isFinite)
 }
 
@@ -283,6 +286,12 @@ const columns = computed<TableColumn<MonitoringClient>[]>(() =>
         : { th: column.id === 'name' ? 'min-w-64 whitespace-nowrap' : 'whitespace-nowrap', td: '' }
     }
   }))
+)
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = computed(() =>
+  props.obligation.columns.map(column => ({ id: column.id, label: column.header }))
 )
 
 const detailFields = computed(() => props.obligation.columns.filter(column => column.id !== 'name' && column.id !== 'situacao'))
@@ -460,7 +469,7 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
           @associated="afterAssociate"
         />
 
-        <DataTableFilter
+        <DataTableFilterPanel
           :columns="filterColumns"
           :model-value="filterModels"
           :disabled="isLoading"
@@ -471,10 +480,17 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
             v-model="search"
             icon="i-lucide-search"
             :placeholder="monitoringFilters.search"
-            class="min-w-0 flex-1"
+            class="w-full min-w-0 flex-1"
             :disabled="isLoading"
           />
-        </DataTableFilter>
+          <template #trailing>
+            <DataTableColumnMenu
+              v-model="columnVisibility"
+              :columns="hideableColumns"
+              class="hidden shrink-0 md:flex"
+            />
+          </template>
+        </DataTableFilterPanel>
 
         <ErrorRetryAlert
           v-if="showError"
@@ -556,6 +572,7 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
           >
             <UTable
               ref="table"
+              v-model:column-visibility="columnVisibility"
               sticky
               :data="rows"
               :columns="columns"

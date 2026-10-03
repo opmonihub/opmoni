@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/filter-model'
+import { toStoredClientFilters, toPanelClientFilters } from '~/utils/clientFilterPanel'
+import { toPanelColumns } from '~/utils/filterPanel'
 import type { DeadlineStatus } from '~/types/client'
 
 const props = defineProps<{
@@ -43,65 +45,51 @@ const columnVisibilityModel = computed({
   set: (value: Record<string, boolean>) => emit('update:columnVisibility', value)
 })
 
-const tagMenuItems = [[{
-  label: 'Criar tag',
-  icon: 'i-lucide-plus',
-  onSelect: () => emit('open-tags', 'catalog', true)
-}, {
-  label: 'Gerenciar tags',
-  icon: 'i-lucide-library',
-  onSelect: () => emit('open-tags', 'catalog')
-}]] satisfies DropdownMenuItem[][]
+const panelColumns = computed(() => toPanelColumns(props.filterColumns, { operators: true }))
+const panelModels = computed(() => toPanelClientFilters(props.filterModels))
+
+function onPanelFilters(models: DataTableFilterModel[]) {
+  emit('update:filterModels', toStoredClientFilters(models))
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
-    <!-- Mobile only: the counters are one scrolling line, and the two auxiliary
-         actions moved down to the search row so they stop taking the width the
-         counters need. From `md` the list toolbar carries them instead. -->
+    <!-- Mobile only: the counters are one scrolling line, and the saved-filters
+         and tags menu moved down to the search row so it stops taking the width
+         the counters need. From `md` the list toolbar carries it instead. -->
     <DataTableStatusChips
       class="md:hidden"
       :items="mobileStatusItems"
       :active="documentStatus"
     />
 
-    <DataTableFilter
-      :columns="filterColumns"
-      :model-value="filterModels"
+    <DataTableFilterPanel
+      :columns="panelColumns"
+      :model-value="panelModels"
       :disabled="isLoading"
       class="min-w-0"
-      @update:model-value="emit('update:filterModels', $event)"
+      @update:model-value="onPanelFilters"
     >
       <UInput
         v-model="searchModel"
         icon="i-lucide-search"
         placeholder="Buscar por nome, CPF/CNPJ ou e-mail..."
-        class="min-w-0 flex-1"
+        class="w-full min-w-0 flex-1"
         :disabled="isLoading"
       />
       <template #trailing>
         <div class="ml-auto flex shrink-0 items-center gap-1.5">
-          <CustomersSavedFilters
-            v-if="documentStatus === 'all'"
+          <CustomersClientListMenu
             compact
-            class="md:hidden"
+            class="shrink-0 md:hidden"
             :search="search"
             :filters="filterModels"
+            :show-saved="documentStatus === 'all'"
+            :can-manage-tags="canManageClients"
             @apply="emit('apply-saved-filter', $event)"
+            @open-tags="(intent, focusCreate) => emit('open-tags', intent, focusCreate)"
           />
-          <UDropdownMenu
-            v-if="canManageClients"
-            :items="tagMenuItems"
-            :content="{ align: 'end' }"
-          >
-            <UButton
-              icon="i-lucide-tags"
-              color="neutral"
-              variant="outline"
-              class="shrink-0 md:hidden"
-              aria-label="Opções de tags"
-            />
-          </UDropdownMenu>
 
           <UDropdownMenu
             v-if="selectedCount"
@@ -141,6 +129,6 @@ const tagMenuItems = [[{
           />
         </div>
       </template>
-    </DataTableFilter>
+    </DataTableFilterPanel>
   </div>
 </template>

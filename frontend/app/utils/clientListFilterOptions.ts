@@ -3,7 +3,7 @@ import type {
   DataTableFilterModel,
   DataTableFilterOperator,
   DataTableFilterOption
-} from '~/components/data-table/Filter.vue'
+} from '~/components/data-table/filter-model'
 import type {
   ClientStatus,
   ClientTag,

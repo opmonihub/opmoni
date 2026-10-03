@@ -137,6 +137,7 @@ function readLeaf(leaf: WorkTarefasLeaf, columnId: string): unknown {
     case 'processId': return String(leaf.processId)
     case 'cascade': return leaf.cascade ? 'true' : 'false'
     case 'assignee': return leaf.assignee_member_id === null ? 'none' : String(leaf.assignee_member_id)
+    case 'due_on': return leaf.due_on
     default: return undefined
   }
 }
@@ -150,11 +151,13 @@ function readTask(task: WorkTask, columnId: string): unknown {
     case 'processId': return String(task.process?.id ?? 0)
     case 'cascade': return task.process?.cascade ? 'true' : 'false'
     case 'assignee': return task.assignee_member_id === null ? 'none' : String(task.assignee_member_id)
+    case 'due_on': return task.due_on
     default: return undefined
   }
 }
 
 function typeOf(columnId: string, columns: DataTableFilterColumn[]) {
+  if (columnId === 'due_on') return 'date'
   return columnType(columns.find(column => column.id === columnId))
 }
 

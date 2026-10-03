@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
-import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
-import DataTableFilter from '~/components/data-table/Filter.vue'
 import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import { sheetTableUi } from '~/components/data-table/sheet'
 import { matchesFilters } from '~/components/data-table/filter-model'
@@ -28,6 +27,7 @@ import {
   modelLabel,
   modelVolumes
 } from '~/utils/fiscalPresentation'
+import { toPanelColumns, type FilterPanelColumn } from '~/utils/filterPanel'
 import { pageTableClass } from '~/utils/pageShell'
 import { formatTaxId } from '~/utils/taxId'
 
@@ -50,7 +50,7 @@ const modelOptions: { label: string, value: FiscalModel }[] = [
   { label: modelLabel('nfse'), value: 'nfse' }
 ]
 
-const filterColumns: DataTableFilterColumn[] = [{
+const filterColumns = [{
   id: 'certificado_status',
   label: 'Certificado A1',
   icon: 'i-lucide-shield-check',
@@ -101,15 +101,22 @@ const selectedModels = computed<FiscalModel[]>(() => {
   if (!filter) return []
 
   const values = new Set(filter.values.map(String))
-  const excluded = filter.operator === 'is not' || filter.operator === 'is none of'
+  const excluded = filter.operator === 'is not'
+    || filter.operator === 'is none of'
+    || filter.operator === 'exclude'
+    || filter.operator === 'exclude if any of'
+    || filter.operator === 'exclude if all'
   return modelOptions
     .filter(option => excluded ? !values.has(option.value) : values.has(option.value))
     .map(option => option.value)
 })
-const issuedFrom = ref('')
-const issuedTo = ref('')
-const dateRangeOpen = ref(false)
-const dateRangeDraft = ref({ from: '', to: '' })
+const issuedFilter = computed(() => filterModels.value.find(filter => filter.columnId === 'issued'))
+const issuedFrom = computed(() => issuedFilter.value?.values[0] === undefined ? '' : String(issuedFilter.value.values[0]))
+const issuedTo = computed(() => issuedFilter.value?.values[1] === undefined ? '' : String(issuedFilter.value.values[1]))
+const panelColumns = computed<FilterPanelColumn[]>(() => [
+  ...toPanelColumns(filterColumns, { operators: true }),
+  { id: 'issued', label: 'Emissão', icon: 'i-lucide-calendar-range', control: 'date-range' }
+])
 const columnVisibility = ref<Record<string, boolean>>({})
 const rowSelection = ref<Record<string, boolean>>({})
 const sort = ref<ClientSortKey>('cliente')
@@ -204,18 +211,7 @@ const headerState = computed<boolean | 'indeterminate'>(() => {
 const hasActiveFilters = computed(() => Boolean(
   search.value.trim()
   || filterModels.value.length
-  || selectedModels.value.length
-  || issuedFrom.value
-  || issuedTo.value
 ))
-
-const dateRangeCount = computed(() => Number(!!issuedFrom.value) + Number(!!issuedTo.value))
-
-const dateRangeError = computed(() => dateRangeDraft.value.from
-  && dateRangeDraft.value.to
-  && dateRangeDraft.value.to < dateRangeDraft.value.from
-  ? 'A data final precisa ser igual ou posterior à data inicial.'
-  : undefined)
 
 const UCheckbox = resolveComponent('UCheckbox')
 
@@ -279,7 +275,7 @@ const columns = computed<TableColumn<FiscalClientSummary>[]>(() => [
   }
 ])
 
-watch([debouncedSearch, filterModels, issuedFrom, issuedTo], () => {
+watch([debouncedSearch, filterModels], () => {
   currentPage.value = 1
   clearSelection()
 })
@@ -290,10 +286,6 @@ watch(pageSize, () => {
 
 watch(pageCount, (count) => {
   if (currentPage.value > count) currentPage.value = count
-})
-
-watch(dateRangeOpen, (open) => {
-  if (open) dateRangeDraft.value = { from: issuedFrom.value, to: issuedTo.value }
 })
 
 function normalizeSearch(value: string): string {
@@ -390,24 +382,9 @@ function setPageSize(value: string | number) {
   if ([25, 50, 100].includes(parsed)) pageSize.value = parsed
 }
 
-function applyDateRange() {
-  if (dateRangeError.value) return
-  issuedFrom.value = dateRangeDraft.value.from
-  issuedTo.value = dateRangeDraft.value.to
-  dateRangeOpen.value = false
-}
-
-function clearDateRange() {
-  issuedFrom.value = ''
-  issuedTo.value = ''
-  dateRangeDraft.value = { from: '', to: '' }
-  dateRangeOpen.value = false
-}
-
 function clearFilters() {
   search.value = ''
   filterModels.value = []
-  clearDateRange()
   clearSelection()
   currentPage.value = 1
 }
@@ -503,8 +480,8 @@ function clientActions(summary: FiscalClientSummary): DropdownMenuItem[] {
 
     <template v-else>
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-        <DataTableFilter
-          :columns="filterColumns"
+        <DataTableFilterPanel
+          :columns="panelColumns"
           :model-value="filterModels"
           :disabled="isLoading"
           class="min-w-0 shrink-0"
@@ -514,75 +491,23 @@ function clientActions(summary: FiscalClientSummary): DropdownMenuItem[] {
             v-model="search"
             icon="i-lucide-search"
             placeholder="Buscar cliente ou CPF/CNPJ..."
-            class="min-w-0 flex-1"
+            class="w-full min-w-0 flex-1"
             :disabled="isLoading"
           />
           <template #trailing>
             <div class="ml-auto flex shrink-0 items-center gap-1.5">
               <UButton
-                v-if="search.trim() || dateRangeCount"
-                :label="desktopTable ? 'Limpar filtros' : undefined"
+                v-if="search.trim()"
+                :label="desktopTable ? 'Limpar busca' : undefined"
                 icon="i-lucide-filter-x"
                 color="neutral"
                 variant="ghost"
                 size="sm"
                 class="shrink-0"
                 :disabled="isLoading"
-                aria-label="Limpar filtros"
-                @click="clearFilters"
+                aria-label="Limpar busca"
+                @click="search = ''"
               />
-
-              <UPopover
-                v-model:open="dateRangeOpen"
-                :content="{ align: 'end' }"
-                :ui="{ content: 'w-[calc(100vw-2rem)] p-4 sm:w-80' }"
-              >
-                <UButton
-                  icon="i-lucide-calendar-range"
-                  color="neutral"
-                  :variant="dateRangeCount ? 'soft' : 'outline'"
-                  :disabled="isLoading"
-                  aria-label="Filtrar por período de emissão"
-                >
-                  <UBadge
-                    v-if="dateRangeCount"
-                    :label="formatFiscalCount(dateRangeCount)"
-                    color="primary"
-                    variant="subtle"
-                    size="sm"
-                  />
-                </UButton>
-
-                <template #content>
-                  <div class="space-y-3">
-                    <p class="text-sm font-medium text-highlighted">
-                      Período de emissão
-                    </p>
-                    <UFormField label="Emissão a partir de" name="issued_from">
-                      <UInput v-model="dateRangeDraft.from" type="date" class="w-full" />
-                    </UFormField>
-                    <UFormField label="Emissão até" name="issued_to" :error="dateRangeError">
-                      <UInput v-model="dateRangeDraft.to" type="date" class="w-full" />
-                    </UFormField>
-                    <div class="flex items-center justify-between gap-2">
-                      <UButton
-                        label="Limpar período"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        :disabled="!dateRangeDraft.from && !dateRangeDraft.to && !dateRangeCount"
-                        @click="clearDateRange"
-                      />
-                      <UButton
-                        label="Aplicar"
-                        size="sm"
-                        :disabled="!!dateRangeError"
-                        @click="applyDateRange"
-                      />
-                    </div>
-                  </div>
-                </template>
-              </UPopover>
 
               <UDropdownMenu
                 v-if="selectedCount"
@@ -631,7 +556,7 @@ function clientActions(summary: FiscalClientSummary): DropdownMenuItem[] {
               />
             </div>
           </template>
-        </DataTableFilter>
+        </DataTableFilterPanel>
 
         <UEmpty
           v-if="!isLoading && filteredRows.length === 0"

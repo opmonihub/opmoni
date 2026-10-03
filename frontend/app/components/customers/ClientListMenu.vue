@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
-import type { DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { ClientSavedFilter } from '~/types/client'
+import { clientListMenuItems, type ClientListMenuItem } from '~/utils/clientListMenu'
 
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   search: string
   filters: DataTableFilterModel[]
+  showSaved: boolean
+  canManageTags: boolean
   compact?: boolean
 }>()
 
 const emit = defineEmits<{
-  apply: [value: { q: string, filters: DataTableFilterModel[] }]
+  'apply': [value: { q: string, filters: DataTableFilterModel[] }]
+  'open-tags': [intent: 'catalog', focusCreate: boolean]
 }>()
 
 const { listSavedFilters, createSavedFilter, deleteSavedFilter } = useClients()
@@ -25,37 +28,20 @@ const name = ref('')
 
 const canSave = computed(() => props.search.trim() !== '' || props.filters.length > 0)
 
-interface SavedFilterItem extends DropdownMenuItem {
-  savedId?: number
-}
-
-const items = computed<SavedFilterItem[][]>(() => {
-  const rows: SavedFilterItem[] = saved.value.length
-    ? saved.value.map(filter => ({
-        label: filter.name,
-        icon: 'i-lucide-bookmark',
-        slot: 'saved' as const,
-        savedId: filter.id,
-        onSelect: () => emit('apply', {
-          q: filter.q ?? '',
-          filters: filter.filters as DataTableFilterModel[]
-        })
-      }))
-    : [{ label: 'Nenhum filtro salvo', disabled: true }]
-
-  return [
-    rows,
-    [{
-      label: 'Salvar filtros atuais',
-      icon: 'i-lucide-plus',
-      disabled: !canSave.value,
-      onSelect: () => {
-        name.value = ''
-        saveOpen.value = true
-      }
-    }]
-  ]
-})
+const items = computed(() => clientListMenuItems({
+  saved: props.showSaved ? saved.value : null,
+  canSave: canSave.value,
+  canManageTags: props.canManageTags,
+  onApply: filter => emit('apply', {
+    q: filter.q ?? '',
+    filters: filter.filters as DataTableFilterModel[]
+  }),
+  onSave: () => {
+    name.value = ''
+    saveOpen.value = true
+  },
+  onTags: focusCreate => emit('open-tags', 'catalog', focusCreate)
+}))
 
 async function load() {
   try {
@@ -100,22 +86,33 @@ async function remove(id: number) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  if (props.showSaved) void load()
+})
+
+watch(() => props.showSaved, (show) => {
+  if (show) void load()
+})
 </script>
 
 <template>
-  <UDropdownMenu :items="items" :content="{ align: 'end' }">
+  <UDropdownMenu
+    v-if="items.length"
+    :items="items"
+    :content="{ align: 'end' }"
+    :ui="{ content: 'min-w-56' }"
+  >
     <UButton
       v-bind="$attrs"
-      :label="compact ? undefined : 'Salvos'"
-      icon="i-lucide-bookmark"
-      trailing-icon="i-lucide-chevron-down"
+      :label="compact ? undefined : 'Mais'"
+      :icon="compact ? 'i-lucide-ellipsis' : undefined"
+      :trailing-icon="compact ? undefined : 'i-lucide-chevron-down'"
       color="neutral"
-      variant="ghost"
-      aria-label="Filtros salvos"
+      :variant="compact ? 'outline' : 'ghost'"
+      aria-label="Filtros salvos e tags"
     />
 
-    <template #saved-trailing="{ item }: { item: SavedFilterItem }">
+    <template #saved-trailing="{ item }: { item: ClientListMenuItem }">
       <UButton
         icon="i-lucide-trash-2"
         color="neutral"

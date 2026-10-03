@@ -2,13 +2,15 @@
 import type { Row, SortingState } from '@tanstack/table-core'
 import type { TableColumn } from '@nuxt/ui'
 import { h, resolveComponent } from 'vue'
-import type { DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import WorkGroupStatusSelect from '~/components/work/WorkGroupStatusSelect.vue'
 import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
 import { statusPresentation } from '~/composables/useWorkPresentation'
 import type { WorkGroupedClient, WorkTaskStatus } from '~/types/work'
 import { statusOrder } from '~/utils/workCalendar'
+import { toPanelColumns } from '~/utils/filterPanel'
 import { pageTableClass } from '~/utils/pageShell'
 import {
   derivedProcessStatusForGroup,
@@ -184,6 +186,7 @@ const hasActiveFilters = computed(() =>
 const filterColumns = computed(() =>
   workClientesFilterColumns(rows.value, filterModels.value, departments.value ?? [])
 )
+const panelColumns = computed(() => toPanelColumns(filterColumns.value, { operators: true }))
 
 const sorting = ref<SortingState>([])
 const rowSelection = ref<Record<string, boolean>>({})
@@ -337,6 +340,15 @@ const columns = computed<TableColumn<ClientTaskLeaf>[]>(() => {
 
   return cols
 })
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'item', label: 'Item' },
+  { id: 'status', label: 'Status' },
+  { id: 'departmentName', label: 'Depto.' },
+  { id: 'due_on', label: 'Vencimento' }
+]
 
 const rowSelectionOptions = {
   enableRowSelection: (row: Row<ClientTaskLeaf>) => selectableIdsForRow(row).length > 0
@@ -497,8 +509,8 @@ watch([filterModels, search, referenceMonth], () => {
       </WorkToolbarTeleport>
     </ClientOnly>
 
-    <DataTableFilter
-      :columns="filterColumns"
+    <DataTableFilterPanel
+      :columns="panelColumns"
       :model-value="filterModels"
       :disabled="isLoading"
       class="min-w-0 shrink-0"
@@ -508,10 +520,18 @@ watch([filterModels, search, referenceMonth], () => {
         v-model="search"
         icon="i-lucide-search"
         placeholder="Buscar cliente, processo ou tarefa..."
-        class="min-w-0 flex-1"
+        class="w-full min-w-0 flex-1"
         :disabled="isLoading"
       />
-    </DataTableFilter>
+      <template #trailing>
+        <DataTableColumnMenu
+          v-if="showDesktop"
+          v-model="columnVisibility"
+          :columns="hideableColumns"
+          class="shrink-0"
+        />
+      </template>
+    </DataTableFilterPanel>
 
     <ErrorRetryAlert
       v-if="showError"
@@ -707,6 +727,7 @@ watch([filterModels, search, referenceMonth], () => {
         :ui="{ body: 'flex min-h-0 flex-1 flex-col overflow-auto p-0 sm:p-0', root: 'flex min-h-0 flex-1 flex-col' }"
       >
         <UTable
+          v-model:column-visibility="columnVisibility"
           v-model:sorting="sorting"
           v-model:row-selection="rowSelection"
           v-model:expanded="expanded"

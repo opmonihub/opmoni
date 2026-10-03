@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
-import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import DataTableSortButton from '~/components/data-table/SortButton.vue'
 import { sheetBodyClass, sheetTableUi } from '~/components/data-table/sheet'
 import FiscalDocumentSheet from '~/components/fiscal/FiscalDocumentSheet.vue'
@@ -11,7 +12,8 @@ import type {
   FiscalPerPage,
   FiscalSort
 } from '~/types/fiscal'
-import { appliedFiscalFilters, availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
+import { fiscalDocumentPanelColumns, fiscalDocumentPanelModel, fiscalFiltersFromPanel } from '~/utils/fiscalDocumentPanel'
+import { availableFiscalModels, fiscalQuery, isFiscalModel, parseFiscalFilters } from '~/utils/fiscalFilters'
 import { fiscalCompetenciaLabel, fiscalNumeroLabel } from '~/utils/fiscalClients'
 import {
   fiscalClientCertificatePresentation,
@@ -110,59 +112,63 @@ function setPerPage(value: FiscalPerPage) {
  */
 const hasActiveFilters = computed(() => Object.keys(fiscalQuery(filters.value)).length > 0)
 
+/** A busca está na URL quando o `q` dela sobreviveu ao parse do módulo. */
+const hasActiveSearch = computed(() => Boolean(filters.value.q))
+
 function clearFilters() {
   return navigateTo({ query: {} })
 }
 
 /* ------------------------------------------------------------------ *
- * Filtro: as opções que o `DataTableFilter` sabe mostrar
+ * Busca por texto: o rascunho sincronizado da URL
  * ------------------------------------------------------------------ */
 
 /**
- * Os chips de modelo, tipo e cliente saem do `DataTableFilter`, e os valores
- * deles vivem na URL como qualquer outro filtro — o componente é só a casca.
+ * O rascunho da busca, e o valor que ele escreve com debounce de 300 ms.
+ *
+ * Espelha `clientes.vue`, mas a fonte aqui é a URL: o input é rascunho
+ * sincronizado de `filters.q`, e a escrita passa por `updateFilters` — a
+ * navegação é o que faz a busca parecer aplicada, e voltar à página 1 é o
+ * que faz ela ser. O valor inicial vem da URL, para que a busca sobreviva
+ * ao F5 como qualquer outro filtro.
  */
-const filterModels = computed<DataTableFilterModel[]>(() => {
-  const applied: DataTableFilterModel[] = []
-  const current = filters.value
+const search = ref(filters.value.q ?? '')
+const debouncedSearch = refDebounced(search, 300)
 
-  if (current.model?.length) {
-    applied.push({
-      columnId: 'model',
-      type: 'multiOption',
-      operator: current.model.length > 1 ? 'include any of' : 'include',
-      values: [...current.model]
-    })
-  }
-  if (current.kind) applied.push({ columnId: 'kind', type: 'option', operator: 'is', values: [current.kind] })
-  if (current.client_id) applied.push({ columnId: 'client_id', type: 'option', operator: 'is', values: [String(current.client_id)] })
-
-  return applied
+/**
+ * A sincronia é uma via de mão só no sentido URL→input, e o `watch` só atua
+ * quando o valor difere: uma escrita que a URL já refletiria seria um loop
+ * de navegação a cada tecla aplicada.
+ */
+watch(filters, (current) => {
+  const value = current.q ?? ''
+  if (search.value !== value) search.value = value
 })
 
 /**
- * O que o `onFilters` devolve, lido de novo como filtro.
+ * Aplica a busca escrita, se ela difere do que já está na URL.
  *
- * O caminho inverso do acima, e ele existe porque é o componente que emite: a
- * barra não conhece a URL, só valores. As colunas que ele não sabe editar
- * (prefixo de CNPJ, intervalo) não entram aqui — elas têm controle próprio
- * abaixo, e o `columnId` delas nunca chega neste mapa.
- *
- * O "não é" que o menu oferece não sobrevive: a API só sabe inclusão, e a
- * pílula volta mostrando o filtro que a consulta de fato aplicou. Deixar o
- * "não é" na tela seria uma promessa que a URL não consegue cumprir.
+ * Limpar o campo escreve `q: null` na URL — o filtro que o operador esvaziou
+ * é o filtro que ele quer tirar, e `fiscalQuery` o omite da query.
  */
-function onFilters(models: DataTableFilterModel[]) {
-  const model = models.find(entry => entry.columnId === 'model')?.values.map(String) ?? []
-  const kind = models.find(entry => entry.columnId === 'kind')?.values[0]
-  const client = models.find(entry => entry.columnId === 'client_id')?.values[0]
+function applySearch(value: string) {
+  if (value === (filters.value.q ?? '')) return
 
-  return updateFilters({
-    ...filters.value,
-    model: model.filter(isFiscalModel),
-    kind: kind === 'document' || kind === 'event' ? kind : null,
-    client_id: client === undefined ? null : Number(client)
-  })
+  return updateFilters({ ...filters.value, q: value === '' ? null : value })
+}
+
+/** O debounce dispara quando a digitação para; o Enter não espera por ele. */
+watch(debouncedSearch, value => applySearch(value))
+
+/**
+ * O painel é casca: a URL continua a fonte. Modelo, tipo, cliente, prefixo de
+ * CNPJ, emissão e valor entram no mesmo modelo. A busca fica no campo da
+ * página — Limpar, dentro de Filtros, não apaga o `q`.
+ */
+const filterModels = computed(() => fiscalDocumentPanelModel(filters.value))
+
+function onFilters(models: DataTableFilterModel[]) {
+  return updateFilters(fiscalFiltersFromPanel(filters.value, models))
 }
 
 /**
@@ -206,123 +212,7 @@ const clientOptions = computed(() => {
   return [...names.entries()].map(([id, name]) => ({ label: name, value: String(id) }))
 })
 
-const filterColumns = computed<DataTableFilterColumn[]>(() => [
-  { id: 'model', label: 'Modelo', icon: 'i-lucide-file-text', type: 'multiOption', options: modelOptions.value },
-  {
-    id: 'kind',
-    label: 'Tipo',
-    icon: 'i-lucide-tags',
-    type: 'option',
-    options: [
-      { label: 'Documento', value: 'document' },
-      { label: 'Evento', value: 'event' }
-    ]
-  },
-  { id: 'client_id', label: 'Cliente', icon: 'i-lucide-building-2', type: 'option', options: clientOptions.value }
-])
-
-/* ------------------------------------------------------------------ *
- * Filtro: o que não é opção — prefixo de CNPJ e intervalos
- * ------------------------------------------------------------------ */
-
-/**
- * O rascunho dos filtros de escrita livre, aplicado só quando o operador
- * confirma.
- *
- * A barra de opções é um menu de valores prontos; digitar um prefixo de CNPJ é
- * outra coisa. O rascunho nasce da URL quando o painel abre e vira URL no
- * "Aplicar" — sem isso, cada tecla seria uma navegação, uma entrada de
- * histórico e uma consulta.
- */
-const rangeOpen = ref(false)
-const draft = ref({
-  issuer: '',
-  recipient: '',
-  issued_from: '',
-  issued_to: '',
-  amount_min: '',
-  amount_max: ''
-})
-
-watch(rangeOpen, (open) => {
-  if (!open) return
-  const current = filters.value
-  draft.value = {
-    issuer: current.issuer ?? '',
-    recipient: current.recipient ?? '',
-    issued_from: current.issued_from ?? '',
-    issued_to: current.issued_to ?? '',
-    amount_min: current.amount_min === undefined || current.amount_min === null ? '' : String(current.amount_min),
-    amount_max: current.amount_max === undefined || current.amount_max === null ? '' : String(current.amount_max)
-  }
-})
-
-/** Quantos desses filtros estão na URL — é o que acende o botão do painel. */
-const rangeCount = computed(() => {
-  const current = filters.value
-  return [
-    current.issuer,
-    current.recipient,
-    current.issued_from,
-    current.issued_to,
-    current.amount_min,
-    current.amount_max
-  ].filter(value => value !== undefined && value !== null).length
-})
-
-/**
- * Aplica o rascunho e fecha o painel.
- *
- * Fechar junto é o que diz ao operador que a consulta rodou: o popover aberto de
- * novo sobre a lista já filtrada é o estado em que "não sei se aplicou" aparece.
- *
- * O rascunho vai para a URL **pelo mesmo caminho da leitura** — `appliedFiscalFilters`
- * monta a query e deixa `parseFiscalFilters` decidir o que dela sobrevive. A
- * versão anterior mandava `Number(...)` direto para a URL, e um `-5` no campo
- * de valor virava `?amount_min=-5`: a leitura seguinte descartava o filtro, a
- * resposta vinha sem ele, e a barra continuava parecendo aplicada. `min="0"` num
- * input de número só vale na validação de formulário, e aqui não há formulário.
- */
-function applyRange() {
-  const applied = draft.value
-  rangeOpen.value = false
-  return updateFilters(appliedFiscalFilters(filters.value, applied))
-}
-
-/**
- * O aviso do campo de valor quando o que o operador digitou não é um valor.
- *
- * Só o campo de valor pode perder a entrada inteira: o CNPJ é normalizado
- * (ponto e barra saem, os dígitos ficam) e a data tem que existir no calendário,
- * então nesses dois o operador vê o que foi aplicado quando reabre o painel. Um
- * `-5` e um `1,50` desaparecem — e o campo reabriria vazio, sem nenhuma
- * explicação do silêncio.
- */
-const amountDraftError = computed(() => {
-  const typed = draft.value.amount_min.trim() !== '' || draft.value.amount_max.trim() !== ''
-  if (!typed) return undefined
-
-  const applied = appliedFiscalFilters(filters.value, draft.value)
-  const lost = (draft.value.amount_min.trim() !== '' && applied.amount_min === undefined)
-    || (draft.value.amount_max.trim() !== '' && applied.amount_max === undefined)
-
-  return lost
-    ? 'O filtro de valor precisa ser um número maior ou igual a zero, com ponto decimal. O que foi digitado não foi aplicado.'
-    : undefined
-})
-
-function clearRange() {
-  rangeOpen.value = false
-  return updateFilters({
-    ...filters.value,
-    issuer: null,
-    recipient: null,
-    issued_from: null,
-    issued_to: null,
-    amount_min: null,
-    amount_max: null
-  })
-}
+const filterColumns = computed(() => fiscalDocumentPanelColumns(modelOptions.value, clientOptions.value))
 
 /* ------------------------------------------------------------------ *
  * A folha de detalhe
@@ -430,12 +320,27 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
   { id: 'eventos', header: 'Eventos', meta: { class: { th: 'whitespace-nowrap', td: 'whitespace-nowrap' } } },
   { id: 'acoes', meta: { class: { th: 'w-24', td: 'w-24' } } }
 ])
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'cliente', label: 'Cliente' },
+  { id: 'numero', label: 'Nº' },
+  { id: 'situacao', label: 'Situação' },
+  { id: 'competencia', label: 'Competência' },
+  { id: 'modelo', label: 'Modelo' },
+  { id: 'emitente', label: 'Emitente' },
+  { id: 'destinatario', label: 'Destinatário' },
+  { id: 'valor', label: 'Valor' },
+  { id: 'emissao', label: 'Emissão' },
+  { id: 'eventos', label: 'Eventos' }
+]
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
     <div :class="sheetBodyClass">
-      <DataTableFilter
+      <DataTableFilterPanel
         :columns="filterColumns"
         :model-value="filterModels"
         :disabled="isLoading"
@@ -446,106 +351,23 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
           Documentos capturados
         </p>
 
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Buscar nº, chave ou cliente…"
+          maxlength="200"
+          class="w-full min-w-0 flex-1"
+          :disabled="isLoading"
+          @keydown.enter="applySearch(search)"
+        />
         <template #trailing>
-          <UPopover
-            v-model:open="rangeOpen"
-            :content="{ align: 'end' }"
-            :ui="{ content: 'w-80 p-4' }"
-          >
-            <UButton
-              icon="i-lucide-calendar-range"
-              color="neutral"
-              :variant="rangeCount > 0 ? 'soft' : 'outline'"
-              :disabled="isLoading"
-              class="shrink-0"
-              aria-label="Filtros de emitente, destinatário, emissão e valor"
-            >
-              <UBadge
-                v-if="rangeCount > 0"
-                :label="formatFiscalCount(rangeCount)"
-                color="primary"
-                variant="subtle"
-                size="sm"
-              />
-            </UButton>
-
-            <template #content>
-              <div class="space-y-3">
-                <p class="text-sm font-medium text-highlighted">
-                  Emitente, destinatário, emissão e valor
-                </p>
-                <p class="text-xs text-muted">
-                  O CNPJ é prefixo: digite o começo dele. O filtro vai para a URL
-                  quando você aplicar, e a lista volta para a primeira página.
-                </p>
-
-                <UFormField label="Emitente" name="issuer" help="Só dígitos, no máximo 14.">
-                  <UInput
-                    v-model="draft.issuer"
-                    inputmode="numeric"
-                    placeholder="000000000001"
-                    class="w-full"
-                  />
-                </UFormField>
-
-                <UFormField label="Destinatário" name="recipient" help="Só dígitos, no máximo 14.">
-                  <UInput
-                    v-model="draft.recipient"
-                    inputmode="numeric"
-                    placeholder="000000000001"
-                    class="w-full"
-                  />
-                </UFormField>
-
-                <div class="grid grid-cols-2 gap-2">
-                  <UFormField label="Emissão de" name="issued_from">
-                    <UInput v-model="draft.issued_from" type="date" class="w-full" />
-                  </UFormField>
-                  <UFormField label="Até" name="issued_to">
-                    <UInput v-model="draft.issued_to" type="date" class="w-full" />
-                  </UFormField>
-                </div>
-
-                <div class="grid grid-cols-2 gap-2">
-                  <UFormField label="Valor de" name="amount_min" :error="amountDraftError">
-                    <UInput
-                      v-model="draft.amount_min"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0,00"
-                      class="w-full"
-                    />
-                  </UFormField>
-                  <UFormField label="Até" name="amount_max" :error="amountDraftError">
-                    <UInput
-                      v-model="draft.amount_max"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0,00"
-                      class="w-full"
-                    />
-                  </UFormField>
-                </div>
-
-                <div class="flex items-center justify-between gap-2">
-                  <UButton
-                    label="Limpar"
-                    icon="i-lucide-filter-x"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    :disabled="rangeCount === 0"
-                    @click="clearRange"
-                  />
-                  <UButton label="Aplicar" size="sm" @click="applyRange" />
-                </div>
-              </div>
-            </template>
-          </UPopover>
+          <DataTableColumnMenu
+            v-model="columnVisibility"
+            :columns="hideableColumns"
+            class="hidden shrink-0 md:flex"
+          />
         </template>
-      </DataTableFilter>
+      </DataTableFilterPanel>
 
       <ErrorRetryAlert
         v-if="showError"
@@ -570,7 +392,9 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
           icon="i-lucide-search-x"
           title="Nenhum documento corresponde aos filtros"
           :description="hasActiveFilters
-            ? 'Ajuste os filtros ou volte para a lista inteira para ver o que a conta capturou.'
+            ? hasActiveSearch
+              ? 'A busca e os filtros aplicados não correspondem a nenhum documento capturado nesta conta. Ajuste a busca, os filtros ou volte para a lista inteira.'
+              : 'Ajuste os filtros ou volte para a lista inteira para ver o que a conta capturou.'
             : 'Nenhum documento foi capturado nesta conta até agora. A primeira consulta aparece aqui quando a captura rodar.'"
           variant="naked"
           :actions="hasActiveFilters
@@ -674,6 +498,7 @@ const columns = computed<TableColumn<FiscalDocumentRow>[]>(() => [
 
           <div class="hidden min-h-0 min-w-0 flex-1 flex-col md:flex">
             <UTable
+              v-model:column-visibility="columnVisibility"
               sticky
               :data="rows"
               :columns="columns"

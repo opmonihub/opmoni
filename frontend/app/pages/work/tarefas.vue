@@ -2,7 +2,8 @@
 import { h, resolveComponent } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import type { SortingState } from '@tanstack/table-core'
-import type { DataTableFilterColumn, DataTableFilterModel } from '~/components/data-table/Filter.vue'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
+import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import WorkToolbarTeleport from '~/components/work/WorkToolbarTeleport'
 import WorkTaskStatusSelect from '~/components/work/WorkTaskStatusSelect.vue'
 import { apiMessage, apiStatus } from '~/composables/useApiError'
@@ -11,6 +12,7 @@ import { priorityPresentation, statusPresentation } from '~/composables/useWorkP
 import type { WorkGroupedClient, WorkTask, WorkTaskStatus } from '~/types/work'
 import { isCascadeAdvanceLockedInProcess } from '~/utils/workDerivedStatus'
 import { cascadeBadgeColor, cascadeLabel, showCascadeBadge, workFlatTableUi } from '~/utils/workGroupedTable'
+import { toPanelColumns, type FilterPanelColumn } from '~/utils/filterPanel'
 import { pageScrollClass } from '~/utils/pageShell'
 import {
   workAssignMemberItems
@@ -42,8 +44,6 @@ type ColumnKey = WorkTask['status']
 const viewMode = ref<'board' | 'table'>('board')
 const scopeMode = ref<'month' | 'undated'>('month')
 const search = ref('')
-const dueFrom = ref('')
-const dueTo = ref('')
 const filterModels = ref<DataTableFilterModel[]>([])
 const sorting = ref<SortingState>([])
 const rowSelection = ref<Record<string, boolean>>({})
@@ -110,7 +110,7 @@ function membersWarning(): { title: string, description: string, color: 'warning
   }
 }
 
-const filterColumns = computed<DataTableFilterColumn[]>(() => {
+const filterColumns = computed(() => {
   const clients = new Map<number, string>()
   const processes = new Map<number, string>()
   for (const task of allTasks.value) {
@@ -136,27 +136,32 @@ const filterColumns = computed<DataTableFilterColumn[]>(() => {
   })
 })
 
+const panelColumns = computed<FilterPanelColumn[]>(() => {
+  const columns = toPanelColumns(filterColumns.value, { operators: true })
+  if (scopeMode.value !== 'month') return columns
+  return [
+    ...columns,
+    {
+      id: 'due_on',
+      label: 'Vencimento',
+      icon: 'i-lucide-calendar-range',
+      control: 'date-range',
+      operators: true
+    }
+  ]
+})
+
 const filteredTasks = computed(() =>
-  filterWorkTasks(allTasks.value, filterModels.value, filterColumns.value, search.value, {
-    from: dueFrom.value,
-    to: dueTo.value
-  })
+  filterWorkTasks(allTasks.value, filterModels.value, filterColumns.value, search.value)
 )
 
-const hasDueRange = computed(() => Boolean(dueFrom.value || dueTo.value))
 const hasActiveFilters = computed(() => Boolean(
-  search.value.trim() || filterModels.value.length || hasDueRange.value
+  search.value.trim() || filterModels.value.length
 ))
-
-function clearDueRange() {
-  dueFrom.value = ''
-  dueTo.value = ''
-}
 
 function clearAllFilters() {
   search.value = ''
   filterModels.value = []
-  clearDueRange()
 }
 
 const tableRows = computed(() => tasksToLeaves(filteredTasks.value))
@@ -304,6 +309,19 @@ const tableColumns = computed<TableColumn<WorkTarefasLeaf>[]>(() => {
 
   return cols
 })
+
+const columnVisibility = ref<Record<string, boolean>>({})
+
+const hideableColumns = [
+  { id: 'order', label: '#' },
+  { id: 'title', label: 'Tarefa' },
+  { id: 'clientName', label: 'Cliente' },
+  { id: 'processName', label: 'Processo' },
+  { id: 'status', label: 'Status' },
+  { id: 'priority', label: 'Prioridade' },
+  { id: 'departmentName', label: 'Depto.' },
+  { id: 'due_on', label: 'Vencimento' }
+]
 
 const selectedIds = computed(() =>
   Object.entries(rowSelection.value)
@@ -557,7 +575,7 @@ watch(dismissOpen, (open) => {
 
 watch(scopeMode, clearAllFilters)
 
-watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode], () => {
+watch([filterModels, search, referenceMonth, viewMode, scopeMode], () => {
   clearSelection()
 })
 </script>
@@ -619,8 +637,8 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
       </span>
     </div>
 
-    <DataTableFilter
-      :columns="filterColumns"
+    <DataTableFilterPanel
+      :columns="panelColumns"
       :model-value="filterModels"
       :disabled="isLoading"
       class="min-w-0"
@@ -630,54 +648,18 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
         v-model="search"
         icon="i-lucide-search"
         placeholder="Buscar tarefa, cliente ou processo..."
-        class="min-w-0 flex-1"
+        class="w-full min-w-0 flex-1"
         :disabled="isLoading"
       />
       <template #trailing>
-        <UPopover v-if="scopeMode === 'month'" :content="{ align: 'end' }" :ui="{ content: 'w-72 p-4' }">
-          <UTooltip text="Intervalo de vencimento">
-            <UButton
-              icon="i-lucide-calendar-range"
-              color="neutral"
-              :variant="hasDueRange ? 'soft' : 'outline'"
-              :disabled="isLoading"
-              class="shrink-0"
-              aria-label="Filtrar por intervalo de vencimento"
-            />
-          </UTooltip>
-
-          <template #content>
-            <div class="space-y-3">
-              <p class="text-sm font-medium text-highlighted">
-                Intervalo de vencimento
-              </p>
-              <p class="text-xs text-muted">
-                Filtra tarefas por data de vencimento
-                (não altera o mês de competência).
-              </p>
-              <div class="grid grid-cols-2 gap-2">
-                <UFormField label="De" name="due_from">
-                  <UInput v-model="dueFrom" type="date" class="w-full" />
-                </UFormField>
-                <UFormField label="Até" name="due_to">
-                  <UInput v-model="dueTo" type="date" class="w-full" />
-                </UFormField>
-              </div>
-              <div class="flex justify-end">
-                <UButton
-                  label="Limpar intervalo"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :disabled="!hasDueRange"
-                  @click="clearDueRange"
-                />
-              </div>
-            </div>
-          </template>
-        </UPopover>
+        <DataTableColumnMenu
+          v-if="viewMode === 'table' && isDesktop"
+          v-model="columnVisibility"
+          :columns="hideableColumns"
+          class="shrink-0"
+        />
       </template>
-    </DataTableFilter>
+    </DataTableFilterPanel>
 
     <ErrorRetryAlert
       v-if="showError"
@@ -810,6 +792,7 @@ watch([filterModels, search, dueFrom, dueTo, referenceMonth, viewMode, scopeMode
         :ui="{ body: 'flex min-h-0 flex-1 flex-col overflow-auto p-0 sm:p-0', root: 'flex min-h-0 flex-1 flex-col' }"
       >
         <UTable
+          v-model:column-visibility="columnVisibility"
           v-model:row-selection="rowSelection"
           v-model:sorting="sorting"
           :data="pagedTableRows"

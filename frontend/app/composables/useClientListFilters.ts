@@ -1,6 +1,6 @@
 import { refDebounced } from '@vueuse/core'
 import type { Ref } from 'vue'
-import type { DataTableFilterColumn, DataTableFilterModel, DataTableFilterOperator } from '~/components/data-table/Filter.vue'
+import type { DataTableFilterColumn, DataTableFilterModel, DataTableFilterOperator } from '~/components/data-table/filter-model'
 import type {
   ClientPortfolioView,
   ClientSheet,
