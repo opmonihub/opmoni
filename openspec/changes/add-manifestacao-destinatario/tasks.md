@@ -19,10 +19,18 @@
 
 ## 4. Conector e classificação do cStat
 
-- [ ] 4.1 Escrever teste que monta o evento 210210 a partir do resumo capturado e rejeita documentos fora do prazo de 90 dias, verificar com `php artisan test --compact --filter=CienciaPrazo`
-- [ ] 4.2 Escrever teste que falha porque o conector `nfeRecepcaoEvento` não existe, cobrindo aceite (cStat do evento), rejeição transitória e rejeição 573 mapeada para estado conhecido "já manifestado" (não `FiscalFailure`), verificar com `php artisan test --compact --filter=RecepcaoEvento`
-- [ ] 4.3 Implementar o conector em `backend/app/Services/Fiscal/Manifestacao/` reutilizando `HttpPkcs12ClientOptions`, bundle ICP-Brasil e regras de fault condensado, sem esticar `DfeTransport`, verificar com o teste de 4.2 passando
-- [ ] 4.4 Garantir que nenhum log ou registro de auditoria contém senha do certificado, XML do evento (assim ou não), envelope assinado ou tokens, verificar com teste que inspeciona mensagens registradas em cenários de falha
+- [x] 4.1 Escrever teste que monta o evento 210210 a partir do resumo capturado e rejeita documentos fora do prazo de 90 dias, verificar com `php artisan test --compact --filter=CienciaPrazo`
+- [x] 4.2 Escrever teste que falha porque o conector `nfeRecepcaoEvento` não existe, cobrindo aceite (cStat do evento), rejeição transitória e rejeição 573 mapeada para estado conhecido "já manifestado" (não `FiscalFailure`), verificar com `php artisan test --compact --filter=RecepcaoEvento`
+- [x] 4.3 Implementar o conector em `backend/app/Services/Fiscal/Manifestacao/` reutilizando `HttpPkcs12ClientOptions`, bundle ICP-Brasil e regras de fault condensado, sem esticar `DfeTransport`, verificar com o teste de 4.2 passando
+- [x] 4.4 Garantir que nenhum log ou registro de auditoria contém senha do certificado, XML do evento (assim ou não), envelope assinado ou tokens, verificar com teste que inspeciona mensagens registradas em cenários de falha
+
+#### Divergências da seção 4
+
+- O `dhEvento` é escrito no fuso de São Paulo (`-03:00`) em vez do fuso do servidor: o leiaute espera o horário do Brasil e o brief fixa `-03:00`; `ManifestationEventBuilder` converte o instante para `America/Sao_Paulo`.
+- O bloco `nfe_recepcao_evento` foi adicionado em `config/fiscal.php` com as 9 chaves de `DfeEndpoint::CHAVES`, e `DfeEndpoint::of()` confere o bloco como nas distribuições.
+- `ClientCertificateMaterializer` ganhou `withCertificateBytes($cert, Closure($bytes, $password))` (Ruling 6): entrega os bytes do PKCS#12 e a senha no callback e zera ambos no `finally`, para a assinatura não precisar de arquivo temporário.
+- `FiscalManifestationOutcome` foi estendido com `NotSendable` e `DeadlineMissed` (Ruling 4); `FiscalManifestationStore` ganhou `veredito()` que grava outcome, `result_code`, `result_message`, `sent_at` e `resulted_at` — e funciona sobre modelo não persistido, para o teste de unidade de prazo.
+- A leitura do `retEnvEvento` usa busca de filho direto (`directChildText`) para `cStat`/`xMotivo` do lote: `XmlQuery::first` com escopo gera `//` absoluto e capturaria o `cStat` do `retEvento` quando o lote veio sem o seu.
 
 ## 5. Job e integração com a captura
 
