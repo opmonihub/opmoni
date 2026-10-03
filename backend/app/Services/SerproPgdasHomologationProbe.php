@@ -87,19 +87,6 @@ class SerproPgdasHomologationProbe
 
         $steps['auth'] = ['status' => 'pass', 'detail' => 'Credencial, termo e certificado presentes.'];
 
-        $elegibilidade = $this->eligibility->for($account->getKey(), $client->getKey(), '00146');
-        if (! $elegibilidade['eligible']) {
-            $motivo = (string) ($elegibilidade['reason'] ?? 'inelegivel');
-            $steps['elegibilidade'] = [
-                'status' => 'skip',
-                'detail' => 'Procuração 00146: '.$motivo.$this->dicaProcuracao($motivo),
-            ];
-
-            return $this->finish('skip', $motivo, $account->getKey(), $client->getKey(), $steps);
-        }
-
-        $steps['elegibilidade'] = ['status' => 'pass', 'detail' => 'Procuração 00146 vigente.'];
-
         $obrigacao = $this->catalog->get('declaracoes/pgdas');
         if ($obrigacao === null || $obrigacao['service'] === null) {
             $steps['consulta'] = ['status' => 'fail', 'detail' => 'Obrigação declaracoes/pgdas ausente no catálogo.'];
@@ -107,10 +94,58 @@ class SerproPgdasHomologationProbe
             return $this->finish('fail', 'catalogo', $account->getKey(), $client->getKey(), $steps);
         }
 
-        [$idSistema, $idServico] = $this->splitService((string) $obrigacao['service']);
-        $payload = array_merge($this->mapper->payload($idServico), ['anoCalendario' => (string) $calendarYear]);
+        // A elegibilidade percorre as alternativas do mapa como o sync faz —
+        // cada uma é um conjunto de famílias (`+` separa conjunção, `,`
+        // separa alternativa) que precisa estar inteiro concedido. O detalhe
+        // da recusa nomeia a primeira família, que é onde o operador corrige.
+        $alternativas = $this->catalog->procuracaoAlternatives($obrigacao['procuracao'] ?? null);
+        $familias = implode(', ', array_map(
+            fn (array $alternativa): string => implode('+', $alternativa),
+            $alternativas,
+        ));
+
+        $inelegivel = null;
 
         try {
+            foreach ($alternativas as $alternativa) {
+                $concedida = collect($alternativa)->every(
+                    fn (string $family): bool => $this->eligibility
+                        ->for($account->getKey(), $client->getKey(), $family)['eligible'],
+                );
+
+                if ($concedida) {
+                    $inelegivel = null;
+                    break;
+                }
+
+                $primeira = $alternativa[0] ?? null;
+                if ($inelegivel === null && $primeira !== null) {
+                    $inelegivel = $this->eligibility->for(
+                        $account->getKey(),
+                        $client->getKey(),
+                        $primeira,
+                    )['reason'];
+                }
+            }
+
+            if ($inelegivel !== null) {
+                $motivo = (string) $inelegivel;
+                $steps['elegibilidade'] = [
+                    'status' => 'skip',
+                    'detail' => "Procuração {$familias}: {$motivo}".$this->dicaProcuracao($motivo, $familias),
+                ];
+
+                return $this->finish('skip', $motivo, $account->getKey(), $client->getKey(), $steps);
+            }
+
+            $steps['elegibilidade'] = [
+                'status' => 'pass',
+                'detail' => $familias === '' ? 'Serviço sem exigência de procuração.' : "Procuração {$familias} vigente.",
+            ];
+
+            [$idSistema, $idServico] = $this->splitService((string) $obrigacao['service']);
+            $payload = array_merge($this->mapper->payload($idServico), ['anoCalendario' => (string) $calendarYear]);
+
             $result = $this->client->call(
                 $idSistema,
                 $idServico,
@@ -120,8 +155,14 @@ class SerproPgdasHomologationProbe
                 $token,
             );
         } catch (SerproException $exception) {
+            // Catch de último nível: além da recusa HTTP do `client->call()`,
+            // cobre o pré-voo interno dele (conexão removida entre o check e a
+            // chamada, serviço fora do mapa) e uma `SerproException` vinda da
+            // elegibilidade — nenhuma vira stack trace para o operador.
+            $step = isset($steps['elegibilidade']) ? 'consulta' : 'elegibilidade';
+
             if ($this->shouldSkipProviderFailure($exception)) {
-                $steps['consulta'] = [
+                $steps[$step] = [
                     'status' => 'skip',
                     'detail' => $this->safeProviderDetail($exception),
                 ];
@@ -129,7 +170,7 @@ class SerproPgdasHomologationProbe
                 return $this->finish('skip', 'provedor', $account->getKey(), $client->getKey(), $steps);
             }
 
-            $steps['consulta'] = [
+            $steps[$step] = [
                 'status' => 'fail',
                 'detail' => $this->safeProviderDetail($exception),
             ];
@@ -140,11 +181,12 @@ class SerproPgdasHomologationProbe
         $steps['consulta'] = ['status' => 'pass', 'detail' => 'HTTP 200 com envelope de sucesso.'];
 
         $projecao = $this->mapper->project($idServico, $result);
-        $periodos = is_array($projecao['periods'] ?? null) ? count($projecao['periods']) : 0;
+        $periodos = is_array($projecao['periods'] ?? null) ? $projecao['periods'] : [];
+        $comDas = collect($periodos)->whereNotNull('slip_number')->count();
         $causa = $projecao['cause'] ?? null;
         $detail = $causa === 'sem_declaracao'
             ? 'Projeção com cause=sem_declaracao (sem períodos no ano consultado).'
-            : "Projeção com {$periodos} período(s).";
+            : 'Projeção com '.count($periodos)." período(s), {$comDas} com DAS emitido.";
 
         $steps['projecao'] = ['status' => 'pass', 'detail' => $detail];
 
@@ -183,13 +225,13 @@ class SerproPgdasHomologationProbe
         return [$partes[0], $partes[1] ?? ''];
     }
 
-    private function dicaProcuracao(string $motivo): string
+    private function dicaProcuracao(string $motivo, string $familias): string
     {
         if (! in_array($motivo, ['sem_procuracao', 'procuracao_invalida'], true)) {
             return '';
         }
 
-        return ' — confira procuração e-CAC 00146 no e-CAC ou rode sync do cliente.';
+        return " — confira procuração e-CAC {$familias} no e-CAC ou rode sync do cliente.";
     }
 
     private function shouldSkipProviderFailure(SerproException $exception): bool

@@ -92,6 +92,7 @@ class SerproPgdasHomologationProbeHttpTest extends TestCase
 
         $this->assertSame('pass', $report['outcome']);
         $this->assertSame('pass', $report['steps']['projecao']['status']);
+        $this->assertStringContainsString('1 período(s), 1 com DAS emitido', $report['steps']['projecao']['detail']);
         $this->assertArrayHasKey('projection', $report);
         $this->assertNotEmpty($report['projection']['periods'] ?? null);
         Http::assertSentCount(1);
