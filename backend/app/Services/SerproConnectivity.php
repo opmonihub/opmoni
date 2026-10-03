@@ -71,7 +71,11 @@ final class SerproConnectivity
         // que o certificado sumiu não deve invalidar o token que estava bom, e
         // `verify()` agora descarta o par em cache por `DoNotRetry` — que é
         // exatamente o que um certificado ausente produz.
-        if ($connection->certificate_encrypted === null) {
+        // `hasCertificate()`, e não a coluna: quando a credencial reusa o
+        // e-CNPJ do escritório o certificado mora em `account_certificates` e
+        // `certificate_encrypted` é vazia por definição — conferir a coluna
+        // diria "sem certificado" de uma credencial inteira.
+        if (! $connection->hasCertificate()) {
             return $this->failure('certificado', $checkedAt);
         }
 

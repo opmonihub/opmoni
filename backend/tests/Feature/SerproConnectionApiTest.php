@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\SerproFailure;
 use App\Http\Resources\SerproConnectionResource;
 use App\Models\Account;
+use App\Models\AccountCertificate;
 use App\Models\AccountUser;
 use App\Models\SerproConnection;
 use App\Models\User;
@@ -853,9 +854,141 @@ class SerproConnectionApiTest extends TestCase
         $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
             ->putJson('/api/serpro/connection', ['consumer_key' => 'chave-de-integracao'])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['consumer_secret', 'certificate', 'password']);
+            ->assertJsonValidationErrors(['consumer_secret', 'certificate']);
 
         $this->assertDatabaseCount('serpro_connections', 0);
+    }
+
+    public function test_a_credencial_reusa_o_ecnpj_da_conta_1_sem_segunda_copia(): void
+    {
+        // A conta 1 é a primeira `Account` do banco — a definição que o seed
+        // local usa —, e o e-CNPJ dela já gravado em Configurações é o que a
+        // flag `use_account_certificate` aponta.
+        $account = Account::factory()->create();
+        $office = AccountCertificate::factory()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'use_account_certificate' => '1',
+            ], $this->jsonHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.configured', true)
+            ->assertJsonPath('data.contracting_document', $office->document);
+
+        $connection = SerproConnection::sole();
+
+        // A referência é à conta; os bytes ficam na linha dela, não aqui —
+        // que é o que "sem segunda cópia" significa de fato.
+        $this->assertSame($account->getKey(), $connection->contracting_account_id);
+        $this->assertSame($office->document, $connection->contratante_numero);
+        $this->assertNull($connection->certificate_encrypted);
+        $this->assertNull($connection->certificate_password_encrypted);
+
+        // E o material resolve por leitura: a linha corrente da conta é quem
+        // fornece o PFX e a senha — uma troca do e-CNPJ pela conta não exige
+        // nenhuma ação nesta credencial.
+        $this->assertSame('pfx-de-descarte', $connection->certificateBytes());
+        $this->assertSame('senha-de-descarte', $connection->certificatePassword());
+        $this->assertTrue($connection->hasCertificate());
+    }
+
+    public function test_a_credencial_segue_o_certificado_novo_da_conta_1(): void
+    {
+        // Rotacionar o e-CNPJ do escritório não reaponta a credencial: a
+        // resolução é pela linha corrente da conta, e é a nova linha que passa
+        // a responder.
+        $account = Account::factory()->create();
+        AccountCertificate::factory()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'use_account_certificate' => '1',
+            ], $this->jsonHeaders())
+            ->assertOk();
+
+        $novo = AccountCertificate::factory()->create([
+            'account_id' => $account->getKey(),
+            'document' => '27865757000102',
+        ]);
+        // A anterior sai de vigência como o cofre a marcaria.
+        AccountCertificate::query()
+            ->where('account_id', $account->getKey())
+            ->where('id', '!=', $novo->getKey())
+            ->update(['replaced_at' => now(), 'certificate_encrypted' => null, 'password_encrypted' => null]);
+
+        $connection = SerproConnection::sole();
+        $this->assertSame($novo->getKey(), $connection->contractingCertificate()?->getKey());
+    }
+
+    public function test_usar_o_ecnpj_sem_certificado_na_conta_1_e_recusado(): void
+    {
+        Account::factory()->create();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->putJson('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'use_account_certificate' => true,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('certificate');
+
+        $this->assertDatabaseCount('serpro_connections', 0);
+    }
+
+    public function test_arquivo_e_vinculo_juntos_sao_recusados(): void
+    {
+        ['file' => $file] = $this->pfx();
+        AccountCertificate::factory()->create(['account_id' => Account::factory()->create()->getKey()]);
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'certificate' => $file,
+                'password' => self::SENHA,
+                'use_account_certificate' => '1',
+            ], $this->jsonHeaders())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('certificate');
+
+        $this->assertDatabaseCount('serpro_connections', 0);
+    }
+
+    public function test_enviar_outro_arquivo_encerra_o_vinculo(): void
+    {
+        // Uma credencial que reusava o e-CNPJ da conta 1 passa a guardar o
+        // próprio arquivo quando o super_admin escolhe "enviar outro": o
+        // vínculo morre e as colunas de certificado voltam a ser a fonte.
+        $account = Account::factory()->create();
+        AccountCertificate::factory()->create(['account_id' => $account->getKey()]);
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'consumer_secret' => self::SEGREDO,
+                'use_account_certificate' => '1',
+            ], $this->jsonHeaders())
+            ->assertOk();
+
+        ['bytes' => $bytes, 'file' => $file] = $this->pfx();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]), 'sanctum')
+            ->put('/api/serpro/connection', [
+                'consumer_key' => 'chave-de-integracao',
+                'certificate' => $file,
+                'password' => self::SENHA,
+            ], $this->jsonHeaders())
+            ->assertOk();
+
+        $connection = SerproConnection::sole();
+        $this->assertNull($connection->contracting_account_id);
+        $this->assertSame($bytes, $connection->certificateBytes());
+        $this->assertSame(self::CNPJ, $connection->contratante_numero);
     }
 
     /**

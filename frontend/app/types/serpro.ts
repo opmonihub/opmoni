@@ -208,6 +208,13 @@ export interface SerproConnectionPayload {
   consumer_secret?: string
   certificate?: File
   password?: string
+  /**
+   * Quando verdadeiro, o certificado contratante é o e-CNPJ já gravado em
+   * Configurações da conta 1 — a linha corrente de `account_certificates`
+   * —, sem uma segunda cópia do arquivo nesta credencial. Excludente com
+   * `certificate`: o backend recusa uma request que traz os dois.
+   */
+  use_account_certificate?: boolean
 }
 
 export interface SerproConnectivityResult {

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Validation\ValidationException;
@@ -131,6 +132,40 @@ class SerproConnection extends Model
         return self::query()->first();
     }
 
+    /**
+     * A conta cujo e-CNPJ esta credencial usa como certificado contratante.
+     *
+     * `null` quando a credencial carrega o próprio PFX em
+     * `certificate_encrypted`: as duas formas são alternativas, e a coluna
+     * `contracting_account_id` só tem valor quando a decisão foi "usar o que a
+     * conta já gravou" — que é o que a tela de `/admin/serpro` chama de reusar
+     * o e-CNPJ do escritório.
+     */
+    public function contractingAccount(): BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'contracting_account_id');
+    }
+
+    /**
+     * O certificado de escritório que esta credencial reusa, resolvido pela
+     * leitura da linha corrente da conta apontada.
+     *
+     * A resolução é por leitura e não por cópia porque é isso que "sem segunda
+     * cópia" quer dizer: se a conta trocar o e-CNPJ, esta credencial passa a
+     * assinar com o novo sem que nada aqui seja reescrito. `null` quando a
+     * credencial guarda o próprio arquivo — que é a forma alternativa — ou
+     * quando a conta apontada não tem certificado corrente, e é nesse segundo
+     * caso que a credencial fica sem material de assinatura.
+     */
+    public function contractingCertificate(): ?AccountCertificate
+    {
+        if ($this->contracting_account_id === null) {
+            return null;
+        }
+
+        return AccountCertificate::currentFor($this->contracting_account_id);
+    }
+
     public function isConfigured(): bool
     {
         return (string) $this->consumer_key !== ''
@@ -144,6 +179,16 @@ class SerproConnection extends Model
 
     public function certificateBytes(): ?string
     {
+        // Quando a credencial reusa o e-CNPJ de uma conta, os bytes moram na
+        // linha corrente de `account_certificates` daquela conta — aqui não há
+        // cópia deles, e ler `certificate_encrypted` seria ler a coluna vazia.
+        // O `null` de um certificado ausente é a resposta honesta nos dois
+        // formatos, e é o que o materializador transforma em falha nomeada.
+        $reused = $this->contractingCertificate();
+        if ($reused !== null) {
+            return $reused->certificateBytes();
+        }
+
         return $this->certificate_encrypted === null
             ? null
             : Crypt::decryptString($this->certificate_encrypted);
@@ -151,9 +196,28 @@ class SerproConnection extends Model
 
     public function certificatePassword(): ?string
     {
+        $reused = $this->contractingCertificate();
+        if ($reused !== null) {
+            return $reused->certificatePassword();
+        }
+
         return $this->certificate_password_encrypted === null
             ? null
             : Crypt::decryptString($this->certificate_password_encrypted);
+    }
+
+    /**
+     * Se a credencial tem material de assinatura para usar — próprio ou em
+     *prestado da conta apontada.
+     *
+     * O materializador e o teste de conectividade perguntam isto antes de abrir
+     * o PFX: a coluna `certificate_encrypted` sozinha não responde, porque ela é
+     * vazia por definição quando a credencial aponta para o e-CNPJ de uma conta.
+     */
+    public function hasCertificate(): bool
+    {
+        return $this->certificate_encrypted !== null
+            || $this->contractingCertificate() !== null;
     }
 
     /**
@@ -169,13 +233,27 @@ class SerproConnection extends Model
      */
     public function assertIdentity(): void
     {
-        if ($this->certificate_encrypted === null) {
+        $linked = $this->contractingCertificate();
+
+        if ($this->certificate_encrypted === null && $this->contracting_account_id !== null && $linked === null) {
+            // A credencial aponta para a conta, mas ela não tem e-CNPJ corrente:
+            // a falha é de configuração do escritório, não do PFX desta linha.
+            throw new SerproException(
+                'O certificado do contratante não está configurado: a conta apontada não tem e-CNPJ corrente.',
+                SerproFailure::DoNotRetry,
+                0,
+            );
+        }
+
+        if (! $this->hasCertificate()) {
             // Sem certificado não há identidade a conferir; quem recusa a
             // credencial sem certificado é o materializador, logo em seguida.
             return;
         }
 
-        if ($this->certificate_valid_until !== null && $this->certificate_valid_until->isPast()) {
+        $validUntil = $linked?->valid_until ?? $this->certificate_valid_until;
+
+        if ($validUntil !== null && $validUntil->isPast()) {
             throw new SerproException(
                 'O certificado do contratante está vencido.',
                 SerproFailure::DoNotRetry,
@@ -218,6 +296,20 @@ class SerproConnection extends Model
      */
     private function cachedDocument(): string
     {
+        // Quando o certificado é o e-CNPJ emprestado de uma conta, o documento
+        // já é o `document` da linha de `account_certificates` — extraído do
+        // PFX no upload, e publicado pela API. Relê-lo do arquivo seria uma
+        // segunda decifração para saber o que a coluna já afirma. Uma
+        // credencial vinculada cuja conta ficou sem certificado não tem
+        // documento a conferir: a ausência já foi nomeada antes desta linha.
+        $reused = $this->contractingCertificate();
+        if ($reused !== null) {
+            return (string) $reused->document;
+        }
+        if ($this->contracting_account_id !== null) {
+            return (string) $this->contratante_numero;
+        }
+
         $cacheKey = self::IDENTITY_CACHE_PREFIX.hash('sha256', (string) $this->certificate_encrypted);
 
         $document = Cache::remember($cacheKey, now()->addDay(), function (): string {

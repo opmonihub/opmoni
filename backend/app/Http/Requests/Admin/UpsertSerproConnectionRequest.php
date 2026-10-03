@@ -67,6 +67,18 @@ class UpsertSerproConnectionRequest extends FormRequest
             // sobe um `UploadedFile` real sobre um arquivo real.
             'certificate' => ['sometimes', 'file', 'extensions:pfx,p12', 'max:2048'],
             'password' => ['sometimes', 'nullable', 'string', 'max:255', 'required_with:certificate'],
+            /*
+             * "Usar o e-CNPJ do escritório" é o que a tela de `/admin/serpro`
+             * oferece quando a conta 1 já tem o certificado gravado: em vez de
+             * subir o mesmo arquivo de novo, o super_admin aponta a credencial
+             * para a conta — e a linha corrente de `account_certificates`
+             * passa a ser o certificado contratante, sem segunda cópia.
+             *
+             * `boolean` e não `accepted`: `false` é uma resposta legítima ("envio
+             * outro arquivo") e não uma recusa, e é o serviço que decide o que a
+             * combinação com `certificate` significa.
+             */
+            'use_account_certificate' => ['sometimes', 'boolean'],
             // O documento contratante é extraído do certificado; aceitá-lo aqui
             // devolveria à request a autoridade que D13 tira dela.
             'contratante_numero' => ['prohibited'],

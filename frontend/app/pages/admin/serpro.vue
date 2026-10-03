@@ -15,8 +15,8 @@ import {
  * No `definePageMeta` and no role check on this page. `app/pages/admin.vue`
  * already declares `middleware: ['auth', 'super-admin']` for everything under
  * `/admin`, so a second copy of the rule would be a second thing to keep in
- * sync. The enablement control of each office is not here either: that belongs
- * to the Account admin, not to the platform credential.
+ * sync. The per-Account enablement switch is not on this screen either: only
+ * `is_super_admin` may enable or disable integration (see `serpro-connection`).
  */
 
 const toast = useToast()
@@ -32,6 +32,15 @@ type Schema = z.output<typeof schema>
 
 const state = reactive<Partial<Schema>>({ consumer_key: '' })
 const certificate = ref<File | null>(null)
+
+/**
+ * A fonte do certificado contratante: o e-CNPJ que a conta 1 já gravou em
+ * Configurações, sem uma segunda cópia do arquivo, ou um arquivo diferente
+ * enviado aqui. `file` é o padrão porque é a opção que sempre existe — a outra
+ * depende de a conta ter certificado, e quem confirma isso é a recusa nomeada
+ * do `PUT`.
+ */
+const certificateSource = ref<'account' | 'file'>('file')
 
 const submitting = ref(false)
 const testing = ref(false)
@@ -125,6 +134,7 @@ function resetForm() {
   state.consumer_secret = ''
   state.password = ''
   certificate.value = null
+  certificateSource.value = 'file'
 }
 
 function startEditing() {
@@ -144,8 +154,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const saved = await saveConnection({
       consumer_key: event.data.consumer_key,
       consumer_secret: event.data.consumer_secret || undefined,
-      password: event.data.password || undefined,
-      certificate: certificate.value ?? undefined
+      // A escolha é excludente: o flag aponta para o e-CNPJ da conta 1, e o
+      // arquivo — quando é a fonte — leva a senha junto. Mandar os dois é a
+      // ambiguidade que o backend recusa, e o formulário não a produz.
+      use_account_certificate: certificateSource.value === 'account',
+      certificate: certificateSource.value === 'file' ? (certificate.value ?? undefined) : undefined,
+      password: certificateSource.value === 'file' ? (event.data.password || undefined) : undefined
     })
     metadata.value = saved
     resetForm()
@@ -334,31 +348,49 @@ async function onTestConnectivity() {
 
           <UFormField
             label="Certificado contratante"
-            name="certificate"
-            help="Certificado do escritório contratante (.pfx ou .p12)."
+            name="certificate_source"
+            help="De onde vem o certificado que assina as chamadas da plataforma."
           >
-            <UFileUpload
-              v-model="certificate"
-              accept=".pfx,.p12"
-              label="Selecionar arquivo"
-              description="Arraste o arquivo ou clique para selecionar"
+            <URadioGroup
+              v-model="certificateSource"
+              :items="[
+                { value: 'account', label: 'Usar o e-CNPJ do escritório', description: 'O certificado já gravado em Configurações da conta 1, sem segunda cópia do arquivo.' },
+                { value: 'file', label: 'Enviar outro arquivo', description: 'Um certificado diferente (.pfx ou .p12), gravado só nesta credencial.' }
+              ]"
+              variant="card"
               class="w-full"
             />
           </UFormField>
 
-          <UFormField
-            label="Senha do certificado"
-            name="password"
-            help="Senha do arquivo, quando o certificado é protegido. Em branco, a senha guardada é preservada."
-          >
-            <UInput
-              v-model="state.password"
-              type="password"
-              autocomplete="off"
-              placeholder="Deixe em branco para preservar"
-              class="w-full"
-            />
-          </UFormField>
+          <template v-if="certificateSource === 'file'">
+            <UFormField
+              label="Arquivo do certificado"
+              name="certificate"
+              help="Certificado do escritório contratante (.pfx ou .p12)."
+            >
+              <UFileUpload
+                v-model="certificate"
+                accept=".pfx,.p12"
+                label="Selecionar arquivo"
+                description="Arraste o arquivo ou clique para selecionar"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Senha do certificado"
+              name="password"
+              help="Senha do arquivo, quando o certificado é protegido. Em branco, a senha guardada é preservada."
+            >
+              <UInput
+                v-model="state.password"
+                type="password"
+                autocomplete="off"
+                placeholder="Deixe em branco para preservar"
+                class="w-full"
+              />
+            </UFormField>
+          </template>
         </UForm>
 
         <template #footer>
