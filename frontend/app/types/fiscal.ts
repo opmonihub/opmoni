@@ -29,7 +29,7 @@ export type FiscalKind = 'document' | 'event'
 export type FiscalStage = 'summary' | 'document' | 'event'
 
 /** A distribuição que entregou a linha. */
-export type FiscalSource = 'nfe_distribuicao' | 'cte_distribuicao'
+export type FiscalSource = 'nfe_distribuicao' | 'cte_distribuicao' | 'nfse_adn'
 
 /**
  * Por que este cliente precisa de alguém.
@@ -324,6 +324,15 @@ export interface FiscalListFilters {
   issued_to?: string | null
   amount_min?: number | null
   amount_max?: number | null
+  /**
+   * A busca por texto do operador: número da nota exato, chave de acesso
+   * inteira (44 ou 50 dígitos — NF-e/CT-e e NFS-e nacional,
+   * respectivamente) ou fragmento do nome do cliente, em `LIKE`
+   * insensível a caixa no backend. A leitura da query aplica trim e descarta
+   * o vazio; o teto de 200 caracteres é 422 no backend e só é alcançável por
+   * URL escrita à mão — o campo da tela limita o que o operador digita.
+   */
+  q?: string | null
   sort?: FiscalSort
   direction?: FiscalSortDirection
   page?: number

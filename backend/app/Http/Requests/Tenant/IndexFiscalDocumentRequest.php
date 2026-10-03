@@ -42,6 +42,13 @@ class IndexFiscalDocumentRequest extends FormRequest
             'model.*' => ['required', Rule::in(array_column(FiscalModel::cases(), 'value'))],
             'kind' => ['sometimes', Rule::in(array_column(FiscalKind::cases(), 'value'))],
             'client_id' => ['sometimes', 'integer', $this->clienteDaConta()],
+            // A busca por texto é entrada livre do operador: número da nota,
+            // chave de acesso ou nome do cliente. O valor em si é o formato —
+            // igualdade, igualdade de 44 dígitos e `LIKE` são decisões do
+            // serviço —, e aqui mora só o teto: nome de cliente é o texto mais
+            // longo plausível, e acima dele a resposta é 422 nomeando `q`, e
+            // nunca uma lista vazia que pareça resultado.
+            'q' => ['sometimes', 'nullable', 'string', 'max:200'],
             // O CNPJ entra por prefixo, porque é o que o operador digita
             // quando lembra o começo dele e não o número inteiro. Só dígitos,
             // e no máximo o tamanho do CNPJ: é o que impede o `%` de virar

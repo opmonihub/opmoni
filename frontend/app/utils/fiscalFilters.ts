@@ -195,6 +195,14 @@ export function parseFiscalFilters(query: Record<string, unknown>): FiscalListFi
   const amountMax = amount(query.amount_max)
   if (amountMax !== undefined) filters.amount_max = amountMax
 
+  // A busca por texto entra trimmed, e vazio ou só de espaços não é filtro.
+  // O campo da tela limita o comprimento; o teto de 200 é 422 do backend e só
+  // é alcançável por URL escrita à mão — a leitura não trunca o que o
+  // operador escreveu, porque cortar um nome mudaria a resposta em silêncio.
+  const [rawSearch] = segments(query.q)
+  const search = rawSearch?.trim()
+  if (search) filters.q = search
+
   return filters
 }
 
@@ -240,6 +248,8 @@ export function fiscalQuery(filters: FiscalListFilters): Record<string, string |
   if (filters.issued_to) query.issued_to = filters.issued_to
   if (filters.amount_min !== undefined && filters.amount_min !== null) query.amount_min = String(filters.amount_min)
   if (filters.amount_max !== undefined && filters.amount_max !== null) query.amount_max = String(filters.amount_max)
+
+  if (filters.q) query.q = filters.q
 
   if (filters.sort && filters.sort !== defaultSort) query.sort = filters.sort
   if (filters.direction && filters.direction !== defaultDirection) query.direction = filters.direction

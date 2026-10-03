@@ -67,6 +67,19 @@ class FiscalDocuments
      * só dígito — validado no Request — para que o `%` do `LIKE` não possa ser
      * digitado por quem filtra.
      *
+     * `q` é a busca por texto livre, e o valor manda no formato: exatamente 44
+     * ou 50 dígitos é a chave de acesso inteira e casa por igualdade — 44 é a
+     * chave da NF-e, NFC-e e CT-e, e 50 é a da NFS-e nacional; um fragmento de
+     * chave não casa, porque o que se copia da tela é a chave completa;
+     * fora disso, igualdade no `numero` da linha (a linha de evento não
+     * carrega o número da nota, e expandir a busca para a chave inteira seria
+     * trocar o significado de `q` conforme a etapa) ou substring no nome do
+     * cliente, em `lower()` dos dois lados. O valor entra trimmed, e vazio não
+     * é filtro. Curingas de `LIKE` (`%`, `_`, `\`) viram literal antes do
+     * padrão, com `ESCAPE` explícito — o SQLite não tem caractere de escape
+     * por padrão, e um `?q=%` que devolvesse a carteira inteira seria um
+     * filtro que mente.
+     *
      * @param  array<string, mixed>  $filters
      * @return Builder<FiscalDocument>
      */
@@ -74,6 +87,24 @@ class FiscalDocuments
     {
         return FiscalDocument::query()
             ->where('account_id', $accountId)
+            ->when(
+                filled($busca = trim((string) ($filters['q'] ?? ''))),
+                fn (Builder $query): Builder => $query->where(function (Builder $buscaOu) use ($busca): void {
+                    if (preg_match('/^(?:\d{44}|\d{50})$/', $busca) === 1) {
+                        $buscaOu->where('chave_acesso', $busca);
+
+                        return;
+                    }
+
+                    $padrao = '%'.addcslashes(mb_strtolower($busca), '\\%_').'%';
+                    $buscaOu
+                        ->where('numero', $busca)
+                        ->orWhereHas('client', fn (Builder $cliente): Builder => $cliente->whereRaw(
+                            "lower(clients.name) like ? escape '\\'",
+                            [$padrao]
+                        ));
+                })
+            )
             ->when(
                 $filters['model'] ?? null,
                 fn (Builder $query, array $models): Builder => $query->whereIn('model', $models)

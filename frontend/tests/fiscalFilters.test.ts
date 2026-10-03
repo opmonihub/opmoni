@@ -51,6 +51,7 @@ describe('a URL da tabela de documentos', () => {
       issued_to: '2026-09-30',
       amount_min: 10,
       amount_max: 100,
+      q: 'Nota 123',
       sort: 'valor_total',
       direction: 'asc',
       page: 3,
@@ -128,6 +129,26 @@ describe('a URL da tabela de documentos', () => {
       fiscalDocumentosPath({ model: ['nfe', 'cte'], kind: 'event' }),
       '/fiscal/documentos?model=nfe&model=cte&kind=event'
     )
+    // A busca entra na URL como qualquer filtro, com os caracteres
+    // especiais codificados — inclusive o `%`, que aqui é texto e não
+    // codificação.
+    assert.equal(fiscalDocumentosPath({ q: 'Nota 123' }), '/fiscal/documentos?q=Nota%20123')
+    assert.equal(fiscalDocumentosPath({ q: 'Empresa 50%' }), '/fiscal/documentos?q=Empresa%2050%25')
+  })
+
+  describe('a busca por texto', () => {
+    it('lê o valor com trim e descarta o vazio ou só de espaços', () => {
+      assert.equal(parseFiscalFilters({ q: '  Nota 123  ' }).q, 'Nota 123')
+      assert.equal(parseFiscalFilters({ q: '' }).q, undefined)
+      assert.equal(parseFiscalFilters({ q: '   ' }).q, undefined)
+      assert.equal(parseFiscalFilters({ q: null }).q, undefined)
+    })
+
+    it('só escreve na URL quando a busca tem texto', () => {
+      assert.deepEqual(fiscalQuery({ q: null }), {})
+      assert.deepEqual(fiscalQuery({ q: '' }), {})
+      assert.deepEqual(fiscalQuery({ q: 'Nota 123' }), { q: 'Nota 123' })
+    })
   })
 })
 
@@ -182,6 +203,18 @@ describe('a confirmação do rascunho dos filtros', () => {
       issuer: '12345',
       amount_min: '10'
     })
+  })
+
+  it('substitui a busca e a limpa com o campo vazio', () => {
+    const current: FiscalListFilters = { ...atual, q: 'nota antiga' }
+    const next = appliedFiscalFilters(current, { q: 'Nota 123' })
+
+    assert.equal(next.q, 'Nota 123')
+
+    const limpa = appliedFiscalFilters(next, { q: '' })
+
+    assert.equal(limpa.q, undefined)
+    assert.deepEqual(fiscalQuery({ ...limpa, page: 1 }), {})
   })
 })
 
