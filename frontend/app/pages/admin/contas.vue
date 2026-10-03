@@ -218,7 +218,7 @@ const accountFormSchema = z.object({
   name: z.string().min(2, 'Nome muito curto'),
   owner_name: z.string().max(255).optional(),
   login_email: z.union([z.literal(''), z.email('E-mail inválido')]).optional(),
-  access: z.enum(['none', 'password_now', 'first_access']),
+  access: z.enum(['password_now', 'first_access']),
   password: z.string().optional(),
   phone: z.string().max(20, 'Telefone muito longo').optional(),
   phone_whatsapp: z.boolean().optional(),

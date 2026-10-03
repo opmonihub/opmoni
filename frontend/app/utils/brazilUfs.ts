@@ -1,4 +1,7 @@
-export const brazilUfItems = [
+import type { SelectItem } from '@nuxt/ui'
+
+/** As UFs brasileiras no formato que o `USelect` espera (items mutáveis). */
+export const brazilUfItems: SelectItem[] = [
   { label: 'Acre (AC)', value: 'AC' },
   { label: 'Alagoas (AL)', value: 'AL' },
   { label: 'Amapá (AP)', value: 'AP' },
@@ -26,4 +29,4 @@ export const brazilUfItems = [
   { label: 'São Paulo (SP)', value: 'SP' },
   { label: 'Sergipe (SE)', value: 'SE' },
   { label: 'Tocantins (TO)', value: 'TO' }
-] as const
+]
