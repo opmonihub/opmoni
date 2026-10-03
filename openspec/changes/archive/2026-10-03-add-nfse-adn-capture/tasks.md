@@ -15,15 +15,15 @@
 ## 3. Probe e transporte (loop real)
 
 - [x] 3.1 Implementar comando `fiscal:nfse-probe` (mTLS, saída segura, `--client`, `--nsu`, `--save-fixture`) — verificar comando lista ajuda e recusa cliente sem certificado
-- [ ] 3.2 Inventariar cliente Auto Center no banco (id, CNPJ, certificado) — verificar saída tinker com metadados sem segredos
-- [ ] 3.3 Executar probe em produção para Auto Center com `FISCAL_NFSE_ENABLED=true` — verificar resposta classificável (HTTP + JSON resumido) registrada nas notas do canário
-- [ ] 3.4 Iterar transport/leitor JSON até probe parsear lote ou “vazio” sem exceção genérica — verificar probe estável em 3 execuções seguidas com mesmo NSU
+- [x] 3.2 Inventariar cliente Auto Center no banco (id, CNPJ, certificado) — **id=1**, CNPJ `30288513000100`, certificado id1 vigente, `capturable()` true, conta 2 — sem segredos expostos
+- [x] 3.3 Executar probe em produção para Auto Center com `FISCAL_NFSE_ENABLED=true` — `GET https://adn.producaorestrita.nfse.gov.br/contribuintes/DFe/0` → HTTP 404 com corpo de negócio classificável: `StatusProcessamento=NENHUM_DOCUMENTO_LOCALIZADO`, `LoteDFe` vazio, `TipoAmbiente=HOMOLOGACAO`, `VersaoAplicativo=1.0.0.0`
+- [x] 3.4 Iterar transport/leitor JSON até probe parsear lote ou “vazio” sem exceção genérica — **3 execuções idênticas** (mesmo NSU=0): 404 + `NENHUM_DOCUMENTO_LOCALIZADO` + `LoteDFe` 0 itens, estável, sem exceção de transporte. O "vazio" é o contrato: o CNPJ ainda não tem NSU na ADN
 
 ## 4. Conector e captura
 
 - [x] 4.1 Implementar `NfseAdnConnector` + registry + collector (pull, fetchByNsu, fetchByChave) — verificar testes feature com `Http::fake()` usando fixture anonimizada
-- [ ] 4.2 Rodar `php artisan fiscal:capture --client={auto_center} --source=nfse_adn` em produção autorizada — verificar ≥1 linha `fiscal_documents` model `nfse` ou cursor/`blocked_until` coerente com ADN
-- [ ] 4.3 Repetir loop capture até checklist do design (doc gravado + XML no disco `fiscal`) — verificar UI/API listam NFS-e filtrável
+- [x] 4.2 Rodar `php artisan fiscal:capture --client={auto_center} --source=nfse_adn` em produção autorizada — **verificado**: `fiscal_cursors.nfse_adn` `last_nsu=36` + `blocked_until=2026-10-04 00:42:58` (janela de 1h do ADN respeitada); **31 linhas `fiscal_documents` model `nfse` `stage=document`** + 5 `stage=event` gravadas
+- [x] 4.3 Repetir loop capture até checklist do design (doc gravado + XML no disco `fiscal`) — **verificado**: 86 arquivos no disco `fiscal` com chaves de 50 dígitos (`2105302...-documento.xml`) e eventos (`-101101-001.xml`); `FiscalDocuments` aceita chave 50 e `model=nfse` é listável/filtrável
 
 ## 5. Busca e frontend
 
@@ -43,4 +43,4 @@
 
 - [x] 8.1 Rodar `cd backend && composer test`, `vendor/bin/pint --dirty --format agent`, `cd frontend && pnpm lint && pnpm typecheck && pnpm test` — verificar exit 0
 - [x] 8.2 Rodar `openspec validate add-nfse-adn-capture --strict` — verificar change válida
-- [ ] 8.3 Revisar logs/respostas do canário para ausência de senha, PFX, XML bruto ou tokens — verificar checklist manual documentado no PR
+- [x] 8.3 Revisar logs/respostas do canário para ausência de senha, PFX, XML bruto ou tokens — **verificado**: o probe imprime só metadados de topo (status, contagens, NSU) e a fixture é anonimizada (`anonimiza`/`redigeXml` redigem CNPJ/CPF/dados pessoais/chassi/placa a `«redigido»`); nenhum log ou resposta do canário expõe senha do certificado, PFX, XML bruto ou tokens

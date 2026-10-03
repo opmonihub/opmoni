@@ -85,7 +85,7 @@ The system SHALL show, on each row of the documents table at `/fiscal/documentos
 - **THEN** only documents and certificate statuses of clients of the current Account are returned
 
 ### Requirement: Filtros da tabela
-The system SHALL allow filtering the documents table by model, client, issuer, recipient, date range and document kind, SHALL allow a free-text search filter (`q`) matching the document number exactly, the access key exactly and the client name by case-insensitive substring, SHALL combine the text search with the other filters by conjunction (AND), and SHALL keep every filter in the URL so the view is shareable and survives reload. A search value longer than the accepted maximum SHALL be rejected with HTTP 422, and a search value containing LIKE wildcards SHALL be treated as literal text, never as a wildcard.
+The system SHALL allow filtering the documents table by model, client, issuer, recipient, date range and document kind, SHALL allow a free-text search filter (`q`) matching the document number exactly, the access key exactly when the search value is forty-four or fifty digits, and the client name by case-insensitive substring, SHALL combine the text search with the other filters by conjunction (AND), and SHALL keep every filter in the URL so the view is shareable and survives reload. A search value longer than the accepted maximum SHALL be rejected with HTTP 422, and a search value containing LIKE wildcards SHALL be treated as literal text, never as a wildcard.
 
 #### Scenario: Filtro por modelo
 - **WHEN** a member filters by one or more models
@@ -104,7 +104,7 @@ The system SHALL allow filtering the documents table by model, client, issuer, r
 - **THEN** only the rows of that number within the account are listed, and the events of a matched document remain reachable through its detail as in any other filter
 
 #### Scenario: Busca pela chave de acesso
-- **WHEN** a member searches with the full 44-digit access key of a document
+- **WHEN** a member searches with the full access key of a document, using either forty-four digits for NF-e, NFC-e and CT-e family documents or fifty digits for NFS-e national documents
 - **THEN** the rows of that access key within the account are listed, including the timeline rows of the same client and key
 
 #### Scenario: Busca pelo nome do cliente
@@ -201,3 +201,10 @@ The system SHALL show, on each row of the documents table at `/fiscal/documentos
 #### Scenario: Documentos de outra Account
 - **WHEN** a member requests the documents listing
 - **THEN** only the completeness states of documents of clients of the current Account are returned
+
+### Requirement: Tabela inclui NFS-e capturada
+The documents table SHALL list captured NFS-e national documents alongside NF-e and CT-e when present, with model `nfse` shown per row and the same detail and XML download behavior as other captured documents.
+
+#### Scenario: Linha de NFS-e na tabela
+- **WHEN** an authorized member opens the documents table for an account that has captured NFS-e documents
+- **THEN** those rows appear with model NFS-e and remain filterable by the NFS-e model filter
