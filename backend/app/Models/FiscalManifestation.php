@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'event_seq',
     'requested_by',
     'outcome',
+    'result_code',
+    'result_message',
     'requested_at',
     'sent_at',
     'resulted_at',

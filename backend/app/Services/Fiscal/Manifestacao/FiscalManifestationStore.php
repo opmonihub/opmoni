@@ -63,4 +63,34 @@ final class FiscalManifestationStore
             ->where('event_seq', $eventSeq)
             ->update(['outcome' => FiscalManifestationOutcome::Queued]);
     }
+
+    /**
+     * O veredito do evento no registro — chamado só quando o fisco respondeu
+     * (ou quando a resposta é conhecida sem chamada, como o prazo perdido).
+     * `result_code`/`result_message` levam o cStat e o motivo já condensado;
+     * `sent_at` marca a ida à rede e `resulted_at` o veredito.
+     *
+     * Recebe o modelo (e não a chave lógica) porque quem chama já tem o
+     * registro na mão — e pode ser um modelo não persistido, que o método
+     * atualiza em memória sem salvar.
+     */
+    public function veredito(
+        FiscalManifestation $manifestation,
+        FiscalManifestationOutcome $outcome,
+        ?string $resultCode,
+        ?string $resultMessage,
+    ): void {
+        $manifestation->outcome = $outcome;
+        $manifestation->result_code = $resultCode;
+        $manifestation->result_message = $resultMessage;
+        $manifestation->sent_at ??= $outcome === FiscalManifestationOutcome::DeadlineMissed
+            || $outcome === FiscalManifestationOutcome::NotSendable
+            ? null
+            : now();
+        $manifestation->resulted_at = now();
+
+        if ($manifestation->exists) {
+            $manifestation->save();
+        }
+    }
 }

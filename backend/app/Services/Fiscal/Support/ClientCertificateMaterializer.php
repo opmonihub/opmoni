@@ -79,6 +79,47 @@ final class ClientCertificateMaterializer
     }
 
     /**
+     * Os bytes do PKCS#12 e a senha em claro, dentro do escopo do callback.
+     *
+     * É o mesmo cofre e as mesmas três recusas de `withCertificate()` — as
+     * quatro frases de `FiscalRequestNotSent` são as mesmas, porque a
+     * requisição não sai pelos mesmos motivos —, mas sem escrever nada no
+     * disco: quem precisa dos bytes é a assinatura XMLDSig do evento, que não é
+     * uma opção `cert` do cURL.
+     *
+     * Bytes e senha são zerados no `finally` antes de voltar ao chamador: o
+     * material vive o tempo do callback, e nem a stack nem a memória que ele
+     * ocupava ficam com cópia legível.
+     *
+     * @template TReturn
+     *
+     * @param  Closure(string $bytes, string $password): TReturn  $callback
+     * @return TReturn
+     */
+    public function withCertificateBytes(ClientCertificate $certificate, Closure $callback): mixed
+    {
+        $bytes = $this->bytes($certificate);
+
+        if ($bytes === null) {
+            throw new FiscalRequestNotSent('Certificado do cliente não está disponível.');
+        }
+
+        $password = $certificate->certificatePassword();
+
+        if ($password === null) {
+            throw new FiscalRequestNotSent('A senha do certificado do cliente não está armazenada.');
+        }
+
+        try {
+            return $callback($bytes, $password);
+        } finally {
+            $password = str_repeat("\0", strlen($password));
+            $bytes = str_repeat("\0", strlen($bytes));
+            unset($password, $bytes);
+        }
+    }
+
+    /**
      * O cofre guarda `Crypt::encryptString(base64_encode($conteudo))` na chave
      * `storage_path` do disco `certificates`.
      */

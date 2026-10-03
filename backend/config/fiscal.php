@@ -292,6 +292,28 @@ return [
         ],
 
         /*
+         * O serviço `nfeRecepcaoEvento` do Ambiente Nacional, que registra a
+         * Manifestação do Destinatário. Não é distribuição: o corpo é um lote
+         * `envEvento` **assinado**, e o endpoint é único por ambiente porque é
+         * sempre o AN (`cOrgao` 91) quem recebe o evento.
+         *
+         * O bloco segue o contrato de `DfeEndpoint::CHAVES` para ser conferido
+         * pelo mesmo `of()` das distribuições: o que muda é só quem lê —
+         * `ManifestationEventTransport` —, e não a forma do bloco.
+         */
+        'nfe_recepcao_evento' => [
+            'producao' => 'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+            'homologacao' => 'https://hom.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
+            'namespace' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento',
+            'payload_namespace' => 'http://www.portalfiscal.inf.br/nfe',
+            'version' => '1.00',
+            'method' => 'nfeRecepcaoEvento',
+            'soap_action' => 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento/nfeRecepcaoEvento',
+            'holder' => 'nfeDadosMsg',
+            'xsd_service' => 'nfe',
+        ],
+
+        /*
          * ⚠️ ESTE BLOCO É A BASE PUBLICADA, NÃO UMA RESPOSTA OBSERVADA.
          *
          * As duas URLs vêm do Swagger oficial da ADN contribuintes (o ambiente
