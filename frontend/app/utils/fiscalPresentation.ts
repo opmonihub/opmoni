@@ -3,6 +3,7 @@ import type {
   FiscalAttentionReason,
   FiscalClientCertificateStatus,
   FiscalCoverage,
+  FiscalDocumentCompletude,
   FiscalDocumentSituacao,
   FiscalKind,
   FiscalLastCapture,
@@ -655,6 +656,34 @@ const situacaoCopy: Record<FiscalDocumentSituacao, { label: string, color: Fisca
 export function fiscalSituacaoPresentation(situacao: FiscalDocumentSituacao | null | undefined): { label: string, color: FiscalTone } {
   if (!situacao) return { label: fiscalMissingValue, color: 'neutral' }
   return situacaoCopy[situacao]
+}
+
+/**
+ * A completude do XML da chave, e as duas cores que ela tem.
+ *
+ * O aviso é o `summary_awaiting_xml`: a nota ainda depende da manifestação
+ * para destravar o XML completo, e é a linha que o escritório precisa
+ * enxergar primeiro — o `warning` é a cor da atenção, não a de erro, porque
+ * nada quebrou: a distribuição ainda não entregou. O `complete` é `neutral`
+ * e não `success`: "o XML chegou" é o estado ordinário da tabela, e pintá-lo
+ * de verde competiria com a situação `autorizada` na coluna ao lado.
+ *
+ * `Record` sobre a união pelo mesmo motivo de `situacaoCopy`: um código novo
+ * que o backend criar precisa parar no compilador.
+ */
+const completudeCopy: Record<FiscalDocumentCompletude, { label: string, color: FiscalTone }> = {
+  summary_awaiting_xml: { label: 'Resumo aguardando XML', color: 'warning' },
+  complete: { label: 'XML completo', color: 'neutral' }
+}
+
+/**
+ * `null` — CT-e, linha de evento, nota emitida pelo próprio CNPJ do cliente —
+ * vira o traço do valor ausente: a pergunta "falta o XML?" não se aplica a
+ * essas linhas, e um rótulo ali afirmaria algo que a distribuição não disse.
+ */
+export function fiscalCompletudePresentation(completude: FiscalDocumentCompletude | null | undefined): { label: string, color: FiscalTone } {
+  if (!completude) return { label: fiscalMissingValue, color: 'neutral' }
+  return completudeCopy[completude]
 }
 
 /**

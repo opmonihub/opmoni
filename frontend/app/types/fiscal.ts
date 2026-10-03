@@ -179,6 +179,16 @@ export type FiscalClientDirection = 'saida' | 'entrada'
  */
 export type FiscalDocumentSituacao = 'autorizada' | 'cancelada' | 'resumo'
 
+/**
+ * A completude do XML da chave, derivada no backend sem coluna nova:
+ * `summary_awaiting_xml` quando a distribuição entregou só o resumo,
+ * `complete` quando entregou o documento autorizado. `null` quando a
+ * pergunta não se aplica à linha — CT-e, linha de evento e a NF-e emitida
+ * pelo próprio CNPJ do cliente, na qual não há terceiro que destrave XML
+ * nenhum.
+ */
+export type FiscalDocumentCompletude = 'summary_awaiting_xml' | 'complete'
+
 /** Uma linha da tabela de documentos capturados. */
 export interface FiscalDocumentRow {
   id: number
@@ -212,6 +222,14 @@ export interface FiscalDocumentRow {
    * `null` na linha de evento, que não é linha de documento.
    */
   situacao: FiscalDocumentSituacao | null
+  /**
+   * A completude do XML da chave, derivada no backend: `summary_awaiting_xml`
+   * quando só o resumo chegou, `complete` quando o documento autorizado chegou.
+   * `null` quando a pergunta não se aplica à linha — CT-e, linha de evento e a
+   * nota emitida pelo próprio CNPJ do cliente — e a célula fica vazia, nunca
+   * com um código inventado.
+   */
+  completude: FiscalDocumentCompletude | null
   /**
    * A competência da emissão em `YYYY-MM`, ou `null` quando o documento não tem
    * data de emissão: sem mês a linha não entra na série, pelo mesmo contrato de
