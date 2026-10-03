@@ -34,11 +34,21 @@
 
 ## 5. Job e integração com a captura
 
-- [ ] 5.1 Escrever teste que falha porque gravar um resumo ainda não enfileira a ciência da emissão, cobrindo gate ligado, cliente dentro do prazo e bloqueio respeitado na execução (não só no enqueue), verificar com `php artisan test --compact --filter=DispatcherManifestacao`
-- [ ] 5.2 Implementar o job `ManifestarCiencia` (carregando `account_id` e id do cliente, checando gate, deduplicação, prazo e janela de bloqueio no momento da execução) e o hook no dispatcher pós-resumo, verificar com o teste de 5.1 passando
-- [ ] 5.3 Implementar o tratamento da 573 no job: gravar estado "já manifestado" e liberar a recuperação por `consChNFe` sem retry, verificar com teste do fluxo 573 ponta a ponta com transporte fake
-- [ ] 5.4 Garantir que a manifestação não debita `FiscalLookupBudget` e que a recuperação do XML pós-ciência passa pelo caminho de consulta pontual existente com teto de 20/h e limite por chave na ressincronização, verificar com teste de orçamento após manifestação
-- [ ] 5.5 Implementar a rotina agendada de ressincronização que recupera, via consulta pontual por chave, o XML completo dos resumos com ciência já registrada (spec `fiscal-manifestacao`), com teto de 20/h, limite por chave e deduplicação, verificar com teste do fluxo agendado ponta a ponta com transporte fake
+- [x] 5.1 Escrever teste que falha porque gravar um resumo ainda não enfileira a ciência da emissão, cobrindo gate ligado, cliente dentro do prazo e bloqueio respeitado na execução (não só no enqueue), verificar com `php artisan test --compact --filter=DispatcherManifestacao`
+- [x] 5.2 Implementar o job `ManifestarCiencia` (carregando `account_id` e id do cliente, checando gate, deduplicação, prazo e janela de bloqueio no momento da execução) e o hook no dispatcher pós-resumo, verificar com o teste de 5.1 passando
+- [x] 5.3 Implementar o tratamento da 573 no job: gravar estado "já manifestado" e liberar a recuperação por `consChNFe` sem retry, verificar com teste do fluxo 573 ponta a ponta com transporte fake
+- [x] 5.4 Garantir que a manifestação não debita `FiscalLookupBudget` e que a recuperação do XML pós-ciência passa pelo caminho de consulta pontual existente com teto de 20/h e limite por chave na ressincronização, verificar com teste de orçamento após manifestação
+- [x] 5.5 Implementar a rotina agendada de ressincronização que recupera, via consulta pontual por chave, o XML completo dos resumos com ciência já registrada (spec `fiscal-manifestacao`), com teto de 20/h, limite por chave e deduplicação, verificar com teste do fluxo agendado ponta a ponta com transporte fake
+
+#### Divergências da seção 5
+
+- Nome do job: o stub `SendFiscalManifestationJob` foi mantido como executor (Ruling A), em vez de criar `ManifestarCiencia`. A spec/design usam o nome de plano; o arquivo já estava commitado e referenciado pelo dispatcher.
+- Janela de bloqueio no job usa `release(block_minutes*60)` com `tries=1`: no Redis o release não esgota tentativas, então a reentrega é por delay, não por retry — deliberado, para a manifestação esperar a janela do fisco expirar sem falhar o job. O `registro` fica `pending`/`queued` e uma re-entrega posterior (ou outro resumo re-entregue pela captura) a reencontra.
+- O gate do resync foi colocado no comando (`ResyncFiscalManifestations::handle`), espelhando `cte_scheduled`, e a agenda registra a entrada incondicionalmente — a leitura da chave é da execução, não da agenda.
+- Rastreio por chave via colunas aditivas `resync_attempts` + `xml_recovered_at` em `fiscal_manifestations` (opção da Ruling 8/Ruling F), em vez de derivar só do par summary/document — torna a rotina segura a repetição e dá o limite por chave (`manifestacao_resync_max_attempts=3`).
+- `ManifestacaoResync::run()` carrega todos os pendentes com `get()` agrupado por `client_id`, sem chunking: aceito porque o volume é limitado pelo teto de 20 consultas/h por CNPJ e pela própria taxa de manifestação; a lista encolhe conforme `xml_recovered_at` é marcado. Documentado como débito de escala.
+- `registrarPedido` reseta `outcome` para `Pending` incondicionalmente no `firstOrNew()->fill()` — um resumo re-entregue pela captura depois do `Sent` já gravado volta o registro a `pending` e re-enfileira. Comportamento da deduplicação (overwrite) já testado em 3.4; registrado como efeito conhecido, não corrigido nesta seção.
+- `handle()` do job ganhou a assinatura `(FiscalManifestationStore, RecepcaoEventoConnector)`; os testes de gate e tenancy (seção 3) foram atualizados para injetar o conector.
 
 ## 6. Auditoria e acesso de suporte
 
