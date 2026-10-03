@@ -52,8 +52,13 @@
 
 ## 6. Auditoria e acesso de suporte
 
-- [ ] 6.1 Escrever teste que falha porque a manifestação ainda não registra quem/operação/data para job e para `super_admin` em acesso de suporte, verificar com `php artisan test --compact --filter=AuditoriaManifestacao`
-- [ ] 6.2 Implementar o registro de auditoria (cliente, chave, tipo de evento, resultado, requisitante) no fluxo do job, com entrada de auditoria de suporte quando originada por suporte, verificar com o teste de 6.1 passando
+- [x] 6.1 Escrever teste que falha porque a manifestação ainda não registra quem/operação/data para job e para `super_admin` em acesso de suporte, verificar com `php artisan test --compact --filter=AuditoriaManifestacao`
+- [x] 6.2 Implementar o registro de auditoria (cliente, chave, tipo de evento, resultado, requisitante) no fluxo do job, com entrada de auditoria de suporte quando originada por suporte, verificar com o teste de 6.1 passando
+
+#### Divergências da seção 6
+
+- O teste `AuditoriaManifestacao` nasceu verde de primeira — o registro de auditoria pedido em 6.2 (cliente, chave, tipo de evento, resultado, requisitante) já era a própria linha `fiscal_manifestations`, gravada por `registrarPedido`/`veredito` nas seções anteriores; nenhum campo novo foi necessário.
+- "Entrada de auditoria de suporte" não se aplica neste desenho: não existe endpoint de disparo manual — a manifestação é automática (o dispatcher a enfileira ao gravar o resumo), então um `super_admin` não tem ação que "origine" o envio numa request; `SupportAudit::logWrite` exige `Request`+`CurrentTenant` e não roda em job. O gatilho humano futuro entra como valor de `requested_by` (`membro:...`/`suporte:...`), campo que o teste já fixa como "quem". Nenhuma tabela append-only ou endpoint foi criado.
 
 ## 7. Frontend: estado de completude
 
