@@ -17,16 +17,23 @@ const teams = computed(() => accounts.value.map(account => ({
 })))
 
 const selectedTeam = computed(() => {
-  const team = teams.value.find(item => item.id === currentAccount.value?.id) ?? teams.value[0]
-  if (!team) {
+  const current = currentAccount.value
+  const team = teams.value.find(item => item.id === current?.id)
+  if (team) {
     return {
-      label: 'Contas',
-      avatar: { alt: 'Contas' }
+      label: team.label,
+      avatar: team.avatar
+    }
+  }
+  if (current) {
+    return {
+      label: current.name,
+      avatar: { alt: current.name }
     }
   }
   return {
-    label: team.label,
-    avatar: team.avatar
+    label: 'Contas',
+    avatar: { alt: 'Contas' }
   }
 })
 
@@ -43,13 +50,19 @@ async function selectAccount(id: number) {
 }
 
 const items = computed<DropdownMenuItem[][]>(() => {
-  const accountItems = teams.value.map(team => ({
-    label: team.label,
-    avatar: team.avatar,
-    onSelect() {
-      void selectAccount(team.id)
+  const accountItems = teams.value.map((team) => {
+    const link = accounts.value.find(account => account.id === team.id)
+    const isCurrent = team.id === currentAccount.value?.id
+    return {
+      label: team.label,
+      avatar: team.avatar,
+      icon: link?.is_member === false ? 'i-lucide-life-buoy' : undefined,
+      disabled: isCurrent,
+      onSelect() {
+        void selectAccount(team.id)
+      }
     }
-  }))
+  })
 
   if (!isSuperAdmin.value) {
     return [accountItems]

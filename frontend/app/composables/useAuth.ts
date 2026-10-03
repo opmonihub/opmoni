@@ -1,7 +1,9 @@
 export interface AuthAccountLink {
   id: number
   name: string
-  role: string
+  role?: string
+  /** false quando super_admin pode trocar para a conta sem vínculo de membro */
+  is_member?: boolean
 }
 
 export interface AuthCurrentAccount {
@@ -37,7 +39,13 @@ export function useAuth() {
   const isSuperAdmin = useState<boolean>('auth.is-super-admin', () => false)
   const accounts = useState<AuthAccountLink[]>('auth.accounts', () => [])
   const currentAccount = useState<AuthCurrentAccount | null>('auth.current-account', () => null)
-  const currentRole = computed(() => accounts.value.find(account => account.id === currentAccount.value?.id)?.role ?? null)
+  const currentRole = computed(() => {
+    const link = accounts.value.find(account => account.id === currentAccount.value?.id)
+    if (!link || link.is_member === false) {
+      return null
+    }
+    return link.role ?? null
+  })
   const can = (roles: string[]): boolean => isSuperAdmin.value || roles.includes(currentRole.value ?? '')
   const canManageClients = computed(() => can(['admin', 'operador']))
   // Escrita em Work (tasks/templates/processes) e em Departamentos exige papel
@@ -130,5 +138,5 @@ export function useAuth() {
     return fetchMe()
   }
 
-  return { user, isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients, canManageWork, canManageDepartments, canManageMembers, fetchMe, registrationAvailable, login, register, logout, switchAccount, enterSupport, exitSupport }
+  return { user, isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients, canManageWork, canManageDepartments, canManageMembers, fetchMe, clearAuth, ensureCsrf, registrationAvailable, login, register, logout, switchAccount, enterSupport, exitSupport }
 }

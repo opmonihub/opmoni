@@ -41,16 +41,11 @@ class AuthController extends Controller
         $user = DB::transaction(function () use ($data) {
             // O gate de "registro inicial" é reavaliado dentro da transação:
             // uma checagem de leitura fora dela deixa dois POST /api/register
-            // simultâneos verem o mesmo estado vazio. Atenção ao alcance real
-            // do lock: Account::lockForUpdate() serializa Transactions que
-            // disputam linhas existentes, mas no primeiro registro a tabela
-            // está vazia por definição e o Postgres não trava nada sobre um
-            // result set vazio. O que fecha a corrida na prática é o índice
-            // único de users.email — o perdedor da corrida estoura a
-            // constraint e a transação inteira é desfeita. Para uma garantia
-            // dura, independente do schema, o lock teria que ser um advisory
-            // lock (pg_advisory_xact_lock), que funciona com a tabela vazia.
-            Account::lockForUpdate()->count();
+            // simultâneos verem o mesmo estado vazio. No Postgres, lock de linha
+            // com tabela vazia não serializa; `lockForUpdate()->count()` ainda
+            // quebra (FOR UPDATE com agregado). Usamos advisory lock transacional;
+            // corrida residual fecha no unique de users.email.
+            $this->acquireInitialRegistrationLock();
 
             if (! $this->isInitialRegistrationAvailable()) {
                 abort(403, 'Registro inicial indisponível.');
@@ -109,11 +104,31 @@ class AuthController extends Controller
         $user = $request->user();
         $user->load(['currentAccount', 'accountLinks.account']);
 
+        $linkedAccountIds = $user->accountLinks
+            ->map(fn ($link) => $link->account->getKey())
+            ->all();
+
         $accounts = $user->accountLinks->map(fn ($link): array => [
             'id' => $link->account->getKey(),
             'name' => $link->account->name,
             'role' => $link->role,
+            'is_member' => true,
         ])->all();
+
+        if ($user->isSuperAdmin()) {
+            $switchable = Account::query()
+                ->whereNotIn('id', $linkedAccountIds)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Account $account): array => [
+                    'id' => $account->getKey(),
+                    'name' => $account->name,
+                    'is_member' => false,
+                ])
+                ->all();
+
+            $accounts = array_merge($accounts, $switchable);
+        }
 
         return response()->json([
             'id' => $user->getKey(),
@@ -128,5 +143,17 @@ class AuthController extends Controller
     private function isInitialRegistrationAvailable(): bool
     {
         return ! User::exists() && ! Account::exists();
+    }
+
+    /**
+     * Serializa o primeiro registro quando ainda não há linhas em accounts/users.
+     */
+    private function acquireInitialRegistrationLock(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::select('SELECT pg_advisory_xact_lock(?)', [7342890012345678901]);
     }
 }

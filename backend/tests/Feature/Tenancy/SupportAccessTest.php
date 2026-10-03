@@ -228,6 +228,21 @@ class SupportAccessTest extends TestCase
         $this->assertSame(51, $account->clients()->count());
     }
 
+    public function test_me_lists_non_member_accounts_for_super_admin_switcher(): void
+    {
+        $superAdmin = $this->superAdminWithOwnAccount();
+        $other = Account::factory()->create(['name' => 'Cliente Beta']);
+
+        $response = $this->actingAs($superAdmin, 'sanctum')
+            ->getJson('/api/me')
+            ->assertOk();
+
+        $beta = collect($response->json('accounts'))->firstWhere('name', 'Cliente Beta');
+        $this->assertIsArray($beta);
+        $this->assertFalse($beta['is_member']);
+        $this->assertArrayNotHasKey('role', $beta);
+    }
+
     public function test_super_admin_switch_to_any_account_succeeds_and_is_audit_visible(): void
     {
         $superAdmin = $this->superAdminWithOwnAccount();

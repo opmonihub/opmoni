@@ -43,12 +43,14 @@ export default defineNuxtPlugin((nuxtApp) => {
       // ofetch callbacks perdem o async context do Nuxt — wrap obrigatório.
       // Só sessão inválida/expirada: 403 de Gate/tenant fica para a página
       // (toast, empty state) — redirecionar aqui derruba fluxos legítimos.
+      if (response.status !== 401 && response.status !== 419) return
+      // Sessão expirada com auth.user ainda em memória: o middleware auth pula o
+      // /me e o /login devolve para /, então toda chamada protegida segue em 401.
+      nuxtApp.runWithContext(() => useAuth().clearAuth())
       // /me também é consultado pelas páginas públicas para detectar uma sessão existente.
       // O middleware auth já trata o 401 de /me nas páginas protegidas.
       if (response.status === 401 && safePathname(response.url) === '/api/me') return
-      if (response.status === 401 || response.status === 419) {
-        await nuxtApp.runWithContext(() => navigateTo('/login'))
-      }
+      await nuxtApp.runWithContext(() => navigateTo('/login'))
     }
   })
 

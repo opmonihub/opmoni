@@ -6,6 +6,10 @@ export function useSupportMode() {
     if (!user.value || !isSuperAdmin.value || !current) {
       return false
     }
-    return !accounts.value.some(account => account.id === current.id)
+    const link = accounts.value.find(account => account.id === current.id)
+    if (!link) {
+      return true
+    }
+    return link.is_member === false
   })
 }

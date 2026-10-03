@@ -141,11 +141,12 @@ class AuthTest extends TestCase
                 'is_super_admin' => true,
             ])
             ->assertJsonStructure([
-                'accounts' => [['id', 'name', 'role']],
+                'accounts' => [['id', 'name', 'role', 'is_member']],
                 'current_account' => ['id', 'name'],
             ])
             ->assertJsonPath('accounts.0.name', 'HQ')
             ->assertJsonPath('accounts.0.role', 'admin')
+            ->assertJsonPath('accounts.0.is_member', true)
             ->assertJsonPath('current_account.name', 'HQ');
     }
 
