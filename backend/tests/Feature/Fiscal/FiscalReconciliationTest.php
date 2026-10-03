@@ -303,7 +303,7 @@ class FiscalReconciliationTest extends TestCase
     public function test_a_reconciliacao_de_nfse_desligada_nao_consulta_e_nao_cobra_tentativa(): void
     {
         $client = $this->tenant();
-        $this->cursor($client, 100);
+        $this->cursor($client, 100, source: FiscalSource::NfseAdn);
         $this->createGap($client, 101, ['source' => FiscalSource::NfseAdn]);
 
         $this->bindConnector($this->noPull(), source: FiscalSource::NfseAdn);
@@ -333,7 +333,7 @@ class FiscalReconciliationTest extends TestCase
     public function test_a_reconciliacao_de_nfse_ligada_recupera_a_posicao_pendente(): void
     {
         $client = $this->tenant();
-        $this->cursor($client, 100);
+        $this->cursor($client, 100, source: FiscalSource::NfseAdn);
         $this->createGap($client, 101, ['source' => FiscalSource::NfseAdn]);
 
         $this->bindConnector(
@@ -1311,12 +1311,16 @@ class FiscalReconciliationTest extends TestCase
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function cursor(Client $client, int $lastNsu, array $attributes = []): FiscalCursor
-    {
+    private function cursor(
+        Client $client,
+        int $lastNsu,
+        array $attributes = [],
+        FiscalSource $source = FiscalSource::NfeDistribuicao,
+    ): FiscalCursor {
         $cursor = FiscalCursor::factory()->create([
             'account_id' => $client->account_id,
             'client_id' => $client->getKey(),
-            'source' => FiscalSource::NfeDistribuicao,
+            'source' => $source,
             'last_nsu' => $lastNsu,
         ]);
 

@@ -68,6 +68,26 @@ class NfseAdnLiveProbeTest extends TestCase
     }
 
     /**
+     * A porta da instalação é a primeira coisa que o comando confere: com
+     * `nfse_enabled` desligada, nem cliente capturável nem NSU abrem uma
+     * chamada — e o GET que nunca sai é a propriedade barata de regredir.
+     */
+    public function test_o_gate_desligado_recusa_o_probe_antes_de_qualquer_chamada(): void
+    {
+        config(['fiscal.nfse_enabled' => false]);
+
+        [$client] = $this->clienteComCertificado();
+        config(['fiscal.nfse_live_client' => $client->getKey()]);
+
+        Http::fake(['*' => Http::response('{}', 200)]);
+
+        $this->artisan('fiscal:nfse-probe', ['--client' => (string) config('fiscal.nfse_live_client')])
+            ->assertExitCode(1);
+
+        Http::assertNothingSent();
+    }
+
+    /**
      * O `fiscal.nfse_live_client` que aponta um cliente sem A1 utilizável é
      * recusado pelo escopo `capturable` — e a recusa é honesta: nenhum GET sai
      * para a ADN por causa de um id que ninguém conferiu.
