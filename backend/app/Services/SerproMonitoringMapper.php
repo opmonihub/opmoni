@@ -105,10 +105,26 @@ final class SerproMonitoringMapper
      */
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
-        $periodos = array_merge(
-            is_array($existente['periods'] ?? null) ? $existente['periods'] : [],
-            is_array($nova['periods'] ?? null) ? $nova['periods'] : [],
-        );
+        $periodosPorPrograma = [];
+
+        foreach ([
+            ...(is_array($existente['periods'] ?? null) ? $existente['periods'] : []),
+            ...(is_array($nova['periods'] ?? null) ? $nova['periods'] : []),
+        ] as $periodo) {
+            if (! is_array($periodo)) {
+                continue;
+            }
+
+            $programa = $this->programaDePeriodoParcelamento((string) ($periodo['period'] ?? ''));
+
+            if ($programa === '') {
+                continue;
+            }
+
+            $periodosPorPrograma[$programa] = $periodo;
+        }
+
+        $periodos = array_values($periodosPorPrograma);
 
         $modalidades = array_values(array_unique(array_filter([
             $existente['fields']['modalidade'] ?? null,
@@ -134,8 +150,8 @@ final class SerproMonitoringMapper
 
     /**
      * Projeções derivadas que nascem da mesma resposta de um serviço direct,
-     * sem segunda chamada — hoje só a caixa postal e-CAC alimenta caixas
-     * filtradas por assunto.
+     * sem segunda chamada — caixa postal e-CAC (caixas filtradas), SITFIS
+     * (certidões) e DCTFWeb (`fgts-digital`, `declaracoes/dctfweb`).
      *
      * @param  array<string, mixed>  $directProjection
      * @return array<string, array<string, mixed>>
@@ -161,6 +177,31 @@ final class SerproMonitoringMapper
                     ],
                     'due_on' => $directProjection['due_on'] ?? null,
                     'cause' => $directProjection['cause'] ?? null,
+                ],
+            ];
+        }
+
+        if ($idServico === 'CONSXMLDECLARACAO38') {
+            $fields = is_array($directProjection['fields'] ?? null) ? $directProjection['fields'] : [];
+            $periodos = is_array($directProjection['periods'] ?? null) ? $directProjection['periods'] : [];
+            $dueOn = $directProjection['due_on'] ?? null;
+            $cause = $directProjection['cause'] ?? null;
+
+            return [
+                'fgts-digital' => [
+                    'fields' => ['valor_apurado_1718' => $fields['valor_apurado_1718'] ?? null],
+                    'due_on' => $dueOn,
+                    'periods' => $periodos,
+                    'cause' => $cause,
+                ],
+                'declaracoes/dctfweb' => [
+                    'fields' => [
+                        'gi_declaracao' => $fields['gi_declaracao'] ?? null,
+                        'receitas' => $fields['receitas'] ?? null,
+                    ],
+                    'due_on' => $dueOn,
+                    'periods' => $periodos,
+                    'cause' => $cause,
                 ],
             ];
         }
@@ -688,6 +729,13 @@ final class SerproMonitoringMapper
             'PEDIDOSPARC193' => 'RELP-SN',
             default => 'Parcelamento',
         };
+    }
+
+    private function programaDePeriodoParcelamento(string $period): string
+    {
+        $barra = strpos($period, '/');
+
+        return $barra === false ? $period : substr($period, 0, $barra);
     }
 
     private function caixaPostal(mixed $dados): array

@@ -196,6 +196,9 @@ return [
             'sync_enabled' => true,
             'label' => 'MEI',
         ],
+        // `dctfweb` e `declaracoes/dctfweb` compartilham `CONSXMLDECLARACAO38`;
+        // em `syncables()` só entra o primeiro (`dctfweb`). O escritor fan-out
+        // `declaracoes/dctfweb` e `fgts-digital` via `derived()`.
         'dctfweb' => [
             'category' => 'direct',
             'service' => 'DCTFWEB/CONSXMLDECLARACAO38',

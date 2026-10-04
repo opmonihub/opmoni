@@ -186,6 +186,23 @@ final class RunSerproManualSearchJob implements ShouldQueue
             ->values();
 
         if ($unidades->isEmpty()) {
+            $obrigacao = $catalogo->get($busca->obligation);
+
+            if ($obrigacao !== null
+                && ($obrigacao['sync_enabled'] ?? false)
+                && $obrigacao['service'] !== null) {
+                foreach ($catalogo->paresDeLeitura($obrigacao['service']) as [$sistema, $servico]) {
+                    $unidades->push([
+                        'slug' => $busca->obligation,
+                        'id_sistema' => $sistema,
+                        'id_servico' => $servico,
+                        'procuracao' => $obrigacao['procuracao'] ?? null,
+                    ]);
+                }
+            }
+        }
+
+        if ($unidades->isEmpty()) {
             $this->finish($busca, SerproManualSearchState::Failed, 'obrigacao_sem_leitura');
 
             return;

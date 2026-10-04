@@ -101,6 +101,13 @@ final class SerproObligationCatalog
      * mesmo serviço de uma `direct` não entra de novo: a chamada é uma só
      * por execução, e quem projeta as duas linhas é o escritor.
      *
+     * Quando dois slugs `direct` compartilham o mesmo `idServico` — hoje
+     * `dctfweb` e `declaracoes/dctfweb` com `CONSXMLDECLARACAO38` — prevalece
+     * o que aparece primeiro no mapa (`dctfweb`). A busca manual usa o slug
+     * pedido; o sync grava a linha direct e `SerproMonitoringMapper::derived`
+     * replica em `declaracoes/dctfweb` e `fgts-digital` (1718, `sync_enabled`
+     * false).
+     *
      * @return list<array{slug: string, id_sistema: string, id_servico: string, procuracao: ?string}>
      */
     public function syncables(): array

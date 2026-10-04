@@ -106,6 +106,12 @@ XML;
         $serializado = json_encode($projecao);
         $this->assertStringNotContainsString('XMLStringBase64', $serializado);
         $this->assertStringNotContainsString(base64_encode($xml), $serializado);
+
+        $derivadas = (new SerproMonitoringMapper)->derived('CONSXMLDECLARACAO38', $projecao);
+
+        $this->assertSame(99.0, $derivadas['fgts-digital']['fields']['valor_apurado_1718']);
+        $this->assertSame('24688', $derivadas['declaracoes/dctfweb']['fields']['gi_declaracao']);
+        $this->assertSame(109.5, $derivadas['declaracoes/dctfweb']['fields']['receitas']);
     }
 
     public function test_a_dctfweb_sem_xml_marca_sem_declaracao(): void
