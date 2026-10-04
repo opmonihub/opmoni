@@ -276,6 +276,8 @@ class SerproContractFixtureTest extends TestCase
             ['sitfis-relatorio.json'],
             ['caixapostal-detalhar-mensagem.json'],
             ['gateway-429.json'],
+            ['parcsn-pedidos-parcelamento.json'],
+            ['pagamentos-consulta.json'],
         ];
     }
 

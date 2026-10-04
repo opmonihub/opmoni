@@ -105,15 +105,56 @@ final class SerproMonitoringMapper
      */
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
-        $periodos = array_merge(
-            is_array($existente['periods'] ?? null) ? $existente['periods'] : [],
-            is_array($nova['periods'] ?? null) ? $nova['periods'] : [],
-        );
+        $periodosExistentes = is_array($existente['periods'] ?? null) ? $existente['periods'] : [];
+        $periodosNovos = is_array($nova['periods'] ?? null) ? $nova['periods'] : [];
 
-        $modalidades = array_values(array_unique(array_filter([
-            $existente['fields']['modalidade'] ?? null,
-            $nova['fields']['modalidade'] ?? null,
-        ], fn ($valor): bool => $valor !== null && $valor !== '')));
+        $modalidadeNova = $nova['fields']['modalidade'] ?? null;
+        $indiceInsercao = count($periodosExistentes);
+
+        if (is_string($modalidadeNova) && $modalidadeNova !== '') {
+            $prefixo = $modalidadeNova.'/';
+            $periodosFiltrados = [];
+            $substituindo = false;
+
+            foreach ($periodosExistentes as $periodo) {
+                if (! is_array($periodo)) {
+                    continue;
+                }
+
+                if (str_starts_with((string) ($periodo['period'] ?? ''), $prefixo)) {
+                    if (! $substituindo) {
+                        $indiceInsercao = count($periodosFiltrados);
+                        $substituindo = true;
+                    }
+
+                    continue;
+                }
+
+                $periodosFiltrados[] = $periodo;
+            }
+
+            $periodosExistentes = $periodosFiltrados;
+        }
+
+        $periodos = $periodosExistentes;
+        array_splice($periodos, $indiceInsercao, 0, $periodosNovos);
+
+        $modalidades = [];
+        foreach ($periodos as $periodo) {
+            if (! is_array($periodo)) {
+                continue;
+            }
+
+            $period = (string) ($periodo['period'] ?? '');
+            if (! str_contains($period, '/')) {
+                continue;
+            }
+
+            $modalidade = explode('/', $period, 2)[0];
+            if ($modalidade !== '' && ! in_array($modalidade, $modalidades, true)) {
+                $modalidades[] = $modalidade;
+            }
+        }
 
         $consolidacao = $nova['fields']['consolidacao'] ?? null;
         if ($consolidacao === null) {
