@@ -212,6 +212,23 @@ final class SerproClient
         $providerCode = $this->providerCode($envelope['mensagens'], $payload);
         $failure = SerproException::classify($response->status(), $providerCode);
 
+        // O provedor responde `503` com `[Sucesso-Sitfis-SC01]` quando o
+        // relatório está pronto em cache — não é falha, é o contrato do
+        // serviço, e o envelope traz `dados.tempoEspera` com o tempo a
+        // aguardar. Quem decide o que fazer com ele é quem chamou
+        // (`SerproSitfisSequence`).
+        if ($failure === SerproFailure::Upstream
+            && $response->status() === 503
+            && SerproException::normalizeProviderCode($providerCode) === 'Sucesso-Sitfis-SC01') {
+            return new SerproResult(
+                $envelope['status'],
+                $envelope['dados'],
+                $envelope['mensagens'],
+                $envelope['response_id'],
+                $tag,
+            );
+        }
+
         if ($failure !== SerproFailure::Success) {
             throw new SerproException(
                 $this->failureMessage($envelope['mensagens'], $failure, $payload),

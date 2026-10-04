@@ -20,8 +20,21 @@ final class SerproSitfisSequence
     /** Tentativas de emissão dentro do timeout do job (75s). */
     private const MAX_TENTATIVAS_EMITIR = 12;
 
-    /** Teto de espera entre tentativas — o provedor manda ms, não segundos. */
-    private const ESPERA_MAX_MS = 8_000;
+    /**
+     * Tentativas de solicitação de protocolo — o SERPRO devolve 503 com
+     * `tempoEspera` quando o relatório está sendo gerado. O tempo que ele
+     * pede pode ser maior que o timeout do job (75s), então a sequência
+     * aguarda o que couber e joga `Upstream` quando estoura — a próxima
+     * retentativa do worker (`tries`, `backoff`) continua de onde parou.
+     */
+    private const MAX_TENTATIVAS_PROTOCOLO = 2;
+
+    /**
+     * Teto de espera entre tentativas — o provedor manda ms, não segundos.
+     * O SITFIS já pediu `tempoEspera` de 30s para a solicitação de protocolo;
+     * quando passar do teto o job aborta em `Upstream` e a fila retenta.
+     */
+    private const ESPERA_MAX_MS = 32_000;
 
     public function __construct(
         private SerproClient $client,
@@ -57,40 +70,83 @@ final class SerproSitfisSequence
         string $contribuinte,
         string $procuradorToken,
     ): string {
-        $result = $this->recorder->record(
-            $runId,
-            $accountId,
-            $clientId,
-            'SITFIS',
-            'SOLICITARPROTOCOLO91',
-            fn (): SerproResult => $this->client->call(
-                'SITFIS',
-                'SOLICITARPROTOCOLO91',
-                [],
-                $autor,
-                $contribuinte,
-                $procuradorToken,
-            ),
-        );
+        $ultimaExcecao = null;
 
-        $dados = is_array($result->dados()) ? $result->dados() : [];
-        $protocolo = trim((string) ($dados['protocoloRelatorio'] ?? ''));
+        // `SOLICITARPROTOCOLO91` pode devolver 503 com `tempoEspera` quando o
+        // provedor ainda está gerando o relatório — isso não é falha, é a
+        // fila do SERPRO. Respeitamos o tempo e tentamos de novo.
+        for ($tentativa = 0; $tentativa < self::MAX_TENTATIVAS_PROTOCOLO; $tentativa++) {
+            try {
+                $result = $this->recorder->record(
+                    $runId,
+                    $accountId,
+                    $clientId,
+                    'SITFIS',
+                    'SOLICITARPROTOCOLO91',
+                    fn (): SerproResult => $this->client->call(
+                        'SITFIS',
+                        'SOLICITARPROTOCOLO91',
+                        [],
+                        $autor,
+                        $contribuinte,
+                        $procuradorToken,
+                    ),
+                );
 
-        if ($protocolo === '') {
-            throw new SerproException(
-                'O Integra Contador não devolveu protocolo do relatório fiscal.',
-                SerproFailure::DoNotRetry,
-                $result->status(),
-                $result->mensagens()[0]['codigo'] ?? null,
-                $result->responseId(),
-                $result->requestTag(),
-            );
+                $dados = is_array($result->dados()) ? $result->dados() : [];
+                $protocolo = trim((string) ($dados['protocoloRelatorio'] ?? ''));
+
+                // Quando o provedor responde 503 + `Sucesso-Sitfis-SC01` ou
+                // `Aviso-Sitfis-AV03`, o relatório está pronto/em fila — o
+                // envelope vem com `tempoEspera` em ms e o protocolo quando
+                // já alocado. Respeitamos a espera e tentamos de novo.
+                if ($protocolo === '') {
+                    $espera = (int) ($dados['tempoEspera'] ?? 0);
+
+                    if ($espera > 0 || $result->status() === 503) {
+                        $this->aguardarMs($espera > 0 ? $espera : self::ESPERA_MAX_MS);
+
+                        continue;
+                    }
+
+                    throw new SerproException(
+                        'O Integra Contador não devolveu protocolo do relatório fiscal.',
+                        SerproFailure::DoNotRetry,
+                        $result->status(),
+                        $result->mensagens()[0]['codigo'] ?? null,
+                        $result->responseId(),
+                        $result->requestTag(),
+                    );
+                }
+
+                $espera = (int) ($dados['tempoEspera'] ?? 0);
+                $this->aguardarMs($espera > 0 ? $espera : 1_000);
+
+                return $protocolo;
+            } catch (SerproException $exception) {
+                // 503 aqui é "estou gerando, volta daqui a tempoEspera ms" —
+                // respeitamos a espera e tentamos de novo.
+                if ($exception->status === 503) {
+                    $ultimaExcecao = $exception;
+                    $this->aguardarMs(self::ESPERA_MAX_MS);
+
+                    continue;
+                }
+
+                // Outros erros sobem imediatamente (401, 403, timeout...).
+                throw $exception;
+            }
         }
 
-        $espera = (int) ($dados['tempoEspera'] ?? 0);
-        $this->aguardarMs($espera > 0 ? $espera : 1_000);
+        if ($ultimaExcecao !== null) {
+            throw $ultimaExcecao;
+        }
 
-        return $protocolo;
+        throw new SerproException(
+            'O SITFIS não respondeu com protocolo dentro do limite de tentativas.',
+            SerproFailure::Upstream,
+            503,
+        );
     }
 
     private function emitirRelatorio(
@@ -116,7 +172,10 @@ final class SerproSitfisSequence
                     $tentativa + 2,
                 );
             } catch (SerproException $exception) {
-                if (in_array($exception->status, [204, 304], true)) {
+                // 202/204/304/503 aqui são todos "o relatório ainda não está
+                // pronto" — o provedor pede pra esperar o `tempoEspera` e
+                // bater de novo, não é falha.
+                if (in_array($exception->status, [202, 204, 304, 503], true)) {
                     $this->aguardarMs(self::ESPERA_MAX_MS);
                     $ultimaExcecao = $exception;
 
