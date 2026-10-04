@@ -276,6 +276,8 @@ class SerproContractFixtureTest extends TestCase
             ['pgmei-consultar-divida-ativa.json'],
             ['defis-consultar-declaracoes.json'],
             ['dte-consultar-situacao.json'],
+            ['pagamentos-consulta.json'],
+            ['parcsn-pedidos-parcelamento.json'],
             ['sitfis-solicitar-protocolo.json'],
             ['sitfis-relatorio.json'],
             ['caixapostal-detalhar-mensagem.json'],
