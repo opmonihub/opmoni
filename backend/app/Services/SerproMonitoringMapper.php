@@ -204,6 +204,31 @@ final class SerproMonitoringMapper
             ];
         }
 
+        if ($idServico === 'CONSXMLDECLARACAO38') {
+            $fields = is_array($directProjection['fields'] ?? null) ? $directProjection['fields'] : [];
+            $periodos = is_array($directProjection['periods'] ?? null) ? $directProjection['periods'] : [];
+            $dueOn = $directProjection['due_on'] ?? null;
+            $cause = $directProjection['cause'] ?? null;
+
+            return [
+                'fgts-digital' => [
+                    'fields' => ['valor_apurado_1718' => $fields['valor_apurado_1718'] ?? null],
+                    'due_on' => $dueOn,
+                    'periods' => $periodos,
+                    'cause' => $cause,
+                ],
+                'declaracoes/dctfweb' => [
+                    'fields' => [
+                        'gi_declaracao' => $fields['gi_declaracao'] ?? null,
+                        'receitas' => $fields['receitas'] ?? null,
+                    ],
+                    'due_on' => $dueOn,
+                    'periods' => $periodos,
+                    'cause' => $cause,
+                ],
+            ];
+        }
+
         return [];
     }
 
@@ -1122,13 +1147,13 @@ final class SerproMonitoringMapper
      */
     private function textoSitfis(string $texto): array
     {
-        $certidao = $this->captura($texto, '/Certid[aã]o(?:\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\-/]{8,}[0-9X])/iu')
-            ?? $this->captura($texto, '/N[úu]mero(?:\s+da\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\-/]{8,}[0-9X])/iu');
+        $certidao = $this->captura($texto, '#Certid[aã]o(?:\\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\\-/]{8,}[0-9X])#iu')
+            ?? $this->captura($texto, '#N[úu]mero(?:\\s+da\\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\\-/]{8,}[0-9X])#iu');
 
-        $emissao = $this->dataBr($this->captura($texto, '/Emiss[aã]o[^0-9]{0,20}(\d{2}\/\d{2}\/\d{4})/iu'));
-        $validade = $this->dataBr($this->captura($texto, '/Validade[^0-9]{0,20}(\d{2}\/\d{2}\/\d{4})/iu'));
+        $emissao = $this->dataBr($this->captura($texto, '#Emiss[aã]o[^0-9]{0,20}(\\d{2}/\\d{2}/\\d{4})#iu'));
+        $validade = $this->dataBr($this->captura($texto, '#Validade[^0-9]{0,20}(\\d{2}/\\d{2}/\\d{4})#iu'));
 
-        $situacao = $this->captura($texto, '/Situa[cç][aã]o\s+Fiscal[^A-Za-zÀ-ú]{0,10}([A-Za-zÀ-ú\s]{3,40})/iu');
+        $situacao = $this->captura($texto, '#Situa[cç][aã]o\\s+Fiscal[^A-Za-zÀ-ú]{0,10}([A-Za-zÀ-ú\\s]{3,40})#iu');
         $situacao = $situacao === null ? null : trim(preg_replace('/\s+/u', ' ', $situacao) ?? '');
 
         return [
