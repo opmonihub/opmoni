@@ -57,7 +57,7 @@ class SerproSyncProjectionTest extends TestCase
 
     public function test_a_caixa_postal_sai_com_os_parametros_documentados_e_projeta_as_mensagens(): void
     {
-        [$account, $client, $run] = $this->cenarioChamavel();
+        [$account, $client, $run] = $this->cenarioChamavel(['caixas-postais/e-cac']);
         Http::fake($this->fakesDeSucesso());
 
         $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
@@ -157,7 +157,7 @@ class SerproSyncProjectionTest extends TestCase
 
     public function test_a_segunda_execucao_renova_o_carimbo_no_lugar_e_preserva_o_estado(): void
     {
-        [$account, $client, $run] = $this->cenarioChamavel();
+        [$account, $client, $run] = $this->cenarioChamavel(['caixas-postais/e-cac']);
         Http::fake($this->fakesDeSucesso());
 
         $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
@@ -172,7 +172,10 @@ class SerproSyncProjectionTest extends TestCase
         // uma projeção nova reescreve os dados e deixa o estado em pé.
         $monitoring->forceFill(['state' => 'encerrado'])->save();
 
-        $outraExecucao = SerproSyncRun::factory()->create(['account_id' => $account->getKey()]);
+        $outraExecucao = SerproSyncRun::factory()->create([
+            'account_id' => $account->getKey(),
+            'obligations' => ['caixas-postais/e-cac'],
+        ]);
         SerproSyncRunItem::factory()->create([
             'account_id' => $account->getKey(),
             'run_id' => $outraExecucao->getKey(),
@@ -197,7 +200,7 @@ class SerproSyncProjectionTest extends TestCase
 
     public function test_a_resposta_com_dado_limpa_a_causa_de_inelegibilidade_anterior(): void
     {
-        [$account, $client, $run] = $this->cenarioChamavel();
+        [$account, $client, $run] = $this->cenarioChamavel(['caixas-postais/e-cac']);
         Http::fake($this->fakesDeSucesso());
 
         // A linha nasceu numa execução em que a outorga faltava; a execução
@@ -344,9 +347,10 @@ class SerproSyncProjectionTest extends TestCase
      * Conta pronta para a fila: integração ligada, certificado, termo
      * vigente, token em cache e um PJ com item aberto na execução.
      *
+     * @param  list<string>|null  $obrigacoes  Escopo da run; `null` sincroniza todas as habilitadas.
      * @return array{0: Account, 1: Client, 2: SerproSyncRun}
      */
-    private function cenarioChamavel(): array
+    private function cenarioChamavel(?array $obrigacoes = null): array
     {
         $account = Account::factory()->create(['settings' => ['serpro_enabled' => true]]);
 
@@ -383,7 +387,10 @@ class SerproSyncProjectionTest extends TestCase
 
         Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
-        $run = SerproSyncRun::factory()->create(['account_id' => $account->getKey()]);
+        $run = SerproSyncRun::factory()->create([
+            'account_id' => $account->getKey(),
+            'obligations' => $obrigacoes,
+        ]);
         SerproSyncRunItem::factory()->create([
             'account_id' => $account->getKey(),
             'run_id' => $run->getKey(),
@@ -471,9 +478,15 @@ class SerproSyncProjectionTest extends TestCase
             '*/integra-contador/v1/Consultar' => function ($request) use ($oracle, $caixaPostal) {
                 $servico = $request->data()['pedidoDados']['idServico'] ?? '';
 
+                $dados = match ($servico) {
+                    'OBTERPROCURACAO41' => $oracle,
+                    'PAGAMENTOS71' => '[]',
+                    default => $caixaPostal,
+                };
+
                 return Http::response([
                     'status' => 200,
-                    'dados' => $servico === 'OBTERPROCURACAO41' ? $oracle : $caixaPostal,
+                    'dados' => $dados,
                     'mensagens' => [['codigo' => 'Sucesso', 'texto' => 'Requisição efetuada com sucesso']],
                     'responseId' => 'resp-'.$servico,
                 ]);

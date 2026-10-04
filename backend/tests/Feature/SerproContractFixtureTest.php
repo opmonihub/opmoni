@@ -34,6 +34,8 @@ class SerproContractFixtureTest extends TestCase
         return [
             ['application-error.json'],
             ['procuracao-familias.json'],
+            ['pagamentos-consulta.json'],
+            ['parcsn-pedidos-parcelamento.json'],
         ];
     }
 
@@ -57,6 +59,8 @@ class SerproContractFixtureTest extends TestCase
             ['sitfis-solicitar-protocolo.json', 'SOLICITARPROTOCOLO91'],
             ['sitfis-relatorio.json', 'RELATORIOSITFIS92'],
             ['caixapostal-detalhar-mensagem.json', 'MSGDETALHAMENTO62'],
+            ['pagamentos-consulta.json', 'PAGAMENTOS71'],
+            ['parcsn-pedidos-parcelamento.json', 'PEDIDOSPARC163'],
         ];
     }
 

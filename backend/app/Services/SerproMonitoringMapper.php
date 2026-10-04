@@ -106,55 +106,53 @@ final class SerproMonitoringMapper
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
         $periodosExistentes = is_array($existente['periods'] ?? null) ? $existente['periods'] : [];
-        $periodosNovos = is_array($nova['periods'] ?? null) ? $nova['periods'] : [];
+        $periodosNova = is_array($nova['periods'] ?? null) ? $nova['periods'] : [];
 
-        $modalidadeNova = $nova['fields']['modalidade'] ?? null;
-        $indiceInsercao = count($periodosExistentes);
+        $modalidadesNova = [];
+        foreach ($periodosNova as $periodo) {
+            if (! is_array($periodo)) {
+                continue;
+            }
 
-        if (is_string($modalidadeNova) && $modalidadeNova !== '') {
-            $prefixo = $modalidadeNova.'/';
-            $periodosFiltrados = [];
-            $substituindo = false;
+            $prefixo = $this->prefixoModalidadePeriodo($periodo);
+            if ($prefixo !== null) {
+                $modalidadesNova[$prefixo] = true;
+            }
+        }
+
+        $periodos = $periodosExistentes;
+        $inserir = array_values(array_filter($periodosNova, 'is_array'));
+
+        if ($modalidadesNova !== []) {
+            $ondeInserir = null;
+            $periodos = [];
 
             foreach ($periodosExistentes as $periodo) {
                 if (! is_array($periodo)) {
                     continue;
                 }
 
-                if (str_starts_with((string) ($periodo['period'] ?? ''), $prefixo)) {
-                    if (! $substituindo) {
-                        $indiceInsercao = count($periodosFiltrados);
-                        $substituindo = true;
+                $prefixo = $this->prefixoModalidadePeriodo($periodo);
+                if ($prefixo !== null && isset($modalidadesNova[$prefixo])) {
+                    if ($ondeInserir === null) {
+                        $ondeInserir = count($periodos);
                     }
 
                     continue;
                 }
 
-                $periodosFiltrados[] = $periodo;
+                $periodos[] = $periodo;
             }
 
-            $periodosExistentes = $periodosFiltrados;
+            array_splice($periodos, $ondeInserir ?? count($periodos), 0, $inserir);
+        } else {
+            $periodos = [...$periodos, ...$inserir];
         }
 
-        $periodos = $periodosExistentes;
-        array_splice($periodos, $indiceInsercao, 0, $periodosNovos);
-
-        $modalidades = [];
-        foreach ($periodos as $periodo) {
-            if (! is_array($periodo)) {
-                continue;
-            }
-
-            $period = (string) ($periodo['period'] ?? '');
-            if (! str_contains($period, '/')) {
-                continue;
-            }
-
-            $modalidade = explode('/', $period, 2)[0];
-            if ($modalidade !== '' && ! in_array($modalidade, $modalidades, true)) {
-                $modalidades[] = $modalidade;
-            }
-        }
+        $modalidades = array_values(array_unique(array_filter([
+            $existente['fields']['modalidade'] ?? null,
+            $nova['fields']['modalidade'] ?? null,
+        ], fn ($valor): bool => $valor !== null && $valor !== '')));
 
         $consolidacao = $nova['fields']['consolidacao'] ?? null;
         if ($consolidacao === null) {
@@ -729,6 +727,19 @@ final class SerproMonitoringMapper
             'PEDIDOSPARC193' => 'RELP-SN',
             default => 'Parcelamento',
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $periodo
+     */
+    private function prefixoModalidadePeriodo(array $periodo): ?string
+    {
+        $rotulo = $periodo['period'] ?? null;
+        if (! is_string($rotulo) || ! str_contains($rotulo, '/')) {
+            return null;
+        }
+
+        return explode('/', $rotulo, 2)[0];
     }
 
     private function caixaPostal(mixed $dados): array
