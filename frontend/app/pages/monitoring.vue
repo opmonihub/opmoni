@@ -6,15 +6,12 @@ import { monitoringActions } from '~/utils/monitoringPresentation'
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const { canManageClients } = useAuth()
-
 /**
  * The navbar owns the page actions; the child page owns the work. A counter
  * rather than a boolean, so two clicks are two requests, and the child watches
  * it without `immediate` — a value left over from another page never fires.
  */
 const refreshRequest = useState('monitoring-refresh', () => 0)
-const associateRequest = useState('monitoring-associate', () => 0)
 const refreshing = useState('monitoring-refreshing', () => false)
 
 const listing = computed(() => parseMonitoringSlug(route.params.slug))
@@ -28,7 +25,6 @@ const currentGroup = computed(() => {
 const title = computed(() => currentGroup.value?.label ?? 'Monitoramento')
 
 const unserved = computed(() => !!listing.value && monitoringObligationUnserved(listing.value.obligation))
-const canAssociate = computed(() => canManageClients.value && !!listing.value && !unserved.value)
 const canRefresh = computed(() => !unserved.value)
 
 const tabs = computed(() => monitoringTabs(route.path))
@@ -70,36 +66,10 @@ const obligationTabs = computed<NavigationMenuItem[][] | null>(() => {
             icon="i-lucide-refresh-cw"
             color="neutral"
             variant="ghost"
+            size="sm"
             :loading="refreshing"
             :aria-label="monitoringActions.refresh"
-            class="sm:hidden"
             @click="refreshRequest++"
-          />
-          <UButton
-            v-if="canRefresh"
-            :label="monitoringActions.refresh"
-            icon="i-lucide-refresh-cw"
-            color="neutral"
-            variant="outline"
-            :loading="refreshing"
-            class="hidden sm:inline-flex"
-            @click="refreshRequest++"
-          />
-          <UButton
-            v-if="canAssociate"
-            icon="i-lucide-user-plus"
-            color="primary"
-            :aria-label="monitoringActions.associate"
-            class="sm:hidden"
-            @click="associateRequest++"
-          />
-          <UButton
-            v-if="canAssociate"
-            :label="monitoringActions.associate"
-            icon="i-lucide-user-plus"
-            color="primary"
-            class="hidden sm:inline-flex"
-            @click="associateRequest++"
           />
         </template>
       </UDashboardNavbar>

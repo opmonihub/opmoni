@@ -114,7 +114,8 @@ const closedHint = 'Fora dos quatro contadores e do total.'
     </template>
 
     <template #right>
-      <div class="flex items-center gap-1.5">
+      <div class="flex shrink-0 items-center gap-1.5">
+        <slot name="actions" />
         <UTooltip v-if="progressLabel" :text="progressSentence ?? undefined">
           <UBadge
             size="sm"
@@ -140,7 +141,10 @@ const closedHint = 'Fora dos quatro contadores e do total.'
   </UDashboardToolbar>
 
   <div v-else class="flex min-w-0 flex-col gap-2 md:hidden">
-    <DataTableStatusChips :items="chips" :active="active" />
+    <div class="flex min-w-0 items-center gap-2">
+      <DataTableStatusChips class="min-w-0 flex-1" :items="chips" :active="active" />
+      <slot name="actions" />
+    </div>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
       <span v-if="progressSentence" class="inline-flex items-center gap-1">
         <UIcon :name="monitoringProgressPresentation.icon" class="size-3.5 shrink-0" />

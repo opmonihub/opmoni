@@ -34,6 +34,7 @@ import AssociateClientsModal from '~/components/monitoring/AssociateClientsModal
 import ManualSearchModal from '~/components/monitoring/ManualSearchModal.vue'
 import MessageDetail from '~/components/monitoring/MessageDetail.vue'
 import MessageStubSummary from '~/components/monitoring/MessageStubSummary.vue'
+import ObligationActionMenu from '~/components/monitoring/ObligationActionMenu.vue'
 import ObligationCounters from '~/components/monitoring/ObligationCounters.vue'
 
 const props = defineProps<{
@@ -69,12 +70,6 @@ function openSearch() {
   searchPreselected.value = selectedClientIds.value
   searchOpen.value = true
 }
-
-const searchLabel = computed(() =>
-  selectedClientIds.value.length
-    ? `${monitoringActions.searchDocuments} (${selectedClientIds.value.length})`
-    : monitoringActions.searchDocuments
-)
 
 const search = ref('')
 /** The house debounce is 350 ms — never a request per keystroke. */
@@ -475,7 +470,15 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
       :obligation="obligation"
       :summary="summary"
       :situacao="situacao"
-    />
+    >
+      <template v-if="canManageClients && !isUnserved" #actions>
+        <ObligationActionMenu
+          :selected-count="selectedClientIds.length"
+          @search="openSearch"
+          @associate="associateOpen = true"
+        />
+      </template>
+    </ObligationCounters>
 
     <div :class="sheetBodyClass">
       <ObligationCounters
@@ -484,7 +487,16 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
         :obligation="obligation"
         :summary="summary"
         :situacao="situacao"
-      />
+      >
+        <template v-if="canManageClients && !isUnserved" #actions>
+          <ObligationActionMenu
+            compact
+            :selected-count="selectedClientIds.length"
+            @search="openSearch"
+            @associate="associateOpen = true"
+          />
+        </template>
+      </ObligationCounters>
 
       <!--
         The provenance of a `derived` obligation, above the readings it qualifies.
@@ -565,15 +577,6 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
             :disabled="isLoading"
           />
           <template #trailing>
-            <UButton
-              v-if="canManageClients && !isUnserved"
-              :label="searchLabel"
-              icon="i-lucide-file-search"
-              color="primary"
-              variant="outline"
-              :aria-label="monitoringActions.searchDocuments"
-              @click="openSearch"
-            />
             <DataTableColumnMenu
               v-model="columnVisibility"
               :columns="hideableColumns"

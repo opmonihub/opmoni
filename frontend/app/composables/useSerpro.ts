@@ -11,11 +11,13 @@ import type {
   SerproConnectionMetadata,
   SerproConnectionPayload,
   SerproManualSearchQuota,
+  SerproObligationScheduleRow,
   SerproScheduleMap,
   SerproSearchDocumentsPayload,
   SerproSyncRun,
   SerproSyncRunDetail
 } from '~/types/serpro'
+import { scheduleMapFromRows, scheduleRowsFromMap } from '~/utils/serproSchedules'
 import { queryOf } from './useApiQuery'
 
 export interface ObligationListParams {
