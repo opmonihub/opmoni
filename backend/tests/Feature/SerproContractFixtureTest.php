@@ -160,6 +160,31 @@ class SerproContractFixtureTest extends TestCase
     }
 
     /**
+     * Resposta observada em produção: o código vem entre colchetes e o texto
+     * genérico de sucesso não descreve a recusa — só o código normalizado
+     * classifica como reenvio de termo.
+     */
+    public function test_o_403_gravado_com_colchetes_classifica_reenvio_de_termo(): void
+    {
+        $payload = $this->fixture('403-acesso-negado-020.json');
+
+        $this->assertStringContainsString('observada em produção', $payload['_provenance']);
+
+        $result = (new SerproEnvelope)->parse($payload);
+
+        $this->assertSame(403, $result['status']);
+        $this->assertSame('[AcessoNegado-ICGERENCIADOR-020]', $result['mensagens'][0]['codigo']);
+
+        $codigoNormalizado = SerproException::normalizeProviderCode($result['mensagens'][0]['codigo']);
+
+        $this->assertSame('AcessoNegado-ICGERENCIADOR-020', $codigoNormalizado);
+        $this->assertSame(
+            SerproFailure::ResubmitTerm,
+            SerproException::classify(403, $result['mensagens'][0]['codigo']),
+        );
+    }
+
+    /**
      * Fixture entra no repositório e sai dali para sempre, e o lugar mais fácil
      * de vazar um segredo é a própria fixture. A regra é verificada, não pedida:
      * documento de pessoa e portador não entram, e o único documento aceito é o
@@ -280,6 +305,7 @@ class SerproContractFixtureTest extends TestCase
             ['sitfis-relatorio.json'],
             ['caixapostal-detalhar-mensagem.json'],
             ['gateway-429.json'],
+            ['403-acesso-negado-020.json'],
         ];
     }
 

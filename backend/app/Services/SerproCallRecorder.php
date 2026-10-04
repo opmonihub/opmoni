@@ -55,7 +55,11 @@ final class SerproCallRecorder
                 'status' => $exception->failure,
                 'provider_code' => $exception->providerCode,
                 'response_id' => $exception->responseId,
-                'request_tag' => $exception->requestTag,
+                // Uma exceção que nasce antes da requisição — conexão
+                // ausente, serviço fora do mapa — não tem tag ainda: a
+                // coluna é `not null`, e a tentativa continua rastreável
+                // por uma tag local que nenhum gateway confunde com a dele.
+                'request_tag' => $exception->requestTag ?? '00000000000000000000000000000000',
                 'messages' => null,
             ], $started);
 

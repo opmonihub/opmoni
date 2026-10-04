@@ -20,6 +20,7 @@ class SerproFailureTest extends TestCase
             [403, 'AcessoNegado-ICGERENCIADOR-013', SerproFailure::Reauthenticate],
             [403, 'AcessoNegado-ICGERENCIADOR-041', SerproFailure::Reauthenticate],
             [403, 'AcessoNegado-ICGERENCIADOR-020', SerproFailure::ResubmitTerm],
+            [403, '[AcessoNegado-ICGERENCIADOR-020]', SerproFailure::ResubmitTerm],
             [403, 'AcessoNegado-ICGERENCIADOR-042', SerproFailure::ResubmitTerm],
             [403, 'AcessoNegado-ICGERENCIADOR-016', SerproFailure::DoNotRetry],
             [403, 'AcessoNegado-ICGERENCIADOR-019', SerproFailure::DoNotRetry],

@@ -190,10 +190,16 @@ final class SerproClient
                 ))
                 ->timeout((int) config('integra-contador.timeout', 25)));
         } catch (ConnectionException) {
+            // A tag existe — foi construída em `call()` e viajou no cabeçalho
+            // — e a exceção a carrega para o `serpro_calls` da tentativa
+            // continuar atrelado ao que o gateway recebeu.
             throw new SerproException(
                 'O Integra Contador está indisponível.',
                 SerproFailure::Upstream,
                 503,
+                null,
+                null,
+                $tag,
             );
         }
     }
@@ -255,7 +261,7 @@ final class SerproClient
         $gateway = $payload['code'] ?? null;
 
         if ($codigo !== '') {
-            return $codigo;
+            return SerproException::normalizeProviderCode($codigo);
         }
 
         return is_scalar($gateway) ? (string) $gateway : '';
@@ -276,9 +282,33 @@ final class SerproClient
      */
     private function failureMessage(array $mensagens, SerproFailure $failure, array $payload): string
     {
-        $texto = array_key_exists('status', $payload) ? ($mensagens[0]['texto'] ?? '') : '';
+        if (! array_key_exists('status', $payload)) {
+            return $failure->label();
+        }
 
-        return $texto !== '' ? $texto : $failure->label();
+        $texto = $mensagens[0]['texto'] ?? '';
+        $codigo = $mensagens[0]['codigo'] ?? '';
+
+        if ($texto !== '' && ! $this->textoDeSucessoGenerico($texto, $codigo)) {
+            return $texto;
+        }
+
+        return $failure->label();
+    }
+
+    /**
+     * Em alguns erros o envelope ainda traz a frase de sucesso genérica — ou só
+     * ela — e subir isso como mensagem da exceção confunde operador e log.
+     */
+    private function textoDeSucessoGenerico(string $texto, string $codigo): bool
+    {
+        if (stripos($texto, 'efetuada com sucesso') !== false) {
+            return true;
+        }
+
+        $codigoNormalizado = SerproException::normalizeProviderCode($codigo);
+
+        return str_starts_with($codigoNormalizado, 'Sucesso');
     }
 
     private function baseUrl(): string

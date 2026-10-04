@@ -309,6 +309,46 @@ class SerproClientTest extends TestCase
         }
     }
 
+    /**
+     * Produção devolveu `403` com código entre colchetes e a frase genérica de
+     * sucesso no `texto`; a exceção precisa classificar reenvio de termo e não
+     * repetir a frase de sucesso como mensagem.
+     */
+    public function test_um_403_com_colchetes_no_codigo_classifica_reenvio_de_termo(): void
+    {
+        $this->connection();
+        $this->fakeTokens();
+        $this->cacheTokenPair();
+
+        Http::fake([
+            'gateway.apiserpro.serpro.gov.br/*' => Http::response([
+                'status' => 403,
+                'dados' => null,
+                'mensagens' => [[
+                    'codigo' => '[AcessoNegado-ICGERENCIADOR-020]',
+                    'texto' => 'A requisição foi efetuada com sucesso.',
+                ]],
+            ], 403),
+        ]);
+
+        try {
+            resolve(SerproClient::class)->call(
+                'SITFIS',
+                'SOLICITARPROTOCOLO91',
+                [],
+                '33683111000107',
+                '33683111000875',
+            );
+
+            $this->fail('Um termo vencido deve levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::ResubmitTerm, $exception->failure);
+            $this->assertSame('AcessoNegado-ICGERENCIADOR-020', $exception->providerCode);
+            $this->assertSame(SerproFailure::ResubmitTerm->label(), $exception->getMessage());
+            $this->assertStringNotContainsString('efetuada com sucesso', $exception->getMessage());
+        }
+    }
+
     public function test_a_missing_procuracao_is_never_retried(): void
     {
         $this->connection();

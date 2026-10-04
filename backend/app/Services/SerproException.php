@@ -21,8 +21,29 @@ final class SerproException extends RuntimeException
         parent::__construct($message);
     }
 
+    /**
+     * O provedor envia alguns códigos entre colchetes literais; as listas de
+     * classificação usam o mesmo identificador sem eles.
+     */
+    public static function normalizeProviderCode(string $providerCode): string
+    {
+        $normalizado = trim($providerCode);
+
+        while (str_starts_with($normalizado, '[')) {
+            $normalizado = substr($normalizado, 1);
+        }
+
+        while (str_ends_with($normalizado, ']')) {
+            $normalizado = substr($normalizado, 0, -1);
+        }
+
+        return $normalizado;
+    }
+
     public static function classify(int $status, string $providerCode): SerproFailure
     {
+        $providerCode = self::normalizeProviderCode($providerCode);
+
         if ($status === 200 || $status === 202) {
             return SerproFailure::Success;
         }
