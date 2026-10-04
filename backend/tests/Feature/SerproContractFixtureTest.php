@@ -278,6 +278,8 @@ class SerproContractFixtureTest extends TestCase
             ['pagamentos-consulta.json'],
             ['parcsn-pedidos-parcelamento.json'],
             ['gateway-429.json'],
+            ['parcsn-pedidos-parcelamento.json'],
+            ['pagamentos-consulta.json'],
         ];
     }
 
