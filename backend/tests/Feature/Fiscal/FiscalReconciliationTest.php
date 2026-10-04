@@ -103,6 +103,13 @@ class FiscalReconciliationTest extends TestCase
 
         Storage::fake('fiscal');
         Http::preventStrayRequests();
+
+        // Vários testes assertam o gate desligado e ligam dentro do caso: com
+        // `*_ENABLED` ligado no `.env` do canário o `assertFalse` inicial já
+        // quebrava. O gate é da instalação, não do caso — desligado aqui.
+        config(['fiscal.nfse_enabled' => false]);
+        config(['fiscal.manifestacao_enabled' => false]);
+        config(['fiscal.cte_enabled' => false]);
     }
 
     public function test_recupera_a_posicao_pendente_e_encerra_a_lacuna(): void

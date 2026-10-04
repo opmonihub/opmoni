@@ -36,6 +36,14 @@ class CaptureOnCertificateUploadTest extends TestCase
         Storage::fake('certificates');
         Queue::fake();
         Http::preventStrayRequests();
+
+        // Os testes fixam o contrato de `nfe_distribuicao` sozinha: com os
+        // gates ligados no `.env` do canário a fonte `nfse_adn` também
+        // despacharia e a lista de fontes divergiria. O gate é da instalação,
+        // não do caso — desligado aqui para o `.env` não vazar no assert.
+        config(['fiscal.nfse_enabled' => false]);
+        config(['fiscal.manifestacao_enabled' => false]);
+        config(['fiscal.cte_enabled' => false]);
     }
 
     protected function tearDown(): void
