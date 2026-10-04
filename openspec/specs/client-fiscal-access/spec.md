@@ -61,6 +61,17 @@ The system SHALL derive the certificate state as not registered, valid, expiring
 - **WHEN** the provider has not confirmed, as established, any authorized service family that the client's procuração e-CAC depends on
 - **THEN** the procuração state is returned as not registered, even if the client once had procuração data typed by a member
 
+### Requirement: Procuração observada sem revalidação automática
+The system SHALL NOT re-query a client's authorized service families on a schedule once the provider has confirmed them: eligibility reads the recorded families and their expiration dates without the network, and the billable consultation is reserved for the client with no recorded family. The revocation of a procuração in the e-CAC SHALL surface through the provider's access-denied refusal during a synchronization or a manual search, which marks the accepted families as rejected at that moment; a new paid reading triggered by an operator is the way a lapsed family is learned of again.
+
+#### Scenario: Família confirmada não é reconsultada
+- **WHEN** a synchronization, a manual search or the daily routine reaches a client whose authorized service families are already recorded
+- **THEN** no procuração consultation is issued for that client, and eligibility is decided from the recorded families alone
+
+#### Scenario: Cancelamento chega pela recusa do provedor
+- **WHEN** a synchronization or a manual search receives the provider's access-denied refusal for an obligation whose required families had been accepted as established
+- **THEN** the recorded families of the accepted alternative are marked as rejected, the monitoring line names the missing procuração, and the next request for the same family is refused without the network
+
 ### Requirement: Remoção do cliente elimina segredos ativos
 The system SHALL delete active encrypted certificate contents when a client is logically deleted while retaining only non-secret metadata required for history and support auditing.
 

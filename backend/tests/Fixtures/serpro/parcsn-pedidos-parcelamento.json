@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "mensagens": [
+    {
+      "codigo": "[Sucesso-PARCSN]",
+      "texto": "Requisição efetuada com sucesso."
+    }
+  ],
+  "dados": "{\"parcelamentos\":[{\"numero\":1,\"dataDoPedido\":20160211,\"situacao\":\"Encerrado a Pedido do Contribuinte\",\"dataDaSituacao\":20170125},{\"numero\":6,\"dataDoPedido\":20230131,\"situacao\":\"Em parcelamento\",\"dataDaSituacao\":20230209}]}"
+}

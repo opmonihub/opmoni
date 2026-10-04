@@ -13,6 +13,7 @@ import type { ObligationListParams } from '~/composables/useSerpro'
 import type { MonitoringClient, MonitoringMessageStub, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
 import { monitoringObligationUnserved, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
+  formatMonitoringConsultedAt,
   formatMonitoringDueOn,
   isMonitoringSlipColumn,
   latestSlipFor,
@@ -24,6 +25,7 @@ import {
   monitoringMissingValue,
   monitoringProvenance,
   monitoringProvenanceLabels,
+  monitoringSituacaoMissingPresentation,
   monitoringSituacaoPresentation,
   monitoringSlipColumnValue,
   monitoringSlipMissingPresentation,
@@ -87,6 +89,7 @@ function emptySummary(obligation: MonitoringObligation): MonitoringObligationSum
     pendencias: 0,
     atencao: 0,
     encerrado: 0,
+    nao_consultadas: 0,
     progress: null,
     current_page: 1,
     attention_reasons: []
@@ -365,8 +368,14 @@ function detailFacts(row: MonitoringClient): MetaListItem[] {
 
 function fieldValue(row: MonitoringClient, id: string) {
   if (id === 'name') return row.name
-  if (id === 'situacao') return monitoringSituacaoPresentation[row.situacao].label
+  if (id === 'situacao') return row.situacao === null
+    ? monitoringSituacaoMissingPresentation.label
+    : monitoringSituacaoPresentation[row.situacao].label
   if (id === 'due_on') return formatMonitoringDueOn(row.due_on)
+  // The last consultation is the row's own stamp (`source_at`), not a provider
+  // field: read from the row and never from `fields`, or the cell would
+  // resolve to a key the backend never populates.
+  if (id === 'ultima_consulta') return formatMonitoringConsultedAt(row.consulted_at)
   // The guide columns come from the periods already synchronized for the row,
   // not from `fields`: an opaque provider string could not say which period it
   // belonged to or whether it was paid. Handled before the `fields` lookup, or
@@ -379,12 +388,12 @@ function fieldValue(row: MonitoringClient, id: string) {
 /**
  * The row's situation, refined by its named cause when it is `atencao`.
  *
- * The cause's colour and icon too, not the aggregate's. A `sem_declaracao` row
- * is an `atencao` counter, so the situation's own colour is `error` — while the
- * label resolves the cause and says `warning`. One severity per row: whichever
- * of the two the office reads, they have to agree.
+ * A row the provider never answered has no situation at all: the badge is the
+ * em dash, and "Última consulta" is what says why. The cause's colour and icon
+ * too, not the aggregate's — one severity per row, whichever the office reads.
  */
 function situacaoPresentation(row: MonitoringClient) {
+  if (row.situacao === null) return monitoringSituacaoMissingPresentation
   if (row.situacao !== 'atencao' || !row.cause) return monitoringSituacaoPresentation[row.situacao]
   const reason = summary.value.attention_reasons.find(item => item.code === row.cause)
   return monitoringAttentionReasonPresentation(row.cause, reason?.label)

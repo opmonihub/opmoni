@@ -3,6 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Account;
+use App\Models\AccountCertificate;
+use App\Models\SerproAuthorizationTerm;
+use App\Services\SerproAccountEnablement;
 use App\Services\SerproException;
 use App\Services\SerproTermManager;
 use App\Tenant\CurrentTenant;
@@ -11,8 +14,10 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Renova o termo de autorização de uma conta, reenviando o documento que já
- * está assinado.
+ * Renova o termo de autorização de uma conta reenviando o documento que já
+ * está assinado — e, para a conta que ainda não tem termo que autorize o
+ * gateway, **emite**: é a segunda chance da emissão que o upload do e-CNPJ
+ * dispara, coberta pela mesma agenda diária.
  *
  * **A conta viaja no job, e a razão é a mesma da emissão:** o `queue:work` é
  * um processo longo e o `CurrentTenant` é um singleton mutável que nunca é
@@ -24,10 +29,10 @@ use Illuminate\Support\Facades\Log;
  * explícito sem consultá-lo.
  *
  * **A conta que saiu da carteira entre o despacho e a execução é nada, não
- * erro.** A agenda dispara para toda conta que tem termo, e uma conta apagada
- * no intervalo não é uma falha de renovação: é uma conta que não existe mais.
- * É a mesma razão de `CaptureFiscalDocumentsJob` não tratar cliente
- * desaparecido como exceção.
+ * erro.** A agenda dispara para toda conta que tem termo ou que está
+ * habilitada, e uma conta apagada no intervalo não é uma falha de renovação:
+ * é uma conta que não existe mais. É a mesma razão de
+ * `CaptureFiscalDocumentsJob` não tratar cliente desaparecido como exceção.
  */
 final class RenewSerproTermsJob implements ShouldQueue
 {
@@ -55,7 +60,10 @@ final class RenewSerproTermsJob implements ShouldQueue
     public function __construct(public int $accountId) {}
 
     /**
-     * @throws SerproException
+     * A emissão vem antes da renovação, e é a ordem que decide: quem não tem
+     * termo que autorize o gateway recebe a emissão — o gate de prova vale
+     * dentro do `issue()`, e sem prova a emissão é recusada e logada, sem
+     * exceção subir —, e a renovação fica para quem tem termo em pé.
      */
     public function handle(SerproTermManager $manager): void
     {
@@ -65,7 +73,77 @@ final class RenewSerproTermsJob implements ShouldQueue
             return;
         }
 
+        $termo = SerproAuthorizationTerm::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->first();
+
+        if ($termo === null) {
+            $this->emitir($manager);
+
+            return;
+        }
+
+        if ($termo->authorizesGateway()) {
+            $manager->refresh($this->accountId);
+
+            return;
+        }
+
+        // O termo existe e não autoriza — `recusado`, `pendente`, `vencido`:
+        // reenviar os mesmos bytes seria repetir a recusa que o `refresh()`
+        // se recusa a repetir. A emissão assina outro documento, e é a saída
+        // que a linha recusada tem; quando as condições de emissão não
+        // chegam, a renovação segue como antes.
+        if ($this->emitir($manager)) {
+            return;
+        }
+
         $manager->refresh($this->accountId);
+    }
+
+    /**
+     * A primeira emissão pela agenda, para a conta habilitada com e-CNPJ
+     * vigente — o caminho feliz é o upload do e-CNPJ, e este é o da conta
+     * cujo job falhou ou nunca rodou.
+     *
+     * **As condições vêm antes da chamada.** Sem habilitação ou sem
+     * certificado em vigor, o gate recusaria com uma frase que a conta leria
+     * todo dia por um estado que é esperado — e o log diário de ruído é a
+     * forma mais cara de dizer a verdade. O gate de prova **não** é lido
+     * aqui: quem o lê é o `issue()`, e a recusa dele — `DoNotRetry` — é o
+     * caso tolerado abaixo, até a prova de contrato existir.
+     *
+     * Devolve `true` quando a emissão foi tentada, sucesso ou recusa
+     * tolerada — o chamador não renova por cima do que acabou de sair.
+     */
+    private function emitir(SerproTermManager $manager): bool
+    {
+        if (! resolve(SerproAccountEnablement::class)->enabled($this->accountId)) {
+            return false;
+        }
+
+        $certificado = AccountCertificate::currentFor($this->accountId);
+
+        if ($certificado === null || $certificado->valid_until->isPast()) {
+            return false;
+        }
+
+        try {
+            $manager->issue($this->accountId);
+        } catch (SerproException $exception) {
+            // A mesma tolerância do `IssueSerproTermJob`: o estado que a
+            // linha recebe — ou a ausência dela — é o que a tela mostra, e
+            // o motivo da `SerproException` é curado, sem documento, token
+            // ou senha.
+            Log::error('A emissão do termo de autorização não pôde ser concluída.', [
+                'account_id' => $this->accountId,
+                'falha' => $exception->failure->value,
+                'motivo' => $exception->getMessage(),
+            ]);
+        }
+
+        return true;
     }
 
     /**

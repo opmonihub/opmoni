@@ -102,7 +102,7 @@ describe('the obligation registry', () => {
     // resolve from the row itself or from `fields`.
     for (const column of pgdas.columns) {
       assert.ok(
-        isMonitoringSlipColumn(column.id) || ['name', 'situacao', 'due_on', 'gi_declaracao'].includes(column.id),
+        isMonitoringSlipColumn(column.id) || ['name', 'situacao', 'due_on', 'ultima_consulta', 'gi_declaracao'].includes(column.id),
         `${column.id} resolves to nothing`
       )
     }
@@ -119,7 +119,7 @@ describe('the obligation registry', () => {
     // guide derivation, or a `fields` key the backend populates. Listing the third
     // here is what makes it a contract — a new column id that is not in any of
     // the three fails here instead of rendering a blank column in production.
-    const fromRow = new Set(['name', 'situacao', 'due_on'])
+    const fromRow = new Set(['name', 'situacao', 'due_on', 'ultima_consulta'])
     const fromFields = new Set([
       'regime_escolhido', 'data_da_opcao', 'divida_ativa', 'gi_declaracao', 'receitas',
       'valor_apurado_1718', 'certidao', 'emissao', 'validade', 'nao_lidas', 'ultima'

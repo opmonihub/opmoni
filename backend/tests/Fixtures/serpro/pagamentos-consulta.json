@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "dados": "[{\"numeroDocumento\":\"07202215764027873\",\"tipo\":{\"descricaoAbreviada\":\"DAS\"},\"periodoApuracao\":\"2022-06-01T00:00:00-03:00\",\"dataArrecadacao\":\"2022-06-10T15:34:56-03:00\",\"dataVencimento\":\"2022-06-20T00:00:00-03:00\",\"valorTotal\":150.75}]",
+  "mensagens": [
+    {
+      "codigo": "Sucesso",
+      "texto": "Requisição efetuada com sucesso"
+    }
+  ],
+  "responseId": "resp-pagamentos71-fixture"
+}

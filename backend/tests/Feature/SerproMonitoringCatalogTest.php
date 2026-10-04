@@ -80,17 +80,18 @@ class SerproMonitoringCatalogTest extends TestCase
                 continue;
             }
 
-            $this->assertMatchesRegularExpression('/^[A-Z-]+\/[A-Z0-9-]+$/', (string) $obrigacao['service'], "`{$slug}` sincroniza sem par SISTEMA/IDSERVICO.");
+            $catalogo = new SerproObligationCatalog;
 
-            [, $idServico] = explode('/', $obrigacao['service'], 2);
-            $servico = $services[$idServico] ?? null;
+            foreach ($catalogo->paresDeLeitura((string) $obrigacao['service']) as [, $idServico]) {
+                $servico = $services[$idServico] ?? null;
 
-            $this->assertNotNull($servico, "`{$slug}` sincroniza por `{$idServico}`, que não está no mapa de serviços.");
-            $this->assertArrayHasKey('path', $servico);
-            $this->assertNotSame('', $servico['path']);
-            $this->assertArrayHasKey('versaoSistema', $servico);
-            $this->assertNotSame('', (string) $servico['versaoSistema']);
-            $this->assertIsBool($servico['billable']);
+                $this->assertNotNull($servico, "`{$slug}` sincroniza por `{$idServico}`, que não está no mapa de serviços.");
+                $this->assertArrayHasKey('path', $servico);
+                $this->assertNotSame('', $servico['path']);
+                $this->assertArrayHasKey('versaoSistema', $servico);
+                $this->assertNotSame('', (string) $servico['versaoSistema']);
+                $this->assertIsBool($servico['billable']);
+            }
         }
     }
 
@@ -118,7 +119,11 @@ class SerproMonitoringCatalogTest extends TestCase
         foreach ($syncables as $unidade) {
             $this->assertArrayHasKey($unidade['id_servico'], $services);
             $this->assertNotSame('', $unidade['slug']);
-            $this->assertSame($unidade['id_sistema'], explode('/', config("integra-contador.obligations.{$unidade['slug']}.service"), 2)[0]);
+
+            $pares = $catalogo->paresDeLeitura((string) config("integra-contador.obligations.{$unidade['slug']}.service"));
+            $this->assertTrue(collect($pares)->contains(
+                fn (array $par): bool => $par[0] === $unidade['id_sistema'] && $par[1] === $unidade['id_servico'],
+            ));
         }
 
         // `get` devolve a entrada crua e `oracle` aponta o serviço que mede a
@@ -126,6 +131,15 @@ class SerproMonitoringCatalogTest extends TestCase
         $this->assertSame('unavailable', $catalogo->get('parcelamentos/pgfn')['category']);
         $this->assertNull($catalogo->get('inexistente'));
         $this->assertSame('OBTERPROCURACAO41', $catalogo->oracle()['id_servico']);
+
+        $this->assertContains('PEDIDOSPARC163', $ids);
+        $this->assertContains('PEDIDOSPARC183', $ids);
+        $this->assertContains('PEDIDOSPARC193', $ids);
+
+        $this->assertSame(
+            2,
+            collect($syncables)->where('slug', 'parcelamentos/receita-federal')->count(),
+        );
     }
 
     public function test_as_alternativas_de_familia_quebram_no_separador_do_mapa(): void

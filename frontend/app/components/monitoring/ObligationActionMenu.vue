@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { monitoringActions } from '~/utils/monitoringPresentation'
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   selectedCount: number
   /** Phone chips row: icon-only, like `CustomersClientListMenu compact`. */
   compact?: boolean

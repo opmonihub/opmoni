@@ -21,9 +21,14 @@ use Illuminate\Foundation\Queue\Queueable;
  * `SyncSerproClientJob` do mesmo cliente nem depender do `CurrentTenant`
  * que o worker herdou.
  *
- * A janela de vinte horas é o que torna a rotina diária barata: quem foi
- * verificado há menos tempo já tem a resposta, e o refresh não cobra de
- * novo. O `force` é do gatilho de troca de documento — o CNPJ novo pode ter
+ * A consulta é cobrada, e a rotina diária só despacha quem **nunca** foi
+ * consultado — o comando não manda mais quem já tem linha gravada. A janela
+ * de vinte horas abaixo segue como guarda dos despachos sem `force` que
+ * possam alcançar um cliente já consultado, e não é mais a política de
+ * revalidação: a vigência local (`expires_on`, estado `established`) é que
+ * decide em memória, e a revogação chega pela recusa 022.
+ *
+ * O `force` é do gatilho de troca de documento — o CNPJ novo pode ter
  * outorga que o antigo não tinha, e a resposta anterior media outro
  * contribuinte.
  */
@@ -80,10 +85,9 @@ final class RefreshSerproPowersJob implements ShouldQueue
             return;
         }
 
-        // A janela de vinte horas: quem já foi verificado recentemente tem a
-        // resposta, e a rotina não paga de novo o que o provedor acabou de
-        // dizer. O `force` da troca de documento pula ela porque a resposta
-        // era de outro CNPJ.
+        // Guarda de janela, e não política de revalidação: a rotina diária
+        // já não despacha quem tem linha, e o `force` da troca de documento
+        // pula ela porque a resposta era de outro CNPJ.
         if (! $this->force && $this->verificadoRecentemente()) {
             return;
         }
@@ -105,7 +109,9 @@ final class RefreshSerproPowersJob implements ShouldQueue
 
     /**
      * O cliente foi consultado nas últimas vinte horas? O `verified_at` mais
-     * recente das famílias é a medida, e nenhuma linha é "nunca".
+     * recente das famílias é a medida, e nenhuma linha é "nunca". Quem chegou
+     * aqui sem `force` com linha recente é despacho duplicado: a resposta já
+     * está gravada e a consulta não sai de novo.
      */
     private function verificadoRecentemente(): bool
     {

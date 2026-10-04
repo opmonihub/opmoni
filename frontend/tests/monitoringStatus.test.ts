@@ -7,9 +7,11 @@ import {
   monitoringCategoryPresentation,
   monitoringCounterPresentation,
   monitoringCountersTotal,
+  monitoringMissingValue,
   monitoringProgressPresentation,
   monitoringProvenance,
   monitoringProvenanceLabels,
+  monitoringSituacaoMissingPresentation,
   monitoringSituacaoPresentation,
   serproRunCountersTotal,
   serproRunItemStatePresentation,
@@ -40,20 +42,24 @@ describe('monitoring counters', () => {
     assert.equal((monitoringCounterPresentation as Record<string, unknown>).encerrado, undefined)
   })
 
-  it('sums to the total', () => {
+  it('sums the four counters plus the never-consulted into the total', () => {
     assert.equal(monitoringCountersTotal({
-      obligation: 'simples-nacional',
-      category: 'direct',
-      total: 12,
       em_dia: 8,
       processando: 1,
       pendencias: 1,
       atencao: 2,
-      encerrado: 3,
-      progress: null,
-      current_page: 1,
-      attention_reasons: []
-    }), 12)
+      nao_consultadas: 3
+    }), 15)
+  })
+
+  it('counts the never-consulted in the total without touching pendencias', () => {
+    assert.equal(monitoringCountersTotal({
+      em_dia: 0,
+      processando: 0,
+      pendencias: 0,
+      atencao: 0,
+      nao_consultadas: 7
+    }), 7)
   })
 })
 
@@ -99,6 +105,11 @@ describe('monitoring situations', () => {
 
   it('presents a closed obligation as neutral, outside the partition', () => {
     assert.equal(monitoringSituacaoPresentation.encerrado.color, 'neutral')
+  })
+
+  it('draws the situation of a never-consulted row as the em dash, not a state', () => {
+    assert.equal(monitoringSituacaoMissingPresentation.label, monitoringMissingValue)
+    assert.equal(monitoringSituacaoMissingPresentation.color, 'neutral')
   })
 })
 

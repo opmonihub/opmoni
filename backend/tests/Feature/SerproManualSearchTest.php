@@ -280,7 +280,7 @@ class SerproManualSearchTest extends TestCase
             ->assertJsonPath('data_rows.0.client_id', $client->getKey());
     }
 
-    public function test_a_busca_terminada_deixa_de_ser_processando(): void
+    public function test_a_busca_terminada_sem_resposta_fica_na_planilha_nunca_consultada(): void
     {
         $account = Account::factory()->create();
         $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
@@ -297,13 +297,18 @@ class SerproManualSearchTest extends TestCase
             'obligation' => 'declaracoes/pgdas',
         ]);
 
-        // Terminal, sem resposta gravada na linha: saiu da listagem — a
-        // busca falhou sem dado, e um `processando` eterno seria mentira.
+        // Terminal, sem resposta gravada na linha: ficou na planilha, mas
+        // fora de todo contador de ação — situação em traço, coluna Última
+        // consulta em "Nunca", e o total que inclui quem nunca foi consultado.
         $this->actingAs($this->memberOf($account, 'admin'), 'sanctum')
             ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
             ->assertOk()
-            ->assertJsonPath('data.total', 0)
-            ->assertJsonCount(0, 'data_rows');
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.nao_consultadas', 1)
+            ->assertJsonPath('data.pendencias', 0)
+            ->assertJsonCount(1, 'data_rows')
+            ->assertJsonPath('data_rows.0.situacao', null)
+            ->assertJsonPath('data_rows.0.consulted_at', null);
     }
 
     private function memberOf(Account $account, string $role): User

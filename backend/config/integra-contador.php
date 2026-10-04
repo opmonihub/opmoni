@@ -65,6 +65,37 @@ return [
         'CONSDECLARACAO13' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
 
         /*
+         * Consulta o XML da DCTFWeb de um período (`categoria`, `anoPA`,
+         * `mesPA`). O retorno traz `XMLStringBase64` — documento do
+         * contribuinte — e a projeção de monitoramento só extrai metadados
+         * do XML decodificado, nunca o base64.
+         *
+         * Fonte: …/integra-dctfweb/dctfweb/servicos/consultar_xml_declaracao/,
+         * lida em 2026-10-04. `path = Consultar` é o do catálogo de serviços
+         * (item 13.x, operação Consultar).
+         */
+        'CONSXMLDECLARACAO38' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * Lista as DEFIS transmitidas no período não decadente; o pedido leva
+         * `dados` vazio. Não confundir com `CONSDECREC144`, que devolve PDF
+         * em base64 de uma declaração específica — esse fica fora do sync.
+         *
+         * Fonte: …/integra-sn/defis/servicos/consultar_declaracoes/, lida em
+         * 2026-10-04.
+         */
+        'CONSDECLARACAO142' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * Períodos com inscrição em dívida ativa do MEI (`anoCalendario` no
+         * pedido). Não exige outorga e-CAC (n/a na tabela serviços × procurações).
+         *
+         * Fonte: …/integra-mei/pgmei/servicos/consultar_divida_ativa/, lida em
+         * 2026-10-04.
+         */
+        'DIVIDAATIVA24' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
          * O envio do termo de autorização assinado, que é o serviço **gratuito**
          * de apoio e o único ponto do gateway que este sistema escreve num
          * documento. Os três valores são do provedor, e cada um tem uma
@@ -88,11 +119,47 @@ return [
          */
         'ENVIOXMLASSINADO81' => ['path' => 'Apoiar', 'versaoSistema' => '1.0', 'billable' => false],
 
-        // `CONSULTASITUACAODTE111` tem path e versão na fixture gravada
-        // `dte-consultar-situacao.json`. Nenhuma obrigação do mapa o consome
-        // ainda — a entrada existe para a leitura já estar pronta quando a
-        // projeção da situação DTE for implementada.
+        /*
+         * Indicador de adesão ao DTE (`indicadorEnquadramento`); `dados` vazio,
+         * CNPJ no envelope. Exige outorga 00050 quando o autor não é o
+         * contribuinte. Nenhuma das dezenove obrigações do painel consome este
+         * serviço: `situacao-fiscal/*` projeta SITFIS/PAGTOWEB, não enquadramento
+         * DTE; criar slug novo exigiria contrato frontend + spec. A fixture
+         * `dte-consultar-situacao.json` mantém path/versão verificados.
+         *
+         * Fonte: …/integra-caixapostal/dte/servicos/obter_indicador_dte/, lida
+         * em 2026-10-04.
+         */
         'CONSULTASITUACAODTE111' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * Consulta documentos de arrecadação já pagos (DARF, DAS, DAE, DJE).
+         * A emissão do PDF (`COMPARRECADACAO72`) fica fora do sync — o retorno
+         * aqui é metadado estruturado, não base64.
+         *
+         * Fonte: …/integra-pagamento/pagtoweb/servicos/consulta_pagamento/,
+         * lida em 2026-10-04. `path = Consultar` é o do catálogo (item 7.1).
+         */
+        'PAGAMENTOS71' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+
+        /*
+         * Integra-Parcelamentos — consulta de pedidos (lista) e detalhe. O sync
+         * de monitoramento usa só os `PEDIDOSPARC*`, com `dados` vazio; emissão
+         * de DAS (`GERARDAS*`) e parcelas para impressão (`PARCELASPARAGERAR*`)
+         * ficam fora deste conjunto.
+         *
+         * Fonte: catálogo de serviços e páginas do Integra-Parcelamentos
+         * (serviços de consulta), lidas em 2026-10-04. `path = Consultar` é o
+         * tipo publicado.
+         */
+        'PEDIDOSPARC163' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'OBTERPARC164' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'PEDIDOSPARC173' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'OBTERPARC174' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'PEDIDOSPARC183' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'OBTERPARC184' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'PEDIDOSPARC193' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
+        'OBTERPARC194' => ['path' => 'Consultar', 'versaoSistema' => '1.0', 'billable' => true],
     ],
 
     /*
@@ -126,7 +193,7 @@ return [
             'service' => 'PGMEI/DIVIDAATIVA24',
             'procuracao' => null,
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'MEI',
         ],
         'dctfweb' => [
@@ -134,7 +201,7 @@ return [
             'service' => 'DCTFWEB/CONSXMLDECLARACAO38',
             'procuracao' => '00103',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'DCTFWeb',
         ],
         'fgts-digital' => [
@@ -147,10 +214,10 @@ return [
         ],
         'parcelamentos/simples-nacional' => [
             'category' => 'direct',
-            'service' => 'PARCSN',
+            'service' => 'PARCSN/PEDIDOSPARC163',
             'procuracao' => '00076+00188',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'Simples Nacional',
         ],
         'parcelamentos/pgfn' => [
@@ -162,18 +229,20 @@ return [
         ],
         'parcelamentos/receita-federal' => [
             'category' => 'derived',
-            'service' => 'PERTSN+RELPSN',
+            // Duas chamadas (`PEDIDOSPARC183` + `PEDIDOSPARC193`); o job mescla
+            // as projeções numa linha só — ver `SerproMonitoringMapper::mesclarPedidosParcelamento`.
+            'service' => 'PERTSN/PEDIDOSPARC183+RELPSN/PEDIDOSPARC193',
             'procuracao' => '00149+10011, 00210+10036',
             'derived_from' => 'os sistemas PERTSN e RELPSN',
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'Receita Federal',
         ],
         'parcelamentos/especiais' => [
             'category' => 'direct',
-            'service' => 'PARCSN-ESP',
+            'service' => 'PARCSN-ESP/PEDIDOSPARC173',
             'procuracao' => '00125',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'Especiais',
         ],
         'situacao-fiscal/relatorio-fiscal' => [
@@ -182,8 +251,8 @@ return [
             'procuracao' => '00002',
             'derived_from' => null,
             // O relatório é dois passos (`SOLICITARPROTOCOLO91` + esta): a
-            // sequência entra junto com o escritor que a consome.
-            'sync_enabled' => false,
+            // sequência mora em `SerproSitfisSequence`, acionada pelo job.
+            'sync_enabled' => true,
             'label' => 'Relatório Fiscal',
         ],
         'situacao-fiscal/certidoes' => [
@@ -199,7 +268,7 @@ return [
             'service' => 'PAGTOWEB/PAGAMENTOS71',
             'procuracao' => '00004',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'Comprovantes',
         ],
         'caixas-postais/e-cac' => [
@@ -239,7 +308,7 @@ return [
             'service' => 'DCTFWEB/CONSXMLDECLARACAO38',
             'procuracao' => '00103',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'DCTFWeb',
         ],
         'declaracoes/fgts' => [
@@ -254,7 +323,7 @@ return [
             'service' => 'DEFIS/CONSDECLARACAO142',
             'procuracao' => '00146',
             'derived_from' => null,
-            'sync_enabled' => false,
+            'sync_enabled' => true,
             'label' => 'DEFIS',
         ],
         'declaracoes/dirf' => [

@@ -14,13 +14,19 @@ namespace App\Services;
  * garantia, porque uma entrada `[]` explícita significaria "documentado e
  * autoriza nada", que é uma afirmação que ninguém fez.
  *
- * Fonte dos dois pares abaixo: o exemplo publicado de `OBTERPROCURACAO41` na
- * página "Obter procuração" do apicenter (lida em 2026-09-28; a URL está no
- * `_provenance` de `tests/Fixtures/serpro/procuracao-familias.json`). Os
- * nomes que vierem a ser observados com outros sistemas — REGIMEAPURACAO
- * `00060`, SITFIS `00002`, PGDASD/DEFIS `00146`, DCTFWEB `00103`, PAGTOWEB
- * `00004` — entram aqui só depois de comprovados; antes disso, `familiesFor`
- * os recusa por omissão.
+ * Fonte dos dois pares de caixa postal: o exemplo publicado de
+ * `OBTERPROCURACAO41` na página "Obter procuração" do apicenter (lida em
+ * 2026-09-28; a URL está no `_provenance` de
+ * `tests/Fixtures/serpro/procuracao-familias.json`). Fonte dos demais: a
+ * página "Serviços x Procurações" do apicenter
+ * (…/api-integra-contador/pt/servicos_vs_procuracoes/, lida em 2026-10-03) —
+ * os nomes são os da coluna "Nome do Serviço (procuração eCAC)", e cada
+ * nome mapeia para a lista de códigos que ele autoriza: PERT-SN e RELP têm
+ * **um** nome para os **dois** códigos que a tabela lista, e o valor é a
+ * lista dos dois. O nome da caixa de entradas do parcelamento ("Solicitar,
+ * acompanhar e emitir DAS de parcelamento") é o do código `00188` — o
+ * catálogo exige `00076` **e** `00188`, e são as duas outorgas, cada uma
+ * com o seu nome, que as concedem juntas.
  */
 final class SerproPowerNames
 {
@@ -28,6 +34,39 @@ final class SerproPowerNames
     private const KNOWN = [
         'Caixa Postal - Mensagens' => ['00006'],
         'Caixa Postal - Termo de Opção pelo Domicílio Tributário Eletrônico' => ['00050'],
+        'Simples Nacional - Opção pelo Regime de Apuração de Receitas' => ['00060'],
+        'PGDAS-D - a partir de 01/2018' => ['00146'],
+        'Acessar o sistema DCTFWeb' => ['00103'],
+        'Situação Fiscal do Contribuinte' => ['00002'],
+        'Pagamentos - Comprovante de Arrecadação' => ['00004'],
+        'Parcelamento de Débitos do Simples Nacional' => ['00076'],
+        'Solicitar, acompanhar e emitir DAS de parcelamento' => ['00188'],
+        'Parcelamento Especial Simples Nacional' => ['00125'],
+        'Programa Especial Regularização Tributária - PERT-SN' => ['00149', '10011'],
+        'Parcelar dívidas do SN pela LC 193/2022 (RELP)' => ['00210', '10036'],
+        /*
+         * Observado em 2026-10-04 na resposta de sucesso de
+         * `OBTERPROCURACAO41` (dtexpiracao 20271127): quando a procuração
+         * cobre todos os sistemas, o e-CAC não enumera os nomes — devolve
+         * este. Ele autoriza cada família que esta tabela já comprova, e
+         * nenhuma que ela ainda não viu nomeada.
+         */
+        'TODOS' => [
+            '00006',
+            '00050',
+            '00060',
+            '00146',
+            '00103',
+            '00002',
+            '00004',
+            '00076',
+            '00188',
+            '00125',
+            '00149',
+            '10011',
+            '00210',
+            '10036',
+        ],
     ];
 
     /**

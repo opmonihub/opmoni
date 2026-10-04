@@ -86,7 +86,7 @@ class SerproSyncProjectionTest extends TestCase
             ->where('obligation', 'caixas-postais/e-cac')->sole();
 
         $this->assertSame([
-            'nao_lidas' => 1,
+            'nao_lidas' => 2,
             'ultima' => '2026-09-20',
             'mais_paginas' => false,
         ], $monitoring->fields);
@@ -112,7 +112,47 @@ class SerproSyncProjectionTest extends TestCase
                 'prazo_limite' => null,
                 'unread' => false,
             ],
+            [
+                'id' => 1626770,
+                'assunto' => 'FGTS Digital — guia disponível',
+                'received_at' => '2026-09-15',
+                'lida_em' => null,
+                'ciencia_em' => null,
+                'prazo_limite' => null,
+                'unread' => true,
+            ],
+            [
+                'id' => 1626769,
+                'assunto' => 'Comunicação DET — prazo',
+                'received_at' => '2026-09-05',
+                'lida_em' => '2026-09-06 10:00:00',
+                'ciencia_em' => '2026-09-06',
+                'prazo_limite' => '2026-09-30',
+                'unread' => false,
+            ],
         ], $monitoring->messages);
+
+        $fgts = SerproMonitoring::query()
+            ->where('obligation', 'caixas-postais/fgts-digital')->sole();
+        $this->assertSame(1, $fgts->fields['nao_lidas']);
+        $this->assertSame('2026-09-15', $fgts->fields['ultima']);
+        $this->assertSame([
+            [
+                'id' => 1626770,
+                'assunto' => 'FGTS Digital — guia disponível',
+                'received_at' => '2026-09-15',
+                'lida_em' => null,
+                'ciencia_em' => null,
+                'prazo_limite' => null,
+                'unread' => true,
+            ],
+        ], $fgts->messages);
+
+        $det = SerproMonitoring::query()
+            ->where('obligation', 'caixas-postais/det')->sole();
+        $this->assertSame(0, $det->fields['nao_lidas']);
+        $this->assertSame('2026-09-05', $det->fields['ultima']);
+        $this->assertSame('Comunicação DET — prazo', $det->messages[0]['assunto']);
     }
 
     public function test_a_segunda_execucao_renova_o_carimbo_no_lugar_e_preserva_o_estado(): void
@@ -368,7 +408,7 @@ class SerproSyncProjectionTest extends TestCase
             'codigo' => '00',
             'conteudo' => [[
                 'indicadorUltimaPagina' => 'S',
-                'quantidadeMensagens' => '2',
+                'quantidadeMensagens' => '4',
                 'listaMensagens' => [
                     [
                         'isn' => '0001626772',
@@ -393,6 +433,30 @@ class SerproSyncProjectionTest extends TestCase
                         'horaLeitura' => '083005',
                         'dataCiencia' => '20260911',
                         'dataValidade' => '',
+                    ],
+                    [
+                        'isn' => '0001626770',
+                        'assuntoModelo' => 'FGTS Digital — guia disponível',
+                        'valorParametroAssunto' => '',
+                        'dataEnvio' => '20260915',
+                        'horaEnvio' => '120000',
+                        'indicadorLeitura' => '0',
+                        'dataLeitura' => '',
+                        'horaLeitura' => '',
+                        'dataCiencia' => '',
+                        'dataValidade' => '',
+                    ],
+                    [
+                        'isn' => '0001626769',
+                        'assuntoModelo' => 'Comunicação DET — prazo',
+                        'valorParametroAssunto' => '',
+                        'dataEnvio' => '20260905',
+                        'horaEnvio' => '090000',
+                        'indicadorLeitura' => '1',
+                        'dataLeitura' => '20260906',
+                        'horaLeitura' => '100000',
+                        'dataCiencia' => '20260906',
+                        'dataValidade' => '20260930',
                     ],
                 ],
             ]],

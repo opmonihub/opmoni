@@ -112,6 +112,7 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonPath('data.category', 'direct')
             ->assertJsonPath('data.atencao', 1)
             ->assertJsonPath('data.pendencias', 1)
+            ->assertJsonPath('data.nao_consultadas', 0)
             ->assertJsonPath('data.em_dia', 0)
             ->assertJsonPath('data.total', 2)
             ->assertJsonPath('data.current_page', 1)
@@ -266,21 +267,25 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonCount(0, 'data_rows');
     }
 
-    public function test_linha_associada_sem_fonte_aparece_como_pendencia(): void
+    public function test_linha_associada_sem_fonte_fica_fora_das_pendencias(): void
     {
         $account = Account::factory()->create();
         $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
 
-        // A associação cria o vínculo; a planilha lista quem falta buscar.
+        // A associação cria o vínculo; a planilha lista quem falta buscar —
+        // sob a própria contagem, nunca como pendência: pendência é de
+        // obrigação que o provedor já respondeu.
         $this->linha($client, 'declaracoes/pgdas', ['source_at' => null]);
 
         $this->actingAs($this->memberOf($account, 'user'), 'sanctum')
             ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
             ->assertOk()
             ->assertJsonPath('data.total', 1)
-            ->assertJsonPath('data.pendencias', 1)
+            ->assertJsonPath('data.pendencias', 0)
+            ->assertJsonPath('data.nao_consultadas', 1)
             ->assertJsonCount(1, 'data_rows')
-            ->assertJsonPath('data_rows.0.situacao', 'pendencias');
+            ->assertJsonPath('data_rows.0.situacao', null)
+            ->assertJsonPath('data_rows.0.consulted_at', null);
     }
 
     public function test_item_em_execucao_marca_processando_mesmo_sem_fonte(): void
@@ -434,11 +439,12 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonPath('data.attention.declaracoes/pgdas', 0)
             ->assertJsonPath('data.attention.caixas-postais/e-cac', 0);
 
-        $this->actingAs($member, 'sanctum')
+        $listagem = $this->actingAs($member, 'sanctum')
             ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
             ->assertOk()
             ->assertJsonPath('data.total', 1)
             ->assertJsonPath('data.em_dia', 1)
+            ->assertJsonPath('data.nao_consultadas', 0)
             ->assertJsonPath('data.atencao', 0)
             ->assertJsonPath('data.progress.transmitted', 1)
             ->assertJsonPath('data.progress.requested', 1)
@@ -451,6 +457,12 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonPath('data_rows.0.periods.0.rectified', true)
             ->assertJsonPath('data_rows.0.periods.0.slip_paid', true)
             ->assertJsonPath('data_rows.0.periods.0.slip_number', '07202215764027873');
+
+        // A última consulta é a leitura que o provedor carimbou, em ISO 8601.
+        $this->assertMatchesRegularExpression(
+            '/^2026-09-28T\d{2}:\d{2}:\d{2}/',
+            (string) $listagem->json('data_rows.0.consulted_at'),
+        );
 
         // A conta vizinha, com a mesma leitura, responde o vazio dela.
         $vizinha = Account::factory()->create();

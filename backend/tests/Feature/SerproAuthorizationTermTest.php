@@ -331,6 +331,96 @@ class SerproAuthorizationTermTest extends TestCase
         $this->assertSame('20260409', $this->atributo($documento, 'vigencia', 'data'));
     }
 
+    /**
+     * O modo vinculado zera `certificate_subject` de propósito — é o que
+     * `SerproConnectionManager::linkedCertificateAttributes()` grava, e o que
+     * uma rotação de certificado re-zera. O nome do contratante tem de vir do
+     * subject do certificado vinculado, a mesma fonte que a
+     * `SerproConnectionResource` usa para os metadados da tela.
+     */
+    public function test_a_emissao_no_modo_vinculado_nomeia_o_contratante_pelo_certificado_vinculado(): void
+    {
+        [$conta, $certificado] = $this->escritorio('Escritório de Teste');
+
+        // A credencial fica como o vínculo a grava: sem PFX próprio, sem
+        // subject e com o número apontando para o e-CNPJ corrente da conta.
+        SerproConnection::sole()->forceFill([
+            'contracting_account_id' => $conta->getKey(),
+            'contratante_numero' => self::ESCRITORIO,
+            'certificate_encrypted' => null,
+            'certificate_password_encrypted' => null,
+            'certificate_subject' => null,
+            'certificate_serial_number' => null,
+            'certificate_valid_from' => null,
+            'certificate_valid_until' => null,
+        ])->save();
+
+        $certificado->forceFill(['subject' => 'CN=Contratante Vinculada:'.self::ESCRITORIO])->save();
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $termo = resolve(SerproTermManager::class)->issue($conta->getKey());
+
+        $documento = $this->documentoDe($termo);
+        $this->assertSame(self::ESCRITORIO, $this->atributo($documento, 'destinatario', 'numero'));
+        $this->assertSame('Contratante Vinculada', $this->atributo($documento, 'destinatario', 'nome'));
+    }
+
+    /**
+     * A recusa honesta: sem subject na linha **e** sem vínculo, não há de
+     * onde tirar o nome do contratante — e um termo que não nomeia a parte
+     * autorizada não é um termo. O mesmo vale para um vínculo cuja conta ficou
+     * sem certificado corrente: a recusa é a mesma, porque a fonte é a mesma
+     * que ficou vazia.
+     */
+    public function test_a_emissao_sem_credencial_e_sem_vinculo_recusa_o_contratante_com_honestidade(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+
+        SerproConnection::sole()->forceFill([
+            'certificate_subject' => null,
+            'contracting_account_id' => null,
+        ])->save();
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        try {
+            resolve(SerproTermManager::class)->issue($conta->getKey());
+            $this->fail('Emitir um termo sem nome de contratante tem de ser recusado.');
+        } catch (SerproException $exception) {
+            $this->assertSame('Não há credencial de plataforma para nomear o contratante do termo.', $exception->getMessage());
+        }
+
+        // A recusa vem antes de qualquer rede e de qualquer gravação: nada de
+        // termo na base e nada enviado ao provedor.
+        $this->assertDatabaseCount('serpro_authorization_terms', 0);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * O estado `autenticado` significa que o token tem validade utilizável —
+     * é o que `validToken()` serve. A frase de SEM_VALIDADE descreve o caso
+     * contrário, e carregá-la numa linha que o sistema está servindo é texto
+     * mentiroso na tela do escritório.
+     */
+    public function test_o_estado_autenticado_nao_carrega_a_frase_de_sem_validade(): void
+    {
+        [$conta] = $this->escritorio('Escritório de Teste');
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        $termo = resolve(SerproTermManager::class)->issue($conta->getKey());
+
+        $this->assertSame(SerproAuthorizationTermState::Autenticado, $termo->state);
+        $this->assertNotNull($termo->token_expires_at);
+        $this->assertNull($termo->state_reason);
+    }
+
     // ----------------------------------------------------------------- renovação
 
     /**
@@ -1303,6 +1393,91 @@ class SerproAuthorizationTermTest extends TestCase
             fn (RenewSerproTermsJob $job): bool => $job->accountId === $alvo->getKey(),
         );
         Queue::assertPushed(RenewSerproTermsJob::class, 1);
+    }
+
+    public function test_o_comando_despacha_a_emissao_para_a_conta_habilitada_que_nunca_teve_termo(): void
+    {
+        [$habilitada] = $this->escritorio('Escritório Sem Termo');
+        $habilitada->forceFill(['settings' => ['serpro_enabled' => true]])->save();
+
+        // Desligada e sem termo: nem renovação, nem emissão.
+        $this->escritorio('Escritório Desligado');
+
+        Queue::fake();
+
+        $this->artisan('serpro:renew-terms')->assertSuccessful();
+
+        // A conta habilitada sem termo é a que a emissão diária cobre — o
+        // job do upload falhou, ou nunca rodou.
+        Queue::assertPushed(RenewSerproTermsJob::class, 1);
+        Queue::assertPushed(RenewSerproTermsJob::class, fn (RenewSerproTermsJob $job): bool => $job->accountId === $habilitada->getKey());
+    }
+
+    public function test_a_agenda_emite_o_termo_que_falta_e_o_gate_fechado_recusa_sem_excecao(): void
+    {
+        [$conta] = $this->escritorio('Escritório Sem Termo');
+        $conta->forceFill(['settings' => ['serpro_enabled' => true]])->save();
+
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        // Gate fechado — nenhuma prova de contrato gravada. A recusa é
+        // tolerada como no `IssueSerproTermJob`: nada sobe, nada é enviado,
+        // e nenhuma linha nasce.
+        (new RenewSerproTermsJob($conta->getKey()))->handle(resolve(SerproTermManager::class));
+
+        $this->assertNull(SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->first());
+        Http::assertNothingSent();
+    }
+
+    public function test_a_agenda_emite_o_termo_que_falta_para_a_conta_habilitada(): void
+    {
+        [$conta] = $this->escritorio('Escritório Sem Termo');
+        $conta->forceFill(['settings' => ['serpro_enabled' => true]])->save();
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarAceito();
+
+        (new RenewSerproTermsJob($conta->getKey()))->handle(resolve(SerproTermManager::class));
+
+        $termo = SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->sole();
+        $this->assertSame(SerproAuthorizationTermState::Autenticado, $termo->state);
+
+        // A emissão não vira renovação: o documento recém-enviado não sai
+        // de novo no mesmo ciclo.
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_agenda_emite_um_termo_novo_para_o_que_o_provedor_recusou(): void
+    {
+        [$conta] = $this->escritorio('Escritório Recusado');
+        $conta->forceFill(['settings' => ['serpro_enabled' => true]])->save();
+
+        $this->provaDeContrato();
+        $this->fakeTokenAutenticado();
+        $this->fakeApoiarRecusa('AcessoNegado-ICGERENCIADOR-042', 403);
+
+        try {
+            resolve(SerproTermManager::class)->issue($conta->getKey());
+        } catch (SerproException) {
+            // A emissão que o provedor recusou deixa a linha `recusado`.
+        }
+
+        $this->assertSame(
+            SerproAuthorizationTermState::Recusado,
+            SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->sole()->state,
+        );
+
+        // O `refresh()` não reenvia o que o provedor recusou; a emissão da
+        // agenda assina outro documento, com a vigência do dia em que saiu.
+        $this->fakeApoiarAceito();
+        (new RenewSerproTermsJob($conta->getKey()))->handle(resolve(SerproTermManager::class));
+
+        $this->assertSame(
+            SerproAuthorizationTermState::Autenticado,
+            SerproAuthorizationTerm::query()->withoutGlobalScopes()->where('account_id', $conta->getKey())->sole()->state,
+        );
     }
 
     /**

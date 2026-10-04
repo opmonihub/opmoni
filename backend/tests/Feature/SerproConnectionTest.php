@@ -2,7 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\SerproFailure;
+use App\Models\Account;
+use App\Models\AccountCertificate;
 use App\Models\SerproConnection;
+use App\Services\SerproException;
+use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Tests\TestCase;
@@ -69,5 +74,62 @@ class SerproConnectionTest extends TestCase
             ['path' => 'Emitir', 'versaoSistema' => '2.0', 'billable' => true],
             $services['RELATORIOSITFIS92']
         );
+    }
+
+    public function test_o_lookup_do_certificado_contratante_ignora_o_tenant_da_conta_operadora(): void
+    {
+        // O job da fila deixa o CurrentTenant na conta que está sendo servida.
+        // A credencial é da plataforma e o e-CNPJ mora na conta contratante:
+        // o escopo global da operadora não pode esconder essa linha.
+        $contratante = Account::factory()->create();
+        $operadora = Account::factory()->create();
+        $certificado = AccountCertificate::factory()->create([
+            'account_id' => $contratante->getKey(),
+            'document' => '12345678000195',
+        ]);
+        $conexao = SerproConnection::factory()->create([
+            'contracting_account_id' => $contratante->getKey(),
+            'certificate_encrypted' => null,
+            'certificate_password_encrypted' => null,
+            'contratante_numero' => '12345678000195',
+        ]);
+
+        resolve(CurrentTenant::class)->accountId = $operadora->getKey();
+
+        $this->assertNull(AccountCertificate::currentFor($operadora->getKey()));
+        $this->assertSame($certificado->getKey(), $conexao->contractingCertificate()?->getKey());
+        $conexao->assertIdentity();
+    }
+
+    public function test_vinculo_sem_ecnpj_corrente_recusa_com_a_mesma_mensagem(): void
+    {
+        // Histórico não é e-CNPJ corrente: a conta apontada só tem linha
+        // removida, e a recusa continua sendo de configuração, com ou sem
+        // tenant da operadora por cima.
+        $contratante = Account::factory()->create();
+        $operadora = Account::factory()->create();
+        AccountCertificate::factory()->removed()->create([
+            'account_id' => $contratante->getKey(),
+            'document' => '12345678000195',
+        ]);
+        $conexao = SerproConnection::factory()->create([
+            'contracting_account_id' => $contratante->getKey(),
+            'certificate_encrypted' => null,
+            'certificate_password_encrypted' => null,
+            'contratante_numero' => '12345678000195',
+        ]);
+
+        resolve(CurrentTenant::class)->accountId = $operadora->getKey();
+
+        try {
+            $conexao->assertIdentity();
+            $this->fail('Um vínculo sem e-CNPJ corrente deve levantar SerproException.');
+        } catch (SerproException $exception) {
+            $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
+            $this->assertSame(
+                'O certificado do contratante não está configurado: a conta apontada não tem e-CNPJ corrente.',
+                $exception->getMessage(),
+            );
+        }
     }
 }

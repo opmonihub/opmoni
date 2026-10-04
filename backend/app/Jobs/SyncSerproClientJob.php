@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Enums\SerproFailure;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\SerproSyncItemState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproCall;
+use App\Models\SerproClientAuthorization;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
 use App\Services\SerproAccountEnablement;
@@ -21,6 +23,7 @@ use App\Services\SerproObligationCatalog;
 use App\Services\SerproPowerOracle;
 use App\Services\SerproResult;
 use App\Services\SerproRunFinalizer;
+use App\Services\SerproSitfisSequence;
 use App\Services\SerproTermManager;
 use App\Tenant\CurrentTenant;
 use Closure;
@@ -196,10 +199,23 @@ final class SyncSerproClientJob implements ShouldQueue
     {
         $catalogo = resolve(SerproObligationCatalog::class);
         $oracle = $catalogo->oracle();
-        // O oráculo corre primeiro: ele é quem grava as autorizações que a
-        // elegibilidade de cada obrigação lê, e é a única leitura que não
-        // exige outorga nenhuma.
-        if (! $this->called($oracle['id_servico'])) {
+
+        /*
+         * O oráculo corre primeiro — mas só para quem nunca teve linha. A
+         * `OBTERPROCURACAO41` é cobrada (`billable`), e a outorga que o
+         * provedor já respondeu está gravada em `serpro_client_authorizations`:
+         * reconsultá-la a cada execução seria pagar para reler o que o banco
+         * sabe. Quem não tem linha nenhuma é quem nunca foi consultado — e a
+         * chamada já feita nesta execução (mesmo com resposta vazia) não sai
+         * de novo, pelo `called` de baixo.
+         */
+        $temAutorizacao = SerproClientAuthorization::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->where('client_id', $this->clientId)
+            ->exists();
+
+        if (! $temAutorizacao && ! $this->called($oracle['id_servico'])) {
             $this->deliver($item, $client, $oracle,
                 fn (): SerproResult => resolve(SerproClient::class)->call(
                     $oracle['id_sistema'],
@@ -243,18 +259,18 @@ final class SyncSerproClientJob implements ShouldQueue
             }
 
             $this->deliver($item, $client, $unidade,
-                fn (): SerproResult => resolve(SerproClient::class)->call(
-                    $unidade['id_sistema'],
-                    $unidade['id_servico'],
-                    $mapper->payload($unidade['id_servico']),
-                    (string) $certificate->document,
-                    (string) $client->tax_id,
+                fn (): SerproResult => $this->executarServico(
+                    $unidade,
+                    $client,
+                    $certificate,
                     $token,
+                    $mapper,
                 ),
-                fn (SerproResult $result) => $writer->store(
+                fn (SerproResult $result) => $writer->storeWithDerived(
                     $this->accountId,
                     $this->clientId,
                     $unidade['slug'],
+                    $unidade['id_servico'],
                     $mapper->project($unidade['id_servico'], $result),
                     now()->toISOString(),
                 ),
@@ -264,6 +280,40 @@ final class SyncSerproClientJob implements ShouldQueue
         }
 
         $this->finishTerminal($item, $ultimoMotivo);
+    }
+
+    /**
+     * Uma chamada simples ou a sequência SITFIS — o recorder fica dentro de
+     * cada passo quando há mais de uma rota.
+     *
+     * @param  array{slug: string, id_sistema: string, id_servico: string, procuracao: ?string}  $unidade
+     */
+    private function executarServico(
+        array $unidade,
+        Client $client,
+        AccountCertificate $certificate,
+        string $token,
+        SerproMonitoringMapper $mapper,
+    ): SerproResult {
+        if ($unidade['id_servico'] === 'RELATORIOSITFIS92') {
+            return resolve(SerproSitfisSequence::class)->fetch(
+                $this->runId,
+                $this->accountId,
+                $client->getKey(),
+                (string) $certificate->document,
+                (string) $client->tax_id,
+                $token,
+            );
+        }
+
+        return resolve(SerproClient::class)->call(
+            $unidade['id_sistema'],
+            $unidade['id_servico'],
+            $mapper->payload($unidade['id_servico']),
+            (string) $certificate->document,
+            (string) $client->tax_id,
+            $token,
+        );
     }
 
     /**
@@ -302,7 +352,7 @@ final class SyncSerproClientJob implements ShouldQueue
      * limpa a fronteira para a próxima entrega — que chega por `release(1)`
      * na fila, e por outra chamada de `handle()` na mesma execução.
      *
-     * @param  array{slug: string, id_sistema: string, id_servico: string}  $unidade
+     * @param  array{slug: string, id_sistema: string, id_servico: string, procuracao: ?string}  $unidade
      * @param  Closure(): SerproResult  $chamada
      * @param  Closure(SerproResult): void  $persistir
      */
@@ -328,14 +378,16 @@ final class SyncSerproClientJob implements ShouldQueue
         ])->save();
 
         try {
-            $result = resolve(SerproCallRecorder::class)->record(
-                $this->runId,
-                $this->accountId,
-                $client->getKey(),
-                $unidade['id_sistema'],
-                $unidade['id_servico'],
-                $chamada,
-            );
+            $result = $unidade['id_servico'] === 'RELATORIOSITFIS92'
+                ? $chamada()
+                : resolve(SerproCallRecorder::class)->record(
+                    $this->runId,
+                    $this->accountId,
+                    $client->getKey(),
+                    $unidade['id_sistema'],
+                    $unidade['id_servico'],
+                    $chamada,
+                );
         } catch (SerproException $exception) {
             $this->classificar($item, $unidade, $exception);
 
@@ -360,7 +412,7 @@ final class SyncSerproClientJob implements ShouldQueue
      * retentativa só acontece para a falha que a resposta prova não ter sido
      * aplicada.
      *
-     * @param  array{slug: string, id_sistema: string, id_servico: string}  $unidade
+     * @param  array{slug: string, id_sistema: string, id_servico: string, procuracao: ?string}  $unidade
      */
     private function classificar(SerproSyncRunItem $item, array $unidade, SerproException $exception): void
     {
@@ -380,6 +432,7 @@ final class SyncSerproClientJob implements ShouldQueue
             if ($unidade['slug'] !== 'procuracoes') {
                 resolve(SerproMonitoringWriter::class)
                     ->store($this->accountId, $this->clientId, $unidade['slug'], ['cause' => 'sem_procuracao'], null);
+                $this->recusarFamiliasAceitas((int) $item->client_id, $unidade['procuracao']);
             }
             $this->limparFronteira($item);
             $this->release(1);
@@ -398,6 +451,46 @@ final class SyncSerproClientJob implements ShouldQueue
                 : $this->finish($item, SerproSyncItemState::Indeterminate, 'resposta_incerta'),
             default => $this->finish($item, SerproSyncItemState::Failed, $exception->failure->value),
         };
+    }
+
+    /**
+     * A recusa 022 é a revogação que o e-CAC não anuncia. A alternativa que
+     * a elegibilidade tinha aceitado — a primeira coberta inteira do
+     * catálogo — sai de `established` para `rejected`, o estado que
+     * `SerproEligibility` recusa sem rede: a próxima obrigação da mesma
+     * família não é cobrada de novo, e a carteira deixa de mostrar a
+     * procuração como ativa. Quando a obrigação tem alternativas, só cai a
+     * que foi aceita.
+     *
+     * @param  list<list<string>>|null  $procuracao  via `procuracaoAlternatives`
+     */
+    private function recusarFamiliasAceitas(int $clientId, ?string $procuracao): void
+    {
+        $catalogo = resolve(SerproObligationCatalog::class);
+        $elegibilidade = resolve(SerproEligibility::class);
+
+        foreach ($catalogo->procuracaoAlternatives($procuracao) as $alternativa) {
+            if ($alternativa === []) {
+                return;
+            }
+
+            $aceita = collect($alternativa)->every(
+                fn (string $family): bool => $elegibilidade
+                    ->for($this->accountId, $clientId, $family)['eligible'],
+            );
+
+            if ($aceita) {
+                SerproClientAuthorization::query()
+                    ->withoutGlobalScope('account')
+                    ->where('account_id', $this->accountId)
+                    ->where('client_id', $clientId)
+                    ->whereIn('family', $alternativa)
+                    ->where('state', SerproPowerOfAttorneyState::Established)
+                    ->update(['state' => SerproPowerOfAttorneyState::Rejected->value, 'verified_at' => now()]);
+
+                return;
+            }
+        }
     }
 
     private function reagendar(SerproSyncRunItem $item, int $delay): void

@@ -51,6 +51,8 @@ class SerproContractFixtureTest extends TestCase
         return [
             ['regime-consultar-anos.json', 'CONSULTARANOSCALENDARIOS102'],
             ['pgdasd-consultar-declaracao.json', 'CONSDECLARACAO13'],
+            ['pgmei-consultar-divida-ativa.json', 'DIVIDAATIVA24'],
+            ['defis-consultar-declaracoes.json', 'CONSDECLARACAO142'],
             ['dte-consultar-situacao.json', 'CONSULTASITUACAODTE111'],
             ['sitfis-solicitar-protocolo.json', 'SOLICITARPROTOCOLO91'],
             ['sitfis-relatorio.json', 'RELATORIOSITFIS92'],
@@ -267,6 +269,8 @@ class SerproContractFixtureTest extends TestCase
         return [
             ['regime-consultar-anos.json'],
             ['pgdasd-consultar-declaracao.json'],
+            ['pgmei-consultar-divida-ativa.json'],
+            ['defis-consultar-declaracoes.json'],
             ['dte-consultar-situacao.json'],
             ['sitfis-solicitar-protocolo.json'],
             ['sitfis-relatorio.json'],

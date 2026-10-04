@@ -51,6 +51,10 @@ use DOMElement;
  * empresa. A versão anterior recebia o número e relia a credencial para o nome,
  * cruzando as duas metades em tempo de execução: a conferência era a defesa de
  * uma interface que já permitia o defeito, e a interface agora não o permite.
+ * No modo vinculado, em que a coluna do subject é zerada de propósito, as duas
+ * metades saem do **mesmo certificado**: o número foi gravado a partir do
+ * e-CNPJ corrente da conta apontada, e o nome é lido do subject dessa mesma
+ * linha — a fonte que a `SerproConnectionResource` já usa para os metadados.
  *
  * **Os bytes são o documento.** A renovação reenvia exatamente os mesmos bytes e
  * o provedor responde `304` com o token no `ETag` sem re-assinar nada. Um termo
@@ -558,11 +562,23 @@ final class SerproTermSigner
      * de proteger.** O número do contratante não vem mais de quem chama, e por
      * isso não há com o que ele discordar; o que ainda pode faltar é a razão
      * social, e um `destinatario` sem nome é um termo que não nomeia a parte que
-     * está autorizando.
+     * está autorizando. A coluna vazia **com** vínculo não é recusa: o subject
+     * do certificado vinculado o substitui, porque é dele que a linha do vínculo
+     * tirou o número. Vínculo sem certificado corrente, ou certificado sem
+     * razão social, é o que cai na recusa — e a recusa continua sendo a honesta.
      */
     private function nomeDoContratante(SerproConnection $conexao): string
     {
         $assunto = trim((string) $conexao->certificate_subject);
+
+        // No modo vinculado a coluna é zerada de propósito — a fonte do
+        // certificado é o e-CNPJ corrente da conta apontada, e é dele que a
+        // `SerproConnectionResource` já lê os metadados. O nome segue a mesma
+        // fonte: o subject do certificado vinculado, o mesmo certificado de
+        // onde saiu o `contratante_numero` gravado no vínculo.
+        if ($assunto === '') {
+            $assunto = trim((string) $conexao->contractingCertificate()?->subject);
+        }
 
         if ($assunto === '') {
             throw new SerproException('Não há credencial de plataforma para nomear o contratante do termo.', SerproFailure::NotSent, 0);

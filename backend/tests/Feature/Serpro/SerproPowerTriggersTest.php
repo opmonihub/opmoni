@@ -9,6 +9,7 @@ use App\Models\AccountCertificate;
 use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\SerproAuthorizationTerm;
+use App\Models\SerproClientAuthorization;
 use App\Models\SerproConnection;
 use App\Models\SupportAccessLog;
 use App\Models\User;
@@ -195,6 +196,29 @@ class SerproPowerTriggersTest extends TestCase
         Queue::assertPushed(RefreshSerproPowersJob::class, 1);
         Queue::assertPushed(RefreshSerproPowersJob::class, fn (RefreshSerproPowersJob $job): bool => $job->accountId === $habilitada->getKey()
             && $job->clientId === $pjAtivo->getKey());
+    }
+
+    public function test_o_comando_nao_despacha_o_pj_que_ja_tem_autorizacao_gravada(): void
+    {
+        Queue::fake();
+
+        $habilitada = $this->contaHabilitada();
+        $consultado = Client::factory()->company()->create(['account_id' => $habilitada->getKey()]);
+        $novo = Client::factory()->company()->create(['account_id' => $habilitada->getKey()]);
+
+        // Qualquer linha vale — concedida, recusada ou vencida: o provedor
+        // já respondeu por este cliente, e a consulta cobrada é para quem
+        // nunca foi consultado.
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $habilitada->getKey(),
+            'client_id' => $consultado->getKey(),
+            'family' => '00006',
+        ]);
+
+        $this->artisan('serpro:refresh-powers')->assertSuccessful();
+
+        Queue::assertPushed(RefreshSerproPowersJob::class, 1);
+        Queue::assertPushed(RefreshSerproPowersJob::class, fn (RefreshSerproPowersJob $job): bool => $job->clientId === $novo->getKey());
     }
 
     /**

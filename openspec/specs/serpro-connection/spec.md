@@ -143,6 +143,10 @@ The system SHALL build, sign, submit and renew the authorization term on behalf 
 - **WHEN** the authorization token has reached its expiry
 - **THEN** the system obtains a new token by resubmitting the term already on file, and the office takes no action
 
+#### Scenario: Emissão diária do termo ausente
+- **WHEN** the daily routine runs for an enabled Account that holds a valid office certificate and no term that authorizes the gateway
+- **THEN** the system issues the term with that certificate on the same routine, and a blocked proof gate or a provider refusal is logged without interrupting the routine or raising an error
+
 #### Scenario: Envio repetido do mesmo termo
 - **WHEN** the stored term is submitted again while the provider still considers it valid
 - **THEN** the system obtains the authorization token from the provider's not-modified response without re-signing the document
@@ -217,7 +221,7 @@ The system SHALL request Serpro data for a client only when, for the service fam
 - **THEN** only the provider-confirmed authorized service family is read, and no member-typed start date, expiration date or code can make the client eligible or not eligible
 
 ### Requirement: Consulta de procuração ao salvar o cliente e em rotina diária
-The system SHALL refresh a company client's authorized service families from the provider in the background when the client is created or its CPF/CNPJ changes, and in a daily routine for every company client of every enabled Account, in addition to the refresh performed inside a synchronization. The system SHALL perform the refresh only when the Account is enabled, holds a valid authorization term and an office certificate; SHALL record each provider call for billing audit; SHALL skip a client whose families were verified within the last 20 hours unless its CPF/CNPJ changed; SHALL write the result under the client's own Account regardless of the worker's current tenant; and SHALL NOT make the save of the client wait for or fail because of the provider.
+The system SHALL refresh a company client's authorized service families from the provider in the background when the client is created or its CPF/CNPJ changes, and in a daily routine for every company client of every enabled Account that has no recorded authorized service family, in addition to the refresh performed inside a synchronization. The consultation is billable, and the system SHALL NOT re-query a client whose families are already recorded on a schedule: eligibility reads the recorded families without the network, and revocation surfaces through the provider's access-denied refusal. The system SHALL perform the refresh only when the Account is enabled, holds a valid authorization term and an office certificate; SHALL record each provider call for billing audit; SHALL write the result under the client's own Account regardless of the worker's current tenant; and SHALL NOT make the save of the client wait for or fail because of the provider.
 
 #### Scenario: Cliente pessoa jurídica criado
 - **WHEN** an `admin` or `operador` member creates a company client in an enabled Account with a valid authorization term
@@ -233,7 +237,11 @@ The system SHALL refresh a company client's authorized service families from the
 
 #### Scenario: Rotina diária
 - **WHEN** the daily routine runs
-- **THEN** each company client of each enabled Account whose families were not verified within the last 20 hours is refreshed once, and clients of Accounts that are not enabled are not queried
+- **THEN** each company client of each enabled Account with no recorded authorized service family is refreshed once, and clients of Accounts that are not enabled are not queried
+
+#### Scenario: Cancelamento no e-CAC
+- **WHEN** a synchronization or a manual search receives the provider's access-denied refusal for an obligation whose required families had been accepted as established
+- **THEN** the recorded families of the accepted alternative are marked as rejected at that moment, no additional provider call is spent learning of the revocation, and the next request for the same family is refused without the network
 
 #### Scenario: Gravação na Account do cliente
 - **WHEN** a background refresh runs in a worker whose current tenant belongs to another Account or is empty

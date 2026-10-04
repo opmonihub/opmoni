@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\SerproAuthorizationTermState;
-use App\Enums\SerproPowerOfAttorneyState;
 use App\Jobs\SyncSerproClientJob;
 use App\Models\Account;
 use App\Models\AccountCertificate;
@@ -56,21 +55,16 @@ class SerproRunObligationScopeTest extends TestCase
         $run->forceFill(['obligations' => ['declaracoes/pgdas']])->save();
 
         $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
-        // A primeira entrega é o oráculo — e a resposta dele rejeita a
-        // família que não veio no payload (00146 entre elas); o
-        // `serpro:refresh-powers` é quem reestabelece, e é o que a re-semeada
-        // abaixo encena antes da entrega seguinte.
-        $job->handle();
-        $this->restabelecerOutorga($account->getKey(), $client->getKey(), '00146');
-
         for ($i = 0; $i < 8; $i++) {
             $job->handle();
         }
 
-        // Oráculo + a obrigação do escopo. O e-CAC (00006) está concedido e
-        // FORA do escopo — e é justamente ele que nunca é cobrado.
+        // Só a obrigação do escopo. O oráculo nem corre — as outorgas
+        // semeadas são linha gravada, e reconsultá-las seria pagar para ler
+        // o que o banco já sabe. O e-CAC (00006) está concedido e FORA do
+        // escopo — e é justamente ele que nunca é cobrado.
         $this->assertSame(
-            ['OBTERPROCURACAO41', 'CONSDECLARACAO13'],
+            ['CONSDECLARACAO13'],
             SerproCall::query()->withoutGlobalScope('account')->orderBy('id')->pluck('id_servico')->all(),
         );
     }
@@ -80,37 +74,16 @@ class SerproRunObligationScopeTest extends TestCase
         [$account, $client, $run] = $this->cenarioChamavel();
 
         $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
-        $job->handle();
-        $this->restabelecerOutorga($account->getKey(), $client->getKey(), '00146');
-
         for ($i = 0; $i < 8; $i++) {
             $job->handle();
         }
 
-        // `null` é o comportamento de sempre: oráculo + caixa postal + pgdas,
-        // na ordem do catálogo.
+        // `null` é o comportamento de sempre: MEI (sem outorga), caixa postal,
+        // pgdas e defis — na ordem do catálogo, sem o oráculo.
         $this->assertSame(
-            ['OBTERPROCURACAO41', 'MSGCONTRIBUINTE61', 'CONSDECLARACAO13'],
+            ['DIVIDAATIVA24', 'MSGCONTRIBUINTE61', 'CONSDECLARACAO13', 'CONSDECLARACAO142'],
             SerproCall::query()->withoutGlobalScope('account')->orderBy('id')->pluck('id_servico')->all(),
         );
-    }
-
-    /**
-     * O `persist` do oráculo rejeita o que a resposta não repetiu — re-semar
-     * a outorga é o que simula o estado que `serpro:refresh-powers`
-     * manteria entre as entregas.
-     */
-    private function restabelecerOutorga(int $accountId, int $clientId, string $family): void
-    {
-        SerproClientAuthorization::query()
-            ->withoutGlobalScope('account')
-            ->where('account_id', $accountId)
-            ->where('client_id', $clientId)
-            ->where('family', $family)
-            ->update([
-                'state' => SerproPowerOfAttorneyState::Established->value,
-                'verified_at' => now(),
-            ]);
     }
 
     /**
@@ -181,8 +154,9 @@ class SerproRunObligationScopeTest extends TestCase
             'tax_id' => '33683111000875',
         ]);
 
-        // As outorgas que a elegibilidade lê — o oráculo não corre aqui de
-        // novo porque a chamada fake de `Consultar` já responde a tudo.
+        // As outorgas que a elegibilidade lê — e, com linha gravada, o
+        // oráculo nem corre: a outorga que o provedor já respondeu está
+        // aqui, e a chamada cobrada é de quem nunca foi consultado.
         foreach (['00006', '00146'] as $family) {
             SerproClientAuthorization::factory()->create([
                 'account_id' => $account->getKey(),

@@ -53,9 +53,11 @@ export function monitoringObligationUnserved(obligation: Pick<MonitoringObligati
 const NAME: MonitoringColumn = { id: 'name', header: 'Cliente' }
 const SITUACAO: MonitoringColumn = { id: 'situacao', header: 'Situação' }
 const DUE_ON: MonitoringColumn = { id: 'due_on', header: 'Vencimento' }
+/** Read from `row.consulted_at`, never from `fields` — it is the row's own stamp. */
+const ULTIMA_CONSULTA: MonitoringColumn = { id: 'ultima_consulta', header: 'Última consulta' }
 
-/** Every served obligation carries the client's name and the situation. */
-const served = (...specific: MonitoringColumn[]) => [NAME, ...specific, SITUACAO] as const
+/** Every served obligation carries the client's name, the situation and when the provider last answered. */
+const served = (...specific: MonitoringColumn[]) => [NAME, ...specific, ULTIMA_CONSULTA, SITUACAO] as const
 /** An obligation the provider does not serve presents no column at all. */
 const unserved: readonly MonitoringColumn[] = []
 
@@ -151,7 +153,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         label: 'Simples Nacional',
         icon: 'i-lucide-store',
         columns: served(),
-        service: 'PARCSN',
+        service: 'PARCSN/PEDIDOSPARC163',
         procuracao: '00076+00188',
         category: 'direct'
       },
@@ -175,7 +177,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         label: 'Receita Federal',
         icon: 'i-lucide-building-2',
         columns: served(),
-        service: 'PERTSN+RELPSN',
+        service: 'PERTSN/PEDIDOSPARC183+RELPSN/PEDIDOSPARC193',
         procuracao: '00149+10011, 00210+10036',
         category: 'derived',
         derivedFrom: 'os sistemas PERTSN e RELPSN'
@@ -185,7 +187,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         label: 'Especiais',
         icon: 'i-lucide-folder-lock',
         columns: served(),
-        service: 'PARCSN-ESP',
+        service: 'PARCSN-ESP/PEDIDOSPARC173',
         procuracao: '00125',
         category: 'direct'
       }

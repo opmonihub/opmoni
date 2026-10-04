@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\SerproAuthorizationTermState;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\SerproSyncItemState;
 use App\Enums\SerproSyncRunState;
 use App\Jobs\FanOutSerproRunJob;
@@ -12,6 +13,7 @@ use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproCall;
+use App\Models\SerproClientAuthorization;
 use App\Models\SerproConnection;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
@@ -147,7 +149,7 @@ class SerproSyncJobsTest extends TestCase
         // execução.
         $this->assertSame(2, SerproCall::count());
         $this->assertSame(
-            ['OBTERPROCURACAO41', 'MSGCONTRIBUINTE61'],
+            ['OBTERPROCURACAO41', 'DIVIDAATIVA24'],
             SerproCall::query()->orderBy('id')->pluck('id_servico')->all(),
         );
         Http::assertSentCount(2);
@@ -216,7 +218,7 @@ class SerproSyncJobsTest extends TestCase
             ->where('account_id', $outra->getKey())->count());
     }
 
-    public function test_cliente_sem_procuracao_termina_ignorado_sem_cobrar(): void
+    public function test_cliente_sem_procuracao_sincroniza_mei_e_marca_o_resto_sem_outorga(): void
     {
         [$account, $client, $run] = $this->cenarioChamavel();
         // O oráculo responde "não consta": nenhuma família concedida.
@@ -228,10 +230,13 @@ class SerproSyncJobsTest extends TestCase
         }
 
         $item = $this->item($run, $client);
-        $this->assertSame(SerproSyncItemState::Skipped, $item->state);
-        // Só o oráculo saiu; as obrigações sem outorga não custam nada.
-        $this->assertSame(1, SerproCall::count());
-        Http::assertSentCount(1);
+        // O MEI respondeu sem outorga; as demais obrigações ficaram com causa.
+        $this->assertSame(SerproSyncItemState::Synchronized, $item->state);
+        $this->assertSame(
+            ['OBTERPROCURACAO41', 'DIVIDAATIVA24'],
+            SerproCall::query()->orderBy('id')->pluck('id_servico')->all(),
+        );
+        Http::assertSentCount(2);
 
         $this->assertDatabaseHas('serpro_monitorings', [
             'account_id' => $account->getKey(),
@@ -239,6 +244,95 @@ class SerproSyncJobsTest extends TestCase
             'obligation' => 'declaracoes/pgdas',
             'cause' => 'sem_procuracao',
         ]);
+    }
+
+    public function test_cliente_com_autorizacao_gravada_nao_consulta_o_oraculo_de_novo(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+
+        // A linha gravada é a prova de que o provedor já respondeu por este
+        // cliente: a `OBTERPROCURACAO41` é cobrada, e reconsultá-la seria
+        // pagar para reler o que o banco sabe.
+        SerproClientAuthorization::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'family' => '00006',
+        ]);
+
+        Http::fake($this->fakesDeSucesso());
+
+        (new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey()))->handle();
+
+        $this->assertDatabaseMissing('serpro_calls', [
+            'account_id' => $account->getKey(),
+            'run_id' => $run->getKey(),
+            'client_id' => $client->getKey(),
+            'id_servico' => 'OBTERPROCURACAO41',
+        ]);
+
+        // E a sincronização segue direto para as obrigações: o MEI não exige
+        // outorga e vem antes da caixa postal na ordem do catálogo.
+        Http::assertSentCount(1);
+        $this->assertSame(
+            'DIVIDAATIVA24',
+            SerproCall::query()->where('run_id', $run->getKey())->sole()->id_servico,
+        );
+    }
+
+    public function test_a_recusa_022_marca_como_rejected_as_familias_da_alternativa_aceita(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+
+        $oracle = '[{"dtexpiracao":"20270101","nrsistemas":"1","sistemas":["Caixa Postal - Mensagens"]}]';
+
+        Http::fake([
+            '*/integra-contador/v1/Consultar' => function ($request) use ($oracle) {
+                $servico = $request->data()['pedidoDados']['idServico'] ?? '';
+
+                if ($servico === 'MSGCONTRIBUINTE61') {
+                    return Http::response([
+                        'status' => 403,
+                        'dados' => null,
+                        'mensagens' => [[
+                            'codigo' => 'AcessoNegado-ICGERENCIADOR-022',
+                            'texto' => 'Não possui procuração outorgada no e-CAC para o contribuinte.',
+                        ]],
+                    ], 403);
+                }
+
+                return Http::response([
+                    'status' => 200,
+                    'dados' => $servico === 'OBTERPROCURACAO41' ? $oracle : '{}',
+                    'mensagens' => [],
+                    'responseId' => 'resp-ok',
+                ]);
+            },
+        ]);
+
+        $job = new SyncSerproClientJob($run->getKey(), $account->getKey(), $client->getKey());
+        $job->handle();
+        $job->handle();
+        $job->handle();
+
+        // A família que o provedor concedeu no oráculo e recusou no serviço
+        // sai de `established` para `rejected` — o estado que a elegibilidade
+        // recusa sem rede, sem nova chamada cobrada.
+        $autorizacao = SerproClientAuthorization::query()
+            ->where('account_id', $account->getKey())
+            ->where('client_id', $client->getKey())
+            ->where('family', '00006')
+            ->sole();
+        $this->assertSame(SerproPowerOfAttorneyState::Rejected, $autorizacao->state);
+        $this->assertNotNull($autorizacao->verified_at);
+
+        // O painel vê a causa, e a chamada recusada não se repete.
+        $this->assertDatabaseHas('serpro_monitorings', [
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'obligation' => 'caixas-postais/e-cac',
+            'cause' => 'sem_procuracao',
+        ]);
+        Http::assertSentCount(3);
     }
 
     public function test_conta_desligada_no_meio_da_execucao_ignora_o_item(): void

@@ -58,4 +58,45 @@ final class SerproMonitoringWriter
 
         return $monitoring;
     }
+
+    /**
+     * Grava a projeção direta e, quando o mapper define derivadas da mesma
+     * resposta, replica o carimbo nas linhas filtradas — uma chamada, várias
+     * obrigações, como a caixa postal e-CAC alimenta FGTS Digital e DET.
+     *
+     * @param  array<string, mixed>  $projecao
+     */
+    public function storeWithDerived(
+        int $accountId,
+        int $clientId,
+        string $obligation,
+        string $idServico,
+        array $projecao,
+        ?string $sourceAt,
+    ): SerproMonitoring {
+        if ($obligation === 'parcelamentos/receita-federal') {
+            $existente = SerproMonitoring::query()
+                ->withoutGlobalScope('account')
+                ->where('account_id', $accountId)
+                ->where('client_id', $clientId)
+                ->where('obligation', $obligation)
+                ->first();
+
+            if ($existente !== null && $existente->source_at !== null) {
+                $projecao = resolve(SerproMonitoringMapper::class)->mesclarPedidosParcelamento([
+                    'fields' => is_array($existente->fields) ? $existente->fields : [],
+                    'periods' => is_array($existente->periods) ? $existente->periods : [],
+                    'cause' => $existente->cause,
+                ], $projecao);
+            }
+        }
+
+        $monitoring = $this->store($accountId, $clientId, $obligation, $projecao, $sourceAt);
+
+        foreach (resolve(SerproMonitoringMapper::class)->derived($idServico, $projecao) as $slug => $derivada) {
+            $this->store($accountId, $clientId, $slug, $derivada, $sourceAt);
+        }
+
+        return $monitoring;
+    }
 }

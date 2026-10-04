@@ -776,7 +776,13 @@ final class SerproTermManager
             'state' => $utilizavel
                 ? SerproAuthorizationTermState::Autenticado
                 : SerproAuthorizationTermState::Validado,
-            'state_reason' => $token === '' ? self::SEM_TOKEN : self::SEM_VALIDADE,
+            // No estado `autenticado` o token tem validade utilizável: a frase
+            // de SEM_VALIDADE descreve o caso contrário e seria mentira numa
+            // linha que o sistema está servindo. O mesmo alinhamento que o
+            // caminho do `304` (`guardarTokenDoCache`) já segue.
+            'state_reason' => $utilizavel
+                ? null
+                : ($token === '' ? self::SEM_TOKEN : self::SEM_VALIDADE),
             'last_submitted_at' => now(),
         ])->save();
 

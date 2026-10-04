@@ -93,7 +93,7 @@ O que o provedor de fato entrega para aquela obrigação, em uma de quatro situa
 _Avoid_: sem dados — que descreve o cliente, não a obrigação
 
 **Contadores**:
-Os cinco números que subdividem o total de clientes de uma obrigação: total, em dia, processando, pendências e atenção. O total é a soma dos quatro últimos.
+Os cinco números que subdividem o total de clientes de uma obrigação: total, em dia, processando, pendências e atenção. O total é a soma dos quatro últimos mais quem nunca foi consultado (`nao_consultadas`) — e quem nunca foi consultado não entra em Pendências: só obrigação que o provedor respondeu pode estar pendente.
 _Avoid_: métricas, KPIs
 
 **Encerrado**:

@@ -144,6 +144,47 @@ class SerproMonitoringProjectorTest extends TestCase
         $this->assertSame('encerrado', $row['situacao']);
     }
 
+    public function test_a_linha_expande_a_ultima_consulta_do_registro(): void
+    {
+        $linha = $this->linha(['source_at' => '2026-09-26 10:00:00']);
+
+        $row = $this->projector()->row($linha->client, $linha, null, null);
+
+        // O carimbo do provedor segue como a leitura o gravou, em ISO 8601.
+        $this->assertSame($linha->source_at->toISOString(), $row['consulted_at']);
+        $this->assertStringStartsWith('2026-09-26T10:00:00', (string) $row['consulted_at']);
+    }
+
+    public function test_linha_sem_fonte_nao_tem_situacao_nem_consulta(): void
+    {
+        $linha = $this->linha(['source_at' => null]);
+
+        $row = $this->projector()->row($linha->client, $linha, null, null);
+
+        // `null` é o "nunca consultado": não é pendência, nem um quinto
+        // estado — a linha fica na planilha e o selo de situação fica em traço.
+        $this->assertNull($row['situacao']);
+        $this->assertNull($row['consulted_at']);
+    }
+
+    public function test_item_em_processamento_prevalece_ate_sem_fonte(): void
+    {
+        $linha = $this->linha(['source_at' => null]);
+        $run = SerproSyncRun::factory()->running()->create(['account_id' => $linha->account_id]);
+        $item = SerproSyncRunItem::factory()->create([
+            'account_id' => $linha->account_id,
+            'run_id' => $run->getKey(),
+            'client_id' => $linha->client_id,
+            'state' => SerproSyncItemState::NotProcessed,
+            'current_obligation' => 'declaracoes/pgdas',
+        ]);
+
+        $row = $this->projector()->row($linha->client, $linha, null, $item);
+
+        $this->assertSame('processando', $row['situacao']);
+        $this->assertNull($row['consulted_at']);
+    }
+
     public function test_a_linha_traz_cliente_campos_e_periodos_do_registro(): void
     {
         $linha = $this->linha([

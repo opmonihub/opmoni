@@ -4,8 +4,10 @@ namespace App\Jobs;
 
 use App\Enums\SerproFailure;
 use App\Enums\SerproManualSearchState;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
+use App\Models\SerproClientAuthorization;
 use App\Models\SerproManualSearch;
 use App\Services\SerproAccountEnablement;
 use App\Services\SerproCallRecorder;
@@ -17,6 +19,7 @@ use App\Services\SerproMonitoringMapper;
 use App\Services\SerproMonitoringWriter;
 use App\Services\SerproObligationCatalog;
 use App\Services\SerproResult;
+use App\Services\SerproSitfisSequence;
 use App\Services\SerproTermManager;
 use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -178,56 +181,70 @@ final class RunSerproManualSearchJob implements ShouldQueue
 
         // A obrigação pedida sai do catálogo pelo slug: sem unidade servida
         // (serviço sem par verificado) não há chamada que valha a cobrança.
-        $unidade = collect($catalogo->syncables())
-            ->first(fn (array $candidata): bool => $candidata['slug'] === $busca->obligation);
+        $unidades = collect($catalogo->syncables())
+            ->filter(fn (array $candidata): bool => $candidata['slug'] === $busca->obligation)
+            ->values();
 
-        if ($unidade === null) {
+        if ($unidades->isEmpty()) {
             $this->finish($busca, SerproManualSearchState::Failed, 'obrigacao_sem_leitura');
 
             return;
         }
 
-        $motivo = $this->motivoDeInelegibilidade($client, $unidade['procuracao']);
+        $mapper = resolve(SerproMonitoringMapper::class);
+        $writer = resolve(SerproMonitoringWriter::class);
+        $carimbo = now()->toISOString();
 
-        if ($motivo !== null) {
-            // A recusa não custa chamada, mas custa explicação: a linha do
-            // painel recebe a causa na mesma gramática da sincronização.
-            resolve(SerproMonitoringWriter::class)
-                ->store($this->accountId, $client->getKey(), $busca->obligation, ['cause' => $motivo], null);
-            $this->finish($busca, SerproManualSearchState::Failed, $motivo);
+        foreach ($unidades as $unidade) {
+            $motivo = $this->motivoDeInelegibilidade($client, $unidade['procuracao']);
 
-            return;
-        }
+            if ($motivo !== null) {
+                $writer->store($this->accountId, $client->getKey(), $busca->obligation, ['cause' => $motivo], null);
+                $this->finish($busca, SerproManualSearchState::Failed, $motivo);
 
-        try {
-            $result = resolve(SerproCallRecorder::class)->record(
-                null,
+                return;
+            }
+
+            try {
+                $result = $unidade['id_servico'] === 'RELATORIOSITFIS92'
+                    ? resolve(SerproSitfisSequence::class)->fetch(
+                        null,
+                        $this->accountId,
+                        $client->getKey(),
+                        (string) $certificate->document,
+                        (string) $client->tax_id,
+                        $token,
+                    )
+                    : resolve(SerproCallRecorder::class)->record(
+                        null,
+                        $this->accountId,
+                        $client->getKey(),
+                        $unidade['id_sistema'],
+                        $unidade['id_servico'],
+                        fn (): SerproResult => resolve(SerproClient::class)->call(
+                            $unidade['id_sistema'],
+                            $unidade['id_servico'],
+                            $mapper->payload($unidade['id_servico']),
+                            (string) $certificate->document,
+                            (string) $client->tax_id,
+                            $token,
+                        ),
+                    );
+            } catch (SerproException $exception) {
+                $this->classificar($busca, $exception);
+
+                return;
+            }
+
+            $writer->storeWithDerived(
                 $this->accountId,
                 $client->getKey(),
-                $unidade['id_sistema'],
+                $busca->obligation,
                 $unidade['id_servico'],
-                fn (): SerproResult => resolve(SerproClient::class)->call(
-                    $unidade['id_sistema'],
-                    $unidade['id_servico'],
-                    resolve(SerproMonitoringMapper::class)->payload($unidade['id_servico']),
-                    (string) $certificate->document,
-                    (string) $client->tax_id,
-                    $token,
-                ),
+                $mapper->project($unidade['id_servico'], $result),
+                $carimbo,
             );
-        } catch (SerproException $exception) {
-            $this->classificar($busca, $exception);
-
-            return;
         }
-
-        resolve(SerproMonitoringWriter::class)->store(
-            $this->accountId,
-            $client->getKey(),
-            $busca->obligation,
-            resolve(SerproMonitoringMapper::class)->project($unidade['id_servico'], $result),
-            now()->toISOString(),
-        );
 
         $this->finish($busca, SerproManualSearchState::Completed, null);
     }
@@ -245,6 +262,10 @@ final class RunSerproManualSearchJob implements ShouldQueue
             // na linha do painel, não para retentativa.
             resolve(SerproMonitoringWriter::class)
                 ->store($this->accountId, $busca->client_id, $busca->obligation, ['cause' => 'sem_procuracao'], null);
+            $this->recusarFamiliasAceitas(
+                (int) $busca->client_id,
+                resolve(SerproObligationCatalog::class)->get($busca->obligation)['procuracao'] ?? null,
+            );
             $this->finish($busca, SerproManualSearchState::Failed, 'sem_procuracao');
 
             return;
@@ -258,6 +279,45 @@ final class RunSerproManualSearchJob implements ShouldQueue
             SerproFailure::Indeterminate => $this->finish($busca, SerproManualSearchState::Failed, 'resposta_incerta'),
             default => $this->finish($busca, SerproManualSearchState::Failed, $exception->failure->value),
         };
+    }
+
+    /**
+     * A recusa 022 é a revogação que o e-CAC não anuncia. A alternativa que
+     * a elegibilidade tinha aceitado — a primeira coberta inteira do
+     * catálogo — sai de `established` para `rejected`, o estado que
+     * `SerproEligibility` recusa sem rede: a próxima busca da mesma família
+     * falha sem cobrar, e a carteira deixa de mostrar a procuração como
+     * ativa. Quando a obrigação tem alternativas, só cai a que foi aceita.
+     *
+     * @param  list<list<string>>|null  $procuracao  via `procuracaoAlternatives`
+     */
+    private function recusarFamiliasAceitas(int $clientId, ?string $procuracao): void
+    {
+        $catalogo = resolve(SerproObligationCatalog::class);
+        $elegibilidade = resolve(SerproEligibility::class);
+
+        foreach ($catalogo->procuracaoAlternatives($procuracao) as $alternativa) {
+            if ($alternativa === []) {
+                return;
+            }
+
+            $aceita = collect($alternativa)->every(
+                fn (string $family): bool => $elegibilidade
+                    ->for($this->accountId, $clientId, $family)['eligible'],
+            );
+
+            if ($aceita) {
+                SerproClientAuthorization::query()
+                    ->withoutGlobalScope('account')
+                    ->where('account_id', $this->accountId)
+                    ->where('client_id', $clientId)
+                    ->whereIn('family', $alternativa)
+                    ->where('state', SerproPowerOfAttorneyState::Established)
+                    ->update(['state' => SerproPowerOfAttorneyState::Rejected->value, 'verified_at' => now()]);
+
+                return;
+            }
+        }
     }
 
     private function finish(SerproManualSearch $busca, SerproManualSearchState $state, ?string $reason): void

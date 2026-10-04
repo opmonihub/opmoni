@@ -44,11 +44,15 @@ The system SHALL classify every monitored obligation according to what the Integ
 - **THEN** no client of the Account is reported as pending, expiring, expired or requiring attention for that obligation, because the absence is a property of the obligation and not of any client
 
 ### Requirement: Contadores que subdividem o total
-The system SHALL present, per monitored obligation that is classified as `direct` or `derived`, the total number of clients in scope together with the number in each of the states that subdivide it: `em_dia`, `processando`, `pendencias` and `atencao`. The system SHALL report the total as the sum of those four, and SHALL report it as zero rather than omitting it when nothing is to be counted. A state outside the partition, `encerrado`, SHALL be presented on the row and SHALL NOT be folded into any of the four counters.
+The system SHALL present, per monitored obligation that is classified as `direct` or `derived`, the total number of clients in scope together with the number in each of the states that subdivide it: `em_dia`, `processando`, `pendencias` and `atencao`, plus the number of clients the provider was never consulted about, reported as `nao_consultadas`. The system SHALL report the total as the sum of those four counters plus `nao_consultadas`, and SHALL report it as zero rather than omitting it when nothing is to be counted. A state outside the partition, `encerrado`, SHALL be presented on the row and SHALL NOT be folded into any of the four counters or into the total.
 
-#### Scenario: Total é a soma dos quatro
+#### Scenario: Total é a soma dos quatro mais quem nunca foi consultado
 - **WHEN** an obligation presents its counters
-- **THEN** the total equals the sum of `em_dia`, `processando`, `pendencias` and `atencao`, and no client is counted in two of them
+- **THEN** the total equals the sum of `em_dia`, `processando`, `pendencias` and `atencao` plus `nao_consultadas`, and no client is counted twice
+
+#### Scenario: Linha nunca consultada fica fora das pendências
+- **WHEN** a client is associated with an obligation and the provider has never answered for it
+- **THEN** the row stays in the obligation's list with an empty situation — no state badge is claimed — is reported with a `consulted_at` of `null`, is counted in `nao_consultadas` and in the total, and is not counted in `pendencias`, because only an obligation the provider answered can be pending
 
 #### Scenario: Nada a atender
 - **WHEN** no client of an Account requires attention for an obligation
@@ -74,7 +78,7 @@ The system SHALL present each client's situation on the row, and SHALL name the 
 - **THEN** its label and colour are resolved from the code supplied by the system, and adding a cause does not require redeploying the client
 
 #### Scenario: Pendência com e sem prazo
-- **WHEN** a client has an obligation that is due or approaching its due date
+- **WHEN** a client has an obligation the provider answered that is due or approaching its due date
 - **THEN** the client is counted in `pendencias` with its due date shown, and a due date beyond thirty days does not by itself place the client in that counter
 
 #### Scenario: Regular com carência
@@ -144,6 +148,10 @@ The system SHALL declare the columns each obligation displays in the obligation'
 #### Scenario: Colunas descrevem o que a fonte entrega
 - **WHEN** an obligation is displayed
 - **THEN** each of its columns corresponds to a value its source actually returns
+
+#### Scenario: Última consulta em toda obrigação servida
+- **WHEN** a served obligation is displayed
+- **THEN** every row shows when the provider last answered it — day, month, year, hour and minute in `America/Sao_Paulo` — and a row never answered reads "Nunca", which is not the dash used for every other empty cell
 
 ### Requirement: Painel coerente com a listagem
 The system SHALL make the overview counters, the group summaries and the list contents consistent with each other, so that navigating from a counter to a list yields the number of clients the counter announced.

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  formatMonitoringConsultedAt,
   formatMonitoringCount,
   formatMonitoringDate,
   formatMonitoringDueOn,
@@ -9,6 +10,7 @@ import {
   latestSlipFor,
   monitoringDeadlinePassed,
   monitoringMissingValue,
+  monitoringNeverConsultedLabel,
   monitoringPaidPresentation,
   monitoringSlipColumnValue,
   monitoringSlipMissingPresentation,
@@ -35,6 +37,33 @@ describe('formatMonitoringDate', () => {
   it('renders an absent value as an em dash', () => {
     assert.equal(formatMonitoringDate(null), '—')
     assert.equal(formatMonitoringDueOn(null), '—')
+  })
+})
+
+describe('formatMonitoringConsultedAt', () => {
+  it('renders the provider stamp in São Paulo time, day/month/year and hour:minute', () => {
+    // 10:00 UTC is 07:00 in Brasília in September, and the date does not move.
+    assert.equal(formatMonitoringConsultedAt('2026-09-26T10:00:00Z'), '26/09/2026, 07:00')
+  })
+
+  it('moves the clock with the timezone, not with the runner\'s', () => {
+    // 01:30 UTC on the 27th is still the 26th in Brasília (-03).
+    assert.equal(formatMonitoringConsultedAt('2026-09-27T01:30:00Z'), '26/09/2026, 22:30')
+  })
+
+  it('reads "Nunca" when the provider was never consulted', () => {
+    assert.equal(formatMonitoringConsultedAt(null), monitoringNeverConsultedLabel)
+    assert.equal(formatMonitoringConsultedAt(undefined), monitoringNeverConsultedLabel)
+    assert.equal(formatMonitoringConsultedAt(''), monitoringNeverConsultedLabel)
+  })
+
+  it('labels the never-consulted cell differently from every other empty value', () => {
+    assert.notEqual(monitoringNeverConsultedLabel, monitoringMissingValue)
+    assert.equal(monitoringNeverConsultedLabel, 'Nunca')
+  })
+
+  it('degrades an unreadable stamp to the em dash, never to "Nunca"', () => {
+    assert.equal(formatMonitoringConsultedAt('quando o provedor responder'), monitoringMissingValue)
   })
 })
 

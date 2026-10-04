@@ -18,6 +18,11 @@ use App\Models\SerproSyncRunItem;
  * model: `situacao` é derivada toda vez, e nunca gravada, porque ela muda com
  * o calendário (prazo) e com a execução em curso (`processando`).
  *
+ * A linha sem resposta do provedor (`source_at` nulo) não tem situação:
+ * `null` é o "nunca consultado" — nem `pendencias`, que é de obrigação já
+ * respondida, nem um quinto estado. `consulted_at` expõe o `source_at` como
+ * o provedor o carimbou, e é a coluna que explica o selo vazio.
+ *
  * A ordem do `match` é a semântica: a obrigação em processamento na execução
  * corrente prevalece sobre tudo, a causa gravada sobre o desfecho `encerrado`,
  * e o encerrado sobre o prazo — um `encerrado` contado como pendência
@@ -32,7 +37,7 @@ final class SerproMonitoringProjector
     public function __construct(private readonly SerproObligationCatalog $catalogo) {}
 
     /**
-     * @return array{client_id: int, name: string, tax_id: ?string, situacao: string, cause: ?string, due_on: ?string, stale: bool, power_of_attorney_expires_on: ?string, fields: array<string, string|int|float|null>, periods: ?array<int, array<string, mixed>>, message: ?array{id: int, assunto: string, received_at: ?string, lida_em: ?string, ciencia_em: ?string, prazo_limite: ?string, unread: bool}}
+     * @return array{client_id: int, name: string, tax_id: ?string, situacao: ?string, consulted_at: ?string, cause: ?string, due_on: ?string, stale: bool, power_of_attorney_expires_on: ?string, fields: array<string, string|int|float|null>, periods: ?array<int, array<string, mixed>>, message: ?array{id: int, assunto: string, received_at: ?string, lida_em: ?string, ciencia_em: ?string, prazo_limite: ?string, unread: bool}}
      */
     public function row(
         Client $client,
@@ -43,9 +48,11 @@ final class SerproMonitoringProjector
     ): array {
         $situacao = match (true) {
             $this->emProcessamento($record, $activeItem, $buscaManualAtiva) => 'processando',
-            // Associado e ainda sem resposta do provedor: entra na planilha
-            // para o escritório disparar a busca, e não como "em dia".
-            $record->source_at === null => 'pendencias',
+            // Associado e ainda sem resposta do provedor: fica na planilha
+            // para o escritório disparar a busca, mas sem situação — a
+            // coluna "Última consulta" diz que não houve leitura, e o
+            // contador de pendências é só de obrigação já respondida.
+            $record->source_at === null => null,
             $record->cause !== null => 'atencao',
             $record->state === 'encerrado' => 'encerrado',
             $record->due_on !== null && $record->due_on->lte(today()->addDays(30)) => 'pendencias',
@@ -57,6 +64,7 @@ final class SerproMonitoringProjector
             'name' => $client->name,
             'tax_id' => $client->tax_id,
             'situacao' => $situacao,
+            'consulted_at' => $record->source_at?->toISOString(),
             'cause' => $record->cause,
             'due_on' => $record->due_on?->toDateString(),
             'stale' => $this->desatualizado($record, $authorization),

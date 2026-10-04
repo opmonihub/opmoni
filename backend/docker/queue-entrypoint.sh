@@ -58,6 +58,22 @@ if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
+# O schedule não tem container próprio: sem ele, nenhuma agenda de
+# routes/console.php (`serpro:renew-terms`, `serpro:refresh-powers`,
+# `fiscal:capture`, o cão de guarda...) disparava neste ambiente. O
+# `schedule:work` roda aqui, irmão do worker, porque é o mecanismo mais
+# simples que cobre dev e prod: o script é o mesmo nas duas imagens
+# (ver backend/Dockerfile) e o docker-stack.prod.yml reutiliza este
+# entrypoint. O `exec` abaixo substitui o shell pelo worker, e o schedule
+# fica em segundo plano, preso ao ciclo do container: recicla junto no
+# `--max-time`, morre no stop — e, se morrer sozinho, volta no próximo
+# reciclo, no máximo uma hora depois. Janela aceitável para agendas
+# diárias/horárias; um supervisor próprio seria um mecanismo novo.
+# No caminho de argumento (abaixo), o schedule não sobe de propósito:
+# ali o container é um worker ad hoc de fila específica, e duas cópias
+# do schedule no mesmo volume disparariam as agendas em dobro.
+php artisan schedule:work &
+
 # --max-time recicla o worker de hora em hora: memória do processo e código
 # novo em prod, sem depender de restart do container.
 exec php artisan queue:work --sleep=3 --tries=3 --timeout=120 --max-time=3600

@@ -12,7 +12,7 @@ export type ObligationCategory = 'direct' | 'derived' | 'unavailable' | 'extinct
 /** The four states that partition the total. `encerrado` sits outside them. */
 export type MonitoringCounter = 'em_dia' | 'processando' | 'pendencias' | 'atencao'
 
-/** The five states a row can be in. */
+/** The five states a row can be in. A row the provider never answered has `null` instead. */
 export type MonitoringSituacao = MonitoringCounter | 'encerrado'
 
 /**
@@ -77,7 +77,13 @@ export interface MonitoringClient {
   client_id: number
   name: string
   tax_id: string | null
-  situacao: MonitoringSituacao
+  /**
+   * `null` when the provider was never consulted: no situation badge is
+   * claimed, and the "Última consulta" column is what says why.
+   */
+  situacao: MonitoringSituacao | null
+  /** When the provider last answered, ISO 8601; `null` when it never did. */
+  consulted_at: string | null
   cause: AttentionReasonCode | null
   due_on: string | null
   /** The power of attorney lapsed: the retained data is out of date. */
@@ -135,9 +141,9 @@ export interface MonitoringAssessmentPeriod {
  * out of how many were requested.
  *
  * A reading of the synchronization, never a state of any client — it therefore
- * sits beside the counters and never inside them, and `total` stays the sum of
- * the four. `null` until the backend reports the pair: the absence of the
- * reading is not a reading of zero.
+ * sits beside the counters and never inside them, and `total` stays the
+ * counters' own sum. `null` until the backend reports the pair: the absence of
+ * the reading is not a reading of zero.
  */
 export interface MonitoringSyncProgress {
   transmitted: number
@@ -147,7 +153,7 @@ export interface MonitoringSyncProgress {
 export interface MonitoringObligationSummary {
   obligation: string
   category: ObligationCategory
-  /** The sum of the four. `encerrado` is not part of it. */
+  /** The four counters plus `nao_consultadas`. `encerrado` is not part of it. */
   total: number
   em_dia: number
   processando: number
@@ -155,6 +161,11 @@ export interface MonitoringObligationSummary {
   atencao: number
   /** Outside the partition: a closed obligation never inflates an action state. */
   encerrado: number
+  /**
+   * Clients associated and never consulted by the provider. In the total,
+   * never in `pendencias`: only an answered obligation can be pending.
+   */
+  nao_consultadas: number
   /** The synchronization's own axis, beside the counters and outside them. */
   progress: MonitoringSyncProgress | null
   current_page: number
@@ -176,6 +187,7 @@ export interface MonitoringObligationUnservedSummary {
   pendencias: null
   atencao: null
   encerrado: null
+  nao_consultadas: null
   progress: null
   current_page: 1
   attention_reasons: []

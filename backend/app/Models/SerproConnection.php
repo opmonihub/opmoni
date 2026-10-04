@@ -156,6 +156,14 @@ class SerproConnection extends Model
      * credencial guarda o próprio arquivo — que é a forma alternativa — ou
      * quando a conta apontada não tem certificado corrente, e é nesse segundo
      * caso que a credencial fica sem material de assinatura.
+     *
+     * Os predicados de "corrente" são os de `AccountCertificate::currentFor()`:
+     * `replaced_at` e `removed_at` nulos, a linha de maior `id`. O escopo
+     * global de `BelongsToAccount` fica de fora. O job da fila deixa
+     * `CurrentTenant` na conta operadora; com ele ativo, `currentFor()` soma
+     * `account_id = tenant` a `account_id = contratante` e devolve `null`
+     * mesmo com e-CNPJ vigente na conta apontada. Aqui a conta contratante é
+     * a referência explícita da credencial, não o tenant da execução.
      */
     public function contractingCertificate(): ?AccountCertificate
     {
@@ -163,7 +171,13 @@ class SerproConnection extends Model
             return null;
         }
 
-        return AccountCertificate::currentFor($this->contracting_account_id);
+        return AccountCertificate::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->contracting_account_id)
+            ->whereNull('replaced_at')
+            ->whereNull('removed_at')
+            ->latest('id')
+            ->first();
     }
 
     public function isConfigured(): bool

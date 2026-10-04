@@ -3,21 +3,28 @@
 namespace App\Console\Commands;
 
 use App\Jobs\RenewSerproTermsJob;
+use App\Models\Account;
 use App\Models\SerproAuthorizationTerm;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * A renovação diária do termo de autorização, disparada pela agenda.
+ * A rotina diária do termo de autorização, disparada pela agenda: a
+ * renovação de quem já tem termo e a **primeira emissão** de quem não tem.
  *
- * **Só percorre contas que já têm termo, e é a distinção que importa.** A
- * emissão é do upload do e-CNPJ — o `AccountCertificateVault` a agenda depois
- * do commit —, e o que este comando faz é reenviar o documento que já está
- * assinado. Uma conta sem termo não tem documento para reenviar, e tentar
- * emiti-lo daqui faria o gate ser consultado por um caminho que não é o da
- * emissão, com o operador esperando uma renovação e encontrando uma
- * assinatura.
+ * **A renovação percorre só as contas que já têm termo, e a distinção
+ * importa.** A emissão feliz é do upload do e-CNPJ — o
+ * `AccountCertificateVault` a agenda depois do commit —, e o que a primeira
+ * travessia faz é reenviar o documento que já está assinado.
+ *
+ * **A segunda travessia é a segunda chance da emissão.** A conta habilitada
+ * com e-CNPJ vigente e nenhuma linha em `serpro_authorization_terms` é a
+ * conta cujo job do upload falhou — ou nunca rodou. A agenda a cobre no dia
+ * seguinte: o job que ela despacha tenta a emissão pelo `SerproTermManager`,
+ * com o gate de prova (`term_format_proven_at` + digest) valendo como antes —
+ * sem prova gravada por `serpro:record-term-proof`, a emissão é recusada e
+ * logada, e nada é enviado.
  *
  * **A travessia é por `chunkById` e com o escopo de conta desligado.** O
  * `chunkById` mantém a consulta de chave primária — o que importa quando a
@@ -40,7 +47,7 @@ final class RenewSerproTerms extends Command
 {
     protected $signature = 'serpro:renew-terms';
 
-    protected $description = 'Despacha a renovação do termo de autorização das contas que já têm termo';
+    protected $description = 'Despacha a renovação do termo das contas que já têm termo e a emissão para as habilitadas sem termo';
 
     /**
      * A travessia inteira, e o que uma falha no meio dela deixa.
@@ -68,6 +75,7 @@ final class RenewSerproTerms extends Command
     public function handle(): int
     {
         $despachados = 0;
+        $emitidas = 0;
 
         try {
             SerproAuthorizationTerm::query()
@@ -80,6 +88,25 @@ final class RenewSerproTerms extends Command
                         $despachados++;
                     }
                 });
+
+            // A primeira emissão é da mesma agenda: a conta habilitada que
+            // nunca teve termo não tem linha para a travessia acima, e é
+            // ela que esta cobre — o job decide pelo e-CNPJ vigente e pelo
+            // gate de prova.
+            Account::query()
+                ->where('settings->serpro_enabled', true)
+                ->whereNotExists(function ($consulta): void {
+                    $consulta->selectRaw(1)
+                        ->from('serpro_authorization_terms')
+                        ->whereColumn('serpro_authorization_terms.account_id', 'accounts.id');
+                })
+                ->orderBy('id')
+                ->chunkById(100, function ($contas) use (&$emitidas): void {
+                    foreach ($contas as $conta) {
+                        RenewSerproTermsJob::dispatch((int) $conta->getKey());
+                        $emitidas++;
+                    }
+                });
         } catch (Throwable $falha) {
             Log::error('A renovação diária dos termos de autorização não pôde ser despachada por completo.', [
                 'falha' => $falha::class,
@@ -89,6 +116,7 @@ final class RenewSerproTerms extends Command
         }
 
         $this->info("Renovações despachadas: {$despachados}");
+        $this->info("Emissões despachadas: {$emitidas}");
 
         return self::SUCCESS;
     }

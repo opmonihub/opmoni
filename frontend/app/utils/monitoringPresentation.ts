@@ -59,6 +59,15 @@ export const monitoringEmpty = {
 export const monitoringMissingValue = '—'
 
 /**
+ * What the "Última consulta" column shows when the provider never answered.
+ * Deliberately **not** `monitoringMissingValue`: the em dash says "the source
+ * told us nothing", and here the source telling nothing is the very fact the
+ * column exists to report — the client was never consulted, which is worth
+ * reading, not blanking out.
+ */
+export const monitoringNeverConsultedLabel = 'Nunca'
+
+/**
  * Staleness is an attribute of the synchronized data, never a situation. The
  * spec is explicit: a client whose power of attorney lapsed keeps its retained
  * data, and that data is labelled out of date while its situation stands.
@@ -79,6 +88,17 @@ export const monitoringCounterPresentation: Record<MonitoringCounter, { label: s
 export const monitoringSituacaoPresentation: Record<MonitoringSituacao, { label: string, color: Tone, icon: string }> = {
   ...monitoringCounterPresentation,
   encerrado: { label: 'Encerrado', color: 'neutral', icon: 'i-lucide-lock' }
+}
+
+/**
+ * The situation cell for a row the provider never answered (`situacao ===
+ * null`): the em dash, because no state is claimed. The column that explains
+ * the row is "Última consulta" reading "Nunca" — the badge adds nothing.
+ */
+export const monitoringSituacaoMissingPresentation: { label: string, color: Tone, icon: string } = {
+  label: monitoringMissingValue,
+  color: 'neutral',
+  icon: 'i-lucide-minus'
 }
 
 const attentionReasonPresentation: Record<AttentionReasonCode, { label: string, color: Tone, icon: string }> = {
@@ -731,9 +751,12 @@ export function serproTermScreen(state: SerproAuthorizationTermState, hasCertifi
   }
 }
 
-/** The total is the sum of the four; `encerrado` is deliberately not in it. */
-export function monitoringCountersTotal(summary: Pick<MonitoringObligationSummary, 'em_dia' | 'processando' | 'pendencias' | 'atencao'>) {
-  return summary.em_dia + summary.processando + summary.pendencias + summary.atencao
+/**
+ * The total is the four counters plus the clients never consulted;
+ * `encerrado` is deliberately not in it.
+ */
+export function monitoringCountersTotal(summary: Pick<MonitoringObligationSummary, 'em_dia' | 'processando' | 'pendencias' | 'atencao' | 'nao_consultadas'>) {
+  return summary.em_dia + summary.processando + summary.pendencias + summary.atencao + summary.nao_consultadas
 }
 
 /**
@@ -812,6 +835,29 @@ export function formatMonitoringDate(value: string | null | undefined) {
 
 export function formatMonitoringDueOn(value: string | null | undefined) {
   return formatMonitoringDate(value)
+}
+
+/**
+ * The last provider reading for the row, in the office's own clock.
+ *
+ * The stamp arrives as ISO 8601 (UTC) and is rendered in `America/Sao_Paulo` —
+ * day, month, year and hour:minute — because the office plans its manual
+ * searches by Brasília time, not by the provider's. `null` means "never
+ * consulted", and reads as its own label rather than the missing-value dash:
+ * the absence here is the fact, not a gap.
+ */
+export function formatMonitoringConsultedAt(value: string | null | undefined) {
+  if (!value) return monitoringNeverConsultedLabel
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return monitoringMissingValue
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
 }
 
 /**

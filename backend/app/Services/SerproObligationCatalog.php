@@ -113,26 +113,19 @@ final class SerproObligationCatalog
                 continue;
             }
 
-            [$sistema, $servico] = $this->par($obrigacao['service']);
+            foreach ($this->paresDeLeitura($obrigacao['service']) as [$sistema, $servico]) {
+                if (isset($servicosVistos[$servico])) {
+                    continue;
+                }
 
-            if ($servico === null) {
-                // Um `service` sem par — `PARCSN`, `CAIXAPOSTAL` — é o
-                // marcador de "serviço existe, path ainda não verificado" e
-                // nunca sai como chamada.
-                continue;
+                $servicosVistos[$servico] = true;
+                $work[] = [
+                    'slug' => $slug,
+                    'id_sistema' => $sistema,
+                    'id_servico' => $servico,
+                    'procuracao' => $obrigacao['procuracao'] ?? null,
+                ];
             }
-
-            if (isset($servicosVistos[$servico])) {
-                continue;
-            }
-
-            $servicosVistos[$servico] = true;
-            $work[] = [
-                'slug' => $slug,
-                'id_sistema' => $sistema,
-                'id_servico' => $servico,
-                'procuracao' => $obrigacao['procuracao'] ?? null,
-            ];
         }
 
         return $work;
@@ -159,6 +152,33 @@ final class SerproObligationCatalog
             )),
             array_map('trim', explode(',', $procuracao)),
         );
+    }
+
+    /**
+     * Cada fragmento `SISTEMA/IDSERVICO`; vários fragmentos vêm separados por
+     * `+` (`PERTSN/PEDIDOSPARC183+RELPSN/PEDIDOSPARC193`).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function paresDeLeitura(string $service): array
+    {
+        $pares = [];
+
+        foreach (array_map('trim', explode('+', $service)) as $fragmento) {
+            if ($fragmento === '') {
+                continue;
+            }
+
+            [$sistema, $servico] = $this->par($fragmento);
+
+            if ($servico === null || $servico === '') {
+                continue;
+            }
+
+            $pares[] = [$sistema, $servico];
+        }
+
+        return $pares;
     }
 
     /**

@@ -152,15 +152,16 @@ class SerproMonitoringAssociationTest extends TestCase
             ->postJson('/api/serpro/monitoring/obligations/declaracoes/pgdas/clients', ['client_ids' => [$client->getKey()]])
             ->assertOk();
 
-        // O vínculo é pedido, não dado: sem `source_at` a linha entra como
-        // pendência na planilha, não como em dia.
+        // O vínculo é pedido, não dado: sem `source_at` a linha fica na
+        // planilha sob a contagem própria, sem situação e fora das pendências.
         $this->actingAs($member, 'sanctum')
             ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
             ->assertOk()
             ->assertJsonPath('data.total', 1)
-            ->assertJsonPath('data.pendencias', 1)
+            ->assertJsonPath('data.pendencias', 0)
+            ->assertJsonPath('data.nao_consultadas', 1)
             ->assertJsonCount(1, 'data_rows')
-            ->assertJsonPath('data_rows.0.situacao', 'pendencias');
+            ->assertJsonPath('data_rows.0.situacao', null);
     }
 
     private function memberOf(Account $account, string $role): User

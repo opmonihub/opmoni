@@ -17,13 +17,15 @@ use Illuminate\Support\Facades\DB;
 /**
  * A leitura do monitoramento: quais linhas contam e o que os números dizem.
  *
- * Duas decisões valem o serviço inteiro. A primeira é que só conta o que o
- * provedor respondeu — `source_at` preenchido — mais o que a execução em
- * curso está respondendo agora: uma linha associada e nunca chamada não é
- * dado, e mostrá-la seria fingir resposta. A segunda é que os contadores são
- * agregados **antes** dos filtros de situação, busca e tag: o filtro estreita
- * a visão do operador, e um `atencao` zerado pelo filtro diria ao lado das
- * linhas que ninguém precisa de atenção.
+ * Duas decisões valem o serviço inteiro. A primeira é que o painel agregado
+ * só conta o que o provedor respondeu — `source_at` preenchido — mais o que
+ * a execução em curso está respondendo agora: uma linha associada e nunca
+ * chamada não é dado. Na listagem por obrigação ela entra, porque é a
+ * planilha que diz ao escritório quem falta buscar — sob a própria contagem
+ * (`nao_consultadas`), nunca dentro de `pendencias`. A segunda é que os
+ * contadores são agregados **antes** dos filtros de situação, busca e tag:
+ * o filtro estreita a visão do operador, e um `atencao` zerado pelo filtro
+ * diria ao lado das linhas que ninguém precisa de atenção.
  *
  * Todo `account_id` é explícito e o escopo global é retirado de cada query:
  * este serviço só é chamado de request HTTP hoje, mas a regra que o job
@@ -47,6 +49,7 @@ final class SerproMonitoringReader
      */
     private const CAUSAS = [
         'sem_declaracao' => 'Sem declaração',
+        'sem_pagamentos' => 'Sem pagamentos no período',
         'sem_procuracao' => 'Sem procuração',
         'procuracao_invalida' => 'Procuração inválida',
         'contam_debitos' => 'Contam débitos',
@@ -118,6 +121,7 @@ final class SerproMonitoringReader
                     'pendencias' => null,
                     'atencao' => null,
                     'encerrado' => null,
+                    'nao_consultadas' => null,
                     'progress' => null,
                     'current_page' => 1,
                     'attention_reasons' => [],
@@ -155,7 +159,7 @@ final class SerproMonitoringReader
      * A associação de cliente a obrigação: grava o vínculo e nada mais —
      * nenhum job, nenhuma execução, nenhuma chamada ao provedor. A linha
      * nasce `sem_dados` e com `source_at` nulo, o que a mantém fora dos
-     * números até a primeira resposta: associar é pedir, não é dado.
+     * baldes de ação até a primeira resposta: associar é pedir, não é dado.
      *
      * O `404` do slug desconhecido e o `422` da obrigação sem fonte moram
      * aqui pelo mesmo motivo que no `list` — a decisão é do catálogo, e
@@ -304,9 +308,10 @@ final class SerproMonitoringReader
     }
 
     /**
-     * Os cinco contadores e as causas, contados sobre todas as linhas — os
-     * filtros vêm depois. `total` é a soma dos quatro; `encerrado` fica
-     * fora dela de propósito.
+     * Os cinco contadores, quem nunca foi consultado e as causas, contados
+     * sobre todas as linhas — os filtros vêm depois. `total` é a soma dos
+     * quatro mais as `nao_consultadas`; `encerrado` fica fora dela de
+     * propósito, e a linha sem resposta do provedor tem situação `null`.
      *
      * @param  Collection<int, array{record: SerproMonitoring, row: array<string, mixed>, tags: list<int>}>  $linhas
      * @return array<string, mixed>
@@ -315,9 +320,17 @@ final class SerproMonitoringReader
     {
         $contadores = array_fill_keys(self::SITUACOES, 0);
         $causas = [];
+        $naoConsultadas = 0;
 
         foreach ($linhas as $linha) {
             $row = $linha['row'];
+
+            if ($row['situacao'] === null) {
+                $naoConsultadas++;
+
+                continue;
+            }
+
             $contadores[$row['situacao']]++;
             if ($row['situacao'] === 'atencao' && $row['cause'] !== null) {
                 $causas[$row['cause']] = ($causas[$row['cause']] ?? 0) + 1;
@@ -336,12 +349,13 @@ final class SerproMonitoringReader
 
         return [
             'total' => $contadores['em_dia'] + $contadores['processando']
-                + $contadores['pendencias'] + $contadores['atencao'],
+                + $contadores['pendencias'] + $contadores['atencao'] + $naoConsultadas,
             'em_dia' => $contadores['em_dia'],
             'processando' => $contadores['processando'],
             'pendencias' => $contadores['pendencias'],
             'atencao' => $contadores['atencao'],
             'encerrado' => $contadores['encerrado'],
+            'nao_consultadas' => $naoConsultadas,
             'attention_reasons' => $reasons,
         ];
     }

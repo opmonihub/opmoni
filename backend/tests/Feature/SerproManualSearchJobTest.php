@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\SerproAuthorizationTermState;
 use App\Enums\SerproManualSearchState;
+use App\Enums\SerproPowerOfAttorneyState;
 use App\Jobs\RunSerproManualSearchJob;
 use App\Models\Account;
 use App\Models\AccountCertificate;
@@ -112,6 +113,53 @@ class SerproManualSearchJobTest extends TestCase
         ]);
         $this->assertSame(0, SerproCall::query()->withoutGlobalScope('account')->count());
         Http::assertNothingSent();
+    }
+
+    public function test_a_recusa_022_marca_a_familia_aceita_como_rejected(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+
+        // A outorga que a elegibilidade viu é recusada pelo serviço: é o
+        // cancelamento no e-CAC que o oráculo ainda não sabe.
+        Http::fake([
+            'autenticacao.sapi.serpro.gov.br/*' => Http::response([
+                'expires_in' => 2008,
+                'access_token' => 'access-1',
+                'jwt_token' => 'jwt-1',
+            ]),
+            '*/integra-contador/v1/Consultar' => Http::response([
+                'status' => 403,
+                'dados' => null,
+                'mensagens' => [[
+                    'codigo' => 'AcessoNegado-ICGERENCIADOR-022',
+                    'texto' => 'Não possui procuração outorgada no e-CAC para o contribuinte.',
+                ]],
+            ], 403),
+        ]);
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('sem_procuracao', $busca->reason);
+
+        // A família que a elegibilidade tinha aceitado passa a `rejected` —
+        // o estado que a próxima busca recusa sem rede nem cobrança.
+        $autorizacao = SerproClientAuthorization::query()
+            ->where('account_id', $account->getKey())
+            ->where('client_id', $client->getKey())
+            ->where('family', '00146')
+            ->sole();
+        $this->assertSame(SerproPowerOfAttorneyState::Rejected, $autorizacao->state);
+        $this->assertNotNull($autorizacao->verified_at);
+
+        $this->assertDatabaseHas('serpro_monitorings', [
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'obligation' => 'declaracoes/pgdas',
+            'cause' => 'sem_procuracao',
+        ]);
+        $this->assertSame(1, SerproCall::query()->withoutGlobalScope('account')->count());
+        Http::assertSentCount(1);
     }
 
     public function test_cliente_sem_documento_falha_sem_chamar(): void
