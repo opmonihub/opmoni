@@ -32,9 +32,19 @@ describe('the settings navigation', () => {
   })
 
   it('builds the same list for the sidebar children', () => {
-    const children = settingsSidebarChildren(true)
+    const children = settingsSidebarChildren('/settings', true)
     assert.equal(children.length, 4)
     assert.equal(children[3]?.label, 'Certificado do escritório')
     assert.equal(children.every(child => child.icon == null), true)
+  })
+
+  it('marca só o filho da rota atual, com o índice exato', () => {
+    const security = settingsSidebarChildren('/settings/security', true)
+    assert.deepEqual(security.map(child => child.active), [false, false, true, false])
+
+    const index = settingsSidebarChildren('/settings', false)
+    assert.deepEqual(index.map(child => child.active), [true, false, false])
+    assert.equal(index[0]?.active, true)
+    assert.equal(settingsSidebarChildren('/settings/notifications', false)[0]?.active, false)
   })
 })

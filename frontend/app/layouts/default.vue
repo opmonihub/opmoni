@@ -5,7 +5,7 @@ import { equipeSidebarChildren } from '~/utils/equipeNav'
 import { fiscalSidebarChildren } from '~/utils/fiscalNav'
 import { monitoringSidebarChildren } from '~/utils/monitoringNav'
 import { settingsSidebarChildren } from '~/utils/settingsNav'
-import { sidebarOpenGroupFromPath } from '~/utils/sidebarNav'
+import { collapsedSidebarItems, foldedSidebarChildren, sidebarOpenGroupFromPath } from '~/utils/sidebarNav'
 import { workSidebarChildren } from '~/utils/workNav'
 
 const route = useRoute()
@@ -14,10 +14,13 @@ const { isSuperAdmin, canManageMembers } = useAuth()
 const inSupportMode = useSupportMode()
 
 const open = ref(false)
-const sidebarOpenGroup = ref(sidebarOpenGroupFromPath(route.path))
+const routeGroup = computed(() => sidebarOpenGroupFromPath(route.path))
+const sidebarOpenGroup = ref<string | undefined>(routeGroup.value || undefined)
+const groupFolded = ref(false)
 
-watch(() => route.path, (path) => {
-  sidebarOpenGroup.value = sidebarOpenGroupFromPath(path)
+watch(routeGroup, (group) => {
+  groupFolded.value = false
+  sidebarOpenGroup.value = group || undefined
 })
 
 const links = [[{
@@ -117,9 +120,10 @@ const navLinks = computed<NavigationMenuItem[][]>(() => {
     open.value = false
   }
   const main: NavigationMenuItem[] = (links[0] ?? []).map((item) => {
-    if (item.label === 'Clientes') {
+    const base = 'type' in item && item.type === 'trigger' ? { ...item, exact: true } : item
+    if (base.label === 'Clientes') {
       return {
-        ...item,
+        ...base,
         children: [{
           label: 'Painel',
           to: '/customers/painel',
@@ -134,58 +138,59 @@ const navLinks = computed<NavigationMenuItem[][]>(() => {
         }]
       }
     }
-    if (item.label === 'Equipe') {
+    if (base.label === 'Equipe') {
       return {
-        ...item,
+        ...base,
         children: equipeSidebarChildren(route.path).map(child => ({
           ...child,
           onSelect: close
         }))
       }
     }
-    if (item.label === 'Monitoramento') {
+    if (base.label === 'Monitoramento') {
       return {
-        ...item,
+        ...base,
         children: monitoringSidebarChildren(route.path).map(child => ({
           ...child,
           onSelect: close
         }))
       }
     }
-    if (item.label === 'Fiscal') {
+    if (base.label === 'Fiscal') {
       return {
-        ...item,
+        ...base,
         children: fiscalSidebarChildren(route.path).map(child => ({
           ...child,
           onSelect: close
         }))
       }
     }
-    if (item.label === 'Work') {
+    if (base.label === 'Work') {
       return {
-        ...item,
+        ...base,
         children: workSidebarChildren(route.path).map(child => ({
           ...child,
           onSelect: close
         }))
       }
     }
-    if (item.label === 'Configurações') {
+    if (base.label === 'Configurações') {
       return {
-        ...item,
-        children: settingsSidebarChildren(canManageMembers.value).map(child => ({
+        ...base,
+        children: settingsSidebarChildren(route.path, canManageMembers.value).map(child => ({
           ...child,
           onSelect: close
         }))
       }
     }
-    return item
+    return base
   })
   if (isSuperAdmin.value) {
     main.push({
       label: 'Admin',
       icon: 'i-lucide-shield-check',
       to: '/admin',
+      exact: true,
       value: 'admin',
       type: 'trigger',
       children: adminSidebarChildren(route.path).map(child => ({
@@ -196,6 +201,44 @@ const navLinks = computed<NavigationMenuItem[][]>(() => {
   }
   return [main, links[1] ?? []]
 })
+
+function keepsActiveChild(item: NavigationMenuItem) {
+  return !!item.value && item.value === routeGroup.value && !!item.children?.some(child => child.active)
+}
+
+function pinnedClosed(item: NavigationMenuItem) {
+  return keepsActiveChild(item) && (groupFolded.value || sidebarOpenGroup.value !== item.value)
+}
+
+const expandedEntries = computed(() => {
+  return (navLinks.value[0] ?? []).map((item, index) => {
+    const pinned = pinnedClosed(item)
+    const menuItem: NavigationMenuItem = {
+      ...(item.value ? item : { ...item, value: `leaf-${index}` }),
+      children: foldedSidebarChildren(item.children, pinned),
+      ui: pinned
+        ? { ...item.ui, linkTrailingIcon: 'group-data-[state=open]:!rotate-0' }
+        : item.ui
+    }
+    return {
+      key: item.value ?? item.label ?? String(index),
+      source: item,
+      menuItem,
+      modelValue: keepsActiveChild(item) ? item.value : sidebarOpenGroup.value
+    }
+  })
+})
+
+function onGroupToggle(item: NavigationMenuItem, value: string | undefined) {
+  if (keepsActiveChild(item)) {
+    const fullyOpen = !groupFolded.value && sidebarOpenGroup.value === item.value
+    groupFolded.value = fullyOpen
+    sidebarOpenGroup.value = item.value
+    return
+  }
+  groupFolded.value = false
+  sidebarOpenGroup.value = value
+}
 
 const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
   id: 'links',
@@ -253,14 +296,27 @@ onMounted(async () => {
         <UDashboardSearchButton :collapsed="collapsed" label="Buscar..." class="bg-transparent ring-default" />
 
         <UNavigationMenu
-          v-model="sidebarOpenGroup"
-          type="single"
-          :collapsed="collapsed"
-          :items="navLinks[0]"
+          v-if="collapsed"
+          collapsed
+          :items="collapsedSidebarItems(navLinks[0] ?? [], route.path)"
           orientation="vertical"
           tooltip
           popover
         />
+
+        <div v-else class="flex flex-col gap-1.5">
+          <div v-for="entry in expandedEntries" :key="entry.key" class="min-w-0">
+            <UNavigationMenu
+              :model-value="entry.modelValue"
+              type="single"
+              :items="[entry.menuItem]"
+              orientation="vertical"
+              tooltip
+              popover
+              @update:model-value="(value) => onGroupToggle(entry.source, value as string | undefined)"
+            />
+          </div>
+        </div>
 
         <UNavigationMenu
           :collapsed="collapsed"

@@ -40,16 +40,24 @@ export function settingsTabs(canManageOfficeCertificate: boolean): NavigationMen
   }))]
 }
 
+/** O índice (`exact`) só acende na própria rota; as demais acompanham o prefixo. */
+export function settingsPageActive(path: string, page: SettingsPage): boolean {
+  if (page.exact) return path === page.to
+  return path === page.to || path.startsWith(`${page.to}/`)
+}
+
 /**
  * Os filhos de Configurações no sidebar, mesma lista e mesma ordem das abas.
  *
  * Sem ícone: no template da lateral o ícone fica no item pai, e o submenu é só texto.
  * O ícone continua na barra de abas, via `settingsTabs`.
+ * `active` segue os outros módulos: sem ele, o grupo some ao abrir outro accordion.
  */
-export function settingsSidebarChildren(canManageOfficeCertificate: boolean): NavigationMenuItem[] {
+export function settingsSidebarChildren(path: string, canManageOfficeCertificate: boolean): NavigationMenuItem[] {
   return settingsPages(canManageOfficeCertificate).map(page => ({
     label: page.label,
     to: page.to,
-    exact: page.exact ?? false
+    exact: page.exact ?? false,
+    active: settingsPageActive(path, page)
   }))
 }
