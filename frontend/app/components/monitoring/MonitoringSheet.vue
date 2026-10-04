@@ -13,8 +13,11 @@ import type { ObligationListParams } from '~/composables/useSerpro'
 import type { MonitoringClient, MonitoringMessageStub, MonitoringObligationSummary, MonitoringSituacao } from '~/types/serpro'
 import { monitoringObligationUnserved, type MonitoringObligation } from '~/utils/monitoringNav'
 import {
+  formatMonitoringAmount,
   formatMonitoringConsultedAt,
+  formatMonitoringDate,
   formatMonitoringDueOn,
+  formatMonitoringLastDeclared,
   isMonitoringSlipColumn,
   latestSlipFor,
   monitoringActions,
@@ -381,7 +384,12 @@ function fieldValue(row: MonitoringClient, id: string) {
   // belonged to or whether it was paid. Handled before the `fields` lookup, or
   // they would resolve to a key the backend never populates.
   if (isMonitoringSlipColumn(id)) return monitoringSlipColumnValue(id, row.periods)
+  if (id === 'ultima_declaracao') return formatMonitoringLastDeclared(row.periods)
+  if (id === 'rbt12') return formatMonitoringAmount(row.fields.rbt12)
   const value = row.fields[id]
+  if (id === 'ultima' && props.obligation.slug === 'situacao-fiscal/comprovantes') {
+    return formatMonitoringDate(typeof value === 'string' ? value : null)
+  }
   return value == null || value === '' ? monitoringMissingValue : String(value)
 }
 

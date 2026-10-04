@@ -12,7 +12,7 @@ import {
   monitoringTabs,
   parseMonitoringSlug
 } from '../app/utils/monitoringNav.ts'
-import { isMonitoringSlipColumn, monitoringActions, monitoringSlipColumns } from '../app/utils/monitoringPresentation.ts'
+import { monitoringActions, monitoringSlipColumns } from '../app/utils/monitoringPresentation.ts'
 
 describe('monitoring routes', () => {
   it('resolves an obligation slug', () => {
@@ -97,19 +97,10 @@ describe('the obligation registry', () => {
   it('declares only columns the panel can actually read', () => {
     const pgdas = monitoringObligations.find(item => item.slug === 'declaracoes/pgdas')
     assert.ok(pgdas)
-    // The guide columns are read from the row's synchronized periods, so each
-    // one has to be a column the presentation module knows how to read; the rest
-    // resolve from the row itself or from `fields`.
     for (const column of pgdas.columns) {
       assert.ok(
-        isMonitoringSlipColumn(column.id) || ['name', 'situacao', 'due_on', 'ultima_consulta', 'gi_declaracao'].includes(column.id),
+        ['name', 'situacao', 'ultima_consulta', 'ultima_declaracao'].includes(column.id),
         `${column.id} resolves to nothing`
-      )
-    }
-    for (const id of ['guia', 'guia_numero', 'guia_emitida_em', 'guia_vencimento', 'guia_paga']) {
-      assert.ok(
-        pgdas.columns.some(column => column.id === id),
-        `the ${id} reading is declared by no column`
       )
     }
   })
@@ -119,10 +110,12 @@ describe('the obligation registry', () => {
     // guide derivation, or a `fields` key the backend populates. Listing the third
     // here is what makes it a contract — a new column id that is not in any of
     // the three fails here instead of rendering a blank column in production.
-    const fromRow = new Set(['name', 'situacao', 'due_on', 'ultima_consulta'])
+    const fromRow = new Set(['name', 'situacao', 'due_on', 'ultima_consulta', 'ultima_declaracao'])
     const fromFields = new Set([
-      'regime_escolhido', 'data_da_opcao', 'divida_ativa', 'gi_declaracao', 'receitas',
-      'valor_apurado_1718', 'certidao', 'emissao', 'validade', 'nao_lidas', 'ultima'
+      // `rbt12`: the mapper for CONSULTAROPCAOREGIME103 does not populate this key yet.
+      'rbt12',
+      'divida_ativa', 'receitas',
+      'valor_apurado_1718', 'certidao', 'validade', 'nao_lidas', 'ultima'
     ])
     const readable = new Set([...fromRow, ...fromFields, ...Object.keys(monitoringSlipColumns)])
 

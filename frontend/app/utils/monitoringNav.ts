@@ -50,14 +50,13 @@ export function monitoringObligationUnserved(obligation: Pick<MonitoringObligati
   return UNSERVED_CATEGORIES.includes(obligation.category)
 }
 
-const NAME: MonitoringColumn = { id: 'name', header: 'Cliente' }
+const NAME: MonitoringColumn = { id: 'name', header: 'Razão social' }
 const SITUACAO: MonitoringColumn = { id: 'situacao', header: 'Situação' }
-const DUE_ON: MonitoringColumn = { id: 'due_on', header: 'Vencimento' }
 /** Read from `row.consulted_at`, never from `fields` — it is the row's own stamp. */
 const ULTIMA_CONSULTA: MonitoringColumn = { id: 'ultima_consulta', header: 'Última consulta' }
 
-/** Every served obligation carries the client's name, the situation and when the provider last answered. */
-const served = (...specific: MonitoringColumn[]) => [NAME, ...specific, ULTIMA_CONSULTA, SITUACAO] as const
+/** Every served obligation carries the situation, its own facts, the client's name and when the provider last answered. */
+const served = (...specific: MonitoringColumn[]) => [SITUACAO, ...specific, NAME, ULTIMA_CONSULTA] as const
 /** An obligation the provider does not serve presents no column at all. */
 const unserved: readonly MonitoringColumn[] = []
 
@@ -65,22 +64,13 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
   {
     label: 'Simples Nacional',
     icon: 'i-lucide-store',
-    description: 'Apuração do regime e data da opção.',
+    description: 'Receita bruta acumulada dos últimos 12 meses.',
     pages: [
       {
         slug: 'simples-nacional',
         label: 'Simples Nacional',
         icon: 'i-lucide-store',
-        columns: served(
-          { id: 'regime_escolhido', header: 'Regime escolhido' },
-          // Read from `fields['data_da_opcao']` and from nothing else: the date
-          // the office opted for the regime, as
-          // REGIMEAPURACAO/CONSULTAROPCAOREGIME103 returns it. There is no
-          // branch deriving it, so populating exactly that key is the backend
-          // task's half of the contract this column declares.
-          { id: 'data_da_opcao', header: 'Data da opção' },
-          DUE_ON
-        ),
+        columns: served({ id: 'rbt12', header: 'RBT12', numeric: true }),
         service: 'REGIMEAPURACAO/CONSULTAROPCAOREGIME103',
         procuracao: '00060',
         category: 'direct'
@@ -113,9 +103,8 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         label: 'DCTFWeb',
         icon: 'i-lucide-file-chart-column',
         columns: served(
-          { id: 'gi_declaracao', header: 'GI_Declaração' },
-          { id: 'receitas', header: 'Receitas', numeric: true },
-          DUE_ON
+          { id: 'ultima_declaracao', header: 'Última declaração' },
+          { id: 'receitas', header: 'Receitas', numeric: true }
         ),
         service: 'DCTFWEB/CONSXMLDECLARACAO38',
         procuracao: '00103',
@@ -215,7 +204,6 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         icon: 'i-lucide-badge-check',
         columns: served(
           { id: 'certidao', header: 'Certidão' },
-          { id: 'emissao', header: 'Emissão' },
           { id: 'validade', header: 'Validade' }
         ),
         service: 'SITFIS/RELATORIOSITFIS92',
@@ -227,7 +215,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'situacao-fiscal/comprovantes',
         label: 'Comprovantes',
         icon: 'i-lucide-receipt',
-        columns: served(),
+        columns: served({ id: 'ultima', header: 'Último pagamento' }),
         service: 'PAGTOWEB/PAGAMENTOS71',
         procuracao: '00004',
         category: 'direct'
@@ -256,7 +244,10 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'caixas-postais/fgts-digital',
         label: 'FGTS Digital',
         icon: 'i-lucide-wallet',
-        columns: served(),
+        columns: served(
+          { id: 'nao_lidas', header: 'Não lidas', numeric: true },
+          { id: 'ultima', header: 'Última mensagem' }
+        ),
         service: 'CAIXAPOSTAL',
         procuracao: '00006',
         category: 'derived',
@@ -266,7 +257,10 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'caixas-postais/det',
         label: 'DET',
         icon: 'i-lucide-inbox',
-        columns: served(),
+        columns: served(
+          { id: 'nao_lidas', header: 'Não lidas', numeric: true },
+          { id: 'ultima', header: 'Última mensagem' }
+        ),
         service: 'CAIXAPOSTAL',
         procuracao: '00006',
         category: 'derived',
@@ -297,15 +291,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'declaracoes/pgdas',
         label: 'PGDAS',
         icon: 'i-lucide-file-spreadsheet',
-        columns: served(
-          { id: 'gi_declaracao', header: 'GI_Declaração' },
-          DUE_ON,
-          { id: 'guia', header: 'Status da guia' },
-          { id: 'guia_numero', header: 'Número da guia' },
-          { id: 'guia_emitida_em', header: 'Guia emitida em' },
-          { id: 'guia_vencimento', header: 'Vencimento da guia' },
-          { id: 'guia_paga', header: 'Pagamento da guia' }
-        ),
+        columns: served({ id: 'ultima_declaracao', header: 'Última declaração' }),
         service: 'PGDASD/CONSDECLARACAO13',
         procuracao: '00146',
         category: 'direct'
@@ -314,7 +300,10 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'declaracoes/dctfweb',
         label: 'DCTFWeb',
         icon: 'i-lucide-file-chart-column',
-        columns: served(),
+        columns: served(
+          { id: 'ultima_declaracao', header: 'Última declaração' },
+          { id: 'receitas', header: 'Receitas', numeric: true }
+        ),
         service: 'DCTFWEB/CONSXMLDECLARACAO38',
         procuracao: '00103',
         category: 'direct'
@@ -333,7 +322,7 @@ export const monitoringGroups: readonly MonitoringGroup[] = [
         slug: 'declaracoes/defis',
         label: 'DEFIS',
         icon: 'i-lucide-file-text',
-        columns: served(),
+        columns: served({ id: 'ultima_declaracao', header: 'Última declaração' }),
         service: 'DEFIS/CONSDECLARACAO142',
         procuracao: '00146',
         category: 'direct'

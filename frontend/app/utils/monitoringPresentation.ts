@@ -837,6 +837,32 @@ export function formatMonitoringDueOn(value: string | null | undefined) {
   return formatMonitoringDate(value)
 }
 
+export function formatMonitoringAmount(value: string | number | null | undefined) {
+  if (value == null || value === '') return monitoringMissingValue
+  const parsed = typeof value === 'number' ? value : Number(String(value).replace(/\./g, '').replace(',', '.'))
+  if (Number.isNaN(parsed)) return monitoringMissingValue
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parsed)
+}
+
+/**
+ * The most recent assessment period the synchronized data mentions, formatted
+ * for the "Última declaração" column — `MM/AAAA` when the period names a month,
+ * `AAAA` when it names a year alone (DEFIS).
+ */
+export function formatMonitoringLastDeclared(periods: readonly MonitoringAssessmentPeriod[] | null | undefined) {
+  if (!periods?.length) return monitoringMissingValue
+  const period = periods.reduce((latest, item) => (!latest || item.period > latest ? item.period : latest), '')
+  if (!period) return monitoringMissingValue
+  const digits = period.replace(/\D/g, '')
+  if (digits.length >= 6) {
+    return `${digits.slice(4, 6)}/${digits.slice(0, 4)}`
+  }
+  if (digits.length === 4) {
+    return digits
+  }
+  return monitoringMissingValue
+}
+
 /**
  * The last provider reading for the row, in the office's own clock.
  *
