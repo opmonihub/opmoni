@@ -2,7 +2,6 @@
 import type { MonitoringOverview } from '~/types/serpro'
 import {
   monitoringGroups,
-  monitoringIntegrationLinks,
   monitoringListPath,
   monitoringObligationUnserved,
   monitoringObligations,
@@ -186,40 +185,6 @@ function attentionFor(obligation: MonitoringObligation) {
             </div>
           </MetricCard>
         </UPageGrid>
-      </section>
-
-      <section class="flex min-w-0 flex-col gap-3 pt-1">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-cable" class="size-4 shrink-0 text-muted" />
-          <h3 class="text-sm font-semibold text-highlighted">
-            Integração
-          </h3>
-          <span class="hidden truncate text-xs text-muted sm:inline">
-            Histórico de sincronizações da carteira.
-          </span>
-        </div>
-
-        <div class="grid gap-3">
-          <UCard
-            v-for="link in monitoringIntegrationLinks"
-            :key="link.to"
-            class="min-w-0"
-            :ui="{ body: 'p-0 sm:p-0' }"
-          >
-            <NuxtLink
-              :to="link.to"
-              class="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-elevated/50 sm:p-4"
-            >
-              <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring ring-inset ring-primary/20">
-                <UIcon :name="link.icon" class="size-4" />
-              </span>
-              <span class="min-w-0 flex-1 truncate text-sm font-medium text-highlighted">
-                {{ link.label }}
-              </span>
-              <UIcon name="i-lucide-arrow-up-right" class="size-4 shrink-0 text-muted" />
-            </NuxtLink>
-          </UCard>
-        </div>
       </section>
     </template>
   </div>

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   monitoringGroups,
-  monitoringIntegrationLinks,
   monitoringListPath,
   monitoringObligations,
   monitoringObligationUnserved,
@@ -13,7 +12,7 @@ import {
   monitoringTabs,
   parseMonitoringSlug
 } from '../app/utils/monitoringNav.ts'
-import { isMonitoringSlipColumn, monitoringSlipColumns } from '../app/utils/monitoringPresentation.ts'
+import { isMonitoringSlipColumn, monitoringActions, monitoringSlipColumns } from '../app/utils/monitoringPresentation.ts'
 
 describe('monitoring routes', () => {
   it('resolves an obligation slug', () => {
@@ -51,11 +50,12 @@ describe('monitoring routes', () => {
     assert.equal(parseMonitoringSlug(['atencao']), null)
   })
 
-  it('does not claim the integration screens, which resolve as static routes', () => {
-    for (const link of monitoringIntegrationLinks) {
-      const slug = link.to.replace('/monitoring/', '').split('/')
-      assert.equal(parseMonitoringSlug(slug), null, `${link.to} must resolve ahead of the catch-all`)
-    }
+  it('does not resolve the removed execution screens', () => {
+    // The execuções screens were taken out with the MonitorHub redesign: no
+    // obligation is spelled `execucoes`, so the catch-all answers null and the
+    // registry is what says the slug leads nowhere.
+    assert.equal(parseMonitoringSlug(['execucoes']), null)
+    assert.equal(parseMonitoringSlug(['execucoes', '12']), null)
   })
 })
 
@@ -159,36 +159,21 @@ describe('the obligation registry', () => {
 })
 
 describe('the module navigation', () => {
-  it('offers Painel and the integration screens as the module tabs', () => {
-    assert.deepEqual(monitoringPages.map(page => page.to), [
-      '/monitoring',
-      '/monitoring/execucoes'
-    ])
+  it('offers Painel as the only module tab', () => {
+    // The execuções screens are gone; the whole module is a drill-down from
+    // Painel and the obligations are its children.
+    assert.deepEqual(monitoringPages.map(page => page.to), ['/monitoring'])
   })
 
   it('keeps the office certificate out of the module', () => {
     // The e-CNPJ moved to the Painel Global; no module destination may still
     // point at the old screen.
     assert.equal(monitoringPages.some(page => page.to === '/monitoring/termos'), false)
-    assert.equal(monitoringIntegrationLinks.some(link => link.to === '/monitoring/termos'), false)
-  })
-
-  it('spells an integration screen once, deriving the tabs from the panel links', () => {
-    // The panel's link cards and the module tab bar are the same screen;
-    // two lists of it is how "Execuções" becomes "Execução".
-    for (const link of monitoringIntegrationLinks) {
-      assert.ok(
-        monitoringPages.some(page => page.to === link.to && page.label === link.label),
-        `${link.to} is spelled differently in the tabs`
-      )
-    }
   })
 
   it('lights exactly one tab per destination', () => {
     for (const path of [
       '/monitoring',
-      '/monitoring/execucoes',
-      '/monitoring/execucoes/12',
       '/monitoring/simples-nacional',
       '/monitoring/declaracoes/pgdas',
       '/monitoring/declaracoes/pgdas/atencao'
@@ -200,9 +185,9 @@ describe('the module navigation', () => {
   })
 
   it('lights every obligation under Painel, the screen that indexes them', () => {
-    // A tab bar with nothing lit on 19 of the module's 20 screens is the defect
-    // this rule exists to prevent, so it is asserted over the whole registry
-    // rather than on a sample.
+    // A tab bar with nothing lit on the obligation screens is the defect this
+    // rule exists to prevent, so it is asserted over the whole registry rather
+    // than on a sample.
     for (const obligation of monitoringObligations) {
       const [group] = monitoringTabs(monitoringListPath(obligation))
       const active = group.filter(item => item.active)
@@ -211,25 +196,14 @@ describe('the module navigation', () => {
     }
   })
 
-  it('takes the tab away from Painel for the integration screens', () => {
-    for (const link of monitoringIntegrationLinks) {
-      assert.equal(monitoringPageActive(link.to, monitoringPages[0]!), false)
-      assert.equal(monitoringPageActive(`${link.to}/12`, monitoringPages[0]!), false)
-    }
-  })
-
-  it('keeps a run record under its own screen, not the module index', () => {
-    const execucoes = monitoringPages.find(page => page.to === '/monitoring/execucoes')!
-    assert.equal(monitoringPageActive('/monitoring/execucoes/12', execucoes), true)
-  })
-
-  it('lists the sidebar in the same order as the tabs, obligations in between', () => {
+  it('lists the sidebar in the same order as the tabs, obligations after Painel', () => {
     const children = monitoringSidebarChildren('/monitoring')
     assert.equal(children[0]?.label, 'Painel')
-    assert.equal(children[children.length - 1]?.label, 'Execuções de sincronização')
-    assert.equal(children.every(child => child.icon == null), true)
-    // Painel + eight groups + the integration screens.
+    // Painel + the eight obligation groups, and nothing after them: the
+    // integration screens the list used to close with are gone.
     assert.equal(children.length, monitoringPages.length + monitoringGroups.length)
+    assert.equal(children.every(child => child.icon == null), true)
+    assert.equal(children[children.length - 1]?.label, 'Declarações')
   })
 
   it('names exactly one position in the sidebar, on every screen', () => {
@@ -238,8 +212,6 @@ describe('the module navigation', () => {
     // to go dark there — the two rules are deliberately different.
     const paths = [
       '/monitoring',
-      '/monitoring/execucoes',
-      '/monitoring/execucoes/12',
       ...monitoringObligations.map(item => monitoringListPath(item)),
       ...monitoringObligations.map(item => `${monitoringListPath(item)}/atencao`)
     ]
@@ -253,5 +225,20 @@ describe('the module navigation', () => {
     const children = monitoringSidebarChildren('/monitoring/declaracoes/pgdas')
     assert.equal(children.find(child => child.label === 'Declarações')?.active, true)
     assert.equal(children.find(child => child.label === 'Painel')?.active, false)
+  })
+
+  it('keeps Painel lit on every module path, the drill-downs included', () => {
+    // With Painel as the only tab, every path under /monitoring is its
+    // drill-down — the rule that used to dim it for the integration screens
+    // has nothing left to dim it for.
+    for (const path of ['/monitoring', ...monitoringObligations.map(item => monitoringListPath(item))]) {
+      assert.equal(monitoringPageActive(path, monitoringPages[0]!), true, `${path} leaves Painel dark`)
+    }
+  })
+
+  it('keeps the search action label spelled once', () => {
+    // The toolbar button and the modal's confirm button say the same words;
+    // the label lives in the presentation module both read.
+    assert.ok(monitoringActions.searchDocuments.length > 0)
   })
 })

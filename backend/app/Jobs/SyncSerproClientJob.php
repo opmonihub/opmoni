@@ -7,6 +7,7 @@ use App\Enums\SerproSyncItemState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproCall;
+use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
 use App\Services\SerproAccountEnablement;
 use App\Services\SerproCallRecorder;
@@ -195,7 +196,6 @@ final class SyncSerproClientJob implements ShouldQueue
     {
         $catalogo = resolve(SerproObligationCatalog::class);
         $oracle = $catalogo->oracle();
-
         // O oráculo corre primeiro: ele é quem grava as autorizações que a
         // elegibilidade de cada obrigação lê, e é a única leitura que não
         // exige outorga nenhuma.
@@ -225,7 +225,7 @@ final class SyncSerproClientJob implements ShouldQueue
         $writer = resolve(SerproMonitoringWriter::class);
         $mapper = resolve(SerproMonitoringMapper::class);
 
-        foreach ($catalogo->syncables() as $unidade) {
+        foreach ($this->unidadesNoEscopo($catalogo) as $unidade) {
             if ($this->called($unidade['id_servico'])) {
                 continue;
             }
@@ -264,6 +264,37 @@ final class SyncSerproClientJob implements ShouldQueue
         }
 
         $this->finishTerminal($item, $ultimoMotivo);
+    }
+
+    /**
+     * As obrigações que esta execução cobre, na ordem do catálogo. O escopo
+     * mora na run (`obligations`): `null` é "todas as sincronizáveis" — a
+     * execução de botão e a de fallback —, e a lista é a que a rotina
+     * agendada preenche para cobrir só o documento do dia. O oráculo fica
+     * fora do escopo de propósito: ele mede autorização e corre sempre.
+     *
+     * @return list<array{slug: string, id_sistema: string, id_servico: string, procuracao: ?string}>
+     */
+    private function unidadesNoEscopo(SerproObligationCatalog $catalogo): array
+    {
+        // A run vem pelo modelo, e não por `value()`: o escopo é coluna JSON
+        // e a leitura crua viraria string — o `in_array` contra ela filtraria
+        // tudo, e a execução agendada sincronizaria nada.
+        $run = SerproSyncRun::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->find($this->runId);
+
+        $escopo = $run?->obligations;
+
+        if ($escopo === null) {
+            return $catalogo->syncables();
+        }
+
+        return array_values(array_filter(
+            $catalogo->syncables(),
+            fn (array $unidade): bool => in_array($unidade['slug'], $escopo, true),
+        ));
     }
 
     /**

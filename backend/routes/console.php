@@ -129,3 +129,18 @@ Schedule::command('serpro:refresh-powers')
 Schedule::command('serpro:fail-abandoned')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+
+/*
+ * A varredura agendada: no dia do mês marcado para cada documento
+ * (`serpro_obligation_schedules`), cada conta habilitada recebe uma execução
+ * com o escopo dos documentos do dia — sem operador e sem consumir cota
+ * manual nenhuma. Diária, não pontual, de propósito — o comando decide
+ * sozinho o que toca hoje, porque a agenda é da conta e não da config. De
+ * madrugada no fuso de Brasília, pelas mesmas razões das entradas de cima,
+ * e com `withoutOverlapping` porque duas passadas no mesmo dia criariam
+ * duas execuções — e a segunda nasce morta no 409.
+ */
+Schedule::command('serpro:scheduled-run')
+    ->dailyAt('03:00')
+    ->timezone('America/Sao_Paulo')
+    ->withoutOverlapping();

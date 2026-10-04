@@ -2,6 +2,7 @@
 import { refDebounced, useInfiniteScroll } from '@vueuse/core'
 import type { TableColumn } from '@nuxt/ui'
 import type { ComponentPublicInstance } from 'vue'
+import { h, resolveComponent } from 'vue'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import type { DataTableFilterModel } from '~/components/data-table/filter-model'
 import type { FilterPanelColumn } from '~/utils/filterPanel'
@@ -30,6 +31,7 @@ import {
   monitoringStalePresentation
 } from '~/utils/monitoringPresentation'
 import AssociateClientsModal from '~/components/monitoring/AssociateClientsModal.vue'
+import ManualSearchModal from '~/components/monitoring/ManualSearchModal.vue'
 import MessageDetail from '~/components/monitoring/MessageDetail.vue'
 import MessageStubSummary from '~/components/monitoring/MessageStubSummary.vue'
 import ObligationCounters from '~/components/monitoring/ObligationCounters.vue'
@@ -45,6 +47,34 @@ const { listObligation } = useSerpro()
 const { listTags } = useClients()
 
 const associateOpen = ref(false)
+
+/**
+ * The bulk search: the rows checked in the table travel to the modal as a
+ * starting selection. `rowSelection` is TanStack's model — keys are the row id
+ * as a string, and a client id is the only stable one a row has.
+ */
+const searchOpen = ref(false)
+const searchPreselected = ref<number[]>([])
+const rowSelection = ref<Record<string, boolean>>({})
+
+const selectedClientIds = computed(() =>
+  Object.entries(rowSelection.value)
+    .filter(([, value]) => value)
+    .map(([key]) => Number(key))
+    .filter(id => Number.isInteger(id))
+)
+
+function openSearch() {
+  if (!canManageClients.value || isUnserved.value) return
+  searchPreselected.value = selectedClientIds.value
+  searchOpen.value = true
+}
+
+const searchLabel = computed(() =>
+  selectedClientIds.value.length
+    ? `${monitoringActions.searchDocuments} (${selectedClientIds.value.length})`
+    : monitoringActions.searchDocuments
+)
 
 const search = ref('')
 /** The house debounce is 350 ms — never a request per keystroke. */
@@ -152,6 +182,10 @@ watch(data, (value) => {
   rows.value = value?.data_rows ?? []
   total.value = value?.data.total ?? 0
   page.value = value?.data.current_page ?? 1
+  // The checked rows belonged to the list as it stood; a refilter or a refresh
+  // replaced that list, and a selection that survives it would carry ids the
+  // operator can no longer see.
+  rowSelection.value = {}
 }, { immediate: true })
 
 async function loadMore() {
@@ -262,21 +296,25 @@ useMonitoringActions({
   }
 })
 
+const UCheckbox = resolveComponent('UCheckbox')
+
 /**
- * `accessorFn`, not `accessorKey`. The per-obligation values live under
- * `row.fields[id]`, so a flat `accessorKey: column.id` resolves to `undefined`
- * for every column that is not `name` or `situacao` and the desktop table
- * renders blanks — the mobile card reads the same values through
- * `fieldValue`, so the two layouts would disagree about what the source
- * delivered. One accessor makes the default cell agree with the card.
+ * The obligation's own declared columns, then — for whoever can manage clients
+ * — the selection column that feeds the bulk search. `accessorFn`, not
+ * `accessorKey`. The per-obligation values live under `row.fields[id]`, so a
+ * flat `accessorKey: column.id` resolves to `undefined` for every column that
+ * is not `name` or `situacao` and the desktop table renders blanks — the
+ * mobile card reads the same values through `fieldValue`, so the two layouts
+ * would disagree about what the source delivered. One accessor makes the
+ * default cell agree with the card.
  *
  * `meta.class` stays the `{ th, td }` object @nuxt/ui v4 reads (it resolves
  * `class.th`/`class.td`, nothing else), and a numeric column declares **both**,
  * so the header label shares the right edge of the figures under it. A `th`
  * only entry would left-align the heading over right-aligned numbers.
  */
-const columns = computed<TableColumn<MonitoringClient>[]>(() =>
-  props.obligation.columns.map(column => ({
+const columns = computed<TableColumn<MonitoringClient>[]>(() => {
+  const list: TableColumn<MonitoringClient>[] = props.obligation.columns.map(column => ({
     id: column.id,
     accessorFn: (row: MonitoringClient) => fieldValue(row, column.id),
     header: column.header,
@@ -286,7 +324,26 @@ const columns = computed<TableColumn<MonitoringClient>[]>(() =>
         : { th: column.id === 'name' ? 'min-w-64 whitespace-nowrap' : 'whitespace-nowrap', td: '' }
     }
   }))
-)
+  if (canManageClients.value) {
+    list.unshift({
+      id: 'select',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { class: { th: 'w-10', td: 'w-10' } },
+      header: ({ table }) => h(UCheckbox, {
+        'modelValue': table.getIsSomePageRowsSelected() ? 'indeterminate' : table.getIsAllPageRowsSelected(),
+        'onUpdate:modelValue': (value: boolean | 'indeterminate') => table.toggleAllPageRowsSelected(value === true),
+        'ariaLabel': 'Selecionar todos os clientes visíveis'
+      }),
+      cell: ({ row }) => h(UCheckbox, {
+        'modelValue': row.getIsSelected(),
+        'onUpdate:modelValue': (value: boolean | 'indeterminate') => row.toggleSelected(value === true),
+        'ariaLabel': `Selecionar ${row.original.name}`
+      })
+    })
+  }
+  return list
+})
 
 const columnVisibility = ref<Record<string, boolean>>({})
 
@@ -351,6 +408,16 @@ function slipPresentation(row: MonitoringClient) {
 async function afterAssociate() {
   // The modal decides whether it closes — a per-row add must not, so the next
   // one is a click away. The counters behind it are stale either way.
+  await refresh()
+}
+
+/**
+ * The requested rows leave the selection and the list reloads: the backend
+ * marks them "Processando" while the manual searches run, so the counters and
+ * the situation badges behind the modal are stale the moment it closes.
+ */
+async function afterSearch() {
+  rowSelection.value = {}
   await refresh()
 }
 
@@ -469,6 +536,20 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
           @associated="afterAssociate"
         />
 
+        <!--
+          The bulk manual search, beside the associate picker for the same
+          reason the picker is here: inside the served branch, outside the
+          loading chain, so a refilter cannot unmount an open modal.
+        -->
+        <ManualSearchModal
+          v-if="canManageClients"
+          v-model:open="searchOpen"
+          :obligation="obligation"
+          :associated-ids="rows.map(row => row.client_id)"
+          :selected-ids="searchPreselected"
+          @requested="afterSearch"
+        />
+
         <DataTableFilterPanel
           :columns="filterColumns"
           :model-value="filterModels"
@@ -484,6 +565,15 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
             :disabled="isLoading"
           />
           <template #trailing>
+            <UButton
+              v-if="canManageClients && !isUnserved"
+              :label="searchLabel"
+              icon="i-lucide-file-search"
+              color="primary"
+              variant="outline"
+              :aria-label="monitoringActions.searchDocuments"
+              @click="openSearch"
+            />
             <DataTableColumnMenu
               v-model="columnVisibility"
               :columns="hideableColumns"
@@ -573,10 +663,13 @@ const showEmpty = computed(() => !isLoading.value && rows.value.length === 0)
             <UTable
               ref="table"
               v-model:column-visibility="columnVisibility"
+              v-model:row-selection="rowSelection"
               sticky
               :data="rows"
               :columns="columns"
               :loading="isLoading || loadingMore"
+              :row-selection-options="{ enableRowSelection: true }"
+              :get-row-id="(row: MonitoringClient) => String(row.client_id)"
               class="h-full min-h-0 w-full flex-1"
               :ui="sheetTableUi"
             >

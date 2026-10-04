@@ -2,7 +2,9 @@
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import type { SerproAccountCertificate } from '~/types/serpro'
+import { monitoringObligationUnserved, monitoringObligations } from '~/utils/monitoringNav'
 import { formatMonitoringDate } from '~/utils/monitoringPresentation'
+import { scheduleDayMax, scheduleDayMin, schedulePayloadFromInputs } from '~/utils/serproSchedules'
 import { pageScrollClass } from '~/utils/pageShell'
 
 /**
@@ -20,7 +22,7 @@ import { pageScrollClass } from '~/utils/pageShell'
 definePageMeta({ middleware: ['auth', 'account-admin'] })
 
 const toast = useToast()
-const { accountCertificate, uploadAccountCertificate, removeAccountCertificate } = useSerpro()
+const { accountCertificate, uploadAccountCertificate, removeAccountCertificate, schedules: fetchSchedules, setSchedules } = useSerpro()
 
 /**
  * O certificado que o escritório já entregou, e `null` quando não entregou
@@ -116,6 +118,65 @@ async function confirmRemove() {
     toast.add({ title: 'Não foi possível remover o certificado', description: apiErrorMessage(err), color: 'error' })
   } finally {
     removing.value = false
+  }
+}
+
+/**
+ * Os agendamentos de busca automática, um dia do mês por documento servido.
+ *
+ * A leitura é própria da tela e acontece só no cliente — o certificado acima é
+ * que carrega o SSR. O endpoint não ter subido ainda (`404`) é o estado inerte:
+ * a tabela abre com tudo em branco, e o dia que o operador digitar é o que
+ * vale, porque o salvamento é o ato real.
+ */
+const servedObligations = monitoringObligations.filter(obligation => !monitoringObligationUnserved(obligation))
+
+/** A entrada digitada, por documento; vazio é "sem agendamento". */
+const scheduleInputs = reactive<Record<string, string>>(
+  Object.fromEntries(servedObligations.map(obligation => [obligation.slug, '']))
+)
+const schedulesError = ref(false)
+const savingSchedules = ref(false)
+
+async function loadSchedules() {
+  schedulesError.value = false
+  try {
+    const map = await fetchSchedules()
+    for (const obligation of servedObligations) {
+      const day = map?.[obligation.slug]
+      scheduleInputs[obligation.slug] = day == null ? '' : String(day)
+    }
+  } catch (e) {
+    if (apiStatus(e) === 404) return
+    schedulesError.value = true
+  }
+}
+
+onMounted(() => {
+  void loadSchedules()
+})
+
+async function submitSchedules() {
+  const { schedules, invalid } = schedulePayloadFromInputs(scheduleInputs)
+  if (invalid.length) {
+    // A recusa é nomeada, não um clamp silencioso: salvar "32" como 28 diria
+    // que o escritório escolheu o dia em que a busca passa, e não escolheu.
+    const names = invalid.map(slug => servedObligations.find(obligation => obligation.slug === slug)?.label ?? slug)
+    toast.add({
+      title: 'Dia do mês inválido',
+      description: `Use um dia entre ${scheduleDayMin} e ${scheduleDayMax} em: ${names.join(', ')}.`,
+      color: 'error'
+    })
+    return
+  }
+  savingSchedules.value = true
+  try {
+    await setSchedules(schedules)
+    toast.add({ title: 'Agendamentos salvos', color: 'success' })
+  } catch (err) {
+    toast.add({ title: 'Não foi possível salvar os agendamentos', description: apiErrorMessage(err), color: 'error' })
+  } finally {
+    savingSchedules.value = false
   }
 }
 </script>
@@ -223,6 +284,65 @@ async function confirmRemove() {
             />
           </div>
         </div>
+      </UPageCard>
+
+      <UPageCard
+        title="Agendamentos do monitoramento"
+        description="O dia do mês em que cada documento é buscado automaticamente pelo Integra Contador. Em branco, o documento não entra na busca automática."
+        variant="subtle"
+      >
+        <div class="flex flex-col gap-3">
+          <UAlert
+            v-if="schedulesError"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-circle-alert"
+            title="Não foi possível carregar os agendamentos"
+            description="A tabela abre em branco; recarregue para trazer o que já está salvo."
+          >
+            <template #actions>
+              <UButton
+                label="Tentar de novo"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                @click="loadSchedules"
+              />
+            </template>
+          </UAlert>
+
+          <div class="flex flex-col divide-y divide-default">
+            <div
+              v-for="obligation in servedObligations"
+              :key="obligation.slug"
+              class="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+            >
+              <p class="min-w-0 flex-1 truncate text-sm font-medium text-default">
+                {{ obligation.label }}
+              </p>
+              <UInput
+                v-model="scheduleInputs[obligation.slug]"
+                type="number"
+                :min="scheduleDayMin"
+                :max="scheduleDayMax"
+                placeholder="Sem agendamento"
+                aria-label="Dia do mês"
+                class="w-40"
+              />
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex w-full justify-end">
+            <UButton
+              label="Salvar agendamentos"
+              type="button"
+              :loading="savingSchedules"
+              @click="submitSchedules"
+            />
+          </div>
+        </template>
       </UPageCard>
     </template>
   </div>

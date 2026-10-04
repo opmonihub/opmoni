@@ -30,6 +30,15 @@ return [
     'temp_dir' => storage_path('app/private/serpro-tmp'),
 
     /*
+     * A régua de consumo do contratante: o gateway cobra por chamada, e o
+     * teto de buscas manuais (10/mês por cliente×documento) mora na validação
+     * do endpoint de busca manual — é lá que o estouro pode listar cliente a
+     * cliente. `scheduled_run_day` é o dia de fallback da execução agendada
+     * para a conta que não configurou agenda por documento em Settings.
+     */
+    'scheduled_run_day' => (int) env('SERPRO_SCHEDULED_RUN_DAY', 15),
+
+    /*
      * Catálogo do primeiro conjunto de leitura. `path` é o segmento da
      * operação e `versaoSistema` varia por serviço — nunca fixar "1.0".
      */

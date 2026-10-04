@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Concerns\BelongsToAccount;
 use App\Enums\SerproSyncRunState;
+use App\Enums\SerproSyncRunTrigger;
 use Database\Factories\SerproSyncRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,6 +37,10 @@ class SerproSyncRun extends Model
     {
         return [
             'state' => SerproSyncRunState::class,
+            'trigger' => SerproSyncRunTrigger::class,
+            // O escopo da execução: `null` cobre todas as sincronizáveis; a
+            // lista só vem preenchida da rotina agendada por documento.
+            'obligations' => 'array',
             'total' => 'integer',
             'synchronized' => 'integer',
             'skipped' => 'integer',

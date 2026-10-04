@@ -6,7 +6,6 @@ import { monitoringActions } from '~/utils/monitoringPresentation'
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const router = useRouter()
 const { canManageClients } = useAuth()
 
 /**
@@ -17,7 +16,6 @@ const { canManageClients } = useAuth()
 const refreshRequest = useState('monitoring-refresh', () => 0)
 const associateRequest = useState('monitoring-associate', () => 0)
 const refreshing = useState('monitoring-refreshing', () => false)
-const detailTitle = useState<string | null>('monitoring-detail-title', () => null)
 
 const listing = computed(() => parseMonitoringSlug(route.params.slug))
 
@@ -27,18 +25,7 @@ const currentGroup = computed(() => {
   return monitoringGroups.find(group => group.pages.some(page => page.slug === obligation.slug)) ?? null
 })
 
-const onRunDetail = computed(() => /^\/monitoring\/execucoes\/[^/]+/.test(route.path))
-
-const title = computed(() => {
-  if (onRunDetail.value) return detailTitle.value || 'Execução'
-  if (currentGroup.value) return currentGroup.value.label
-  if (route.path.startsWith('/monitoring/execucoes')) return 'Execuções de sincronização'
-  return 'Monitoramento'
-})
-
-watch(onRunDetail, (value) => {
-  if (!value) detailTitle.value = null
-})
+const title = computed(() => currentGroup.value?.label ?? 'Monitoramento')
 
 const unserved = computed(() => !!listing.value && monitoringObligationUnserved(listing.value.obligation))
 const canAssociate = computed(() => canManageClients.value && !!listing.value && !unserved.value)
@@ -67,14 +54,6 @@ const obligationTabs = computed<NavigationMenuItem[][] | null>(() => {
     }))
   ]]
 })
-
-async function goBack() {
-  if (import.meta.client && window.history.length > 1) {
-    router.back()
-    return
-  }
-  await navigateTo('/monitoring/execucoes')
-}
 </script>
 
 <template>
@@ -83,15 +62,6 @@ async function goBack() {
       <UDashboardNavbar :title="title">
         <template #leading>
           <UDashboardSidebarCollapse />
-          <UButton
-            v-if="onRunDetail"
-            icon="i-lucide-arrow-left"
-            color="neutral"
-            variant="ghost"
-            square
-            aria-label="Voltar"
-            @click="goBack"
-          />
         </template>
 
         <template #right>
@@ -134,11 +104,11 @@ async function goBack() {
         </template>
       </UDashboardNavbar>
 
-      <UDashboardToolbar v-if="!onRunDetail">
+      <UDashboardToolbar>
         <UNavigationMenu :items="tabs" highlight class="-mx-1 min-w-0 flex-1" />
       </UDashboardToolbar>
 
-      <UDashboardToolbar v-if="!onRunDetail && obligationTabs">
+      <UDashboardToolbar v-if="obligationTabs">
         <UNavigationMenu
           :items="obligationTabs"
           highlight

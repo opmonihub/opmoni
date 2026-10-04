@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\SerproSyncRunState;
+use App\Enums\SerproSyncRunTrigger;
 use App\Jobs\FanOutSerproRunJob;
 use App\Models\Account;
 use App\Models\SerproConnection;
@@ -26,7 +27,9 @@ use Illuminate\Validation\ValidationException;
  * ausente e credencial inválida são `422`: a request é bem formada, a
  * pré-condição é que falta, e nenhuma execução nasce para o operador
  * confundir com "em andamento". O `409` é o único conflito: a execução que
- * já corre volta no corpo para a tela poder apontar para ela.
+ * já corre volta no corpo para a tela poder apontar para ela. A cota de
+ * buscas manuais não mora aqui: ela é por cliente×documento e vale no
+ * endpoint de busca manual, que lista o estouro par a par.
  *
  * **O fan-out despacha depois do commit.** `afterCommit` garante que o job
  * só sai da fila com a execução gravada; despachar dentro de uma transação
@@ -37,11 +40,12 @@ final class SerproRunStarter
 {
     /**
      * @throws HttpResponseException 409 quando já existe execução ativa.
-     * @throws ValidationException 422 quando flag, credencial ou identidade faltam.
+     * @throws ValidationException 422 quando flag, credencial ou identidade
+     *                             faltam.
      */
-    public function start(int $accountId, int $userId, ?int $previousRunId = null): SerproSyncRun
+    public function start(int $accountId, ?int $userId, ?int $previousRunId = null, SerproSyncRunTrigger $trigger = SerproSyncRunTrigger::Manual, ?array $obligations = null): SerproSyncRun
     {
-        return DB::transaction(function () use ($accountId, $userId, $previousRunId): SerproSyncRun {
+        return DB::transaction(function () use ($accountId, $userId, $previousRunId, $trigger, $obligations): SerproSyncRun {
             // O lock é na linha da conta, e não na consulta das execuções:
             // a execução que vai nascer ainda não existe para ser trancada.
             Account::query()->whereKey($accountId)->lockForUpdate()->firstOrFail();
@@ -67,13 +71,19 @@ final class SerproRunStarter
             // `account_id` explícito e não o singleton do tenant: este serviço
             // também é chamável do queue/console, onde o singleton é `null` e
             // o escopo global não filtraria nada. `forceFill` porque a chave da
-            // conta e o elo para a execução anterior ficam fora do `#[Fillable]`
-            // de propósito — nenhuma request pode declará-los.
+            // conta, o elo para a execução anterior e o escopo de obrigações
+            // ficam fora do `#[Fillable]` de propósito — nenhuma request pode
+            // declará-los.
             $run = (new SerproSyncRun)->forceFill([
                 'account_id' => $accountId,
                 'requested_by' => $userId,
                 'previous_run_id' => $previousRunId,
                 'state' => SerproSyncRunState::Queued,
+                'trigger' => $trigger->value,
+                // O escopo da execução: a lista de obrigações que ela cobre,
+                // ou `null` para "todas as sincronizáveis" — é o que o comando
+                // agendado usa para disparar uma run por documento.
+                'obligations' => $obligations,
             ]);
             $run->save();
 

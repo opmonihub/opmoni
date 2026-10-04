@@ -25,6 +25,8 @@ class SerproSyncRunResource extends JsonResource
             'id' => $this->getKey(),
             'previous_run_id' => $this->previous_run_id,
             'state' => $this->state->value,
+            'trigger' => $this->trigger->value,
+            'obligations' => $this->obligations,
             'reason' => $this->reason,
             'total' => $this->total,
             'synchronized' => $this->synchronized,

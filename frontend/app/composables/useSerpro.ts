@@ -10,6 +10,9 @@ import type {
   SerproConnectivityResult,
   SerproConnectionMetadata,
   SerproConnectionPayload,
+  SerproManualSearchQuota,
+  SerproScheduleMap,
+  SerproSearchDocumentsPayload,
   SerproSyncRun,
   SerproSyncRunDetail
 } from '~/types/serpro'
@@ -66,6 +69,48 @@ export function useSerpro() {
       { method: 'POST', body: { client_ids: clientIds } }
     )
     return res.data
+  }
+
+  /**
+   * The manual search is a request, not a result: the endpoint answers `202`
+   * and the runs happen in background, the rows showing as `Processando` while
+   * they last. The quota the backend validates is per client×document —
+   * a client over it comes back as a `422`, and the caller is the one who can
+   * name the clients, so this function does not swallow anything.
+   */
+  async function searchDocuments(obligation: string, payload: SerproSearchDocumentsPayload) {
+    await $api(`/serpro/monitoring/obligations/${obligation}/clients/search`, { method: 'POST', body: payload })
+  }
+
+  /**
+   * The month's used/limit pair per client of the obligation, for the search
+   * modal's quota column. The modal draws what arrived; a client missing here
+   * renders the em dash, not a zero.
+   */
+  async function searchQuota(obligation: string) {
+    const res = await $api<{ data: SerproManualSearchQuota[] }>(
+      `/serpro/monitoring/obligations/${obligation}/search-quota`
+    )
+    return res.data
+  }
+
+  /**
+   * The Account's scheduled-search day per document. The wire is a list of
+   * `{obligation, day}` rows — only the documents with a scheduled day travel
+   * in either direction; a document absent from the list has no automatic
+   * search. The composable hands the page the map the form reads and writes.
+   */
+  async function schedules() {
+    const res = await $api<{ data: SerproObligationScheduleRow[] }>('/serpro/obligation-schedules')
+    return scheduleMapFromRows(res.data)
+  }
+
+  async function setSchedules(map: SerproScheduleMap) {
+    const res = await $api<{ data: SerproObligationScheduleRow[] }>(
+      '/serpro/obligation-schedules',
+      { method: 'PUT', body: { schedules: scheduleRowsFromMap(map) } }
+    )
+    return scheduleMapFromRows(res.data)
   }
 
   async function connection() {
@@ -182,6 +227,10 @@ export function useSerpro() {
     listObligation,
     readMessage,
     associateClients,
+    searchDocuments,
+    searchQuota,
+    schedules,
+    setSchedules,
     connection,
     saveConnection,
     testConnectivity,

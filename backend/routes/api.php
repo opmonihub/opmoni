@@ -29,10 +29,12 @@ use App\Http\Controllers\Tenant\ProcessController;
 use App\Http\Controllers\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Tenant\SerproAccountEnablementController;
 use App\Http\Controllers\Tenant\SerproAuthorizationTermController;
+use App\Http\Controllers\Tenant\SerproManualSearchController;
 use App\Http\Controllers\Tenant\SerproMonitoringAssociationController;
 use App\Http\Controllers\Tenant\SerproMonitoringMessageController;
 use App\Http\Controllers\Tenant\SerproMonitoringObligationController;
 use App\Http\Controllers\Tenant\SerproMonitoringOverviewController;
+use App\Http\Controllers\Tenant\SerproObligationScheduleController;
 use App\Http\Controllers\Tenant\SerproSyncRunController;
 use App\Http\Controllers\Tenant\TagController;
 use App\Http\Controllers\Tenant\TaskController;
@@ -133,6 +135,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::put('serpro/enablement', [SerproAccountEnablementController::class, 'update']);
 
     /*
+     * A agenda por documento: o dia do mês em que cada obrigação sincroniza
+     * sozinha. As duas rotas endereçam a conta corrente, e o `replace` do
+     * manager é a escrita — o formulário manda a lista inteira. Ler é de
+     * qualquer Membro; escrever é do par que dispara a rotina
+     * (`admin`/`operador`), e é o Form Request quem decide.
+     */
+    Route::get('serpro/obligation-schedules', [SerproObligationScheduleController::class, 'index']);
+    Route::put('serpro/obligation-schedules', [SerproObligationScheduleController::class, 'update']);
+
+    /*
      * As execuções de sincronização. O POST é o disparo manual — a rotina
      * agendada nasce fora daqui — e a guarda "uma execução ativa por conta"
      * mora no `SerproRunStarter`, sob lock da linha da conta. `resync` é
@@ -147,6 +159,22 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function (): void {
     Route::get('serpro/sync-runs/{run}', [SerproSyncRunController::class, 'show']);
     Route::get('serpro/sync-runs/{run}/calls', [SerproSyncRunController::class, 'calls']);
     Route::post('serpro/sync-runs/{run}/resync', [SerproSyncRunController::class, 'resync']);
+
+    /*
+     * A busca manual sob demanda, e a cota que a barra do modal lê. O POST
+     * cria um pedido por cliente — é ele que a cota de 10/mês por
+     * `cliente × obrigação` conta, e o estouro volta `422` com o par
+     * bloqueante nomeado. O gate é o do papel que associa clientes, no
+     * Form Request: pedir busca gasta o gateway do mesmo jeito. O GET de
+     * cota é de qualquer Membro, como a listagem.
+     *
+     * As duas vêm antes da listagem genérica de obrigação: o `.+` do slug
+     * engoliria `search-quota` e o GET genérico responderia por ele.
+     */
+    Route::post('serpro/monitoring/obligations/{obligation}/clients/search', [SerproManualSearchController::class, 'store'])
+        ->where('obligation', '.+');
+    Route::get('serpro/monitoring/obligations/{obligation}/search-quota', [SerproManualSearchController::class, 'quota'])
+        ->where('obligation', '.+');
 
     /*
      * A leitura do monitoramento, e uma só escrita: o POST de associação, que

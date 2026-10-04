@@ -39,9 +39,10 @@ final class SerproMonitoringProjector
         SerproMonitoring $record,
         ?SerproClientAuthorization $authorization,
         ?SerproSyncRunItem $activeItem,
+        bool $buscaManualAtiva = false,
     ): array {
         $situacao = match (true) {
-            $this->emProcessamento($record, $activeItem) => 'processando',
+            $this->emProcessamento($record, $activeItem, $buscaManualAtiva) => 'processando',
             $record->cause !== null => 'atencao',
             $record->state === 'encerrado' => 'encerrado',
             $record->due_on !== null && $record->due_on->lte(today()->addDays(30)) => 'pendencias',
@@ -66,10 +67,16 @@ final class SerproMonitoringProjector
     /**
      * A execução corrente está respondendo esta obrigação para este cliente:
      * o item com `current_obligation` é a fronteira que o job marca antes de
-     * chamar, e vale enquanto a execução não terminou.
+     * chamar, e vale enquanto a execução não terminou. A busca manual em
+     * curso vale o mesmo — `queued|running` é trabalho que o operador pediu
+     * e o painel não pode fingir que já acabou.
      */
-    private function emProcessamento(SerproMonitoring $record, ?SerproSyncRunItem $activeItem): bool
+    private function emProcessamento(SerproMonitoring $record, ?SerproSyncRunItem $activeItem, bool $buscaManualAtiva = false): bool
     {
+        if ($buscaManualAtiva) {
+            return true;
+        }
+
         if ($activeItem === null || $activeItem->current_obligation !== $record->obligation) {
             return false;
         }

@@ -294,6 +294,46 @@ export interface SerproAssociateResult {
 }
 
 /**
+ * The two shapes a manual search can take: the whole document, or only whether
+ * the current collection slip is paid. The backend's enum verbatim.
+ */
+export type SerproManualSearchMode = 'full' | 'slip_status'
+
+/** `POST /serpro/monitoring/obligations/{obligation}/clients/search`. */
+export interface SerproSearchDocumentsPayload {
+  client_ids: number[]
+  mode?: SerproManualSearchMode
+  /** `YYYY-MM-DD`. Absent, the search covers the current period. */
+  recalculate_date?: string
+}
+
+/**
+ * One client's share of the monthly manual-search quota for one obligation.
+ * The month is the calendar month on the server side.
+ */
+export interface SerproManualSearchQuota {
+  client_id: number
+  used: number
+  limit: number
+}
+
+/**
+ * The scheduled-search day per document, keyed by the obligation slug the rest
+ * of the module uses. `null` — or the key's absence — means no automatic
+ * search; a day is 1–28 so every month has one.
+ */
+export type SerproScheduleMap = Record<string, number | null>
+
+/**
+ * The wire row the schedule endpoints exchange: `{obligation, day}` pairs,
+ * only for the documents with a scheduled automatic search.
+ */
+export interface SerproObligationScheduleRow {
+  obligation: string
+  day: number
+}
+
+/**
  * Uma obrigação de monitoramento na etapa de módulos do cadastro.
  *
  * `suggested` é o mapa fixo regime → obrigações do catálogo (o mesmo em toda

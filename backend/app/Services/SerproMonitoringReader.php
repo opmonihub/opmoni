@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Enums\ClientPersonType;
+use App\Enums\SerproManualSearchState;
 use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\SerproSyncRunState;
 use App\Models\SerproClientAuthorization;
+use App\Models\SerproManualSearch;
 use App\Models\SerproMonitoring;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
@@ -207,9 +209,10 @@ final class SerproMonitoringReader
     }
 
     /**
-     * As linhas que entram na conta da obrigação: registro respondido ou
-     * cliente com item ativo nesta obrigação — e o projeto de cada uma já
-     * projetado, porque situação é derivada e não coluna.
+     * As linhas que entram na conta da obrigação: registro respondido, cliente
+     * com item ativo nesta obrigação ou cliente com busca manual em curso —
+     * e o projeto de cada uma já projetado, porque situação é derivada e não
+     * coluna.
      *
      * @param  array{category: string, service: ?string, procuracao: ?string, derived_from: ?string, sync_enabled: bool}  $obrigacao
      * @return Collection<int, array{record: SerproMonitoring, row: array<string, mixed>, tags: list<int>}>
@@ -227,13 +230,25 @@ final class SerproMonitoringReader
             ->get()
             ->keyBy('client_id');
 
+        // A busca manual em curso vale o que o item de execução vale: o
+        // operador pediu, a fila ainda não respondeu, e a linha que some do
+        // painel durante o trabalho seria a promessa que não se cumpre.
+        $buscas = SerproManualSearch::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $accountId)
+            ->where('obligation', $slug)
+            ->whereIn('state', [SerproManualSearchState::Queued, SerproManualSearchState::Running])
+            ->get()
+            ->keyBy('client_id');
+
         $registros = SerproMonitoring::query()
             ->withoutGlobalScope('account')
             ->where('account_id', $accountId)
             ->where('obligation', $slug)
             ->where(fn ($query) => $query
                 ->whereNotNull('source_at')
-                ->orWhereIn('client_id', $ativos->keys()))
+                ->orWhereIn('client_id', $ativos->keys())
+                ->orWhereIn('client_id', $buscas->keys()))
             ->whereHas('client', fn ($query) => $query
                 ->where('account_id', $accountId)
                 ->where('person_type', ClientPersonType::Company))
@@ -248,6 +263,7 @@ final class SerproMonitoringReader
                 $record,
                 $this->concessao($record, $obrigacao),
                 $ativos->get($record->client_id),
+                $buscas->has($record->client_id),
             ),
             'tags' => $record->client->tags->pluck('id')->all(),
         ]);

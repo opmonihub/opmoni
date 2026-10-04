@@ -35,7 +35,8 @@ export const monitoringTotalIcon = 'i-lucide-users'
 
 export const monitoringActions = {
   associate: 'Adicionar clientes',
-  refresh: 'Atualizar'
+  refresh: 'Atualizar',
+  searchDocuments: 'Buscar documentos'
 } as const
 
 export const monitoringFilters = {

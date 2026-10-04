@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\SerproSyncRunState;
+use App\Enums\SerproSyncRunTrigger;
 use App\Models\Account;
 use App\Models\SerproSyncRun;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -22,6 +23,7 @@ class SerproSyncRunFactory extends Factory
         return [
             'account_id' => Account::factory(),
             'state' => SerproSyncRunState::Queued,
+            'trigger' => SerproSyncRunTrigger::Manual,
         ];
     }
 
