@@ -105,10 +105,32 @@ final class SerproMonitoringMapper
      */
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
-        $periodos = array_merge(
-            is_array($existente['periods'] ?? null) ? $existente['periods'] : [],
-            is_array($nova['periods'] ?? null) ? $nova['periods'] : [],
-        );
+        $porPrograma = [];
+        $ordem = [];
+
+        foreach ([
+            ...(is_array($existente['periods'] ?? null) ? $existente['periods'] : []),
+            ...(is_array($nova['periods'] ?? null) ? $nova['periods'] : []),
+        ] as $periodo) {
+            if (! is_array($periodo)) {
+                continue;
+            }
+
+            $rotulo = (string) ($periodo['period'] ?? '');
+            $programa = str_contains($rotulo, '/') ? strstr($rotulo, '/', true) : $rotulo;
+
+            if ($programa === '') {
+                continue;
+            }
+
+            if (! array_key_exists($programa, $porPrograma)) {
+                $ordem[] = $programa;
+            }
+
+            $porPrograma[$programa] = $periodo;
+        }
+
+        $periodos = array_map(fn (string $programa): array => $porPrograma[$programa], $ordem);
 
         $modalidades = array_values(array_unique(array_filter([
             $existente['fields']['modalidade'] ?? null,
@@ -1070,8 +1092,8 @@ final class SerproMonitoringMapper
      */
     private function textoSitfis(string $texto): array
     {
-        $certidao = $this->captura($texto, '/Certid[aã]o(?:\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\-/]{8,}[0-9X])/iu')
-            ?? $this->captura($texto, '/N[úu]mero(?:\s+da\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\-/]{8,}[0-9X])/iu');
+        $certidao = $this->captura($texto, '#Certid[aã]o(?:\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\-/]{8,}[0-9X])#iu')
+            ?? $this->captura($texto, '#N[úu]mero(?:\s+da\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\-/]{8,}[0-9X])#iu');
 
         $emissao = $this->dataBr($this->captura($texto, '/Emiss[aã]o[^0-9]{0,20}(\d{2}\/\d{2}\/\d{4})/iu'));
         $validade = $this->dataBr($this->captura($texto, '/Validade[^0-9]{0,20}(\d{2}\/\d{2}\/\d{4})/iu'));

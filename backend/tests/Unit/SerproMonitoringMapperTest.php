@@ -339,6 +339,79 @@ XML;
         $this->assertSame('Em parcelamento', $projecao['periods'][1]['situacao']);
     }
 
+    public function test_o_sitfis_descarta_o_pdf_e_extrai_campos_do_texto(): void
+    {
+        $pdf = <<<'PDF'
+%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/Contents 4 0 R>>endobj
+4 0 obj<</Length 160>>stream
+(Emissão 15/09/2026) (Validade 15/09/2027) (Situação Fiscal REGULAR)
+endstream
+endobj
+trailer<</Root 1 0 R>>
+%%EOF
+PDF;
+
+        $result = new SerproResult(
+            200,
+            ['pdf' => base64_encode($pdf)],
+            [],
+            'resp-sitfis',
+            'tag-de-32-caracteres-para-o-teste',
+        );
+
+        $mapper = new SerproMonitoringMapper;
+        $projecao = $mapper->project('RELATORIOSITFIS92', $result);
+
+        $this->assertSame('2026-09-15', $projecao['fields']['emissao']);
+        $this->assertSame('2027-09-15', $projecao['fields']['validade']);
+        $this->assertSame('REGULAR', $projecao['fields']['situacao_fiscal']);
+        $this->assertSame('2027-09-15', $projecao['due_on']);
+        $this->assertNull($projecao['cause']);
+
+        $serializado = json_encode($projecao);
+        $this->assertStringNotContainsString(base64_encode($pdf), $serializado);
+        $this->assertStringNotContainsString('pdf', $serializado);
+    }
+
+    public function test_o_sitfis_sem_pdf_marca_sem_relatorio(): void
+    {
+        $projecao = (new SerproMonitoringMapper)->project(
+            'RELATORIOSITFIS92',
+            new SerproResult(200, ['pdf' => ''], [], 'resp-sitfis', 'tag-de-32-caracteres-para-o-teste'),
+        );
+
+        $this->assertSame('sem_relatorio', $projecao['cause']);
+    }
+
+    public function test_as_certidoes_derivadas_repetem_certidao_emissao_e_validade(): void
+    {
+        $mapper = new SerproMonitoringMapper;
+        $direta = [
+            'fields' => [
+                'certidao' => '12345678901234',
+                'emissao' => '2026-09-15',
+                'validade' => '2027-09-15',
+                'situacao_fiscal' => 'REGULAR',
+            ],
+            'due_on' => '2027-09-15',
+            'cause' => null,
+        ];
+
+        $derivadas = $mapper->derived('RELATORIOSITFIS92', $direta);
+
+        $this->assertSame([
+            'certidao' => '12345678901234',
+            'emissao' => '2026-09-15',
+            'validade' => '2027-09-15',
+        ], $derivadas['situacao-fiscal/certidoes']['fields']);
+        $this->assertSame('2027-09-15', $derivadas['situacao-fiscal/certidoes']['due_on']);
+        $this->assertNull($derivadas['situacao-fiscal/certidoes']['cause']);
+        $this->assertArrayNotHasKey('situacao_fiscal', $derivadas['situacao-fiscal/certidoes']['fields']);
+    }
+
     public function test_a_mescla_receita_federal_soma_modalidades_e_substitui_o_mesmo_programa(): void
     {
         $mapper = new SerproMonitoringMapper;
