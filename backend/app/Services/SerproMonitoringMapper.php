@@ -105,10 +105,49 @@ final class SerproMonitoringMapper
      */
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
-        $periodos = array_merge(
-            is_array($existente['periods'] ?? null) ? $existente['periods'] : [],
-            is_array($nova['periods'] ?? null) ? $nova['periods'] : [],
-        );
+        $periodosExistentes = is_array($existente['periods'] ?? null) ? $existente['periods'] : [];
+        $periodosNova = is_array($nova['periods'] ?? null) ? $nova['periods'] : [];
+
+        $modalidadesNova = [];
+        foreach ($periodosNova as $periodo) {
+            if (! is_array($periodo)) {
+                continue;
+            }
+
+            $prefixo = $this->prefixoModalidadePeriodo($periodo);
+            if ($prefixo !== null) {
+                $modalidadesNova[$prefixo] = true;
+            }
+        }
+
+        $periodos = $periodosExistentes;
+        $inserir = array_values(array_filter($periodosNova, 'is_array'));
+
+        if ($modalidadesNova !== []) {
+            $ondeInserir = null;
+            $periodos = [];
+
+            foreach ($periodosExistentes as $periodo) {
+                if (! is_array($periodo)) {
+                    continue;
+                }
+
+                $prefixo = $this->prefixoModalidadePeriodo($periodo);
+                if ($prefixo !== null && isset($modalidadesNova[$prefixo])) {
+                    if ($ondeInserir === null) {
+                        $ondeInserir = count($periodos);
+                    }
+
+                    continue;
+                }
+
+                $periodos[] = $periodo;
+            }
+
+            array_splice($periodos, $ondeInserir ?? count($periodos), 0, $inserir);
+        } else {
+            $periodos = [...$periodos, ...$inserir];
+        }
 
         $modalidades = array_values(array_unique(array_filter([
             $existente['fields']['modalidade'] ?? null,
@@ -688,6 +727,19 @@ final class SerproMonitoringMapper
             'PEDIDOSPARC193' => 'RELP-SN',
             default => 'Parcelamento',
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $periodo
+     */
+    private function prefixoModalidadePeriodo(array $periodo): ?string
+    {
+        $rotulo = $periodo['period'] ?? null;
+        if (! is_string($rotulo) || ! str_contains($rotulo, '/')) {
+            return null;
+        }
+
+        return explode('/', $rotulo, 2)[0];
     }
 
     private function caixaPostal(mixed $dados): array

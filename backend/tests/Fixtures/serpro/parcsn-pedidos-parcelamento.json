@@ -1,4 +1,14 @@
 {
+  "_provenance": "exemplo documental alinhado à documentação PARCSN/PEDIDOSPARC163; não observado no trial",
+  "contratante": { "numero": "11111111111111", "tipo": 2 },
+  "autorPedidoDados": { "numero": "11111111111111", "tipo": 2 },
+  "contribuinte": { "numero": "99999999999999", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "PARCSN",
+    "idServico": "PEDIDOSPARC163",
+    "versaoSistema": "1.0",
+    "dados": "{}"
+  },
   "status": 200,
   "mensagens": [
     {

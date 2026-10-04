@@ -1,4 +1,14 @@
 {
+  "_provenance": "exemplo documental alinhado à documentação PAGTOWEB/PAGAMENTOS71 (metadados de arrecadação, sem PDF); não observado no trial",
+  "contratante": { "numero": "11111111111111", "tipo": 2 },
+  "autorPedidoDados": { "numero": "11111111111111", "tipo": 2 },
+  "contribuinte": { "numero": "99999999999999", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "PAGTOWEB",
+    "idServico": "PAGAMENTOS71",
+    "versaoSistema": "1.0",
+    "dados": "{\"tamanhoDaPagina\":100,\"primeiroDaPagina\":0,\"intervaloDataArrecadacao\":{\"dataInicial\":\"2025-09-28\",\"dataFinal\":\"2026-09-28\"}}"
+  },
   "status": 200,
   "dados": "[{\"numeroDocumento\":\"07202215764027873\",\"tipo\":{\"descricaoAbreviada\":\"DAS\"},\"periodoApuracao\":\"2022-06-01T00:00:00-03:00\",\"dataArrecadacao\":\"2022-06-10T15:34:56-03:00\",\"dataVencimento\":\"2022-06-20T00:00:00-03:00\",\"valorTotal\":150.75}]",
   "mensagens": [
