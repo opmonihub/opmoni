@@ -209,10 +209,10 @@ final class SerproMonitoringReader
     }
 
     /**
-     * As linhas que entram na conta da obrigação: registro respondido, cliente
-     * com item ativo nesta obrigação ou cliente com busca manual em curso —
-     * e o projeto de cada uma já projetado, porque situação é derivada e não
-     * coluna.
+     * As linhas que entram na conta da obrigação: todo vínculo associado
+     * (`serpro_monitorings` da slug), respondido ou não — a planilha é onde
+     * o escritório vê quem falta buscar. O painel agregado (`overview`) continua
+     * contando só quem o provedor já respondeu (`source_at`).
      *
      * @param  array{category: string, service: ?string, procuracao: ?string, derived_from: ?string, sync_enabled: bool}  $obrigacao
      * @return Collection<int, array{record: SerproMonitoring, row: array<string, mixed>, tags: list<int>}>
@@ -245,10 +245,6 @@ final class SerproMonitoringReader
             ->withoutGlobalScope('account')
             ->where('account_id', $accountId)
             ->where('obligation', $slug)
-            ->where(fn ($query) => $query
-                ->whereNotNull('source_at')
-                ->orWhereIn('client_id', $ativos->keys())
-                ->orWhereIn('client_id', $buscas->keys()))
             ->whereHas('client', fn ($query) => $query
                 ->where('account_id', $accountId)
                 ->where('person_type', ClientPersonType::Company))

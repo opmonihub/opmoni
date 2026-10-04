@@ -43,6 +43,9 @@ final class SerproMonitoringProjector
     ): array {
         $situacao = match (true) {
             $this->emProcessamento($record, $activeItem, $buscaManualAtiva) => 'processando',
+            // Associado e ainda sem resposta do provedor: entra na planilha
+            // para o escritório disparar a busca, e não como "em dia".
+            $record->source_at === null => 'pendencias',
             $record->cause !== null => 'atencao',
             $record->state === 'encerrado' => 'encerrado',
             $record->due_on !== null && $record->due_on->lte(today()->addDays(30)) => 'pendencias',

@@ -266,19 +266,21 @@ class SerproMonitoringApiTest extends TestCase
             ->assertJsonCount(0, 'data_rows');
     }
 
-    public function test_linha_associada_sem_fonte_fica_de_fora_dos_numeros(): void
+    public function test_linha_associada_sem_fonte_aparece_como_pendencia(): void
     {
         $account = Account::factory()->create();
         $client = Client::factory()->company()->create(['account_id' => $account->getKey()]);
 
-        // A associação cria o vínculo; o que conta é o que respondeu.
+        // A associação cria o vínculo; a planilha lista quem falta buscar.
         $this->linha($client, 'declaracoes/pgdas', ['source_at' => null]);
 
         $this->actingAs($this->memberOf($account, 'user'), 'sanctum')
             ->getJson('/api/serpro/monitoring/obligations/declaracoes/pgdas')
             ->assertOk()
-            ->assertJsonPath('data.total', 0)
-            ->assertJsonCount(0, 'data_rows');
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.pendencias', 1)
+            ->assertJsonCount(1, 'data_rows')
+            ->assertJsonPath('data_rows.0.situacao', 'pendencias');
     }
 
     public function test_item_em_execucao_marca_processando_mesmo_sem_fonte(): void
