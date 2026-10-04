@@ -8,7 +8,6 @@ import {
   formatMonitoringProgress,
   monitoringCounterPresentation,
   monitoringProgressPresentation,
-  monitoringSituacaoPresentation,
   monitoringTone,
   monitoringTotalIcon,
   monitoringTotalLabel
@@ -83,10 +82,6 @@ const progressLabel = computed(() => {
   if (!progress) return null
   return `${monitoringProgressPresentation.label} ${formatMonitoringCount(progress.transmitted)} de ${formatMonitoringCount(progress.requested)}`
 })
-
-/** `encerrado` is a row state, not a fifth counter: folding it in would let a closed obligation inflate a state that requires action. */
-const closedLabel = computed(() => `${formatMonitoringCount(props.summary.encerrado)} ${monitoringSituacaoPresentation.encerrado.label}`)
-const closedHint = 'Fora dos quatro contadores e do total.'
 </script>
 
 <template>
@@ -126,16 +121,6 @@ const closedHint = 'Fora dos quatro contadores e do total.'
             class="tabular-nums"
           />
         </UTooltip>
-        <UTooltip :text="closedHint">
-          <UBadge
-            size="sm"
-            variant="subtle"
-            :color="monitoringSituacaoPresentation.encerrado.color"
-            :icon="monitoringSituacaoPresentation.encerrado.icon"
-            :label="closedLabel"
-            class="tabular-nums"
-          />
-        </UTooltip>
       </div>
     </template>
   </UDashboardToolbar>
@@ -145,15 +130,14 @@ const closedHint = 'Fora dos quatro contadores e do total.'
       <DataTableStatusChips class="min-w-0 flex-1" :items="chips" :active="active" />
       <slot name="actions" />
     </div>
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-      <span v-if="progressSentence" class="inline-flex items-center gap-1">
+    <p
+      v-if="progressSentence"
+      class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted"
+    >
+      <span class="inline-flex items-center gap-1">
         <UIcon :name="monitoringProgressPresentation.icon" class="size-3.5 shrink-0" />
         {{ progressLabel }}
       </span>
-      <span class="inline-flex items-center gap-1">
-        <UIcon :name="monitoringSituacaoPresentation.encerrado.icon" class="size-3.5 shrink-0" />
-        {{ closedLabel }} · {{ closedHint.toLowerCase() }}
-      </span>
-    </div>
+    </p>
   </div>
 </template>
