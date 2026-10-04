@@ -56,6 +56,9 @@ final class SerproSitfisPdfText
                 $conteudo = substr($match, 1, -1);
                 $conteudo = preg_replace('/\\\\([nrtbf()\\\\])/', "\n", $conteudo) ?? $conteudo;
                 $conteudo = str_replace(['\\n', '\\r', '\\t'], [' ', ' ', ' '], $conteudo);
+                // O relatório SITFIS é escrito em Latin-1 pelo gerador iText —
+                // um `preg_match` `iu` quebraria nos bytes `\xC9`/`\xC7`.
+                $conteudo = mb_convert_encoding($conteudo, 'UTF-8', 'ISO-8859-1');
                 $trechos[] = $conteudo;
             }
         }

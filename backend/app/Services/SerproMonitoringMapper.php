@@ -1147,14 +1147,27 @@ final class SerproMonitoringMapper
      */
     private function textoSitfis(string $texto): array
     {
-        $certidao = $this->captura($texto, '#Certid[aã]o(?:\\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\\-/]{8,}[0-9X])#iu')
-            ?? $this->captura($texto, '#N[úu]mero(?:\\s+da\\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\\-/]{8,}[0-9X])#iu');
+        // `Certidão Positiva com Efeitos de Negativa: 3AE7.50CA.AEC2.EBB1` —
+        // o padrão do SITFIS é `Certidão <tipo>: <número>`, e o número é
+        // pontuado por pontos. O `situacao_fiscal` vem do tipo da certidão.
+        $certidao = $this->captura($texto, '#Certid[aã]o\s+(?:Positiva\s+com\s+Efeitos\s+de\s+Negativa|Negativa|Positiva)[^0-9A-Z]{0,20}([0-9A-Z][0-9A-Z.\-/]{8,})#iu')
+            ?? $this->captura($texto, '#Certid[aã]o(?:\s+Negativa)?[^0-9]{0,40}([0-9][0-9.\-/]{8,}[0-9X])#iu')
+            ?? $this->captura($texto, '#N[úu]mero(?:\s+da\s+Certid[aã]o)?[^0-9]{0,20}([0-9][0-9.\-/]{8,}[0-9X])#iu');
 
-        $emissao = $this->dataBr($this->captura($texto, '#Emiss[aã]o[^0-9]{0,20}(\\d{2}/\\d{2}/\\d{4})#iu'));
-        $validade = $this->dataBr($this->captura($texto, '#Validade[^0-9]{0,20}(\\d{2}/\\d{2}/\\d{4})#iu'));
+        $emissao = $this->dataBr($this->captura($texto, '#Emiss[aã]o[^0-9]{0,20}(\d{2}/\d{2}/\d{4})#iu'));
+        $validade = $this->dataBr($this->captura($texto, '#(?:Data\s+de\s+)?Validade[^0-9]{0,20}(\d{2}/\d{2}/\d{4})#iu'));
 
-        $situacao = $this->captura($texto, '#Situa[cç][aã]o\\s+Fiscal[^A-Za-zÀ-ú]{0,10}([A-Za-zÀ-ú\\s]{3,40})#iu');
-        $situacao = $situacao === null ? null : trim(preg_replace('/\s+/u', ' ', $situacao) ?? '');
+        // "Certidão Positiva com Efeitos de Negativa" = situação irregular
+        // em aberto; "Certidão Negativa" = limpa; sem certidão = nada emitido.
+        $situacao = null;
+
+        if (preg_match('#Certid[aã]o\s+(Positiva\s+com\s+Efeitos\s+de\s+Negativa|Negativa|Positiva)#iu', $texto, $match)) {
+            $situacao = trim(preg_replace('/\s+/u', ' ', $match[1]) ?? '');
+        }
+
+        if ($situacao === '') {
+            $situacao = null;
+        }
 
         return [
             'certidao' => $certidao,
