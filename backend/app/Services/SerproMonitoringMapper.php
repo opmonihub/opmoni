@@ -105,10 +105,36 @@ final class SerproMonitoringMapper
      */
     public function mesclarPedidosParcelamento(array $existente, array $nova): array
     {
-        $periodos = array_merge(
-            is_array($existente['periods'] ?? null) ? $existente['periods'] : [],
-            is_array($nova['periods'] ?? null) ? $nova['periods'] : [],
-        );
+        $periodosExistentes = is_array($existente['periods'] ?? null) ? $existente['periods'] : [];
+        $periodosNovos = is_array($nova['periods'] ?? null) ? $nova['periods'] : [];
+
+        $modalidadeNova = $nova['fields']['modalidade'] ?? null;
+        if (is_string($modalidadeNova) && $modalidadeNova !== '') {
+            $prefixo = $modalidadeNova.'/';
+            $inserirEm = count($periodosExistentes);
+            $filtrados = [];
+
+            foreach ($periodosExistentes as $periodo) {
+                if (! is_array($periodo)) {
+                    continue;
+                }
+
+                if (str_starts_with((string) ($periodo['period'] ?? ''), $prefixo)) {
+                    if ($inserirEm === count($periodosExistentes)) {
+                        $inserirEm = count($filtrados);
+                    }
+
+                    continue;
+                }
+
+                $filtrados[] = $periodo;
+            }
+
+            array_splice($filtrados, $inserirEm, 0, $periodosNovos);
+            $periodos = $filtrados;
+        } else {
+            $periodos = array_merge($periodosExistentes, $periodosNovos);
+        }
 
         $modalidades = array_values(array_unique(array_filter([
             $existente['fields']['modalidade'] ?? null,
