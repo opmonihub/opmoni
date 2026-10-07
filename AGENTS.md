@@ -68,3 +68,13 @@ Os droids do projeto ficam em `.factory/droids/`: `explorer` (leitura), `log-det
 - Nunca registre em log a senha do certificado, o XML bruto ou tokens. Arquivos `.env`, `*.pfx`, `*.p12` e `*.pem` não vão para o git.
 - O NATS sobe no compose e no stack, mas ainda nenhum código o usa. Ele está reservado para uso futuro.
 - Deploy em produção (`docker stack deploy`) e migrations de produção só com autorização explícita.
+
+## Cursor Cloud specific instructions
+
+- Este ambiente não tem Docker. O `start` sobe Postgres 18, Redis 7 e NATS 2.11 com JetStream, mais a API, o Nuxt e o nginx.
+- Postgres local: banco `opmoni`, usuário `opmoni`, senha `opmoni`, em `127.0.0.1:5432`. Redis sem senha em `127.0.0.1:6379`. NATS em `127.0.0.1:4222` (monitor `8222`).
+- A entrada da aplicação é `http://127.0.0.1:3000` (nginx, mesma origem para UI e API). O Nuxt fica em `127.0.0.1:3001` e o `php artisan serve` em `127.0.0.1:8000`. Sessões tmux: `opmoni-api`, `opmoni-web`, `nats`.
+- O `install` gera `backend/.env` a partir do example com `APP_URL=http://localhost:3000`. Não coloque `FISCAL_ENVIRONMENT` nesse arquivo: o PHPUnit assume o padrão `producao`, e a variável no `.env` faz falhar os testes de URL fiscal. O processo `opmoni-api` exporta `FISCAL_ENVIRONMENT=homologacao`.
+- A fila não sobe sozinha. Quando precisar, `cd backend && php artisan queue:work`.
+- Testes e checagens: `cd backend && composer test`; `cd frontend && pnpm test && pnpm lint && pnpm typecheck`.
+- Conta local já criada: `ana.dev@example.com` / `senha-local-1`, Account "Escritorio Demo", cliente "Cliente Demo".
