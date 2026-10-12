@@ -10,8 +10,13 @@ Provide a separate PHP microservice to capture and store NF-e and CT-e XML docum
 
 ```text
 opmoni/
-├── app/                         # Nuxt user interface
-├── server/                      # Nuxt API and fiscal service integration
+├── frontend/                    # Complete Nuxt application
+│   ├── app/                     # Nuxt user interface
+│   ├── server/                  # Nuxt API and fiscal service integration
+│   ├── public/                  # Static assets
+│   ├── nuxt.config.ts           # Nuxt configuration
+│   └── package.json             # Frontend dependencies and scripts
+├── backend/                     # Laravel 13 backend template
 ├── services/
 │   └── fiscal/
 │       ├── src/                 # PHP API and NF-e/CT-e capture
@@ -32,8 +37,8 @@ These paths describe the planned layout; recording it does not scaffold or imple
 
 - `services/fiscal/` owns the PHP runtime and fiscal integration.
 - Composer installs `nfephp-org/sped-nfe` and `nfephp-org/sped-cte` into `services/fiscal/vendor/`. The generated dependency directory is excluded from Git.
-- `server/` calls the fiscal API from the Nuxt server. The browser does not receive service credentials or certificate passwords.
-- `app/` contains the interface that uses the Nuxt API.
+- `frontend/server/` calls the fiscal API from the Nuxt server. The browser does not receive service credentials or certificate passwords.
+- `frontend/app/` contains the interface that uses the Nuxt API.
 - `docker-compose.yml` defines the containers and persistent volumes. Environment variables are declared explicitly for each service.
 
 ## Persistent storage
