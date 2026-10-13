@@ -1,9 +1,16 @@
 <?php
 
+use App\Http\Middleware\ResolveAccount;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,9 +19,41 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->prependToPriorityList(SubstituteBindings::class, ResolveAccount::class);
+        $middleware->redirectGuestsTo(fn (Request $request): ?string => $request->is('api/*') ? null : '/');
+        $middleware->trimStrings(except: ['password', 'password_confirmation', 'token']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (Throwable $error, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+            if ($error instanceof HttpResponseException) {
+                return $error->getResponse();
+            }
+            $status = match (true) {
+                $error instanceof ValidationException => 422,
+                $error instanceof AuthenticationException => 401,
+                $error instanceof ModelNotFoundException => 404,
+                $error instanceof HttpExceptionInterface => $error->getStatusCode(),
+                default => 503,
+            };
+            $message = match ($status) {
+                401 => 'Sessão expirada. Entre novamente.', 403 => 'Acesso negado', 404 => 'Registro não encontrado', 422 => 'Verifique os campos informados', 409 => 'Operação indisponível neste estado', default => 'Serviço temporariamente indisponível. Tente novamente.'
+            };
+            $body = ['code' => match ($status) {
+                401 => 'unauthenticated',403 => 'forbidden',404 => 'not_found',422 => 'validation_error',409 => 'conflict',default => 'service_unavailable'
+            }, 'message' => $message];
+            if ($error instanceof ValidationException) {
+                $body['errors'] = $error->errors();
+                if (($body['errors']['email'][0] ?? null) === 'Email ou senha inválidos') {
+                    $body['code'] = 'invalid_credentials';
+                    $body['message'] = 'Email ou senha inválidos';
+                }
+            }
+
+            return response()->json($body, $status, ['Cache-Control' => 'no-store']);
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

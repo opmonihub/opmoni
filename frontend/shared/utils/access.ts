@@ -1,0 +1,39 @@
+import type { Identity } from '../types/access'
+
+export function accessDestination(user: Identity): string {
+  return user.current_account?.status === 'active' ? '/' : '/acesso-indisponivel'
+}
+
+export function focusAccessDestination(user: Identity, path: string): string | null {
+  if (user.is_super_admin && (path === '/admin' || path.startsWith('/admin/')))
+    return null
+  const target = accessDestination(user)
+  if (target === path)
+    return null
+  if (target !== '/' || path === '/acesso-indisponivel' || path === '/selecionar-escritorio')
+    return target
+  return null
+}
+
+export function apiFailure(error: unknown): {
+  status: number
+  code: string
+  message: string
+  errors?: Record<string, string[]>
+} {
+  const e = error as {
+    statusCode?: number
+    status?: number
+    data?: {
+      code?: string
+      message?: string
+      errors?: Record<string, string[]>
+    }
+  }
+  const status = e.statusCode || e.status || 0
+  return { status, code: e.data?.code || '', errors: e.data?.errors, message: status === 429 ? 'Muitas tentativas. Aguarde um minuto e tente novamente.' : status >= 500 || !status ? 'Serviço temporariamente indisponível. Tente novamente.' : e.data?.message || 'Não foi possível concluir. Tente novamente.' }
+}
+
+export function passwordLength(value: string): number {
+  return [...value].length
+}

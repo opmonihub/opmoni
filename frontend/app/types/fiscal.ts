@@ -1,0 +1,433 @@
+// app/types/fiscal.ts
+//
+// O contrato do módulo Fiscal, como o backend o entrega. Cada campo abaixo
+// espelha uma coluna ou uma chave do `FiscalDocumentResource`, do
+// `FiscalDocumentDetailResource` ou do resumo de `FiscalCoverage` — nada aqui
+// foi escolhido pelo frontend, e nada aqui pode ser "enriquecido" na chamada:
+// se a tela precisa de um campo novo, é o Resource que tem de abrir mão de um.
+
+/**
+ * O modelo do documento fiscal, o campo `mod` da chave de acesso.
+ *
+ * O enum do backend tem seis membros e esta união tem seis: `nfe` e `nfce` são
+ * os modelos `55` e `65`, `cte` e `cte_os` são o `57` e o `67`, e `gtve` é o
+ * `64`. O CT-e simplificado é `57` como o regular e por isso divide o caso com
+ * ele — dois documentos de layouts diferentes, uma identidade de modelo só.
+ *
+ * Um membro aqui que o backend não tem, ou o contrário, é um filtro que a
+ * API recusa com 422 e um chip que nunca aparece.
+ */
+export type FiscalModel = 'nfe' | 'nfce' | 'cte' | 'cte_os' | 'gtve' | 'nfse'
+
+/**
+ * Documento ou evento. Eixo diferente de `FiscalStage`: o resumo e o documento
+ * autorizado são os dois `document`, e o que os separa é a etapa da distribuição.
+ */
+export type FiscalKind = 'document' | 'event'
+
+/** Onde a entrega caiu na cadeia da distribuição do documento. */
+export type FiscalStage = 'summary' | 'document' | 'event'
+
+/** A distribuição que entregou a linha. */
+export type FiscalSource = 'nfe_distribuicao' | 'cte_distribuicao' | 'nfse_adn'
+
+/**
+ * Por que este cliente precisa de alguém.
+ *
+ * A lista é fechada de propósito. São dez, e cada uma nomeia um próximo passo
+ * diferente, não uma nota de gravidade: um A1 vencido se resolve reenviando o
+ * certificado, uma consulta parada pelo fisco se resolve esperando, uma falha
+ * qualquer se resolve sozinha na próxima execução, e uma lacuna com a volta
+ * atrás desligada se resolve ligando a chave — que é uma decisão de instalação e
+ * não uma posição perdida. Um décimo primeiro motivo aparecer aqui é o sinal de
+ * que o painel precisa de um rótulo novo, e não de que o rótulo existente
+ * serve para tudo.
+ *
+ * A ordem em que o backend avalia é a mesma, do que impede a consulta de existir
+ * ao que se resolve sozinho — está em `FiscalCoverage::motivo()`.
+ */
+export type FiscalAttentionReason
+  = | 'certificate_absent'
+    | 'certificate_expired'
+    | 'certificate_password_missing'
+    | 'certificate_reupload'
+    | 'gap_abandoned'
+    | 'gap_paused'
+    | 'history_interrupted'
+    | 'capture_blocked'
+    | 'continuity_warning'
+    | 'capture_failed'
+
+/** A cobertura da carteira: quanto cliente dá para consultar hoje. */
+export interface FiscalCoverage {
+  total: number
+  capturable: number
+  not_capturable: number
+}
+
+/**
+ * Um cliente que precisa de alguém, e por quê.
+ *
+ * `blocked_until` só tem valor em `capture_blocked` — nos outros motivos é
+ * `null` de propósito, para que o painel aprenda a não mostrar uma hora que não
+ * significa nada. A parada é por fonte e por tempo: no passado ela já passou.
+ */
+export interface FiscalAttentionItem {
+  client_id: number
+  client_name: string
+  reason: FiscalAttentionReason
+  blocked_until: string | null
+}
+
+/** Os agregados de documento do resumo, todos contados por conta. */
+export interface FiscalSummaryDocuments {
+  /**
+   * Todo documento guardado na conta, inclusive o que não tem data de emissão.
+   *
+   * A coluna `emissao_at` é nullable e o fisco entrega documento sem ela, e a
+   * resposta honesta para "quantos documentos temos" é contar esse também. O
+   * número **não** é a soma de `over_time`: um documento sem mês de emissão
+   * conta aqui e não tem mês na série. São duas grandezas diferentes, e quem
+   * mostra as duas precisa dizer qual é qual.
+   */
+  total: number
+  /**
+   * Volume por modelo, e só com o modelo que tem documento: um modelo ausente
+   * do mapa é "nada capturado desse modelo ainda", não zero. O modelo vem
+   * inteiro, sem o mesmo corte de `over_time` — a série é que é por mês.
+   */
+  models: Record<string, number>
+  /**
+   * A série de emissão, em ordem cronológica e só com o mês que teve documento
+   * **com data de emissão**. Um mês zerado é um dado que o fisco não produziu, e
+   * um documento sem data de emissão não tem mês a que ser atribuído — a série
+   * precisa poder dizer "ainda não há o que mostrar" em vez de mostrar um zero
+   * bonito.
+   */
+  over_time: { month: string, total: number }[]
+}
+
+/** A última consulta que a conta fez, e o que ela deixou na coluna. */
+export interface FiscalLastCapture {
+  /**
+   * A distribuição consultada, ou `null`.
+   *
+   * `null` porque é isso que a escrita produz: `FiscalCoverage::ultimaCaptura()`
+   * devolve `$cursor->source?->value`, e o tipo deste arquivo espelha a
+   * expressão. Declarar `FiscalSource` faria o TypeScript prometer um valor que
+   * a expressão pode não entregar, e a falha é silenciosa — o rótulo da tela
+   * vira `undefined` em vez de `—`.
+   *
+   * O que a coluna não garante é o enum, e isso é outro problema:
+   * `fiscal_cursors.source` é `string` sem restrição de banco, e um valor fora
+   * dos dois casos não vira `null` — o cast levanta `ValueError` e a leitura
+   * responde 500. Este campo não resolve isso; ele resolve o que a expressão
+   * realmente devolve.
+   */
+  source: FiscalSource | null
+  ran_at: string
+  /**
+   * Nome de classe, classificação do conector ou frase fixa — nunca a mensagem
+   * do serviço, nunca XML, nunca a senha do certificado.
+   */
+  error: string | null
+}
+
+/** `GET /api/fiscal/summary`. */
+export interface FiscalSummary {
+  coverage: FiscalCoverage
+  attention: FiscalAttentionItem[]
+  documents: FiscalSummaryDocuments
+  /**
+   * `null` é "a conta nunca consultou", que é a primeira coisa que o painel
+   * precisa distinguir de "consultou e não achou nada" — por isso não é um
+   * cursor zerado.
+   */
+  last_capture: FiscalLastCapture | null
+}
+
+/**
+ * O estado do certificado do cliente dono da linha, pelo mesmo critério da
+ * cobertura de captura.
+ *
+ * É um código, e não um segredo: a resposta nunca traz conteúdo do certificado,
+ * senha nem caminho de armazenamento. Os cinco valores espelham
+ * `FiscalCoverage::certificateStatus` — `missing`, `expired`,
+ * `password_missing`, `expiring`, `valid`.
+ */
+export type FiscalClientCertificateStatus
+  = | 'missing'
+    | 'expired'
+    | 'password_missing'
+    | 'expiring'
+    | 'valid'
+
+/** O dono do documento. */
+export interface FiscalDocumentClient {
+  id: number
+  name: string
+  tax_id: string | null
+}
+
+/** A direção do documento em relação ao cliente dono da linha. */
+export type FiscalClientDirection = 'saida' | 'entrada'
+
+/**
+ * A situação do documento, derivada no backend sem coluna nova: `cancelada`
+ * quando existe evento de cancelamento na mesma chave, `autorizada` quando a
+ * etapa é o documento, `resumo` quando só o resumo da distribuição chegou.
+ */
+export type FiscalDocumentSituacao = 'autorizada' | 'cancelada' | 'resumo'
+
+/**
+ * A completude do XML da chave, derivada no backend sem coluna nova:
+ * `summary_awaiting_xml` quando a distribuição entregou só o resumo,
+ * `complete` quando entregou o documento autorizado. `null` quando a
+ * pergunta não se aplica à linha — CT-e, linha de evento e a NF-e emitida
+ * pelo próprio CNPJ do cliente, na qual não há terceiro que destrave XML
+ * nenhum.
+ */
+export type FiscalDocumentCompletude = 'summary_awaiting_xml' | 'complete'
+
+/** Uma linha da tabela de documentos capturados. */
+export interface FiscalDocumentRow {
+  id: number
+  /**
+   * Sempre presente, e não opcional: a coluna é `NOT NULL` com cascade, e a
+   * relação abre o cliente removido por logicamente (`withTrashed`), porque o
+   * documento guardado é histórico legítimo e continua alcançável pelo id de
+   * quem o emitiu.
+   */
+  client: FiscalDocumentClient
+  model: FiscalModel
+  kind: FiscalKind
+  stage: FiscalStage
+  chave_acesso: string
+  emitente_cnpj: string | null
+  destinatario_cnpj: string | null
+  /**
+   * O número da nota (`ide/nNF`), ou `null` quando o XML ainda não foi lido
+   * para a coluna: o backfill dos documentos antigos é `null`, e a tela mostra
+   * o traço do valor ausente em vez de inventar número.
+   */
+  numero: string | null
+  /**
+   * A série da nota (`ide/serie`), ou `null` pelo mesmo motivo de `numero`.
+   */
+  serie: string | null
+  /**
+   * A situação do documento, derivada no backend sem coluna nova: `cancelada`
+   * quando existe evento de cancelamento na mesma chave, `autorizada` quando a
+   * etapa é o documento, `resumo` quando só o resumo da distribuição chegou.
+   * `null` na linha de evento, que não é linha de documento.
+   */
+  situacao: FiscalDocumentSituacao | null
+  /**
+   * A completude do XML da chave, derivada no backend: `summary_awaiting_xml`
+   * quando só o resumo chegou, `complete` quando o documento autorizado chegou.
+   * `null` quando a pergunta não se aplica à linha — CT-e, linha de evento e a
+   * nota emitida pelo próprio CNPJ do cliente — e a célula fica vazia, nunca
+   * com um código inventado.
+   */
+  completude: FiscalDocumentCompletude | null
+  /**
+   * A competência da emissão em `YYYY-MM`, ou `null` quando o documento não tem
+   * data de emissão: sem mês a linha não entra na série, pelo mesmo contrato de
+   * `FiscalSummaryDocuments.over_time`.
+   */
+  competencia: string | null
+  /**
+   * Texto decimal, e nunca número: a coluna é `decimal(14,2)` e o Laravel a
+   * devolve com o cast `decimal:2`, porque um float de JSON não representa
+   * `0.01`. Quem exibe converte por parsing (`Number.parseFloat`) e nunca por
+   * aritmética — somar em cents sobre float volta a errar no centavo.
+   */
+  valor_total: string | null
+  emissao_at: string | null
+  /**
+   * Quantos eventos existem na linha do tempo desta chave de acesso, contando
+   * as próprias linhas de evento — não há autoexclusão, e é essa contagem que
+   * o detalhe repete para a mesma chave. Subtrair uma linha aqui colocaria dois
+   * valores diferentes para a mesma chave na mesma tela.
+   */
+  event_count: number
+  mascarado: boolean
+  /**
+   * `true` confere, `false` diverge e `null` é o terceiro estado: "a outra etapa
+   * da distribuição ainda não chegou", que não é o mesmo que digest corrompido.
+   */
+  digval_confere: boolean | null
+  /**
+   * O estado do certificado A1 do cliente dono da linha.
+   *
+   * `null` quando a linha ainda não carrega o certificado (a coluna nasce
+   * agora): a tabela trata como "não informado" e não como `missing`, porque
+   * um `missing` pintado sobre um campo que a API não mandou seria a mesma
+   * mentira do em-dash-trocado-por-zero.
+   */
+  client_certificate_status: FiscalClientCertificateStatus | null
+}
+
+/** Uma linha da linha do tempo de uma chave de acesso. */
+export interface FiscalDocumentEvent {
+  id: number
+  /** O código do evento do fisco, que é o que dá sentido à linha. */
+  event_id: string
+  evento_ocorrido_em_at: string | null
+  /** A diferença entre o evento e a captura diz se a carteira rodava naquele dia. */
+  captured_at: string
+  mascarado: boolean
+}
+
+/**
+ * `GET /api/fiscal/documents/{id}` — a linha da lista mais o que só o detalhe
+ * tem. A linha vem do mesmo Resource, então o detalhe não pode divergir do que a
+ * lista mostra.
+ */
+export interface FiscalDetail extends FiscalDocumentRow {
+  /**
+   * A distribuição que entregou o documento, ou `null` — o mesmo `?->value` do
+   * Resource, pelo mesmo motivo de `FiscalLastCapture.source`. A folha de
+   * detalhe mostra a fonte na linha "Distribuição" e no rótulo do botão de
+   * captura, então o `null` precisa virar o traço do valor ausente e não
+   * `undefined`.
+   */
+  source: FiscalSource | null
+  /** A posição interna da distribuição. */
+  nsu: number
+  /** Vazio quando o documento não é um evento. */
+  event_id: string
+  schema: string | null
+  sha256: string
+  digval: string | null
+  xml_bytes: number
+  captured_at: string
+  evento_ocorrido_em_at: string | null
+  /** A linha do tempo, em ordem cronológica, com o mesmo `event_count` da linha. */
+  events: FiscalDocumentEvent[]
+  /**
+   * O XML para exibição, com teto de 4096 bytes, ou `null` quando não há o que
+   * mostrar: o arquivo sumiu do disco, ou o byte gravado é de uma codificação
+   * que a projeção de exibição recusa em vez de adivinhar. Os dois casos deixam
+   * o download — que serve o byte cru — funcionando.
+   */
+  xml_preview: string | null
+}
+
+/** Os campos ordenáveis, e só eles: o resto cai no padrão calado do backend. */
+export type FiscalSort = 'emissao_at' | 'valor_total' | 'captured_at'
+
+/** Os tamanhos de página que o backend aceita. Qualquer outro é 422. */
+export type FiscalPerPage = 25 | 50 | 100
+
+export type FiscalSortDirection = 'asc' | 'desc'
+
+/**
+ * Os filtros de `GET /api/fiscal/documents`.
+ *
+ * `issuer` e `recipient` são prefixo de CNPJ em dígitos, e são a única
+ * responsabilidade do chamador aqui: vazio, `null` ou `undefined` é descartado
+ * por `queryOf` e não vai na query, porque um filtro enviado vazio volta com a
+ * lista sem filtro nenhum debaixo de uma barra que parece aplicada. Espaços e
+ * qualquer caractere fora de dígito são 422 no backend — a limpeza é de quem
+ * digita, e a tela de filtro é o lugar dela.
+ */
+export interface FiscalListFilters {
+  model?: FiscalModel[]
+  client_id?: number | null
+  issuer?: string | null
+  recipient?: string | null
+  kind?: FiscalKind | null
+  issued_from?: string | null
+  issued_to?: string | null
+  amount_min?: number | null
+  amount_max?: number | null
+  /**
+   * A busca por texto do operador: número da nota exato, chave de acesso
+   * inteira (44 ou 50 dígitos — NF-e/CT-e e NFS-e nacional,
+   * respectivamente) ou fragmento do nome do cliente, em `LIKE`
+   * insensível a caixa no backend. A leitura da query aplica trim e descarta
+   * o vazio; o teto de 200 caracteres é 422 no backend e só é alcançável por
+   * URL escrita à mão — o campo da tela limita o que o operador digita.
+   */
+  q?: string | null
+  sort?: FiscalSort
+  direction?: FiscalSortDirection
+  page?: number
+  per_page?: FiscalPerPage
+}
+
+/** `GET /api/fiscal/documents` — a página, e os modelos que o filtro oferece. */
+export interface FiscalPage {
+  data: FiscalDocumentRow[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    from: number | null
+    to: number | null
+  }
+  /**
+   * Os modelos disponíveis no filtro, e não os que a página tem.
+   *
+   * Um modelo selecionado continua na lista mesmo sem linha atrás dele, para que
+   * o filtro que esvaziou a tabela possa ser tirado. Uma tela que assume "todo
+   * chip tem documento" some justamente com o chip que o operador precisa
+   * tocar.
+   */
+  available_models: string[]
+}
+
+/** O aceite da fila de `POST /api/fiscal/clients/{id}/capture`. */
+
+/** O resumo de um cliente em `GET /api/fiscal/clients`. */
+export interface FiscalClientSummary {
+  client: FiscalDocumentClient
+  total: number
+  saidas: { qtd: number, valor: string | null }
+  entradas: { qtd: number, valor: string | null }
+  /**
+   * Volume por modelo, e só com o modelo que tem documento: um modelo ausente
+   * do mapa é "nada capturado desse modelo ainda", não zero — o mesmo contrato
+   * de `FiscalSummaryDocuments.models`.
+   */
+  por_modelo: Record<string, number>
+  ultima_emissao_at: string | null
+  certificado_status: FiscalClientCertificateStatus
+}
+
+/** `GET /api/fiscal/clients`, com os mesmos filtros de emissão da lista. */
+export interface FiscalClientsFilters {
+  model?: FiscalModel[] | null
+  issued_from?: string | null
+  issued_to?: string | null
+}
+
+/** `GET /api/fiscal/clients` — a lista agregada por cliente. */
+export interface FiscalClientsPage {
+  data: FiscalClientSummary[]
+}
+
+/** O aceite da fila de `POST /api/fiscal/clients/{id}/capture`. */
+export interface FiscalCaptureAccepted {
+  queued: true
+  client_id: number
+}
+
+/**
+ * A recusa por bloqueio (409) da mesma rota.
+ *
+ * É a única resposta de captura que **não** é um `FiscalCaptureAccepted`: o
+ * cliente está na janela que o fisco abriu por consumo indevido, e nenhum job
+ * foi enfileirado. A frase é do backend e a hora é a da janela — a tela mostra
+ * as duas, porque "não foi agora" sem "quando" deixa o operador adivinhando se
+ * vale tentar de novo daqui a pouco.
+ *
+ * O tipo mora aqui, e não no `.vue` que lê: a forma do corpo é do contrato, e
+ * uma segunda cópia declarada dentro da tela é a que diverge primeiro.
+ */
+export interface FiscalCaptureBlocked {
+  message: string
+  blocked_until: string
+}

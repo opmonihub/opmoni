@@ -48,6 +48,22 @@ The source review of `/home/obsidian/dev/legacy` identified an accounting-office
 
 ### P002 — Access and Accounts foundation
 
-Status: requires architecture revision for D006 before review or apply. Original proposal: [add-access-accounts-foundation](../../openspec/changes/add-access-accounts-foundation/proposal.md). Detailed pages, API behavior, persistence, and authorization differences remain pending acceptance.
+Status: implemented and archived. Nuxt presentation, Laravel application APIs, PostgreSQL persistence, and Laravel-managed Redis sessions follow D006. Archived change: [add-access-accounts-foundation](../../openspec/changes/archive/2026-10-12-add-access-accounts-foundation/proposal.md); canonical contracts live in [openspec/specs](../../openspec/specs/). On 2026-10-12 the user authorized direct implementation using its recorded contracts, overriding the remaining incremental page-review gate. Onboarding is available only with zero users and zero Accounts. Login and selection use the confirmed flow below; implementation and verification evidence remains in the archived tasks.md.
 
 Use the legacy's access, Account membership, roles, provisioning, and page flows as reference, adapting implementation to the Nuxt frontend and Laravel backend (D006) and explicitly documenting proposed corrections. This proposal does not implement the remaining Clients or Fiscal pages. Capture scheduling and manifestation policy require later decisions.
+
+### D007 — Access foundation implementation authorization
+
+Accepted by the user on 2026-10-12: apply `add-access-accounts-foundation` directly using the current page and API contracts. Onboarding is first installation only: both users and Accounts must be empty; either existing store closes registration. After credentials succeed, one active member Account enters directly, multiple active member Accounts require office-profile cards, and zero active memberships show unavailable access. Each new multi-Account login requires a choice; session reload preserves it. The template team selector is for subsequent switching only. Suspension during card selection refreshes choices, with unavailable access when none remain. Sessions last at most 12 hours without remember-me. Unknown email/wrong password share the same error; service failure preserves the form/email and allows retry. Automatic password recovery remains deferred to platform-administrator assistance, without requiring a contact channel to complete this change, as subsequently clarified by the user.
+
+
+### D008 — Automatic default office entry
+
+Accepted by the user on 2026-10-12: supersedes D007's mandatory profile-card selection. Login enters the default active office directly, even with multiple memberships; optional switching happens through AccountMenu. The default is the earliest membership by membership ID among active Accounts. Manual switching remains local to the session and survives reload; a new login returns to the default. Existing sessions with no selection acquire that default on identity refresh without extending their deadline. No active memberships show unavailable access; suspended choices remain blocked.
+
+
+### D009 — Complete legacy business integration
+
+Accepted by the user on 2026-10-13: copy and activate the legacy business logic across Clients, Fiscal, Monitoring, Work, Team, Settings, and platform administration, while preserving the existing Opmoni route conventions, theme, access screens, session ownership, and account memberships. This supersedes the earlier review-only scope and deferred business page integration. Business APIs use `/api/v1`; the session selects the account and `X-Account-Id` asserts the displayed account. Super Admin remains a platform role and does not bypass tenant membership or grant tenant writes. Legacy support impersonation and persistent user current-account fields are superseded by the canonical access contract.
+
+The local Compose scheduler activates the imported schedules in the fiscal homologation environment. Queue workers use per-job deadlines and restore account context between jobs. External provider calls retain their existing configuration and contract guards; test verification uses provider fakes except for explicit opt-in live probes.

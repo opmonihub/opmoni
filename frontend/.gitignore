@@ -6,22 +6,11 @@
 .cache
 dist
 
-# Node dependencies
-node_modules
-
-# Logs
+# Nuxt-specific logs; common rules live in ../.gitignore
 logs
-*.log
 
 # Misc
-.DS_Store
 .fleet
-.idea
-
-# Local env files
-.env
-.env.*
-!.env.example
 
 # VSC
 .history

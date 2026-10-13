@@ -1,0 +1,10 @@
+{
+    "_hipotese": "404 com corpo de negócio da ADN contribuintes, sintético: resposta classificável ('não há documento naquela posição'), e não exceção de rede. O texto e o nome do campo são HIPÓTESE — o canário não observou este desfecho; a leitura independe do texto, e corpo de negócio sem itens em `LoteDFe` fecha como fila vazia.",
+    "StatusProcessamento": "NENHUM_DOCUMENTO_LOCALIZADO",
+    "LoteDFe": [],
+    "Alertas": [],
+    "Erros": [],
+    "TipoAmbiente": "PRODUCAO",
+    "VersaoAplicativo": "1.0.0.0",
+    "DataHoraProcessamento": "2026-10-03T13:42:00.406539-03:00"
+}

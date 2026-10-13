@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A
+  verificação abaixo foi feita **fora do checkout**, contra o pacote `PRCTE`
+  publicado do SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional.
+
+  - VERIFICADO fora do checkout: a raiz é `cteSimpProc`, elemento raiz de
+    `procCTeSimp_v4.00.xsd`, com `CTeSimp` e `protCTe` como os dois filhos.
+  - MODELADO, não verificado: todo o corpo. Reduzido ao mínimo que o módulo lê;
+    o módulo não valida o XML contra schema em nenhum ponto. Se uma prova local
+    existir algum dia, é aqui que ela entra.
+
+  O CT-e simplificado é modelo `57` na chave de acesso, o mesmo do CT-e regular,
+  e é por isso que o modelo não pode sair do nome da raiz.
+-->
+<cteSimpProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTeSimp>
+    <infCte versao="4.00">
+      <chCTe>35220999999999999999570000000011031000000000</chCTe>
+      <dhEmi>2022-09-01T11:00:00-03:00</dhEmi>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>1</CRT>
+      </emit>
+      <rem>
+        <xNome>REMETENTE EXEMPLO LTDA</xNome>
+        <vPrest>98.50</vPrest>
+        <vTPrest>98.50</vTPrest>
+      </rem>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+    </infCte>
+  </CTeSimp>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220999999999999999570000000011031000000000</chCTe>
+      <dhRecbto>2022-09-01T11:00:05-03:00</dhRecbto>
+      <nProt>135220000000003</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZSDigJzbSB1</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
+</cteSimpProc>

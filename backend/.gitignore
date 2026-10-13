@@ -1,19 +1,13 @@
-*.log
-.DS_Store
-.env
-.env.backup
-.env.production
+# Laravel-specific generated and local files; common rules live in ../.gitignore
 .phpactor.json
 .phpunit.result.cache
 /.codex
 /.cursor/
-/.idea
 /.nova
 /.phpunit.cache
 /.vscode
 /.zed
 /auth.json
-/node_modules
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot

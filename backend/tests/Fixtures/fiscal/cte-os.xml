@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e: não existe `.ref/` e nenhum XSD de CT-e está
+  versionado aqui (os dois XSD versionados são de NF-e, e o
+  `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum). A verificação
+  abaixo foi feita **fora do checkout**, contra o pacote `PRCTE` publicado do
+  SVRS (SEFAZ-RS), que é o mesmo leiaute do pacote nacional:
+
+  - VERIFICADO fora do checkout: a raiz é `cteOSProc`, elemento raiz de
+    `procCTeOS_v4.00.xsd`, com `CTeOS` e `protCTe` como os dois filhos.
+  - VERIFICADO fora do checkout: em `infDoc/infNFe` o elemento é `chave`, e não
+    `chNFe` — `cteTiposBasico_v4.00.xsd` o documenta como "Chave de acesso da
+    NF-e". A chave alheia que está aqui é a isca do caso mascarado: aparece no
+    documento antes de qualquer `chCTe` em ordem de percurso, e não é a
+    identidade deste CT-e OS.
+  - MODELADO, não verificado: todo o resto do corpo. Os campos foram reduzidos
+    ao mínimo que o módulo lê, e o módulo não valida o XML contra schema em
+    nenhum ponto. Se uma prova local existir algum dia, é aqui que ela entra.
+-->
+<cteOSProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTeOS>
+    <infCte versao="4.00">
+      <chCTe>35220999999999999999670000000011021000000006</chCTe>
+      <dhEmi>2022-09-01T10:00:00-03:00</dhEmi>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+      <vPrest>250.00</vPrest>
+      <vTPrest>250.00</vTPrest>
+      <infDoc>
+        <infNFe>
+          <chave>35220999999999999999550010000011081000000006</chave>
+        </infNFe>
+      </infDoc>
+    </infCte>
+  </CTeOS>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220999999999999999670000000011021000000006</chCTe>
+      <dhRecbto>2022-09-01T10:00:07-03:00</dhRecbto>
+      <nProt>135220000000002</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZSBvcyAx</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
+</cteOSProc>

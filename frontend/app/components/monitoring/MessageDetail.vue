@@ -1,0 +1,202 @@
+<script setup lang="ts">
+import type { MetaListItem } from '~/components/data-table/MetaList.vue'
+import type { MonitoringMessage, MonitoringMessageStub } from '~/types/serpro'
+import type { MonitoringObligation } from '~/utils/monitoringNav'
+import { formatMonitoringDate, monitoringDeadlinePassed } from '~/utils/monitoringPresentation'
+
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
+  open: boolean
+  obligation: MonitoringObligation
+  clientName: string
+  /** The provider knows a message by `isn` only inside one contributor's mailbox. */
+  clientId: number
+  /**
+   * What the list already knows about this message: the subject and the three
+   * timestamps, not the body. A stub is enough to name what is about to happen.
+   */
+  stub: MonitoringMessageStub
+}>()
+
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  'read': [id: number]
+}>()
+
+const isOpen = computed({
+  get: () => props.open,
+  set: value => emit('update:open', value)
+})
+
+const toast = useToast()
+const { readMessage } = useSerpro()
+/** Registering ciência is an act on the client's behalf: `admin` and `operador` only. */
+const { canManageClients } = useAuth()
+
+const confirmed = ref(false)
+const message = ref<MonitoringMessage | null>(null)
+const loading = ref(false)
+
+/**
+ * The body is fetched here and nowhere else. `watch(() => props.open)` must not
+ * call `readMessage`: opening the dialog is not consent. It only clears the
+ * state, so a message already read in this session is never carried into the
+ * next opening.
+ */
+watch(() => props.open, (open) => {
+  if (!open) return
+  confirmed.value = false
+  message.value = null
+})
+
+/** The office already knows this one: the act is behind the office, not ahead. */
+const scienceRecorded = computed(() => !!props.stub.ciencia_em)
+/** What the stub says about the deadline — the consent names it before the read. */
+const stubDeadlinePassed = computed(() => monitoringDeadlinePassed(props.stub.prazo_limite))
+/** What the provider recorded — the detail is read from the message, not the stub. */
+const deadlinePassed = computed(() => monitoringDeadlinePassed(message.value?.prazo_limite))
+
+/** What the stub already knows, before the office consents to the read. */
+const stubFacts = computed<MetaListItem[]>(() => [
+  { label: 'Recebida em', value: formatMonitoringDate(props.stub.received_at), mono: true, truncate: true },
+  { label: 'Ciência em', value: formatMonitoringDate(props.stub.ciencia_em), mono: true, truncate: true, when: scienceRecorded.value }
+])
+
+/** What the read returned, plus the provider's own code when it sent one. */
+const messageFacts = computed<MetaListItem[]>(() => {
+  if (!message.value) return []
+  return [
+    { label: 'Ciência em', value: formatMonitoringDate(message.value.ciencia_em), mono: true, truncate: true },
+    { label: 'Prazo', value: formatMonitoringDate(message.value.prazo_limite), mono: true, truncate: true },
+    { label: 'Código', value: message.value.codigo ?? '', mono: true, truncate: true, when: !!message.value.codigo }
+  ]
+})
+
+async function confirm() {
+  confirmed.value = true
+  loading.value = true
+  try {
+    message.value = await readMessage(props.obligation.slug, props.clientId, props.stub.id)
+    emit('read', props.stub.id)
+  } catch {
+    // Nothing was recorded, so the question stands again. A dialog left in the
+    // confirmed state would claim an act that did not happen — the one thing
+    // this screen must never do.
+    confirmed.value = false
+    toast.add({ title: 'Não foi possível abrir a mensagem', color: 'error' })
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<template>
+  <UModal
+    v-bind="$attrs"
+    v-model:open="isOpen"
+    title="Mensagem da caixa postal"
+    :description="`${obligation.label} · ${clientName}`"
+  >
+    <template #body>
+      <div v-if="!confirmed" class="flex flex-col gap-4">
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-gavel"
+          title="Abrir esta mensagem registra a ciência da intimação"
+          description="O Integra Contador avisa: ler uma mensagem caracteriza ciência da intimação, nos termos do art. 23, § 2º, inciso III, do Decreto nº 70.235/1972. Ao abrir a mensagem, a ciência é registrada e o prazo do escritório começa a correr."
+        />
+
+        <UAlert
+          v-if="scienceRecorded"
+          :color="stubDeadlinePassed ? 'error' : 'neutral'"
+          variant="subtle"
+          :icon="stubDeadlinePassed ? 'i-lucide-triangle-alert' : 'i-lucide-scale'"
+          title="A ciência desta mensagem já foi registrada"
+          :description="stubDeadlinePassed
+            ? `Registrada em ${formatMonitoringDate(stub.ciencia_em)}, com prazo encerrado em ${formatMonitoringDate(stub.prazo_limite)}. Reabrir a mensagem não muda essas datas.`
+            : `Registrada em ${formatMonitoringDate(stub.ciencia_em)}, com prazo até ${formatMonitoringDate(stub.prazo_limite)}. Reabrir a mensagem não muda essas datas.`"
+        />
+
+        <UAlert
+          v-if="!canManageClients"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-lock"
+          title="Só administradores e operadores abrem mensagens"
+          description="Abrir a mensagem registra a ciência em nome do cliente. Peça a um administrador ou operador do escritório."
+        />
+
+        <p class="text-sm font-medium text-highlighted">
+          {{ stub.assunto }}
+        </p>
+
+        <DataTableMetaList :items="stubFacts" columns="grid-cols-2 gap-x-3 gap-y-2" />
+      </div>
+
+      <USkeleton v-else-if="loading" class="h-40 w-full" />
+
+      <div v-else-if="message" class="flex flex-col gap-4">
+        <UAlert
+          v-if="deadlinePassed"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="O prazo desta mensagem está vencido"
+          :description="`O prazo do escritório terminou em ${formatMonitoringDate(message.prazo_limite)}.`"
+        />
+
+        <DataTableMetaList :items="messageFacts" columns="grid-cols-2 gap-x-3 gap-y-2" />
+
+        <!-- `whitespace-pre-wrap`: the provider sends plain text and its own line
+             breaks are part of what the office is being shown. -->
+        <div
+          v-if="message.corpo"
+          class="max-h-80 overflow-y-auto rounded-lg bg-elevated/50 p-3 text-sm whitespace-pre-wrap text-default"
+        >
+          {{ message.corpo }}
+        </div>
+
+        <UAlert
+          v-else
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-file-text"
+          title="Esta mensagem não tem texto"
+          description="O provedor devolveu a intimação sem o corpo. A ciência e o prazo acima são o que foi registrado."
+        />
+      </div>
+    </template>
+
+    <template #footer>
+      <div v-if="!confirmed" class="flex justify-end gap-2">
+        <UButton
+          label="Cancelar"
+          color="neutral"
+          variant="subtle"
+          @click="isOpen = false"
+        />
+        <UButton
+          v-if="canManageClients"
+          :label="scienceRecorded ? 'Abrir mensagem' : 'Abrir e registrar ciência'"
+          icon="i-lucide-mail-open"
+          color="warning"
+          variant="solid"
+          :loading="loading"
+          :disabled="loading"
+          @click="confirm"
+        />
+      </div>
+
+      <div v-else class="flex justify-end">
+        <UButton
+          label="Fechar"
+          color="neutral"
+          variant="subtle"
+          @click="isOpen = false"
+        />
+      </div>
+    </template>
+  </UModal>
+</template>

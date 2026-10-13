@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { apiFailure } from '#shared/utils/access'
 
 defineProps<{
   collapsed?: boolean
@@ -11,33 +12,44 @@ const appConfig = useAppConfig()
 const colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose']
 const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'taupe', 'mauve', 'mist', 'olive']
 
-const user = ref({
-  name: 'Benjamin Canac',
-  avatar: {
-    src: 'https://github.com/benjamincanac.png',
-    alt: 'Benjamin Canac'
+const { user, logout } = useAuth()
+const toast = useToast()
+const busy = ref(false)
+const avatar = computed(() => ({ alt: user.value?.name || 'Usuário' }))
+
+async function signOut() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await logout()
+  } catch (error) {
+    toast.add({ title: apiFailure(error).message, color: 'error' })
+  } finally {
+    busy.value = false
   }
-})
+}
 
 const items = computed<DropdownMenuItem[][]>(() => ([[{
   type: 'label',
-  label: user.value.name,
-  avatar: user.value.avatar
+  label: user.value?.name || 'Usuário',
+  avatar: avatar.value
 }], [{
-  label: 'Profile',
-  icon: 'i-lucide-user'
+  label: 'Perfil',
+  icon: 'i-lucide-user',
+  to: '/settings'
 }, {
-  label: 'Billing',
-  icon: 'i-lucide-credit-card'
+  label: 'Faturamento',
+  icon: 'i-lucide-credit-card',
+  disabled: true
 }, {
-  label: 'Settings',
+  label: 'Configurações',
   icon: 'i-lucide-settings',
   to: '/settings'
 }], [{
-  label: 'Theme',
+  label: 'Tema',
   icon: 'i-lucide-palette',
   children: [{
-    label: 'Primary',
+    label: 'Primária',
     slot: 'chip',
     chip: appConfig.ui.colors.primary,
     content: {
@@ -57,7 +69,7 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
       }
     }))
   }, {
-    label: 'Neutral',
+    label: 'Neutra',
     slot: 'chip',
     chip: appConfig.ui.colors.neutral === 'neutral' ? 'old-neutral' : appConfig.ui.colors.neutral,
     content: {
@@ -78,23 +90,23 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
     }))
   }]
 }, {
-  label: 'Appearance',
+  label: 'Aparência',
   icon: 'i-lucide-sun-moon',
   children: [{
-    label: 'Light',
+    label: 'Claro',
     icon: 'i-lucide-sun',
     type: 'checkbox',
-    checked: colorMode.value === 'light',
+    checked: colorMode.preference === 'light',
     onSelect(e: Event) {
       e.preventDefault()
 
       colorMode.preference = 'light'
     }
   }, {
-    label: 'Dark',
+    label: 'Escuro',
     icon: 'i-lucide-moon',
     type: 'checkbox',
-    checked: colorMode.value === 'dark',
+    checked: colorMode.preference === 'dark',
     onUpdateChecked(checked: boolean) {
       if (checked) {
         colorMode.preference = 'dark'
@@ -102,6 +114,15 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
     },
     onSelect(e: Event) {
       e.preventDefault()
+    }
+  }, {
+    label: 'Sistema',
+    icon: 'i-lucide-monitor',
+    type: 'checkbox',
+    checked: colorMode.preference === 'system',
+    onSelect(e: Event) {
+      e.preventDefault()
+      colorMode.preference = 'system'
     }
   }]
 }], [{
@@ -142,23 +163,25 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
     to: 'https://calendar-template.nuxt.dev/'
   }]
 }], [{
-  label: 'Documentation',
+  label: 'Documentação',
   icon: 'i-lucide-book-open',
   to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
   target: '_blank'
 }, {
-  label: 'GitHub repository',
+  label: 'Repositório GitHub',
   icon: 'i-simple-icons-github',
   to: 'https://github.com/nuxt-ui-templates/dashboard',
   target: '_blank'
 }, {
-  label: 'Deploy to Vercel',
+  label: 'Publicar na Vercel',
   icon: 'i-simple-icons-vercel',
   to: 'https://vercel.com/new/clone?repository-name=dashboard&repository-url=https%3A%2F%2Fgithub.com%2Fnuxt-ui-templates%2Fdashboard&demo-image=https%3A%2F%2Fui.nuxt.com%2Fassets%2Ftemplates%2Fnuxt%2Fdashboard-dark.png&demo-url=https%3A%2F%2Fdashboard-template.nuxt.dev%2F&demo-title=Nuxt%20Dashboard%20Template&demo-description=A%20dashboard%20template%20with%20multi-column%20layout%20for%20building%20sophisticated%20admin%20interfaces.',
   target: '_blank'
 }], [{
-  label: 'Log out',
-  icon: 'i-lucide-log-out'
+  label: 'Sair',
+  icon: 'i-lucide-log-out',
+  disabled: busy.value,
+  onSelect: signOut
 }]]))
 </script>
 
@@ -170,10 +193,12 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   >
     <UButton
       v-bind="{
-        ...user,
+        avatar,
         label: collapsed ? undefined : user?.name,
         trailingIcon: collapsed ? undefined : 'i-lucide-chevrons-up-down'
       }"
+      :aria-label="collapsed ? 'Menu do usuário' : undefined"
+      :loading="busy"
       color="neutral"
       variant="ghost"
       block

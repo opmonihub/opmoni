@@ -1,0 +1,20 @@
+{
+  "_provenance": "exemplo documental alinhado à documentação PARCSN/PEDIDOSPARC163; não observado no trial",
+  "contratante": { "numero": "11111111111111", "tipo": 2 },
+  "autorPedidoDados": { "numero": "11111111111111", "tipo": 2 },
+  "contribuinte": { "numero": "99999999999999", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "PARCSN",
+    "idServico": "PEDIDOSPARC163",
+    "versaoSistema": "1.0",
+    "dados": "{}"
+  },
+  "status": 200,
+  "mensagens": [
+    {
+      "codigo": "[Sucesso-PARCSN]",
+      "texto": "Requisição efetuada com sucesso."
+    }
+  ],
+  "dados": "{\"parcelamentos\":[{\"numero\":1,\"dataDoPedido\":20160211,\"situacao\":\"Encerrado a Pedido do Contribuinte\",\"dataDaSituacao\":20170125},{\"numero\":6,\"dataDoPedido\":20230131,\"situacao\":\"Em parcelamento\",\"dataDaSituacao\":20230209}]}"
+}

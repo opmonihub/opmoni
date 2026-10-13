@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ⚠️ ARQUIVO TRANSCRITO, NÃO O PACOTE OFICIAL.
+
+    O pacote oficial de schemas da distribuição de DF-e de CT-e é o
+    `PL_CTeDistDFe_100`, e **ele não está versionado neste repositório**: o
+    diretório `.ref/` não existe aqui e nenhum XSD de CT-e foi copiado do
+    Ambiente Nacional. O que está neste arquivo foi escrito a partir do leiaute
+    publicado do serviço, e é a mesma redução que o `nfe/tiposDistDFe_v1.01.xsd`
+    faz com os tipos de NF-e: só os tipos que o **pedido** de distribuição usa.
+
+    A consequência é precisa: este XSD garante a forma do corpo que este módulo
+    monta — o CNPJ com catorze dígitos, a UF na tabela do IBGE, a posição com
+    quinze dígitos, a versão `1.00`, a ordem dos elementos — e não garante que o
+    pacote oficial seja este. Um corpo aceito aqui pode ainda assim ser recusado
+    pelo serviço, e é o canário de um único cliente que fecha essa conta.
+
+    A ausência de `consChCTe` neste arquivo é uma decisão do módulo, não uma
+    omissão do transcrito: o serviço de CT-e é limitado a consulta por
+    posição (`consNSU`), e declarar aqui uma opção que o código nunca monta só
+    serviria para aprovar um corpo que ninguém devia poder montar.
+
+    Os tipos de uso exclusivo da NF-e (`TChNFe`, `TStat`, `TMotivo`, `TIe`,
+    `TDateTimeUTC`, `TDec_1302`, `TQNSU`, `TCOrgaoIBGE`, `TVerAplic`) não vêm
+    aqui: nada do pedido de CT-e os referencia.
+-->
+<xs:schema xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://www.portalfiscal.inf.br/cte" targetNamespace="http://www.portalfiscal.inf.br/cte"
+           elementFormDefault="qualified" attributeFormDefault="unqualified">
+    <xs:simpleType name="TNSU">
+        <xs:annotation>
+            <xs:documentation>Tipo número sequencial único</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:token">
+            <xs:pattern value="[0-9]{15}"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="TVerDistDFe">
+        <xs:annotation>
+            <xs:documentation>Tipo Versão dos leiautes do Web Service CTeDistribuicaoDFe</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:whiteSpace value="preserve"/>
+            <xs:enumeration value="1.00"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="TAmb">
+        <xs:annotation>
+            <xs:documentation>Tipo Ambiente</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:whiteSpace value="preserve"/>
+            <xs:enumeration value="1"/>
+            <xs:enumeration value="2"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="TCodUfIBGE">
+        <xs:annotation>
+            <xs:documentation>Tipo Código da UF da tabela do IBGE</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:whiteSpace value="preserve"/>
+            <xs:enumeration value="11"/>
+            <xs:enumeration value="12"/>
+            <xs:enumeration value="13"/>
+            <xs:enumeration value="14"/>
+            <xs:enumeration value="15"/>
+            <xs:enumeration value="16"/>
+            <xs:enumeration value="17"/>
+            <xs:enumeration value="21"/>
+            <xs:enumeration value="22"/>
+            <xs:enumeration value="23"/>
+            <xs:enumeration value="24"/>
+            <xs:enumeration value="25"/>
+            <xs:enumeration value="26"/>
+            <xs:enumeration value="27"/>
+            <xs:enumeration value="28"/>
+            <xs:enumeration value="29"/>
+            <xs:enumeration value="31"/>
+            <xs:enumeration value="32"/>
+            <xs:enumeration value="33"/>
+            <xs:enumeration value="35"/>
+            <xs:enumeration value="41"/>
+            <xs:enumeration value="42"/>
+            <xs:enumeration value="43"/>
+            <xs:enumeration value="50"/>
+            <xs:enumeration value="51"/>
+            <xs:enumeration value="52"/>
+            <xs:enumeration value="53"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="TCnpj">
+        <xs:annotation>
+            <xs:documentation>Tipo Número do CNPJ</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:whiteSpace value="preserve"/>
+            <xs:maxLength value="14"/>
+            <xs:pattern value="[0-9]{14}"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:simpleType name="TCpf">
+        <xs:annotation>
+            <xs:documentation>Tipo Número do CPF</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:whiteSpace value="preserve"/>
+            <xs:maxLength value="11"/>
+            <xs:pattern value="[0-9]{11}"/>
+        </xs:restriction>
+    </xs:simpleType>
+</xs:schema>

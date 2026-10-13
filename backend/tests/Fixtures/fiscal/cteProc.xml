@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FIXTURE SINTÉTICO. Não é uma captura do Ambiente Nacional.
+
+  **Onde a forma foi verificada, e onde não foi.** Este checkout não tem o
+  pacote de schemas do CT-e (não existe `.ref/`; os únicos XSD versionados são
+  de NF-e, e o `tiposDistDFe_v1.01.xsd` não declara elemento raiz nenhum).
+
+  - VERIFICADO fora do checkout: a raiz é `cteProc` e os dois filhos são `CTe` e
+    `protCTe` (`procCTe_v4.00.xsd`).
+  - MODELADO, não verificado: todo o corpo.
+
+  O `protCTe` foi acrescentado nesta tarefa. Um `cteProc` de distribuição sempre
+  o traz, e sem ele o fixture era classificado como "resumo" — a etapa errada
+  para um documento processado. Nada mais neste arquivo mudou: as cinco
+  asserções que já existiam sobre ele (modelo, chave, CNPJ do emitente, CNPJ do
+  tomador, valor) continuam valendo sem alteração.
+-->
+<cteProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/cte">
+  <CTe>
+    <infCte versao="4.00">
+      <chCTe>35220799999999999999570010000001231123456786</chCTe>
+      <dhRecbto>2022-07-16T12:31:00-03:00</dhRecbto>
+      <emit>
+        <CNPJ>99999999999999</CNPJ>
+        <xNome>TRANSPORTES EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+        <CRT>3</CRT>
+      </emit>
+      <rem>
+        <xNome>REMETENTE EXEMPLO LTDA</xNome>
+        <vPrest>1500.00</vPrest>
+        <vTPrest>1500.00</vTPrest>
+        <vRec>0.00</vRec>
+      </rem>
+      <toma>
+        <CNPJ>11222333000181</CNPJ>
+        <xNome>TOMADOR EXEMPLO LTDA</xNome>
+        <IE>110042490114</IE>
+      </toma>
+    </infCte>
+  </CTe>
+  <protCTe versao="4.00">
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <verAplic>SVRS_EXEMPLO</verAplic>
+      <chCTe>35220799999999999999570010000001231123456786</chCTe>
+      <dhRecbto>2022-07-16T12:31:04-03:00</dhRecbto>
+      <nProt>135220000000001</nProt>
+      <digVal>ZmFrZSBkaWdlc3Qgc2ludGV0aWNvIGRvIGN0ZQ==</digVal>
+      <cStat>100</cStat>
+      <xMotivo>Autorizado o uso do CT-e</xMotivo>
+    </infProt>
+  </protCTe>
+</cteProc>

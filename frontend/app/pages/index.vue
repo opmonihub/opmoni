@@ -25,7 +25,7 @@ const period = ref<Period>('daily')
 <template>
   <UDashboardPanel id="home">
     <template #header>
-      <UDashboardNavbar title="Home" :ui="{ right: 'gap-3' }">
+      <UDashboardNavbar title="Dashboard" :ui="{ right: 'gap-3' }">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -33,6 +33,7 @@ const period = ref<Period>('daily')
         <template #right>
           <UTooltip text="Notifications" :shortcuts="['N']">
             <UButton
+              aria-label="Notificações"
               color="neutral"
               variant="ghost"
               square
@@ -45,7 +46,12 @@ const period = ref<Period>('daily')
           </UTooltip>
 
           <UDropdownMenu :items="items">
-            <UButton icon="i-lucide-plus" size="md" class="rounded-full" />
+            <UButton
+              aria-label="Ações rápidas"
+              icon="i-lucide-plus"
+              size="md"
+              class="rounded-full"
+            />
           </UDropdownMenu>
         </template>
       </UDashboardNavbar>
@@ -61,6 +67,9 @@ const period = ref<Period>('daily')
     </template>
 
     <template #body>
+      <p class="text-muted text-sm">
+        Dados de demonstração do dashboard.
+      </p>
       <HomeStats :period="period" :range="range" />
       <HomeChart :period="period" :range="range" />
       <HomeSales :period="period" :range="range" />

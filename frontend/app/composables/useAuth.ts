@@ -1,0 +1,103 @@
+import { computed } from 'vue'
+import { tenantPermissions } from '#shared/utils/business'
+import type { Identity } from '#shared/types/access'
+import { accessDestination, apiFailure } from '#shared/utils/access'
+
+export function useAuth() {
+  const user = useState<Identity | null>('access-user', () => null)
+  const resolved = useState('access-resolved', () => false)
+  const generation = useState('access-generation', () => 0)
+  const sessionGeneration = useState('access-session-generation', () => 0)
+  const { api, csrf, refreshCsrf } = useAccessApi()
+  function clearAccountData() {
+    clearNuxtData()
+    clearNuxtState(key => !key.startsWith('access-'))
+  }
+  function clearSession() {
+    ++generation.value
+    ++sessionGeneration.value
+    user.value = null
+    resolved.value = true
+    csrf.value = null
+    clearAccountData()
+  }
+  async function rotateCsrf() {
+    csrf.value = null
+    try {
+      await refreshCsrf()
+    } catch {
+      csrf.value = null
+    }
+  }
+  async function refresh() {
+    const version = ++generation.value
+    try {
+      const identity = await api<Identity>('/me')
+      if (version === generation.value) {
+        user.value = identity
+        resolved.value = true
+      }
+      return user.value
+    } catch (error) {
+      if (apiFailure(error).status === 401) {
+        if (version === generation.value) {
+          clearSession()
+        }
+        return null
+      }
+      throw error
+    }
+  }
+  async function authenticate(path: '/login' | '/register' | '/first-access', body: Record<string, unknown>) {
+    const identity = await api<Identity>(path, { method: 'POST', body })
+    ++generation.value
+    ++sessionGeneration.value
+    user.value = identity
+    resolved.value = true
+    csrf.value = null
+    clearNuxtData()
+    await rotateCsrf()
+    return navigateTo(accessDestination(identity), { replace: true })
+  }
+  async function switchAccount(id: number) {
+    const identity = await api<Identity>('/account/switch', { method: 'POST', body: { account_id: id } })
+    ++generation.value
+    ++sessionGeneration.value
+    user.value = identity
+    csrf.value = null
+    clearAccountData()
+    await rotateCsrf()
+    if (import.meta.client)
+      window.location.assign('/')
+  }
+  async function logout() {
+    const version = sessionGeneration.value
+    try {
+      await api('/logout', { method: 'POST' })
+    } catch (error) {
+      if (apiFailure(error).status !== 401)
+        throw error
+    }
+    if (version !== sessionGeneration.value)
+      return
+    clearSession()
+    if (import.meta.client)
+      window.location.assign('/login')
+  }
+  const isSuperAdmin = computed(() => user.value?.is_super_admin ?? false)
+  const accounts = computed(() => user.value?.accounts ?? [])
+  const currentAccount = computed(() => user.value?.current_account ?? null)
+  const permissions = computed(() => tenantPermissions(user.value))
+  const currentRole = computed(() => permissions.value.role)
+  const can = (roles: string[]) => roles.includes(currentRole.value ?? '')
+  const canManageClients = computed(() => permissions.value.canManageClients)
+  const canManageWork = computed(() => permissions.value.canManageWork)
+  const canManageDepartments = computed(() => permissions.value.canManageDepartments)
+  const canManageMembers = computed(() => permissions.value.canManageMembers)
+  async function registrationAvailable() {
+    return (await api<{ registration_available: boolean }>('/registration-status')).registration_available
+  }
+  return { user, resolved, refresh, fetchMe: refresh, authenticate, switchAccount, logout, invalidateSession: clearSession,
+    isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients,
+    canManageWork, canManageDepartments, canManageMembers, registrationAvailable }
+}

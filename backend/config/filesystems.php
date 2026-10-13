@@ -47,6 +47,9 @@ return [
             'report' => false,
         ],
 
+        'certificates' => ['driver' => 'local', 'root' => storage_path('app/private/certificates'), 'serve' => false, 'throw' => true, 'report' => true],
+        'fiscal' => ['driver' => 'local', 'root' => storage_path('app/private/fiscal'), 'serve' => false, 'throw' => true, 'report' => true],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

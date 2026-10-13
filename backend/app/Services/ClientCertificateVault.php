@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Client;
+use App\Models\ClientCertificate;
+use App\Tenant\CurrentTenant;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+class ClientCertificateVault
+{
+    /**
+     * O padrão no parâmetro existe por causa de um teste: `new ClientCertificateVault`
+     * sem argumento é a forma com que `ClientCertificateVaultLegacyPfxTest` — o
+     * teste que prova que esta extração não mudou nada — monta o cofre. A unidade
+     * de leitura não tem dependência nenhuma, então o padrão não esconde
+     * nenhuma: ele só mantém a construção sem argumento possível.
+     */
+    public function __construct(private CertificatePkcs12 $pkcs12 = new CertificatePkcs12) {}
+
+    public function replace(Client $client, UploadedFile $file, string $password): ClientCertificate
+    {
+        return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $file, $password): ClientCertificate {
+            $contents = $file->get();
+            $ciphertext = null;
+            $path = null;
+            $rollbackRegistered = false;
+
+            try {
+                try {
+                    $inspected = $this->pkcs12->inspect($contents, $password);
+                } catch (LegacyPkcs12Ciphertext $exception) {
+                    throw $this->namingTheClient($exception, $client);
+                }
+
+                $path = sprintf('%d/%d/%s.enc', $client->account_id, $client->getKey(), (string) Str::uuid());
+                $ciphertext = Crypt::encryptString(base64_encode($contents));
+                Storage::disk('certificates')->put($path, $ciphertext);
+
+                $attributes = [
+                    'subject' => mb_substr($inspected['subject'], 0, 255),
+                    'serial_number' => $inspected['serial'],
+                    'valid_from' => $inspected['valid_from'],
+                    'valid_until' => $inspected['valid_until'],
+                    'original_filename' => mb_substr($file->getClientOriginalName(), 0, 255),
+                    'storage_path' => $path,
+                    'sha256' => $inspected['sha256'],
+                    'password_encrypted' => Crypt::encryptString($password),
+                ];
+
+                $certificate = DB::transaction(function () use ($client, $attributes, $path, &$rollbackRegistered): ClientCertificate {
+                    // The parent request may still roll back after this savepoint succeeds.
+                    DB::afterRollBack(function () use ($path): void {
+                        try {
+                            Storage::disk('certificates')->delete($path);
+                        } catch (\Throwable $exception) {
+                            report($exception);
+                        }
+                    });
+                    $rollbackRegistered = true;
+                    $oldPath = null;
+                    $locked = Client::whereKey($client->getKey())->lockForUpdate()->firstOrFail();
+
+                    $current = ClientCertificate::where('client_id', $locked->getKey())
+                        ->whereNull('replaced_at')
+                        ->whereNull('removed_at')
+                        ->lockForUpdate()
+                        ->latest('id')
+                        ->first();
+
+                    if ($current !== null) {
+                        $oldPath = $current->storage_path;
+                        $current->forceFill([
+                            'replaced_at' => now(),
+                            'storage_path' => null,
+                            'password_encrypted' => null,
+                        ])->save();
+                    }
+
+                    $certificate = ClientCertificate::create(array_merge($attributes, [
+                        'client_id' => $locked->getKey(),
+                    ]));
+
+                    if (is_string($oldPath) && $oldPath !== '') {
+                        DB::afterCommit(fn () => Storage::disk('certificates')->delete($oldPath));
+                    }
+
+                    return $certificate;
+                });
+
+                return $certificate;
+            } catch (\Throwable $exception) {
+                // Once registered, transaction callbacks own cleanup, including a parent rollback.
+                // An after-commit deletion failure must never remove the committed replacement.
+                if (! $rollbackRegistered && is_string($path) && $path !== '') {
+                    try {
+                        Storage::disk('certificates')->delete($path);
+                    } catch (\Throwable) {
+                        // Best effort: cleanup must never mask the original failure.
+                    }
+                }
+
+                throw $exception;
+            } finally {
+                $password = '';
+                $contents = '';
+                $ciphertext = null;
+                unset($password, $contents, $ciphertext);
+            }
+
+        });
+    }
+
+    public function remove(Client $client): void
+    {
+        resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client) {
+            DB::transaction(function () use ($client): ?string {
+                $locked = Client::whereKey($client->getKey())->lockForUpdate()->firstOrFail();
+
+                $current = ClientCertificate::where('client_id', $locked->getKey())
+                    ->whereNull('replaced_at')
+                    ->whereNull('removed_at')
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
+
+                if ($current === null) {
+                    return null;
+                }
+
+                $path = $current->storage_path;
+                $current->forceFill([
+                    'removed_at' => now(),
+                    'storage_path' => null,
+                    'password_encrypted' => null,
+                ])->save();
+
+                if (is_string($path) && $path !== '') {
+                    DB::afterCommit(fn () => Storage::disk('certificates')->delete($path));
+                }
+
+                return $path;
+            });
+
+        });
+    }
+
+    /**
+     * O erro de RC2 da leitura compartilhada fala do certificado, e quem sabe de
+     * quem é o certificado é o cofre — a leitura não conhece cliente nem
+     * escritório, e é por isso que ela devolve uma `LegacyPkcs12Ciphertext` em vez
+     * de uma `ValidationException` qualquer.
+     *
+     * A troca do sujeito é feita pela própria exceção, que é quem tem a frase e o
+     * predicado sobre o que a frase começa a dizer. Este cofre só acrescenta
+     * **de quem** é o certificado; cortar a frase aqui por conta própria faria
+     * uma reescrita de texto na unidade compartilhada virar lixo para o cliente
+     * sem nenhum teste reclamar.
+     *
+     * RC2 é a única mensagem que nomeia alguém porque é a única em que o
+     * operador precisa saber de qual cliente é o arquivo para refazer o export
+     * certo.
+     */
+    private function namingTheClient(LegacyPkcs12Ciphertext $exception, Client $client): ValidationException
+    {
+        return $exception->withSubject(sprintf('O certificado do cliente %s', $client->name));
+    }
+}

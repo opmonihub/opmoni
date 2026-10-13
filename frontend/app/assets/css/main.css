@@ -16,3 +16,36 @@
   --color-green-900: #0A5331;
   --color-green-950: #052E16;
 }
+
+/* Calendar template tokens (nuxt-ui-templates/calendar) — scoped chrome for /work/calendario */
+:root {
+  --glass-bg: rgb(255 255 255 / 0.42);
+  --glass-blur: 24px;
+  --glass-saturate: 180%;
+  --glass-brightness: 105%;
+  --glass-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+  --control-bg: rgb(0 0 0 / 0.05);
+  --control-bg-hover: rgb(0 0 0 / 0.09);
+}
+
+.dark {
+  --glass-bg: rgb(28 28 30 / 0.55);
+  --glass-blur: 28px;
+  --glass-saturate: 150%;
+  --glass-brightness: 110%;
+  --control-bg: rgb(255 255 255 / 0.06);
+  --control-bg-hover: rgb(255 255 255 / 0.10);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  .dark {
+    --glass-bg: var(--ui-bg);
+    --glass-blur: 0px;
+  }
+}
+
+@utility glass-material {
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+}

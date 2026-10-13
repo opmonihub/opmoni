@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <nfeDistDFeInteresseResponse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
+      <nfeDistDFeInteresseResult>
+        <retDistDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01">
+          <tpAmb>1</tpAmb>
+          <verAplic>SVRS20261003120000</verAplic>
+          <cStat>658</cStat>
+          <xMotivo>Rejeicao: Codigo de UF divergente da UF da chave de acesso consultada</xMotivo>
+          <dhResp>2026-10-03T12:00:00-03:00</dhResp>
+          <ultNSU>000000000000000</ultNSU>
+          <maxNSU>000000000000000</maxNSU>
+        </retDistDFeInt>
+      </nfeDistDFeInteresseResult>
+    </nfeDistDFeInteresseResponse>
+  </soap:Body>
+</soap:Envelope>

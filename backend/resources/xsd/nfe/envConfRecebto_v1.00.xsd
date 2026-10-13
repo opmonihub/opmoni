@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fonte: Pacote de Liberação PL_009_V4 da NF-e (Manifestação do Destinatário,
+  leiaute do evento 1.00), publicado no Portal da NF-e (gov.br); cópia obtida
+  do espelho público github.com/nfephp-org/sped-nfe (schemes/PL_009_V4) em
+  03/10/2026. Abaixo deste cabeçalho o conteúdo oficial está inalterado, salvo
+  fim de linha normalizado para LF
+  (sha256 do original: 92ec44f08ace5eb7...). Serviço: nfeRecepcaoEvento.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="http://www.portalfiscal.inf.br/nfe" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" targetNamespace="http://www.portalfiscal.inf.br/nfe" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:include schemaLocation="leiauteConfRecebto_v1.00.xsd"/>
+	<xs:element name="envEvento" type="TEnvEvento">
+		<xs:annotation>
+			<xs:documentation>Schema XML de validação do lote de envio do evento confirmação de recebimento</xs:documentation>
+		</xs:annotation>
+	</xs:element>
+</xs:schema>

@@ -1,0 +1,16 @@
+{
+  "contratante": { "numero": "00000000000000", "tipo": 2 },
+  "autorPedidoDados": { "numero": "00000000000000", "tipo": 2 },
+  "contribuinte": { "numero": "00000000000000", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "DEFIS",
+    "idServico": "CONSDECLARACAO142",
+    "versaoSistema": "1.0",
+    "dados": ""
+  },
+  "status": 200,
+  "dados": "[{\"anoCalendario\":2021,\"idDefis\":\"000000002021002\",\"tipo\":\"2\",\"dataHora\":\"20230801145404\"},{\"anoCalendario\":2021,\"idDefis\":\"000000002021001\",\"tipo\":\"1\",\"dataHora\":\"20230725102410\"},{\"anoCalendario\":2020,\"idDefis\":\"000000002020001\",\"tipo\":\"1\",\"dataHora\":\"20210415103000\"}]",
+  "mensagens": [
+    { "codigo": "[Sucesso-DEFIS]", "texto": "Requisição efetuada com sucesso." }
+  ]
+}

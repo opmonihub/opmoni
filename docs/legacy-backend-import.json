@@ -1,0 +1,2084 @@
+{
+  "purpose": "Legacy business logic integrated into the canonical Opmoni session, membership and /api/v1 conventions.",
+  "source": "/home/obsidian/dev/legacy/backend",
+  "records": [
+    {
+      "source": "app/Concerns/BelongsToAccount.php",
+      "target": "backend/app/Concerns/BelongsToAccount.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/CaptureFiscalDocuments.php",
+      "target": "backend/app/Console/Commands/CaptureFiscalDocuments.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/DevSeedWork.php",
+      "target": "backend/app/Console/Commands/DevSeedWork.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/FailAbandonedSerproRuns.php",
+      "target": "backend/app/Console/Commands/FailAbandonedSerproRuns.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/GenerateRecurringProcesses.php",
+      "target": "backend/app/Console/Commands/GenerateRecurringProcesses.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/NfseAdnProbe.php",
+      "target": "backend/app/Console/Commands/NfseAdnProbe.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/ReconcileFiscalDocuments.php",
+      "target": "backend/app/Console/Commands/ReconcileFiscalDocuments.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/RecordSerproTermProof.php",
+      "target": "backend/app/Console/Commands/RecordSerproTermProof.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/RefreshSerproPowers.php",
+      "target": "backend/app/Console/Commands/RefreshSerproPowers.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/RenewSerproTerms.php",
+      "target": "backend/app/Console/Commands/RenewSerproTerms.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/ResyncFiscalManifestations.php",
+      "target": "backend/app/Console/Commands/ResyncFiscalManifestations.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/ScheduledSerproRun.php",
+      "target": "backend/app/Console/Commands/ScheduledSerproRun.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/SeedDevClients.php",
+      "target": "backend/app/Console/Commands/SeedDevClients.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Console/Commands/SerproProbePgdas.php",
+      "target": "backend/app/Console/Commands/SerproProbePgdas.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/ClientPersonType.php",
+      "target": "backend/app/Enums/ClientPersonType.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/ClientStatus.php",
+      "target": "backend/app/Enums/ClientStatus.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/DeadlineStatus.php",
+      "target": "backend/app/Enums/DeadlineStatus.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalFailure.php",
+      "target": "backend/app/Enums/FiscalFailure.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalKind.php",
+      "target": "backend/app/Enums/FiscalKind.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalManifestationEventType.php",
+      "target": "backend/app/Enums/FiscalManifestationEventType.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalManifestationOutcome.php",
+      "target": "backend/app/Enums/FiscalManifestationOutcome.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalModel.php",
+      "target": "backend/app/Enums/FiscalModel.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalSkipReason.php",
+      "target": "backend/app/Enums/FiscalSkipReason.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalSource.php",
+      "target": "backend/app/Enums/FiscalSource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/FiscalStage.php",
+      "target": "backend/app/Enums/FiscalStage.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproAuthorizationTermState.php",
+      "target": "backend/app/Enums/SerproAuthorizationTermState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproConnectionState.php",
+      "target": "backend/app/Enums/SerproConnectionState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproFailure.php",
+      "target": "backend/app/Enums/SerproFailure.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproManualSearchMode.php",
+      "target": "backend/app/Enums/SerproManualSearchMode.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproManualSearchState.php",
+      "target": "backend/app/Enums/SerproManualSearchState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproPowerOfAttorneyState.php",
+      "target": "backend/app/Enums/SerproPowerOfAttorneyState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproSyncItemState.php",
+      "target": "backend/app/Enums/SerproSyncItemState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproSyncRunState.php",
+      "target": "backend/app/Enums/SerproSyncRunState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproSyncRunTrigger.php",
+      "target": "backend/app/Enums/SerproSyncRunTrigger.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/SerproTermProof.php",
+      "target": "backend/app/Enums/SerproTermProof.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/TaskPriority.php",
+      "target": "backend/app/Enums/TaskPriority.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/TaskStatus.php",
+      "target": "backend/app/Enums/TaskStatus.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Enums/TaxRegime.php",
+      "target": "backend/app/Enums/TaxRegime.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/AccountController.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/Admin/AccountController.php"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/PlanController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/PlanController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/SerproConnectionController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/SerproConnectionController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/SerproConnectivityController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/SerproConnectivityController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/SubscriptionController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/SubscriptionController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/SupportLogController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/SupportLogController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Admin/UserController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Admin/UserController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/AuthController.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/AuthController.php"
+    },
+    {
+      "source": "app/Http/Controllers/Controller.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/Controller.php"
+    },
+    {
+      "source": "app/Http/Controllers/FirstAccessController.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/FirstAccessController.php"
+    },
+    {
+      "source": "app/Http/Controllers/SupportAccessController.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/SupportAccessController.php"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/AccountCertificateController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/AccountCertificateController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/AccountMemberController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/AccountMemberController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/AccountSwitchController.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Controllers/Tenant/AccountSwitchController.php"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientBulkDeletionController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientBulkDeletionController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientCertificateController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientCertificateController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientCnpjLookupController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientCnpjLookupController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientCnpjRefreshController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientCnpjRefreshController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientDispatchContactController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientDispatchContactController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientMonitoringModuleController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientMonitoringModuleController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientSavedFilterController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientSavedFilterController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientSelectionController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientSelectionController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ClientTagAssignmentController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ClientTagAssignmentController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/DepartmentController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/DepartmentController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/FiscalClientSummaryController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/FiscalClientSummaryController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/FiscalDocumentController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/FiscalDocumentController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ProcessController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ProcessController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/ProcessTemplateController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/ProcessTemplateController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproAccountEnablementController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproAccountEnablementController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproAuthorizationTermController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproAuthorizationTermController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproManualSearchController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproManualSearchController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproMonitoringAssociationController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproMonitoringAssociationController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproMonitoringDeclarationController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproMonitoringDeclarationController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproMonitoringMessageController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproMonitoringMessageController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproMonitoringObligationController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproMonitoringObligationController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproMonitoringOverviewController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproMonitoringOverviewController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproObligationScheduleController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproObligationScheduleController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/SerproSyncRunController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/SerproSyncRunController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/TagController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/TagController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/TaskController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/TaskController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/WhatsAppChannelController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/WhatsAppChannelController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/Tenant/WhatsAppDispatchController.php",
+      "target": "backend/app/Http/Controllers/Api/V1/Tenant/WhatsAppDispatchController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Controllers/WzapWebhookController.php",
+      "target": "backend/app/Http/Controllers/WzapWebhookController.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Middleware/EnsureSuperAdmin.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Middleware/EnsureSuperAdmin.php"
+    },
+    {
+      "source": "app/Http/Middleware/ResolveTenant.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Http/Middleware/ResolveTenant.php"
+    },
+    {
+      "source": "app/Http/Requests/Admin/IndexAccountRequest.php",
+      "target": "backend/app/Http/Requests/Admin/IndexAccountRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Admin/IndexSubscriptionRequest.php",
+      "target": "backend/app/Http/Requests/Admin/IndexSubscriptionRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Admin/IndexUserRequest.php",
+      "target": "backend/app/Http/Requests/Admin/IndexUserRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Admin/StoreAccountRequest.php",
+      "target": "backend/app/Http/Requests/Admin/StoreAccountRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Admin/UpdateAccountRequest.php",
+      "target": "backend/app/Http/Requests/Admin/UpdateAccountRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Admin/UpsertSerproConnectionRequest.php",
+      "target": "backend/app/Http/Requests/Admin/UpsertSerproConnectionRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/AssignClientTagsRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/AssignClientTagsRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/AssociateSerproClientsRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/AssociateSerproClientsRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/BulkDeleteClientsRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/BulkDeleteClientsRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/IndexClientRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/IndexClientRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/IndexFiscalClientsRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/IndexFiscalClientsRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/IndexFiscalDocumentRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/IndexFiscalDocumentRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/LookupClientCnpjRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/LookupClientCnpjRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/ReadSerproMessageRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/ReadSerproMessageRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/SearchSerproClientsRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/SearchSerproClientsRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreClientCertificateRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreClientCertificateRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreClientMonitoringModulesRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreClientMonitoringModulesRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreClientRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreClientRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreClientSavedFilterRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreClientSavedFilterRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreClientSelectionRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreClientSelectionRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreDepartmentRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreDepartmentRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreProcessTemplateRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreProcessTemplateRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/StoreTagRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/StoreTagRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateClientRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateClientRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateDepartmentRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateDepartmentRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateProcessRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateProcessRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateProcessTemplateRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateProcessTemplateRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateSerproEnablementRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateSerproEnablementRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateSerproObligationSchedulesRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateSerproObligationSchedulesRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateTagRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateTagRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UpdateTaskRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UpdateTaskRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Requests/Tenant/UploadAccountCertificateRequest.php",
+      "target": "backend/app/Http/Requests/Tenant/UploadAccountCertificateRequest.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/AccountCertificateResource.php",
+      "target": "backend/app/Http/Resources/AccountCertificateResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/AccountResource.php",
+      "target": "backend/app/Http/Resources/AccountResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ClientCertificateResource.php",
+      "target": "backend/app/Http/Resources/ClientCertificateResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ClientResource.php",
+      "target": "backend/app/Http/Resources/ClientResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ClientSavedFilterResource.php",
+      "target": "backend/app/Http/Resources/ClientSavedFilterResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ClientSheetResource.php",
+      "target": "backend/app/Http/Resources/ClientSheetResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/DepartmentResource.php",
+      "target": "backend/app/Http/Resources/DepartmentResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/FiscalClientSummaryResource.php",
+      "target": "backend/app/Http/Resources/FiscalClientSummaryResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/FiscalDocumentDetailResource.php",
+      "target": "backend/app/Http/Resources/FiscalDocumentDetailResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/FiscalDocumentResource.php",
+      "target": "backend/app/Http/Resources/FiscalDocumentResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/MemberDirectoryResource.php",
+      "target": "backend/app/Http/Resources/MemberDirectoryResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ProcessResource.php",
+      "target": "backend/app/Http/Resources/ProcessResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ProcessTemplateResource.php",
+      "target": "backend/app/Http/Resources/ProcessTemplateResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/ProcessTemplateTaskResource.php",
+      "target": "backend/app/Http/Resources/ProcessTemplateTaskResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SerproAuthorizationTermResource.php",
+      "target": "backend/app/Http/Resources/SerproAuthorizationTermResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SerproCallResource.php",
+      "target": "backend/app/Http/Resources/SerproCallResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SerproConnectionResource.php",
+      "target": "backend/app/Http/Resources/SerproConnectionResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SerproSyncRunItemResource.php",
+      "target": "backend/app/Http/Resources/SerproSyncRunItemResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SerproSyncRunResource.php",
+      "target": "backend/app/Http/Resources/SerproSyncRunResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SubscriptionResource.php",
+      "target": "backend/app/Http/Resources/SubscriptionResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/SupportAccessLogResource.php",
+      "target": "backend/app/Http/Resources/SupportAccessLogResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/TagResource.php",
+      "target": "backend/app/Http/Resources/TagResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/TaskResource.php",
+      "target": "backend/app/Http/Resources/TaskResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Http/Resources/UserResource.php",
+      "target": "backend/app/Http/Resources/UserResource.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/CaptureFiscalDocumentsJob.php",
+      "target": "backend/app/Jobs/CaptureFiscalDocumentsJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/DeleteClientsJob.php",
+      "target": "backend/app/Jobs/DeleteClientsJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/FanOutSerproRunJob.php",
+      "target": "backend/app/Jobs/FanOutSerproRunJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/IssueSerproTermJob.php",
+      "target": "backend/app/Jobs/IssueSerproTermJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/ReconcileFiscalDocumentsJob.php",
+      "target": "backend/app/Jobs/ReconcileFiscalDocumentsJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/RefreshSerproPowersJob.php",
+      "target": "backend/app/Jobs/RefreshSerproPowersJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/RenewSerproTermsJob.php",
+      "target": "backend/app/Jobs/RenewSerproTermsJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/RunSerproManualSearchJob.php",
+      "target": "backend/app/Jobs/RunSerproManualSearchJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/SendFiscalManifestationJob.php",
+      "target": "backend/app/Jobs/SendFiscalManifestationJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/SendWhatsAppDocumentJob.php",
+      "target": "backend/app/Jobs/SendWhatsAppDocumentJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Jobs/SyncSerproClientJob.php",
+      "target": "backend/app/Jobs/SyncSerproClientJob.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Account.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Models/Account.php"
+    },
+    {
+      "source": "app/Models/AccountCertificate.php",
+      "target": "backend/app/Models/AccountCertificate.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/AccountUser.php",
+      "target": "backend/app/Models/AccountUser.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Client.php",
+      "target": "backend/app/Models/Client.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/ClientCertificate.php",
+      "target": "backend/app/Models/ClientCertificate.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/ClientDispatchContact.php",
+      "target": "backend/app/Models/ClientDispatchContact.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/ClientSavedFilter.php",
+      "target": "backend/app/Models/ClientSavedFilter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Department.php",
+      "target": "backend/app/Models/Department.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/FiscalCursor.php",
+      "target": "backend/app/Models/FiscalCursor.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/FiscalDocument.php",
+      "target": "backend/app/Models/FiscalDocument.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/FiscalGap.php",
+      "target": "backend/app/Models/FiscalGap.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/FiscalManifestation.php",
+      "target": "backend/app/Models/FiscalManifestation.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Plan.php",
+      "target": "backend/app/Models/Plan.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Process.php",
+      "target": "backend/app/Models/Process.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/ProcessTemplate.php",
+      "target": "backend/app/Models/ProcessTemplate.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/ProcessTemplateTask.php",
+      "target": "backend/app/Models/ProcessTemplateTask.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproAuthorizationTerm.php",
+      "target": "backend/app/Models/SerproAuthorizationTerm.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproCall.php",
+      "target": "backend/app/Models/SerproCall.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproClientAuthorization.php",
+      "target": "backend/app/Models/SerproClientAuthorization.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproConnection.php",
+      "target": "backend/app/Models/SerproConnection.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproManualSearch.php",
+      "target": "backend/app/Models/SerproManualSearch.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproMonitoring.php",
+      "target": "backend/app/Models/SerproMonitoring.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproObligationSchedule.php",
+      "target": "backend/app/Models/SerproObligationSchedule.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproSyncRun.php",
+      "target": "backend/app/Models/SerproSyncRun.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproSyncRunItem.php",
+      "target": "backend/app/Models/SerproSyncRunItem.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SerproTermProofRecord.php",
+      "target": "backend/app/Models/SerproTermProofRecord.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Subscription.php",
+      "target": "backend/app/Models/Subscription.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/SupportAccessLog.php",
+      "target": "backend/app/Models/SupportAccessLog.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Tag.php",
+      "target": "backend/app/Models/Tag.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/Task.php",
+      "target": "backend/app/Models/Task.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/TemplateClientException.php",
+      "target": "backend/app/Models/TemplateClientException.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/User.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Models/User.php"
+    },
+    {
+      "source": "app/Models/WhatsAppChannel.php",
+      "target": "backend/app/Models/WhatsAppChannel.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/WhatsAppDispatch.php",
+      "target": "backend/app/Models/WhatsAppDispatch.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Models/WhatsAppWebhookEvent.php",
+      "target": "backend/app/Models/WhatsAppWebhookEvent.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Observers/AccountObserver.php",
+      "target": "backend/app/Observers/AccountObserver.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/AccountCertificatePolicy.php",
+      "target": "backend/app/Policies/AccountCertificatePolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/AccountPolicy.php",
+      "target": "backend/app/Policies/AccountPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/ClientDispatchContactPolicy.php",
+      "target": "backend/app/Policies/ClientDispatchContactPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/ClientPolicy.php",
+      "target": "backend/app/Policies/ClientPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/ClientSavedFilterPolicy.php",
+      "target": "backend/app/Policies/ClientSavedFilterPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/Concerns/HasTenantRole.php",
+      "target": "backend/app/Policies/Concerns/HasTenantRole.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/DepartmentPolicy.php",
+      "target": "backend/app/Policies/DepartmentPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/FiscalDocumentPolicy.php",
+      "target": "backend/app/Policies/FiscalDocumentPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/ProcessPolicy.php",
+      "target": "backend/app/Policies/ProcessPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/ProcessTemplatePolicy.php",
+      "target": "backend/app/Policies/ProcessTemplatePolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/SerproAuthorizationTermPolicy.php",
+      "target": "backend/app/Policies/SerproAuthorizationTermPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/SerproConnectionPolicy.php",
+      "target": "backend/app/Policies/SerproConnectionPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/SerproMonitoringPolicy.php",
+      "target": "backend/app/Policies/SerproMonitoringPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/SerproSyncRunPolicy.php",
+      "target": "backend/app/Policies/SerproSyncRunPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/TagPolicy.php",
+      "target": "backend/app/Policies/TagPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/TaskPolicy.php",
+      "target": "backend/app/Policies/TaskPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/WhatsAppChannelPolicy.php",
+      "target": "backend/app/Policies/WhatsAppChannelPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Policies/WhatsAppDispatchPolicy.php",
+      "target": "backend/app/Policies/WhatsAppDispatchPolicy.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Providers/AppServiceProvider.php",
+      "status": "preserved-foundation",
+      "reference": "backend/migration/conflicts/app/Providers/AppServiceProvider.php"
+    },
+    {
+      "source": "app/Rules/ValidCnpj.php",
+      "target": "backend/app/Rules/ValidCnpj.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Rules/ValidCpf.php",
+      "target": "backend/app/Rules/ValidCpf.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/AccountCertificateVault.php",
+      "target": "backend/app/Services/AccountCertificateVault.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/AdminAccountProvisioner.php",
+      "target": "backend/app/Services/AdminAccountProvisioner.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/BrazilianTaxId.php",
+      "target": "backend/app/Services/BrazilianTaxId.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/CertificatePkcs12.php",
+      "target": "backend/app/Services/CertificatePkcs12.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientBulkDeleter.php",
+      "target": "backend/app/Services/ClientBulkDeleter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientCertificateVault.php",
+      "target": "backend/app/Services/ClientCertificateVault.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientManager.php",
+      "target": "backend/app/Services/ClientManager.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientPortfolio.php",
+      "target": "backend/app/Services/ClientPortfolio.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientPowerOfAttorneySummary.php",
+      "target": "backend/app/Services/ClientPowerOfAttorneySummary.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientSelectionStore.php",
+      "target": "backend/app/Services/ClientSelectionStore.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ClientTagAssigner.php",
+      "target": "backend/app/Services/ClientTagAssigner.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/CnpjLookupException.php",
+      "target": "backend/app/Services/CnpjLookupException.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/CnpjWsLookup.php",
+      "target": "backend/app/Services/CnpjWsLookup.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/DeadlineState.php",
+      "target": "backend/app/Services/DeadlineState.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/DepartmentMembership.php",
+      "target": "backend/app/Services/DepartmentMembership.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalCaptureDispatcher.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalCaptureDispatcher.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalCaptureLock.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalCaptureLock.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalCaptureOutcome.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalCaptureOutcome.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalCaptureService.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalCaptureService.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalConnectorRegistry.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalConnectorRegistry.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalCteGate.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalCteGate.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalDocumentWriter.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalDocumentWriter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalLookupBudget.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalLookupBudget.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalReconciliation.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalReconciliation.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Capture/FiscalXmlPath.php",
+      "target": "backend/app/Services/Fiscal/Capture/FiscalXmlPath.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Contracts/FailedEntry.php",
+      "target": "backend/app/Services/Fiscal/Contracts/FailedEntry.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Contracts/FiscalConnector.php",
+      "target": "backend/app/Services/Fiscal/Contracts/FiscalConnector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Contracts/PullResult.php",
+      "target": "backend/app/Services/Fiscal/Contracts/PullResult.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Contracts/PulledDocument.php",
+      "target": "backend/app/Services/Fiscal/Contracts/PulledDocument.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Cte/CteDistributionConnector.php",
+      "target": "backend/app/Services/Fiscal/Cte/CteDistributionConnector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Exceptions/FiscalClientStateUnknown.php",
+      "target": "backend/app/Services/Fiscal/Exceptions/FiscalClientStateUnknown.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Exceptions/FiscalException.php",
+      "target": "backend/app/Services/Fiscal/Exceptions/FiscalException.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Exceptions/FiscalLookupDeferred.php",
+      "target": "backend/app/Services/Fiscal/Exceptions/FiscalLookupDeferred.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Exceptions/FiscalRequestNotSent.php",
+      "target": "backend/app/Services/Fiscal/Exceptions/FiscalRequestNotSent.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/EventEnvelopeValidator.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/EventEnvelopeValidator.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/EventSignatureFailed.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/EventSignatureFailed.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/EventSigner.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/EventSigner.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/FiscalManifestationStore.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/FiscalManifestationStore.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestacaoDispatcher.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestacaoDispatcher.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestacaoResync.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestacaoResync.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestationEventBuilder.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestationEventBuilder.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestationEventTransport.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestationEventTransport.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestationResult.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestationResult.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/ManifestationVerdict.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/ManifestationVerdict.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Manifestacao/RecepcaoEventoConnector.php",
+      "target": "backend/app/Services/Fiscal/Manifestacao/RecepcaoEventoConnector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Nfe/NfeDistributionConnector.php",
+      "target": "backend/app/Services/Fiscal/Nfe/NfeDistributionConnector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Nfse/NfseAdnConnector.php",
+      "target": "backend/app/Services/Fiscal/Nfse/NfseAdnConnector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Nfse/NfseAdnEntryCollector.php",
+      "target": "backend/app/Services/Fiscal/Nfse/NfseAdnEntryCollector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Nfse/NfseAdnPullReader.php",
+      "target": "backend/app/Services/Fiscal/Nfse/NfseAdnPullReader.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Nfse/NfseAdnTransport.php",
+      "target": "backend/app/Services/Fiscal/Nfse/NfseAdnTransport.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Read/FiscalClients.php",
+      "target": "backend/app/Services/Fiscal/Read/FiscalClients.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Read/FiscalCoverage.php",
+      "target": "backend/app/Services/Fiscal/Read/FiscalCoverage.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Read/FiscalDocuments.php",
+      "target": "backend/app/Services/Fiscal/Read/FiscalDocuments.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/ClientCertificateMaterializer.php",
+      "target": "backend/app/Services/Fiscal/Support/ClientCertificateMaterializer.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/ClientStateCode.php",
+      "target": "backend/app/Services/Fiscal/Support/ClientStateCode.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeEndpoint.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeEndpoint.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeEntry.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeEntry.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeEntryCollector.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeEntryCollector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfePullReader.php",
+      "target": "backend/app/Services/Fiscal/Support/DfePullReader.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeResponse.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeResponse.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeResponseParser.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeResponseParser.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeSoapEnvelope.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeSoapEnvelope.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DfeTransport.php",
+      "target": "backend/app/Services/Fiscal/Support/DfeTransport.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DigValComparison.php",
+      "target": "backend/app/Services/Fiscal/Support/DigValComparison.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/DocZipDecoder.php",
+      "target": "backend/app/Services/Fiscal/Support/DocZipDecoder.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/FiscalEnvironment.php",
+      "target": "backend/app/Services/Fiscal/Support/FiscalEnvironment.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/FiscalXmlEncoding.php",
+      "target": "backend/app/Services/Fiscal/Support/FiscalXmlEncoding.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/FiscalXmlMetadata.php",
+      "target": "backend/app/Services/Fiscal/Support/FiscalXmlMetadata.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/FiscalXmlMetadataResult.php",
+      "target": "backend/app/Services/Fiscal/Support/FiscalXmlMetadataResult.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/FiscalXmlValidator.php",
+      "target": "backend/app/Services/Fiscal/Support/FiscalXmlValidator.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/NotIndexableDocument.php",
+      "target": "backend/app/Services/Fiscal/Support/NotIndexableDocument.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/Fiscal/Support/XmlQuery.php",
+      "target": "backend/app/Services/Fiscal/Support/XmlQuery.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/LegacyPkcs12Ciphertext.php",
+      "target": "backend/app/Services/LegacyPkcs12Ciphertext.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/PlanLimits.php",
+      "target": "backend/app/Services/PlanLimits.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/ProcessGenerationService.php",
+      "target": "backend/app/Services/ProcessGenerationService.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproAccountEnablement.php",
+      "target": "backend/app/Services/SerproAccountEnablement.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproCallRecorder.php",
+      "target": "backend/app/Services/SerproCallRecorder.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproCertificateIdentity.php",
+      "target": "backend/app/Services/SerproCertificateIdentity.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproCertificateMaterializer.php",
+      "target": "backend/app/Services/SerproCertificateMaterializer.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproClient.php",
+      "target": "backend/app/Services/SerproClient.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproClientLock.php",
+      "target": "backend/app/Services/SerproClientLock.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproConnectionManager.php",
+      "target": "backend/app/Services/SerproConnectionManager.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproConnectivity.php",
+      "target": "backend/app/Services/SerproConnectivity.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproEligibility.php",
+      "target": "backend/app/Services/SerproEligibility.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproEnvelope.php",
+      "target": "backend/app/Services/SerproEnvelope.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproException.php",
+      "target": "backend/app/Services/SerproException.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproMailboxReader.php",
+      "target": "backend/app/Services/SerproMailboxReader.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproManualSearchQuota.php",
+      "target": "backend/app/Services/SerproManualSearchQuota.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproManualSearchStarter.php",
+      "target": "backend/app/Services/SerproManualSearchStarter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproMonitoringMapper.php",
+      "target": "backend/app/Services/SerproMonitoringMapper.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproMonitoringProjector.php",
+      "target": "backend/app/Services/SerproMonitoringProjector.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproMonitoringReader.php",
+      "target": "backend/app/Services/SerproMonitoringReader.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproMonitoringWriter.php",
+      "target": "backend/app/Services/SerproMonitoringWriter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproObligationCatalog.php",
+      "target": "backend/app/Services/SerproObligationCatalog.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproObligationScheduleManager.php",
+      "target": "backend/app/Services/SerproObligationScheduleManager.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproPgdasDocumentReader.php",
+      "target": "backend/app/Services/SerproPgdasDocumentReader.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproPgdasHomologationProbe.php",
+      "target": "backend/app/Services/SerproPgdasHomologationProbe.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproPowerNames.php",
+      "target": "backend/app/Services/SerproPowerNames.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproPowerOracle.php",
+      "target": "backend/app/Services/SerproPowerOracle.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproProbeGate.php",
+      "target": "backend/app/Services/SerproProbeGate.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproRequestTag.php",
+      "target": "backend/app/Services/SerproRequestTag.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproResult.php",
+      "target": "backend/app/Services/SerproResult.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproRunFinalizer.php",
+      "target": "backend/app/Services/SerproRunFinalizer.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproRunStarter.php",
+      "target": "backend/app/Services/SerproRunStarter.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproSitfisPdfText.php",
+      "target": "backend/app/Services/SerproSitfisPdfText.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproSitfisSequence.php",
+      "target": "backend/app/Services/SerproSitfisSequence.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproTermManager.php",
+      "target": "backend/app/Services/SerproTermManager.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproTermSigner.php",
+      "target": "backend/app/Services/SerproTermSigner.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproTokenPair.php",
+      "target": "backend/app/Services/SerproTokenPair.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SerproTokenProvider.php",
+      "target": "backend/app/Services/SerproTokenProvider.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/SupportAudit.php",
+      "target": "backend/app/Services/SupportAudit.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/TaskProgress.php",
+      "target": "backend/app/Services/TaskProgress.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/WhatsApp/WhatsAppDispatchService.php",
+      "target": "backend/app/Services/WhatsApp/WhatsAppDispatchService.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/WhatsApp/WhatsAppFailureReason.php",
+      "target": "backend/app/Services/WhatsApp/WhatsAppFailureReason.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/WhatsApp/WzapClient.php",
+      "target": "backend/app/Services/WhatsApp/WzapClient.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Services/WhatsApp/WzapException.php",
+      "target": "backend/app/Services/WhatsApp/WzapException.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Support/BrazilianRegions.php",
+      "target": "backend/app/Support/BrazilianRegions.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Support/HttpPkcs12ClientOptions.php",
+      "target": "backend/app/Support/HttpPkcs12ClientOptions.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Support/LiteralSearch.php",
+      "target": "backend/app/Support/LiteralSearch.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Support/SerproSigner.php",
+      "target": "backend/app/Support/SerproSigner.php",
+      "status": "copied"
+    },
+    {
+      "source": "app/Tenant/CurrentTenant.php",
+      "target": "backend/app/Tenant/CurrentTenant.php",
+      "status": "copied"
+    },
+    {
+      "source": "config/app.php",
+      "target": "backend/config/app.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/app.php"
+    },
+    {
+      "source": "config/auth.php",
+      "target": "backend/config/auth.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/auth.php"
+    },
+    {
+      "source": "config/cache.php",
+      "target": "backend/config/cache.php",
+      "status": "preserved-existing",
+      "reference": "backend/migration/conflicts/config/cache.php"
+    },
+    {
+      "source": "config/clients.php",
+      "target": "backend/config/clients.php",
+      "status": "copied"
+    },
+    {
+      "source": "config/database.php",
+      "target": "backend/config/database.php",
+      "status": "preserved-existing",
+      "reference": "backend/migration/conflicts/config/database.php"
+    },
+    {
+      "source": "config/filesystems.php",
+      "target": "backend/config/filesystems.php",
+      "status": "preserved-existing",
+      "reference": "backend/migration/conflicts/config/filesystems.php"
+    },
+    {
+      "source": "config/fiscal.php",
+      "target": "backend/config/fiscal.php",
+      "status": "copied"
+    },
+    {
+      "source": "config/integra-contador.php",
+      "target": "backend/config/integra-contador.php",
+      "status": "copied"
+    },
+    {
+      "source": "config/logging.php",
+      "target": "backend/config/logging.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/logging.php"
+    },
+    {
+      "source": "config/mail.php",
+      "target": "backend/config/mail.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/mail.php"
+    },
+    {
+      "source": "config/queue.php",
+      "target": "backend/config/queue.php",
+      "status": "preserved-existing",
+      "reference": "backend/migration/conflicts/config/queue.php"
+    },
+    {
+      "source": "config/serpro_probes.php",
+      "target": "backend/config/serpro_probes.php",
+      "status": "copied"
+    },
+    {
+      "source": "config/services.php",
+      "target": "backend/config/services.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/services.php"
+    },
+    {
+      "source": "config/session.php",
+      "target": "backend/config/session.php",
+      "status": "identical",
+      "reference": "legacy/backend/config/session.php"
+    },
+    {
+      "source": "config/whatsapp.php",
+      "target": "backend/config/whatsapp.php",
+      "status": "copied"
+    },
+    {
+      "source": "resources/icp-brasil/ca-bundle.crt",
+      "target": "backend/resources/icp-brasil/ca-bundle.crt",
+      "status": "copied"
+    },
+    {
+      "source": "resources/icp-brasil/eventos-ca-bundle.crt",
+      "target": "backend/resources/icp-brasil/eventos-ca-bundle.crt",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/cte/distDFeInt_v1.00.xsd",
+      "target": "backend/resources/xsd/cte/distDFeInt_v1.00.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/cte/tiposDistDFe_v1.00.xsd",
+      "target": "backend/resources/xsd/cte/tiposDistDFe_v1.00.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/distDFeInt_v1.01.xsd",
+      "target": "backend/resources/xsd/nfe/distDFeInt_v1.01.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/envConfRecebto_v1.00.xsd",
+      "target": "backend/resources/xsd/nfe/envConfRecebto_v1.00.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/leiauteConfRecebto_v1.00.xsd",
+      "target": "backend/resources/xsd/nfe/leiauteConfRecebto_v1.00.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/tiposBasico_v1.03.xsd",
+      "target": "backend/resources/xsd/nfe/tiposBasico_v1.03.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/tiposDistDFe_v1.01.xsd",
+      "target": "backend/resources/xsd/nfe/tiposDistDFe_v1.01.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "resources/xsd/nfe/xmldsig-core-schema_v1.01.xsd",
+      "target": "backend/resources/xsd/nfe/xmldsig-core-schema_v1.01.xsd",
+      "status": "copied"
+    },
+    {
+      "source": "public/favicon.ico",
+      "target": "backend/public/favicon.ico",
+      "status": "identical",
+      "reference": "legacy/backend/public/favicon.ico"
+    },
+    {
+      "source": "public/index.php",
+      "target": "backend/public/index.php",
+      "status": "identical",
+      "reference": "legacy/backend/public/index.php"
+    },
+    {
+      "source": "public/robots.txt",
+      "target": "backend/public/robots.txt",
+      "status": "identical",
+      "reference": "legacy/backend/public/robots.txt"
+    },
+    {
+      "source": "routes/api.php",
+      "target": "backend/routes/business.php",
+      "status": "staged-not-enabled"
+    },
+    {
+      "source": "routes/console.php",
+      "target": "backend/routes/business-console.php",
+      "status": "staged-not-enabled"
+    },
+    {
+      "source": "routes/api.php",
+      "target": "backend/routes/business-webhooks.php",
+      "status": "staged-not-enabled"
+    }
+  ],
+  "pending": [],
+  "test_scaffold": {
+    "Fixtures": 32,
+    "Concerns": 2,
+    "Feature": 119
+  },
+  "database_import": {
+    "compatibility_migration": "2026_10_12_204823_add_business_fields_to_accounts_and_memberships.php",
+    "migrations": {
+      "2026_01_01_000002_create_plans_table.php": "2026_10_12_204824_create_plans_table.php",
+      "2026_01_01_000004_create_subscriptions_table.php": "2026_10_12_204825_create_subscriptions_table.php",
+      "2026_01_01_000005_create_support_access_logs_table.php": "2026_10_12_204826_create_support_access_logs_table.php",
+      "2026_01_01_000006_create_clients_table.php": "2026_10_12_204827_create_clients_table.php",
+      "2026_01_01_000007_create_serpro_monitorings_table.php": "2026_10_12_204828_create_serpro_monitorings_table.php",
+      "2026_01_01_000009_create_processes_table.php": "2026_10_12_204829_create_processes_table.php",
+      "2026_09_22_100001_add_portfolio_fields_to_clients_table.php": "2026_10_12_204830_add_portfolio_fields_to_clients_table.php",
+      "2026_09_22_100002_create_client_certificates_table.php": "2026_10_12_204831_create_client_certificates_table.php",
+      "2026_09_22_100003_create_client_ecac_powers_of_attorney_table.php": "2026_10_12_204832_create_client_ecac_powers_of_attorney_table.php",
+      "2026_09_23_000001_create_tags_table.php": "2026_10_12_204833_create_tags_table.php",
+      "2026_09_23_120000_create_client_saved_filters_table.php": "2026_10_12_204834_create_client_saved_filters_table.php",
+      "2026_09_24_000001_create_process_templates_table.php": "2026_10_12_204835_create_process_templates_table.php",
+      "2026_09_24_000002_create_process_template_tasks_table.php": "2026_10_12_204836_create_process_template_tasks_table.php",
+      "2026_09_24_000003_create_template_tag_table.php": "2026_10_12_204837_create_template_tag_table.php",
+      "2026_09_24_000004_create_template_client_exceptions_table.php": "2026_10_12_204838_create_template_client_exceptions_table.php",
+      "2026_09_24_000005_create_tasks_table.php": "2026_10_12_204839_create_tasks_table.php",
+      "2026_09_24_000006_evolve_processes_for_work_table.php": "2026_10_12_204840_evolve_processes_for_work_table.php",
+      "2026_09_24_004009_create_departments_table.php": "2026_10_12_204841_create_departments_table.php",
+      "2026_09_24_100000_add_perf_indexes.php": "2026_10_12_204842_add_perf_indexes.php",
+      "2026_09_26_000001_create_serpro_connections_table.php": "2026_10_12_204843_create_serpro_connections_table.php",
+      "2026_09_28_000001_add_password_to_client_certificates_table.php": "2026_10_12_204844_add_password_to_client_certificates_table.php",
+      "2026_09_28_000002_create_fiscal_documents_table.php": "2026_10_12_204845_create_fiscal_documents_table.php",
+      "2026_09_28_000003_create_fiscal_cursors_table.php": "2026_10_12_204846_create_fiscal_cursors_table.php",
+      "2026_09_28_000004_drop_documents_table.php": "2026_10_12_204847_drop_documents_table.php",
+      "2026_09_28_000005_add_digval_to_fiscal_documents_table.php": "2026_10_12_204848_add_digval_to_fiscal_documents_table.php",
+      "2026_09_28_000006_add_stage_to_fiscal_documents_table.php": "2026_10_12_204849_add_stage_to_fiscal_documents_table.php",
+      "2026_09_28_000007_create_fiscal_gaps_table.php": "2026_10_12_204850_create_fiscal_gaps_table.php",
+      "2026_09_28_024139_add_singleton_to_serpro_connections_table.php": "2026_10_12_204851_add_singleton_to_serpro_connections_table.php",
+      "2026_09_28_041500_add_state_to_serpro_connections_table.php": "2026_10_12_204852_add_state_to_serpro_connections_table.php",
+      "2026_09_28_085929_create_account_certificates_table.php": "2026_10_12_204853_create_account_certificates_table.php",
+      "2026_09_28_113313_add_term_proof_to_serpro_connections_table.php": "2026_10_12_204854_add_term_proof_to_serpro_connections_table.php",
+      "2026_09_28_113314_create_serpro_authorization_terms_table.php": "2026_10_12_204855_create_serpro_authorization_terms_table.php",
+      "2026_09_28_113315_create_serpro_term_proof_records_table.php": "2026_10_12_204856_create_serpro_term_proof_records_table.php",
+      "2026_09_28_120000_add_serpro_columns_to_client_ecac_powers_of_attorney_table.php": "2026_10_12_204857_add_serpro_columns_to_client_ecac_powers_of_attorney_table.php",
+      "2026_09_28_120001_create_serpro_client_authorizations_table.php": "2026_10_12_204858_create_serpro_client_authorizations_table.php",
+      "2026_09_28_140000_create_serpro_sync_runs_table.php": "2026_10_12_204859_create_serpro_sync_runs_table.php",
+      "2026_09_28_140001_create_serpro_sync_run_items_table.php": "2026_10_12_204900_create_serpro_sync_run_items_table.php",
+      "2026_09_28_140002_create_serpro_calls_table.php": "2026_10_12_204901_create_serpro_calls_table.php",
+      "2026_09_28_150000_evolve_serpro_monitorings_table.php": "2026_10_12_204902_evolve_serpro_monitorings_table.php",
+      "2026_09_28_160000_add_previous_run_to_serpro_sync_runs_table.php": "2026_10_12_204903_add_previous_run_to_serpro_sync_runs_table.php",
+      "2026_09_29_131240_add_account_model_index_to_fiscal_documents_table.php": "2026_10_12_204904_add_account_model_index_to_fiscal_documents_table.php",
+      "2026_09_29_151654_add_user_id_to_serpro_calls_table.php": "2026_10_12_204905_add_user_id_to_serpro_calls_table.php",
+      "2026_09_29_163053_add_department_id_to_work_tables.php": "2026_10_12_204906_add_department_id_to_work_tables.php",
+      "2026_09_29_190254_add_numero_serie_to_fiscal_documents_table.php": "2026_10_12_204907_add_numero_serie_to_fiscal_documents_table.php",
+      "2026_09_30_000000_drop_client_ecac_powers_of_attorney_table.php": "2026_10_12_204908_drop_client_ecac_powers_of_attorney_table.php",
+      "2026_10_02_000000_add_contracting_account_to_serpro_connections_table.php": "2026_10_12_204909_add_contracting_account_to_serpro_connections_table.php",
+      "2026_10_02_204246_widen_fiscal_documents_chave_acesso_to_50.php": "2026_10_12_204910_widen_fiscal_documents_chave_acesso_to_50.php",
+      "2026_10_03_194325_create_fiscal_manifestations_table.php": "2026_10_12_204911_create_fiscal_manifestations_table.php",
+      "2026_10_03_203000_add_trigger_to_serpro_sync_runs_table.php": "2026_10_12_204912_add_trigger_to_serpro_sync_runs_table.php",
+      "2026_10_03_210000_add_result_columns_to_fiscal_manifestations_table.php": "2026_10_12_204913_add_result_columns_to_fiscal_manifestations_table.php",
+      "2026_10_03_211000_add_resync_columns_to_fiscal_manifestations_table.php": "2026_10_12_204914_add_resync_columns_to_fiscal_manifestations_table.php",
+      "2026_10_03_235640_create_serpro_manual_searches_table.php": "2026_10_12_204915_create_serpro_manual_searches_table.php",
+      "2026_10_03_235641_create_serpro_obligation_schedules_table.php": "2026_10_12_204916_create_serpro_obligation_schedules_table.php",
+      "2026_10_03_235642_add_obligations_to_serpro_sync_runs_table.php": "2026_10_12_204917_add_obligations_to_serpro_sync_runs_table.php",
+      "2026_10_04_205608_create_whatsapp_channels_table.php": "2026_10_12_204918_create_whatsapp_channels_table.php",
+      "2026_10_04_205609_create_whatsapp_dispatches_table.php": "2026_10_12_204919_create_whatsapp_dispatches_table.php",
+      "2026_10_04_205610_create_whatsapp_webhook_events_table.php": "2026_10_12_204920_create_whatsapp_webhook_events_table.php",
+      "2026_10_04_213310_add_last_error_to_whatsapp_channels_table.php": "2026_10_12_204921_add_last_error_to_whatsapp_channels_table.php",
+      "2026_10_04_220847_add_whatsapp_id_to_whatsapp_dispatches_table.php": "2026_10_12_204922_add_whatsapp_id_to_whatsapp_dispatches_table.php",
+      "2026_10_05_000001_create_client_dispatch_contacts_table.php": "2026_10_12_204923_create_client_dispatch_contacts_table.php",
+      "2026_10_05_000002_add_contact_and_slip_to_whatsapp_dispatches_table.php": "2026_10_12_204924_add_contact_and_slip_to_whatsapp_dispatches_table.php"
+    },
+    "excluded_migrations": [
+      "0001_01_01_000000_create_users_table.php",
+      "0001_01_01_000001_create_cache_table.php",
+      "0001_01_01_000002_create_jobs_table.php",
+      "2026_01_01_000001_create_accounts_table.php",
+      "2026_01_01_000003_create_account_user_table.php",
+      "2026_01_01_000010_add_tenant_columns_to_users_table.php",
+      "2026_09_22_021804_create_personal_access_tokens_table.php"
+    ],
+    "copied": {
+      "database/factories": [
+        "AccountCertificateFactory.php",
+        "AccountUserFactory.php",
+        "ClientCertificateFactory.php",
+        "ClientDispatchContactFactory.php",
+        "ClientFactory.php",
+        "DepartmentFactory.php",
+        "FiscalCursorFactory.php",
+        "FiscalDocumentFactory.php",
+        "FiscalGapFactory.php",
+        "FiscalManifestationFactory.php",
+        "ProcessFactory.php",
+        "ProcessTemplateFactory.php",
+        "ProcessTemplateTaskFactory.php",
+        "SerproCallFactory.php",
+        "SerproClientAuthorizationFactory.php",
+        "SerproConnectionFactory.php",
+        "SerproManualSearchFactory.php",
+        "SerproMonitoringFactory.php",
+        "SerproObligationScheduleFactory.php",
+        "SerproSyncRunFactory.php",
+        "SerproSyncRunItemFactory.php",
+        "TagFactory.php",
+        "TaskFactory.php",
+        "WhatsAppChannelFactory.php",
+        "WhatsAppDispatchFactory.php",
+        "WhatsAppWebhookEventFactory.php"
+      ],
+      "database/seeders": [
+        "DevClientPortfolioSeeder.php",
+        "DevWorkSeeder.php",
+        "PlanSeeder.php"
+      ],
+      "tests/Unit": [
+        "AssinaturaEventoManifestacaoTest.php",
+        "BrazilianTaxIdTest.php",
+        "CertificatePkcs12Test.php",
+        "ClientCertificatePasswordTest.php",
+        "ClientCertificateVaultLegacyPfxTest.php",
+        "CteXmlMetadataTest.php",
+        "DeadlineStateTest.php",
+        "DfeEndpointTest.php",
+        "DfeResponseParserTest.php",
+        "DfeSoapEnvelopeTest.php",
+        "DocZipDecoderTest.php",
+        "EventEnvelopeValidatorTest.php",
+        "FiscalCaBundleTest.php",
+        "FiscalContractsTest.php",
+        "FiscalDigValComparisonTest.php",
+        "FiscalEnumsTest.php",
+        "FiscalFailureTest.php",
+        "FiscalXmlEncodingTest.php",
+        "FiscalXmlMetadataTest.php",
+        "FiscalXmlValidatorTest.php",
+        "HttpPkcs12ClientOptionsTest.php",
+        "ManifestacaoCienciaPrazoTest.php",
+        "MedidaDaRegraDeColagemTest.php",
+        "PalavrasCorrompidasTest.php",
+        "SerproCertificateIdentityTest.php",
+        "SerproEnvelopeTest.php",
+        "SerproFailureTest.php",
+        "SerproMonitoringMapperTest.php",
+        "SerproMonitoringProjectorTest.php",
+        "SerproPowerNamesTest.php",
+        "SerproProbeGateTest.php",
+        "SerproRequestTagTest.php",
+        "SerproRunFinalizerTest.php",
+        "SerproSignerProvenanceTest.php",
+        "SerproStateTest.php",
+        "SerproTermSignerTest.php"
+      ]
+    },
+    "preserved_or_excluded": {
+      "database/factories": [
+        "AccountFactory.php",
+        "UserFactory.php"
+      ],
+      "database/seeders": [
+        "DatabaseSeeder.php",
+        "DevAdminSeeder.php"
+      ],
+      "tests/Unit": []
+    }
+  },
+  "verification": {
+    "foundation_feature_tests": {
+      "passed": 15,
+      "assertions": 162
+    },
+    "app_config_route_syntax": {
+      "checked": 361,
+      "errors": 0
+    },
+    "domain_runtime": "not reconciled or enabled",
+    "development_database_migrations": "not run",
+    "formatting": {
+      "files": 326,
+      "exit_code": 0
+    },
+    "foundation_frontend_tests": {
+      "passed": 11,
+      "failed": 0
+    },
+    "postgresql_redis_integration": {
+      "passed": 19,
+      "assertions": 389,
+      "isolated_database": "opmoni_test",
+      "redis_databases": [
+        13,
+        14,
+        15
+      ]
+    },
+    "browser_smoke": {
+      "passed": [
+        "real login",
+        "client creation",
+        "client deletion",
+        "live portfolio counters",
+        "commercial account update",
+        "mobile fiscal documents SSR",
+        "mobile work tasks SSR",
+        "mobile team members SSR"
+      ],
+      "temporary_fixtures_removed": true,
+      "existing_user_rows_exactly_preserved": true
+    },
+    "routes": {
+      "total": 125,
+      "api_v1": 121,
+      "legacy_api_paths": 0,
+      "duplicate_method_uri_pairs": 0
+    },
+    "independent_review": {
+      "remaining_important_findings": 0,
+      "fixed": [
+        "SERPRO failed callback account context",
+        "Fiscal scheduler related certificate scopes",
+        "SSR enumerable account headers",
+        "Portfolio counters invalidation"
+      ]
+    },
+    "frontend": {
+      "tests_passed": 524,
+      "lint": "passed",
+      "typecheck": "passed",
+      "production_build": "passed"
+    },
+    "backend_full": {
+      "tests": 1656,
+      "passed": 1653,
+      "assertions": 9128,
+      "skipped": 3,
+      "failures": 0,
+      "errors": 0,
+      "external_skips": [
+        "SERPRO real PGDAS canary",
+        "SERPRO trial regime consultation",
+        "SERPRO trial throttle probe"
+      ]
+    }
+  },
+  "preservation_notes": [
+    "The existing access foundation remains canonical.",
+    "Frontend index.vue and HomeChart.client.vue were recovered from the add-super-admin-platform worktree after incidental overwrite; byte equality with pre-task versions was not independently captured.",
+    "Conflicting originals are staged under backend/migration/conflicts and frontend/migration/conflicts where recorded.",
+    "Frontend business pages and APIs are reconciled with current auth, permissions, routes and dependencies."
+  ],
+  "runtime_integration": {
+    "status": "verified",
+    "routes_file": "backend/routes/business.php",
+    "canonical_api_prefix": "/api/v1",
+    "tenant_context": "session-selected CurrentAccount; X-Account-Id asserts displayed account; explicit CurrentTenant in background jobs",
+    "authentication": "existing Laravel session; canonical Opmoni access foundation",
+    "queue": {
+      "command": "queue:work",
+      "default_timeout_seconds": 360,
+      "fiscal_job_timeout_seconds": 85,
+      "bulk_job_timeout_seconds": 300,
+      "reservation_seconds": 420
+    },
+    "scheduler": "schedule:work; eight imported schedules; local fiscal environment homologacao",
+    "historical_test_contracts": "backend/tests/Scaffold/migration-manifest.json"
+  }
+}

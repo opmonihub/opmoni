@@ -1,32 +1,52 @@
+# Configuration reference: https://openspec.dev/docs/configuration/config-yaml
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Opmoni serves Brazilian accounting offices. An Account represents an office;
+  Users are global identities, memberships define Account roles, and Super Admin
+  is a separate platform role with no implicit access to tenant data.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  The Nuxt frontend lives in frontend/ and the Laravel application backend in
+  backend/. Browser and SSR requests use /api/v1/* through the private Nuxt proxy;
+  Laravel owns authentication, authorization, sessions, and application data.
+  PostgreSQL and Redis support persistence and session infrastructure.
+  services/fiscal/ is a planned separate PHP/NFePHP service for NF-e and CT-e
+  capture with customer A1 certificates; its implementation remains pending.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Read README.md for setup and verification, docs/architecture/product-decisions.md
+  for accepted and superseded decisions, and openspec/specs/ for canonical contracts.
+  Read docs/architecture/fiscal-service.md when a change affects fiscal integration.
+  Distinguish the implemented baseline, accepted scope, and pending proposals;
+  legacy code and sample screens are references, not approval to expand scope.
+
+  Preserve Account isolation, existing identities, and access/session contracts.
+  Keep secrets out of Git, logs, and public runtime configuration. Fiscal certificates
+  and XML belong in persistent volumes, with certificates and their passwords encrypted.
+  Communicate with the user in Brazilian Portuguese; write code and artifacts in English.
+
+rules:
+  proposal:
+    - State the scope, non-goals, affected capabilities, and unresolved product decisions.
+    - Check current canonical specs before classifying capabilities as new or modified.
+    - Identify any accepted decision the proposal would supersede; keep pending scope explicit.
+  specs:
+    - Include relevant authorization, Account isolation, validation, and service-failure scenarios.
+    - Describe observable behavior and preserve existing access contracts unless explicitly changed.
+  design:
+    - Define affected frontend, Laravel, and fiscal service boundaries, including API contracts.
+    - Address relevant authorization, secret handling, failure recovery, migrations, and concurrency risks.
+  tasks:
+    - Order small, verifiable tasks by dependency and identify the affected application or service.
+    - Include checks appropriate to the change using the commands documented in README.md.
+    - Require independent PostgreSQL/Redis processes when verifying database or session concurrency.
+
+operations:
+  apply:
+    guidance:
+      - Preserve unrelated work and follow the selected change's current artifacts and accepted decisions.
+      - Run relevant checks before marking tasks complete; report failures and unverified behavior accurately.
+      - Use isolated test databases and Redis stores as documented in README.md; preserve development data.
+  archive:
+    guidance:
+      - Check task completion and verification evidence, and reconcile delta specs with canonical specs.
+      - Update affected documentation links and summarize delivered scope and remaining limitations.

@@ -97,6 +97,8 @@ const template = (d: DataRecord) => `${formatDate(d.date)}: ${formatNumber(d.amo
       />
 
       <VisCrosshair
+        :x="x"
+        :y="y"
         color="var(--ui-primary)"
         :template="template"
       />

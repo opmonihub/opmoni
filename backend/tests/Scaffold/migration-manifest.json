@@ -1,0 +1,637 @@
+[
+  {
+    "suite": "Admin/FirstAccessTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/AccessFoundationTest.php",
+      "Integration/AccessConcurrencyTest.php"
+    ]
+  },
+  {
+    "suite": "AdminListFiltersTest.php",
+    "status": "active",
+    "target": "tests/Feature/AdminListFiltersTest.php"
+  },
+  {
+    "suite": "DevAdminSeederTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/AccessFoundationTest.php",
+      "Feature/PasswordHashingTest.php"
+    ]
+  },
+  {
+    "suite": "Fiscal/AuditoriaManifestacaoTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/AuditoriaManifestacaoTest.php"
+  },
+  {
+    "suite": "Fiscal/CaptureFiscalDocumentsCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/CaptureFiscalDocumentsCommandTest.php"
+  },
+  {
+    "suite": "Fiscal/CaptureOnCertificateUploadTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/CaptureOnCertificateUploadTest.php"
+  },
+  {
+    "suite": "Fiscal/ClientCertificateMaterializerTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ClientCertificateMaterializerTest.php"
+  },
+  {
+    "suite": "Fiscal/CteDistributionConnectorTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/CteDistributionConnectorTest.php"
+  },
+  {
+    "suite": "Fiscal/DispatcherManifestacaoTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/DispatcherManifestacaoTest.php"
+  },
+  {
+    "suite": "Fiscal/DocumentosCompletudeTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/DocumentosCompletudeTest.php"
+  },
+  {
+    "suite": "Fiscal/DocumentsRemovedTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/DocumentsRemovedTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalCaptureServiceTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalCaptureServiceTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalClientsTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalClientsTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalDocumentApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalDocumentApiTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalDocumentCertificateStatusTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalDocumentCertificateStatusTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalDocumentSearchTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalDocumentSearchTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalDocumentWriterPostgresTest.php",
+    "status": "active",
+    "target": "tests/Integration/Fiscal/FiscalDocumentWriterPostgresTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalDocumentWriterTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalDocumentWriterTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalPointLookupTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalPointLookupTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalReconciliationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalReconciliationTest.php"
+  },
+  {
+    "suite": "Fiscal/FiscalSchemaTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/FiscalSchemaTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoDuplicidadeTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoDuplicidadeTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoGateTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoGateTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoMigrationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoMigrationTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoRecepcaoEventoTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoRecepcaoEventoTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoResyncCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoResyncCommandTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoResyncTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoResyncTest.php"
+  },
+  {
+    "suite": "Fiscal/ManifestacaoTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ManifestacaoTest.php"
+  },
+  {
+    "suite": "Fiscal/NfeDistributionConnectorTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/NfeDistributionConnectorTest.php"
+  },
+  {
+    "suite": "Fiscal/NfseAdnCaptureTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/NfseAdnCaptureTest.php"
+  },
+  {
+    "suite": "Fiscal/NfseAdnConnectorTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/NfseAdnConnectorTest.php"
+  },
+  {
+    "suite": "Fiscal/NfseAdnLiveProbeTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/NfseAdnLiveProbeTest.php"
+  },
+  {
+    "suite": "Fiscal/NfseAdnProbeCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/NfseAdnProbeCommandTest.php"
+  },
+  {
+    "suite": "Fiscal/ReconcileFiscalDocumentsCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/Fiscal/ReconcileFiscalDocumentsCommandTest.php"
+  },
+  {
+    "suite": "ScheduledSerproRunCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/ScheduledSerproRunCommandTest.php"
+  },
+  {
+    "suite": "Serpro/ClientDerivedPowerOfAttorneyTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/ClientDerivedPowerOfAttorneyTest.php"
+  },
+  {
+    "suite": "Serpro/ClientMonitoringModulesTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/ClientMonitoringModulesTest.php"
+  },
+  {
+    "suite": "Serpro/RefreshSerproPowersJobTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/RefreshSerproPowersJobTest.php"
+  },
+  {
+    "suite": "Serpro/SerproObligationCatalogTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/SerproObligationCatalogTest.php"
+  },
+  {
+    "suite": "Serpro/SerproPgdasHomologationProbeHttpTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/SerproPgdasHomologationProbeHttpTest.php"
+  },
+  {
+    "suite": "Serpro/SerproPowerTriggersTest.php",
+    "status": "active",
+    "target": "tests/Feature/Serpro/SerproPowerTriggersTest.php"
+  },
+  {
+    "suite": "SerproAccountCertificateTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproAccountCertificateTest.php"
+  },
+  {
+    "suite": "SerproAccountEnablementTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproAccountEnablementTest.php"
+  },
+  {
+    "suite": "SerproAuthorizationTermTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproAuthorizationTermTest.php"
+  },
+  {
+    "suite": "SerproCertificateMaterializerTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproCertificateMaterializerTest.php"
+  },
+  {
+    "suite": "SerproClientTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproClientTest.php"
+  },
+  {
+    "suite": "SerproConnectionApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproConnectionApiTest.php"
+  },
+  {
+    "suite": "SerproConnectionTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproConnectionTest.php"
+  },
+  {
+    "suite": "SerproConnectivityTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproConnectivityTest.php"
+  },
+  {
+    "suite": "SerproContractFixtureTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproContractFixtureTest.php"
+  },
+  {
+    "suite": "SerproEligibilityTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproEligibilityTest.php"
+  },
+  {
+    "suite": "SerproMailboxReadTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMailboxReadTest.php"
+  },
+  {
+    "suite": "SerproManualSearchJobTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproManualSearchJobTest.php"
+  },
+  {
+    "suite": "SerproManualSearchTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproManualSearchTest.php"
+  },
+  {
+    "suite": "SerproMonitoringApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMonitoringApiTest.php"
+  },
+  {
+    "suite": "SerproMonitoringAssociationTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMonitoringAssociationTest.php"
+  },
+  {
+    "suite": "SerproMonitoringCatalogTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMonitoringCatalogTest.php"
+  },
+  {
+    "suite": "SerproMonitoringDeclarationApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMonitoringDeclarationApiTest.php"
+  },
+  {
+    "suite": "SerproMonitoringMigrationTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproMonitoringMigrationTest.php"
+  },
+  {
+    "suite": "SerproObligationScheduleTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproObligationScheduleTest.php"
+  },
+  {
+    "suite": "SerproPgdasHomologationProbeTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproPgdasHomologationProbeTest.php"
+  },
+  {
+    "suite": "SerproPowerOracleTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproPowerOracleTest.php"
+  },
+  {
+    "suite": "SerproPowerSchemaTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproPowerSchemaTest.php"
+  },
+  {
+    "suite": "SerproProbePgdasCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproProbePgdasCommandTest.php"
+  },
+  {
+    "suite": "SerproRunObligationScopeTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproRunObligationScopeTest.php"
+  },
+  {
+    "suite": "SerproSitfisSyncTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSitfisSyncTest.php"
+  },
+  {
+    "suite": "SerproSyncFailureTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSyncFailureTest.php"
+  },
+  {
+    "suite": "SerproSyncJobsTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSyncJobsTest.php"
+  },
+  {
+    "suite": "SerproSyncProjectionTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSyncProjectionTest.php"
+  },
+  {
+    "suite": "SerproSyncRunApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSyncRunApiTest.php"
+  },
+  {
+    "suite": "SerproSyncSchemaTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproSyncSchemaTest.php"
+  },
+  {
+    "suite": "SerproTokenProviderTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproTokenProviderTest.php"
+  },
+  {
+    "suite": "SerproTrialContractTest.php",
+    "status": "active",
+    "target": "tests/Feature/SerproTrialContractTest.php"
+  },
+  {
+    "suite": "Tenancy/AccountMemberReadTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/AccountMemberReadTest.php"
+  },
+  {
+    "suite": "Tenancy/AuthTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/AccessFoundationTest.php",
+      "Feature/TenantFoundationTest.php",
+      "Integration/AccessConcurrencyTest.php"
+    ]
+  },
+  {
+    "suite": "Tenancy/CalendarPerfTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/CalendarPerfTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientCertificatePasswordVaultTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientCertificatePasswordVaultTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientCertificateTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientCertificateTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientCnpjLookupTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientCnpjLookupTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientCrudTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientCrudTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientListingTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientListingTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientPortfolioAnalyticsTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientPortfolioAnalyticsTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientSavedFilterTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientSavedFilterTest.php"
+  },
+  {
+    "suite": "Tenancy/ClientTagTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ClientTagTest.php"
+  },
+  {
+    "suite": "Tenancy/ConsistencyRefactorTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/ConsistencyRefactorTest.php"
+  },
+  {
+    "suite": "Tenancy/DepartmentFkMigrationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/DepartmentFkMigrationTest.php"
+  },
+  {
+    "suite": "Tenancy/DepartmentTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/DepartmentTest.php"
+  },
+  {
+    "suite": "Tenancy/DevClientPortfolioSeederTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/DevClientPortfolioSeederTest.php"
+  },
+  {
+    "suite": "Tenancy/EcacPowerOfAttorneyRemovedTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/EcacPowerOfAttorneyRemovedTest.php"
+  },
+  {
+    "suite": "Tenancy/IsolationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/IsolationTest.php"
+  },
+  {
+    "suite": "Tenancy/MemberDirectoryTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/MemberDirectoryTest.php"
+  },
+  {
+    "suite": "Tenancy/RolesTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/RolesTest.php"
+  },
+  {
+    "suite": "Tenancy/SecurityRefactorTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/SecurityRefactorTest.php"
+  },
+  {
+    "suite": "Tenancy/SubscriptionsTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/SubscriptionsTest.php"
+  },
+  {
+    "suite": "Tenancy/SupportAccessTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/TenantFoundationTest.php",
+      "Feature/BusinessAccessBoundaryTest.php"
+    ]
+  },
+  {
+    "suite": "Tenancy/SupportAuditCoverageTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/BusinessAccessBoundaryTest.php"
+    ]
+  },
+  {
+    "suite": "Tenancy/WorkFreezeTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkFreezeTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkGenerationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkGenerationTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkIsolationTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkIsolationTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkProcessTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkProcessTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkRecurrenceCommandTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkRecurrenceCommandTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkSupportAuditTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/BusinessAccessBoundaryTest.php"
+    ]
+  },
+  {
+    "suite": "Tenancy/WorkTaskTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkTaskTest.php"
+  },
+  {
+    "suite": "Tenancy/WorkTemplateTest.php",
+    "status": "active",
+    "target": "tests/Feature/Tenancy/WorkTemplateTest.php"
+  },
+  {
+    "suite": "WhatsApp/ClientDispatchContactApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/ClientDispatchContactApiTest.php"
+  },
+  {
+    "suite": "WhatsApp/ClientDispatchContactBackfillTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/ClientDispatchContactBackfillTest.php"
+  },
+  {
+    "suite": "WhatsApp/SendWhatsAppDocumentJobTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/SendWhatsAppDocumentJobTest.php"
+  },
+  {
+    "suite": "WhatsApp/WhatsAppChannelPairingApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WhatsAppChannelPairingApiTest.php"
+  },
+  {
+    "suite": "WhatsApp/WhatsAppDispatchApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WhatsAppDispatchApiTest.php"
+  },
+  {
+    "suite": "WhatsApp/WhatsAppIdempotencyTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WhatsAppIdempotencyTest.php"
+  },
+  {
+    "suite": "WhatsApp/WhatsAppSendGuidesApiTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WhatsAppSendGuidesApiTest.php"
+  },
+  {
+    "suite": "WhatsApp/WhatsAppSupportAuditTest.php",
+    "status": "historical",
+    "reason": "Superseded provisioning or support impersonation; AccessFoundation/TenantFoundation/Integration enforce real membership and session selection.",
+    "replacement_contract_tests": [
+      "Feature/BusinessAccessBoundaryTest.php"
+    ]
+  },
+  {
+    "suite": "WhatsApp/WzapClientTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WzapClientTest.php"
+  },
+  {
+    "suite": "WhatsApp/WzapGatewayContractTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WzapGatewayContractTest.php"
+  },
+  {
+    "suite": "WhatsApp/WzapWebhookTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsApp/WzapWebhookTest.php"
+  },
+  {
+    "suite": "WhatsAppChannelMigrationTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsAppChannelMigrationTest.php"
+  },
+  {
+    "suite": "WhatsAppChannelSerializationTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsAppChannelSerializationTest.php"
+  },
+  {
+    "suite": "WhatsAppDispatchFactoryTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsAppDispatchFactoryTest.php"
+  },
+  {
+    "suite": "WhatsAppTenancyTest.php",
+    "status": "active",
+    "target": "tests/Feature/WhatsAppTenancyTest.php"
+  },
+  {
+    "suite": "Feature/BusinessAccessBoundaryTest.php",
+    "status": "new_current_contract",
+    "covers": [
+      "Platform super administrators require real membership for business data",
+      "Read-only memberships cannot write even for super administrators",
+      "Account selection stays in session without users.current_account_id"
+    ]
+  },
+  {
+    "suite": "Scaffold/historical-contract-methods.json",
+    "status": "historical_method_archive",
+    "reason": "Original support impersonation methods retained as historical source; migrated endpoint tests enforce real membership. Certificate removal retains mutation, history and read-count coverage for a genuine account administrator."
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "_provenance": "Fixture documental, transcrita em 2026-09-28 do exemplo publicado em https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/solucoes/integra-procuracoes/procuracoes/servicos/obter_procuracao/ — não é uma resposta observada. O exemplo publicado traz o JSON de entrada malformado; o contrato seguido aqui é o quadro de campos da mesma página. `dados` é a string de um array de {dtexpiracao:'aaaammdd', nrsistemas, sistemas:[nomes e-CAC]}, e os nomes carregam o texto que o e-CAC exibe, não os códigos do catálogo.",
+  "contratante": { "numero": "11111111111111", "tipo": 2 },
+  "autorPedidoDados": { "numero": "11111111111111", "tipo": 2 },
+  "contribuinte": { "numero": "99999999999999", "tipo": 2 },
+  "pedidoDados": {
+    "idSistema": "PROCURACOES",
+    "idServico": "OBTERPROCURACAO41",
+    "versaoSistema": "1",
+    "dados": "{ \"outorgante\": \"99999999999999\", \"tipoOutorgante\": \"2\", \"outorgado\": \"11111111111111\", \"tipoOutorgado\": \"2\" }"
+  },
+  "status": 200,
+  "responseId": "c31a1e20-5d0a-4f7b-9c2e-6f0b1a2c3d4e",
+  "dados": "[{\"dtexpiracao\":\"20270101\",\"nrsistemas\":\"2\",\"sistemas\":[\"Caixa Postal - Mensagens\",\"Caixa Postal - Termo de Opção pelo Domicílio Tributário Eletrônico\"]}]",
+  "mensagens": [
+    { "codigo": "Sucesso-PROCURACOES-00", "texto": "Requisição efetuada com sucesso" }
+  ]
+}

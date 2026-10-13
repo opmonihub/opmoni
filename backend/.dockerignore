@@ -1,0 +1,10 @@
+vendor
+node_modules
+.env
+.env.*
+!.env.example
+database/*.sqlite*
+storage/logs/*
+bootstrap/cache/*.php
+.phpunit.cache
+*.log

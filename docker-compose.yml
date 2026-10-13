@@ -1,0 +1,245 @@
+name: opmoni
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: docker/Dockerfile
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    image: opmoni-frontend:dev
+    init: true
+    environment:
+      NODE_ENV: development
+      NUXT_HOST: 0.0.0.0
+      NUXT_PORT: 3000
+      NUXT_BACKEND_URL: http://backend:8000
+      NUXT_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Set FRONTEND_INGRESS_KEY in the root .env}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_nuxt:/app/.nuxt
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/favicon.ico').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  setup:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    image: opmoni-backend:dev
+    command: ["setup"]
+    environment:
+      APP_NAME: Opmoni
+      APP_ENV: local
+      FISCAL_ENVIRONMENT: homologacao
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${BACKEND_PORT:-8000}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
+      FRONTEND_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Set FRONTEND_INGRESS_KEY in the root .env}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: opmoni
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_CONNECTION: sessions
+      SESSION_STORE: sessions
+      SESSION_LIFETIME: 720
+      REDIS_SESSION_DB: 2
+      REDIS_CACHE_LOCK_CONNECTION: cache
+      PHP_CLI_SERVER_WORKERS: 4
+      QUEUE_CONNECTION: redis
+      REDIS_QUEUE_RETRY_AFTER: 420
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "null"
+    volumes:
+      - ./backend:/app
+      - backend_vendor:/app/vendor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backend:
+    image: opmoni-backend:dev
+    pull_policy: never
+    init: true
+    environment:
+      APP_NAME: Opmoni
+      APP_ENV: local
+      FISCAL_ENVIRONMENT: homologacao
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${BACKEND_PORT:-8000}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
+      FRONTEND_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Set FRONTEND_INGRESS_KEY in the root .env}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: opmoni
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_CONNECTION: sessions
+      SESSION_STORE: sessions
+      SESSION_LIFETIME: 720
+      REDIS_SESSION_DB: 2
+      REDIS_CACHE_LOCK_CONNECTION: cache
+      PHP_CLI_SERVER_WORKERS: 4
+      QUEUE_CONNECTION: redis
+      REDIS_QUEUE_RETRY_AFTER: 420
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "null"
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - backend_vendor:/app/vendor
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8000/up') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  queue:
+    image: opmoni-backend:dev
+    pull_policy: never
+    init: true
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--tries=3", "--timeout=360"]
+    environment:
+      APP_NAME: Opmoni
+      APP_ENV: local
+      FISCAL_ENVIRONMENT: homologacao
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${BACKEND_PORT:-8000}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
+      FRONTEND_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Set FRONTEND_INGRESS_KEY in the root .env}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: opmoni
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_CONNECTION: sessions
+      SESSION_STORE: sessions
+      SESSION_LIFETIME: 720
+      REDIS_SESSION_DB: 2
+      REDIS_CACHE_LOCK_CONNECTION: cache
+      PHP_CLI_SERVER_WORKERS: 4
+      QUEUE_CONNECTION: redis
+      REDIS_QUEUE_RETRY_AFTER: 420
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "null"
+    volumes:
+      - ./backend:/app
+      - backend_vendor:/app/vendor
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+  scheduler:
+    image: opmoni-backend:dev
+    pull_policy: never
+    init: true
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_NAME: Opmoni
+      APP_ENV: local
+      FISCAL_ENVIRONMENT: homologacao
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${BACKEND_PORT:-8000}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
+      FRONTEND_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Set FRONTEND_INGRESS_KEY in the root .env}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: opmoni
+      DB_USERNAME: opmoni
+      DB_PASSWORD: opmoni
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_CONNECTION: sessions
+      SESSION_STORE: sessions
+      SESSION_LIFETIME: 720
+      REDIS_SESSION_DB: 2
+      REDIS_CACHE_LOCK_CONNECTION: cache
+      PHP_CLI_SERVER_WORKERS: 4
+      QUEUE_CONNECTION: redis
+      REDIS_QUEUE_RETRY_AFTER: 420
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "null"
+    volumes:
+      - ./backend:/app
+      - backend_vendor:/app/vendor
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: opmoni
+      POSTGRES_USER: opmoni
+      POSTGRES_PASSWORD: opmoni
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres18_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  frontend_node_modules:
+  frontend_nuxt:
+  frontend_output:
+  backend_vendor:
+  postgres18_data:
+  redis_data:

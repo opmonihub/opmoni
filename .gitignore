@@ -1,0 +1,14 @@
+# Local environments shared by both applications
+.env
+.env.*
+!.env.example
+
+# Dependencies, logs, and editor artifacts
+node_modules/
+*.log
+.DS_Store
+.idea/
+
+# Local reference and agent workspaces
+.superpowers/
+/.dashboard/
