@@ -17,7 +17,7 @@ use Tests\Concerns\BuildsManifestationEvent;
 use Tests\TestCase;
 
 /**
- * O prazo legal de 90 dias para a ciência da emissão (NT 2014.002) é checado
+ * O prazo de dez dias da autorização para a ciência da emissão é checado
  * antes de qualquer byte: fora do prazo o evento não é montado, não é assinado
  * e não sai — o registro fica com o veredito `DeadlineMissed` para quem
  * reconcilia ler, e a tentativa não é cobrada do fisco.
@@ -121,9 +121,9 @@ class ManifestacaoCienciaPrazoTest extends TestCase
         );
     }
 
-    public function test_documento_dentro_do_prazo_de_noventa_dias_passa_na_guarda(): void
+    public function test_documento_no_limite_de_dez_dias_passa_na_guarda(): void
     {
-        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-12-20T10:00:00-03:00'));
+        CarbonImmutable::setTestNow(CarbonImmutable::parse(self::EMISSAO)->addDays(10));
 
         $registro = $this->registroStub();
         $cliente = $this->clienteStub();
@@ -144,9 +144,8 @@ class ManifestacaoCienciaPrazoTest extends TestCase
 
     public function test_documento_fora_do_prazo_nao_sai_e_fica_com_o_veredito_de_prazo_perdido(): void
     {
-        // Emissão de 03/10/2026; 90 dias depois o fisco não registra mais a
-        // ciência — mandar assim mesmo é a rejeição que custa uma tentativa.
-        CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-03-01T10:00:00-03:00'));
+        // One second beyond the ten-day authorization deadline must block sending.
+        CarbonImmutable::setTestNow(CarbonImmutable::parse(self::EMISSAO)->addDays(10)->addSecond());
 
         $registro = $this->registroStub();
         $cliente = $this->clienteStub();
