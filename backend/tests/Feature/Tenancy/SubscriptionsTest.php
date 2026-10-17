@@ -58,7 +58,7 @@ class SubscriptionsTest extends BusinessTestCase
         $this->assertSame('active', $account->subscription->status);
         $this->assertSame(Plan::bySlug('basico')->getKey(), $account->subscription->plan_id);
         $this->assertSame(
-            ['users' => 5, 'clients' => 50],
+            ['users' => 5, 'clients' => 50, 'monitorings' => null],
             $account->subscription->plan->limits
         );
     }

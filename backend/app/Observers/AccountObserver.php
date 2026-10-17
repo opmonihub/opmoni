@@ -2,9 +2,9 @@
 
 namespace App\Observers;
 
+use App\Actions\EnsureAccountSubscription;
 use App\Models\Account;
 use App\Models\Department;
-use App\Models\Plan;
 
 class AccountObserver
 {
@@ -22,12 +22,7 @@ class AccountObserver
 
     public function initialize(Account $account): void
     {
-        $plan = Plan::firstOrCreate(
-            ['slug' => 'basico'],
-            ['name' => 'Básico', 'limits' => ['users' => 5, 'clients' => 50]]
-        );
-
-        $account->subscription()->firstOrCreate([], ['plan_id' => $plan->getKey()]);
+        app(EnsureAccountSubscription::class)->handle($account);
 
         foreach ([
             'Fiscal' => 'success',

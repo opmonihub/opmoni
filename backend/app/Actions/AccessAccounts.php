@@ -60,6 +60,9 @@ class AccessAccounts
                 throw ValidationException::withMessages(['login_email' => 'Este email já está em uso.']);
             }
             $account ??= Account::create(['name' => $data['name'], 'status' => 'active']);
+            if ($accountId !== null) {
+                app(EnsureAccountSubscription::class)->handle($account);
+            }
             OwnerActivation::where('account_id', $account->id)->whereNull('consumed_at')->whereNull('revoked_at')->update(['revoked_at' => now()]);
             $token = bin2hex(random_bytes(32));
             $link = OwnerActivation::create([

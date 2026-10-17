@@ -107,14 +107,16 @@ class SerproMonitoringMigrationTest extends BusinessTestCase
     {
         $this->seed(PlanSeeder::class);
 
-        // O que se conta agora é "cliente × obrigação", e a chave velha ficaria
-        // dizendo um número que ninguém pergunta.
+        // O que se conta agora é "cliente × obrigação"; o catálogo mantém a
+        // chave antiga explicitamente ilimitada, sem impor uma cota numérica.
         foreach (Plan::all() as $plan) {
-            $this->assertArrayNotHasKey('monitorings', $plan->limits ?? []);
+            $this->assertArrayHasKey('monitorings', $plan->limits);
+            $this->assertNull($plan->limits['monitorings']);
         }
 
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
-        $this->assertArrayNotHasKey('monitorings', $account->subscription->plan->limits ?? []);
+        $this->assertArrayHasKey('monitorings', $account->subscription->plan->limits);
+        $this->assertNull($account->subscription->plan->limits['monitorings']);
     }
 }
