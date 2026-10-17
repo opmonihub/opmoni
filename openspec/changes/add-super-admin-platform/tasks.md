@@ -10,9 +10,9 @@
 ## 2. Catalog, subscriptions, and additive Account schema
 
 - [ ] 2.1 Generate additive Account contact, Plan, and Subscription migrations/models/factories with unique slug/Account subscription, FK restrictions, and valid status constraints; verify migration tests enforce constraints and preserve existing Account/member/activation data.
-- [ ] 2.2 Implement insert-only `PlanCatalogSeeder` with the documented Básico/Profissional/Empresarial limits; verify repeat seeding preserves edited names/limits and creates only missing defaults.
-- [ ] 2.3 Implement repeatable `platform:initialize` subscription backfill with bounded chunks; verify two runs create one active Básico subscription per missing Account without resetting existing subscriptions or creating users/Accounts.
-- [ ] 2.4 Implement `EnsureAccountSubscription` inside existing onboarding and Account-issuance transactions, including safe lazy catalog initialization; verify fresh installation succeeds without prior seed execution and injected provisioning failure leaves no orphan Account/subscription/activation.
+- [x] 2.2 Implement insert-only `PlanCatalogSeeder` with the documented Básico/Profissional/Empresarial limits; verify repeat seeding preserves edited names/limits and creates only missing defaults.
+- [x] 2.3 Implement repeatable `platform:initialize` subscription backfill with bounded chunks; verify two runs create one active Básico subscription per missing Account without resetting existing subscriptions or creating users/Accounts.
+- [x] 2.4 Implement `EnsureAccountSubscription` inside existing onboarding and Account-issuance transactions, including safe lazy catalog initialization; verify fresh installation succeeds without prior seed execution and injected provisioning failure leaves no orphan Account/subscription/activation.
 
 ## 3. Platform Account backend
 
@@ -196,3 +196,17 @@ Progresso OpenSpec: **9/56** tasks marcadas `[x]` (sem novas marcações — nen
 - [ ] 12.4 Exercise seven direct routes in the browser at 1366×639 and a mobile viewport, expanded/collapsed/sidebar/tab/search navigation, ordinary-user denial, no-office Super Admin, every form/error/empty state, support entry/exit/focus, and real file upload; verify screenshots/observations against the legacy inventory and current activation contracts.
 - [ ] 12.5 Review the whole change against all five specs, API/types compatibility, dirty-file preservation, secret redaction, transaction/session failure paths, and migration rollback plan; resolve actionable findings and verify required checks again only when fixes justify it.
 - [ ] 12.6 Update architecture/API/runtime instructions and product decision records with the implemented scope, idempotent initialization command, supported Admin behavior, and known verification limits; verify no unsupported operational/billing functionality is claimed and only completed evidence-backed tasks are checked off.
+
+
+## Compatible provisioning implementation — 2026-10-17
+
+Worktree: `.worktrees/platform-pending`, branch `codex/platform-pending`. Source baseline `d4b65ea`; implementation `92bfd8f`. Tasks 2.2, 2.3 and 2.4 are implemented and independently reviewed against the canonical D009 contracts. Existing Account contacts, response envelopes, membership authorization, subscription write gates and department defaults are preserved.
+
+- Insert-only `PlanCatalogSeeder` and the existing `PlanSeeder` entry point preserve edited catalog rows.
+- `platform:initialize` backfills only missing active Básico subscriptions with `chunkById(200)`, preserving existing subscriptions, identities, memberships and activations.
+- `EnsureAccountSubscription` runs within onboarding and issuance transactions; injected-failure tests verify rollback without orphan records.
+- Focused checks: 59 tests / 431 assertions passed. After correcting the related monitoring-null default test, the affected set passed 24 tests / 129 assertions. Pint and task diff whitespace checks passed.
+- The initial complete backend run executed 2,102 tests: 2,097 passed, two failures and three optional external-provider skips. The task-related monitoring-key assertion was corrected and retested. The remaining fiscal deadline test failure (`ManifestacaoCienciaPrazoTest::test_documento_dentro_do_prazo_de_noventa_dias_passa_na_guarda`, expected Pending, actual DeadlineMissed) was independently reproduced on the untouched main baseline and remains unresolved. This is not a passing whole-suite claim.
+- Independent task review: spec PASS, quality APPROVED, no findings. PostgreSQL/Redis races, browser acceptance and live-provider acceptance remain unverified by this slice.
+
+Progress in this worktree: 12/56. The original main checkout and older implementation worktree are unchanged. Older contradictory planning targets still require reconciliation before the remaining change can be completed or archived.
