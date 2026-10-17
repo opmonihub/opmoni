@@ -52,7 +52,11 @@ Existing `/serpro/account-certificate` and use_account_certificate=true SHALL re
 - **THEN** it remains operationally compatible and shows only safe legacy-source metadata
 
 ### Requirement: Connectivity is safe authentication only
-POST `/api/v1/serpro/connectivity` SHALL require Super Admin and independently enforce six-per-minute actor AND trusted-ingress-IP budgets, returning local 429 with Retry-After. It SHALL use fresh diagnostic auth from one saved coherent snapshot, separate from operational pair()/verify() semantics, and SHALL never remove/overwrite usable operational cached tokens. Authentication SHALL use the server-controlled official provider protocol with Basic key/secret, form grant_type=client_credentials, Role-Type TERCEIROS, mutual TLS, TLS verification, no redirects, 3s connect/8s total, and require both returned tokens before discarding them. No fiscal/monitoring/job/term/sync operation SHALL run. Current local unusable configuration/source SHALL yield safe local certificate verdict without network; credential rejection and upstream 429/5xx/timeout SHALL map to named safe verdicts without sensitive upstream payloads. Certificate material SHALL use private random temporary files with 0600 and guaranteed cleanup on success/decrypt/parse/HTTP/exception paths. Before reporting a provider verdict, source identity/revisions/eligibility and connection revision SHALL be rechecked; changed/removed/suspended source or rotated credentials during HTTP SHALL yield 409 connection_changed, not stale success or stale failure.
+POST `/api/v1/serpro/connectivity` SHALL require Super Admin and independently enforce six-per-minute actor AND trusted-ingress-IP budgets, returning local 429 with Retry-After. It SHALL use fresh diagnostic auth from one saved coherent snapshot, separate from operational pair()/verify() semantics, and SHALL never remove/overwrite usable operational cached tokens. Authentication SHALL use the server-controlled official provider protocol with Basic key/secret, form grant_type=client_credentials, Role-Type TERCEIROS, mutual TLS, TLS verification, no redirects, 3s connect/8s total, and require both returned tokens before discarding them. No fiscal/monitoring/job/term/sync operation SHALL run. The diagnostic response SHALL preserve `{data:{ok,failed_element,message,checked_at}}`, with failed_element exactly `configuracao|certificado|credencial|provedor` on failure and null on success. An absent connection or incomplete consumer key/secret SHALL yield `configuracao` without network. An unusable certificate/source SHALL yield `certificado` without network; provider credential rejection SHALL yield `credencial`, and upstream 429/5xx/timeout SHALL yield `provedor`, without sensitive upstream payloads. Certificate material SHALL use private random temporary files with 0600 and guaranteed cleanup on success/decrypt/parse/HTTP/exception paths. Before reporting a provider verdict, source identity/revisions/eligibility and connection revision SHALL be rechecked; changed/removed/suspended source or rotated credentials during HTTP SHALL yield 409 connection_changed, not stale success or stale failure.
+
+#### Scenario: Credentials unconfigured
+- **WHEN** no connection exists or the saved consumer key/secret is incomplete
+- **THEN** the diagnostic returns `{data:{ok:false,failed_element:"configuracao",message,checked_at}}` without a provider call
 
 #### Scenario: Local certificate unusable
 - **WHEN** the saved source cannot currently be used or materialized
@@ -64,7 +68,7 @@ POST `/api/v1/serpro/connectivity` SHALL require Super Admin and independently e
 
 #### Scenario: Diagnostic token isolation
 - **WHEN** fresh diagnostic authentication returns both token fields
-- **THEN** the diagnostic discards them and leaves usable operational token caching intact
+- **THEN** the diagnostic discards them, preserves usable operational token caching and returns `{data:{ok:true,failed_element:null,message,checked_at}}`
 
 #### Scenario: Source changes during HTTP
 - **WHEN** a source is rotated, removed or suspended while diagnostic HTTP is in flight
