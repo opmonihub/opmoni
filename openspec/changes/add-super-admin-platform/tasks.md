@@ -11,17 +11,17 @@ The executable checklist contains exactly the 46 surviving original IDs. V means
 
 ## 2. Catalog, subscriptions and preserving schema
 
-- [ ] 2.1 Add preserving subscription status constraints and complete Plan/Subscription factories around existing schema, unique Account subscription and restricted Plan FK; retain Account cascade and settings-backed platform_billing_contact, with no duplicate contact columns. Verify migration/rollback, constraints and unchanged Account/member/activation data.
+- [x] 2.1 Add preserving subscription status constraints and complete Plan/Subscription factories around existing schema, unique Account subscription and restricted Plan FK; retain Account cascade and settings-backed platform_billing_contact, with no duplicate contact columns. Verify migration/rollback, constraints and unchanged Account/member/activation data.
 - [x] 2.2 Implement insert-only `PlanCatalogSeeder` with the documented Básico/Profissional/Empresarial limits; verify repeat seeding preserves edited names/limits and creates only missing defaults.
 - [x] 2.3 Implement repeatable `platform:initialize` subscription backfill with bounded chunks; verify two runs create one active Básico subscription per missing Account without resetting existing subscriptions or creating users/Accounts.
 - [x] 2.4 Implement `EnsureAccountSubscription` inside existing onboarding and Account-issuance transactions, including safe lazy catalog initialization; verify fresh installation succeeds without prior seed execution and injected provisioning failure leaves no orphan Account/subscription/activation.
 
 ## 3. Platform Account backend
 
-- [ ] 3.1 Add safe common PlatformAccount projection and GET /api/v1/admin/accounts/{id}, preserving list fields and /commercial envelope; verify contacts/subscription/detail, unknown-ID 404, activation secrecy and no broad tenant settings.
-- [ ] 3.2 Share root/commercial contact validation and settings persistence for create/PATCH: valid UF, phone/WhatsApp/city, null/omission semantics. Verify atomic rollback, cleared-phone flag reset, owner/private activation/unrelated settings preservation and field errors.
-- [ ] 3.3 Add contacts to existing issuance without changing create {data,first_access} or reissue {first_access}; verify subscription/contact rollback, email conflict, active zero-member reissue, seven-day expiry, prior-link invalidation and temporary-copy-only behavior.
-- [ ] 3.4 Add Account last_page retaining meta.page, bounded literal name/ID search, status/page validation and deterministic ID order; verify eager combined member/subscription/activation metadata and existing pagination compatibility.
+- [x] 3.1 Add safe common PlatformAccount projection and GET /api/v1/admin/accounts/{id}, preserving list fields and /commercial envelope; verify contacts/subscription/detail, unknown-ID 404, activation secrecy and no broad tenant settings.
+- [x] 3.2 Share root/commercial contact validation and settings persistence for create/PATCH: valid UF, phone/WhatsApp/city, null/omission semantics. Verify atomic rollback, cleared-phone flag reset, owner/private activation/unrelated settings preservation and field errors.
+- [x] 3.3 Add contacts to existing issuance without changing create {data,first_access} or reissue {first_access}; verify subscription/contact rollback, email conflict, active zero-member reissue, seven-day expiry, prior-link invalidation and temporary-copy-only behavior.
+- [x] 3.4 Add Account last_page retaining meta.page, bounded literal name/ID search, status/page validation and deterministic ID order; verify eager combined member/subscription/activation metadata and existing pagination compatibility.
 
 ## 4. Plans and subscriptions backend
 
@@ -342,3 +342,8 @@ Worktree: `.worktrees/platform-pending`, branch `codex/platform-pending`. Source
 - Independent task review: spec PASS, quality APPROVED, no findings. PostgreSQL/Redis races, browser acceptance and live-provider acceptance remain unverified by this slice.
 
 Progress in this worktree: 12/56. The original main checkout and older implementation worktree are unchanged. Older contradictory planning targets still require reconciliation before the remaining change can be completed or archived.
+
+
+## Reviewed Account APIs — 2026-10-17
+
+Commits173290a and ebba709 implement original2.1/3.1–3.4: preserving subscriptionstatusconstraint/factories; additive safe generic detail and eager combinedlist withlast_page; shared root/commercial settingscontacts and atomicissuance. Existingidentity/activation/envelopes and D009remain. Relevant56tests488assertions passed; real dedicatedPostgreSQLschema7tests14assertions passed; aftercontactpreservationfix23tests240assertions passed;hostPint/diffcheckpassed. IndependentSpecPASS/QualityAPPROVED afterfixround1. Scope acceptance doesnotreplace finalwhole-suite/process/browserchecks; crosscutting1.3remains open untilnewcredentialroutefamilyverified. Validprogress17/46,10originalsretired.
