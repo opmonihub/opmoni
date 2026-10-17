@@ -25,17 +25,17 @@ The executable checklist contains exactly the 46 surviving original IDs. V means
 
 ## 4. Plans and subscriptions backend
 
-- [ ] 4.1 Preserve raw Plan list/detail/mutation and partial top-level updates; validate supplied name 2–255, immutable slug, known nullable nonnegative integral limits and reject unknown/fractional/negative values. Normalize omitted keys of supplied empty/sparse replacement limits to null; UI sends exactly users/clients/monitorings. Verify clearing, rollback and unchanged omitted top-level fields.
+- [x] 4.1 Preserve raw Plan list/detail/mutation and partial top-level updates; validate supplied name 2–255, immutable slug, known nullable nonnegative integral limits and reject unknown/fractional/negative values. Normalize omitted keys of supplied empty/sparse replacement limits to null; UI sends exactly users/clients/monitorings. Verify clearing, rollback and unchanged omitted top-level fields.
 - [x] 4.2 Implement paginated Subscription GET and atomic PUT with real plan validation, Account/plan search, and status filtering; verify all status labels/contracts, invalid plan 422, unknown subscription 404, and page metadata.
 
 ## 6. Read-only support audit
 
-- [ ] 6.3 Harden existing GET /api/v1/admin/support/logs using explicit scalar descriptor allowlist (resource known short identifier, resource_id positive integer; extra descriptors only after writer inventory), minimal actor id/name/email and Account id/name/status. Verify no harmless-key secret/nested payload/settings leakage, positive bounded page/existing Account filter, meta.current_page and canonical ID DESC; preserve stored rows.
+- [x] 6.3 Harden existing GET /api/v1/admin/support/logs using explicit scalar descriptor allowlist (resource known short identifier, resource_id positive integer; extra descriptors only after writer inventory), minimal actor id/name/email and Account id/name/status. Verify no harmless-key secret/nested payload/settings leakage, positive bounded page/existing Account filter, meta.current_page and canonical ID DESC; preserve stored rows.
 
 ## 7. Global users and summary backend
 
 - [x] 7.1 Implement read-only GET `/api/v1/admin/users` with `page,q,type`, eager-loaded real Account-role links, and allowlisted identity fields; verify multi-membership badges data, global type filtering, literal search, and no user mutation endpoints or password/session disclosures.
-- [ ] 7.2 Add Super Admin-only GET /api/v1/admin/summary with {data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}; verify real empty/populated counts and at most five allowlisted audit rows timestamp DESC then ID DESC, distinct from legacy audit-list ID DESC.
+- [x] 7.2 Add Super Admin-only GET /api/v1/admin/summary with {data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}; verify real empty/populated counts and at most five allowlisted audit rows timestamp DESC then ID DESC, distinct from legacy audit-list ID DESC.
 
 ## 8. SERPRO certificate and connection lifecycle
 
@@ -347,3 +347,8 @@ Progress in this worktree: 12/56. The original main checkout and older implement
 ## Reviewed Account APIs — 2026-10-17
 
 Commits173290a and ebba709 implement original2.1/3.1–3.4: preserving subscriptionstatusconstraint/factories; additive safe generic detail and eager combinedlist withlast_page; shared root/commercial settingscontacts and atomicissuance. Existingidentity/activation/envelopes and D009remain. Relevant56tests488assertions passed; real dedicatedPostgreSQLschema7tests14assertions passed; aftercontactpreservationfix23tests240assertions passed;hostPint/diffcheckpassed. IndependentSpecPASS/QualityAPPROVED afterfixround1. Scope acceptance doesnotreplace finalwhole-suite/process/browserchecks; crosscutting1.3remains open untilnewcredentialroutefamilyverified. Validprogress17/46,10originalsretired.
+
+
+## Reviewed commercial, audit and summary APIs — 2026-10-17
+
+Commits3a6be23/5b439a6 complete4.1,6.3,7.2: strict compatible nullable Plan replacement; inventoried safe audit metadata, positive resource IDs/minimal relations and preserving restrictive Account FK; real summary counts/five timestamp-ID newest events. Actual session/authorization tests retain D009 and no-office platform access. Focused post-Pint SQLite78tests496assertions and dedicatedPostgreSQL78tests496assertions passed. Sanitizer correction18tests127assertions passed; independent review and scoped re-review clean. Account case-insensitive literal search was corrected to existing shared helper after realPG regression. Cross-cutting1.3remainsopen for futurecertificate/diagnosticroutes. Validprogress20/46;10originalsretired; no final browser/process/provider claim.
