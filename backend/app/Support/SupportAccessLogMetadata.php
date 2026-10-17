@@ -5,6 +5,13 @@ namespace App\Support;
 class SupportAccessLogMetadata
 {
     /**
+     * Only flat descriptors emitted by SupportAudit tenant writers are public:
+     * resource/resource_id identify the changed record; name/email/document
+     * describe it; role/status/person_type/action describe its public state;
+     * counts, related IDs and boolean flags describe the performed operation.
+     * Unknown fields and all nested containers are intentionally omitted.
+     * This is a read projection: stored historical metadata is never changed.
+     *
      * @param  array<string, mixed>|null  $metadata
      * @return array<string, mixed>|null
      */
@@ -15,47 +22,18 @@ class SupportAccessLogMetadata
         }
 
         $sanitized = [];
-
         foreach ($metadata as $key => $value) {
-            if (self::isSensitiveKey($key)) {
-                continue;
+            $allowed = match ($key) {
+                'resource', 'name', 'email', 'document', 'role', 'status', 'person_type', 'action' => is_string($value),
+                'resource_id', 'client_id', 'certificate_id', 'previous_run_id', 'count', 'clients', 'tags' => is_int($value) && $value >= 0,
+                'enabled', 'power_refresh_queued' => is_bool($value),
+                default => false,
+            };
+            if ($allowed || ($value === null && in_array($key, ['resource_id', 'certificate_id', 'document', 'person_type'], true))) {
+                $sanitized[$key] = $value;
             }
-
-            $sanitized[$key] = is_array($value)
-                ? self::sanitize($value)
-                : $value;
         }
 
         return $sanitized;
-    }
-
-    private static function isSensitiveKey(mixed $key): bool
-    {
-        if (! is_string($key)) {
-            return false;
-        }
-
-        $normalized = strtolower($key);
-
-        if (in_array($normalized, [
-            'password',
-            'token',
-            'secret',
-            'session_id',
-            'csrf',
-            'cookie',
-            'authorization',
-            'consumer_secret',
-            'consumer_key',
-            'session',
-            'container',
-        ], true)) {
-            return true;
-        }
-
-        return str_contains($normalized, 'password')
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'session');
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Api\V1\Admin\SerproConnectionController as AdminSerproConnectionController;
 use App\Http\Controllers\Api\V1\Admin\SerproConnectivityController as AdminSerproConnectivityController;
 use App\Http\Controllers\Api\V1\Admin\SubscriptionController as AdminSubscriptionController;
+use App\Http\Controllers\Api\V1\Admin\SummaryController as AdminSummaryController;
 use App\Http\Controllers\Api\V1\Admin\SupportLogController as AdminSupportLogController;
 use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\Tenant\AccountCertificateController;
@@ -276,6 +277,7 @@ Route::middleware([RequireSuperAdmin::class])->prefix('admin')->group(function (
         Route::apiResource('plans', AdminErpPlanController::class)->except(['destroy']);
         Route::apiResource('subscriptions', AdminErpSubscriptionController::class)->only(['index', 'show', 'update']);
     });
+    Route::get('summary', AdminSummaryController::class);
     Route::get('users', [AdminUserController::class, 'index']);
     Route::get('support/logs', [AdminSupportLogController::class, 'index']);
 });

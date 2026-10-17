@@ -27,19 +27,11 @@ class SupportAccessLogResource extends JsonResource
                 'id' => $this->superAdmin->getKey(),
                 'name' => $this->superAdmin->name,
                 'email' => $this->superAdmin->email,
-                'email_verified_at' => $this->superAdmin->email_verified_at,
-                'is_super_admin' => $this->superAdmin->is_super_admin,
-                'created_at' => $this->superAdmin->created_at,
-                'updated_at' => $this->superAdmin->updated_at,
             ]),
             'account' => $this->whenLoaded('account', fn () => $this->account === null ? null : [
                 'id' => $this->account->getKey(),
                 'name' => $this->account->name,
                 'status' => $this->account->status,
-                'settings' => $this->account->settingsVisibleToTenant(),
-                'platform_billing_contact' => $this->account->platformBillingContact(),
-                'created_at' => $this->account->created_at,
-                'updated_at' => $this->account->updated_at,
             ]),
         ];
     }

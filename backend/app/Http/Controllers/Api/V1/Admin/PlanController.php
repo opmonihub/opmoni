@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UpdatePlanRequest;
 use App\Models\Plan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,14 +33,9 @@ class PlanController extends Controller
         return response()->json($plan);
     }
 
-    public function update(Request $request, Plan $plan): JsonResponse
+    public function update(UpdatePlanRequest $request, Plan $plan): JsonResponse
     {
-        $data = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'limits' => ['sometimes', 'array'],
-        ]);
-
-        $plan->update($data);
+        $plan->update($request->planAttributes());
 
         return response()->json($plan->refresh());
     }

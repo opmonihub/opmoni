@@ -150,13 +150,13 @@ class AdminListFiltersTest extends BusinessTestCase
             ->assertOk()
             ->assertJsonPath('name', 'Unlimited');
 
-        $this->assertSame([], $plan->refresh()->limits);
+        $this->assertSame(['users' => null, 'clients' => null, 'monitorings' => null], $plan->refresh()->limits);
 
         $this->putJson('/api/v1/admin/plans/'.$plan->id, ['name' => 'Unlimited renamed', 'limits' => (object) []])
             ->assertOk();
 
         $this->assertSame('Unlimited renamed', $plan->refresh()->name);
-        $this->assertSame([], $plan->limits);
+        $this->assertSame(['users' => null, 'clients' => null, 'monitorings' => null], $plan->limits);
     }
 
     public function test_omitting_plan_limits_preserves_existing_limits(): void

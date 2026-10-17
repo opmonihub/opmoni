@@ -14,6 +14,7 @@ use App\Support\AccessSession;
 use App\Support\AccessTransaction;
 use App\Support\ErpIdentity;
 use App\Support\ErpSession;
+use App\Support\LiteralSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -149,9 +150,8 @@ class AccessController extends Controller
         $data = $request->validated();
         $query = Account::query()->with(['pendingOwnerActivation', 'subscription.plan'])->withCount('memberships')->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status));
         if (isset($data['q']) && $data['q'] !== '') {
-            $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $data['q']);
-            $query->where(function ($q) use ($data, $search) {
-                $q->whereRaw("name LIKE ? ESCAPE '\\'", ['%'.$search.'%']);
+            $query->where(function ($q) use ($data) {
+                LiteralSearch::whereContains($q, 'name', $data['q']);
                 if (ctype_digit($data['q'])) {
                     $q->orWhere('id', (int) $data['q']);
                 }

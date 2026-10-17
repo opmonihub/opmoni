@@ -6,7 +6,9 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\SupportAccessLog;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\BusinessTestCase;
 
 class SupportLogApiTest extends BusinessTestCase
@@ -115,13 +117,86 @@ class SupportLogApiTest extends BusinessTestCase
         $this->assertSame([
             'resource' => 'clients',
             'resource_id' => 42,
-            'nested' => ['note' => 'safe'],
         ], $payload['metadata']);
         $this->assertStringNotContainsString('secret-value', $encoded);
         $this->assertStringNotContainsString('token-value', $encoded);
         $this->assertStringNotContainsString('sess-123', $encoded);
         $this->assertArrayNotHasKey('password', $payload);
         $this->assertArrayNotHasKey('session_id', $payload);
+    }
+
+    public function test_audit_uses_minimal_related_projections_and_does_not_mutate_stored_metadata(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create(['settings' => ['private' => 'settings-secret', 'pfx' => ['blob' => 'certificate-secret']]]);
+        $metadata = ['resource' => 'clients', 'resource_id' => 42, 'arbitrary' => 'bearer-secret', 'pfx' => ['body' => 'certificate-secret'], 'nested' => ['note' => 'token-under-note'], 'resource_object' => ['credential' => 'secret']];
+        $log = $this->createLog($admin, $account, 'update', $metadata);
+        $response = $this->actingAs($admin)->getJson('/api/v1/admin/support/logs')->assertOk();
+        $response->assertJsonPath('data.0.metadata', ['resource' => 'clients', 'resource_id' => 42])
+            ->assertJsonPath('data.0.account', ['id' => $account->id, 'name' => $account->name, 'status' => $account->status])
+            ->assertJsonPath('data.0.super_admin', ['id' => $admin->id, 'name' => $admin->name, 'email' => $admin->email]);
+        $this->assertSame($metadata, $log->fresh()->metadata);
+    }
+
+    public function test_audit_history_prevents_account_deletion_instead_of_cascading_away(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $log = $this->createLog($admin, $account, 'update');
+        try {
+            DB::transaction(fn () => $account->delete());
+            $this->fail('Account with audit history must be retained.');
+        } catch (QueryException) {
+            $this->assertDatabaseHas('support_access_logs', ['id' => $log->id, 'account_id' => $account->id, 'super_admin_user_id' => $admin->id]);
+            $this->assertDatabaseHas('accounts', ['id' => $account->id]);
+        }
+    }
+
+    public function test_audit_actor_deletion_is_restricted_and_history_remains(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $log = $this->createLog($admin, $account, 'update');
+        try {
+            DB::transaction(fn () => $admin->delete());
+            $this->fail('Audit actor must remain referenced.');
+        } catch (QueryException) {
+            $this->assertDatabaseHas('support_access_logs', ['id' => $log->id, 'super_admin_user_id' => $admin->id]);
+        }
+    }
+
+    public function test_allowlisted_metadata_preserves_public_writer_descriptors_and_rejects_containers(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $safe = ['resource' => 'clients', 'resource_id' => 42, 'name' => 'Client Name', 'email' => 'public@example.com', 'document' => '11222333000181', 'role' => 'user', 'status' => 'active', 'person_type' => 'company', 'action' => 'attach', 'client_id' => 7, 'certificate_id' => null, 'previous_run_id' => 8, 'count' => 3, 'clients' => 2, 'tags' => 1, 'enabled' => true, 'power_refresh_queued' => false];
+        $this->createLog($admin, $account, 'update', $safe + ['p12' => 'container-secret', 'certificate_bytes' => 'binary-secret', 'private_key' => 'private-secret', 'request_headers' => ['Authorization' => 'bearer-secret'], 0 => 'numeric-secret']);
+        $this->actingAs($admin)->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', $safe);
+        $log = $this->createLog($admin, $account, 'update', ['resource' => ['body' => 'secret'], 'name' => ['password' => 'secret'], 'resource_id' => 'secret', 'enabled' => 'secret']);
+        $this->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', []);
+        $log->update(['metadata' => null]);
+        $this->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', null);
+    }
+
+    public function test_additive_audit_migration_preserves_existing_rows_on_upgrade_and_rollback(): void
+    {
+        $migration = require database_path('migrations/2026_10_17_230707_preserve_support_access_log_account_references.php');
+        $migration->down();
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $log = $this->createLog($admin, $account, 'legacy-action', ['resource' => 'clients', 'private_key' => 'stored-historical-secret']);
+        $before = (array) DB::table('support_access_logs')->where('id', $log->id)->first();
+        $migration->up();
+        $this->assertSame($before, (array) DB::table('support_access_logs')->where('id', $log->id)->first());
+        $migration->down();
+        $this->assertSame($before, (array) DB::table('support_access_logs')->where('id', $log->id)->first());
+        $migration->up();
+        try {
+            DB::transaction(fn () => $account->delete());
+            $this->fail('Upgraded audit reference must prevent cascade deletion.');
+        } catch (QueryException) {
+            $this->assertDatabaseHas('support_access_logs', ['id' => $log->id, 'account_id' => $account->id]);
+        }
     }
 
     private function superAdmin(): User
