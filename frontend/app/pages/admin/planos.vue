@@ -70,9 +70,9 @@ onMounted(load)
 const editOpen = ref(false)
 const editSchema = z.object({
   name: z.string().min(2, 'Nome muito curto'),
-  users: z.number().int().min(0).nullable(),
-  clients: z.number().int().min(0).nullable(),
-  monitorings: z.number().int().min(0).nullable()
+  users: z.number().int().min(0).nullable().default(null),
+  clients: z.number().int().min(0).nullable().default(null),
+  monitorings: z.number().int().min(0).nullable().default(null)
 })
 type EditSchema = z.output<typeof editSchema>
 const editTarget = ref<Plan | null>(null)

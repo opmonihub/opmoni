@@ -54,13 +54,13 @@ function load() {
   loadError.value = null
   return runLatestLoad(() => $api<ResourceListResponse<PlatformUser>>('/admin/users', { params: listParams.value }), {
     onSuccess: (res) => {
-      users.value = res.data
       const meta = readPaginatedMeta(res)
       const recovered = pageWithinLastPage(page.value, meta.last_page)
       if (recovered !== page.value) {
         page.value = recovered
         return
       }
+      users.value = res.data
       total.value = meta.total
       page.value = pageWithinLastPage(page.value, meta.last_page)
       hasLoaded.value = true

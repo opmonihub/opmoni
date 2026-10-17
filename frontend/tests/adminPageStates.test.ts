@@ -365,10 +365,12 @@ it('in-flight user response cannot modify state after unmount; catalog is read o
   assert.deepEqual(view.state.users.value, [])
   assert.deepEqual(methods, [undefined])
 })
-it('plan finite limits clear to null, preserve zero on reload and reject invalid inputs', async () => {
+it('rendered Plan number inputs normalize cleared undefined before form validation and reload', async () => {
   let plan: Runtime = { id: 1, name: 'Basic', slug: 'basic', limits: { users: 5, clients: 10, monitorings: 3 } }
+  const writes: Runtime[] = []
   const view = await page('planos', async (_path, options) => {
     if (options?.method) {
+      writes.push(options.body)
       plan = { ...plan, ...options.body }
       return plan
     }
@@ -376,11 +378,48 @@ it('plan finite limits clear to null, preserve zero on reload and reject invalid
   })
   await view.start()
   view.state.openEdit(plan)
-  await view.state.onSave({ data: { name: 'Basic', users: null, clients: 0, monitorings: null } })
+  const inputs = view.nodes().filter(node => (node.type as Runtime)?.name === 'UInputNumber')
+  assert.equal(inputs.length, 3)
+  for (const input of inputs) input.props!['onUpdate:modelValue'](undefined)
+  const form = view.nodes().find(node => node.props?.id === 'edit-plan-form')!
+  const cleared = form.props!.schema.safeParse(form.props!.state)
+  assert.equal(cleared.success, true, 'Empty values emitted by the rendered number inputs must pass UForm validation')
+  assert.deepEqual(cleared.data, { name: 'Basic', users: null, clients: null, monitorings: null })
+  inputs[1]!.props!['onUpdate:modelValue'](0)
+  const validated = form.props!.schema.safeParse(form.props!.state)
+  assert.equal(validated.success, true)
+  await form.props!.onSubmit({ data: validated.data })
+  assert.deepEqual(writes, [{ name: 'Basic', limits: { users: null, clients: 0, monitorings: null } }])
   assert.equal(view.state.limitValue(view.state.plans.value[0], 'users'), null)
   assert.equal(view.state.limitValue(view.state.plans.value[0], 'clients'), 0)
-  for (const users of [-1, 1.5, '1'])
-    assert.equal(view.state.editSchema.safeParse({ name: 'Basic', users, clients: null, monitorings: null }).success, false)
+  assert.equal(view.state.limitValue(view.state.plans.value[0], 'monitorings'), null)
+  for (const invalid of [-1, 1.5, '1', Number.NaN]) {
+    inputs[0]!.props!['onUpdate:modelValue'](invalid)
+    assert.equal(form.props!.schema.safeParse(form.props!.state).success, false)
+  }
+  view.stop()
+})
+it('Users keeps prior rows and count when out-of-range page recovery fails', async () => {
+  let requests = 0
+  const previous = [{ id: 7, name: 'Previous', email: 'previous@example.test', is_super_admin: false }]
+  const view = await page('usuarios', async () => {
+    requests++
+    if (requests === 1) return resource(previous, 31, 3)
+    if (requests === 2) return resource([], 1, 1)
+    throw Error('Recovery unavailable')
+  })
+  await view.start()
+  assert.equal(view.state.total.value, 31)
+  view.state.page.value = 3
+  for (let i = 0; i < 4; i++) await flush()
+  assert.equal(requests, 3)
+  assert.equal(view.state.page.value, 1)
+  assert.deepEqual(view.state.users.value, previous)
+  assert.equal(view.state.total.value, 31)
+  assert.ok(view.state.loadError.value)
+  const nodes = view.nodes()
+  assert.ok(nodes.some(node => (node.type as Runtime)?.name === 'ErrorRetryAlert'))
+  assert.deepEqual(nodes.find(node => (node.type as Runtime)?.name === 'UTable')?.props?.data, previous)
   view.stop()
 })
 it('commercial editor clears/reloads on reopen, rejects stale details and preserves inline validation', async () => {
