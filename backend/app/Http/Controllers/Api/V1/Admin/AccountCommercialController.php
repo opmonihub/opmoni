@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Actions\UpdatePlatformAccountContact;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AccountResource;
 use App\Models\Account;
@@ -18,25 +19,14 @@ class AccountCommercialController extends Controller
     public function update(Request $request, Account $account): AccountResource
     {
         $data = $request->validate([
-            'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
-            'phone_whatsapp' => ['sometimes', 'nullable', 'boolean'],
-            'state' => ['sometimes', 'nullable', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
-            'city' => ['sometimes', 'nullable', 'string', 'max:255'],
+            ...UpdatePlatformAccountContact::rules(),
             'owner_name' => ['prohibited'], 'login_email' => ['prohibited'],
             'password' => ['prohibited'], 'access' => ['prohibited'],
         ]);
 
         return DB::transaction(function () use ($account, $data): AccountResource {
             $locked = Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
-            $contact = array_merge($locked->platformBillingContact() ?? [], $data);
-            if (isset($contact['state'])) {
-                $contact['state'] = strtoupper($contact['state']);
-            }
-            $contact = array_filter($contact, fn ($value) => $value !== null && $value !== '');
-            if (! isset($contact['phone'])) {
-                unset($contact['phone_whatsapp']);
-            }
-            $locked->update(['settings' => Account::mergePlatformBillingContact($locked->settings, $contact)]);
+            app(UpdatePlatformAccountContact::class)->handle($locked, $data);
 
             return $this->present($locked);
         });

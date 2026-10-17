@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Actions\UpdatePlatformAccountContact;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -43,16 +44,16 @@ class AccessRequest extends FormRequest
             'access.switch' => ['account_id' => ['required', 'integer', 'min:1', 'max:9007199254740991']],
             'access.activate' => ['email' => $email, 'token' => ['required', 'string', 'size:64'], 'password' => [...$password, 'confirmed'], 'password_confirmation' => $password],
             'access.activation-status' => ['email' => ['sometimes', 'nullable', 'string', 'max:254'], 'token' => ['sometimes', 'nullable', 'string', 'max:128']],
-            'access.admin-create' => ['name' => $name, 'owner_name' => $name, 'login_email' => $email],
+            'access.admin-create' => ['name' => $name, 'owner_name' => $name, 'login_email' => $email, ...UpdatePlatformAccountContact::rules()],
             'access.admin-reissue' => ['owner_name' => $name, 'login_email' => $email],
-            'access.admin-update' => ['name' => ['sometimes', 'required', 'string', 'min:2', 'max:255'], 'status' => ['sometimes', 'required', Rule::in(['active', 'suspended'])]],
+            'access.admin-update' => ['name' => ['sometimes', 'required', 'string', 'min:2', 'max:255'], 'status' => ['sometimes', 'required', Rule::in(['active', 'suspended'])], ...UpdatePlatformAccountContact::rules()],
             'access.admin-list' => ['q' => ['sometimes', 'nullable', 'string', 'max:255'], 'status' => ['sometimes', 'nullable', Rule::in(['active', 'suspended'])], 'page' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991']],
             default => []
         };
         foreach (array_diff(array_keys($this->all()), array_keys($rules)) as $key) {
             $rules[$key] = ['prohibited'];
         }
-        if ($this->route()->getName() === 'access.admin-update' && ! $this->hasAny(['name', 'status'])) {
+        if ($this->route()->getName() === 'access.admin-update' && ! $this->hasAny(['name', 'status', ...UpdatePlatformAccountContact::FIELDS])) {
             $rules['name'] = ['required'];
         }
 

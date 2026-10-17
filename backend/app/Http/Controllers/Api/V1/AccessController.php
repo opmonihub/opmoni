@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\AccessAccounts;
+use App\Actions\UpdatePlatformAccountContact;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AccessRequest;
 use App\Http\Resources\IdentityResource;
@@ -16,6 +17,7 @@ use App\Support\ErpSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -145,7 +147,7 @@ class AccessController extends Controller
     public function adminList(AccessRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $query = Account::query()->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status));
+        $query = Account::query()->with(['pendingOwnerActivation', 'subscription.plan'])->withCount('memberships')->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status));
         if (isset($data['q']) && $data['q'] !== '') {
             $search = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $data['q']);
             $query->where(function ($q) use ($data, $search) {
@@ -158,7 +160,12 @@ class AccessController extends Controller
 
         $page = $query->orderByDesc('id')->paginate(15, ['*'], 'page', (int) ($data['page'] ?? 1));
 
-        return response()->json(['data' => $page->getCollection()->map(fn ($a) => $this->actions->projection($a))->all(), 'meta' => ['page' => $page->currentPage(), 'per_page' => 15, 'total' => $page->total()]]);
+        return response()->json(['data' => $page->getCollection()->map(fn ($a) => $this->actions->projection($a))->all(), 'meta' => ['page' => $page->currentPage(), 'per_page' => 15, 'total' => $page->total(), 'last_page' => $page->lastPage()]]);
+    }
+
+    public function adminShow(AccessRequest $request, int $id): JsonResponse
+    {
+        return response()->json(['data' => $this->actions->projection(Account::findOrFail($id))]);
     }
 
     public function adminCreate(AccessRequest $request): JsonResponse
@@ -174,7 +181,8 @@ class AccessController extends Controller
             AccessTransaction::boundLockWaits();
             $account = Account::lockForUpdate()->findOrFail($id);
             AccessSession::assertOwnership($request);
-            $account->update($request->validated());
+            $account->update(Arr::only($request->validated(), ['name', 'status']));
+            app(UpdatePlatformAccountContact::class)->handle($account, $request->validated());
             AccessSession::assertOwnership($request);
 
             return $account;

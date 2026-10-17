@@ -165,6 +165,13 @@ class Account extends Model
         return $this->hasMany(AccountMembership::class);
     }
 
+    public function pendingOwnerActivation(): HasOne
+    {
+        return $this->hasOne(OwnerActivation::class)->ofMany(['id' => 'max'], function (Builder $query): void {
+            $query->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now());
+        });
+    }
+
     public function subscription(): HasOne
     {
         return $this->hasOne(Subscription::class);

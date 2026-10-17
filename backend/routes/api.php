@@ -37,6 +37,7 @@ Route::prefix('v1')->group(function (): void {
                 Route::patch('/{account}/commercial', [AccountCommercialController::class, 'update'])->whereNumber('account')->name('access.admin-commercial-update');
                 Route::get('/', [AccessController::class, 'adminList'])->name('access.admin-list');
                 Route::post('/', [AccessController::class, 'adminCreate'])->name('access.admin-create');
+                Route::get('/{id}', [AccessController::class, 'adminShow'])->whereNumber('id')->name('access.admin-show');
                 Route::patch('/{id}', [AccessController::class, 'adminUpdate'])->whereNumber('id')->name('access.admin-update');
                 Route::post('/{id}/first-access', [AccessController::class, 'adminReissue'])->whereNumber('id')->name('access.admin-reissue');
             });

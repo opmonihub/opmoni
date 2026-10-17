@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Http\Resources\PlatformAccountResource;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\OwnerActivation;
@@ -63,6 +64,7 @@ class AccessAccounts
             if ($accountId !== null) {
                 app(EnsureAccountSubscription::class)->handle($account);
             }
+            app(UpdatePlatformAccountContact::class)->handle($account, $data);
             OwnerActivation::where('account_id', $account->id)->whereNull('consumed_at')->whereNull('revoked_at')->update(['revoked_at' => now()]);
             $token = bin2hex(random_bytes(32));
             $link = OwnerActivation::create([
@@ -122,16 +124,7 @@ class AccessAccounts
 
     public function projection(Account $account): array
     {
-        $pending = OwnerActivation::where('account_id', $account->id)
-            ->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now())->latest('id')->first();
-
-        return [
-            'id' => $account->id,
-            'name' => $account->name,
-            'status' => $account->status,
-            'members_count' => $account->memberships()->count(),
-            'pending_owner' => $pending ? ['name' => $pending->owner_name, 'email' => $pending->email, 'expires_at' => $pending->expires_at->toISOString()] : null,
-        ];
+        return (new PlatformAccountResource($account))->resolve();
     }
 
     private function assertSessionOwnership(): void
