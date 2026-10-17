@@ -230,19 +230,7 @@ const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
 
     <UDashboardSearch :groups="groups" />
 
-    <UDashboardPanel v-if="route.path === '/admin/contas'" id="platform-accounts">
-      <template #header>
-        <UDashboardNavbar title="Contas da plataforma">
-          <template #leading>
-            <UDashboardSidebarCollapse />
-          </template>
-        </UDashboardNavbar>
-      </template>
-      <template #body>
-        <slot />
-      </template>
-    </UDashboardPanel>
-    <slot v-else />
+    <slot />
 
     <NotificationsSlideover />
   </UDashboardGroup>

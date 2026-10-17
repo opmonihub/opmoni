@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import type { Subscription, Plan, ResourceListResponse } from '#shared/types/admin'
 import * as z from 'zod'
+import { apiFailure } from '#shared/utils/access'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelSelectUi, panelTableUi } from '~/components/data-table/panel'
@@ -8,77 +10,65 @@ import { adminListParams, createLatestRequestRunner, pageWithinLastPage, readPag
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
-
-interface AdminSubscription {
-  id: number
-  status: 'active' | 'past_due' | 'canceled'
-  account?: { id: number, name: string } | null
-  plan?: { id: number, slug: string, name: string } | null
-}
-
-interface AdminPlan {
-  id: number
-  slug: string
-  name: string
-}
-
-interface Paginated<T> {
-  data: T[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
-}
-
-const STATUS_META: Record<AdminSubscription['status'], { label: string, color: 'success' | 'warning' | 'neutral' }> = {
+const STATUS_META: Record<Subscription['status'], {
+  label: string
+  color: 'success' | 'warning' | 'neutral'
+}> = {
   active: { label: 'Ativa', color: 'success' },
   past_due: { label: 'Inadimplente', color: 'warning' },
   canceled: { label: 'Cancelada', color: 'neutral' }
 }
-
 const { $api } = useNuxtApp()
 const toast = useToast()
-
-const subscriptions = ref<AdminSubscription[]>([])
-const plans = ref<AdminPlan[]>([])
+const subscriptions = ref<Subscription[]>([])
+const plans = ref<Plan[]>([])
+const catalogLoaded = ref(false)
+const catalogLoading = ref(false)
+const catalogError = ref<unknown>(null)
+const runCatalog = createLatestRequestRunner()
+function loadCatalog() {
+  if (catalogLoading.value)
+    return
+  catalogLoading.value = true
+  catalogError.value = null
+  return runCatalog(() => $api<Plan[]>('/admin/plans'), {
+    onSuccess: (data) => {
+      plans.value = data
+      catalogLoaded.value = true
+    },
+    onError: (error) => {
+      catalogError.value = error
+    },
+    onSettled: () => {
+      catalogLoading.value = false
+    }
+  })
+}
 const total = ref(0)
 const page = ref(1)
 const perPage = 15
-const loading = ref(false)
+const loading = ref(true)
 const q = ref('')
 const debouncedQ = refDebounced(q, 300)
-const statusFilter = ref<'all' | AdminSubscription['status']>('all')
+const statusFilter = ref<'all' | Subscription['status']>('all')
 const runLatestLoad = createLatestRequestRunner()
-
-const columns: TableColumn<AdminSubscription>[] = [
+const columns: TableColumn<Subscription>[] = [
   { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'account', header: 'Conta' },
   { accessorKey: 'plan', header: 'Plano' },
   { accessorKey: 'status', header: 'Status' },
   { id: 'actions' }
 ]
-
 const columnVisibility = ref<Record<string, boolean>>({})
-
 const hideableColumns = [
   { id: 'id', label: 'ID' },
   { id: 'account', label: 'Conta' },
   { id: 'plan', label: 'Plano' },
   { id: 'status', label: 'Status' }
 ]
-
 const listParams = computed(() => adminListParams(page.value, debouncedQ.value, 'status', statusFilter.value))
-
-/**
- * Falha fatal de carga inicial x falha de refresh: sem carga bem-sucedida ainda,
- * o alerta com retry toma o corpo do painel; depois, falha de paginação ou
- * filtro é só toast, e a última boa lista fica visível.
- */
 const loadError = ref<unknown>(null)
 const hasLoaded = ref(false)
-
 const { isLoading, showError, retry } = useRetryableLoad({
   refresh: load,
   error: loadError,
@@ -86,67 +76,70 @@ const { isLoading, showError, retry } = useRetryableLoad({
   loadErrorTitle: 'Não foi possível carregar as assinaturas',
   refreshErrorTitle: 'Não foi possível atualizar as assinaturas'
 })
-
 function load() {
   loading.value = true
   loadError.value = null
-  return runLatestLoad(
-    () => Promise.all([
-      $api<Paginated<AdminSubscription>>('/admin/subscriptions', { params: listParams.value }),
-      plans.value.length ? Promise.resolve(null) : $api<AdminPlan[]>('/admin/plans')
-    ]),
-    {
-      onSuccess: ([subs, planList]) => {
-        const meta = readPaginatedMeta(subs)
-        subscriptions.value = subs.data
-        total.value = meta.total
-        page.value = pageWithinLastPage(page.value, meta.last_page)
-        if (planList) plans.value = planList
-        hasLoaded.value = true
-      },
-      onError: (err) => {
-        if (hasLoaded.value) {
-          toast.add({ title: 'Não foi possível atualizar as assinaturas', color: 'error' })
-        } else {
-          loadError.value = err
-        }
-      },
-      onSettled: () => {
-        loading.value = false
+  return runLatestLoad(() => $api<ResourceListResponse<Subscription>>('/admin/subscriptions', { params: listParams.value }), {
+    onSuccess: (subs) => {
+      const meta = readPaginatedMeta(subs)
+      const recovered = pageWithinLastPage(page.value, meta.last_page)
+      if (recovered !== page.value) {
+        page.value = recovered
+        return
       }
+      subscriptions.value = subs.data
+      total.value = meta.total
+      page.value = pageWithinLastPage(page.value, meta.last_page)
+      hasLoaded.value = true
+    },
+    onError: (err) => {
+      loadError.value = err
+    },
+    onSettled: () => {
+      loading.value = false
     }
-  )
+  })
 }
-
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadCatalog()
+})
+onBeforeUnmount(() => {
+  runLatestLoad.invalidate()
+  runCatalog.invalidate()
+})
 watch(page, load)
 watch([debouncedQ, statusFilter], () => {
   if (page.value !== 1) {
     page.value = 1
     return
   }
-
   void load()
 })
-
 const editOpen = ref(false)
 const editSchema = z.object({
   plan_id: z.number({ error: 'Escolha um plano' }),
   status: z.enum(['active', 'past_due', 'canceled'])
 })
 type EditSchema = z.output<typeof editSchema>
-const editTarget = ref<AdminSubscription | null>(null)
+const editTarget = ref<Subscription | null>(null)
 const editState = reactive<Partial<EditSchema>>({ plan_id: undefined, status: undefined })
 const saving = ref(false)
-
-function openEdit(subscription: AdminSubscription) {
+let active = true
+onBeforeUnmount(() => {
+  active = false
+})
+const fieldErrors = ref<Record<string, string[]>>({})
+function openEdit(subscription: Subscription) {
+  if (saving.value)
+    return
+  fieldErrors.value = {}
   editTarget.value = subscription
   editState.plan_id = subscription.plan?.id
   editState.status = subscription.status
   editOpen.value = true
 }
-
-function subscriptionActions(subscription: AdminSubscription) {
+function subscriptionActions(subscription: Subscription) {
   return [{
     type: 'label' as const,
     label: 'Ações'
@@ -156,19 +149,25 @@ function subscriptionActions(subscription: AdminSubscription) {
     onSelect: () => openEdit(subscription)
   }]
 }
-
 async function onSave(event: FormSubmitEvent<EditSchema>) {
-  if (!editTarget.value) return
+  if (!editTarget.value || saving.value || !catalogLoaded.value || catalogLoading.value || catalogError.value || !plans.value.some(plan => plan.id === event.data.plan_id))
+    return
+  fieldErrors.value = {}
   saving.value = true
   try {
     await $api(`/admin/subscriptions/${editTarget.value.id}`, {
       method: 'PUT',
       body: { plan_id: event.data.plan_id, status: event.data.status }
     })
+    if (!active)
+      return
     toast.add({ title: 'Assinatura atualizada', color: 'success' })
     editOpen.value = false
     await load()
-  } catch {
+  } catch (error) {
+    if (!active)
+      return
+    fieldErrors.value = apiFailure(error).errors || {}
     toast.add({ title: 'Não foi possível atualizar a assinatura', color: 'error' })
   } finally {
     saving.value = false
@@ -179,7 +178,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 <template>
   <DataTablePanelList
     title="Assinaturas"
-    description="Plano e status de cada conta."
+    description="Plano e situação comercial de cada conta. Assinaturas inativas permitem leitura e bloqueiam alterações nos dados da conta."
   >
     <template #toolbar>
       <UInput
@@ -187,6 +186,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         class="max-w-sm"
         icon="i-lucide-search"
         placeholder="Filtrar por conta ou plano..."
+        aria-label="Buscar conta ou plano"
       />
 
       <div class="ms-auto flex shrink-0 items-center gap-1.5">
@@ -200,6 +200,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
           ]"
           :ui="panelSelectUi"
           placeholder="Status"
+          aria-label="Situação da assinatura"
           class="min-w-36"
         />
         <DataTableColumnMenu
@@ -213,12 +214,12 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
     <div :class="panelBodyClass">
       <ErrorRetryAlert
         v-if="showError"
-        title="Não foi possível carregar as assinaturas"
+        :title="hasLoaded ? 'Não foi possível atualizar. Os resultados anteriores foram mantidos.' : 'Não foi possível carregar as assinaturas'"
         :loading="isLoading"
         @retry="retry"
       />
 
-      <template v-else>
+      <template v-if="!showError || hasLoaded">
         <UTable
           v-model:column-visibility="columnVisibility"
           :data="subscriptions"
@@ -274,11 +275,25 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 
   <USlideover
     v-model:open="editOpen"
+    :dismissible="!saving"
+    :close="!saving"
     title="Editar assinatura"
     :description="editTarget?.account?.name"
     :ui="{ footer: 'justify-end' }"
   >
     <template #body>
+      <ErrorRetryAlert
+        v-if="catalogError"
+        title="Não foi possível carregar os planos"
+        :loading="catalogLoading"
+        @retry="loadCatalog"
+      />
+      <p v-else-if="catalogLoading" role="status">
+        Carregando planos…
+      </p>
+      <p v-else-if="catalogLoaded && !plans.length" role="status">
+        Nenhum plano disponível.
+      </p>
       <UForm
         id="edit-subscription-form"
         :schema="editSchema"
@@ -286,15 +301,16 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         class="space-y-4"
         @submit="onSave"
       >
-        <UFormField label="Plano" name="plan_id">
+        <UFormField label="Plano" name="plan_id" :error="fieldErrors.plan_id?.[0]">
           <USelect
             v-model="editState.plan_id"
             :items="plans.map(p => ({ label: p.name, value: p.id }))"
             placeholder="Escolha um plano"
+            :disabled="saving || catalogLoading || !catalogLoaded || !!catalogError"
             class="w-full"
           />
         </UFormField>
-        <UFormField label="Status" name="status">
+        <UFormField label="Status" name="status" :error="fieldErrors.status?.[0]">
           <USelect
             v-model="editState.status"
             :items="[
@@ -313,6 +329,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         label="Cancelar"
         color="neutral"
         variant="outline"
+        :disabled="saving"
         @click="close"
       />
       <UButton
@@ -320,6 +337,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         type="submit"
         form="edit-subscription-form"
         :loading="saving"
+        :disabled="saving || !catalogLoaded || catalogLoading || !!catalogError || !plans.some(plan => plan.id === editState.plan_id)"
       />
     </template>
   </USlideover>

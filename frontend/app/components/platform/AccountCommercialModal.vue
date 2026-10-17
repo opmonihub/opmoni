@@ -1,21 +1,37 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { PlatformAccount } from '#shared/types/access'
+import type { ExtendedPlatformAccount, AccountCommercialDetail, DetailResponse } from '#shared/types/admin'
+import { apiFailure } from '#shared/utils/access'
 import { apiErrorMessage } from '~/composables/useApiError'
 import { brazilUfItems } from '~/utils/brazilUfs'
 
-const props = defineProps<{ account: PlatformAccount | null }>()
+const props = defineProps<{
+  account: ExtendedPlatformAccount | null
+}>()
+const emit = defineEmits<{
+  saved: [
+  ]
+}>()
 const open = defineModel<boolean>('open', { default: false })
 const { $api } = useNuxtApp()
 const toast = useToast()
 const loading = ref(false)
 const saving = ref(false)
+const fieldErrors = ref<Record<string, string[]>>({})
+const saveError = ref('')
 const error = ref<unknown>(null)
-const subscription = ref<{ status: string, plan?: { name: string } | null } | null>(null)
+const subscription = ref<{
+  status: string
+  plan?: {
+    name: string
+  } | null
+} | null>(null)
 const form = reactive({ phone: '', phone_whatsapp: false, state: '', city: '' })
 const selectedState = computed({
   get: () => form.state || 'none',
-  set: (value) => { form.state = value === 'none' ? '' : value }
+  set: (value) => {
+    form.state = value === 'none' ? '' : value
+  }
 })
 const schema = z.object({
   phone: z.string().max(20, 'Informe até 20 caracteres.'),
@@ -28,41 +44,67 @@ const { showError, retry } = useRetryableLoad({
   refresh: load, error, loading, loadErrorTitle: 'Não foi possível carregar os dados comerciais'
 })
 async function load() {
-  if (!props.account) return
+  if (!props.account)
+    return
   const version = ++generation
   loading.value = true
   error.value = null
   try {
-    const result = await $api<{ data: {
-      platform_billing_contact?: Partial<typeof form> | null
-      subscription?: typeof subscription.value
-    } }>(`/admin/accounts/${props.account.id}/commercial`)
-    if (version !== generation) return
+    const result = await $api<DetailResponse<AccountCommercialDetail>>(`/admin/accounts/${props.account.id}/commercial`)
+    if (version !== generation)
+      return
     const contact = result.data.platform_billing_contact
     Object.assign(form, { phone: contact?.phone ?? '', phone_whatsapp: contact?.phone_whatsapp ?? false, state: contact?.state ?? '', city: contact?.city ?? '' })
     subscription.value = result.data.subscription ?? null
   } catch (failure) {
-    if (version === generation) error.value = failure
+    if (version === generation)
+      error.value = failure
   } finally {
-    if (version === generation) loading.value = false
+    if (version === generation)
+      loading.value = false
   }
 }
 async function save() {
-  if (!props.account || saving.value) return
+  if (!props.account || saving.value || loading.value || error.value)
+    return
+  const version = generation
+  fieldErrors.value = {}
+  saveError.value = ''
   saving.value = true
   try {
-    await $api(`/admin/accounts/${props.account.id}/commercial`, { method: 'PATCH', body: { ...form } })
+    await $api(`/admin/accounts/${props.account.id}/commercial`, { method: 'PATCH', body: { ...form, phone_whatsapp: !!form.phone && form.phone_whatsapp } })
+    if (version !== generation)
+      return
+    emit('saved')
     toast.add({ title: 'Dados comerciais atualizados', color: 'success' })
     open.value = false
   } catch (failure) {
+    if (version !== generation)
+      return
+    fieldErrors.value = apiFailure(failure).errors || {}
+    saveError.value = apiErrorMessage(failure) ?? 'Não foi possível salvar os dados comerciais.'
     toast.add({ title: 'Não foi possível salvar', description: apiErrorMessage(failure), color: 'error' })
   } finally {
     saving.value = false
   }
 }
 watch(open, (value) => {
-  if (value) void load()
-  else generation++
+  if (value) {
+    Object.assign(form, { phone: '', phone_whatsapp: false, state: '', city: '' })
+    subscription.value = null
+    fieldErrors.value = {}
+    saveError.value = ''
+    void load()
+  } else {
+    generation++
+    Object.assign(form, { phone: '', phone_whatsapp: false, state: '', city: '' })
+    subscription.value = null
+  }
+})
+onBeforeUnmount(() => {
+  generation++
+  Object.assign(form, { phone: '', phone_whatsapp: false, state: '', city: '' })
+  subscription.value = null
 })
 </script>
 
@@ -72,6 +114,7 @@ watch(open, (value) => {
     title="Dados comerciais"
     :description="account?.name"
     :dismissible="!saving"
+    :close="!saving"
   >
     <template #body>
       <ErrorRetryAlert
@@ -94,7 +137,7 @@ watch(open, (value) => {
           Plano: {{ subscription?.plan?.name ?? 'Sem assinatura' }}
           <span v-if="subscription"> · {{ subscription.status }}</span>
         </p>
-        <UFormField name="phone" label="Telefone">
+        <UFormField name="phone" :error="fieldErrors.phone?.[0]" label="Telefone">
           <UInput
             v-model="form.phone"
             type="tel"
@@ -102,14 +145,22 @@ watch(open, (value) => {
             class="w-full"
           />
         </UFormField>
-        <UCheckbox v-model="form.phone_whatsapp" label="Este telefone recebe WhatsApp" />
-        <UFormField name="state" label="UF">
+        <UFormField name="phone_whatsapp" :error="fieldErrors.phone_whatsapp?.[0]">
+          <UCheckbox v-model="form.phone_whatsapp" label="Este telefone recebe WhatsApp" :disabled="!form.phone" />
+        </UFormField>
+        <UFormField name="state" :error="fieldErrors.state?.[0]" label="UF">
           <USelect v-model="selectedState" :items="[{ label: 'Não informado', value: 'none' }, ...brazilUfItems]" class="w-full" />
         </UFormField>
-        <UFormField name="city" label="Município">
+        <UFormField name="city" :error="fieldErrors.city?.[0]" label="Município">
           <UInput v-model="form.city" maxlength="255" class="w-full" />
         </UFormField>
-        <UButton type="submit" label="Salvar dados comerciais" :loading="saving" />
+        <UAlert v-if="saveError" color="error" :title="saveError" />
+        <UButton
+          type="submit"
+          label="Salvar dados comerciais"
+          :loading="saving"
+          :disabled="saving || loading"
+        />
       </UForm>
     </template>
   </UModal>

@@ -1,22 +1,34 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { AccountPage, PlatformAccount, IssuedAccount } from '#shared/types/access'
+import type { IssuedAccount } from '#shared/types/access'
+import type { ExtendedPlatformAccount, AccountListResponse as AccountPage, DetailResponse } from '#shared/types/admin'
+import type { TableColumn } from '@nuxt/ui'
+import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
+import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
+import { readPaginatedMeta, pageWithinLastPage } from '~/utils/adminListFilters'
+import { brazilUfItems } from '~/utils/brazilUfs'
 import { apiFailure } from '#shared/utils/access'
 
-const { user } = useAuth()
+const { user, accounts, switchAccount } = useAuth()
+const switching = ref(false)
 const { api } = useAccessApi()
 const { q, status, page, filter, clearFilters } = useAccountFilters(load)
 const result = ref<AccountPage | null>(null)
-const loading = ref(false)
+const loading = ref(true)
 const error = ref('')
 const busy = ref(false)
+const detailLoaded = ref(true)
 const commercialOpen = ref(false)
-const commercialAccount = ref<PlatformAccount | null>(null)
+const commercialAccount = ref<ExtendedPlatformAccount | null>(null)
 const open = ref(false)
 const mode = ref<'create' | 'edit' | 'reissue'>('create')
-const target = ref<PlatformAccount | null>(null)
-const form = reactive({ name: '', owner_name: '', login_email: '', status: 'active' })
-const schema = computed(() => mode.value === 'edit' ? z.object({ name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255), status: z.enum(['active', 'suspended']) }) : z.object({ ...(mode.value === 'create' ? { name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255) } : {}), owner_name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255), login_email: z.email('Informe um email válido.').max(254) }))
+const target = ref<ExtendedPlatformAccount | null>(null)
+const form = reactive({ name: '', owner_name: '', login_email: '', status: 'active', phone: '', phone_whatsapp: false, state: '', city: '' })
+const contactSchema = { phone: z.string().max(20, 'Informe até 20 caracteres.'), phone_whatsapp: z.boolean(), state: z.union([z.literal(''), z.string().length(2)]), city: z.string().max(255) }
+const selectedState = computed({ get: () => form.state || 'none', set: (value) => {
+  form.state = value === 'none' ? '' : value
+} })
+const schema = computed(() => mode.value === 'edit' ? z.object({ ...contactSchema, name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255), status: z.enum(['active', 'suspended']) }) : z.object({ ...contactSchema, ...(mode.value === 'create' ? { name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255) } : {}), owner_name: z.string().trim().min(2, 'Informe ao menos 2 caracteres.').max(255), login_email: z.email('Informe um email válido.').max(254) }))
 const fieldErrors = ref<Record<string, string[]>>({})
 const operationError = ref('')
 const link = ref<{
@@ -28,7 +40,40 @@ const confirmed = ref(false)
 const { showError, retry } = useRetryableLoad({
   refresh: load, error, loading, loadErrorTitle: 'Não foi possível carregar as contas'
 })
+const columns: TableColumn<ExtendedPlatformAccount>[] = [
+  { accessorKey: 'id', header: 'ID' }, { accessorKey: 'name', header: 'Conta' },
+  { accessorKey: 'status', header: 'Situação' }, { id: 'plan', header: 'Plano' },
+  { accessorKey: 'members_count', header: 'Membros' }, { id: 'contact', header: 'Contato' }, { id: 'actions' }
+]
+const columnVisibility = ref<Record<string, boolean>>({})
+const hideableColumns = [{ id: 'id', label: 'ID' }, { id: 'name', label: 'Conta' }, { id: 'status', label: 'Situação' }, { id: 'plan', label: 'Plano' }, { id: 'members_count', label: 'Membros' }, { id: 'contact', label: 'Contato' }]
+function canEnter(account: ExtendedPlatformAccount) {
+  return account.status === 'active' && accounts.value.some(member => member.id === account.id && member.status === 'active')
+}
+async function enterAccount(account: ExtendedPlatformAccount) {
+  if (switching.value || !canEnter(account)) return
+  switching.value = true
+  try {
+    await switchAccount(account.id)
+  } catch (failure) {
+    error.value = apiFailure(failure).message
+  } finally {
+    switching.value = false
+  }
+}
+function accountActions(account: ExtendedPlatformAccount) {
+  return [
+    { label: account.status !== 'active' ? 'Conta suspensa' : canEnter(account) ? 'Acessar como membro' : 'Acesso exige vínculo de membro', icon: 'i-lucide-log-in', disabled: switching.value || !canEnter(account), onSelect: () => enterAccount(account) },
+    { label: 'Editar conta', icon: 'i-lucide-pencil', onSelect: () => begin('edit', account) },
+    { label: 'Dados comerciais', icon: 'i-lucide-receipt', onSelect: () => {
+      commercialAccount.value = account
+      commercialOpen.value = true
+    } },
+    ...(account.members_count === 0 ? [{ label: 'Reemitir primeiro acesso', icon: 'i-lucide-link', disabled: account.status !== 'active', onSelect: () => begin('reissue', account) }] : [])
+  ]
+}
 let requestId = 0
+let operationId = 0
 async function load() {
   if (!user.value?.is_super_admin)
     return
@@ -37,11 +82,16 @@ async function load() {
   error.value = ''
   try {
     const data = await api<AccountPage>('/admin/accounts', { query: { q: q.value, status: status.value === 'all' ? undefined : status.value, page: page.value } })
-    if (version === requestId)
+    if (version === requestId) {
+      const nextPage = pageWithinLastPage(page.value, readPaginatedMeta(data).last_page)
+      if (nextPage !== page.value) {
+        page.value = nextPage
+        return
+      }
       result.value = data
+    }
   } catch (e) {
     if (version === requestId) {
-      result.value = null
       error.value = apiFailure(e).message
     }
   } finally {
@@ -49,11 +99,16 @@ async function load() {
       loading.value = false
   }
 }
-function begin(action: typeof mode.value, account?: PlatformAccount) {
+async function begin(action: typeof mode.value, account?: ExtendedPlatformAccount) {
+  if (busy.value)
+    return
+  const version = ++operationId
+  detailLoaded.value = action !== 'edit'
   mode.value = action
   target.value = account || null
   form.name = account?.name || ''
   form.status = account?.status || 'active'
+  Object.assign(form, { phone: account?.phone ?? '', phone_whatsapp: account?.phone_whatsapp ?? false, state: account?.state ?? '', city: account?.city ?? '' })
   form.owner_name = account?.pending_owner?.name || ''
   form.login_email = account?.pending_owner?.email || ''
   fieldErrors.value = {}
@@ -62,10 +117,28 @@ function begin(action: typeof mode.value, account?: PlatformAccount) {
   copied.value = false
   confirmed.value = false
   open.value = true
+  if (action === 'edit' && account) {
+    busy.value = true
+    try {
+      const { data } = await api<DetailResponse<ExtendedPlatformAccount>>(`/admin/accounts/${account.id}`)
+      if (version !== operationId || !open.value)
+        return
+      detailLoaded.value = true
+      target.value = data
+      Object.assign(form, { name: data.name, status: data.status, phone: data.phone ?? '', phone_whatsapp: data.phone_whatsapp, state: data.state ?? '', city: data.city ?? '' })
+    } catch (error) {
+      if (version === operationId)
+        operationError.value = apiFailure(error).message
+    } finally {
+      if (version === operationId)
+        busy.value = false
+    }
+  }
 }
 async function save() {
-  if (busy.value)
+  if (busy.value || !detailLoaded.value)
     return
+  const version = operationId
   if (mode.value === 'edit' && form.status !== target.value?.status && !confirmed.value) {
     operationError.value = 'Confirme a alteração de situação da conta.'
     return
@@ -75,15 +148,23 @@ async function save() {
   fieldErrors.value = {}
   try {
     if (mode.value === 'edit')
-      await api(`/admin/accounts/${target.value!.id}`, { method: 'PATCH', body: { name: form.name, status: form.status } })
+      await api(`/admin/accounts/${target.value!.id}`, { method: 'PATCH', body: { name: form.name, status: form.status, phone: form.phone, phone_whatsapp: !!form.phone && form.phone_whatsapp, state: form.state, city: form.city } })
     else {
-      const issued = await api<IssuedAccount>(mode.value === 'create' ? '/admin/accounts' : `/admin/accounts/${target.value!.id}/first-access`, { method: 'POST', body: { ...(mode.value === 'create' ? { name: form.name } : {}), owner_name: form.owner_name, login_email: form.login_email } })
+      const issued = await api<IssuedAccount | Pick<IssuedAccount, 'first_access'>>(mode.value === 'create' ? '/admin/accounts' : `/admin/accounts/${target.value!.id}/first-access`, { method: 'POST', body: { ...(mode.value === 'create' ? { name: form.name, phone: form.phone, phone_whatsapp: !!form.phone && form.phone_whatsapp, state: form.state, city: form.city } : {}), owner_name: form.owner_name, login_email: form.login_email } })
+      if (version !== operationId)
+        return
       link.value = issued.first_access
     }
+    if (version !== operationId)
+      return
     await load()
+    if (version !== operationId)
+      return
     if (!link.value)
       open.value = false
   } catch (e) {
+    if (version !== operationId)
+      return
     const failure = apiFailure(e)
     operationError.value = failure.message
     fieldErrors.value = failure.errors || {}
@@ -94,15 +175,20 @@ async function save() {
 async function copy() {
   if (!link.value)
     return
+  const current = link.value
   try {
-    await navigator.clipboard.writeText(link.value.url)
-    copied.value = true
+    await navigator.clipboard.writeText(current.url)
+    if (link.value === current)
+      copied.value = true
   } catch {
+    if (link.value !== current)
+      return
     operationError.value = 'Não foi possível copiar. Selecione e copie o link abaixo.'
   }
 }
 watch(open, (value) => {
   if (!value) {
+    operationId++
     link.value = null
     copied.value = false
   }
@@ -111,103 +197,99 @@ onMounted(load)
 onBeforeUnmount(() => {
   link.value = null
   requestId++
+  operationId++
 })
 </script>
 
 <template>
-  <UCard v-if="!user?.is_super_admin">
-    <h1 class="text-2xl font-semibold">
-      Acesso negado
-    </h1><p class="mt-3 text-muted">
-      Somente o administrador da plataforma pode administrar contas.
-    </p><UButton to="/" label="Voltar" class="mt-4" />
-  </UCard>
-  <div v-else class="space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-semibold">
-          Contas da plataforma
-        </h1><p class="text-muted mt-2">
-          Escritórios e acesso de seus responsáveis.
-        </p>
-      </div><UButton label="Criar escritório" @click="begin('create')" />
-    </div>
-    <form class="flex flex-wrap gap-3" @submit.prevent="filter">
-      <UInput
-        v-model="q"
-        placeholder="Buscar nome ou ID"
-        aria-label="Buscar nome ou ID"
-        class="min-w-64"
-      /><USelect
-        v-model="status"
-        :items="[{ label: 'Todas as situações', value: 'all' }, { label: 'Ativas', value: 'active' }, { label: 'Suspensas', value: 'suspended' }]"
-        aria-label="Situação"
-        name="status"
-      /><UButton
-        type="submit"
-        label="Buscar"
-        color="neutral"
-        variant="outline"
+  <DataTablePanelList title="Contas da plataforma" description="Escritórios e acesso de seus responsáveis.">
+    <template #toolbar>
+      <form class="flex flex-wrap items-center gap-3" @submit.prevent="filter">
+        <UInput v-model="q" placeholder="Buscar nome ou ID" aria-label="Buscar nome ou ID" />
+        <USelect
+          v-model="status"
+          :items="[{ label: 'Todas as situações', value: 'all' }, { label: 'Ativas', value: 'active' }, { label: 'Suspensas', value: 'suspended' }]"
+          aria-label="Situação"
+          name="status"
+        />
+        <UButton
+          type="submit"
+          label="Buscar"
+          color="neutral"
+          variant="outline"
+        />
+        <UButton
+          v-if="q || status !== 'all'"
+          label="Limpar filtros"
+          color="neutral"
+          variant="ghost"
+          @click="clearFilters"
+        />
+      </form>
+      <DataTableColumnMenu v-model="columnVisibility" :columns="hideableColumns" />
+    </template>
+    <template #action>
+      <UButton label="Criar escritório" @click="begin('create')" />
+    </template>
+    <div :class="panelBodyClass">
+      <ErrorRetryAlert
+        v-if="showError"
+        :title="result ? 'Não foi possível atualizar as contas. Os resultados anteriores foram mantidos.' : error"
+        :loading="loading"
+        @retry="retry"
       />
-    </form>
-    <p v-if="loading" role="status">
-      Carregando contas…
-    </p>
-    <ErrorRetryAlert
-      v-else-if="showError"
-      :title="error"
-      :loading="loading"
-      @retry="retry"
-    />
-    <UCard v-else-if="result && !result.data.length">
-      <p>{{ q || status !== 'all' ? 'Nenhum escritório corresponde aos filtros.' : 'Nenhum escritório cadastrado.' }}</p><UButton
-        v-if="q || status !== 'all'"
-        label="Limpar filtros"
-        variant="outline"
-        class="mt-4"
-        @click="clearFilters"
-      />
-    </UCard>
-    <div v-else-if="result" class="space-y-3">
-      <UCard v-for="account in result.data" :key="account.id">
-        <div class="flex flex-wrap items-start gap-4">
-          <div class="flex-1">
-            <h2 class="font-semibold">
-              {{ account.name }} <span class="text-muted text-sm">#{{ account.id }}</span>
-            </h2><p class="text-sm text-muted mt-1">
-              {{ account.status === 'active' ? 'Ativa' : 'Suspensa' }} · {{ account.members_count }} membros
-            </p><p v-if="account.pending_owner" class="text-sm mt-2">
-              Responsável: {{ account.pending_owner.name }} · {{ account.pending_owner.email }}<br>Link emitido até {{ new Date(account.pending_owner.expires_at).toLocaleString('pt-BR') }}
+      <template v-if="result || !showError">
+        <UTable
+          v-model:column-visibility="columnVisibility"
+          :data="result?.data ?? []"
+          :columns="columns"
+          :loading="loading"
+          :ui="panelTableUi"
+        >
+          <template #name-cell="{ row }">
+            <p class="font-medium text-highlighted">
+              {{ row.original.name }}
             </p>
-          </div><UButton
-            label="Editar conta"
-            color="neutral"
-            variant="outline"
-            @click="begin('edit', account)"
-          /><UButton
-            label="Dados comerciais"
-            color="neutral"
-            variant="outline"
-            @click="commercialAccount = account; commercialOpen = true"
-          /><UButton
-            v-if="account.members_count === 0"
-            label="Reemitir primeiro acesso"
-            variant="outline"
-            :disabled="account.status !== 'active'"
-            @click="begin('reissue', account)"
-          />
+            <p v-if="row.original.pending_owner" class="text-sm text-muted">
+              Responsável: {{ row.original.pending_owner.name }} · {{ row.original.pending_owner.email }}
+            </p>
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge :color="row.original.status === 'active' ? 'success' : 'error'" variant="subtle">
+              {{ row.original.status === 'active' ? 'Ativa' : 'Suspensa' }}
+            </UBadge>
+          </template>
+          <template #plan-cell="{ row }">
+            {{ row.original.subscription?.plan?.name ?? 'Sem assinatura' }}
+          </template>
+          <template #contact-cell="{ row }">
+            <p>{{ row.original.phone ?? '—' }}{{ row.original.phone_whatsapp ? ' · WhatsApp' : '' }}</p><p class="text-sm text-muted">
+              {{ [row.original.city, row.original.state].filter(Boolean).join(' / ') }}
+            </p>
+          </template>
+          <template #actions-cell="{ row }">
+            <DataTableRowActionsMenu :items="accountActions(row.original)" :label="`Ações de ${row.original.name}`" flush />
+          </template>
+          <template #empty>
+            <DataTablePanelTableEmpty icon="i-lucide-building-2" :label="q || status !== 'all' ? 'Nenhum escritório corresponde aos filtros.' : 'Nenhum escritório cadastrado.'" />
+          </template>
+        </UTable>
+        <div v-if="result" :class="panelFooterClass">
+          <div :class="panelFooterCountClass">
+            {{ result.data.length }} de {{ result.meta.total }} conta(s)
+          </div><div :class="panelPaginationClass">
+            <UPagination v-model:page="page" :items-per-page="result.meta.per_page" :total="result.meta.total" />
+          </div>
         </div>
-      </UCard><UPagination
-        v-if="result.meta"
-        v-model:page="page"
-        :items-per-page="15"
-        :total="result.meta.total"
-      />
+      </template>
     </div>
-    <PlatformAccountCommercialModal v-model:open="commercialOpen" :account="commercialAccount" />
+  </DataTablePanelList>
+  <div>
+    <PlatformAccountCommercialModal v-model:open="commercialOpen" :account="commercialAccount" @saved="load" />
     <UModal
       v-model:open="open"
       :dismissible="!busy"
+      :close="!busy"
       :title="mode === 'create' ? 'Criar escritório' : mode === 'edit' ? 'Editar conta' : 'Reemitir primeiro acesso'"
       description="Administre os dados e o acesso do escritório."
     >
@@ -267,11 +349,30 @@ onBeforeUnmount(() => {
             <UFormField label="Situação" name="status">
               <USelect v-model="form.status" :items="[{ label: 'Ativa', value: 'active' }, { label: 'Suspensa', value: 'suspended' }]" class="w-full" />
             </UFormField><UCheckbox v-if="form.status !== target?.status" v-model="confirmed" :label="form.status === 'suspended' ? 'Confirmo suspender esta conta e bloquear seus acessos.' : 'Confirmo reativar os acessos desta conta.'" />
+          </template>
+          <template v-if="mode !== 'reissue'">
+            <UFormField label="Telefone" name="phone" :error="fieldErrors.phone?.[0]">
+              <UInput
+                v-model="form.phone"
+                type="tel"
+                maxlength="20"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField name="phone_whatsapp" :error="fieldErrors.phone_whatsapp?.[0]">
+              <UCheckbox v-model="form.phone_whatsapp" label="Este telefone recebe WhatsApp" :disabled="!form.phone" />
+            </UFormField>
+            <UFormField label="UF" name="state" :error="fieldErrors.state?.[0]">
+              <USelect v-model="selectedState" :items="[{ label: 'Não informado', value: 'none' }, ...brazilUfItems]" class="w-full" />
+            </UFormField>
+            <UFormField label="Município" name="city" :error="fieldErrors.city?.[0]">
+              <UInput v-model="form.city" maxlength="255" class="w-full" />
+            </UFormField>
           </template><UAlert v-if="operationError" color="error" :title="operationError" /><UButton
             type="submit"
             label="Salvar"
             :loading="busy"
-            :disabled="busy"
+            :disabled="busy || !detailLoaded"
           />
         </UForm>
       </template>

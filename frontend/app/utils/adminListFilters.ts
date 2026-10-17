@@ -52,7 +52,7 @@ interface LatestRequestHandlers<T> {
 export function createLatestRequestRunner() {
   let latestRequest = 0
 
-  return async function runLatest<T>(
+  async function runLatest<T>(
     request: () => Promise<T>,
     handlers: LatestRequestHandlers<T>
   ): Promise<void> {
@@ -67,4 +67,8 @@ export function createLatestRequestRunner() {
       if (requestId === latestRequest) handlers.onSettled()
     }
   }
+  runLatest.invalidate = () => {
+    latestRequest++
+  }
+  return runLatest
 }

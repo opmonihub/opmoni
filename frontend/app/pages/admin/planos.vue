@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import type { Plan } from '#shared/types/admin'
 import * as z from 'zod'
+import { apiFailure } from '#shared/utils/access'
+import { createLatestRequestRunner } from '~/utils/adminListFilters'
 import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelTableUi } from '~/components/data-table/panel'
@@ -7,57 +10,37 @@ import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelTableUi }
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
-
-interface AdminPlan {
-  id: number
-  slug: string
-  name: string
-  limits?: Record<string, number> | null
-}
-
 const { $api } = useNuxtApp()
 const toast = useToast()
-
-const plans = ref<AdminPlan[]>([])
-const loading = ref(false)
+const plans = ref<Plan[]>([])
+const loading = ref(true)
 const q = ref('')
-
-const columns: TableColumn<AdminPlan>[] = [
+const columns: TableColumn<Plan>[] = [
   { accessorKey: 'name', header: 'Plano' },
   { id: 'users', header: 'Usuários' },
   { id: 'clients', header: 'Clientes' },
   { id: 'monitorings', header: 'Monitoramentos' },
   { id: 'actions' }
 ]
-
 const columnVisibility = ref<Record<string, boolean>>({})
-
 const hideableColumns = [
   { id: 'name', label: 'Plano' },
   { id: 'users', label: 'Usuários' },
   { id: 'clients', label: 'Clientes' },
   { id: 'monitorings', label: 'Monitoramentos' }
 ]
-
 const rows = computed(() => {
   const term = q.value.trim().toLowerCase()
-  if (!term) return plans.value
+  if (!term)
+    return plans.value
   return plans.value.filter(plan => plan.name.toLowerCase().includes(term) || plan.slug.toLowerCase().includes(term))
 })
-
-function limitValue(plan: AdminPlan, key: string) {
+function limitValue(plan: Plan, key: 'users' | 'clients' | 'monitorings') {
   const value = plan.limits?.[key]
   return value === undefined || value === null ? null : value
 }
-
-/**
- * Falha fatal de carga inicial x falha de refresh: sem carga bem-sucedida ainda,
- * o alerta com retry toma o corpo do painel; depois, falha de refresh é só
- * toast, e a última boa lista fica visível.
- */
 const loadError = ref<unknown>(null)
 const hasLoaded = ref(false)
-
 const { isLoading, showError, retry } = useRetryableLoad({
   refresh: load,
   error: loadError,
@@ -65,26 +48,25 @@ const { isLoading, showError, retry } = useRetryableLoad({
   loadErrorTitle: 'Não foi possível carregar os planos',
   refreshErrorTitle: 'Não foi possível atualizar os planos'
 })
-
-async function load() {
+const runLatestLoad = createLatestRequestRunner()
+onBeforeUnmount(runLatestLoad.invalidate)
+function load() {
   loading.value = true
   loadError.value = null
-  try {
-    plans.value = await $api<AdminPlan[]>('/admin/plans')
-    hasLoaded.value = true
-  } catch (err) {
-    if (hasLoaded.value) {
-      toast.add({ title: 'Não foi possível atualizar os planos', color: 'error' })
-    } else {
-      loadError.value = err
+  return runLatestLoad(() => $api<Plan[]>('/admin/plans'), {
+    onSuccess: (data) => {
+      plans.value = data
+      hasLoaded.value = true
+    },
+    onError: (error) => {
+      loadError.value = error
+    },
+    onSettled: () => {
+      loading.value = false
     }
-  } finally {
-    loading.value = false
-  }
+  })
 }
-
 onMounted(load)
-
 const editOpen = ref(false)
 const editSchema = z.object({
   name: z.string().min(2, 'Nome muito curto'),
@@ -93,11 +75,18 @@ const editSchema = z.object({
   monitorings: z.number().int().min(0).nullable()
 })
 type EditSchema = z.output<typeof editSchema>
-const editTarget = ref<AdminPlan | null>(null)
+const editTarget = ref<Plan | null>(null)
 const editState = reactive<Partial<EditSchema>>({ name: '', users: null, clients: null, monitorings: null })
 const saving = ref(false)
-
-function openEdit(plan: AdminPlan) {
+let active = true
+onBeforeUnmount(() => {
+  active = false
+})
+const fieldErrors = ref<Record<string, string[]>>({})
+function openEdit(plan: Plan) {
+  if (saving.value)
+    return
+  fieldErrors.value = {}
   editTarget.value = plan
   editState.name = plan.name
   editState.users = plan.limits?.users ?? null
@@ -105,8 +94,7 @@ function openEdit(plan: AdminPlan) {
   editState.monitorings = plan.limits?.monitorings ?? null
   editOpen.value = true
 }
-
-function planActions(plan: AdminPlan) {
+function planActions(plan: Plan) {
   return [{
     type: 'label' as const,
     label: 'Ações'
@@ -116,23 +104,26 @@ function planActions(plan: AdminPlan) {
     onSelect: () => openEdit(plan)
   }]
 }
-
 async function onSave(event: FormSubmitEvent<EditSchema>) {
-  if (!editTarget.value) return
-  const limits: Record<string, number> = {}
-  if (event.data.users !== null && event.data.users !== undefined) limits.users = event.data.users
-  if (event.data.clients !== null && event.data.clients !== undefined) limits.clients = event.data.clients
-  if (event.data.monitorings !== null && event.data.monitorings !== undefined) limits.monitorings = event.data.monitorings
+  if (!editTarget.value || saving.value)
+    return
+  const limits = { users: event.data.users ?? null, clients: event.data.clients ?? null, monitorings: event.data.monitorings ?? null }
+  fieldErrors.value = {}
   saving.value = true
   try {
     await $api(`/admin/plans/${editTarget.value.id}`, {
       method: 'PUT',
       body: { name: event.data.name, limits }
     })
+    if (!active)
+      return
     toast.add({ title: 'Plano atualizado', description: event.data.name, color: 'success' })
     editOpen.value = false
     await load()
-  } catch {
+  } catch (error) {
+    if (!active)
+      return
+    fieldErrors.value = apiFailure(error).errors || {}
     toast.add({ title: 'Não foi possível atualizar o plano', color: 'error' })
   } finally {
     saving.value = false
@@ -151,6 +142,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         class="max-w-sm"
         icon="i-lucide-search"
         placeholder="Filtrar por nome ou slug..."
+        aria-label="Buscar plano por nome ou slug"
       />
       <DataTableColumnMenu
         v-model="columnVisibility"
@@ -162,12 +154,12 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
     <div :class="panelBodyClass">
       <ErrorRetryAlert
         v-if="showError"
-        title="Não foi possível carregar os planos"
+        :title="hasLoaded ? 'Não foi possível atualizar. Os resultados anteriores foram mantidos.' : 'Não foi possível carregar os planos'"
         :loading="isLoading"
         @retry="retry"
       />
 
-      <template v-else>
+      <template v-if="!showError || hasLoaded">
         <UTable
           v-model:column-visibility="columnVisibility"
           :data="rows"
@@ -253,6 +245,8 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
 
   <USlideover
     v-model:open="editOpen"
+    :dismissible="!saving"
+    :close="!saving"
     title="Editar plano"
     :description="editTarget?.slug"
     :ui="{ footer: 'justify-end' }"
@@ -265,10 +259,15 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         class="space-y-4"
         @submit="onSave"
       >
-        <UFormField label="Nome" name="name">
+        <UFormField label="Nome" name="name" :error="fieldErrors['name']?.[0]">
           <UInput v-model="editState.name" class="w-full" />
         </UFormField>
-        <UFormField label="Usuários" name="users" hint="Vazio = ilimitado">
+        <UFormField
+          label="Usuários"
+          name="users"
+          :error="fieldErrors['limits.users']?.[0]"
+          hint="Vazio = ilimitado"
+        >
           <UInputNumber
             v-model="editState.users"
             :min="0"
@@ -276,7 +275,12 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
             class="w-full"
           />
         </UFormField>
-        <UFormField label="Clientes" name="clients" hint="Vazio = ilimitado">
+        <UFormField
+          label="Clientes"
+          name="clients"
+          :error="fieldErrors['limits.clients']?.[0]"
+          hint="Vazio = ilimitado"
+        >
           <UInputNumber
             v-model="editState.clients"
             :min="0"
@@ -284,7 +288,12 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
             class="w-full"
           />
         </UFormField>
-        <UFormField label="Monitoramentos" name="monitorings" hint="Vazio = ilimitado">
+        <UFormField
+          label="Monitoramentos"
+          name="monitorings"
+          :error="fieldErrors['limits.monitorings']?.[0]"
+          hint="Vazio = ilimitado"
+        >
           <UInputNumber
             v-model="editState.monitorings"
             :min="0"
@@ -300,6 +309,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         label="Cancelar"
         color="neutral"
         variant="outline"
+        :disabled="saving"
         @click="close"
       />
       <UButton
@@ -307,6 +317,7 @@ async function onSave(event: FormSubmitEvent<EditSchema>) {
         type="submit"
         form="edit-plan-form"
         :loading="saving"
+        :disabled="saving"
       />
     </template>
   </USlideover>

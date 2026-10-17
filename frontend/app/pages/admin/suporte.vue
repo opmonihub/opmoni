@@ -1,51 +1,26 @@
 <script setup lang="ts">
+import type { ExtendedPlatformAccount as AdminAccount, SupportAccessLog as SupportLog, AccountListResponse, DetailResponse, ResourceListResponse } from '#shared/types/admin'
 import type { TableColumn, TabsItem } from '@nuxt/ui'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelBodyClass, panelFooterClass, panelFooterCountClass, panelPaginationClass, panelTableUi } from '~/components/data-table/panel'
-import { readPaginatedMeta } from '~/utils/adminListFilters'
+import { readPaginatedMeta, createLatestRequestRunner, pageWithinLastPage } from '~/utils/adminListFilters'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
-
-interface AdminAccount {
-  id: number
-  name: string
-  status: 'active' | 'suspended'
-}
-
-interface SupportLog {
-  id: number
-  action: string
-  ip?: string | null
-  metadata?: Record<string, unknown> | null
-  created_at: string
-  super_admin?: { id: number, name: string, email: string } | null
-  account?: { id: number, name: string } | null
-}
-
-interface Paginated<T> {
-  data: T[]
-  meta: {
-    current_page: number
-    last_page: number
-    per_page: number
-    total: number
-  }
-}
-
-const ACTION_META: Record<string, { label: string, color: 'info' | 'neutral' | 'success' | 'warning' | 'error' }> = {
+const ACTION_META: Record<string, {
+  label: string
+  color: 'info' | 'neutral' | 'success' | 'warning' | 'error'
+}> = {
   enter: { label: 'Entrada', color: 'info' },
   exit: { label: 'Saída', color: 'neutral' },
   create: { label: 'Criação', color: 'success' },
   update: { label: 'Edição', color: 'warning' },
   delete: { label: 'Exclusão', color: 'error' }
 }
-
 const { $api } = useNuxtApp()
 const toast = useToast()
 const { accounts, switchAccount } = useAuth()
-
 const tab = ref('entrar')
 const tabs = [{
   label: 'Entrar',
@@ -56,23 +31,28 @@ const tabs = [{
   value: 'auditoria',
   icon: 'i-lucide-scroll-text'
 }] satisfies TabsItem[]
-
 const query = ref('')
 const found = ref<AdminAccount[]>([])
 const searching = ref(false)
-
+const searchError = ref<unknown>(null)
+const searchLoaded = ref(false)
+const searchPage = ref(1)
+const searchTotal = ref(0)
+const searchPerPage = ref(15)
+const appliedQuery = ref('')
+const runSearch = createLatestRequestRunner()
+const runLogs = createLatestRequestRunner()
+const switching = ref(false)
 const logs = ref<SupportLog[]>([])
 const logsTotal = ref(0)
 const logsPage = ref(1)
-const logsPerPage = 15
+const logsPerPage = ref(15)
 const accountQuery = ref('')
-const loadingLogs = ref(false)
-
+const loadingLogs = ref(true)
 const logsAccountId = computed(() => {
   const value = Number(accountQuery.value)
-  return accountQuery.value && Number.isInteger(value) && value > 0 ? value : null
+  return accountQuery.value && /^\d+$/.test(accountQuery.value.trim()) && Number.isSafeInteger(value) && value > 0 ? value : null
 })
-
 const logColumns: TableColumn<SupportLog>[] = [
   { accessorKey: 'created', header: 'Quando' },
   { accessorKey: 'actor', header: 'Super admin' },
@@ -80,9 +60,7 @@ const logColumns: TableColumn<SupportLog>[] = [
   { accessorKey: 'action', header: 'Ação' },
   { accessorKey: 'ip', header: 'IP' }
 ]
-
 const columnVisibility = ref<Record<string, boolean>>({})
-
 const hideableColumns = [
   { id: 'created', label: 'Quando' },
   { id: 'actor', label: 'Super admin' },
@@ -90,62 +68,86 @@ const hideableColumns = [
   { id: 'action', label: 'Ação' },
   { id: 'ip', label: 'IP' }
 ]
-
 function isOwnAccount(id: number) {
   return accounts.value.some(a => a.id === id && a.status === 'active')
 }
-
+function canEnter(account: AdminAccount) {
+  return account.status === 'active' && isOwnAccount(account.id)
+}
 async function enterAccount(account: AdminAccount) {
+  if (switching.value || !canEnter(account))
+    return
+  switching.value = true
   try {
-    if (isOwnAccount(account.id)) {
-      await switchAccount(account.id)
-    } else {
-      toast.add({ title: 'É necessário ser membro da conta para acessá-la', color: 'warning' })
-      return
-    }
-    window.location.assign('/')
+    await switchAccount(account.id)
   } catch {
     toast.add({ title: 'Não foi possível entrar na conta', color: 'error' })
+  } finally {
+    switching.value = false
   }
 }
-
-async function search() {
-  const term = query.value.trim()
+function search() {
+  if (searching.value && appliedQuery.value === query.value.trim())
+    return
+  appliedQuery.value = query.value.trim()
+  if (searchPage.value !== 1) {
+    searchPage.value = 1
+    return
+  }
+  return loadSearch()
+}
+function loadSearch() {
+  const term = appliedQuery.value
+  searchError.value = null
   if (!term) {
+    runSearch.invalidate()
     found.value = []
+    searchLoaded.value = false
+    searching.value = false
     return
   }
   searching.value = true
-  try {
-    const matches: AdminAccount[] = []
-    let page = 1
-    let lastPage = 1
-    do {
-      const res = await $api<{ data: AdminAccount[], meta: { page: number, per_page: number, total: number } }>('/admin/accounts', { params: { page, q: term } })
-      lastPage = readPaginatedMeta(res).last_page
-      matches.push(...res.data)
-      page += 1
-    } while (page <= lastPage)
-    found.value = matches
-    if (!found.value.length) {
-      toast.add({ title: 'Nenhuma conta encontrada', color: 'neutral' })
+  const numeric = /^\d+$/.test(term)
+  return runSearch(async () => {
+    if (numeric) {
+      try {
+        const result = await $api<DetailResponse<AdminAccount>>(`/admin/accounts/${term}`)
+        return { data: [result.data], meta: { page: 1, last_page: 1, per_page: 15, total: 1 } }
+      } catch (error) {
+        const failure = error as {
+          statusCode?: number
+          status?: number
+        }
+        if ((failure.statusCode ?? failure.status) === 404)
+          return { data: [], meta: { page: 1, last_page: 1, per_page: 15, total: 0 } }
+        throw error
+      }
     }
-  } catch {
-    toast.add({ title: 'Conta não encontrada', color: 'warning' })
-    found.value = []
-  } finally {
-    searching.value = false
-  }
+    return $api<AccountListResponse>('/admin/accounts', { params: { page: searchPage.value, q: term } })
+  }, {
+    onSuccess: (result) => {
+      const meta = readPaginatedMeta(result)
+      const recovered = pageWithinLastPage(searchPage.value, meta.last_page)
+      if (recovered !== searchPage.value) {
+        searchPage.value = recovered
+        return
+      }
+      found.value = result.data
+      searchTotal.value = meta.total
+      searchPerPage.value = meta.per_page
+      searchLoaded.value = true
+    },
+    onError: (error) => {
+      searchError.value = error
+    },
+    onSettled: () => {
+      searching.value = false
+    }
+  })
 }
-
-/**
- * Falha fatal de carga inicial x falha de refresh da auditoria: sem carga
- * bem-sucedida ainda, o alerta com retry toma o corpo do painel; depois, falha
- * de paginação ou filtro é só toast, e a última boa lista fica visível.
- */
+watch(searchPage, loadSearch)
 const loadLogsError = ref<unknown>(null)
 const logsLoaded = ref(false)
-
 const { showError: showLogsError, retry: retryLogs } = useRetryableLoad({
   refresh: loadLogs,
   error: loadLogsError,
@@ -153,38 +155,52 @@ const { showError: showLogsError, retry: retryLogs } = useRetryableLoad({
   loadErrorTitle: 'Não foi possível carregar os logs',
   refreshErrorTitle: 'Não foi possível atualizar os logs'
 })
-
 async function loadLogs() {
-  loadingLogs.value = true
   loadLogsError.value = null
-  try {
-    const params: Record<string, number> = { page: logsPage.value }
-    if (logsAccountId.value) params.account_id = logsAccountId.value
-    const res = await $api<Paginated<SupportLog>>('/admin/support/logs', { params })
-    logs.value = res.data
-    logsTotal.value = readPaginatedMeta(res).total
-    logsLoaded.value = true
-  } catch (err) {
-    if (logsLoaded.value) {
-      toast.add({ title: 'Não foi possível atualizar os logs', color: 'error' })
-    } else {
-      loadLogsError.value = err
-    }
-  } finally {
+  if (accountQuery.value.trim() && !logsAccountId.value) {
+    runLogs.invalidate()
+    loadLogsError.value = new Error('Informe um ID de conta inteiro e positivo.')
     loadingLogs.value = false
+    return
   }
+  loadingLogs.value = true
+  const params: Record<string, number> = { page: logsPage.value }
+  if (logsAccountId.value)
+    params.account_id = logsAccountId.value
+  return runLogs(() => $api<ResourceListResponse<SupportLog>>('/admin/support/logs', { params }), {
+    onSuccess: (res) => {
+      const meta = readPaginatedMeta(res)
+      const recovered = pageWithinLastPage(logsPage.value, meta.last_page)
+      if (recovered !== logsPage.value) {
+        logsPage.value = recovered
+        return
+      }
+      logs.value = res.data
+      logsTotal.value = meta.total
+      logsPerPage.value = meta.per_page
+      logsLoaded.value = true
+    },
+    onError: (error) => {
+      loadLogsError.value = error
+    },
+    onSettled: () => {
+      loadingLogs.value = false
+    }
+  })
 }
-
 onMounted(loadLogs)
+onBeforeUnmount(() => {
+  runSearch.invalidate()
+  runLogs.invalidate()
+})
 watch(logsPage, loadLogs)
-watch(logsAccountId, () => {
+watch(accountQuery, () => {
   if (logsPage.value === 1) {
     void loadLogs()
     return
   }
   logsPage.value = 1
 })
-
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
@@ -205,6 +221,7 @@ function actionMeta(action: string) {
           class="max-w-sm"
           icon="i-lucide-search"
           placeholder="Nome ou ID da conta"
+          aria-label="Buscar conta por nome ou ID"
           @keydown.enter.prevent="search"
         />
         <UInput
@@ -213,6 +230,7 @@ function actionMeta(action: string) {
           class="max-w-sm"
           icon="i-lucide-search"
           placeholder="Filtrar por ID da conta..."
+          aria-label="Filtrar auditoria por ID da conta"
         />
         <UButton
           v-if="tab === 'entrar'"
@@ -230,6 +248,15 @@ function actionMeta(action: string) {
       </div>
     </template>
 
+    <ErrorRetryAlert
+      v-if="tab === 'entrar' && searchError"
+      :title="searchLoaded ? 'Não foi possível atualizar a busca. Os resultados anteriores foram mantidos.' : 'Não foi possível buscar contas.'"
+      :loading="searching"
+      @retry="loadSearch"
+    />
+    <p v-if="tab === 'entrar' && searching" role="status">
+      Buscando contas…
+    </p>
     <ul v-if="tab === 'entrar' && found.length" role="list" class="divide-y divide-default">
       <li
         v-for="account in found"
@@ -253,7 +280,8 @@ function actionMeta(action: string) {
             icon="i-lucide-life-buoy"
             color="neutral"
             variant="ghost"
-            :disabled="!isOwnAccount(account.id)"
+            :disabled="switching || !canEnter(account)"
+            :title="account.status !== 'active' ? 'Conta suspensa' : !isOwnAccount(account.id) ? 'É necessário ser membro desta conta' : 'Acessar com seu vínculo atual'"
             aria-label="Acessar conta como membro"
             @click="enterAccount(account)"
           />
@@ -262,18 +290,24 @@ function actionMeta(action: string) {
     </ul>
     <div v-else-if="tab === 'entrar'" class="flex flex-col items-center justify-center gap-2 py-10 text-sm text-muted">
       <UIcon name="i-lucide-search" class="size-6" />
-      <span>Busque uma conta pelo nome ou pelo ID. O acesso exige vínculo de membro.</span>
+      <span>{{ searchLoaded ? 'Nenhuma conta encontrada.' : 'Busque uma conta pelo nome ou pelo ID. O acesso exige vínculo de membro.' }}</span>
     </div>
 
-    <div v-else :class="panelBodyClass">
+    <UPagination
+      v-if="tab === 'entrar' && searchLoaded && searchTotal > searchPerPage"
+      v-model:page="searchPage"
+      :total="searchTotal"
+      :items-per-page="searchPerPage"
+    />
+    <div v-if="tab === 'auditoria'" :class="panelBodyClass">
       <ErrorRetryAlert
         v-if="showLogsError"
-        title="Não foi possível carregar os logs"
+        :title="accountQuery.trim() && !logsAccountId ? 'Informe um ID de conta inteiro e positivo. Os resultados anteriores foram mantidos.' : logsLoaded ? 'Não foi possível atualizar os logs. Os resultados anteriores foram mantidos.' : 'Não foi possível carregar os logs.'"
         :loading="loadingLogs"
         @retry="retryLogs"
       />
 
-      <template v-else>
+      <template v-if="!showLogsError || logsLoaded">
         <UTable
           v-model:column-visibility="columnVisibility"
           :data="logs"

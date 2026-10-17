@@ -1,80 +1,53 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { AccountPage } from '#shared/types/access'
-import { readPaginatedMeta } from '~/utils/adminListFilters'
+import type { AdminSummary, SupportAccessLog as SupportLog, DetailResponse } from '#shared/types/admin'
+import { createLatestRequestRunner } from '~/utils/adminListFilters'
 import DataTableColumnMenu from '~/components/data-table/ColumnMenu.vue'
 import { panelTableUi } from '~/components/data-table/panel'
 
 definePageMeta({
   middleware: ['auth', 'super-admin']
 })
-
-interface Totals {
-  accounts: number
-  users: number
-  subscriptions: number
-  plans: number
-}
-
-interface SupportLog {
-  id: number
-  action: string
-  created_at: string
-  super_admin?: { name: string } | null
-  account?: { name: string } | null
-}
-
-const ACTION_META: Record<string, { label: string, color: 'info' | 'neutral' | 'success' | 'warning' | 'error' }> = {
+const ACTION_META: Record<string, {
+  label: string
+  color: 'info' | 'neutral' | 'success' | 'warning' | 'error'
+}> = {
   enter: { label: 'Entrada', color: 'info' },
   exit: { label: 'Saída', color: 'neutral' },
   create: { label: 'Criação', color: 'success' },
   update: { label: 'Edição', color: 'warning' },
   delete: { label: 'Exclusão', color: 'error' }
 }
-
 const { $api } = useNuxtApp()
-const toast = useToast()
-
-const totals = ref<Totals>({ accounts: 0, users: 0, subscriptions: 0, plans: 0 })
+const runLatestLoad = createLatestRequestRunner()
+onBeforeUnmount(runLatestLoad.invalidate)
+const totals = ref<AdminSummary['totals']>({ accounts: 0, users: 0, subscriptions: 0, plans: 0 })
 const recentLogs = ref<SupportLog[]>([])
-const loading = ref(false)
-
+const loading = ref(true)
 const cards = computed(() => [
   { label: 'Contas', value: totals.value.accounts, icon: 'i-lucide-building-2', to: '/admin/contas' },
   { label: 'Planos', value: totals.value.plans, icon: 'i-lucide-layers', to: '/admin/planos' },
   { label: 'Assinaturas', value: totals.value.subscriptions, icon: 'i-lucide-receipt', to: '/admin/assinaturas' },
   { label: 'Usuários', value: totals.value.users, icon: 'i-lucide-users', to: '/admin/usuarios' }
 ])
-
 const columns: TableColumn<SupportLog>[] = [
   { accessorKey: 'created_at', header: 'Quando' },
   { accessorKey: 'actor', header: 'Super admin' },
   { accessorKey: 'action', header: 'Ação' },
   { accessorKey: 'account', header: 'Conta' }
 ]
-
 const columnVisibility = ref<Record<string, boolean>>({})
-
 const hideableColumns = [
   { id: 'created_at', label: 'Quando' },
   { id: 'actor', label: 'Super admin' },
   { id: 'action', label: 'Ação' },
   { id: 'account', label: 'Conta' }
 ]
-
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: action, color: 'neutral' as const }
 }
-
-/**
- * Falha fatal de carga inicial x falha de refresh: sem carga bem-sucedida ainda,
- * o alerta com retry toma a página inteira — cartões zerados diriam que não há
- * nada no sistema. Depois de carregado, falha de refresh é só toast, e o último
- * bom resumo fica visível.
- */
 const loadError = ref<unknown>(null)
 const hasLoaded = ref(false)
-
 const { isLoading, showError, retry } = useRetryableLoad({
   refresh: load,
   error: loadError,
@@ -82,50 +55,36 @@ const { isLoading, showError, retry } = useRetryableLoad({
   loadErrorTitle: 'Não foi possível carregar o resumo',
   refreshErrorTitle: 'Não foi possível atualizar o resumo'
 })
-
-async function load() {
+function load() {
   loading.value = true
   loadError.value = null
-  try {
-    const [accountsRes, usersRes, subsRes, plansRes, logsRes] = await Promise.all([
-      $api<AccountPage>('/admin/accounts', { params: { page: 1 } }),
-      $api<{ total: number }>('/admin/users', { params: { page: 1 } }),
-      $api<{ total: number }>('/admin/subscriptions', { params: { page: 1 } }),
-      $api<unknown[]>('/admin/plans'),
-      $api<{ data: SupportLog[] }>('/admin/support/logs', { params: { page: 1 } })
-    ])
-    totals.value = {
-      accounts: readPaginatedMeta(accountsRes).total,
-      users: readPaginatedMeta(usersRes).total,
-      subscriptions: readPaginatedMeta(subsRes).total,
-      plans: plansRes.length
+  return runLatestLoad(() => $api<DetailResponse<AdminSummary>>('/admin/summary'), {
+    onSuccess: ({ data }) => {
+      totals.value = data.totals
+      recentLogs.value = data.recent_support_logs
+      hasLoaded.value = true
+    },
+    onError: (error) => {
+      loadError.value = error
+    },
+    onSettled: () => {
+      loading.value = false
     }
-    recentLogs.value = logsRes.data.slice(0, 5)
-    hasLoaded.value = true
-  } catch (err) {
-    if (hasLoaded.value) {
-      toast.add({ title: 'Não foi possível atualizar o resumo', color: 'error' })
-    } else {
-      loadError.value = err
-    }
-  } finally {
-    loading.value = false
-  }
+  })
 }
-
 onMounted(load)
 </script>
 
 <template>
   <ErrorRetryAlert
     v-if="showError"
-    title="Não foi possível carregar o resumo"
+    :title="hasLoaded ? 'Não foi possível atualizar. Os resultados anteriores foram mantidos.' : 'Não foi possível carregar o resumo'"
     :loading="isLoading"
     class="mt-4"
     @retry="retry"
   />
 
-  <div v-else class="flex flex-col gap-4 sm:gap-6">
+  <div v-if="!showError || hasLoaded" class="flex flex-col gap-4 sm:gap-6">
     <UPageGrid class="lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-px">
       <MetricCard
         v-for="card in cards"
