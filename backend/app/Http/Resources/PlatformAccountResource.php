@@ -27,7 +27,7 @@ class PlatformAccountResource extends JsonResource
             'members_count' => $this->memberships_count,
             'pending_owner' => $pending ? ['name' => $pending->owner_name, 'email' => $pending->email, 'expires_at' => $pending->expires_at->toISOString()] : null,
             'phone' => $contact['phone'] ?? null,
-            'phone_whatsapp' => ! empty($contact['phone']) && (bool) ($contact['phone_whatsapp'] ?? false),
+            'phone_whatsapp' => isset($contact['phone']) && $contact['phone'] !== '' && (bool) ($contact['phone_whatsapp'] ?? false),
             'state' => $contact['state'] ?? null,
             'city' => $contact['city'] ?? null,
             'subscription' => $subscription ? [

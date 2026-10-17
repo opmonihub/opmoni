@@ -103,6 +103,35 @@ class PlatformAccountApiTest extends BusinessTestCase
     }
 
     #[DataProvider('contactEndpoints')]
+    public function test_sparse_patch_preserves_omitted_contact_bytes(string $suffix): void
+    {
+        $this->admin();
+        $account = Account::factory()->create();
+        $url = '/api/v1/admin/accounts/'.$account->id.$suffix;
+        foreach ([
+            ['phone' => ' 1133334444 ', 'phone_whatsapp' => true, 'state' => 'sp', 'city' => ' São Paulo '],
+            ['phone' => null, 'phone_whatsapp' => false, 'state' => '', 'city' => '  '],
+        ] as $contact) {
+            $account->update(['settings' => ['integration' => true, 'platform' => ['billing_contact' => $contact]]]);
+            $this->patchJson($url, ['phone_whatsapp' => false])->assertOk();
+            $this->assertSame([...$contact, 'phone_whatsapp' => false], $account->fresh()->platformBillingContact());
+            $this->assertTrue($account->fresh()->settings['integration']);
+        }
+    }
+
+    #[DataProvider('contactEndpoints')]
+    public function test_zero_string_phone_has_consistent_whatsapp_projection(string $suffix): void
+    {
+        $this->admin();
+        $account = Account::factory()->create();
+        $this->patchJson('/api/v1/admin/accounts/'.$account->id.$suffix, ['phone' => '0', 'phone_whatsapp' => true])->assertOk();
+        $this->getJson('/api/v1/admin/accounts/'.$account->id)->assertOk()
+            ->assertJsonPath('data.phone', '0')->assertJsonPath('data.phone_whatsapp', true);
+        $this->getJson('/api/v1/admin/accounts/'.$account->id.'/commercial')->assertOk()
+            ->assertJsonPath('data.platform_billing_contact.phone', '0')->assertJsonPath('data.platform_billing_contact.phone_whatsapp', true);
+    }
+
+    #[DataProvider('contactEndpoints')]
     public function test_invalid_contacts_reject_the_entire_update(string $suffix): void
     {
         $this->admin();

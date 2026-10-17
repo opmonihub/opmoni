@@ -39,23 +39,28 @@ class UpdatePlatformAccountContact
         if ($fields === []) {
             return $account;
         }
-        $contact = array_merge($account->platformBillingContact() ?? [], $fields);
         foreach (['phone', 'state', 'city'] as $field) {
-            if (isset($contact[$field])) {
-                $contact[$field] = trim($contact[$field]);
+            if (isset($fields[$field])) {
+                $fields[$field] = trim($fields[$field]);
             }
         }
-        if (isset($contact['state'])) {
-            $contact['state'] = strtoupper($contact['state']);
+        if (isset($fields['state'])) {
+            $fields['state'] = strtoupper($fields['state']);
         }
-        $contact = array_filter($contact, fn ($value) => $value !== null && $value !== '');
-        if (array_key_exists('phone', $fields) && ! isset($contact['phone'])) {
+        if (isset($fields['phone_whatsapp'])) {
+            $fields['phone_whatsapp'] = (bool) $fields['phone_whatsapp'];
+        }
+        $contact = array_merge($account->platformBillingContact() ?? [], $fields);
+        foreach (['phone', 'state', 'city'] as $field) {
+            if (array_key_exists($field, $fields) && ($fields[$field] === null || $fields[$field] === '')) {
+                unset($contact[$field]);
+            }
+        }
+        $hasPhone = isset($contact['phone']) && $contact['phone'] !== '';
+        if (array_key_exists('phone', $fields) && ! $hasPhone) {
             unset($contact['phone_whatsapp']);
-        } elseif (! empty($contact['phone_whatsapp']) && ! isset($contact['phone'])) {
+        } elseif (! empty($contact['phone_whatsapp']) && ! $hasPhone) {
             throw ValidationException::withMessages(['phone_whatsapp' => 'Informe um telefone para habilitar WhatsApp.']);
-        }
-        if (isset($contact['phone_whatsapp'])) {
-            $contact['phone_whatsapp'] = (bool) $contact['phone_whatsapp'];
         }
         $account->update(['settings' => Account::mergePlatformBillingContact($account->settings, $contact)]);
 
