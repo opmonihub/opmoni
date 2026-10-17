@@ -9,32 +9,24 @@ use App\Services\Fiscal\Exceptions\FiscalException;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
 use RuntimeException;
+use stdClass;
 
 /**
  * A leitura da resposta da ADN contribuintes: o que ela vira, e a fronteira
  * entre resultado e exceção.
  *
- * ⚠️ O SHAPE DO JSON É HIPÓTESE. Este checkout já viu o Swagger publicado e
- * **nenhuma** resposta real: os nomes dos campos, o formato do NSU e os
- * códigos de "nenhum documento" são o que o manual sugere, e o
- * `fiscal:nfse-probe` é o comando que confirma. Por isso todo o acesso a
- * campo está isolado nos métodos de leitura (`itensDe()`, `maxNsuDe()`,
- * `corpoDeNegocio()`), com os nomes candidatos em constantes de classe —
- * ajustar o contrato depois do probe é mudar uma lista, não espalhar chaves
- * por um conector (ver `add-nfse-adn-capture/design.md`, decisão 5).
+ * O envelope com documentos foi observado no canário e está na fixture
+ * `lote-real.json`. O status de ausência e o 404 seguem hipóteses explícitas
+ * nas fixtures locais: não há aqui uma tabela de códigos de erro da ADN.
  *
  * Quatro regras, irmãs das de `DfePullReader`:
  *
- * 1. **O corpo vem antes do status HTTP.** Um `404` com corpo de negócio é
- *    resposta do serviço — "não há documento naquela posição" é um desfecho
- *    classificável, não uma queda de rede. Só um corpo que não é resposta
- *    nenhuma do serviço (HTML de proxy, página de erro) deixa o status falar,
- *    e aí a taxonomia classifica pelo status real.
- * 2. **Rejeição é estado, não exceção.** "Nenhum documento" — lote vazio em
- *    `2xx` ou corpo de negócio sem itens — volta como `PullResult` com
- *    `blockedUntil` de uma hora e a posição intacta: o que a resposta devolve
- *    nesse caso é o eco da posição pedida, e adotá-la seria sobrescrever o
- *    cursor com o valor anterior.
+ * 1. **JSON não basta para ser resposta de negócio.** Só envelopes conhecidos,
+ *    sem erros e coerentes com o lote, podem virar resultado. HTTP de falha
+ *    prevalece, exceto o `404` com o envelope explícito de ausência conhecido.
+ * 2. **Ausência explícita é estado, falha não.** O lote vazio reconhecido volta
+ *    como `PullResult` com `blockedUntil` de uma hora e a posição intacta.
+ *    Erros e formas desconhecidas lançam exceção, nunca simulam fim de fila.
  * 3. **A posição nunca é somada.** A posição do lote é a **maior NSU devolvida
  *    nos itens** — a ADN não publica `UltimoNSU` no corpo como a distribuição
  *    SOAP faz —, e um lote sem itens não adota posição nenhuma.
@@ -90,23 +82,10 @@ final class NfseAdnPullReader
     {
         $corpo = $this->corpoDeNegocio($response);
 
-        if ($corpo === null) {
-            // O corpo não é resposta do serviço: página de erro do proxy, HTML
-            // do balanceador. O status HTTP real é quem classifica, e `2xx`
-            // com um corpo assim é defeito do parse — `Rejected`, que não
-            // adianta repetir.
-            throw new FiscalException(
-                'A ADN respondeu fora do contrato do serviço.',
-                FiscalFailure::classify($response->status(), ''),
-            );
-        }
-
         $itens = $this->itensDe($corpo);
 
-        // "Nenhum documento" / fim de fila — no `2xx` sem itens e no `404` com
-        // corpo de negócio igualmente: o que a resposta diz nas duas é "pare
-        // uma hora". A posição não é adotada, porque o eco da posição pedida
-        // não é posição nova.
+        // A ausência já foi validada pelo envelope: lote vazio não basta.
+        // O eco da posição pedida não é posição nova e não pode ser adotado.
         if ($itens === []) {
             return new PullResult(
                 documents: [],
@@ -142,8 +121,8 @@ final class NfseAdnPullReader
 
     /**
      * Resposta da consulta pontual: o documento da posição pedida, `null`
-     * quando o serviço diz que não há documento nela — o `404` com corpo de
-     * negócio incluído —, e exceção para o resto.
+     * quando o serviço diz que não há documento nela — o `404` com envelope
+     * explícito de ausência incluído —, e exceção para o resto.
      *
      * A assimetria com `read()` é a forma, não a regra, e é a mesma de
      * `DfePullReader::readOne()`: a captura registra o "nada novo" no cursor, e
@@ -152,13 +131,6 @@ final class NfseAdnPullReader
     public function readOne(Response $response): ?PulledDocument
     {
         $corpo = $this->corpoDeNegocio($response);
-
-        if ($corpo === null) {
-            throw new FiscalException(
-                'A ADN respondeu fora do contrato do serviço.',
-                FiscalFailure::classify($response->status(), ''),
-            );
-        }
 
         $itens = $this->itensDe($corpo);
 
@@ -187,18 +159,57 @@ final class NfseAdnPullReader
     }
 
     /**
-     * O corpo como resposta de negócio da ADN, ou `null` quando o que veio
-     * não é um JSON de serviço. Um array **é** resposta de negócio — mesmo
-     * vazio, mesmo com status enganoso —, e é essa igualdade que faz do `404`
-     * com corpo uma resposta classificável e não uma exceção de rede.
+     * Só os envelopes das fixtures locais podem produzir documentos ou ausência.
+     * O status de ausência segue hipótese, não código confirmado pelo canário.
+     * Erros de negócio não têm códigos locais confirmados: são rejeição genérica,
+     * sem interpretar descrições ou reutilizar códigos da distribuição SOAP.
      *
-     * @return array<string, mixed>|list<mixed>|null
+     * @return array<string, mixed>
      */
-    private function corpoDeNegocio(Response $response): ?array
+    private function corpoDeNegocio(Response $response): array
     {
-        $decodificado = json_decode($response->body(), true);
+        $httpStatus = $response->status();
+        $failure = match ($httpStatus) {
+            401, 403 => FiscalFailure::Unauthorized,
+            429 => FiscalFailure::Upstream,
+            default => FiscalFailure::classify($httpStatus, ''),
+        };
 
-        return is_array($decodificado) ? $decodificado : null;
+        if (! $response->successful() && $httpStatus !== 404) {
+            throw new FiscalException('A ADN respondeu com falha HTTP.', $failure);
+        }
+
+        $envelope = json_decode($response->body());
+
+        if (! $envelope instanceof stdClass) {
+            throw new FiscalException('A ADN respondeu fora do contrato do serviço.', $failure);
+        }
+
+        if (property_exists($envelope, 'Erros') && $envelope->Erros !== []) {
+            throw new FiscalException('A ADN respondeu com erros de negócio.', $failure);
+        }
+
+        $lista = $envelope->LoteDFe ?? null;
+        $status = $envelope->StatusProcessamento ?? null;
+
+        if (! is_array($lista) || ! array_is_list($lista)) {
+            throw new FiscalException('A ADN respondeu fora do contrato do serviço.', $failure);
+        }
+
+        foreach ($lista as $item) {
+            if (! $item instanceof stdClass) {
+                throw new FiscalException('A ADN respondeu fora do contrato do serviço.', $failure);
+            }
+        }
+
+        $ausencia = $status === 'NENHUM_DOCUMENTO_LOCALIZADO' && $lista === [];
+        $documentos = $status === 'DOCUMENTOS_LOCALIZADOS' && $lista !== [];
+
+        if (! $ausencia && (! $documentos || $httpStatus === 404)) {
+            throw new FiscalException('A ADN respondeu fora do contrato do serviço.', $failure);
+        }
+
+        return json_decode($response->body(), true);
     }
 
     /**

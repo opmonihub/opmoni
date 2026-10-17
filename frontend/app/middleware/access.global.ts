@@ -30,9 +30,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path === '/admin' || to.path.startsWith('/admin/'))
     return user.value.is_super_admin ? undefined : navigateTo(accessDestination(user.value))
   const destination = accessDestination(user.value)
-  if (publicPage || (to.path !== destination && (destination !== '/' || ['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))))
+  const erpDestination = destination === '/erp'
+  if (publicPage || (to.path !== destination && (
+    (destination !== '/' && !erpDestination)
+    || (destination === '/' && ['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))
+    || (erpDestination && to.path !== '/erp' && !to.path.startsWith('/erp/'))
+  )))
     return navigateTo(destination)
   const dashboardPage = to.path === '/' || ['/inbox', '/customers', '/settings', '/fiscal', '/monitoring', '/work', '/equipe'].some(path => to.path === path || to.path.startsWith(`${path}/`))
-  if (!dashboardPage && !['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))
+  const erpPage = to.path === '/erp' || to.path.startsWith('/erp/')
+  if (!dashboardPage && !erpPage && !['/selecionar-escritorio', '/acesso-indisponivel'].includes(to.path))
     return navigateTo(destination)
 })

@@ -6,6 +6,7 @@ use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalDocument;
@@ -122,6 +123,8 @@ class FiscalDocumentFactory extends Factory
 
             $document->sha256 = hash('sha256', $contents);
             $document->xml_bytes = strlen($contents);
+            $document->storage_state = FiscalStorageState::Available;
+            $document->storage_verified_at = now();
         });
     }
 

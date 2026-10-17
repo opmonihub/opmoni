@@ -34,7 +34,7 @@ class ClientPortfolio
             ->withDeadlineStatus($filters['deadline_status'] ?? null)
             ->withCertificateStatus($filters['certificate_status'] ?? null)
             ->withPoaStatus($filters['poa_status'] ?? null)
-            ->withTag(isset($filters['tag_id']) ? (int) $filters['tag_id'] : null)
+            ->withTag($filters['tag_id'] ?? null)
             ->withPortfolioView($filters['view'] ?? null);
     }
 

@@ -350,9 +350,14 @@ const hideableColumns = [
         class="min-w-0"
         @update:model-value="onFilters"
       >
-        <p class="shrink-0 text-sm font-medium text-highlighted">
-          Documentos capturados
-        </p>
+        <div class="flex shrink-0 items-center gap-3">
+          <p class="text-sm font-medium text-highlighted">
+            Documentos prontos
+          </p>
+          <NuxtLink to="/fiscal/processamento" class="text-sm underline">
+            Processamento
+          </NuxtLink>
+        </div>
 
         <UInput
           v-model="search"

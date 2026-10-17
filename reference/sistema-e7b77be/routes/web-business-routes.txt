@@ -1,0 +1,18 @@
+31:    Route::get('/business/register', 'BusinessController@getRegister')->name('business.getRegister');
+32:    Route::post('/business/register', 'BusinessController@postRegister')->name('business.postRegister');
+33:    Route::post('/business/register/check-username', 'BusinessController@postCheckUsername')->name('business.postCheckUsername');
+34:    Route::post('/business/register/check-email', 'BusinessController@postCheckEmail')->name('business.postCheckEmail');
+48:Route::get('/novoparceiro', 'BusinessController@novoparceiro');
+364:    Route::post('/test-email', 'BusinessController@testEmailConfiguration');
+365:    Route::post('/test-sms', 'BusinessController@testSmsConfiguration');
+366:    Route::get('/business/settings', 'BusinessController@getBusinessSettings')->name('business.getBusinessSettings');
+367:    Route::get('/business/downloadCertificado', 'BusinessController@downloadCertificado')->name('business.download-certificado');
+369:    Route::post('/business/update', 'BusinessController@postBusinessSettings')->name('business.postBusinessSettings');
+371:    Route::get('/cache-clear', 'BusinessController@cacheClear');
+468:    Route::resource('roles', 'RoleController');
+470:    Route::resource('users', 'ManageUserController');
+471:    Route::get('/users/delete/{id}', 'ManageUserController@delete');
+526:    Route::get('business-location/activate-deactivate/{location_id}', 'BusinessLocationController@activateDeactivateLocation');
+537:    Route::post('business-location/check-location-id', 'BusinessLocationController@checkLocationId');
+538:    Route::resource('business-location', 'BusinessLocationController');
+755:    Route::get('settings', 'BusinessController@getEcomSettings');

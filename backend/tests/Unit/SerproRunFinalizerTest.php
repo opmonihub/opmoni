@@ -11,6 +11,7 @@ use App\Models\SerproSyncRunItem;
 use App\Services\SerproRunFinalizer;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -21,6 +22,39 @@ use Tests\TestCase;
 class SerproRunFinalizerTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_recount_reads_items_only_after_claiming_the_run_in_a_transaction(): void
+    {
+        $account = Account::factory()->create();
+        resolve(CurrentTenant::class)->accountId = $account->id;
+        $run = SerproSyncRun::factory()->running()->create(['account_id' => $account->id]);
+        $client = Client::factory()->company()->create(['account_id' => $account->id]);
+        $item = SerproSyncRunItem::factory()->create([
+            'account_id' => $account->id,
+            'run_id' => $run->id,
+            'client_id' => $client->id,
+        ]);
+        $transactionLevel = DB::transactionLevel();
+        $claimed = false;
+
+        SerproSyncRun::retrieved(function (SerproSyncRun $retrieved) use ($run, $item, $transactionLevel, &$claimed): void {
+            if ($claimed || $retrieved->id !== $run->id) {
+                return;
+            }
+
+            $claimed = true;
+            $this->assertGreaterThan($transactionLevel, DB::transactionLevel());
+            // Model retrieval is the claim boundary; the aggregate must observe progress made before it.
+            $item->forceFill(['state' => SerproSyncItemState::Synchronized])->save();
+        });
+
+        resolve(SerproRunFinalizer::class)->recount($run->id, $account->id);
+
+        $this->assertTrue($claimed);
+        $this->assertSame(1, $run->fresh()->synchronized);
+        $this->assertSame(0, $run->fresh()->not_processed);
+        $this->assertSame(SerproSyncRunState::Completed, $run->fresh()->state);
+    }
 
     public function test_os_seis_contadores_somam_o_total(): void
     {

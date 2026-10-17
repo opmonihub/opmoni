@@ -190,24 +190,34 @@ class WhatsAppSendGuidesApiTest extends BusinessTestCase
     public function test_disparo_falho_da_mesma_guia_nao_bloqueia_nova_tentativa(): void
     {
         Queue::fake();
-        $this->canalConectado();
+        $channel = $this->canalConectado();
         $socio = $this->contato(null, 'whatsapp', '5511987654321');
 
-        WhatsAppDispatch::factory()->failed()->create([
-            'account_id' => $this->account->getKey(),
-            'client_id' => $this->client->getKey(),
-            'client_dispatch_contact_id' => $socio->getKey(),
-            'artifact_type' => 'guia',
-            'competence' => '2026-02',
-            'slip_number' => '07202215764029999',
-        ]);
+        $this->actingAs($this->memberOf($this->account, 'admin'), 'web');
+        $payload = ['contact_ids' => [$socio->getKey()]];
+        $primeiro = $this->postJson($this->sendGuidesUrl(), $payload)->assertAccepted();
+        $falho = WhatsAppDispatch::findOrFail($primeiro->json('data.dispatches.0.id'));
+        $channel->forceFill(['status' => WhatsAppChannel::STATUS_DISCONNECTED])->save();
+        (new SendWhatsAppDocumentJob($this->account->getKey(), $falho->getKey()))->handle();
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $falho->fresh()->status);
+        $channel->forceFill(['status' => WhatsAppChannel::STATUS_CONNECTED])->save();
 
-        $this->actingAs($this->memberOf($this->account, 'admin'), 'web')
-            ->postJson($this->sendGuidesUrl(), ['contact_ids' => [$socio->getKey()]])
+        $segundo = $this->postJson($this->sendGuidesUrl(), $payload)
             ->assertAccepted()
-            ->assertJsonCount(1, 'data.dispatches');
+            ->assertJsonCount(1, 'data.dispatches')
+            ->assertJsonPath('data.dispatches.0.status', WhatsAppDispatch::STATUS_QUEUED);
 
+        $this->assertNotSame($falho->getKey(), $segundo->json('data.dispatches.0.id'));
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $falho->fresh()->status);
+        $this->assertSame('O Canal WhatsApp do escritório não está conectado.', $falho->fresh()->failure_reason);
         $this->assertSame(2, WhatsAppDispatch::count());
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 2);
+
+        $this->postJson($this->sendGuidesUrl(), $payload)->assertAccepted()
+            ->assertJsonCount(0, 'data.dispatches')
+            ->assertJsonCount(1, 'data.skipped');
+        $this->assertSame(2, WhatsAppDispatch::count());
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 2);
     }
 
     public function test_sem_contato_whatsapp_marcado_responde_422(): void

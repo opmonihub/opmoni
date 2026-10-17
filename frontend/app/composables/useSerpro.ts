@@ -3,6 +3,7 @@ import type {
   MonitoringDeclarationArtifact,
   MonitoringDeclarationDetail,
   MonitoringMessage,
+  MonitoringMessageRecovery,
   MonitoringObligationResponse,
   MonitoringOverview,
   MonitoringSituacao,
@@ -132,7 +133,15 @@ export function useSerpro() {
   async function readMessage(obligation: string, clientId: number, id: number) {
     const res = await $api<{ data: MonitoringMessage }>(
       `/serpro/monitoring/obligations/${obligation}/clients/${clientId}/messages/${id}`,
-      { method: 'POST', body: { ciencia: true } }
+      { method: 'POST', body: { ciencia: true }, retry: 0 }
+    )
+    return res.data
+  }
+
+  async function reconcileMessage(obligation: string, clientId: number, id: number) {
+    const res = await $api<{ data: MonitoringMessageRecovery }>(
+      `/serpro/monitoring/obligations/${obligation}/clients/${clientId}/messages/${id}/reconcile`,
+      { method: 'POST', retry: 0 }
     )
     return res.data
   }
@@ -305,6 +314,7 @@ export function useSerpro() {
     sendGuides,
     whatsappDispatches,
     readMessage,
+    reconcileMessage,
     associateClients,
     searchDocuments,
     searchQuota,

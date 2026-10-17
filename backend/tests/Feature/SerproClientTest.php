@@ -6,7 +6,9 @@ use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
 use App\Services\SerproClient;
 use App\Services\SerproException;
+use App\Services\SerproResult;
 use App\Services\SerproTokenPair;
+use App\Support\ExternalHttpBudget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
@@ -87,6 +89,110 @@ class SerproClientTest extends BusinessTestCase
     private function cacheTokenPair(): void
     {
         Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+    }
+
+    public function test_budget_propagates_to_auth_and_service_and_arm_only_precedes_service(): void
+    {
+        $this->connection();
+        $request = \Illuminate\Http\Request::create('/');
+        $request->attributes->set('access.session_lock', new class
+        {
+            public function isOwnedByCurrentProcess(): bool
+            {
+                return true;
+            }
+        });
+        $request->attributes->set('access.session_lock_acquired_at', 100.0);
+        $time = 101.0;
+        $budget = ExternalHttpBudget::fromRequest($request, function () use (&$time): float {
+            return $time;
+        });
+        $armed = false;
+        Http::fake(function (Request $request, array $options) use (&$time, &$armed) {
+            $this->assertFalse($options['allow_redirects']);
+            $this->assertSame(3.0, $options['connect_timeout']);
+            if (str_contains($request->url(), 'autenticacao.')) {
+                $this->assertFalse($armed);
+                $this->assertSame(23.0, $options['timeout']);
+                $time = 110.0;
+
+                return Http::response(['access_token' => 'access', 'jwt_token' => 'jwt', 'expires_in' => 2008]);
+            }
+            $this->assertTrue($armed);
+            $this->assertSame(14.0, $options['timeout']);
+
+            return Http::response(['status' => 200, 'dados' => '[]', 'mensagens' => []]);
+        });
+        resolve(SerproClient::class)->call('REGIMEAPURACAO', 'CONSULTARANOSCALENDARIOS102', [], '33683111000107', '33683111000875',
+            budget: $budget, beforeServiceSend: function () use (&$armed): void {
+                $armed = true;
+            });
+        Http::assertSentCount(2);
+    }
+
+    public function test_budget_keeps_lower_configured_timeout_for_auth_and_service(): void
+    {
+        $this->connection();
+        config(['integra-contador.timeout' => 2]);
+        $request = \Illuminate\Http\Request::create('/');
+        $request->attributes->set('access.session_lock', new class
+        {
+            public function isOwnedByCurrentProcess(): bool
+            {
+                return true;
+            }
+        });
+        $request->attributes->set('access.session_lock_acquired_at', 100.0);
+        $budget = ExternalHttpBudget::fromRequest($request, fn (): float => 101.0);
+        Http::fake(function (Request $request, array $options) {
+            $this->assertSame(2.0, $options['timeout']);
+            $this->assertSame(2.0, $options['connect_timeout']);
+            $this->assertFalse($options['allow_redirects']);
+
+            return str_contains($request->url(), 'autenticacao.')
+                ? Http::response(['access_token' => 'access', 'jwt_token' => 'jwt', 'expires_in' => 2008])
+                : Http::response(['status' => 200, 'dados' => '[]', 'mensagens' => []]);
+        });
+        resolve(SerproClient::class)->call('REGIMEAPURACAO', 'CONSULTARANOSCALENDARIOS102', [], '33683111000107', '33683111000875', budget: $budget);
+        Http::assertSentCount(2);
+    }
+
+    public function test_unauthorized_retry_can_be_disabled_for_non_replayable_effects(): void
+    {
+        $this->connection();
+        $this->cacheTokenPair();
+        Http::fake(['*' => Http::response(['code' => 'unauthorized'], 401)]);
+        $armed = 0;
+        try {
+            resolve(SerproClient::class)->call('REGIMEAPURACAO', 'CONSULTARANOSCALENDARIOS102', [], '33683111000107', '33683111000875',
+                beforeServiceSend: function () use (&$armed): void {
+                    $armed++;
+                }, retryUnauthorized: false);
+            $this->fail('Unauthorized must be reported.');
+        } catch (SerproException $exception) {
+            $this->assertSame(401, $exception->status);
+        }
+        $this->assertSame(1, $armed);
+        Http::assertSentCount(1);
+    }
+
+    public function test_result_callback_runs_before_return_and_failure_never_retries(): void
+    {
+        $this->connection();
+        $this->cacheTokenPair();
+        Http::fake(['*' => Http::response(['status' => 200, 'dados' => '[]', 'mensagens' => []])]);
+        try {
+            resolve(SerproClient::class)->call('REGIMEAPURACAO', 'CONSULTARANOSCALENDARIOS102', [], '33683111000107', '33683111000875',
+                onServiceResult: function (SerproResult $result, int $httpStatus): void {
+                    $this->assertSame(200, $result->status());
+                    $this->assertSame(200, $httpStatus);
+                    throw new \RuntimeException('journal unavailable');
+                });
+            $this->fail('Journal failure must reach caller.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('journal unavailable', $exception->getMessage());
+        }
+        Http::assertSentCount(1);
     }
 
     public function test_it_calls_the_operation_path_with_the_documented_headers(): void

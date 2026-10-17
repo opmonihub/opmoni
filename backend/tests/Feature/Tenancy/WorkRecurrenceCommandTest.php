@@ -15,6 +15,7 @@ use Database\Seeders\PlanSeeder;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\BusinessTestCase;
 
 class WorkRecurrenceCommandTest extends BusinessTestCase
@@ -121,6 +122,57 @@ class WorkRecurrenceCommandTest extends BusinessTestCase
 
         $this->artisan('work:generate-recurrences')->assertSuccessful();
         $this->assertDatabaseCount('processes', 1);
+    }
+
+    #[DataProvider('shortMonthGenerationDays')]
+    public function test_generation_day_is_capped_to_month_end_without_generating_early(string $lastDay, int $generateDay): void
+    {
+        $monthEnd = Carbon::parse($lastDay)->startOfDay();
+        $this->travelTo($monthEnd->copy()->subDay());
+        $account = Account::factory()->create();
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+        $template = ProcessTemplate::factory()->create([
+            'account_id' => $account->getKey(),
+            'generate_day' => $generateDay,
+            'due_day' => 31,
+            'is_active' => true,
+            'regimes' => [],
+        ]);
+        $template->steps()->create(['title' => 'Fechar', 'due_day' => 31, 'priority' => 'medium', 'order' => 1]);
+        Client::factory()->individual()->create(['account_id' => $account->getKey(), 'status' => 'active']);
+
+        $this->artisan('work:generate-recurrences')->assertSuccessful();
+        $this->assertDatabaseCount('processes', 0);
+        $this->assertDatabaseCount('tasks', 0);
+
+        $this->travelTo($monthEnd);
+        $this->artisan('work:generate-recurrences')->assertSuccessful();
+        $this->assertDatabaseCount('processes', 1);
+        $this->assertDatabaseCount('tasks', 1);
+        $process = Process::query()->sole();
+        $this->assertSame($template->getKey(), $process->template_id);
+        $this->assertSame($monthEnd->copy()->startOfMonth()->toDateString(), $process->reference_month->toDateString());
+        $this->assertSame($lastDay, $process->due_on->toDateString());
+        $task = $process->tasks()->sole();
+        $this->assertSame($lastDay, $task->due_on->toDateString());
+
+        $this->artisan('work:generate-recurrences')->assertSuccessful();
+        $this->assertDatabaseCount('processes', 1);
+        $this->assertDatabaseCount('tasks', 1);
+        $this->assertSame($process->getKey(), Process::query()->sole()->getKey());
+        $this->assertSame($task->getKey(), $process->tasks()->sole()->getKey());
+    }
+
+    public static function shortMonthGenerationDays(): array
+    {
+        return [
+            'February day 29' => ['2026-02-28', 29],
+            'February day 30' => ['2026-02-28', 30],
+            'February day 31' => ['2026-02-28', 31],
+            'leap February day 30' => ['2028-02-29', 30],
+            'leap February day 31' => ['2028-02-29', 31],
+            'April day 31' => ['2026-04-30', 31],
+        ];
     }
 
     public function test_command_accepts_explicit_month_option(): void

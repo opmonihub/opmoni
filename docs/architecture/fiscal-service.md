@@ -1,6 +1,14 @@
 # Fiscal service structure
 
-Recorded on 2026-10-12. The directory structure below is approved; the service implementation and detailed API design remain pending.
+Recorded on 2026-10-12; implementation status reconciled on 2026-10-13. The directory structure below remains an approved extraction target. The separate service implementation and detailed API design remain pending.
+
+## Current integrated implementation
+
+D009 activated the legacy fiscal logic inside the Laravel application. `backend/app/Services/Fiscal/` owns capture, provider transports, reconciliation, and manifestation; Laravel jobs and the Compose queue/scheduler execute these operations. The Nuxt interface uses the private `/api/v1` proxy rather than an implemented standalone fiscal service API.
+
+Private disks currently point to `backend/storage/app/private/certificates` and `backend/storage/app/private/fiscal`; client containers/passwords are encrypted and XML download authorizes the owning Account before private disk access. Local Compose preserves these paths through its backend source bind mount. Dedicated production volumes/persistence and the future service boundary are not proved by that mount.
+
+See [fiscal-documents](../../openspec/specs/fiscal-documents/spec.md), [client-certificates](../../openspec/specs/client-certificates/spec.md), [application-runtime](../../openspec/specs/application-runtime/spec.md), and the [system reconciliation report](system-spec-reconciliation.md). The following sections describe the planned extraction, not the currently deployed directory layout or dependencies.
 
 ## Purpose
 

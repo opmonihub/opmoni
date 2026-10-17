@@ -1,3 +1,5 @@
+> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+
 ## Why
 
 The current application exposes only a basic platform Account page, while the legacy Super Admin area provides seven connected administration surfaces. The user now wants the complete area in the current Nuxt/Laravel application, with working backend contracts rather than copied screens backed by missing endpoints.

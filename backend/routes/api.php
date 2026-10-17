@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AccessController;
 use App\Http\Controllers\Api\V1\Admin\AccountCommercialController;
+use App\Http\Controllers\Api\V1\Erp\ErpRegistrationController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Middleware\AccessSecurity;
 use App\Http\Middleware\RequireSuperAdmin;
@@ -18,6 +19,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/csrf', [AccessController::class, 'csrf'])->name('access.csrf');
         Route::get('/registration-status', [AccessController::class, 'registrationStatus'])->name('access.registration-status');
         Route::post('/register', [AccessController::class, 'register'])->name('access.register');
+        Route::get('/erp/registration-status', [ErpRegistrationController::class, 'registrationStatus'])->name('erp.registration-status');
+        Route::post('/erp/register', [ErpRegistrationController::class, 'register'])->name('erp.register');
         Route::post('/login', [AccessController::class, 'login'])->name('access.login');
         Route::get('/first-access/status', [AccessController::class, 'activationStatus'])->name('access.activation-status');
         Route::post('/first-access', [AccessController::class, 'activate'])->name('access.activate');
@@ -25,7 +28,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/me', [AccessController::class, 'me'])->name('access.me');
             Route::post('/logout', [AccessController::class, 'logout'])->name('access.logout');
             Route::post('/account/switch', [AccessController::class, 'switchAccount'])->name('access.switch');
+            require __DIR__.'/erp.php';
             require __DIR__.'/business.php';
+            require __DIR__.'/external-mailbox.php';
+            require __DIR__.'/external-whatsapp.php';
             Route::prefix('admin/accounts')->middleware(RequireSuperAdmin::class)->group(function (): void {
                 Route::get('/{account}/commercial', [AccountCommercialController::class, 'show'])->whereNumber('account')->name('access.admin-commercial');
                 Route::patch('/{account}/commercial', [AccountCommercialController::class, 'update'])->whereNumber('account')->name('access.admin-commercial-update');

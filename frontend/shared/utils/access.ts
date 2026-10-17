@@ -1,7 +1,11 @@
 import type { Identity } from '../types/access'
 
 export function accessDestination(user: Identity): string {
-  return user.current_account?.status === 'active' ? '/' : '/acesso-indisponivel'
+  if (user.current_account?.status === 'active')
+    return '/'
+  if (user.current_company?.status === 'active')
+    return '/erp'
+  return '/acesso-indisponivel'
 }
 
 export function focusAccessDestination(user: Identity, path: string): string | null {
@@ -9,6 +13,8 @@ export function focusAccessDestination(user: Identity, path: string): string | n
     return null
   const target = accessDestination(user)
   if (target === path)
+    return null
+  if (target === '/erp' && (path === '/erp' || path.startsWith('/erp/')))
     return null
   if (target !== '/' || path === '/acesso-indisponivel' || path === '/selecionar-escritorio')
     return target

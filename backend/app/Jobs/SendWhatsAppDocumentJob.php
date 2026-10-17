@@ -28,9 +28,10 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  *
  * **Transições.** `queued` → `sent` quando o wzap aceita (o `message_id`
  * é o que o webhook de recibo casa depois). `queued` → `failed` quando o
- * envio não sai — o `failure_reason` é sempre texto sanitizado, nunca o
- * corpo do gateway, a apikey ou o documento. Uma linha terminal que o
- * worker reencontra (reentrega dupla) é reconhecida e devolvida, nunca
+ * envio falha ou fica incerto — o `failure_reason` é sempre sanitizado.
+ * `send_attempted_at` é gravado atomicamente antes do HTTP: só falhas
+ * anteriores a essa fronteira podem gerar chave nova sem ciência.
+ * Uma linha terminal que o worker reencontra é devolvida, nunca
  * reenviada.
  */
 final class SendWhatsAppDocumentJob implements ShouldQueue
@@ -38,10 +39,9 @@ final class SendWhatsAppDocumentJob implements ShouldQueue
     use Dispatchable, Queueable;
 
     /**
-     * Uma tentativa: o `sendMedia` é idempotente por chave, mas uma falha
-     * do gateway que já gravou `failed` não pede reenvio — e uma que
-     * abortou o worker antes da gravação fica `queued` para a limpeza,
-     * nunca um laço de retry contra o wzap.
+     * Uma tentativa: a idempotência do gateway expira. Depois da fronteira
+     * persistida de envio, reentrega nunca chama sendMedia novamente; um
+     * resultado incerto exige ciência explícita para um novo envio.
      */
     public int $tries = 1;
 
@@ -128,6 +128,18 @@ final class SendWhatsAppDocumentJob implements ShouldQueue
             return;
         }
 
+        $claimed = WhatsAppDispatch::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->whereKey($dispatch->getKey())
+            ->where('status', WhatsAppDispatch::STATUS_QUEUED)
+            ->whereNull('send_attempted_at')
+            ->update(['send_attempted_at' => now(), 'retry_safe' => false]);
+
+        if ($claimed !== 1) {
+            return;
+        }
+
         try {
             $resposta = resolve(WzapClient::class)->sendMedia(
                 (string) $channel->wzap_instance_id,
@@ -145,11 +157,17 @@ final class SendWhatsAppDocumentJob implements ShouldQueue
             return;
         }
 
-        $dispatch->forceFill([
-            'status' => WhatsAppDispatch::STATUS_SENT,
-            'message_id' => isset($resposta['message_id']) ? (string) $resposta['message_id'] : null,
-            'failure_reason' => null,
-        ])->save();
+        WhatsAppDispatch::query()->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)->whereKey($dispatch->getKey())
+            ->where('status', WhatsAppDispatch::STATUS_QUEUED)
+            ->update(['status' => WhatsAppDispatch::STATUS_SENT, 'failure_reason' => null]);
+
+        if (isset($resposta['message_id'])) {
+            WhatsAppDispatch::query()->withoutGlobalScope('account')
+                ->where('account_id', $this->accountId)->whereKey($dispatch->getKey())
+                ->whereNull('message_id')
+                ->update(['message_id' => (string) $resposta['message_id']]);
+        }
     }
 
     /**
@@ -222,10 +240,13 @@ final class SendWhatsAppDocumentJob implements ShouldQueue
             'reason' => $reason,
         ]);
 
-        $dispatch->forceFill([
-            'status' => WhatsAppDispatch::STATUS_FAILED,
-            'failure_reason' => $reason,
-        ])->save();
+        WhatsAppDispatch::query()->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)->whereKey($dispatch->getKey())
+            ->where('status', WhatsAppDispatch::STATUS_QUEUED)
+            ->update([
+                'status' => WhatsAppDispatch::STATUS_FAILED,
+                'failure_reason' => $reason,
+            ]);
     }
 
     /**

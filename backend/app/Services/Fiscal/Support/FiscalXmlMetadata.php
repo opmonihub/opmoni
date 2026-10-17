@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Support;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalProviderNoteStatus;
 use App\Enums\FiscalStage;
 use Carbon\CarbonImmutable;
 use DOMDocument;
@@ -247,7 +248,9 @@ final class FiscalXmlMetadata
             // que o ambiente nacional escreveu, e o topo é o que sobra para o
             // resumo. Evento não tem digest, e aí a coluna fica nula.
             digVal: $this->firstText($xpath, ['protNFe/infProt/digVal', 'protCTe/infProt/digVal', 'digVal']),
-            emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi', 'dhRecbto'])),
+            emissaoAt: $this->toDate($this->firstText($xpath, ['dhEmi'])),
+            authorizedAt: $this->authorizedAtOf($xpath),
+            providerNoteStatus: $this->providerNoteStatusOf($xpath),
             eventoOcorridoEmAt: $this->toDate($this->firstText($xpath, ['dhEvento', 'dhRegEvento'])),
             mascarado: $this->isMascarado($xpath),
             // O número e a série do `ide`: o resumo e o evento não têm `ide`,
@@ -649,5 +652,30 @@ final class FiscalXmlMetadata
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private function authorizedAtOf(DOMXPath $xpath): ?CarbonImmutable
+    {
+        return $this->toDate($this->firstText($xpath, [
+            'protNFe/infProt/dhRecbto',
+            'protCTe/infProt/dhRecbto',
+            'dhRecbto',
+        ]));
+    }
+
+    private function providerNoteStatusOf(DOMXPath $xpath): ?FiscalProviderNoteStatus
+    {
+        $status = $this->firstText($xpath, ['cSitNFe']);
+
+        if ($status === null) {
+            return null;
+        }
+
+        return match ($status) {
+            '1' => FiscalProviderNoteStatus::Authorized,
+            '2' => FiscalProviderNoteStatus::Denied,
+            '3' => FiscalProviderNoteStatus::Cancelled,
+            default => FiscalProviderNoteStatus::Unknown,
+        };
     }
 }

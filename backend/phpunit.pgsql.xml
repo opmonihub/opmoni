@@ -42,6 +42,7 @@
         <env name="SESSION_STORE" value="sessions" force="true"/>
         <env name="FRONTEND_INGRESS_KEY" value="integration-test-only-key" force="true"/>
         <env name="FRONTEND_ORIGIN" value="http://localhost:3000" force="true"/>
+        <env name="ERP_REGISTRATION_ENABLED" value="true" force="true"/>
         <env name="HASH_DRIVER" value="argon2id" force="true"/>
         <env name="ARGON_MEMORY" value="65536" force="true"/>
         <env name="ARGON_TIME" value="2" force="true"/>

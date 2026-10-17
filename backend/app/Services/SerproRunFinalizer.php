@@ -7,6 +7,7 @@ use App\Enums\SerproSyncRunState;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
 use App\Tenant\CurrentTenant;
+use Illuminate\Support\Facades\DB;
 
 /**
  * O único escritor dos seis contadores e do desfecho da execução.
@@ -24,7 +25,13 @@ final class SerproRunFinalizer
 {
     public function recount(int $runId, int $accountId): void
     {
-        resolve(CurrentTenant::class)->run($accountId, function () use ($runId, $accountId): void {
+        resolve(CurrentTenant::class)->run($accountId, fn () => DB::transaction(function () use ($runId, $accountId): void {
+            // Serialize before taking the snapshot: a stale aggregate must never overwrite a newer one.
+            $run = SerproSyncRun::query()
+                ->where('account_id', $accountId)
+                ->lockForUpdate()
+                ->findOrFail($runId);
+
             /** @var array<string, int> $counts */
             $counts = SerproSyncRunItem::query()
                 ->where('account_id', $accountId)
@@ -35,8 +42,6 @@ final class SerproRunFinalizer
                 ->all();
 
             $count = fn (SerproSyncItemState $state): int => (int) ($counts[$state->value] ?? 0);
-
-            $run = SerproSyncRun::query()->where('account_id', $accountId)->findOrFail($runId);
 
             $run->forceFill([
                 'synchronized' => $count(SerproSyncItemState::Synchronized),
@@ -81,6 +86,6 @@ final class SerproRunFinalizer
             }
 
             $run->save();
-        });
+        }));
     }
 }

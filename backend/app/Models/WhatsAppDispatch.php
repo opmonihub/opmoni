@@ -19,6 +19,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * a chave é a guia mudar (`slip_number` novo, recálculo) ou o destino
  * mudar; a Ciência de reenvio gera uma chave única por confirmação.
  *
+ * `retry_safe` só é verdadeiro com evidência de pré-envio; o legado fica
+ * conservadoramente falso. A fronteira `send_attempted_at` é persistida
+ * antes de chamar o gateway, e impede retry silencioso de envio incerto.
+ *
  * `failure_reason` é sempre texto seguro para a UI — nunca corpo de
  * resposta do gateway, apikey ou dado fiscal.
  */
@@ -34,6 +38,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'whatsapp_id',
     'status',
     'failure_reason',
+    'send_attempted_at',
+    'retry_safe',
     'dispatched_by_user_id',
     'dispatched_in_support',
     'support_access_log_id',
@@ -65,6 +71,8 @@ class WhatsAppDispatch extends Model
     {
         return [
             'dispatched_in_support' => 'boolean',
+            'retry_safe' => 'boolean',
+            'send_attempted_at' => 'immutable_datetime',
         ];
     }
 

@@ -197,7 +197,7 @@ class FiscalDocumentCertificateStatusTest extends BusinessTestCase
 
     private function documento(Account $account, Client $client, string $emitente): void
     {
-        FiscalDocument::factory()->create([
+        FiscalDocument::factory()->withStoredXml()->create([
             'account_id' => $account->getKey(),
             'client_id' => $client->getKey(),
             'model' => FiscalModel::Nfe,

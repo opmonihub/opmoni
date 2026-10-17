@@ -41,5 +41,15 @@ export function useWhatsAppChannel() {
     return res.data
   }
 
-  return { channel, startPairing, pairingStatus, disconnect }
+  async function continueOperation(operationId: string) {
+    const res = await $api<{ data: WhatsAppChannel }>(`/whatsapp/channel/operations/${encodeURIComponent(operationId)}/continue`, { method: 'POST' })
+    return res.data
+  }
+
+  async function reconcileOperation(operationId: string) {
+    const res = await $api<{ data: WhatsAppChannel }>(`/whatsapp/channel/operations/${encodeURIComponent(operationId)}/reconcile`, { method: 'POST' })
+    return res.data
+  }
+
+  return { channel, startPairing, pairingStatus, disconnect, continueOperation, reconcileOperation }
 }

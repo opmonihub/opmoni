@@ -65,7 +65,7 @@ final class ManifestationEventTransport
      *                                       enfileirou usa para marcar a
      *                                       tentativa que saiu, com veredito
      *                                       ou sem
-     * @return array{lote_cstat: string, lote_xmotivo: string, evento_cstat: ?string, evento_xmotivo: ?string}
+     * @return array{lote_cstat: string, lote_xmotivo: string, evento_cstat: ?string, evento_xmotivo: ?string, chave_acesso: ?string, tp_evento: ?string, event_seq: ?string, tp_amb: ?string}
      *
      * @throws FiscalRequestNotSent sem certificado utilizável, ou quando o lote
      *                              não passa no XSD local — nada saiu, nada a cobrar
@@ -168,7 +168,7 @@ final class ManifestationEventTransport
     }
 
     /**
-     * @return array{lote_cstat: string, lote_xmotivo: string, evento_cstat: ?string, evento_xmotivo: ?string}
+     * @return array{lote_cstat: string, lote_xmotivo: string, evento_cstat: ?string, evento_xmotivo: ?string, chave_acesso: ?string, tp_evento: ?string, event_seq: ?string, tp_amb: ?string}
      */
     private function interpret(Response $response): array
     {
@@ -233,6 +233,10 @@ final class ManifestationEventTransport
             'lote_xmotivo' => $this->directChildText($xpath, $retEnvEvento, 'xMotivo') ?? '',
             'evento_cstat' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'cStat'),
             'evento_xmotivo' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'xMotivo'),
+            'chave_acesso' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'chNFe'),
+            'tp_evento' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'tpEvento'),
+            'event_seq' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'nSeqEvento'),
+            'tp_amb' => $retEvento === null ? null : $this->directChildText($xpath, $retEvento, 'tpAmb'),
         ];
     }
 

@@ -7,7 +7,7 @@ Represent each accounting office as an Account with its own memberships and oper
 ## Requirements
 
 ### Requirement: Global identities have per-Account membership roles
-The system SHALL keep user email unique globally after trimming and case normalization, and SHALL permit at most one membership per user and Account. Membership roles SHALL be exactly `admin`, `operador`, and `user`; Super Admin SHALL be a separate global identity flag. The same identity SHALL support different membership roles in different Accounts. This change SHALL create memberships through bootstrap and new-owner activation only; additional member management SHALL be a later change.
+The system SHALL keep user email unique globally after trimming and case normalization, and SHALL permit at most one membership per user and Account. Membership roles SHALL be exactly `admin`, `operador`, and `user`; Super Admin SHALL be a separate global identity flag. The same identity SHALL support different membership roles in different Accounts. Memberships SHALL be created through bootstrap, owner activation, and the authorized Account member-management contract; member administration SHALL preserve existing global identities and the last Account administrator.
 
 #### Scenario: Different roles for one identity
 - **WHEN** an identity has memberships in multiple Accounts
@@ -45,7 +45,7 @@ The system SHALL keep user email unique globally after trimming and case normali
 - **THEN** the same session still reports that Account as selected without resetting to the default
 
 ### Requirement: Platform provisioning is restricted to Super Admin
-Only a Super Admin SHALL list, create, rename, suspend, reactivate, or reissue owner activation for Accounts through `/api/v1/admin/accounts`. Creating an Account SHALL require `name`, `owner_name`, and `login_email`, create an active Account without a membership, and return 201 with `{data,first_access:{url,expires_at}}`. A globally existing owner email or an email already reserved by a live owner activation SHALL be rejected with 422. Password assignment by the platform, Account deletion, commercial contact details, and subscription provisioning SHALL not be exposed in this change. Activation links SHALL be returned only when newly issued, without automatic email delivery.
+Only a Super Admin SHALL list, create, rename, suspend, reactivate, or reissue owner activation for Accounts through `/api/v1/admin/accounts`. Creating an Account SHALL require `name`, `owner_name`, and `login_email`, create an active Account without an owner membership before activation, and return 201 with `{data,first_access:{url,expires_at}}`. A globally existing owner email or an email already reserved by a live owner activation SHALL be rejected with 422. Password assignment by the platform and Account deletion SHALL not be exposed. Activation links SHALL be returned only when newly issued, without automatic email delivery. Subscription/default-department provisioning SHALL be additive within Account creation; commercial contacts SHALL use the separate platform commercial API without changing this issuance contract.
 
 #### Scenario: Provision a new accounting office
 - **WHEN** a Super Admin submits a valid office name and new owner name/email
@@ -79,3 +79,10 @@ Suspension SHALL preserve Account data and memberships while blocking all tenant
 #### Scenario: Owner already activated
 - **WHEN** a Super Admin attempts reissue for an Account that has members
 - **THEN** the system returns 409 without changing memberships or identity credentials
+
+### Requirement: Accounts receive additive business defaults
+Account initialization SHALL provide one default active Básico subscription and Fiscal, Pessoal, Contábil, and Societário departments when missing. Reinitialization SHALL preserve existing subscription choices, department customizations, activation records, identities, and memberships.
+
+#### Scenario: Initialize an existing customized office
+- **WHEN** an office already has a subscription and customized departments
+- **THEN** initialization adds only missing defaults without resetting its data

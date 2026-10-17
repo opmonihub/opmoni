@@ -9,8 +9,11 @@ use App\Models\User;
 use App\Models\WhatsAppChannel;
 use App\Models\WhatsAppDispatch;
 use App\Models\WhatsAppWebhookEvent;
+use App\Services\WhatsApp\WhatsAppChannelEffects;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\BusinessTestCase;
 
 /**
@@ -84,6 +87,33 @@ class WhatsAppTenancyTest extends BusinessTestCase
         ]);
 
         $this->assertSame($account->getKey(), $dispatch->account_id);
+    }
+
+    public function test_unchanged_observation_advances_receipt_marker_without_replacing_the_credential(): void
+    {
+        $this->freezeTime();
+        $account = Account::factory()->create();
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+        $channel = WhatsAppChannel::factory()->connected('unchanged-key')->create(['account_id' => $account->getKey()]);
+        $resource = WhatsAppChannelEffects::resource($account->getKey());
+        $id = DB::table('external_effect_journal')->insertGetId([
+            'account_id' => $account->getKey(), 'actor_id' => 1,
+            'operation_id' => (string) Str::uuid(),
+            'resource_hash' => $resource, 'effect_key' => hash('sha256', 'unchanged-observation'),
+            'step' => 'whatsapp.disconnect', 'state' => 'confirmed', 'receipt' => 'applied',
+            'owner_token' => (string) Str::uuid(), 'version' => 3,
+            'confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $channel = $channel->fresh();
+        $this->assertFalse($channel->isDirty());
+        $credentialMarker = $channel->last_projected_credential_effect_id;
+
+        $channel->save();
+
+        $this->assertSame($id, $channel->fresh()->last_projected_effect_id);
+        $this->assertSame($credentialMarker, $channel->fresh()->last_projected_credential_effect_id);
+        $this->assertSame('connected', $channel->fresh()->status);
+        $this->assertSame('unchanged-key', $channel->fresh()->instanceApiKey());
     }
 
     public function test_o_lookup_explicito_por_conta_retorna_so_o_canal_dela(): void

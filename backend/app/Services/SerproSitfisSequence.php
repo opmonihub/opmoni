@@ -3,43 +3,35 @@
 namespace App\Services;
 
 use App\Enums\SerproFailure;
+use Closure;
+use Illuminate\Support\Sleep;
 
 /**
- * A sequência documentada do SITFIS: protocolo gratuito e emissão cobrada.
- *
- * Encaixa no pipeline **dentro do closure** que o `SerproCallRecorder` já
- * envolve para a obrigação `RELATORIOSITFIS92`: uma entrega do job continua
- * valendo uma projeção, mas o closure dispara duas rotas (`Apoiar` e `Emitir`)
- * e faz polling no `202`/`204`/`304` antes de devolver o `SerproResult` final.
- * O passo `SOLICITARPROTOCOLO91` é auditado à parte; tentativas intermediárias
- * de emissão não viram linha em `serpro_calls`, para o checkpoint `called()`
- * não marcar a obrigação como concluída antes do PDF.
+ * Protocolo gratuito e emissão cobrada compartilham o mesmo prazo por fetch.
+ * Só o PDF conclui a chamada de emissão no checkpoint do recorder.
  */
 final class SerproSitfisSequence
 {
-    /** Tentativas de emissão dentro do timeout do job (75s). */
     private const MAX_TENTATIVAS_EMITIR = 12;
 
-    /**
-     * Tentativas de solicitação de protocolo — o SERPRO devolve 503 com
-     * `tempoEspera` quando o relatório está sendo gerado. Mas quando o
-     * contribuinte **não tem relatório para gerar** (bloqueio, exigência
-     * ou falta de dados), o SERPRO continua devolvendo o mesmo 503
-     * indefinidamente. Três tentativas × `tempoEspera` já cobrem a
-     * geração normal; depois disso é resposta definitiva, não falha.
-     */
     private const MAX_TENTATIVAS_PROTOCOLO = 3;
 
-    /**
-     * Teto de espera entre tentativas — o provedor manda ms, não segundos.
-     * O SITFIS já pediu `tempoEspera` de 30s para a solicitação de protocolo;
-     * quando passar do teto o job aborta em `Upstream` e a fila retenta.
-     */
     private const ESPERA_MAX_MS = 32_000;
 
+    /** Margem de 5s em relação ao timeout de 75s do job. */
+    private const ORCAMENTO_MS = 70_000;
+
+    /** Reserva para processamento local além dos timeouts HTTP. */
+    private const MARGEM_CHAMADA_MS = 1_000;
+
+    /** Auth + serviço, repetidos uma vez se o serviço responder 401. */
+    private const MAX_REQUESTS_POR_CHAMADA = 4;
+
+    /** @param  ?Closure(): int  $clock Tempo monotônico em milissegundos. */
     public function __construct(
         private SerproClient $client,
         private SerproCallRecorder $recorder,
+        private ?Closure $clock = null,
     ) {}
 
     public function fetch(
@@ -50,28 +42,12 @@ final class SerproSitfisSequence
         string $contribuinte,
         string $procuradorToken,
     ): SerproResult {
-        $protocoloResultado = $this->solicitarProtocolo($runId, $accountId, $clientId, $autor, $contribuinte, $procuradorToken);
-
-        // `solicitarProtocolo` devolve `SerproResult` sem `protocoloRelatorio`
-        // quando o provedor diz que não tem relatório a emitir (503 definitivo
-        // depois de `tempoEspera` cumprido). A resposta sobe como está —
-        // gravamos a chamada e o mapper sabe gravar a causa.
+        $prazo = $this->agoraMs() + self::ORCAMENTO_MS;
+        $protocoloResultado = $this->solicitarProtocolo($runId, $accountId, $clientId, $autor, $contribuinte, $procuradorToken, $prazo);
         $dados = is_array($protocoloResultado->dados()) ? $protocoloResultado->dados() : [];
         $protocolo = trim((string) ($dados['protocoloRelatorio'] ?? ''));
 
-        if ($protocolo === '') {
-            return $protocoloResultado;
-        }
-
-        return $this->emitirRelatorio(
-            $runId,
-            $accountId,
-            $clientId,
-            $autor,
-            $contribuinte,
-            $procuradorToken,
-            $protocolo,
-        );
+        return $this->emitirRelatorio($runId, $accountId, $clientId, $autor, $contribuinte, $procuradorToken, $protocolo, $prazo);
     }
 
     private function solicitarProtocolo(
@@ -81,13 +57,14 @@ final class SerproSitfisSequence
         string $autor,
         string $contribuinte,
         string $procuradorToken,
+        int $prazo,
     ): SerproResult {
-        $ultimaExcecao = null;
+        $pendente = null;
 
-        // `SOLICITARPROTOCOLO91` pode devolver 503 com `tempoEspera` quando o
-        // provedor ainda está gerando o relatório — isso não é falha, é a
-        // fila do SERPRO. Respeitamos o tempo e tentamos de novo.
         for ($tentativa = 0; $tentativa < self::MAX_TENTATIVAS_PROTOCOLO; $tentativa++) {
+            $timeout = $this->timeoutParaChamada($prazo, $pendente);
+            $espera = self::ESPERA_MAX_MS;
+
             try {
                 $result = $this->recorder->record(
                     $runId,
@@ -95,50 +72,41 @@ final class SerproSitfisSequence
                     $clientId,
                     'SITFIS',
                     'SOLICITARPROTOCOLO91',
-                    fn (): SerproResult => $this->client->call(
+                    fn (): SerproResult => $this->chamarComTimeout($timeout, fn (): SerproResult => $this->client->call(
                         'SITFIS',
                         'SOLICITARPROTOCOLO91',
                         [],
                         $autor,
                         $contribuinte,
                         $procuradorToken,
-                    ),
+                    )),
                 );
+            } catch (SerproException $exception) {
+                if ($exception->status !== 503 || ! $this->respostaPendente($exception)) {
+                    throw $exception;
+                }
 
+                $pendente = $this->pendente($exception);
+                $result = null;
+            }
+
+            if ($result !== null) {
                 $dados = is_array($result->dados()) ? $result->dados() : [];
                 $protocolo = trim((string) ($dados['protocoloRelatorio'] ?? ''));
+                $espera = (int) ($dados['tempoEspera'] ?? 0);
+                $pendente = $this->pendente($result);
 
-                // Quando o provedor responde 503 + `Sucesso-Sitfis-SC01` ou
-                // `Aviso-Sitfis-AV03`, o relatório está pronto/em fila — o
-                // envelope vem com `tempoEspera` em ms e o protocolo quando
-                // já alocado. Respeitamos a espera até o teto do job
-                // (`ESPERA_MAX_MS`); depois disso soltamos pra fila
-                // retentar via `Upstream`.
-                if ($protocolo === '') {
-                    $espera = (int) ($dados['tempoEspera'] ?? 0);
+                if ($result->status() === 503 && ! $this->respostaPendente($result)) {
+                    throw $pendente;
+                }
 
-                    if (($espera > 0 || $result->status() === 503)
-                        && $tentativa < self::MAX_TENTATIVAS_PROTOCOLO - 1) {
-                        $this->aguardarMs($espera > 0 ? min($espera, self::ESPERA_MAX_MS) : self::ESPERA_MAX_MS);
+                if ($protocolo !== '') {
+                    $this->aguardarMs($espera > 0 ? $espera : 1_000, $prazo, $pendente);
 
-                        continue;
-                    }
+                    return $result;
+                }
 
-                    // 503 com `tempoEspera` depois das tentativas = SERPRO
-                    // pedindo mais tempo — a fila retenta pelo backoff.
-                    if ($result->status() === 503) {
-                        throw new SerproException(
-                            'O SITFIS pediu mais tempo para gerar o relatório.',
-                            SerproFailure::Upstream,
-                            $result->status(),
-                            $result->mensagens()[0]['codigo'] ?? null,
-                            $result->responseId(),
-                            $result->requestTag(),
-                        );
-                    }
-
-                    // 200/202 sem protocolo é resposta malformada —
-                    // não retenta, mas registra como falha de contrato.
+                if ($espera <= 0 && $result->status() !== 503) {
                     throw new SerproException(
                         'O Integra Contador não devolveu protocolo do relatório fiscal.',
                         SerproFailure::DoNotRetry,
@@ -149,34 +117,18 @@ final class SerproSitfisSequence
                     );
                 }
 
-                $espera = (int) ($dados['tempoEspera'] ?? 0);
-                $this->aguardarMs($espera > 0 ? $espera : 1_000);
-
-                return $result;
-            } catch (SerproException $exception) {
-                // 503 aqui é "estou gerando, volta daqui a tempoEspera ms" —
-                // respeitamos a espera e tentamos de novo.
-                if ($exception->status === 503) {
-                    $ultimaExcecao = $exception;
-                    $this->aguardarMs(self::ESPERA_MAX_MS);
-
-                    continue;
-                }
-
-                // Outros erros sobem imediatamente (401, 403, timeout...).
-                throw $exception;
+                $espera = $espera > 0 ? min($espera, self::ESPERA_MAX_MS) : self::ESPERA_MAX_MS;
             }
+
+            if ($tentativa === self::MAX_TENTATIVAS_PROTOCOLO - 1) {
+                throw $pendente;
+            }
+
+            // Fora do catch: esgotar o prazo não inicia outra espera de 503.
+            $this->aguardarMs($espera, $prazo, $pendente);
         }
 
-        if ($ultimaExcecao !== null) {
-            throw $ultimaExcecao;
-        }
-
-        throw new SerproException(
-            'O SITFIS não respondeu com protocolo dentro do limite de tentativas.',
-            SerproFailure::Upstream,
-            503,
-        );
+        throw $this->pendente();
     }
 
     private function emitirRelatorio(
@@ -187,12 +139,16 @@ final class SerproSitfisSequence
         string $contribuinte,
         string $procuradorToken,
         string $protocolo,
+        int $prazo,
     ): SerproResult {
-        $ultimaExcecao = null;
+        $pendente = null;
 
         for ($tentativa = 0; $tentativa < self::MAX_TENTATIVAS_EMITIR; $tentativa++) {
+            $timeout = $this->timeoutParaChamada($prazo, $pendente);
+            $espera = self::ESPERA_MAX_MS;
+
             try {
-                $result = $this->client->call(
+                $result = $this->chamarComTimeout($timeout, fn (): SerproResult => $this->client->call(
                     'SITFIS',
                     'RELATORIOSITFIS92',
                     ['protocoloRelatorio' => $protocolo],
@@ -200,117 +156,147 @@ final class SerproSitfisSequence
                     $contribuinte,
                     $procuradorToken,
                     $tentativa + 2,
-                );
+                ));
             } catch (SerproException $exception) {
-                // 202/204/304/503 são "o relatório ainda não está pronto" —
-                // aguardamos o `tempoEspera` (ou o teto) e batemos de novo.
-                // Só estouramos `Upstream` quando o tempo pedido passa do
-                // que cabe no job (`ESPERA_MAX_MS`), pra fila retentar.
-                if (in_array($exception->status, [202, 204, 304, 503], true)) {
-                    $espera = self::ESPERA_MAX_MS;
+                if (! $this->respostaPendente($exception)) {
+                    $this->recorder->record(
+                        $runId,
+                        $accountId,
+                        $clientId,
+                        'SITFIS',
+                        'RELATORIOSITFIS92',
+                        fn (): SerproResult => throw $exception,
+                    );
 
-                    // Quando vem com `tempoEspera` em `dados`, respeitamos;
-                    // quando vem só pelo status (sem envelope), o teto manda.
-                    if ($exception->status === 503) {
-                        // O `503` de `Sucesso-Sitfis-SC01` veio com
-                        // `tempoEspera` que ultrapassa o teto do job —
-                        // solta pra fila.
-                        $ultimaExcecao = new SerproException(
-                            'O SITFIS pediu mais tempo para gerar o relatório.',
-                            SerproFailure::Upstream,
-                            $exception->status,
-                            $exception->providerCode,
-                            $exception->responseId,
-                            $exception->requestTag,
+                    throw $exception;
+                }
+
+                $pendente = $this->pendente($exception);
+                $result = null;
+            }
+
+            if ($result !== null) {
+                $dados = is_array($result->dados()) ? $result->dados() : [];
+
+                if (in_array($result->status(), [202, 204, 304, 503], true)) {
+                    $espera = (int) ($dados['tempoEspera'] ?? self::ESPERA_MAX_MS);
+                    $pendente = $this->pendente($result);
+
+                    if (! $this->respostaPendente($result)) {
+                        throw $pendente;
+                    }
+                } else {
+                    if ((string) ($dados['pdf'] ?? '') === '') {
+                        throw new SerproException(
+                            'O Integra Contador respondeu sem PDF do relatório fiscal.',
+                            SerproFailure::DoNotRetry,
+                            $result->status(),
+                            $result->mensagens()[0]['codigo'] ?? null,
+                            $result->responseId(),
+                            $result->requestTag(),
                         );
-
-                        $this->aguardarMs(self::ESPERA_MAX_MS);
-
-                        continue;
                     }
 
-                    $this->aguardarMs($espera);
-                    $ultimaExcecao = $exception;
-
-                    continue;
-                }
-
-                $this->recorder->record(
-                    $runId,
-                    $accountId,
-                    $clientId,
-                    'SITFIS',
-                    'RELATORIOSITFIS92',
-                    fn (): SerproResult => throw $exception,
-                );
-
-                throw $exception;
-            }
-
-            if ($result->status() === 202) {
-                $dados = is_array($result->dados()) ? $result->dados() : [];
-                $espera = (int) ($dados['tempoEspera'] ?? self::ESPERA_MAX_MS);
-                // `tempoEspera` pode pedir mais do que cabe no job —
-                // quando passa do teto, soltamos pra fila.
-                if ($espera > self::ESPERA_MAX_MS) {
-                    throw new SerproException(
-                        'O SITFIS pediu mais tempo para gerar o relatório.',
-                        SerproFailure::Upstream,
-                        503,
-                        $result->mensagens()[0]['codigo'] ?? null,
-                        $result->responseId(),
-                        $result->requestTag(),
+                    return $this->recorder->record(
+                        $runId,
+                        $accountId,
+                        $clientId,
+                        'SITFIS',
+                        'RELATORIOSITFIS92',
+                        fn (): SerproResult => $result,
                     );
                 }
-
-                $this->aguardarMs($espera);
-
-                continue;
             }
 
-            $dados = is_array($result->dados()) ? $result->dados() : [];
-            $pdf = (string) ($dados['pdf'] ?? '');
-
-            if ($pdf === '') {
-                throw new SerproException(
-                    'O Integra Contador respondeu sem PDF do relatório fiscal.',
-                    SerproFailure::DoNotRetry,
-                    $result->status(),
-                    $result->mensagens()[0]['codigo'] ?? null,
-                    $result->responseId(),
-                    $result->requestTag(),
-                );
+            if ($tentativa === self::MAX_TENTATIVAS_EMITIR - 1) {
+                throw $pendente;
             }
 
-            return $this->recorder->record(
-                $runId,
-                $accountId,
-                $clientId,
-                'SITFIS',
-                'RELATORIOSITFIS92',
-                fn (): SerproResult => $result,
-            );
+            $this->aguardarMs($espera, $prazo, $pendente);
         }
 
-        if ($ultimaExcecao !== null) {
-            throw $ultimaExcecao;
-        }
-
-        throw new SerproException(
-            'O relatório fiscal segue em processamento após o limite de tentativas.',
-            SerproFailure::Upstream,
-            503,
-        );
+        throw $this->pendente();
     }
 
-    private function aguardarMs(int $milissegundos): void
+    private function aguardarMs(int $milissegundos, int $prazo, SerproException $pendente): void
     {
-        $milissegundos = max(0, min($milissegundos, self::ESPERA_MAX_MS));
+        $milissegundos = max(0, $milissegundos);
+        $reserva = self::MAX_REQUESTS_POR_CHAMADA * 1000 + self::MARGEM_CHAMADA_MS;
 
-        if ($milissegundos === 0) {
-            return;
+        if ($milissegundos > self::ESPERA_MAX_MS || $this->agoraMs() + $milissegundos + $reserva > $prazo) {
+            throw $pendente;
         }
 
-        usleep($milissegundos * 1000);
+        if ($milissegundos > 0) {
+            Sleep::usleep($milissegundos * 1000);
+        }
+    }
+
+    private function timeoutParaChamada(int $prazo, ?SerproException $pendente): int
+    {
+        $saldo = $prazo - $this->agoraMs() - self::MARGEM_CHAMADA_MS;
+        $timeout = (int) floor($saldo / (self::MAX_REQUESTS_POR_CHAMADA * 1000));
+
+        if ($timeout < 1) {
+            throw $pendente ?? $this->pendente();
+        }
+
+        $configurado = (int) config('integra-contador.timeout', 25);
+
+        return $configurado > 0 ? min($configurado, $timeout) : $timeout;
+    }
+
+    /**
+     * O cliente e a autenticação leem a mesma configuração a cada request.
+     * O escopo síncrono inclui a reautenticação em 401 e restaura o valor até
+     * quando a chamada falha; não altera os timeouts das demais obrigações.
+     *
+     * @param  Closure(): SerproResult  $call
+     */
+    private function chamarComTimeout(int $timeout, Closure $call): SerproResult
+    {
+        $anterior = config('integra-contador.timeout');
+        config(['integra-contador.timeout' => $timeout]);
+
+        try {
+            return $call();
+        } finally {
+            config(['integra-contador.timeout' => $anterior]);
+        }
+    }
+
+    private function agoraMs(): int
+    {
+        return $this->clock !== null ? ($this->clock)() : (int) floor(hrtime(true) / 1_000_000);
+    }
+
+    /**
+     * O 503 sintético de transporte não prova resposta do provedor. Só uma
+     * resposta pendente identificada autoriza polling do mesmo protocolo.
+     */
+    private function respostaPendente(SerproResult|SerproException $origem): bool
+    {
+        $status = $origem instanceof SerproResult ? $origem->status() : $origem->status;
+        $responseId = $origem instanceof SerproResult ? $origem->responseId() : $origem->responseId;
+
+        if (! in_array($status, [202, 204, 304, 503], true) || trim($responseId ?? '') === '') {
+            return false;
+        }
+
+        return $origem instanceof SerproResult
+            || ($status === 503 && $origem->failure === SerproFailure::Upstream)
+            || (in_array($status, [202, 204, 304], true) && $origem->failure === SerproFailure::DoNotRetry);
+    }
+
+    private function pendente(SerproResult|SerproException|null $origem = null): SerproException
+    {
+        return new SerproException(
+            'O relatório fiscal segue em processamento; o limite local de espera exige nova tentativa.',
+            SerproFailure::Upstream,
+            $origem instanceof SerproResult ? $origem->status() : ($origem?->status ?? 503),
+            $origem instanceof SerproResult ? ($origem->mensagens()[0]['codigo'] ?? null) : $origem?->providerCode,
+            $origem instanceof SerproResult ? $origem->responseId() : $origem?->responseId,
+            $origem instanceof SerproResult ? $origem->requestTag() : $origem?->requestTag,
+        );
     }
 }

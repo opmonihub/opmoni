@@ -68,7 +68,18 @@ export function useAuth() {
     clearAccountData()
     await rotateCsrf()
     if (import.meta.client)
-      window.location.assign('/')
+      window.location.assign(accessDestination(identity))
+  }
+  async function switchCompany(id: number) {
+    const identity = await api<Identity>('/erp/company/switch', { method: 'POST', body: { company_id: id } })
+    ++generation.value
+    ++sessionGeneration.value
+    user.value = identity
+    csrf.value = null
+    clearAccountData()
+    await rotateCsrf()
+    if (import.meta.client)
+      window.location.assign('/erp')
   }
   async function logout() {
     const version = sessionGeneration.value
@@ -87,6 +98,8 @@ export function useAuth() {
   const isSuperAdmin = computed(() => user.value?.is_super_admin ?? false)
   const accounts = computed(() => user.value?.accounts ?? [])
   const currentAccount = computed(() => user.value?.current_account ?? null)
+  const companies = computed(() => user.value?.companies ?? [])
+  const currentCompany = computed(() => user.value?.current_company ?? null)
   const permissions = computed(() => tenantPermissions(user.value))
   const currentRole = computed(() => permissions.value.role)
   const can = (roles: string[]) => roles.includes(currentRole.value ?? '')
@@ -97,7 +110,7 @@ export function useAuth() {
   async function registrationAvailable() {
     return (await api<{ registration_available: boolean }>('/registration-status')).registration_available
   }
-  return { user, resolved, refresh, fetchMe: refresh, authenticate, switchAccount, logout, invalidateSession: clearSession,
-    isSuperAdmin, accounts, currentAccount, currentRole, can, canManageClients,
+  return { user, resolved, refresh, fetchMe: refresh, authenticate, switchAccount, switchCompany, logout, invalidateSession: clearSession,
+    isSuperAdmin, accounts, currentAccount, companies, currentCompany, currentRole, can, canManageClients,
     canManageWork, canManageDepartments, canManageMembers, registrationAvailable }
 }

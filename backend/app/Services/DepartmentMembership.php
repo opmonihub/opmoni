@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Department;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 class DepartmentMembership
@@ -28,9 +29,17 @@ class DepartmentMembership
     public static function memberBelongs(int $accountId, int $departmentId, int $userId): bool
     {
         return DB::table('department_user')
-            ->where('account_id', $accountId)
-            ->where('department_id', $departmentId)
-            ->where('user_id', $userId)
+            ->join('account_memberships', function (JoinClause $join): void {
+                $join->on('account_memberships.account_id', '=', 'department_user.account_id')
+                    ->on('account_memberships.user_id', '=', 'department_user.user_id');
+            })
+            ->join('departments', function (JoinClause $join): void {
+                $join->on('departments.id', '=', 'department_user.department_id')
+                    ->on('departments.account_id', '=', 'department_user.account_id');
+            })
+            ->where('department_user.account_id', $accountId)
+            ->where('department_user.department_id', $departmentId)
+            ->where('department_user.user_id', $userId)
             ->exists();
     }
 }

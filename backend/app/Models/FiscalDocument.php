@@ -3,17 +3,22 @@
 namespace App\Models;
 
 use App\Concerns\BelongsToAccount;
+use App\Enums\FiscalDeliveryOrigin;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalProcessingReason;
+use App\Enums\FiscalProcessingState;
+use App\Enums\FiscalProviderNoteStatus;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use Database\Factories\FiscalDocumentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['client_id', 'source', 'model', 'kind', 'stage', 'chave_acesso', 'numero', 'serie', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'mascarado', 'captured_at'])]
+#[Fillable(['client_id', 'source', 'model', 'kind', 'stage', 'chave_acesso', 'numero', 'serie', 'event_id', 'nsu', 'emitente_cnpj', 'destinatario_cnpj', 'valor_total', 'emissao_at', 'authorized_at', 'provider_note_status', 'delivery_origin', 'delivery_environment', 'queried_tax_id', 'delivery_received_at', 'delivery_correlation_id', 'evento_ocorrido_em_at', 'schema', 'storage_path', 'sha256', 'digval', 'digval_confere', 'xml_bytes', 'storage_state', 'storage_verified_at', 'processing_state', 'processing_reason', 'next_attempt_at', 'processing_attempts', 'processing_started_at', 'processing_completed_at', 'processing_claim_expires_at', 'mascarado', 'captured_at'])]
 class FiscalDocument extends Model
 {
     /** @use HasFactory<FiscalDocumentFactory> */
@@ -66,6 +71,18 @@ class FiscalDocument extends Model
             'mascarado' => 'boolean',
             'xml_bytes' => 'integer',
             'emissao_at' => 'datetime',
+            'authorized_at' => 'datetime',
+            'provider_note_status' => FiscalProviderNoteStatus::class,
+            'delivery_origin' => FiscalDeliveryOrigin::class,
+            'delivery_received_at' => 'datetime',
+            'storage_state' => FiscalStorageState::class,
+            'storage_verified_at' => 'datetime',
+            'processing_state' => FiscalProcessingState::class,
+            'processing_reason' => FiscalProcessingReason::class,
+            'next_attempt_at' => 'datetime',
+            'processing_started_at' => 'datetime',
+            'processing_completed_at' => 'datetime',
+            'processing_claim_expires_at' => 'datetime',
             'evento_ocorrido_em_at' => 'datetime',
             'captured_at' => 'datetime',
         ];

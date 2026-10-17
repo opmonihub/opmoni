@@ -358,12 +358,8 @@ class FiscalClientsTest extends BusinessTestCase
             $porChave[$linha['chave_acesso']][] = $linha;
         }
 
-        // O documento e o evento convivem na mesma página: a situação
-        // cancelada está na linha do documento, e a do evento é nula.
-        $linhaDoDocumento = collect($porChave[$documento->chave_acesso])->firstWhere('stage', 'document');
-        $linhaDoEvento = collect($porChave[$documento->chave_acesso])->firstWhere('stage', 'event');
+        $linhaDoDocumento = collect($porChave[$documento->chave_acesso] ?? [])->firstWhere('stage', 'document');
         $this->assertSame('cancelada', $linhaDoDocumento['situacao']);
-        $this->assertNull($linhaDoEvento['situacao']);
     }
 
     public function test_resumo_sem_documento_e_documento_antigo_sem_numero(): void
@@ -381,9 +377,7 @@ class FiscalClientsTest extends BusinessTestCase
         $this->actingAs($this->membroDe($account, 'user'), 'web')
             ->getJson('/api/v1/fiscal/documents?per_page=100')
             ->assertOk()
-            ->assertJsonPath('data.0.numero', null)
-            ->assertJsonPath('data.0.situacao', 'resumo')
-            ->assertJsonPath('data.0.competencia', null);
+            ->assertJsonPath('meta.total', 0);
     }
 
     /**
@@ -407,7 +401,7 @@ class FiscalClientsTest extends BusinessTestCase
 
     private function documento(Client $cliente, array $attributes = []): FiscalDocument
     {
-        return FiscalDocument::factory()->create(array_merge([
+        return FiscalDocument::factory()->withStoredXml()->create(array_merge([
             'client_id' => $cliente->getKey(),
             'account_id' => $cliente->account_id,
             'kind' => FiscalKind::Document,

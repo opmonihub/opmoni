@@ -1,6 +1,7 @@
 import type { $Fetch, FetchOptions, ResponseType } from 'ofetch'
 import type { Identity } from '#shared/types/access'
 import { tenantApiPath, tenantMembership } from '#shared/utils/business'
+import { erpCompanySelection, erpOperatingApiPath } from '#shared/utils/erp'
 
 export function useAccessApi() {
   const request = useRequestFetch() as $Fetch
@@ -21,8 +22,12 @@ export function useAccessApi() {
       headers.set('Accept', options.responseType === 'blob' ? '*/*' : 'application/json')
     if (csrf.value) headers.set('X-CSRF-Token', csrf.value)
     headers.delete('X-Account-Id')
+    headers.delete('X-Company-Id')
     if (tenantApiPath(path) && membership)
       headers.set('X-Account-Id', String(membership.id))
+    const company = erpCompanySelection(identity.value)
+    if (erpOperatingApiPath(path) && company)
+      headers.set('X-Company-Id', String(company.id))
     const responseHooks = options.onResponse
       ? Array.isArray(options.onResponse) ? options.onResponse : [options.onResponse]
       : []

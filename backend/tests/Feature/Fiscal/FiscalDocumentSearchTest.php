@@ -75,11 +75,11 @@ class FiscalDocumentSearchTest extends BusinessTestCase
         $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents?q='.$chave)
             ->assertOk()
-            ->assertJsonPath('meta.total', 2);
+            ->assertJsonPath('meta.total', 1);
 
         $ids = collect($resposta->json('data'))->pluck('id')->all();
         $this->assertContains($documento->getKey(), $ids);
-        $this->assertContains($evento->getKey(), $ids);
+        $this->assertNotContains($evento->getKey(), $ids);
         $this->assertNotContains($deOutraChave->getKey(), $ids);
     }
 
@@ -95,7 +95,7 @@ class FiscalDocumentSearchTest extends BusinessTestCase
         $cliente = $this->cliente($account, 'Cliente 1 Com NFS-e');
         $outro = $this->cliente($account, 'Cliente 2 Sem Essa Nota');
 
-        $documento = FiscalDocument::factory()->nfse()->create([
+        $documento = FiscalDocument::factory()->nfse()->withStoredXml()->create([
             'client_id' => $cliente->getKey(),
             'account_id' => $account->getKey(),
         ]);
@@ -112,11 +112,11 @@ class FiscalDocumentSearchTest extends BusinessTestCase
         $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents?q='.$chave)
             ->assertOk()
-            ->assertJsonPath('meta.total', 2);
+            ->assertJsonPath('meta.total', 1);
 
         $ids = collect($resposta->json('data'))->pluck('id')->all();
         $this->assertContains($documento->getKey(), $ids);
-        $this->assertContains($evento->getKey(), $ids);
+        $this->assertNotContains($evento->getKey(), $ids);
         $this->assertNotContains($deOutraChave->getKey(), $ids);
         $this->assertNotContains($deOutroCliente->getKey(), $ids);
     }
@@ -135,14 +135,14 @@ class FiscalDocumentSearchTest extends BusinessTestCase
         $cliente = $this->cliente($account, 'Cliente 1 Da Casa');
         $clienteAlheio = $this->cliente($alheia, 'Cliente 2 Alheio');
 
-        $daCasa = FiscalDocument::factory()->nfse()->create([
+        $daCasa = FiscalDocument::factory()->nfse()->withStoredXml()->create([
             'client_id' => $cliente->getKey(),
             'account_id' => $account->getKey(),
         ]);
 
         // A mesma chave nas duas contas — distribuição é por contribuinte, e
         // a chave que chega para a outra conta é a mesma sequência de dígitos.
-        FiscalDocument::factory()->nfse()->create([
+        FiscalDocument::factory()->nfse()->withStoredXml()->create([
             'client_id' => $clienteAlheio->getKey(),
             'account_id' => $alheia->getKey(),
             'chave_acesso' => (string) $daCasa->chave_acesso,
@@ -362,7 +362,7 @@ class FiscalDocumentSearchTest extends BusinessTestCase
 
     private function documento(Client $cliente, array $attributes = []): FiscalDocument
     {
-        return FiscalDocument::factory()->create(array_merge([
+        return FiscalDocument::factory()->withStoredXml()->create(array_merge([
             'client_id' => $cliente->getKey(),
             'account_id' => $cliente->account_id,
         ], $attributes));

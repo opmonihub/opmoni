@@ -50,6 +50,10 @@ return Application::configure(basePath: dirname(__DIR__))
                     $body['code'] = 'invalid_credentials';
                     $body['message'] = 'Email ou senha inválidos';
                 }
+                if (str_contains((string) ($body['errors']['email'][0] ?? ''), 'Faça login')) {
+                    $body['code'] = 'login_required';
+                    $body['message'] = (string) $body['errors']['email'][0];
+                }
             }
 
             return response()->json($body, $status, ['Cache-Control' => 'no-store']);

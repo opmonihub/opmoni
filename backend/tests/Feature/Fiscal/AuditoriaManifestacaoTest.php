@@ -61,7 +61,10 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
 
     public function test_a_linha_de_auditoria_carrega_quem_operacao_resultado_e_datas(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -106,7 +109,10 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
 
     public function test_o_573_registra_estado_conhecido_mantendo_quem_e_operacao(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -142,7 +148,10 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
 
     public function test_a_auditoria_de_um_pedido_nao_grava_segredo_xml_ou_envelope(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -205,6 +214,7 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
             'stage' => FiscalStage::Summary,
             'chave_acesso' => self::CHAVE,
             'emissao_at' => $resumo->emissaoAt,
+            'authorized_at' => $resumo->authorizedAt,
         ]);
     }
 
@@ -275,6 +285,7 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
             emissaoAt: now()->subDays(5)->toImmutable(),
             eventoOcorridoEmAt: null,
             xml: '<resNFe/>',
+            authorizedAt: now()->subDays(2)->toImmutable(),
         );
     }
 
@@ -299,11 +310,13 @@ class AuditoriaManifestacaoTest extends BusinessTestCase
      * O `retEnvEvento` do serviço de eventos — o mesmo shape do teste do
      * conector, com o `retEvento` interno opcional.
      */
-    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null): string
+    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null, ?string $chave = null): string
     {
+        $chave ??= self::CHAVE;
         $retEvento = $cStatEvento === null ? '' : '<retEvento versao="1.00">'
             .'<infEvento>'
             .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            ."<chNFe>{$chave}</chNFe><tpEvento>210210</tpEvento><nSeqEvento>1</nSeqEvento>"
             ."<cStat>{$cStatEvento}</cStat><xMotivo>{$xMotivoEvento}</xMotivo>"
             .'<dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
             .'</infEvento></retEvento>';

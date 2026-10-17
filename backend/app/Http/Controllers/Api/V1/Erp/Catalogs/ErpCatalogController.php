@@ -1,0 +1,101 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
+
+use App\Erp\ErpCatalogScope;
+use App\Http\Controllers\Controller;
+use App\Support\CurrentCompany;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+abstract class ErpCatalogController extends Controller
+{
+    /** @return class-string<Model> */
+    abstract protected function modelClass(): string;
+
+    /** @return list<string> */
+    abstract protected function searchableColumns(): array;
+
+    abstract protected function serialize(Model $model): array;
+
+    public function index(Request $request): JsonResponse
+    {
+        $companyId = $this->companyId($request);
+        $params = app(ErpCatalogScope::class)->listParams($request);
+
+        /** @var Builder<Model> $query */
+        $query = $this->modelClass()::query()
+            ->where('erp_company_id', $companyId)
+            ->orderBy('id');
+
+        if ($params['status'] !== null) {
+            $query->where('status', $params['status']);
+        }
+
+        if ($params['search'] !== null && $params['search'] !== '') {
+            $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $params['search']).'%';
+            $query->where(function (Builder $inner) use ($needle): void {
+                foreach ($this->searchableColumns() as $column) {
+                    $inner->orWhere($column, 'like', $needle);
+                }
+            });
+        }
+
+        $page = $query->paginate($params['per_page']);
+
+        return response()->json([
+            'data' => $page->getCollection()->map(fn (Model $row): array => $this->serialize($row))->all(),
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+            ],
+        ]);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $model = $this->findForCompany($request, $id);
+
+        return response()->json(['data' => $this->serialize($model)]);
+    }
+
+    public function archive(Request $request, int $id): JsonResponse
+    {
+        $context = CurrentCompany::fromRequest($request);
+        $context->assertCanMutate();
+
+        $model = $this->findForCompany($request, $id);
+        $model->status = 'archived';
+        $model->save();
+
+        return response()->json(['data' => $this->serialize($model)]);
+    }
+
+    protected function companyId(Request $request): int
+    {
+        return CurrentCompany::fromRequest($request)->company->id;
+    }
+
+    protected function findForCompany(Request $request, int $id): Model
+    {
+        $companyId = $this->companyId($request);
+
+        return $this->modelClass()::query()
+            ->where('erp_company_id', $companyId)
+            ->whereKey($id)
+            ->firstOrFail();
+    }
+
+    protected function decimalString(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '0';
+        }
+
+        return is_string($value) ? $value : (string) $value;
+    }
+}

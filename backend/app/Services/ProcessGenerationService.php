@@ -158,6 +158,17 @@ class ProcessGenerationService
             return null;
         }
 
+        if (! DB::table('account_memberships')->where('account_id', $accountId)->where('user_id', $assignee)->exists()) {
+            Log::warning('work.generation.assignee_outside_account', [
+                'account_id' => $accountId,
+                'template_id' => $step->template_id,
+                'step_id' => $step->getKey(),
+                'assignee_member_id' => (int) $assignee,
+            ]);
+
+            return null;
+        }
+
         if ($step->department_id !== null && ! DepartmentMembership::memberBelongs($accountId, (int) $step->department_id, (int) $assignee)) {
             Log::warning('work.generation.assignee_outside_department', [
                 'account_id' => $accountId,

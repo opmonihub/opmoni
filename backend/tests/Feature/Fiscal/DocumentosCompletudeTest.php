@@ -15,13 +15,8 @@ use Illuminate\Support\Facades\Storage;
 use Tests\BusinessTestCase;
 
 /**
- * A completude do XML na listagem de documentos: `summary_awaiting_xml`
- * quando a chave tem só o resumo da distribuição, `complete` quando o
- * documento completo chegou, `null` quando a pergunta não se aplica à linha.
- *
- * A completude é derivada dos registros de distribuição da chave — resumo
- * versus documento autorizado — e nunca da tabela de manifestação: ela diz o
- * que a distribuição entregou, não o que o escritório declarou ao fisco.
+ * A listagem contábil publica apenas XML completo verificado; resumos e eventos
+ * ficam fora da lista pronta e aparecem na visão de processamento.
  */
 class DocumentosCompletudeTest extends BusinessTestCase
 {
@@ -35,44 +30,37 @@ class DocumentosCompletudeTest extends BusinessTestCase
         CarbonImmutable::setTestNow('2026-09-28 12:00:00');
     }
 
-    public function test_linha_com_so_resumo_responde_resumo_aguardando_xml(): void
+    public function test_so_resumo_nao_aparece_na_lista_pronta(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Com Resumo');
-        $resumo = $this->resumo($cliente);
+        $this->resumo($cliente);
 
-        $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
+        $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('data.0.id', $resumo->getKey())
-            ->assertJsonPath('data.0.completude', 'summary_awaiting_xml');
+            ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_resumo_com_documento_completo_na_chave_responde_completo(): void
+    public function test_documento_completo_verificado_aparece_uma_vez(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Completo');
 
         $chave = '35260914200166000166550010000123451000123456';
-        $resumo = $this->resumo($cliente, ['chave_acesso' => $chave]);
-        $this->documento($cliente, ['chave_acesso' => $chave]);
+        $this->resumo($cliente, ['chave_acesso' => $chave]);
+        $documento = $this->documento($cliente, ['chave_acesso' => $chave]);
 
-        // A página carrega as duas linhas da chave, e a completude é da chave
-        // — não de cada linha isolada. O resumo que já tem o documento ao lado
-        // não é mais "aguardando XML".
-        $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
+        $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('meta.total', 2);
-
-        $porId = collect($resposta->json('data'))->keyBy('id');
-        $this->assertSame('complete', $porId[$resumo->getKey()]['completude']);
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $documento->getKey());
     }
 
-    public function test_documento_completo_responde_completo(): void
+    public function test_documento_completo_com_xml_armazenado_aparece(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
@@ -82,8 +70,7 @@ class DocumentosCompletudeTest extends BusinessTestCase
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('data.0.id', $documento->getKey())
-            ->assertJsonPath('data.0.completude', 'complete');
+            ->assertJsonPath('data.0.id', $documento->getKey());
     }
 
     public function test_cte_nao_tem_completude_mesmo_com_so_resumo(): void
@@ -100,88 +87,67 @@ class DocumentosCompletudeTest extends BusinessTestCase
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('data.0.id', $resumo->getKey())
-            ->assertJsonPath('data.0.completude', null);
+            ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_linha_de_evento_nao_tem_completude(): void
+    public function test_resumo_e_evento_nao_aparecem_na_lista_pronta(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Com Evento');
 
         $chave = '35260914200166000166550010000123451000123457';
-        $resumo = $this->resumo($cliente, ['chave_acesso' => $chave]);
-        $evento = $this->evento($cliente, $chave, '110110', 901);
+        $this->resumo($cliente, ['chave_acesso' => $chave]);
+        $this->evento($cliente, $chave, '110110', 901);
 
-        $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
+        $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('meta.total', 2);
-
-        $porId = collect($resposta->json('data'))->keyBy('id');
-        $this->assertSame('summary_awaiting_xml', $porId[$resumo->getKey()]['completude']);
-        $this->assertNull($porId[$evento->getKey()]['completude']);
+            ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_nfe_emitida_pelo_proprio_cnpj_do_cliente_nao_tem_completude(): void
+    public function test_resumo_proprio_emitente_fica_fora_da_lista_pronta(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Emitente');
-        $resumo = $this->resumo($cliente, ['emitente_cnpj' => $cliente->tax_id]);
+        $this->resumo($cliente, ['emitente_cnpj' => $cliente->tax_id]);
 
-        // A completude pergunta se falta destravar o XML de terceiro. Na nota
-        // que o próprio cliente emitiu não há terceiro que destrave nada, e a
-        // célula fica vazia — "aguardando XML" aqui sugeriria uma manifestação
-        // contra a própria emissão.
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('data.0.id', $resumo->getKey())
-            ->assertJsonPath('data.0.completude', null);
+            ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_nfe_do_proprio_cliente_com_tax_id_mascarado_nao_tem_completude(): void
+    public function test_resumo_proprio_emitente_com_cnpj_mascarado_fica_fora(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Emitente Mascarado');
 
-        // O `tax_id` é campo editável e pode guardar a máscara que o operador
-        // digitou: `12.345.678/0001-90` é o mesmo CNPJ de `12345678000190`, e
-        // a comparação que decide "nota emitida pelo próprio cliente" tem de
-        // ler os dígitos — a estrita pintaria `summary_awaiting_xml` numa nota
-        // da própria emissão, o falso positivo que o `null` existe para
-        // suprimir.
         $digitos = (string) $cliente->tax_id;
         $cliente->forceFill([
             'tax_id' => substr($digitos, 0, 2).'.'.substr($digitos, 2, 3).'.'
                 .substr($digitos, 5, 3).'/'.substr($digitos, 8, 4).'-'.substr($digitos, 12, 2),
         ])->save();
 
-        $resumo = $this->resumo($cliente, ['emitente_cnpj' => $digitos]);
+        $this->resumo($cliente, ['emitente_cnpj' => $digitos]);
 
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('data.0.id', $resumo->getKey())
-            ->assertJsonPath('data.0.completude', null);
+            ->assertJsonPath('meta.total', 0);
     }
 
-    public function test_documento_de_outra_account_nao_preenche_completude_da_pagina(): void
+    public function test_documento_de_outra_account_nao_entra_na_lista_pronta(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $outra = Account::factory()->create();
 
-        // A mesma chave de acesso existe nas duas contas — o documento fiscal
-        // é o mesmo, o que muda é quem o capturou. Se a consulta da completude
-        // esquecer a conta, o `complete` do vizinho vaza para o resumo da
-        // conta corrente.
         $chave = '35260914200166000166550010000123451000123458';
         $cliente = $this->cliente($account, 'Cliente Da Conta');
-        $resumo = $this->resumo($cliente, ['chave_acesso' => $chave]);
+        $this->resumo($cliente, ['chave_acesso' => $chave]);
 
         $clienteVizinho = $this->cliente($outra, 'Cliente De Outra Conta');
         $this->documento($clienteVizinho, ['chave_acesso' => $chave]);
@@ -189,9 +155,7 @@ class DocumentosCompletudeTest extends BusinessTestCase
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk()
-            ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('data.0.id', $resumo->getKey())
-            ->assertJsonPath('data.0.completude', 'summary_awaiting_xml');
+            ->assertJsonPath('meta.total', 0);
     }
 
     public function test_resposta_nao_traz_segredos_nem_material_de_manifestacao(): void
@@ -199,15 +163,14 @@ class DocumentosCompletudeTest extends BusinessTestCase
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
         $cliente = $this->cliente($account, 'Cliente 1 Com Segredo');
-        $resumo = $this->resumo($cliente);
+        $documento = $this->documento($cliente);
 
         $resposta = $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson('/api/v1/fiscal/documents')
             ->assertOk();
 
         $linha = $resposta->json('data.0');
-        $this->assertEquals($resumo->getKey(), $linha['id']);
-        $this->assertContains('completude', array_keys($linha));
+        $this->assertEquals($documento->getKey(), $linha['id']);
         $this->assertNotContains('manifestacao', array_keys($linha));
         $this->assertNotContains('manifestation', array_keys($linha));
 
@@ -215,7 +178,7 @@ class DocumentosCompletudeTest extends BusinessTestCase
         // o carrega. O segredo é o conteúdo e o caminho do arquivo, que são
         // os valores que um vazamento escreveria.
         $resposta->assertDontSee('storage_path', false)
-            ->assertDontSee((string) $resumo->storage_path, false)
+            ->assertDontSee((string) $documento->storage_path, false)
             ->assertDontSee('sha256', false)
             ->assertDontSee('xml_bytes', false)
             ->assertDontSee('xml_preview', false)
@@ -233,7 +196,7 @@ class DocumentosCompletudeTest extends BusinessTestCase
 
     private function documento(Client $cliente, array $attributes = []): FiscalDocument
     {
-        return FiscalDocument::factory()->create(array_merge([
+        return FiscalDocument::factory()->withStoredXml()->create(array_merge([
             'client_id' => $cliente->getKey(),
             'account_id' => $cliente->account_id,
         ], $attributes));

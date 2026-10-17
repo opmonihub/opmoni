@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\SupportAccessLog;
+use App\Support\SupportAccessLogMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,7 +20,7 @@ class SupportAccessLogResource extends JsonResource
             'super_admin_user_id' => $this->super_admin_user_id,
             'account_id' => $this->account_id,
             'action' => $this->action,
-            'metadata' => $this->metadata,
+            'metadata' => SupportAccessLogMetadata::sanitize($this->metadata),
             'ip' => $this->ip,
             'created_at' => $this->created_at,
             'super_admin' => $this->whenLoaded('superAdmin', fn () => $this->superAdmin === null ? null : [

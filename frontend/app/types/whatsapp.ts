@@ -9,7 +9,15 @@
 /** Os quatro estados espelhados do canal. */
 export type WhatsAppChannelStatus = 'disconnected' | 'pairing' | 'connected' | 'error'
 
+export interface WhatsAppChannelOperationNotice {
+  code: 'operation_continuation_required' | 'operation_reconciliation_required' | 'operation_manual_review_required' | 'operation_superseded'
+  operation_id: string
+  next_step: string
+  message?: string
+}
+
 export interface WhatsAppChannel {
+  operation?: WhatsAppChannelOperationNotice | null
   status: WhatsAppChannelStatus
   /**
    * O código de pareamento cru do whatsmeow (prefixo `2@…`), não uma imagem:
@@ -82,6 +90,8 @@ export interface WhatsAppDispatch {
   /** O Contato de envio de destino; `null` no fluxo legado e no contato removido. */
   contact: WhatsAppDispatchContact | null
   status: WhatsAppDispatchStatus
+  retry_safe?: boolean
+  send_attempted_at?: string | null
   /** O id da mensagem no gateway; `null` até o envio responder. */
   message_id: string | null
   /** Motivo seguro para a UI; `null` sem falha. */

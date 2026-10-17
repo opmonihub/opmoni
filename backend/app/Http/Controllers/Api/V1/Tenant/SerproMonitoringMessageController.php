@@ -4,11 +4,15 @@ namespace App\Http\Controllers\Api\V1\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\ReadSerproMessageRequest;
+use App\Models\SerproMonitoring;
 use App\Services\SerproException;
 use App\Services\SerproMailboxReader;
+use App\Services\SerproMailboxRecovery;
 use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * A leitura de uma mensagem da caixa postal, que é ciência da intimação
@@ -20,6 +24,14 @@ use Illuminate\Http\JsonResponse;
  */
 class SerproMonitoringMessageController extends Controller
 {
+    public function reconcile(string $obligation, int $client, int $message, Request $request, SerproMailboxRecovery $recovery): JsonResponse
+    {
+        Gate::authorize('readMessage', SerproMonitoring::class);
+        $data = $recovery->reconcile((int) resolve(CurrentTenant::class)->accountId, $obligation, $client, $message);
+
+        return response()->json(['data' => $data]);
+    }
+
     public function store(
         string $obligation,
         int $client,

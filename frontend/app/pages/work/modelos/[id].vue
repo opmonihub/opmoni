@@ -36,6 +36,7 @@ interface StepDraft {
   key: number
   id?: number
   title: string
+  description: string | null
   department_id: number | null
   due_day: number
   priority: WorkTaskPriority
@@ -66,6 +67,7 @@ let stepKey = 1
 function blankStep(order: number): StepDraft {
   return {
     default_assignee_member_id: null,
+    description: null,
     department_id: null,
     due_day: 20,
     key: stepKey++,
@@ -89,6 +91,7 @@ function syncFromTemplate(template: WorkTemplate) {
     key: stepKey++,
     id: step.id,
     title: step.title,
+    description: step.description,
     department_id: step.department_id,
     due_day: step.due_day,
     priority: step.priority,
@@ -262,7 +265,7 @@ function buildPayload(): WorkTemplatePayload {
         ...(step.id ? { id: step.id } : {}),
         title: step.title.trim(),
         department_id: step.department_id,
-        description: null,
+        description: step.description,
         due_day: step.due_day,
         priority: step.priority,
         order: index + 1,

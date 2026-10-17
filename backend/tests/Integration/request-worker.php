@@ -40,6 +40,21 @@ if (($input['database_operation'] ?? null) === 'hold-account') {
     echo json_encode(['status' => 204]);
     exit;
 }
+if (($input['database_operation'] ?? null) === 'hold-erp-company') {
+    DB::transaction(function () use ($input): void {
+        DB::table('erp_companies')->where('id', $input['company_id'])->lockForUpdate()->first();
+        touch($input['ready']);
+        $deadline = microtime(true) + 20;
+        while (! file_exists($input['release'])) {
+            if (microtime(true) >= $deadline) {
+                throw new RuntimeException('ERP company row-lock synchronization timed out.');
+            }
+            usleep(1000);
+        }
+    });
+    echo json_encode(['status' => 204]);
+    exit;
+}
 if ($input['redis_failure'] ?? false) {
     config(['database.redis.cache.port' => 1]);
     Redis::purge('cache');
@@ -137,6 +152,23 @@ if (($input['database_operation'] ?? null) === 'generate-recurrences') {
     $app->instance('request', Request::create('http://localhost:3000'));
     $status = Artisan::call('work:generate-recurrences', ['--month' => $input['month']]);
     echo json_encode(['status' => $status === 0 ? 200 : 500]);
+    DB::disconnect();
+    exit;
+}
+
+if (($input['database_operation'] ?? null) === 'suspend-erp-company') {
+    DB::table('erp_companies')->where('id', $input['company_id'])->update(['status' => 'suspended', 'updated_at' => now()]);
+    echo json_encode(['status' => 204]);
+    DB::disconnect();
+    exit;
+}
+
+if (($input['database_operation'] ?? null) === 'remove-erp-membership') {
+    DB::table('erp_company_memberships')
+        ->where('erp_company_id', $input['company_id'])
+        ->where('user_id', $input['user_id'])
+        ->delete();
+    echo json_encode(['status' => 204]);
     DB::disconnect();
     exit;
 }

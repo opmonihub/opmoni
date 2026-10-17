@@ -12,17 +12,27 @@ use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproCall;
+use App\Models\SerproClientAuthorization;
 use App\Models\SerproConnection;
+use App\Models\SerproMonitoring;
 use App\Models\SerproSyncRun;
 use App\Models\SerproSyncRunItem;
+use App\Services\SerproCallRecorder;
+use App\Services\SerproMonitoringWriter;
+use App\Services\SerproResult;
 use App\Services\SerproTokenPair;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\Lock;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
+use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\BusinessTestCase;
@@ -308,6 +318,201 @@ class SerproSyncFailureTest extends BusinessTestCase
         $item = $this->item($run, $client);
         $this->assertSame(SerproSyncItemState::Indeterminate, $item->state);
         $this->assertSame('resposta_incerta', $item->reason);
+    }
+
+    #[DataProvider('falhasDeSequenciaSitfis')]
+    public function test_sync_nao_reabre_sequencia_sitfis_por_response_id(int $status): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        Sleep::fake();
+        $run->forceFill(['obligations' => ['situacao-fiscal/relatorio-fiscal']])->save();
+        config(['integra-contador.obligations.situacao-fiscal/relatorio-fiscal.procuracao' => null]);
+        SerproClientAuthorization::factory()->create(['account_id' => $account->id, 'client_id' => $client->id]);
+        $protocolos = 0;
+        $emissoes = 0;
+        Http::fake(function ($request) use ($status, &$protocolos, &$emissoes) {
+            if ($request->data()['pedidoDados']['idServico'] === 'SOLICITARPROTOCOLO91') {
+                $protocolos++;
+
+                return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => 'protocolo'], 'mensagens' => [], 'responseId' => 'resp-protocolo']);
+            }
+
+            $emissoes++;
+
+            return Http::response(['status' => $status, 'dados' => ['tempoEspera' => 33_000], 'mensagens' => [], 'responseId' => 'resp-emissao'], $status);
+        });
+
+        $job = (new SyncSerproClientJob($run->id, $account->id, $client->id))->withFakeQueueInteractions();
+        $job->handle();
+        $job->assertNotReleased();
+        $this->assertSame(SerproSyncItemState::Indeterminate, $this->item($run, $client)->state);
+        $this->assertSame('resposta_incerta', $this->item($run, $client)->reason);
+        $this->assertSame('resp-emissao', $this->item($run, $client)->response_id);
+        $job->handle();
+        $this->assertSame(1, $protocolos);
+        $this->assertSame(1, $emissoes);
+    }
+
+    public static function falhasDeSequenciaSitfis(): array
+    {
+        return ['pending' => [202], 'throttle' => [429]];
+    }
+
+    public function test_item_e_relido_sob_lock_apos_resposta_auditada_e_falha_no_writer(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $item = $this->item($run, $client);
+        SerproClientAuthorization::factory()->create(['account_id' => $account->id, 'client_id' => $client->id]);
+        SerproMonitoring::saving(function (): void {
+            throw new RuntimeException('Writer anterior falhou.');
+        });
+        $lock = Mockery::mock(Lock::class);
+        $lock->shouldReceive('get')->once()->andReturnUsing(function () use ($account, $client, $run, $item): bool {
+            $item->forceFill(['current_obligation' => 'caixas-postais/e-cac', 'attempted_at' => now()])->save();
+            resolve(SerproCallRecorder::class)->record(
+                $run->id, $account->id, $client->id, 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61',
+                fn (): SerproResult => new SerproResult(200, [], [], 'resposta-anterior', '00000000000000000000000000000000'),
+            );
+            try {
+                resolve(SerproMonitoringWriter::class)->storeWithDerived(
+                    $account->id, $client->id, 'caixas-postais/e-cac', 'MSGCONTRIBUINTE61', [], now()->toISOString(),
+                );
+                $this->fail('O writer anterior deveria falhar.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Writer anterior falhou.', $exception->getMessage());
+            }
+
+            return true;
+        });
+        $lock->shouldReceive('release')->once()->andReturn(true);
+        Cache::partialMock()->shouldReceive('lock')->once()->with("serpro:client:{$account->id}:{$client->tax_id}", 90)->andReturn($lock);
+        Http::fake();
+
+        (new SyncSerproClientJob($run->id, $account->id, $client->id))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(1, SerproCall::count());
+        $this->assertSame(0, SerproMonitoring::count());
+        $this->assertSame(SerproSyncItemState::Indeterminate, $item->fresh()->state);
+        $this->assertSame('tentativa_sem_resposta', $item->fresh()->reason);
+        $this->assertSame(0, $run->fresh()->synchronized);
+    }
+
+    #[DataProvider('terminalRunStates')]
+    public function test_terminal_run_does_not_start_a_provider_call(SerproSyncRunState $state): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $run->forceFill(['state' => $state, 'finished_at' => now()])->save();
+        Http::fake();
+
+        (new SyncSerproClientJob($run->id, $account->id, $client->id))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproSyncItemState::NotProcessed, $this->item($run, $client)->state);
+        $this->assertNull($this->item($run, $client)->attempted_at);
+    }
+
+    public static function terminalRunStates(): array
+    {
+        return [
+            'failed' => [SerproSyncRunState::Failed],
+            'partial' => [SerproSyncRunState::Partial],
+            'completed' => [SerproSyncRunState::Completed],
+        ];
+    }
+
+    public function test_watchdog_terminal_run_cannot_resume_its_queued_jobs(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $run->items()->update(['updated_at' => now()->subMinutes(6)]);
+        $run->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        Artisan::call('serpro:fail-abandoned');
+        $this->assertSame(SerproSyncRunState::Failed, $run->fresh()->state);
+        Http::fake();
+
+        (new SyncSerproClientJob($run->id, $account->id, $client->id))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproSyncItemState::NotProcessed, $this->item($run, $client)->state);
+    }
+
+    public function test_run_terminated_during_preflight_cannot_claim_a_call(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        AccountCertificate::retrieved(function () use ($run): void {
+            $run->forceFill(['state' => SerproSyncRunState::Failed, 'finished_at' => now()])->save();
+        });
+        Http::fake();
+
+        (new SyncSerproClientJob($run->id, $account->id, $client->id))->handle();
+
+        Http::assertNothingSent();
+        $this->assertNull($this->item($run, $client)->attempted_at);
+    }
+
+    public function test_watchdog_rechecks_recent_progress_after_candidate_selection(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $run->items()->update(['updated_at' => now()->subMinutes(6)]);
+        $run->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        $progressed = false;
+        DB::listen(function (QueryExecuted $query) use ($run, &$progressed): void {
+            if ($progressed || ! str_starts_with($query->sql, 'select')
+                || ! str_contains($query->sql, 'serpro_sync_runs')
+                || ! str_contains($query->sql, 'updated_at')) {
+                return;
+            }
+
+            $progressed = true;
+            $run->items()->update(['updated_at' => now()]);
+        });
+
+        Artisan::call('serpro:fail-abandoned');
+
+        $this->assertTrue($progressed);
+        $this->assertSame(SerproSyncRunState::Running, $run->fresh()->state);
+    }
+
+    public function test_watchdog_rechecks_run_heartbeat_after_candidate_selection(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $run->items()->update(['updated_at' => now()->subMinutes(6)]);
+        $run->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        $progressed = false;
+        DB::listen(function (QueryExecuted $query) use ($run, &$progressed): void {
+            if ($progressed || ! str_starts_with($query->sql, 'select')
+                || ! str_contains($query->sql, 'serpro_sync_runs')
+                || ! str_contains($query->sql, 'updated_at')) {
+                return;
+            }
+
+            $progressed = true;
+            $run->touch();
+        });
+
+        Artisan::call('serpro:fail-abandoned');
+
+        $this->assertTrue($progressed);
+        $this->assertSame(SerproSyncRunState::Running, $run->fresh()->state);
+    }
+
+    public function test_claim_is_committed_before_http_and_protects_against_watchdog(): void
+    {
+        [$account, $client, $run] = $this->cenarioChamavel();
+        $run->items()->update(['updated_at' => now()->subMinutes(6)]);
+        $run->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        $transactionLevel = DB::transactionLevel();
+        Http::fake(function () use ($run, $transactionLevel) {
+            $this->assertSame($transactionLevel, DB::transactionLevel());
+            Artisan::call('serpro:fail-abandoned');
+            $this->assertSame(SerproSyncRunState::Running, $run->fresh()->state);
+
+            return Http::response(['status' => 200, 'dados' => [], 'mensagens' => [], 'responseId' => 'claimed']);
+        });
+
+        (new SyncSerproClientJob($run->id, $account->id, $client->id))->handle();
+
+        Http::assertSentCount(1);
     }
 
     public function test_o_watchdog_falha_a_execucao_parada_e_preserva_os_itens(): void

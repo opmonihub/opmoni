@@ -41,21 +41,31 @@ class FailAbandonedSerproRuns extends Command
             ->where('state', SerproSyncRunState::Running)
             ->where('updated_at', '<', $limite)
             ->whereDoesntHave('items', fn ($query) => $query->withoutGlobalScope('account')->where('updated_at', '>=', $limite))
-            ->pluck('id', 'account_id')
-            ->all();
+            ->get(['id', 'account_id']);
 
-        foreach ($abandonadas as $accountId => $runId) {
-            DB::transaction(function () use ($accountId, $runId): void {
-                SerproSyncRun::query()
+        foreach ($abandonadas as $candidate) {
+            DB::transaction(function () use ($candidate, $limite): void {
+                // The selection is only a hint. Claims and recounts may have progressed while we waited.
+                $run = SerproSyncRun::query()
                     ->withoutGlobalScope('account')
-                    ->where('account_id', $accountId)
-                    ->whereKey($runId)
-                    ->where('state', SerproSyncRunState::Running)
-                    ->update([
-                        'state' => SerproSyncRunState::Failed->value,
-                        'reason' => 'Execução abandonada sem progresso.',
-                        'finished_at' => now(),
-                    ]);
+                    ->where('account_id', $candidate->account_id)
+                    ->whereKey($candidate->getKey())
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($run === null || $run->state !== SerproSyncRunState::Running
+                    || $run->updated_at->gte($limite)
+                    || $run->items()->withoutGlobalScope('account')
+                        ->where('account_id', $run->account_id)
+                        ->where('updated_at', '>=', $limite)->exists()) {
+                    return;
+                }
+
+                $run->forceFill([
+                    'state' => SerproSyncRunState::Failed,
+                    'reason' => 'Execução abandonada sem progresso.',
+                    'finished_at' => now(),
+                ])->save();
             });
         }
 

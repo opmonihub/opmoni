@@ -10,6 +10,7 @@ use App\Tenant\CurrentTenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -78,45 +79,43 @@ class WzapWebhookController extends Controller
                 'payload' => ['present', 'array'],
             ]);
 
-            // O dedupe é o primeiro write: a unique explode em reentrega e o
-            // resto do processamento morre com ela. `whatsapp_dispatch_id`
-            // só é preenchido depois, quando o evento de fato tocou uma linha
-            // — então a inserção inicial é a "vista" do evento, e o link ao
-            // disparo é um update explícito no fim do match.
-            try {
-                $evento = (new WhatsAppWebhookEvent)->forceFill([
-                    'account_id' => $channel->account_id,
-                    'whatsapp_channel_id' => $channel->getKey(),
-                    'event_id' => (string) $envelope['event_id'],
-                ]);
-                $evento->save();
-            } catch (UniqueConstraintViolationException) {
+            return DB::transaction(function () use ($channel, $envelope): JsonResponse {
+                // Dedupe, alteração e vínculo confirmam juntos. O savepoint do
+                // insert permite tratar a unique sem abortar a transação no PostgreSQL.
+                try {
+                    $evento = (new WhatsAppWebhookEvent)->forceFill([
+                        'account_id' => $channel->account_id,
+                        'whatsapp_channel_id' => $channel->getKey(),
+                        'event_id' => (string) $envelope['event_id'],
+                    ]);
+                    DB::transaction(fn (): bool => $evento->save());
+                } catch (UniqueConstraintViolationException) {
+                    return response()->json(['data' => ['received' => true]]);
+                }
+
+                $dispatchId = match ($envelope['type']) {
+                    'receipt' => $this->aplicarRecibo($channel, $envelope['payload']),
+                    'message.status' => $this->aplicarStatusDeMensagem($channel, $envelope['payload']),
+                    'connection' => $this->espelharConexao($channel, $envelope['payload']),
+                    default => null,
+                };
+
+                // Evento de rastreio com ID pendente: o dedupe não
+                // pode condenar a reentrega — a linha sai e a resposta não-2xx
+                // pede ao wzap para tentar de novo, que é o que o worker dele faz
+                // com backoff até o job alcançar.
+                if ($dispatchId === self::SEM_MATCH) {
+                    $evento->delete();
+
+                    return response()->json(['data' => ['received' => true]], 503);
+                }
+
+                if ($dispatchId !== null) {
+                    $evento->forceFill(['whatsapp_dispatch_id' => $dispatchId])->save();
+                }
+
                 return response()->json(['data' => ['received' => true]]);
-            }
-
-            $dispatchId = match ($envelope['type']) {
-                'receipt' => $this->aplicarRecibo($channel, $envelope['payload']),
-                'message.status' => $this->aplicarStatusDeMensagem($channel, $envelope['payload']),
-                'connection' => $this->espelharConexao($channel, $envelope['payload']),
-                default => null,
-            };
-
-            // Evento de rastreio com ID pendente: o dedupe não
-            // pode condenar a reentrega — a linha sai e a resposta não-2xx
-            // pede ao wzap para tentar de novo, que é o que o worker dele faz
-            // com backoff até o job alcançar.
-            if ($dispatchId === self::SEM_MATCH) {
-                $evento->delete();
-
-                return response()->json(['data' => ['received' => true]], 503);
-            }
-
-            if ($dispatchId !== null) {
-                $evento->forceFill(['whatsapp_dispatch_id' => $dispatchId])->save();
-            }
-
-            return response()->json(['data' => ['received' => true]]);
-
+            });
         });
     }
 
@@ -143,6 +142,7 @@ class WzapWebhookController extends Controller
 
         $ultimo = null;
         $pendente = false;
+        $matches = [];
 
         foreach ($ids as $whatsappId) {
             if (! is_string($whatsappId) || $whatsappId === '') {
@@ -152,17 +152,40 @@ class WzapWebhookController extends Controller
             $dispatch = $this->dispatchPeloWhatsappId($channel, $whatsappId)
                 ?? $this->dispatchPeloMessageId($channel, $whatsappId);
             if ($dispatch !== null) {
-                // O recibo é um wamid: quando o match foi pelo id interno
-                // a linha ainda não o conhece, e amarrá-lo aqui é o que
-                // mantém os próximos recibos no caminho primário.
-                if ($dispatch->whatsapp_id === null) {
-                    $dispatch->forceFill(['whatsapp_id' => $whatsappId])->save();
-                }
-                $this->avancar($dispatch, $status);
-                $ultimo = $dispatch->getKey();
+                $matches[] = ['id' => $dispatch->getKey(), 'whatsapp_id' => $whatsappId];
             } else {
                 $pendente = true;
             }
+        }
+
+        // A descoberta pode ficar stale. Só a releitura sob lock decide o
+        // avanço; batches adquirem todos os locks por PK, nunca por alias
+        // ou pela ordem dos IDs do payload, para não inverter os locks.
+        $dispatches = WhatsAppDispatch::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $channel->account_id)
+            ->whereIn('id', array_column($matches, 'id'))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($matches as $match) {
+            $dispatch = $dispatches->get($match['id']);
+            if ($dispatch === null) {
+                $pendente = true;
+
+                continue;
+            }
+
+            // O recibo é um wamid: quando o match foi pelo id interno
+            // a linha ainda não o conhece, e amarrá-lo aqui é o que
+            // mantém os próximos recibos no caminho primário.
+            if ($dispatch->whatsapp_id === null) {
+                $dispatch->forceFill(['whatsapp_id' => $match['whatsapp_id']])->save();
+            }
+            $this->avancar($dispatch, $status);
+            $ultimo = $dispatch->getKey();
         }
 
         return $pendente ? self::SEM_MATCH : ($ultimo ?? self::SEM_MATCH);
@@ -184,7 +207,13 @@ class WzapWebhookController extends Controller
             return null;
         }
 
-        $dispatch = $this->dispatchPeloMessageId($channel, $messageId);
+        $descoberto = $this->dispatchPeloMessageId($channel, $messageId);
+        $dispatch = $descoberto === null ? null : WhatsAppDispatch::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $channel->account_id)
+            ->whereKey($descoberto->getKey())
+            ->lockForUpdate()
+            ->first();
 
         if ($dispatch === null) {
             return self::SEM_MATCH;

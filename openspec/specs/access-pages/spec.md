@@ -75,8 +75,8 @@ The shell SHALL show the user's current Account name and role, an Account switch
 - **WHEN** the switch request is denied or fails
 - **THEN** the current Account and displayed data remain unchanged and the error is visible
 
-### Requirement: Platform Account page supports only foundational operations
-`/admin/contas` SHALL be visible only to Super Admin and SHALL provide name/ID search, active/suspended filtering, pagination, creation, rename, suspension/reactivation, and owner-link reissue. The creation modal SHALL request office name, owner name, and owner email, with field errors and a loading state. A newly issued activation URL SHALL be shown in a temporary copy action; list refresh or modal reopening SHALL not reveal it again. Suspension SHALL require confirmation. The page SHALL distinguish loading, failed-load with retry, empty installation, and empty filtered results. It SHALL expose no plans, billing, support entry, password assignment, or operational Account data.
+### Requirement: Platform Account page preserves access and commercial boundaries
+`/admin/contas` SHALL be visible only to Super Admin and SHALL provide name/ID search, active/suspended filtering, pagination, creation, rename, suspension/reactivation, and owner-link reissue. The creation modal SHALL request office name, owner name, and owner email, with field errors and a loading state. A newly issued activation URL SHALL be shown in a temporary copy action; list refresh or modal reopening SHALL not reveal it again. Suspension SHALL require confirmation. The page SHALL distinguish loading, failed-load with retry, empty installation, and empty filtered results. A separate commercial editor SHALL expose safe contact and subscription/plan metadata; password assignment and access to tenant operational data SHALL remain subject to their separate contracts.
 
 #### Scenario: New office requires first access
 - **WHEN** a Super Admin creates a valid office
@@ -100,3 +100,10 @@ Access pages and protected navigation SHALL use relative `/api/v1/*` requests. D
 #### Scenario: A server-rendered flow issues a session
 - **WHEN** an access flow establishes or rotates a session during server rendering
 - **THEN** its response delivers the corresponding cookies to that browser, and subsequent browser requests use the issued session
+
+### Requirement: Business navigation resolves the selected Account
+The authenticated shell SHALL expose Clients, Fiscal, Monitoring, Work, Team, and business Settings routes through the existing access/session transport. Their data SHALL come from the selected Account; demonstration home widgets and remaining sample inbox/settings handlers SHALL stay visibly distinct from integrated business functionality. Account switching/logout SHALL clear previous Account state before business navigation continues.
+
+#### Scenario: Business page after office switch
+- **WHEN** a member switches offices and opens the client portfolio
+- **THEN** the displayed clients belong only to the newly selected office

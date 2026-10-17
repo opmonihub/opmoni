@@ -56,7 +56,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_gravar_um_resumo_enfileira_a_ciencia_da_emissao(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -83,7 +86,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_gravar_um_documento_completo_nao_enfileira_nada(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -124,7 +130,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_o_job_envia_a_ciencia_dentro_do_prazo(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -162,7 +171,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_cliente_em_bloqueio_nao_recebe_evento_na_execucao(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -226,7 +238,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_o_656_na_manifestacao_para_o_cnpj_no_cursor(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -298,7 +313,10 @@ class DispatcherManifestacaoTest extends BusinessTestCase
 
     public function test_a_reentrega_do_resumo_depois_do_envio_nao_refaz_o_veredito(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         [$cliente] = $this->clienteComCertificado();
 
@@ -455,6 +473,7 @@ class DispatcherManifestacaoTest extends BusinessTestCase
             emissaoAt: now()->subDays(5)->toImmutable(),
             eventoOcorridoEmAt: null,
             xml: '<resNFe/>',
+            authorizedAt: now()->subDays(2)->toImmutable(),
         );
     }
 
@@ -501,11 +520,13 @@ class DispatcherManifestacaoTest extends BusinessTestCase
      * O `retEnvEvento` do serviço de eventos — o mesmo shape do teste do
      * conector, com o `retEvento` interno opcional.
      */
-    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null): string
+    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null, ?string $chave = null): string
     {
+        $chave ??= self::CHAVE;
         $retEvento = $cStatEvento === null ? '' : '<retEvento versao="1.00">'
             .'<infEvento>'
             .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            ."<chNFe>{$chave}</chNFe><tpEvento>210210</tpEvento><nSeqEvento>1</nSeqEvento>"
             ."<cStat>{$cStatEvento}</cStat><xMotivo>{$xMotivoEvento}</xMotivo>"
             .'<dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
             .'</infEvento></retEvento>';

@@ -104,6 +104,8 @@ final class DfeEntryCollector
                 mascarado: $extracted->mascarado,
                 numero: $extracted->numero,
                 serie: $extracted->serie,
+                authorizedAt: $extracted->authorizedAt,
+                providerNoteStatus: $extracted->providerNoteStatus,
             );
         }
 

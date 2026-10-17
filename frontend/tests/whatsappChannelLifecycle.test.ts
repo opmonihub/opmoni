@@ -41,6 +41,8 @@ function deferred<T>() {
 
 async function setupPage(api: {
   startPairing: () => Promise<WhatsAppChannel>
+  continueOperation?: (operationId: string) => Promise<WhatsAppChannel>
+  reconcileOperation?: (operationId: string) => Promise<WhatsAppChannel>
   pairingStatus: () => Promise<WhatsAppChannel>
   reload?: () => Promise<WhatsAppChannel | null>
   initialError?: unknown
@@ -102,11 +104,76 @@ async function setupPage(api: {
     poll: () => Promise<void>
     now: Vue.Ref<number>
     confirmDisconnect: () => Promise<void>
+    resumeOperation: () => Promise<void>
+    operationNotice: Vue.Ref<{ operation_id: string, code: string } | null>
+    pairing: Vue.Ref<boolean>
   }
   return { state, close: () => cleanups.forEach(cleanup => cleanup()) }
 }
 
 describe('ciclo de pareamento do Canal WhatsApp', () => {
+  it('preserva o UUID e mostra continuação sem repetir criação nem aceitar resposta antiga', async (t) => {
+    const resumed = deferred<WhatsAppChannel>()
+    const ids: string[] = []
+    const page = await setupPage({
+      startPairing: async () => { throw { statusCode: 409, data: { code: 'operation_continuation_required', operation_id: 'operation-1', next_step: 'whatsapp.connect', message: 'Continue a operação.' } } },
+      continueOperation: (id) => {
+        ids.push(id)
+        return resumed.promise
+      },
+      pairingStatus: async () => channel('pairing')
+    })
+    t.after(page.close)
+    await page.state.submitPairing()
+    assert.equal(page.state.operationNotice.value?.operation_id, 'operation-1')
+    const pending = page.state.resumeOperation()
+    assert.equal(page.state.pairing.value, true)
+    assert.deepEqual(ids, ['operation-1'])
+    resumed.resolve(channel('connected'))
+    await pending
+    assert.equal(page.state.operationNotice.value, null)
+    assert.equal(page.state.pairing.value, false)
+    assert.equal(page.state.status.value, 'connected')
+  })
+
+  it('descarta continuação atrasada depois de sair da tela', async () => {
+    const resumed = deferred<WhatsAppChannel>()
+    const page = await setupPage({
+      startPairing: async () => { throw { statusCode: 409, data: { code: 'operation_continuation_required', operation_id: 'operation-1', next_step: 'whatsapp.connect' } } },
+      continueOperation: () => resumed.promise,
+      pairingStatus: async () => channel('pairing')
+    })
+    await page.state.submitPairing()
+    const pending = page.state.resumeOperation()
+    page.close()
+    resumed.resolve(channel('connected'))
+    await pending
+    assert.equal(page.state.status.value, 'disconnected')
+    assert.equal(page.state.operationNotice.value?.operation_id, 'operation-1')
+  })
+
+  it('consulta resultado incerto sem novo POST de pareamento', async (t) => {
+    let starts = 0
+    let reconciles = 0
+    const page = await setupPage({
+      startPairing: async () => {
+        starts++
+        throw { statusCode: 409, data: { code: 'operation_reconciliation_required', operation_id: 'operation-2', next_step: 'whatsapp.connect' } }
+      },
+      reconcileOperation: async (id) => {
+        assert.equal(id, 'operation-2')
+        reconciles++
+        return channel('connected')
+      },
+      pairingStatus: async () => channel('pairing')
+    })
+    t.after(page.close)
+    await page.state.submitPairing()
+    await page.state.resumeOperation()
+    assert.equal(starts, 1)
+    assert.equal(reconciles, 1)
+  })
+
   for (const staleStatus of ['pairing', 'connected', 'error', 502] as const) {
     it(`ignora polling antigo em ${staleStatus} após iniciar outro pareamento`, async (t) => {
       t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.UTC(2026, 9, 8, 12) })

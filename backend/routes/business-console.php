@@ -83,6 +83,10 @@ Schedule::command('fiscal:resync-manifestacoes')
     ->timezone((string) config('fiscal.reconcile_timezone'))
     ->withoutOverlapping();
 
+Schedule::command('fiscal:dispatch-processing-due')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 /*
  * A renovação do termo de autorização, uma vez por dia, à uma da manhã no
  * fuso de Brasília.

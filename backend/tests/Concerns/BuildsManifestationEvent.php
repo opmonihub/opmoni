@@ -2,6 +2,8 @@
 
 namespace Tests\Concerns;
 
+use App\Services\Fiscal\Support\FiscalEnvironment;
+
 /**
  * O evento de Ciência da Operação (210210) como o serviço `nfeRecepcaoEvento`
  * espera recebê-lo, montado à mão no teste. A montagem de produção vem numa
@@ -48,5 +50,39 @@ trait BuildsManifestationEvent
             .'<idLote>1</idLote>'
             .$evento
             .'</envEvento>';
+    }
+
+    /**
+     * O `retEnvEvento` do serviço, com `infEvento` correlacionado ao pedido padrão.
+     */
+    protected function retEnvEvento(
+        string $cStatLote,
+        string $xMotivoLote,
+        ?string $cStatEvento = null,
+        ?string $xMotivoEvento = null,
+        ?string $chave = self::CHAVE_DE_ACESSO,
+        string $tpEvento = '210210',
+        string $nSeqEvento = '1',
+        ?string $tpAmb = null,
+    ): string {
+        $tpAmb ??= FiscalEnvironment::tpAmb();
+        $retEvento = $cStatEvento === null ? '' : '<retEvento versao="1.00">'
+            .'<infEvento>'
+            ."<tpAmb>{$tpAmb}</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>"
+            ."<chNFe>{$chave}</chNFe><tpEvento>{$tpEvento}</tpEvento><nSeqEvento>{$nSeqEvento}</nSeqEvento>"
+            ."<cStat>{$cStatEvento}</cStat><xMotivo>{$xMotivoEvento}</xMotivo>"
+            .'<dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
+            .'</infEvento></retEvento>';
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>'
+            .'<nfeRecepcaoEventoResponse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento">'
+            .'<nfeRecepcaoEventoResult>'
+            .'<retEnvEvento xmlns="'.self::NAMESPACE_NFE.'" versao="1.00">'
+            .'<idLote>1</idLote><tpAmb>'.$tpAmb.'</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            ."<cStat>{$cStatLote}</cStat><xMotivo>{$xMotivoLote}</xMotivo>"
+            .$retEvento
+            .'</retEnvEvento></nfeRecepcaoEventoResult>'
+            .'</nfeRecepcaoEventoResponse></soap:Body></soap:Envelope>';
     }
 }

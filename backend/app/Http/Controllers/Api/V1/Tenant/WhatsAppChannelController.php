@@ -6,16 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\WhatsAppChannel;
 use App\Services\SupportAudit;
+use App\Services\WhatsApp\WhatsAppChannelEffects;
 use App\Services\WhatsApp\WhatsAppFailureReason;
 use App\Services\WhatsApp\WzapClient;
 use App\Services\WhatsApp\WzapException;
 use App\Support\CurrentAccount;
+use App\Support\ExternalHttpBudget;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -38,7 +39,7 @@ class WhatsAppChannelController extends Controller
         'error' => WhatsAppChannel::STATUS_ERROR,
     ];
 
-    public function __construct(private WzapClient $wzap) {}
+    public function __construct(private WzapClient $wzap, private WhatsAppChannelEffects $effects) {}
 
     /**
      * O estado do canal hoje, relido no wzap e espelhado na linha.
@@ -49,12 +50,19 @@ class WhatsAppChannelController extends Controller
 
         Gate::authorize('viewAny', WhatsAppChannel::class);
 
-        $channel = $this->currentChannel();
+        $channel = $this->effects->recover((int) $this->currentAccount()->getKey(), $this->currentChannel());
+        $notice = $this->effects->operationNotice((int) $this->currentAccount()->getKey());
+        if ($channel === null && $notice !== null) {
+            $channel = new WhatsAppChannel(['status' => 'disconnected']);
+
+            return response()->json(['data' => $this->channelPayload($channel) + ['operation' => $notice]]);
+        }
         abort_if($channel === null, 404);
 
-        $gateway = $this->refreshFromGateway($channel);
+        $this->saveChannel($channel, []);
+        $gateway = $notice === null ? $this->refreshFromGateway($channel) : [];
 
-        return response()->json(['data' => $this->channelPayload($channel, $gateway)]);
+        return response()->json(['data' => $this->channelPayload($channel, $gateway) + ['operation' => $notice]]);
     }
 
     /**
@@ -69,39 +77,12 @@ class WhatsAppChannelController extends Controller
 
         Gate::authorize('create', WhatsAppChannel::class);
 
-        $account = $this->currentAccount();
-        // Canal novo só entra no banco quando o primeiro espelho o grava —
-        // já com instância e segredo. Uma falha do wzap deixa a linha em
-        // `error` (estado da spec), nunca um canal "criado" sem gateway.
-        $channel = WhatsAppChannel::forAccount($account->getKey())
-            ?? new WhatsAppChannel(['status' => WhatsAppChannel::STATUS_DISCONNECTED]);
+        $result = $this->effects->pair(
+            (int) $this->currentAccount()->getKey(), (int) $request->user()->getAuthIdentifier(),
+            $this->currentChannel(), null, ExternalHttpBudget::fromRequest($request),
+        );
 
-        try {
-            $instance = $this->wzap->ensureInstance(
-                (string) $account->getKey(),
-                'opmoni-account-'.$account->getKey(),
-                $channel->wzap_instance_id,
-            );
-
-            $channel->forceFill(['wzap_instance_id' => $instance['id']]);
-            if ($channel->exists) {
-                $channel->save();
-            }
-
-            $this->ensureInstanceApiKey($channel, $instance);
-
-            $pairing = $this->wzap->connect($instance['id'], (string) $channel->instanceApiKey());
-        } catch (WzapException $exception) {
-            return response()->json(['message' => $this->markError($channel, $exception)], 502);
-        }
-
-        $this->mirrorPairingResult($channel, $pairing);
-
-        SupportAudit::logWrite($request, 'whatsapp_channels', 'pairing', $channel->getKey(), [
-            'status' => $channel->status,
-        ]);
-
-        return response()->json(['data' => $this->channelPayload($channel, $pairing)]);
+        return $this->operationResponse($request, $result, 'pairing');
     }
 
     /**
@@ -116,13 +97,14 @@ class WhatsAppChannelController extends Controller
 
         Gate::authorize('viewAny', WhatsAppChannel::class);
 
-        $channel = $this->currentChannel();
+        $channel = $this->effects->recover((int) $this->currentAccount()->getKey(), $this->currentChannel());
         abort_if($channel === null || $channel->status !== WhatsAppChannel::STATUS_PAIRING, 404);
 
         try {
             $status = $this->wzap->status(
                 (string) $channel->wzap_instance_id,
                 (string) $channel->instanceApiKey(),
+                ExternalHttpBudget::fromRequest(request()),
             );
         } catch (WzapException $exception) {
             return response()->json(['message' => $this->markError($channel, $exception)], 502);
@@ -144,27 +126,48 @@ class WhatsAppChannelController extends Controller
 
         Gate::authorize('delete', WhatsAppChannel::class);
 
-        $channel = $this->currentChannel();
+        $channel = $this->effects->recover((int) $this->currentAccount()->getKey(), $this->currentChannel());
         abort_if($channel === null, 404);
 
-        try {
-            $this->wzap->disconnect(
-                (string) $channel->wzap_instance_id,
-                (string) $channel->instanceApiKey(),
-            );
-        } catch (WzapException $exception) {
-            return response()->json(['message' => $this->markError($channel, $exception)], 502);
-        }
+        $result = $this->effects->disconnect(
+            (int) $this->currentAccount()->getKey(), (int) $request->user()->getAuthIdentifier(),
+            $channel, null, ExternalHttpBudget::fromRequest($request),
+        );
 
-        $channel->forceFill([
-            'status' => WhatsAppChannel::STATUS_DISCONNECTED,
-            'pairing_started_at' => null,
-            'connected_at' => null,
-        ])->save();
+        return $this->operationResponse($request, $result, 'disconnect');
+    }
 
-        SupportAudit::logWrite($request, 'whatsapp_channels', 'disconnect', $channel->getKey());
+    public function continueOperation(Request $request, string $operation): JsonResponse
+    {
+        abort_unless((bool) config('whatsapp.enabled'), 404);
+        Gate::authorize('create', WhatsAppChannel::class);
+        $result = $this->effects->continueOperation(
+            (int) $this->currentAccount()->getKey(), (int) $request->user()->getAuthIdentifier(),
+            $this->currentChannel(), $operation, ExternalHttpBudget::fromRequest($request),
+        );
 
-        return response()->json(['data' => $this->channelPayload($channel)]);
+        return $this->operationResponse($request, $result, 'pairing');
+    }
+
+    public function reconcileOperation(Request $request, string $operation): JsonResponse
+    {
+        abort_unless((bool) config('whatsapp.enabled'), 404);
+        Gate::authorize('create', WhatsAppChannel::class);
+        $result = $this->effects->reconcile(
+            (int) $this->currentAccount()->getKey(), (int) $request->user()->getAuthIdentifier(),
+            $this->currentChannel(), $operation, ExternalHttpBudget::fromRequest($request),
+        );
+
+        return $this->operationResponse($request, $result, 'reconcile');
+    }
+
+    private function operationResponse(Request $request, array $result, string $action): JsonResponse
+    {
+        $channel = $result['channel'];
+        $this->mirrorPairingResult($channel, ['status' => $channel->status] + $result['gateway']);
+        SupportAudit::logWrite($request, 'whatsapp_channels', $action, $channel->getKey(), ['status' => $channel->status]);
+
+        return response()->json(['data' => $this->channelPayload($channel, $result['gateway']), 'operation_id' => $result['operation_id']]);
     }
 
     /** O canal da conta corrente pelo account_id verificado. */
@@ -178,59 +181,6 @@ class WhatsAppChannelController extends Controller
     private function currentAccount(): Account
     {
         return Account::findOrFail(resolve(CurrentTenant::class)->accountId);
-    }
-
-    /**
-     * Garante que o canal tem uma apikey de instância que funcione.
-     *
-     * A chave nasce uma vez no wzap — na criação (`instance_api_key` no 201)
-     * ou na rotação — e a listagem nunca a devolve. Instância reusada por
-     * `ensureInstance` com canal sem segredo pede `rotateInstanceKey`: a
-     * chave antiga é impossível de recuperar, então o caminho é emitir outra.
-     *
-     * @param  array<string, mixed>  $instance
-     */
-    private function ensureInstanceApiKey(WhatsAppChannel $channel, array $instance): void
-    {
-        $fresh = $instance['instance_api_key'] ?? null;
-
-        if (is_string($fresh) && $fresh !== '') {
-            $this->storeApiKey($channel, $fresh);
-
-            return;
-        }
-
-        if ($channel->instanceApiKey() !== null) {
-            return;
-        }
-
-        $rotated = $this->wzap->rotateInstanceKey((string) $instance['id']);
-        $fresh = $rotated['instance_api_key'] ?? null;
-
-        if (! is_string($fresh) || $fresh === '') {
-            throw new WzapException('O wzap rotacionou a chave da instância, mas não devolveu a nova apikey.');
-        }
-
-        $this->storeApiKey($channel, $fresh);
-    }
-
-    /**
-     * Grava a apikey cifrada absorvendo a corrida do INSERT inicial — o
-     * primeiro `save()` do canal novo pode ser este, e a unique de
-     * `account_id` não pode devolver 500 para o segundo pedido.
-     */
-    private function storeApiKey(WhatsAppChannel $channel, string $plainKey): void
-    {
-        if ($channel->exists) {
-            $channel->storeInstanceApiKey($plainKey);
-
-            return;
-        }
-
-        $channel->forceFill([
-            'instance_api_key_encrypted' => Crypt::encryptString($plainKey),
-        ]);
-        $this->saveChannel($channel, []);
     }
 
     /**
@@ -248,7 +198,7 @@ class WhatsAppChannelController extends Controller
         }
 
         try {
-            $status = $this->wzap->status($channel->wzap_instance_id, $channel->instanceApiKey());
+            $status = $this->wzap->status($channel->wzap_instance_id, $channel->instanceApiKey(), ExternalHttpBudget::fromRequest(request()));
         } catch (WzapException) {
             // A leitura não derruba a tela: a última foto conhecida é o que
             // o espelho já tem, e o `last_error` não é desta rota.
@@ -286,7 +236,7 @@ class WhatsAppChannelController extends Controller
         }
 
         try {
-            $qr = $this->wzap->qr((string) $channel->wzap_instance_id, (string) $channel->instanceApiKey());
+            $qr = $this->wzap->qr((string) $channel->wzap_instance_id, (string) $channel->instanceApiKey(), ExternalHttpBudget::fromRequest(request()));
         } catch (WzapException|ConnectionException) {
             return $status;
         }
@@ -375,7 +325,7 @@ class WhatsAppChannelController extends Controller
         } catch (UniqueConstraintViolationException) {
             $existing = WhatsAppChannel::forAccount($channel->account_id);
             abort_if($existing === null, 409, 'O canal da conta já existe.');
-            $existing->forceFill($attributes)->save();
+            $existing->forceFill(array_intersect_key($channel->getAttributes(), array_flip(['wzap_instance_id', 'instance_api_key_encrypted', 'status', 'pairing_started_at', 'connected_at', 'last_error', 'last_projected_effect_id', 'last_projected_credential_effect_id'])))->save();
             // O caller passa a operar sobre a linha persistida, não no clone
             // que perdeu a corrida.
             $channel->setRawAttributes($existing->getAttributes(), true);

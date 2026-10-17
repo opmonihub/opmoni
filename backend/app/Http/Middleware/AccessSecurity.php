@@ -30,7 +30,7 @@ class AccessSecurity
 
         $ip = (string) $request->attributes->get('access.client_ip');
         $limit = match ($name) {
-            'access.register' => 5,'access.login','access.activate' => 10,'access.csrf','access.registration-status','access.activation-status' => 30,default => null
+            'access.register', 'erp.register' => 5,'access.login','access.activate' => 10,'access.csrf','access.registration-status','access.activation-status','erp.registration-status' => 30,default => null
         };
         if ($limit) {
             $this->budget($name.':ip:'.$ip, $limit);

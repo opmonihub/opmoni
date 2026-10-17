@@ -2,6 +2,8 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Support\AccessSession;
+use App\Support\ExternalHttpBudget;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -28,7 +30,7 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function createInstance(string $externalRef, string $name): array
+    public function createInstance(string $externalRef, string $name, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
         $payload = [
             'name' => $name,
@@ -39,7 +41,12 @@ final class WzapClient
             $payload['webhook'] = $webhook;
         }
 
-        $data = $this->request(fn (): Response => $this->globalRequest()->post('/instances', $payload));
+        return $this->request(fn (): Response => $this->globalRequest($budget)->post('/instances', $payload), null, $budget, $beforeSend, $onResult, $this->instance(...));
+    }
+
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    private function instance(array $data): array
+    {
         $instance = array_key_exists('instance', $data) ? $data['instance'] : $data;
 
         if (! is_array($instance) || ! is_string($instance['id'] ?? null) || $instance['id'] === '') {
@@ -62,29 +69,84 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function ensureInstance(string $externalRef, string $name, ?string $knownInstanceId = null): array
+    public function ensureInstance(string $externalRef, string $name, ?string $knownInstanceId = null, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
+        $created = null;
+        $creationStatus = 201;
+        $captureStatus = function (array $result, int $status) use (&$creationStatus): void {
+            $creationStatus = $status;
+        };
+        $creationAttempted = false;
+        $beforeCreate = function () use ($beforeSend, &$creationAttempted): void {
+            if ($beforeSend !== null) {
+                $beforeSend();
+            }
+            $creationAttempted = true;
+        };
         try {
-            return $this->createInstance($externalRef, $name);
+            $created = $this->createInstance($externalRef, $name, $budget, $beforeCreate, $captureStatus);
         } catch (WzapException $e) {
-            if ($e->status() !== 409) {
+            if (! $creationAttempted || $e->status() !== 409) {
                 throw $e;
             }
         }
+        if ($created !== null) {
+            if ($onResult !== null) {
+                $onResult($created, $creationStatus);
+            }
 
-        if ($knownInstanceId !== null && $knownInstanceId !== '') {
-            $this->configureWebhook($knownInstanceId);
-
-            return ['id' => $knownInstanceId];
+            return $created;
         }
 
+        if ($knownInstanceId !== null && $knownInstanceId !== '') {
+            $this->configureWebhook($knownInstanceId, $budget);
+            $instance = ['id' => $knownInstanceId];
+            if ($onResult !== null) {
+                $onResult($instance, 200);
+            }
+
+            return $instance;
+        }
+
+        $instance = $this->findInstance($externalRef, $name, $budget);
+        if ($instance !== null) {
+            $this->configureWebhook($instance['id'], $budget);
+            if ($onResult !== null) {
+                $onResult($instance, 200);
+            }
+
+            return $instance;
+        }
+
+        throw new WzapException(
+            'O wzap recusou a criação por external_ref duplicada, mas a instância não apareceu na listagem.',
+            409,
+        );
+    }
+
+    /**
+     * Read-only discovery: GET pages only, never creates or configures a webhook.
+     * Returns null when absent; malformed/bounded pagination and HTTP failures throw WzapException.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findInstance(string $externalRef, string $name, ?ExternalHttpBudget $budget = null): ?array
+    {
         $cursor = null;
+        $seen = [];
+        $pages = 0;
 
         do {
-            $response = $this->request(fn (): Response => $this->globalRequest()->get('/instances', array_filter([
+            if (++$pages > 20 || ($cursor !== null && isset($seen[$cursor]))) {
+                throw new WzapException('O wzap retornou paginação repetida ou excedeu o limite seguro.');
+            }
+            if ($cursor !== null) {
+                $seen[$cursor] = true;
+            }
+            $response = $this->request(fn (): Response => $this->globalRequest($budget)->get('/instances', array_filter([
                 'limit' => 100,
                 'cursor' => $cursor,
-            ])));
+            ])), null, $budget);
 
             $modern = array_key_exists('instances', $response);
             $instances = $modern ? $response['instances'] : ($response['items'] ?? []);
@@ -104,19 +166,17 @@ final class WzapClient
                     : ($instance['external_ref'] ?? null) === $externalRef;
 
                 if ($matches) {
-                    $this->configureWebhook($instance['id']);
-
                     return $instance;
                 }
             }
 
             $cursor = $response['next_cursor'] ?? null;
+            if ($cursor !== null && (! is_string($cursor) || strlen($cursor) > 2048)) {
+                throw new WzapException('O wzap retornou paginação inválida.');
+            }
         } while ($cursor);
 
-        throw new WzapException(
-            'O wzap recusou a criação por external_ref duplicada, mas a instância não apareceu na listagem.',
-            409,
-        );
+        return null;
     }
 
     /**
@@ -139,13 +199,17 @@ final class WzapClient
      * O POST em conflito não atualiza configuração. Reaplicar no recurso
      * recuperado também repara instâncias criadas pelo contrato anterior,
      * que enviava o webhook fora do objeto esperado pelo gateway.
+     * Sem configuração não envia HTTP e não invoca nenhum callback.
+     *
+     * @param  Closure(): void|null  $beforeSend
+     * @param  Closure(array<string, mixed>, int): void|null  $onResult  Runs before return, only after a successful PATCH.
      */
-    private function configureWebhook(string $instanceId): void
+    public function configureWebhook(string $instanceId, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): void
     {
         if ($webhook = $this->webhookConfiguration()) {
-            $this->request(fn (): Response => $this->globalRequest()->patch("/instances/{$instanceId}", [
+            $this->request(fn (): Response => $this->globalRequest($budget)->patch("/instances/{$instanceId}", [
                 'webhook' => $webhook,
-            ]));
+            ]), null, $budget, $beforeSend, $onResult);
         }
     }
 
@@ -159,12 +223,12 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function connect(string $instanceId, string $instanceApiKey): array
+    public function connect(string $instanceId, string $instanceApiKey, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
-        return $this->connection($this->request(
-            fn (): Response => $this->instanceRequest($instanceApiKey)->post("/instances/{$instanceId}/connect"),
-            $instanceApiKey,
-        ));
+        return $this->request(
+            fn (): Response => $this->instanceRequest($instanceApiKey, $budget)->post("/instances/{$instanceId}/connect"),
+            $instanceApiKey, $budget, $beforeSend, $onResult, $this->connection(...),
+        );
     }
 
     /**
@@ -176,12 +240,12 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function qr(string $instanceId, string $instanceApiKey): array
+    public function qr(string $instanceId, string $instanceApiKey, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
-        return $this->connection($this->request(
-            fn (): Response => $this->instanceRequest($instanceApiKey)->get("/instances/{$instanceId}/qr"),
-            $instanceApiKey,
-        ));
+        return $this->request(
+            fn (): Response => $this->instanceRequest($instanceApiKey, $budget)->get("/instances/{$instanceId}/qr"),
+            $instanceApiKey, $budget, $beforeSend, $onResult, $this->connection(...),
+        );
     }
 
     /**
@@ -189,22 +253,22 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function status(string $instanceId, string $instanceApiKey): array
+    public function status(string $instanceId, string $instanceApiKey, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
-        return $this->connection($this->request(
-            fn (): Response => $this->instanceRequest($instanceApiKey)->get("/instances/{$instanceId}/status"),
-            $instanceApiKey,
-        ));
+        return $this->request(
+            fn (): Response => $this->instanceRequest($instanceApiKey, $budget)->get("/instances/{$instanceId}/status"),
+            $instanceApiKey, $budget, $beforeSend, $onResult, $this->connection(...),
+        );
     }
 
     /**
      * Encerra a sessão e remove as credenciais no wzap (204).
      */
-    public function disconnect(string $instanceId, string $instanceApiKey): void
+    public function disconnect(string $instanceId, string $instanceApiKey, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): void
     {
         $this->request(
-            fn (): Response => $this->instanceRequest($instanceApiKey)->post("/instances/{$instanceId}/disconnect"),
-            $instanceApiKey,
+            fn (): Response => $this->instanceRequest($instanceApiKey, $budget)->post("/instances/{$instanceId}/disconnect"),
+            $instanceApiKey, $budget, $beforeSend, $onResult,
         );
     }
 
@@ -214,10 +278,11 @@ final class WzapClient
      *
      * @return array<string, mixed>
      */
-    public function rotateInstanceKey(string $instanceId): array
+    public function rotateInstanceKey(string $instanceId, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null): array
     {
         return $this->request(
-            fn (): Response => $this->globalRequest()->post("/instances/{$instanceId}/apikey/rotate"),
+            fn (): Response => $this->globalRequest($budget)->post("/instances/{$instanceId}/apikey/rotate"),
+            null, $budget, $beforeSend, $onResult,
         );
     }
 
@@ -281,12 +346,27 @@ final class WzapClient
 
     /**
      * @param  Closure(): Response  $send
+     * @param  Closure(): void|null  $beforeSend
+     * @param  Closure(array<string, mixed>, int): void|null  $onResult  Normalized result and HTTP status; never retried or classified as HTTP failure.
      * @return array<string, mixed>
      */
-    private function request(Closure $send, ?string $instanceApiKey = null): array
+    private function request(Closure $send, ?string $instanceApiKey = null, ?ExternalHttpBudget $budget = null, ?Closure $beforeSend = null, ?Closure $onResult = null, ?Closure $normalize = null): array
     {
+        if ($budget !== null) {
+            $budget->beforeSend($beforeSend);
+        } else {
+            AccessSession::assertOwnership(request());
+            if ($beforeSend !== null) {
+                $beforeSend();
+                AccessSession::assertOwnership(request());
+            }
+        }
         try {
-            return $this->unwrap($send());
+            $response = $send();
+            $data = $this->unwrap($response);
+            if ($normalize !== null) {
+                $data = $normalize($data);
+            }
         } catch (ConnectionException) {
             throw new WzapException('Não foi possível conectar ao gateway wzap. Tente novamente.');
         } catch (WzapException $exception) {
@@ -296,6 +376,11 @@ final class WzapClient
                 $exception->errorCode(),
             );
         }
+        if ($onResult !== null) {
+            $onResult($data, $response->status());
+        }
+
+        return $data;
     }
 
     /**
@@ -320,7 +405,7 @@ final class WzapClient
     /**
      * Chamadas de gestão de instância usam a chave global da config.
      */
-    private function globalRequest(): PendingRequest
+    private function globalRequest(?ExternalHttpBudget $budget = null): PendingRequest
     {
         $apiKey = config('whatsapp.wzap.api_key');
 
@@ -328,22 +413,23 @@ final class WzapClient
             throw new WzapException('Chave global do wzap não configurada (WZAP_API_KEY).');
         }
 
-        return $this->baseRequest()->withHeaders(['apikey' => $apiKey]);
+        return $this->baseRequest($budget)->withHeaders(['apikey' => $apiKey]);
     }
 
     /**
      * Operações de instância usam a chave própria, emitida na criação e
      * guardada cifrada no `WhatsAppChannel`.
      */
-    private function instanceRequest(string $instanceApiKey): PendingRequest
+    private function instanceRequest(string $instanceApiKey, ?ExternalHttpBudget $budget = null): PendingRequest
     {
-        return $this->baseRequest()->withHeaders(['apikey' => $instanceApiKey]);
+        return $this->baseRequest($budget)->withHeaders(['apikey' => $instanceApiKey]);
     }
 
-    private function baseRequest(): PendingRequest
+    private function baseRequest(?ExternalHttpBudget $budget = null): PendingRequest
     {
         return Http::baseUrl(rtrim((string) config('whatsapp.wzap.base_url'), '/'))
             ->timeout((float) config('whatsapp.wzap.timeout', 15))
+            ->withOptions($budget?->options((float) config('whatsapp.wzap.timeout', 15)) ?? [])
             ->acceptJson();
     }
 

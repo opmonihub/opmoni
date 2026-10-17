@@ -53,11 +53,6 @@ const listStatus = ref('idle')
 const {
   search,
   debouncedSearch,
-  statusFilter,
-  regimeFilter,
-  tagFilter,
-  certificateFilter,
-  poaFilter,
   columnFilters,
   filterColumns,
   filterModels,
@@ -222,11 +217,6 @@ const selectionMenu = computed<DropdownMenuItem[][]>(() => [[
     onSelect: clearSelection
   }
 ]])
-
-watch([debouncedSearch, statusFilter, regimeFilter, tagFilter, certificateFilter, poaFilter, view], (_value, previous) => {
-  if (!previous || selectedCount.value === 0) return
-  clearSelection()
-})
 
 type SortKey = ClientListParams['sort']
 

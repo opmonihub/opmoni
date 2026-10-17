@@ -6,8 +6,10 @@ use App\Models\Account;
 use App\Models\AccountUser;
 use App\Models\User;
 use App\Models\WhatsAppChannel;
+use App\Services\ExternalEffectJournalConnection;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\BusinessTestCase;
 
@@ -30,6 +32,9 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
         parent::setUp();
 
         Http::preventStrayRequests();
+        $connection = DB::build(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+        $connection->getPdo()->exec(DB::connection()->selectOne("SELECT sql FROM sqlite_master WHERE name = 'external_effect_journal'")->sql);
+        $this->app->instance(ExternalEffectJournalConnection::class, new ExternalEffectJournalConnection(fn () => $connection));
         resolve(CurrentTenant::class)->accountId = null;
 
         config()->set('whatsapp.wzap.base_url', 'http://wzap.test');
@@ -294,29 +299,30 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
         $this->assertSame(WhatsAppChannel::STATUS_ERROR, $channel->refresh()->status);
     }
 
-    public function test_falha_do_pareamento_redige_chaves_na_resposta_e_no_erro_gravado(): void
+    public function test_falha_do_pareamento_preserva_incerteza_sem_expor_chaves_ou_reenviar(): void
     {
+        config()->set('whatsapp.wzap.webhook_url', null);
         $channel = WhatsAppChannel::factory()->connected('chave-instancia')->create([
             'account_id' => $this->account->getKey(),
             'wzap_instance_id' => 'inst-1',
         ]);
-
         Http::fake([
-            'wzap.test/instances' => Http::response(['error' => [
+            'wzap.test/instances/inst-1/connect' => Http::response(['error' => [
                 'code' => 'unauthorized',
                 'message' => 'credenciais recusadas: chave-instancia e chave-global',
             ]], 401),
         ]);
-
-        $this->actingAs($this->memberOf($this->account, 'admin'), 'web')
-            ->postJson('/api/v1/whatsapp/channel/pairing')
-            ->assertStatus(502)
-            ->assertJsonPath('message', 'wzap unauthorized: credenciais recusadas: [redigido] e [redigido]');
-
-        $this->assertSame(
-            'wzap unauthorized: credenciais recusadas: [redigido] e [redigido]',
-            $channel->refresh()->last_error,
-        );
+        $this->actingAs($this->memberOf($this->account, 'admin'), 'web');
+        $response = $this->postJson('/api/v1/whatsapp/channel/pairing')->assertStatus(409)
+            ->assertJsonPath('code', 'operation_reconciliation_required')
+            ->assertJsonPath('next_step', 'whatsapp.connect');
+        $this->assertStringNotContainsString('chave-instancia', $response->getContent());
+        $this->assertStringNotContainsString('chave-global', $response->getContent());
+        $this->assertNull($channel->refresh()->last_error);
+        $operation = $response->json('operation_id');
+        $this->postJson("/api/v1/whatsapp/channel/operations/{$operation}/continue")->assertStatus(409)
+            ->assertJsonPath('code', 'operation_reconciliation_required');
+        Http::assertSentCount(1);
     }
 
     public function test_flag_desligada_desliga_as_rotas_de_canal_com_404(): void
@@ -458,7 +464,7 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
         $this->assertStringNotContainsString('instance_api_key', $response->getContent());
     }
 
-    public function test_erro_do_wzap_no_pareamento_marca_canal_como_error(): void
+    public function test_erro_do_wzap_no_pareamento_preserva_etapa_incerta_sem_persistir_erro_na_projecao(): void
     {
         Http::fake([
             'wzap.test/instances' => Http::response(['data' => [
@@ -474,23 +480,23 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
 
         $response = $this->actingAs($this->memberOf($this->account, 'admin'), 'web')
             ->postJson('/api/v1/whatsapp/channel/pairing')
-            ->assertStatus(502);
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'operation_reconciliation_required')
+            ->assertJsonPath('next_step', 'whatsapp.connect');
 
-        // O motivo sanitizado aparece; a chave, nunca.
-        $this->assertStringContainsString('session store offline', $response->getContent());
+        $this->assertStringNotContainsString('session store offline', $response->getContent());
         $this->assertStringNotContainsString('chave-instancia', $response->getContent());
-
-        $this->assertSame(
-            WhatsAppChannel::STATUS_ERROR,
-            WhatsAppChannel::forAccount($this->account->getKey())?->status,
-        );
+        $this->assertNull(WhatsAppChannel::forAccount($this->account->getKey()));
+        $this->actingAs($this->memberOf($this->account, 'admin'), 'web')->getJson('/api/v1/whatsapp/channel')
+            ->assertOk()->assertJsonPath('data.status', 'error')
+            ->assertJsonPath('data.operation.code', 'operation_reconciliation_required');
+        Http::assertSentCount(2);
     }
 
     public function test_falha_antes_da_instancia_nao_persiste_linha_fantasma(): void
     {
-        // O gateway recusa a criação (transporte/configuração): a conta nunca
-        // teve canal, e a linha fantasma não pode nascer — nem ocupar a
-        // unique de `account_id`, nem aparecer no GET.
+        // Sem recibo válido da criação, nenhuma projeção é gravada. A leitura
+        // publica apenas a operação incerta, sem consultar o provedor.
         Http::fake([
             'wzap.test/instances' => Http::response([
                 'error' => ['code' => 'unavailable', 'message' => 'upstream indisponivel'],
@@ -501,57 +507,44 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
 
         $this->actingAs($admin, 'web')
             ->postJson('/api/v1/whatsapp/channel/pairing')
-            ->assertStatus(502)
-            ->assertJsonPath('message', 'wzap unavailable: upstream indisponivel');
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'operation_manual_review_required')
+            ->assertJsonPath('next_step', 'whatsapp.instance.create');
 
         $this->assertSame(0, WhatsAppChannel::count());
         $this->assertNull(WhatsAppChannel::forAccount($this->account->getKey()));
 
-        // GET depois da falha: 404 de "esta conta não tem canal", e não
-        // um erro atrelado a uma linha que nunca viu gateway.
-        $this->actingAs($admin, 'web')
-            ->getJson('/api/v1/whatsapp/channel')
-            ->assertNotFound();
+        $this->actingAs($admin, 'web')->getJson('/api/v1/whatsapp/channel')->assertOk()
+            ->assertJsonPath('data.status', 'disconnected')
+            ->assertJsonPath('data.operation.code', 'operation_manual_review_required');
+        $this->assertSame(0, WhatsAppChannel::count());
+        Http::assertSentCount(1);
     }
 
-    public function test_falha_do_wzap_com_canal_existente_persiste_o_motivo(): void
+    public function test_falha_de_rotacao_em_canal_existente_exige_revisao_sem_restaurar_chave_antiga(): void
     {
-        // Canal já gravado (instância reusada): o `error` carrega o motivo
-        // legível para leituras futuras, mesmo com o gateway fora do ar.
-        WhatsAppChannel::factory()->create([
+        $channel = WhatsAppChannel::factory()->create([
             'account_id' => $this->account->getKey(),
             'wzap_instance_id' => 'inst-1',
             'status' => WhatsAppChannel::STATUS_DISCONNECTED,
         ]);
-
         Http::fake([
-            'wzap.test/instances' => Http::response([
-                'error' => ['code' => 'internal', 'message' => 'fila cheia'],
-            ], 500),
-            // O GET depois relê o gateway, que continua fora — o motivo lido
-            // é o gravado na linha, não o da chamada ao vivo.
-            'wzap.test/instances/inst-1/status' => Http::response([
+            'wzap.test/instances/inst-1/apikey/rotate' => Http::response([
                 'error' => ['code' => 'internal', 'message' => 'fila cheia'],
             ], 500),
         ]);
-
         $admin = $this->memberOf($this->account, 'admin');
-
-        $this->actingAs($admin, 'web')
-            ->postJson('/api/v1/whatsapp/channel/pairing')
-            ->assertStatus(502);
-
-        $channel = WhatsAppChannel::forAccount($this->account->getKey());
-        $this->assertSame(WhatsAppChannel::STATUS_ERROR, $channel->status);
-        $this->assertSame('wzap internal: fila cheia', $channel->last_error);
-
-        // A leitura espelha o motivo gravado — o `last_error` da resposta é
-        // o da linha quando o gateway não responde.
-        $this->actingAs($admin, 'web')
-            ->getJson('/api/v1/whatsapp/channel')
-            ->assertOk()
+        $this->actingAs($admin, 'web')->postJson('/api/v1/whatsapp/channel/pairing')->assertStatus(409)
+            ->assertJsonPath('code', 'operation_manual_review_required')
+            ->assertJsonPath('next_step', 'whatsapp.instance.rotate');
+        $this->assertSame(WhatsAppChannel::STATUS_DISCONNECTED, $channel->refresh()->status);
+        $this->assertNull($channel->last_error);
+        $this->actingAs($admin, 'web')->getJson('/api/v1/whatsapp/channel')->assertOk()
             ->assertJsonPath('data.status', 'error')
-            ->assertJsonPath('data.last_error', 'wzap internal: fila cheia');
+            ->assertJsonPath('data.last_error', null)
+            ->assertJsonPath('data.operation.code', 'operation_manual_review_required');
+        $this->assertNull($channel->refresh()->instanceApiKey());
+        Http::assertSentCount(1);
     }
 
     public function test_last_error_gravado_limpa_quando_o_gateway_conecta(): void
@@ -582,11 +575,10 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
         $this->assertNull(WhatsAppChannel::forAccount($this->account->getKey())->last_error);
     }
 
-    public function test_pareamento_com_resposta_fora_do_mapa_marca_error(): void
+    public function test_pareamento_com_resposta_fora_do_mapa_permanece_incerto_sem_confirmar(): void
     {
-        // `/connect` com `status` desconhecido não é `pairing`: o mapa da
-        // spec decide, e o default é `error` — nunca um pareamento em curso
-        // que ninguém pediu.
+        // `/connect` com `status` desconhecido não confirma aplicação e não
+        // autoriza reenvio: somente reconciliação explícita pode resolver.
         Http::fake([
             'wzap.test/instances' => Http::response(['data' => [
                 'id' => 'inst-1',
@@ -599,13 +591,14 @@ class WhatsAppChannelPairingApiTest extends BusinessTestCase
             ]]),
         ]);
 
-        $this->actingAs($this->memberOf($this->account, 'admin'), 'web')
-            ->postJson('/api/v1/whatsapp/channel/pairing')
-            ->assertOk()
-            ->assertJsonPath('data.status', 'error');
-
-        $channel = WhatsAppChannel::forAccount($this->account->getKey());
-        $this->assertSame(WhatsAppChannel::STATUS_ERROR, $channel->status);
+        $response = $this->actingAs($this->memberOf($this->account, 'admin'), 'web')
+            ->postJson('/api/v1/whatsapp/channel/pairing')->assertStatus(409)
+            ->assertJsonPath('code', 'operation_reconciliation_required');
+        $this->assertNull(WhatsAppChannel::forAccount($this->account->getKey()));
+        $operation = $response->json('operation_id');
+        $this->postJson("/api/v1/whatsapp/channel/operations/{$operation}/continue")->assertStatus(409)
+            ->assertJsonPath('code', 'operation_reconciliation_required');
+        Http::assertSentCount(2);
     }
 
     public function test_dois_inserts_concorrentes_viram_resposta_controlada(): void

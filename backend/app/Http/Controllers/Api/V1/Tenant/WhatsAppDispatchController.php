@@ -192,6 +192,8 @@ class WhatsAppDispatchController extends Controller
                 'value' => $contato->value,
             ],
             'status' => $dispatch->status,
+            'retry_safe' => (bool) $dispatch->retry_safe,
+            'send_attempted_at' => $dispatch->send_attempted_at?->toIso8601String(),
             'message_id' => $dispatch->message_id,
             'failure_reason' => $dispatch->failure_reason,
             'dispatched_in_support' => (bool) $dispatch->dispatched_in_support,

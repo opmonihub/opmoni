@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Contracts;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalProviderNoteStatus;
 use App\Enums\FiscalStage;
 use Carbon\CarbonImmutable;
 
@@ -75,5 +76,7 @@ final readonly class PulledDocument
         public bool $mascarado = false,
         public ?string $numero = null,
         public ?string $serie = null,
+        public ?CarbonImmutable $authorizedAt = null,
+        public ?FiscalProviderNoteStatus $providerNoteStatus = null,
     ) {}
 }

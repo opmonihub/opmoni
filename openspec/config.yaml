@@ -10,14 +10,24 @@ context: |
   backend/. Browser and SSR requests use /api/v1/* through the private Nuxt proxy;
   Laravel owns authentication, authorization, sessions, and application data.
   PostgreSQL and Redis support persistence and session infrastructure.
-  services/fiscal/ is a planned separate PHP/NFePHP service for NF-e and CT-e
-  capture with customer A1 certificates; its implementation remains pending.
+  Clients, Fiscal, Monitoring/SERPRO, Work, Team, WhatsApp, business Settings,
+  and platform administration are integrated under the accepted D009 scope.
+  Fiscal capture currently runs inside Laravel with private certificate/XML
+  storage and queued/scheduled operations. services/fiscal/ remains the planned
+  separate PHP/NFePHP extraction under D001/D002; it is not implemented.
+  Home/inbox and remaining template settings retain demonstration behavior.
 
   Read README.md for setup and verification, docs/architecture/product-decisions.md
   for accepted and superseded decisions, and openspec/specs/ for canonical contracts.
   Read docs/architecture/fiscal-service.md when a change affects fiscal integration.
+  Read docs/architecture/system-spec-reconciliation.md for the complete capability,
+  route/page map, delivered platform differences, and verification limits.
   Distinguish the implemented baseline, accepted scope, and pending proposals;
   legacy code and sample screens are references, not approval to expand scope.
+  The earlier add-super-admin-platform deltas are pending targets and require
+  reconciliation before sync/archive; foreign support elevation is superseded by
+  D009. Tenant writes require an active subscription and creation limits apply
+  to clients/members. Platform lists retain their existing response envelopes.
 
   Preserve Account isolation, existing identities, and access/session contracts.
   Keep secrets out of Git, logs, and public runtime configuration. Fiscal certificates

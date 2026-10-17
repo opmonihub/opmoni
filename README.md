@@ -5,7 +5,13 @@
 - `frontend/`: complete Nuxt application, including its existing sample server handlers.
 - `backend/`: Laravel 13 backend without a frontend starter kit, Blade welcome page, Vite, or Node dependencies.
 - `docs/` and `openspec/`: product decisions and planning artifacts.
-- `services/fiscal/`: planned separate PHP fiscal service; not implemented.
+- Fiscal capture currently lives in `backend/`; `services/fiscal/` remains a planned separate PHP fiscal service and is not implemented.
+
+## Specifications and coverage
+
+[Canonical OpenSpec contracts](openspec/specs/) cover access, Account isolation, Clients, Fiscal, Monitoring/SERPRO, Work, Team, WhatsApp, platform administration, and runtime boundaries. The [system reconciliation map](docs/architecture/system-spec-reconciliation.md) links all registered application routes and frontend page families to their specs and implementation evidence, records D001-D009 status, and distinguishes delivered behavior from pending platform targets.
+
+The [archived reconcile-system-specs change](openspec/changes/archive/2026-10-13-reconcile-system-specs/proposal.md) preserves the delta history. The earlier [Super Admin proposal](openspec/changes/add-super-admin-platform/proposal.md) remains pending where its stronger contracts differ from the integrated baseline; its foreign support elevation is superseded by D009. Syncing specs does not complete its implementation checklist.
 
 ## Development
 
@@ -131,6 +137,10 @@ After password login, the default active member office enters directly, includin
 
 Super Admin can manage office names/status and issue one-use, seven-day owner links under `/admin/contas`. Copy new links at issuance; ordinary lists never reveal the token, and reissue invalidates the old link. Existing owner identities cannot be overwritten. Suspended offices retain their data but deny tenant operations and activation.
 
+### ERP commercial access (disabled by default)
+
+Company ERP plans, subscriptions and module entitlements are separate from office `plans` / `subscriptions`. Public signup uses `POST /api/v1/erp/register` only when the platform is already bootstrapped **and** `ERP_REGISTRATION_ENABLED=true` in the backend environment. New companies receive a **pending** subscription; Super Admin activates contracts under `/admin/erp/assinaturas` (no payment provider call). Owners read status at `/erp/contrato`. Ordinary ERP operating writes require an **active** company subscription (`403 erp_subscription_inactive`); foundation company settings remain editable while pending. Keep `ERP_REGISTRATION_ENABLED=false` until launch acceptance. `ERP_OPERATING_WRITES_ENABLED` remains independent and does not bypass the commercial gate.
+
 Redis separates queues (database 0), cache/limits/locks (1), and sessions (2). Never flush these development databases to reset tests. Clients, Fiscal, Monitoring, Work, Team and business Settings are integrated into the current shell and `/api/v1` contract. Tenant operations require real account membership even for Super Admin; legacy support impersonation is superseded. Automatic password recovery remains deferred.
 
 ## PostgreSQL and Redis integration tests
@@ -151,6 +161,17 @@ docker compose exec -T frontend pnpm build
 
 Run `php artisan migrate --force --no-interaction` explicitly after schema updates; migrations never run during HTTP requests. Identity transactions commit before session issuance. If session storage fails after registration or activation, restore Redis and log in with the committed credentials; do not repeat bootstrap or overwrite the existing owner. Failed switching/logout remain retryable; reconcile state before retrying timed-out mutations.
 
+
+### Complete regular-suite repository layout
+
+Several cross-layer backend tests read the root Compose file and sibling frontend sources. Run them from the host repository layout with installed Composer dependencies and an explicit fiscal test default:
+
+```bash
+cd backend
+FISCAL_ENVIRONMENT=producao vendor/bin/phpunit
+```
+
+The PHPUnit bootstrap still forces SQLite in memory, array sessions/cache, and fake provider contracts. This setting controls test expectations; it does not change the running development stack's homologation setting. The backend-only development container does not mount the sibling files those tests inspect.
 
 ## Earlier access verification — 2026-10-12
 

@@ -39,13 +39,14 @@ final class RecepcaoEventoConnector
      * rejeita e a tentativa foi gasta à toa — o veredito é registrado sem
      * envio.
      */
-    private const PRAZO_DIAS = 90;
+    private const PRAZO_DIAS = 10;
 
     public function __construct(
         private ManifestationEventBuilder $builder,
         private EventSigner $signer,
         private ManifestationEventTransport $transport,
         private ManifestationResult $result,
+        private ManifestationEventResponseCorrelator $correlator,
         private FiscalManifestationStore $store,
         private ClientCertificateMaterializer $materializer,
     ) {}
@@ -63,19 +64,19 @@ final class RecepcaoEventoConnector
     public function cienciaDaEmissao(
         Client $client,
         FiscalManifestation $manifestation,
-        ?CarbonInterface $emissaoAt,
+        ?CarbonInterface $authorizedAt,
         ?CarbonInterface $agora = null,
     ): bool {
         $agora ??= now();
 
         // O prazo vem antes de qualquer material sensível: fora dele não há
         // evento a montar, nem certificado a abrir, nem byte a viajar.
-        if ($emissaoAt === null || $emissaoAt->diffInDays($agora) > self::PRAZO_DIAS) {
+        if ($authorizedAt === null || $authorizedAt->diffInDays($agora) > self::PRAZO_DIAS) {
             $this->store->veredito(
                 $manifestation,
                 FiscalManifestationOutcome::DeadlineMissed,
                 null,
-                'Prazo de 90 dias da ciência da emissão não atendido.',
+                'Prazo de dez dias da autorização para ciência da emissão não atendido.',
             );
 
             return true;
@@ -115,6 +116,15 @@ final class RecepcaoEventoConnector
         );
 
         try {
+            if ($resposta['lote_cstat'] === '128' && $resposta['evento_cstat'] !== null) {
+                $this->correlator->assertCorrelates(
+                    $manifestation->chave_acesso,
+                    $manifestation->event_type,
+                    $manifestation->event_seq,
+                    $resposta,
+                );
+            }
+
             $veredito = $this->result->classify(
                 $resposta['lote_cstat'],
                 $resposta['lote_xmotivo'],

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
-import type { MonitoringMessage, MonitoringMessageStub } from '~/types/serpro'
+import type { MonitoringMessage, MonitoringMessageRecovery, MonitoringMessageStub } from '~/types/serpro'
 import type { MonitoringObligation } from '~/utils/monitoringNav'
 import { formatMonitoringDate, monitoringDeadlinePassed } from '~/utils/monitoringPresentation'
 
@@ -29,25 +29,27 @@ const isOpen = computed({
   set: value => emit('update:open', value)
 })
 
-const toast = useToast()
-const { readMessage } = useSerpro()
+const { readMessage, reconcileMessage } = useSerpro()
 /** Registering ciência is an act on the client's behalf: `admin` and `operador` only. */
-const { canManageClients } = useAuth()
+const { canManageClients, currentAccount } = useAuth()
 
 const confirmed = ref(false)
-const message = ref<MonitoringMessage | null>(null)
+const message = ref<MonitoringMessage | MonitoringMessageRecovery | null>(null)
 const loading = ref(false)
+const effectStatus = ref<'idle' | 'before_send' | 'uncertain' | 'confirmed'>('idle')
+let generation = 0
+const context = () => [props.open, props.obligation.slug, props.clientId, props.stub.id, currentAccount.value?.id] as const
 
-/**
- * The body is fetched here and nowhere else. `watch(() => props.open)` must not
- * call `readMessage`: opening the dialog is not consent. It only clears the
- * state, so a message already read in this session is never carried into the
- * next opening.
- */
-watch(() => props.open, (open) => {
-  if (!open) return
+// No provider/recovery call on open. Invalidate both successful and failed late responses.
+watch(context, () => {
+  generation++
   confirmed.value = false
   message.value = null
+  effectStatus.value = 'idle'
+  loading.value = false
+}, { flush: 'sync' })
+onBeforeUnmount(() => {
+  generation++
 })
 
 /** The office already knows this one: the act is behind the office, not ahead. */
@@ -69,25 +71,47 @@ const messageFacts = computed<MetaListItem[]>(() => {
   return [
     { label: 'Ciência em', value: formatMonitoringDate(message.value.ciencia_em), mono: true, truncate: true },
     { label: 'Prazo', value: formatMonitoringDate(message.value.prazo_limite), mono: true, truncate: true },
-    { label: 'Código', value: message.value.codigo ?? '', mono: true, truncate: true, when: !!message.value.codigo }
+    { label: 'Código', value: message.value.body_available ? message.value.codigo ?? '' : '', mono: true, truncate: true, when: message.value.body_available && !!message.value.codigo }
   ]
 })
 
-async function confirm() {
+function failureStatus(error: unknown): 'before_send' | 'uncertain' | 'confirmed' {
+  const data = (error as { data?: { code?: string, effect_status?: string } })?.data
+  if (data?.code === 'operation_confirmed' || data?.effect_status === 'confirmed') return 'confirmed'
+  if (data?.code === 'operation_before_send' || data?.effect_status === 'pending') return 'before_send'
+  // Network/lease errors are not proof that no legal act happened.
+  return 'uncertain'
+}
+
+async function perform(recovery: boolean) {
+  if (!props.open || !canManageClients.value || loading.value) return
+  if (recovery ? effectStatus.value !== 'confirmed' : ['uncertain', 'confirmed'].includes(effectStatus.value)) return
+  const active = ++generation
+  const target = context()
+  const current = () => active === generation && context().every((value, index) => value === target[index])
   confirmed.value = true
   loading.value = true
   try {
-    message.value = await readMessage(props.obligation.slug, props.clientId, props.stub.id)
-    emit('read', props.stub.id)
-  } catch {
-    // Nothing was recorded, so the question stands again. A dialog left in the
-    // confirmed state would claim an act that did not happen — the one thing
-    // this screen must never do.
+    const result = await (recovery ? reconcileMessage : readMessage)(props.obligation.slug, props.clientId, props.stub.id)
+    if (!current()) return
+    message.value = result
+    effectStatus.value = 'confirmed'
+    emit('read', result.id)
+  } catch (error) {
+    if (!current()) return
+    effectStatus.value = failureStatus(error)
     confirmed.value = false
-    toast.add({ title: 'Não foi possível abrir a mensagem', color: 'error' })
   } finally {
-    loading.value = false
+    if (current()) loading.value = false
   }
+}
+
+async function confirm() {
+  await perform(false)
+}
+
+async function reconcile() {
+  await perform(true)
 }
 </script>
 
@@ -101,6 +125,31 @@ async function confirm() {
     <template #body>
       <div v-if="!confirmed" class="flex flex-col gap-4">
         <UAlert
+          v-if="effectStatus === 'uncertain'"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Resultado da ciência não confirmado"
+          description="A consulta pode ter registrado a ciência. Não repita o envio: o resultado exige verificação antes de qualquer nova ação."
+        />
+        <UAlert
+          v-else-if="effectStatus === 'confirmed'"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-scale"
+          title="Ciência confirmada; dados locais pendentes"
+          description="Reconcilie somente as datas confirmadas, sem nova consulta ao provedor. O corpo da mensagem não será recuperado."
+        />
+        <UAlert
+          v-else-if="effectStatus === 'before_send'"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-info"
+          title="Consulta não enviada"
+          description="A operação foi interrompida antes do envio da consulta de ciência. Corrija o impedimento antes de confirmar novamente."
+        />
+        <UAlert
+          v-if="effectStatus === 'idle' || effectStatus === 'before_send'"
           color="warning"
           variant="subtle"
           icon="i-lucide-gavel"
@@ -152,12 +201,20 @@ async function confirm() {
         <!-- `whitespace-pre-wrap`: the provider sends plain text and its own line
              breaks are part of what the office is being shown. -->
         <div
-          v-if="message.corpo"
+          v-if="message.body_available && message.corpo"
           class="max-h-80 overflow-y-auto rounded-lg bg-elevated/50 p-3 text-sm whitespace-pre-wrap text-default"
         >
           {{ message.corpo }}
         </div>
 
+        <UAlert
+          v-else-if="!message.body_available"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-file-warning"
+          title="Corpo da mensagem indisponível"
+          :description="message.notice"
+        />
         <UAlert
           v-else
           color="neutral"
@@ -178,7 +235,7 @@ async function confirm() {
           @click="isOpen = false"
         />
         <UButton
-          v-if="canManageClients"
+          v-if="canManageClients && (effectStatus === 'idle' || effectStatus === 'before_send')"
           :label="scienceRecorded ? 'Abrir mensagem' : 'Abrir e registrar ciência'"
           icon="i-lucide-mail-open"
           color="warning"
@@ -186,6 +243,15 @@ async function confirm() {
           :loading="loading"
           :disabled="loading"
           @click="confirm"
+        />
+        <UButton
+          v-if="canManageClients && effectStatus === 'confirmed'"
+          label="Reconciliar dados locais"
+          icon="i-lucide-refresh-cw"
+          color="warning"
+          :loading="loading"
+          :disabled="loading"
+          @click="reconcile"
         />
       </div>
 

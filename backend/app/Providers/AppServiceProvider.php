@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
+use App\Erp\Fiscal\FakeErpFiscalProvider;
 use App\Models\Account;
 use App\Observers\AccountObserver;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Support\AbsoluteSessionHandler;
+use App\Support\ErpCompanyContext;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
@@ -20,7 +23,9 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(CurrentTenant::class);
+        $this->app->scoped(ErpCompanyContext::class);
         $this->app->bind(FiscalConnectorRegistry::class);
+        $this->app->bind(ErpFiscalProvider::class, FakeErpFiscalProvider::class);
     }
 
     /**

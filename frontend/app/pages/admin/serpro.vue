@@ -23,7 +23,7 @@ const toast = useToast()
 const { connection, saveConnection, testConnectivity } = useSerpro()
 
 const schema = z.object({
-  consumer_key: z.string().min(1, 'Informe a chave de integração'),
+  consumer_key: z.string().default('').refine(value => isConfigured.value || value.length > 0, 'Informe a chave de integração'),
   consumer_secret: z.string().optional(),
   password: z.string().optional()
 })
@@ -228,15 +228,7 @@ async function onTestConnectivity() {
         </div>
 
         <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <!--
-            The key's own hint, which the API returns as `consumer_key_hint` and
-            which is a hint precisely because it is not the stored secret. It is
-            what makes the rotation path reachable: `consumer_key` is required on
-            every save, so without it only an operator who already knows the key
-            being replaced can rotate — not the one the "key lost or compromised"
-            scenario is about, who has the new key in hand and no idea what the
-            old one was.
-          -->
+          <!-- Only the API's hint is displayed; stored credentials never hydrate the write-only form. -->
           <div>
             <dt class="text-sm text-muted">
               Chave de integração
@@ -308,7 +300,7 @@ async function onTestConnectivity() {
         v-if="showForm"
         :title="isConfigured ? 'Atualizar credencial' : 'Credencial da plataforma'"
         :description="isConfigured
-          ? 'Segredo e senha em branco continuam como estão guardados; a chave é obrigatória.'
+          ? 'Chave, segredo e senha em branco continuam como estão guardados.'
           : 'Chave, segredo e certificado do provedor.'"
         variant="subtle"
       >
@@ -322,8 +314,8 @@ async function onTestConnectivity() {
           <UFormField
             label="Chave de integração"
             name="consumer_key"
-            help="Consumer key fornecida pelo Integra Contador."
-            required
+            help="Consumer key fornecida pelo Integra Contador. Em branco, a chave guardada é preservada."
+            :required="!isConfigured"
           >
             <UInput
               v-model="state.consumer_key"

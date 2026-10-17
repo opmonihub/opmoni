@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
+use App\Support\AccessSession;
+use App\Support\ExternalHttpBudget;
 use App\Support\HttpPkcs12ClientOptions;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
@@ -36,6 +38,8 @@ final class SerproClient
 
     /**
      * @param  array<string, mixed>  $dados
+     * @param  Closure(): void|null  $beforeServiceSend  Runs per service attempt, after authentication and ownership/budget guards.
+     * @param  Closure(SerproResult, int): void|null  $onServiceResult  Runs before caller recording; exceptions propagate without retry. An armed effect remains uncertain on every failure.
      */
     public function call(
         string $idSistema,
@@ -45,6 +49,10 @@ final class SerproClient
         string $contribuinte,
         ?string $procuradorToken = null,
         int $serviceSequence = 1,
+        ?ExternalHttpBudget $budget = null,
+        ?Closure $beforeServiceSend = null,
+        ?Closure $onServiceResult = null,
+        bool $retryUnauthorized = true,
     ): SerproResult {
         $connection = SerproConnection::current();
 
@@ -78,6 +86,10 @@ final class SerproClient
                 $tag,
                 $service,
                 $path,
+                $budget,
+                $beforeServiceSend,
+                $onServiceResult,
+                $retryUnauthorized,
             ),
         );
     }
@@ -97,15 +109,42 @@ final class SerproClient
         string $tag,
         array $service,
         string $certificatePath,
+        ?ExternalHttpBudget $budget,
+        ?Closure $beforeServiceSend,
+        ?Closure $onServiceResult,
+        bool $retryUnauthorized,
     ): SerproResult {
-        $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath);
+        $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath, $budget, $beforeServiceSend);
 
-        if ($response->status() === 401) {
+        if ($response->status() === 401 && $retryUnauthorized) {
             $this->tokens->forget();
-            $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath);
+            $response = $this->request($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $procuradorToken, $tag, $service, $certificatePath, $budget, $beforeServiceSend);
         }
 
-        return $this->interpret($response, $tag);
+        $result = $this->interpret($response, $tag);
+        if ($idServico === 'MSGDETALHAMENTO62') {
+            $payload = $response->json();
+            if (is_array($payload) && array_key_exists('pedidoDados', $payload)) {
+                $echo = $payload['pedidoDados'];
+                $echoData = is_array($echo) ? ($echo['dados'] ?? null) : null;
+                if (is_string($echoData)) {
+                    $echoData = json_decode($echoData, true);
+                }
+                $echoIsn = is_array($echoData) ? ($echoData['isn'] ?? null) : null;
+                if (! is_array($echo) || ($echo['idSistema'] ?? null) !== $idSistema
+                    || ($echo['idServico'] ?? null) !== $idServico
+                    || (! is_string($echoIsn) && ! is_int($echoIsn))
+                    || ! preg_match('/\A\d{1,10}\z/', (string) $echoIsn)
+                    || (int) $echoIsn !== (int) ($dados['isn'] ?? -1)) {
+                    throw new SerproException('A resposta não corresponde à consulta de mensagem enviada.', SerproFailure::Indeterminate, $response->status(), requestTag: $tag);
+                }
+            }
+        }
+        if ($onServiceResult !== null) {
+            $onServiceResult($result, $response->status());
+        }
+
+        return $result;
     }
 
     /**
@@ -123,6 +162,8 @@ final class SerproClient
         string $tag,
         array $service,
         string $certificatePath,
+        ?ExternalHttpBudget $budget = null,
+        ?Closure $beforeServiceSend = null,
     ): Response {
         return $this->transporte($connection, $procuradorToken, $tag, $certificatePath, function (PendingRequest $http) use ($connection, $idSistema, $idServico, $dados, $autor, $contribuinte, $service): Response {
             return $http->post($this->baseUrl().'/'.$service['path'], $this->envelope->build(
@@ -135,7 +176,7 @@ final class SerproClient
                 $service['versaoSistema'],
                 $dados,
             ));
-        });
+        }, $budget, $beforeServiceSend);
     }
 
     /**
@@ -168,8 +209,10 @@ final class SerproClient
         string $tag,
         string $certificatePath,
         Closure $post,
+        ?ExternalHttpBudget $budget = null,
+        ?Closure $beforeServiceSend = null,
     ): Response {
-        $pair = $this->tokens->pair();
+        $pair = $this->tokens->pair($budget);
 
         $headers = [
             'jwt_token' => $pair->jwtToken(),
@@ -180,6 +223,14 @@ final class SerproClient
             $headers['autenticar_procurador_token'] = $procuradorToken;
         }
 
+        AccessSession::assertOwnership(request());
+        if ($budget !== null) {
+            $budget->beforeSend($beforeServiceSend);
+        } elseif ($beforeServiceSend !== null) {
+            $beforeServiceSend();
+            AccessSession::assertOwnership(request());
+        }
+
         try {
             return $post(Http::acceptJson()
                 ->withHeaders($headers)
@@ -188,7 +239,8 @@ final class SerproClient
                     $certificatePath,
                     $connection->certificatePassword(),
                 ))
-                ->timeout((int) config('integra-contador.timeout', 25)));
+                ->timeout((int) config('integra-contador.timeout', 25))
+                ->withOptions($budget?->options((float) config('integra-contador.timeout', 25)) ?? []));
         } catch (ConnectionException) {
             // A tag existe — foi construída em `call()` e viajou no cabeçalho
             // — e a exceção a carrega para o `serpro_calls` da tentativa

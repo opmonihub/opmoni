@@ -12,7 +12,10 @@ use App\Models\User;
 use App\Models\WhatsAppChannel;
 use App\Models\WhatsAppDispatch;
 use App\Tenant\CurrentTenant;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\BusinessTestCase;
 
@@ -39,6 +42,7 @@ class WhatsAppIdempotencyTest extends BusinessTestCase
     {
         parent::setUp();
 
+        Http::preventStrayRequests();
         resolve(CurrentTenant::class)->accountId = null;
 
         config()->set('whatsapp.enabled', true);
@@ -108,6 +112,40 @@ class WhatsAppIdempotencyTest extends BusinessTestCase
         );
 
         Queue::assertPushed(SendWhatsAppDocumentJob::class, 1);
+    }
+
+    public function test_post_identico_apos_falha_cria_tentativa_e_deduplica_os_proximos_cliques(): void
+    {
+        Queue::fake();
+        $this->actingAs($this->admin, 'web');
+        $payload = ['competence' => '2026-01', 'artifact' => 'guia'];
+        $primeiro = $this->postJson($this->url(), $payload)->assertAccepted();
+        $falho = WhatsAppDispatch::findOrFail($primeiro->json('data.id'));
+        $channel = WhatsAppChannel::forAccount($this->account->getKey());
+        $channel->forceFill(['status' => WhatsAppChannel::STATUS_DISCONNECTED])->save();
+        (new SendWhatsAppDocumentJob($this->account->getKey(), $falho->getKey()))->handle();
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $falho->fresh()->status);
+        $channel->forceFill(['status' => WhatsAppChannel::STATUS_CONNECTED])->save();
+
+        $segundo = $this->postJson($this->url(), $payload)->assertAccepted()
+            ->assertJsonPath('data.status', WhatsAppDispatch::STATUS_QUEUED);
+        $this->assertNotSame($falho->getKey(), $segundo->json('data.id'));
+        $this->postJson($this->url(), $payload)->assertAccepted()
+            ->assertJsonPath('data.id', $segundo->json('data.id'));
+        $this->assertSame(2, WhatsAppDispatch::count());
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $falho->fresh()->status);
+        $this->assertSame('O Canal WhatsApp do escritório não está conectado.', $falho->fresh()->failure_reason);
+        $this->assertNotSame($falho->idempotency_key, WhatsAppDispatch::findOrFail($segundo->json('data.id'))->idempotency_key);
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 2);
+
+        $novaFalha = WhatsAppDispatch::findOrFail($segundo->json('data.id'));
+        $novaFalha->forceFill(['status' => WhatsAppDispatch::STATUS_FAILED])->save();
+        $terceiro = $this->postJson($this->url(), $payload)->assertAccepted()
+            ->assertJsonPath('data.status', WhatsAppDispatch::STATUS_QUEUED);
+        $this->postJson($this->url(), $payload)->assertAccepted()
+            ->assertJsonPath('data.id', $terceiro->json('data.id'));
+        $this->assertSame(3, WhatsAppDispatch::count());
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 3);
     }
 
     public function test_dia_seguinte_nao_permite_novo_disparo_da_mesma_guia(): void
@@ -191,17 +229,19 @@ class WhatsAppIdempotencyTest extends BusinessTestCase
         $winner = null;
         $account = $this->account;
         $client = $this->client;
-        WhatsAppDispatch::creating(function (WhatsAppDispatch $model) use (&$winner, $account, $client): void {
-            if ($winner === null) {
-                $winner = WhatsAppDispatch::withoutEvents(fn () => WhatsAppDispatch::factory()->create([
+        DB::listen(function (QueryExecuted $query) use (&$winner, $account, $client): void {
+            if ($winner === null && str_starts_with($query->sql, 'select')
+                && str_contains($query->sql, '"whatsapp_dispatches"')
+                && str_contains($query->sql, '"idempotency_key" =')) {
+                $winner = WhatsAppDispatch::factory()->create([
                     'account_id' => $account->getKey(),
                     'client_id' => $client->getKey(),
-                    'artifact_type' => $model->artifact_type,
-                    'competence' => $model->competence,
-                    'idempotency_key' => $model->idempotency_key,
+                    'artifact_type' => 'guia',
+                    'competence' => '2026-01',
+                    'idempotency_key' => $query->bindings[1],
                     'status' => WhatsAppDispatch::STATUS_SENT,
                     'message_id' => 'wamid.vencedor',
-                ]));
+                ]);
             }
         });
 

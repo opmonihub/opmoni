@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\BusinessTestCase;
 
 class ClientListingTest extends BusinessTestCase
@@ -120,6 +121,57 @@ class ClientListingTest extends BusinessTestCase
         $this->getJson('/api/v1/clients?tax_regime[]=nope')->assertUnprocessable()->assertJsonValidationErrors('tax_regime');
 
         CarbonImmutable::setTestNow();
+    }
+
+    #[DataProvider('portfolioTagFilters')]
+    public function test_tag_filters_preserve_ids_in_listing_counts_and_selection(int|array $tagFilter, array $expectedNames): void
+    {
+        $account = Account::factory()->create();
+        resolve(CurrentTenant::class)->accountId = $account->getKey();
+        $unselectedTag = Tag::factory()->create(['id' => 1, 'account_id' => $account->getKey()]);
+        $firstTag = Tag::factory()->create(['id' => 7, 'account_id' => $account->getKey()]);
+        $secondTag = Tag::factory()->create(['id' => 8, 'account_id' => $account->getKey()]);
+
+        $clients = collect(['Alpha', 'Beta', 'Both', 'Unselected'])->mapWithKeys(function (string $name) use ($account): array {
+            return [$name => Client::factory()->individual()->create([
+                'account_id' => $account->getKey(), 'name' => $name, 'status' => 'active', 'state' => 'SP',
+            ])];
+        });
+        $clients['Alpha']->tags()->attach($firstTag->getKey(), ['account_id' => $account->getKey()]);
+        $clients['Beta']->tags()->attach($secondTag->getKey(), ['account_id' => $account->getKey()]);
+        $clients['Both']->tags()->attach([$firstTag->getKey(), $secondTag->getKey()], ['account_id' => $account->getKey()]);
+        $clients['Unselected']->tags()->attach($unselectedTag->getKey(), ['account_id' => $account->getKey()]);
+        $this->actingAs($this->memberOf($account), 'web');
+
+        $filters = ['tag_id' => $tagFilter];
+        $query = http_build_query($filters);
+        $expectedIds = $clients->only($expectedNames)->map(fn (Client $client): int => $client->getKey())->values()->all();
+        $expectedCount = count($expectedIds);
+
+        $listing = $this->getJson('/api/v1/clients?'.$query)->assertOk()
+            ->assertJsonPath('meta.total', $expectedCount);
+        $this->assertEqualsCanonicalizing($expectedIds, $listing->json('data.*.id'));
+
+        $this->getJson('/api/v1/clients/summary?'.$query)->assertOk()
+            ->assertJsonPath('data.total', $expectedCount)
+            ->assertJsonPath('data.active', $expectedCount);
+        $this->getJson('/api/v1/clients/analytics?'.$query)->assertOk()
+            ->assertJsonCount(1, 'data.by_state')
+            ->assertJsonPath('data.by_state.0.key', 'SP')
+            ->assertJsonPath('data.by_state.0.count', $expectedCount);
+
+        $selection = $this->postJson('/api/v1/clients/selections', $filters)->assertOk()
+            ->assertJsonPath('data.count', $expectedCount);
+        $this->assertEqualsCanonicalizing($expectedIds, $selection->json('data.ids'));
+    }
+
+    public static function portfolioTagFilters(): array
+    {
+        return [
+            'scalar tag id' => [7, ['Alpha', 'Both']],
+            'single tag array' => [[7], ['Alpha', 'Both']],
+            'multiple tags union' => [[7, 8], ['Alpha', 'Beta', 'Both']],
+        ];
     }
 
     public function test_sheet_lists_every_filtered_client_without_portfolio_details(): void

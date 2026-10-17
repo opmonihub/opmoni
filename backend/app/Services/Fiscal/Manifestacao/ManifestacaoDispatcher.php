@@ -13,6 +13,7 @@ final class ManifestacaoDispatcher
 {
     public function __construct(
         private readonly FiscalManifestationStore $store,
+        private readonly FiscalScienceRolloutGate $rolloutGate,
     ) {}
 
     public function manifestacaoHabilitada(): bool
@@ -26,6 +27,10 @@ final class ManifestacaoDispatcher
             return false;
         }
 
+        if (! $this->rolloutGate->evaluate($accountId, (int) $client->getKey(), $chaveAcesso)['allowed']) {
+            return false;
+        }
+
         $pedido = $this->store->registrarPedido(
             accountId: $accountId,
             clientId: (int) $client->getKey(),
@@ -35,10 +40,6 @@ final class ManifestacaoDispatcher
             requestedBy: 'job:SendFiscalManifestationJob',
         );
 
-        // O veredito já gravado dispensa o job: a deduplicação na execução o
-        // encontraria e sairia sem fazer nada, e o enqueue mais barato é o
-        // que não acontece. O `touch` deixa a re-entrega visível no registro
-        // — um segundo pedido sem movimento pareceria um pedido que não chegou.
         if ($pedido->outcome->isVerdict()) {
             $pedido->touch();
 

@@ -218,42 +218,65 @@ export function whatsappGuideTarget(periods: readonly MonitoringAssessmentPeriod
 /**
  * A regra de reenvio no frontend, irmã do `guiaJaEnviada` do backend:
  * a mesma guia lógica (mesma competência **e** mesmo `slip_number`, `null`
- * inclusive) já saiu para este contato em estado que o gateway aceitou —
- * `queued`, `sent`, `delivered` ou `read`. `failed` não segura o contato:
- * a falha já está no Rastreio e a nova tentativa é legítima. Disparo de
- * outro artefato (o recibo/declaração legados) não é guia.
+ * inclusive) já saiu para este contato em estado `queued`, `sent`,
+ * `delivered` ou `read`. Falhas são avaliadas separadamente: somente
+ * evidência explícita de pré-envio permite retry sem Ciência de reenvio.
+ * Disparo de outro artefato (recibo/declaração legados) não é guia.
  */
 export function whatsappGuideAlreadySent(
   dispatches: readonly WhatsAppDispatch[],
   contactId: number,
   target: WhatsAppGuideTarget | null
 ): boolean {
-  if (target === null) return false
+  return dispatches.some(item => whatsappDispatchMatchesGuide(item, contactId, target) && item.status !== 'failed')
+}
+
+function whatsappDispatchMatchesGuide(dispatch: WhatsAppDispatch, contactId: number, target: WhatsAppGuideTarget | null): boolean {
+  return target !== null
+    && dispatch.contact?.id === contactId
+    && dispatch.artifact_type === 'guia'
+    && dispatch.competence === target.period
+    && dispatch.slip_number === target.slipNumber
+}
+
+/** Qualquer falha incerta desta guia/destino exige ciência; metadados legados não provam pré-envio. */
+export function whatsappGuideSendUncertain(
+  dispatches: readonly WhatsAppDispatch[],
+  contactId: number,
+  target: WhatsAppGuideTarget | null
+): boolean {
   return dispatches.some(item =>
-    item.contact?.id === contactId
-    && item.artifact_type === 'guia'
-    && item.competence === target.period
-    && item.slip_number === target.slipNumber
-    && item.status !== 'failed'
+    whatsappDispatchMatchesGuide(item, contactId, target)
+    && item.status === 'failed'
+    && !(item.retry_safe === true && item.send_attempted_at === null)
   )
 }
 
 /**
  * Uma linha do modal Enviar guias: o contato, se ele pode receber o Disparo
- * nesta versão (`sendable`), se entra marcado (`checked`), se já recebeu a
- * guia corrente (`alreadySent` — habilita a Ciência de reenvio) e o motivo
- * do bloqueio quando não é enviável.
+ * nesta versão (`sendable`), se entra marcado (`checked`), se há envio
+ * anterior (`alreadySent`) ou falha incerta (`uncertain`) da guia corrente
+ * — ambos oferecem Ciência de reenvio — e o motivo quando não é enviável.
  */
 export interface WhatsAppSendGuidesPlanItem {
   contact: ClientDispatchContact
   /** WhatsApp com telefone plausível — o único que dispara nesta versão. */
   sendable: boolean
-  /** A pré-seleção: marcado quando é enviável e ainda não recebeu esta guia. */
+  /** Pré-selecionado só sem envio anterior nem falha incerta desta guia. */
   checked: boolean
-  /** Já recebeu esta guia — desmarcado e com a Ciência de reenvio ao lado. */
+  /** Há operação queued/sent/delivered/read — Ciência de reenvio disponível. */
   alreadySent: boolean
+  /** Falha cujo resultado não prova pré-envio — não afirma recebimento. */
+  uncertain: boolean
   /** O motivo legível quando `sendable` é falso; `null` nos enviáveis. */
   blockedReason: string | null
+}
+
+/** A Ciência distingue resultado incerto do histórico de envios já protegido pela UI. */
+export function whatsappSendGuidesResendLabel(item: Pick<WhatsAppSendGuidesPlanItem, 'alreadySent' | 'uncertain'>): string | null {
+  if (item.uncertain) return 'Ciência de reenvio — resultado anterior incerto; pode ter sido enviado'
+  if (item.alreadySent) return 'Ciência de reenvio — este contato já recebeu esta guia'
+  return null
 }
 
 /** Os motivos do modal, uma frase por barreira — vocabulário do produto. */
@@ -266,8 +289,8 @@ export const whatsappSendGuidesReasons = {
 /**
  * O plano do Enviar guias: todos os Contatos de envio do cliente listados,
  * com a pré-seleção e os bloqueios já resolvidos — e-mail nunca selecionável,
- * telefone inválido idem, WhatsApp que já recebeu a guia corrente entra
- * desmarcado com a Ciência de reenvio disponível.
+ * telefone inválido idem. Histórico de envio ou falha incerta da guia
+ * corrente entra desmarcado com a Ciência de reenvio disponível.
  */
 export function whatsappSendGuidesPlan(input: {
   contacts: readonly ClientDispatchContact[]
@@ -276,13 +299,14 @@ export function whatsappSendGuidesPlan(input: {
 }): WhatsAppSendGuidesPlanItem[] {
   return input.contacts.map((contact) => {
     if (contact.channel !== 'whatsapp') {
-      return { contact, sendable: false, checked: false, alreadySent: false, blockedReason: whatsappSendGuidesReasons.emailNotSendable }
+      return { contact, sendable: false, checked: false, alreadySent: false, uncertain: false, blockedReason: whatsappSendGuidesReasons.emailNotSendable }
     }
     if (whatsappPhonePlausible(contact.value) !== 'ok') {
-      return { contact, sendable: false, checked: false, alreadySent: false, blockedReason: whatsappSendGuidesReasons.phoneInvalid }
+      return { contact, sendable: false, checked: false, alreadySent: false, uncertain: false, blockedReason: whatsappSendGuidesReasons.phoneInvalid }
     }
     const alreadySent = whatsappGuideAlreadySent(input.dispatches, contact.id, input.target)
-    return { contact, sendable: true, checked: !alreadySent, alreadySent, blockedReason: null }
+    const uncertain = whatsappGuideSendUncertain(input.dispatches, contact.id, input.target)
+    return { contact, sendable: true, checked: !alreadySent && !uncertain, alreadySent, uncertain, blockedReason: null }
   })
 }
 

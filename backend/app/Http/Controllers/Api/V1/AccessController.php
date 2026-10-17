@@ -11,6 +11,8 @@ use App\Models\AccountMembership;
 use App\Models\User;
 use App\Support\AccessSession;
 use App\Support\AccessTransaction;
+use App\Support\ErpIdentity;
+use App\Support\ErpSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -35,9 +37,19 @@ class AccessController extends Controller
 
     private function identity(Request $request, int $status = 200): JsonResponse
     {
+        AccessSession::assertOwnership($request);
         if ($request->session()->get('current_account_id') === null) {
-            AccessSession::assertOwnership($request);
             $request->session()->put('current_account_id', $request->user()->defaultAccountId());
+        }
+        if ($request->session()->get('current_account_id') === null
+            && $request->session()->get('current_company_id') === null) {
+            $defaultCompany = app(ErpIdentity::class)->defaultCompanyId($request->user());
+            if ($defaultCompany !== null) {
+                ErpSession::applyCompanySelection($request, $defaultCompany, [
+                    'kind' => 'direct',
+                    'membership' => $request->user()->erpCompanyMemberships()->where('erp_company_id', $defaultCompany)->firstOrFail(),
+                ]);
+            }
         }
 
         return response()->json((new IdentityResource($request->user()))->resolve($request), $status);
@@ -100,7 +112,8 @@ class AccessController extends Controller
             abort_unless($account && $membership, 403, 'Acesso ao escritório negado');
             if ($account->status !== 'active') {
                 abort(response()->json(['code' => 'account_suspended', 'message' => 'Escritório suspenso'], 403));
-            } AccessSession::assertOwnership($request);
+            }             AccessSession::assertOwnership($request);
+            ErpSession::clearDelegatedCompanyIfNeeded($request);
             $request->session()->put('current_account_id', $id);
             $request->session()->regenerateToken();
         });

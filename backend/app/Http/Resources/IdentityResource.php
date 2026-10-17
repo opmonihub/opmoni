@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Account;
+use App\Support\ErpIdentity;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,7 +13,18 @@ class IdentityResource extends JsonResource
     {
         $accounts = Account::query()->join('account_memberships', 'accounts.id', '=', 'account_memberships.account_id')->where('account_memberships.user_id', $this->id)->orderBy('accounts.id')->get(['accounts.id', 'accounts.name', 'accounts.status', 'account_memberships.role'])->map(fn ($a) => ['id' => $a->id, 'name' => $a->name, 'status' => $a->status, 'role' => $a->role])->all();
         $current = collect($accounts)->first(fn ($a) => $a['id'] == $request->session()->get('current_account_id'));
+        $officeId = $current['id'] ?? null;
+        $erpIdentity = app(ErpIdentity::class);
 
-        return ['id' => $this->id, 'name' => $this->name, 'email' => $this->email, 'is_super_admin' => $this->is_super_admin, 'accounts' => $accounts, 'current_account' => $current];
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+            'is_super_admin' => $this->is_super_admin,
+            'accounts' => $accounts,
+            'current_account' => $current,
+            'companies' => $erpIdentity->companies($this->resource, $officeId),
+            'current_company' => $erpIdentity->currentCompany($request, $this->resource, $officeId),
+        ];
     }
 }

@@ -116,11 +116,7 @@ final class RunSerproManualSearchJob implements ShouldQueue
             ->whereKey($this->searchId)
             ->firstOrFail();
 
-        // `queued` é a reivindicação da entrega; `running` é a reentrega que
-        // volta do throttle e segue de onde parou; terminal não reabre.
-        if ($busca->state === SerproManualSearchState::Queued) {
-            $busca->forceFill(['state' => SerproManualSearchState::Running])->save();
-        } elseif ($busca->state !== SerproManualSearchState::Running) {
+        if (! in_array($busca->state, [SerproManualSearchState::Queued, SerproManualSearchState::Running], true)) {
             return;
         }
 
@@ -134,6 +130,44 @@ final class RunSerproManualSearchJob implements ShouldQueue
             return;
         }
 
+        // O lock é compartilhado com a sincronização. A leitura anterior é
+        // apenas identidade: outra entrega pode ter avançado enquanto isso.
+        $lock = resolve(SerproClientLock::class)->acquire($this->accountId, (string) $client->tax_id);
+
+        if ($lock === null) {
+            $this->release(15);
+
+            return;
+        }
+
+        try {
+            $busca->refresh();
+
+            if (! in_array($busca->state, [SerproManualSearchState::Queued, SerproManualSearchState::Running], true)) {
+                return;
+            }
+
+            // NULL em running é uma busca anterior aos checkpoints: não
+            // existe prova de que nenhum envio ocorreu no trabalhador antigo.
+            if (($busca->state === SerproManualSearchState::Running && $busca->completed_units === null)
+                || $busca->current_unit !== null || $busca->attempted_at !== null) {
+                $this->finish($busca, SerproManualSearchState::Failed, 'resposta_incerta');
+
+                return;
+            }
+
+            $busca->forceFill([
+                'state' => SerproManualSearchState::Running,
+                'completed_units' => $busca->completed_units ?? [],
+            ])->save();
+            $this->process($busca, $client);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function process(SerproManualSearch $busca, Client $client): void
+    {
         // A conta é relida aqui, e não no disparo: o flag pode ter sido
         // desligado depois que a busca nasceu, e desligar é contenção.
         if (! resolve(SerproAccountEnablement::class)->enabled($this->accountId)) {
@@ -158,21 +192,7 @@ final class RunSerproManualSearchJob implements ShouldQueue
             return;
         }
 
-        // O mesmo lock do job de sincronização: duas buscas (manual e run)
-        // para o mesmo contribuinte não podem cruzar no gateway.
-        $lock = resolve(SerproClientLock::class)->acquire($this->accountId, (string) $client->tax_id);
-
-        if ($lock === null) {
-            $this->release(15);
-
-            return;
-        }
-
-        try {
-            $this->search($busca, $client, $certificate, $token);
-        } finally {
-            $lock->release();
-        }
+        $this->search($busca, $client, $certificate, $token);
     }
 
     private function search(SerproManualSearch $busca, Client $client, AccountCertificate $certificate, string $token): void
@@ -213,6 +233,12 @@ final class RunSerproManualSearchJob implements ShouldQueue
         $carimbo = now()->toISOString();
 
         foreach ($unidades as $unidade) {
+            $unit = $unidade['id_sistema'].'/'.$unidade['id_servico'];
+
+            if (in_array($unit, $busca->completed_units ?? [], true)) {
+                continue;
+            }
+
             $motivo = $this->motivoDeInelegibilidade($client, $unidade['procuracao']);
 
             if ($motivo !== null) {
@@ -221,6 +247,10 @@ final class RunSerproManualSearchJob implements ShouldQueue
 
                 return;
             }
+
+            // Não há search_id no recorder: só esta linha pode provar que
+            // esta busca abriu a tentativa, antes de qualquer envio externo.
+            $busca->forceFill(['current_unit' => $unit, 'attempted_at' => now()])->save();
 
             try {
                 $result = $unidade['id_servico'] === 'RELATORIOSITFIS92'
@@ -248,7 +278,7 @@ final class RunSerproManualSearchJob implements ShouldQueue
                         ),
                     );
             } catch (SerproException $exception) {
-                $this->classificar($busca, $exception);
+                $this->classificar($busca, $exception, $unidade['id_servico'] !== 'RELATORIOSITFIS92');
 
                 return;
             }
@@ -261,17 +291,25 @@ final class RunSerproManualSearchJob implements ShouldQueue
                 $mapper->project($unidade['id_servico'], $result),
                 $carimbo,
             );
+
+            // Inclui projeções derivadas: resposta auditada não prova que o
+            // writer terminou. Crash até este save conserva a incerteza.
+            $busca->forceFill([
+                'completed_units' => [...($busca->completed_units ?? []), $unit],
+                'current_unit' => null,
+                'attempted_at' => null,
+            ])->save();
         }
 
         $this->finish($busca, SerproManualSearchState::Completed, null);
     }
 
     /**
-     * O desfecho da exceção, na mesma gramática do `SyncSerproClientJob` —
-     * com a diferença de que aqui não há fronteira de envio nem item para
-     * voltar: o que não pode repetir vira `resposta_incerta` e para.
+     * Só uma resposta de chamada simples pode autorizar limpar a fronteira
+     * e retentar. Na sequência SITFIS uma exceção pode vir depois de outros
+     * envios: seu responseId não prova segurança para repetir a sequência.
      */
-    private function classificar(SerproManualSearch $busca, SerproException $exception): void
+    private function classificar(SerproManualSearch $busca, SerproException $exception, bool $chamadaSimples): void
     {
         if ($exception->providerCode === 'AcessoNegado-ICGERENCIADOR-022') {
             // O provedor disse que a outorga não cobre o serviço — é o
@@ -289,9 +327,11 @@ final class RunSerproManualSearchJob implements ShouldQueue
         }
 
         match ($exception->failure) {
-            SerproFailure::Throttled => $this->release(60),
-            SerproFailure::Upstream => $exception->responseId !== null
-                ? $this->release(15)
+            SerproFailure::Throttled => $chamadaSimples
+                ? $this->reagendar($busca, 60)
+                : $this->finish($busca, SerproManualSearchState::Failed, 'resposta_incerta'),
+            SerproFailure::Upstream => $chamadaSimples && $exception->responseId !== null
+                ? $this->reagendar($busca, 15)
                 : $this->finish($busca, SerproManualSearchState::Failed, 'resposta_incerta'),
             SerproFailure::Indeterminate => $this->finish($busca, SerproManualSearchState::Failed, 'resposta_incerta'),
             default => $this->finish($busca, SerproManualSearchState::Failed, $exception->failure->value),
@@ -335,6 +375,12 @@ final class RunSerproManualSearchJob implements ShouldQueue
                 return;
             }
         }
+    }
+
+    private function reagendar(SerproManualSearch $busca, int $delay): void
+    {
+        $busca->forceFill(['current_unit' => null, 'attempted_at' => null])->save();
+        $this->release($delay);
     }
 
     private function finish(SerproManualSearch $busca, SerproManualSearchState $state, ?string $reason): void

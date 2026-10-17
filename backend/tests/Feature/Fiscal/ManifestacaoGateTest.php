@@ -8,6 +8,7 @@ use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
+use App\Services\Fiscal\Manifestacao\FiscalScienceRolloutGate;
 use App\Services\Fiscal\Manifestacao\ManifestacaoDispatcher;
 use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
 use App\Tenant\CurrentTenant;
@@ -72,6 +73,7 @@ class ManifestacaoGateTest extends BusinessTestCase
         $job->handle(
             resolve(FiscalManifestationStore::class),
             resolve(RecepcaoEventoConnector::class),
+            resolve(FiscalScienceRolloutGate::class),
         );
 
         $registro = FiscalManifestation::withoutGlobalScope('account')->firstOrFail();
@@ -81,7 +83,10 @@ class ManifestacaoGateTest extends BusinessTestCase
 
     public function test_com_gate_ligado_o_despacho_enfileira(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();

@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Read;
 
 use App\Enums\FiscalModel;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Models\FiscalDocument;
 use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -44,7 +45,14 @@ class FiscalDocuments
     {
         return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId, $filters) {
             $filtrada = $this->filtered($accountId, $filters);
-            $modelos = $this->modelosDisponiveis($filtrada, $filters);
+            $readiness = resolve(FiscalDocumentReadiness::class);
+            $candidates = (clone $filtrada)
+                ->where('storage_state', FiscalStorageState::Available)
+                ->limit(500)
+                ->get();
+            $readiness->reconcile($candidates);
+            $pronta = $readiness->readyScope($filtrada);
+            $modelos = $this->modelosDisponiveis($pronta, $filters);
 
             return [
                 // `client` já vem com `withTrashed()` na relação do modelo, que é
@@ -53,10 +61,10 @@ class FiscalDocuments
                 // desliga a linha histórica. O `currentCertificate` junto é a
                 // leitura em lote do `client_certificate_status` — uma consulta
                 // para a página, e não uma por linha.
-                'rows' => $this->preencheACompletude($accountId, $this->preencheASituacao($accountId, $this->preencheOsEventos($accountId, $this->sorted($filtrada, $filters)
+                'rows' => $this->preencheASituacao($accountId, $this->preencheOsEventos($accountId, $this->sorted($pronta, $filters)
                     ->with(['client.currentCertificate'])
                     ->paginate($this->porPagina($filters))
-                    ->withQueryString()))),
+                    ->withQueryString())),
                 'available_models' => $modelos,
             ];
 

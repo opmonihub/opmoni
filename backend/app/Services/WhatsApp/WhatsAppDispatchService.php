@@ -14,6 +14,7 @@ use App\Services\SupportAudit;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -26,8 +27,10 @@ use Illuminate\Validation\ValidationException;
  * envio lógico (conta + cliente + contato + obrigação + artefato +
  * competência + slip_number), e a unique `(account_id, idempotency_key)`
  * faz do segundo clique um reencontro — inclusive quando dois POSTs
- * correm. O que libera um novo envio da mesma guia é a guia mudar
- * (`slip_number` novo) ou a Ciência de reenvio, que gera chave única.
+ * correm. Só uma falha comprovadamente anterior ao envio libera nova
+ * tentativa com chave determinística própria, preservando o histórico.
+ * A guia mudar (`slip_number` novo) ou a Ciência de reenvio também libera
+ * um novo envio.
  */
 final class WhatsAppDispatchService
 {
@@ -251,13 +254,25 @@ final class WhatsAppDispatchService
             $resend ? (string) Str::uuid() : null,
         );
 
-        $existente = WhatsAppDispatch::query()
+        $logicalKey = $key;
+
+        while (($existente = WhatsAppDispatch::query()
             ->where('account_id', $accountId)
             ->where('idempotency_key', $key)
-            ->first();
+            ->first()) !== null) {
+            if ($existente->status !== WhatsAppDispatch::STATUS_FAILED) {
+                return ['dispatch' => $existente, 'enqueued' => false];
+            }
 
-        if ($existente !== null) {
-            return ['dispatch' => $existente, 'enqueued' => false];
+            if (! $existente->retry_safe || $existente->send_attempted_at !== null) {
+                throw ValidationException::withMessages([
+                    'resend_acknowledgements' => ['O resultado do envio anterior é incerto. Confirme a Ciência de reenvio antes de enviar novamente.'],
+                ]);
+            }
+
+            // Só uma falha comprovadamente anterior ao envio libera nova chave.
+            // Cliques concorrentes usam a mesma chave, preservando o histórico.
+            $key = hash('sha256', $logicalKey.'|retry:'.$existente->getKey());
         }
 
         $supportLogId = $this->auditar($request, $actor, $accountId, $clientId);
@@ -272,12 +287,13 @@ final class WhatsAppDispatchService
                 'slip_number' => $slipNumber,
                 'idempotency_key' => $key,
                 'status' => WhatsAppDispatch::STATUS_QUEUED,
+                'retry_safe' => true,
                 'dispatched_by_user_id' => $actor->getKey(),
                 'dispatched_in_support' => $supportLogId !== null,
                 'support_access_log_id' => $supportLogId,
             ]);
             $dispatch->account_id = $accountId;
-            $dispatch->save();
+            DB::transaction(fn (): bool => $dispatch->save());
         } catch (UniqueConstraintViolationException) {
             // Corrida: outro POST gravou a chave entre o lookup e o insert.
             // A resposta é a linha que venceu — nunca 500, nunca segundo envio.
@@ -289,7 +305,7 @@ final class WhatsAppDispatchService
             return ['dispatch' => $vencedor, 'enqueued' => false];
         }
 
-        SendWhatsAppDocumentJob::dispatch($accountId, $dispatch->getKey());
+        SendWhatsAppDocumentJob::dispatch($accountId, $dispatch->getKey())->afterCommit();
 
         return ['dispatch' => $dispatch, 'enqueued' => true];
     }
@@ -333,8 +349,8 @@ final class WhatsAppDispatchService
      * A regra de reenvio: esta guia (mesma `slip_number`, incluindo o
      * `null` da guia por `declared_at`) já tem um Disparo bem aceito pelo
      * gateway para este contato — `queued`, `sent`, `delivered` ou `read`.
-     * Uma linha `failed` não segura o contato: a falha já está no
-     * Rastreio e a nova tentativa é legítima.
+     * Uma linha `failed` permite alcançar criarDispatch, que só libera
+     * chave nova sem ciência quando a falha é comprovadamente pré-envio.
      *
      * @param  array{period: string, slip_number: ?string}  $alvo
      */

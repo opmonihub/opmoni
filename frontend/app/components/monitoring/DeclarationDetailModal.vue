@@ -137,7 +137,7 @@ const downloading = ref<'guia' | 'recibo' | 'declaracao' | null>(null)
 
 function canDownload(artifact: 'guia' | 'recibo' | 'declaracao', period: MonitoringAssessmentPeriod | null): boolean {
   if (!period) return false
-  if (artifact === 'guia') return !!period.declared_at
+  if (artifact === 'guia') return (period.slip_number ?? '') !== '' || period.declared_at !== null
   return !!period.declaration_number
 }
 

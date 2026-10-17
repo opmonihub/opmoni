@@ -2,7 +2,7 @@
 import QRCode from 'qrcode'
 import type { MetaListItem } from '~/components/data-table/MetaList.vue'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
-import type { WhatsAppChannel } from '~/types/whatsapp'
+import type { WhatsAppChannel, WhatsAppChannelOperationNotice } from '~/types/whatsapp'
 import { formatMonitoringDate } from '~/utils/monitoringPresentation'
 import { pageScrollClass } from '~/utils/pageShell'
 import {
@@ -27,7 +27,7 @@ import {
 definePageMeta({ middleware: ['auth', 'account-admin'] })
 
 const toast = useToast()
-const { channel, startPairing, pairingStatus, disconnect } = useWhatsAppChannel()
+const { channel, startPairing, pairingStatus, disconnect, continueOperation, reconcileOperation } = useWhatsAppChannel()
 
 async function readChannel() {
   try {
@@ -66,6 +66,43 @@ const qrModalOpen = ref(false)
 const pairing = ref(false)
 const disconnecting = ref(false)
 const confirmingDisconnect = ref(false)
+const operationNotice = ref<WhatsAppChannelOperationNotice | null>(currentChannel.value?.operation ?? null)
+
+function rememberOperation(error: unknown) {
+  const data = (error as { data?: Partial<WhatsAppChannelOperationNotice> })?.data
+  if (apiStatus(error) !== 409 || typeof data?.operation_id !== 'string' || typeof data.next_step !== 'string'
+    || !['operation_continuation_required', 'operation_reconciliation_required', 'operation_manual_review_required', 'operation_superseded'].includes(data.code ?? '')) return false
+  operationNotice.value = data as WhatsAppChannelOperationNotice
+  stopPolling()
+  clearQr()
+  qrModalOpen.value = false
+  return true
+}
+
+async function resumeOperation() {
+  const notice = operationNotice.value
+  if (!notice || pairing.value || disconnecting.value) return
+  if (!['operation_continuation_required', 'operation_reconciliation_required'].includes(notice.code)) return
+  const generation = invalidateChannelCycle()
+  pairing.value = true
+  try {
+    const next = await (notice.code === 'operation_reconciliation_required'
+      ? reconcileOperation(notice.operation_id)
+      : continueOperation(notice.operation_id))
+    if (generation !== channelGeneration) return
+    operationNotice.value = null
+    confirmingDisconnect.value = false
+    await rememberQr(next, generation)
+    if (generation !== channelGeneration) return
+    applyChannel(next)
+    if (next.status === 'connected') showConnectedInModal()
+  } catch (error) {
+    if (generation !== channelGeneration) return
+    if (!rememberOperation(error)) toast.add({ title: 'Não foi possível continuar a operação', description: apiErrorMessage(error), color: 'error' })
+  } finally {
+    if (generation === channelGeneration) pairing.value = false
+  }
+}
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let channelGeneration = 0
@@ -174,6 +211,12 @@ async function rememberQr(next: Pick<WhatsAppChannel, 'qr_code' | 'qr_expires_at
 
 function applyChannel(next: WhatsAppChannel | null) {
   currentChannel.value = next
+  if (next?.operation) operationNotice.value = next.operation
+  if (operationNotice.value) {
+    stopPolling()
+    clearQr()
+    return
+  }
   if (next?.status === 'pairing') {
     startPolling()
   } else {
@@ -258,6 +301,7 @@ function startPolling() {
 }
 
 async function submitPairing() {
+  if (pairing.value || disconnecting.value || operationNotice.value) return
   const generation = invalidateChannelCycle()
   pairing.value = true
   try {
@@ -283,13 +327,14 @@ async function submitPairing() {
     applyChannel(next)
   } catch (err) {
     if (generation !== channelGeneration) return
-    toast.add({ title: 'Não foi possível iniciar o pareamento', description: apiErrorMessage(err), color: 'error' })
+    if (!rememberOperation(err)) toast.add({ title: 'Não foi possível iniciar o pareamento', description: apiErrorMessage(err), color: 'error' })
   } finally {
     if (generation === channelGeneration) pairing.value = false
   }
 }
 
 async function confirmDisconnect() {
+  if (pairing.value || disconnecting.value || operationNotice.value) return
   const generation = invalidateChannelCycle()
   disconnecting.value = true
   try {
@@ -301,7 +346,7 @@ async function confirmDisconnect() {
     toast.add({ title: 'Canal WhatsApp desconectado', color: 'success' })
   } catch (err) {
     if (generation !== channelGeneration) return
-    toast.add({ title: 'Não foi possível desconectar o canal', description: apiErrorMessage(err), color: 'error' })
+    if (!rememberOperation(err)) toast.add({ title: 'Não foi possível desconectar o canal', description: apiErrorMessage(err), color: 'error' })
   } finally {
     if (generation === channelGeneration) disconnecting.value = false
   }
@@ -333,7 +378,7 @@ watch(qrExpired, (expired) => {
 // curso) abre o polling — o operador voltou para a tela para ler o código.
 // `import.meta.client`: no servidor o `onBeforeUnmount` nunca roda e um
 // `setInterval` do Nitro continuaria batendo na API depois da resposta.
-if (import.meta.client && currentChannel.value?.status === 'pairing') {
+if (import.meta.client && !operationNotice.value && currentChannel.value?.status === 'pairing') {
   startPolling()
   void rememberQr(currentChannel.value)
   void poll()
@@ -394,7 +439,24 @@ if (import.meta.client && currentChannel.value?.status === 'pairing') {
           :items="channelFacts"
         />
 
-        <div class="flex flex-wrap items-center justify-between gap-2">
+        <UAlert
+          v-if="operationNotice"
+          color="warning"
+          variant="subtle"
+          title="Operação WhatsApp preservada"
+          :description="operationNotice.message ?? 'Consulte o resultado antes de tentar novamente. Nenhuma ação será reenviada automaticamente.'"
+          role="status"
+        />
+        <UButton
+          v-if="operationNotice && ['operation_continuation_required', 'operation_reconciliation_required'].includes(operationNotice.code)"
+          :label="operationNotice.code === 'operation_reconciliation_required' ? 'Consultar resultado' : 'Continuar pareamento'"
+          :loading="pairing"
+          :disabled="disconnecting"
+          type="button"
+          @click="resumeOperation"
+        />
+
+        <div v-if="!operationNotice" class="flex flex-wrap items-center justify-between gap-2">
           <UButton
             v-if="status === 'disconnected' || status === 'error' || (isPairing && qrExpired)"
             :label="status === 'disconnected' ? 'Conectar' : 'Novo pareamento'"
@@ -416,7 +478,7 @@ if (import.meta.client && currentChannel.value?.status === 'pairing') {
         </div>
 
         <UAlert
-          v-if="confirmingDisconnect"
+          v-if="confirmingDisconnect && !operationNotice"
           color="error"
           variant="subtle"
           icon="i-lucide-unplug"
@@ -424,7 +486,7 @@ if (import.meta.client && currentChannel.value?.status === 'pairing') {
           description="A sessão do número pareado é encerrada no gateway e o Disparo de documentos para de funcionar até um novo pareamento."
         />
         <div
-          v-if="confirmingDisconnect"
+          v-if="confirmingDisconnect && !operationNotice"
           class="flex justify-end gap-2"
         >
           <UButton

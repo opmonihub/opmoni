@@ -187,6 +187,18 @@ return [
      */
     'manifestacao_enabled' => filter_var(env('FISCAL_MANIFESTACAO_ENABLED', false), FILTER_VALIDATE_BOOL),
 
+    /*
+     * Rollout mode for automatic NF-e science (`210210`): `disabled`, `pilot` or
+     * `fleet`. Missing or unknown values block outgoing science and recovery.
+     */
+    'manifestacao_rollout_mode' => env('FISCAL_MANIFESTACAO_ROLLOUT_MODE', 'disabled'),
+
+    /*
+     * Pilot allowlist: list of `[account_id, client_id, chave_acesso]` tuples.
+     * Required non-empty when mode is `pilot`; clearing alone never selects fleet.
+     */
+    'manifestacao_pilot_allowlist' => json_decode((string) env('FISCAL_MANIFESTACAO_PILOT_ALLOWLIST', '[]'), true) ?: [],
+
     'timeout' => (int) env('FISCAL_TIMEOUT', 60),
 
     /*

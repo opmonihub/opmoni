@@ -1,3 +1,5 @@
+> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+
 ## Purpose
 
 Provide the Serpro administration page with a genuine global credential lifecycle, secure certificate sources, and an authentication-only connectivity result without importing the legacy monitoring subsystem.

@@ -29,6 +29,8 @@ export function useClientListSelection(options: UseClientListSelectionOptions) {
   const snapshotIds = shallowRef(new Set<number>())
   const selectingAll = ref(false)
   const selectedCount = computed(() => clientSelectionCount(selection.value))
+  const paramsKey = computed(() => JSON.stringify(readParams(options.selectionParams)))
+  let generation = 0
 
   function inSnapshot(id: number) {
     return snapshotIds.value.has(id)
@@ -44,15 +46,23 @@ export function useClientListSelection(options: UseClientListSelectionOptions) {
   }
 
   function clearSelection() {
+    generation += 1
+    selectingAll.value = false
     selection.value = emptyClientSelection()
     snapshotIds.value = new Set()
   }
 
+  // Invalidate before a pending response can settle, including nested filter edits.
+  watch(paramsKey, clearSelection, { flush: 'sync' })
+  onScopeDispose(clearSelection)
+
   async function selectAllMatching() {
     if (selectingAll.value || options.matchingTotal.value === 0) return
+    const requestGeneration = ++generation
     selectingAll.value = true
     try {
       const snapshot = await options.createSelection(readParams(options.selectionParams))
+      if (requestGeneration !== generation) return
       snapshotIds.value = new Set(snapshot.data.ids)
       selection.value = {
         mode: 'all_matching',
@@ -62,9 +72,10 @@ export function useClientListSelection(options: UseClientListSelectionOptions) {
         included: []
       }
     } catch {
+      if (requestGeneration !== generation) return
       toast.add({ title: 'Não foi possível selecionar os clientes filtrados', color: 'error' })
     } finally {
-      selectingAll.value = false
+      if (requestGeneration === generation) selectingAll.value = false
     }
   }
 

@@ -40,7 +40,7 @@ describe('tokens de shell de página', () => {
 
 describe('tokens de tabela', () => {
   it('Work › Modelos aplica workTableUi na lista', () => {
-    const page = source('../app/pages/work/modelos.vue')
+    const page = source('../app/pages/work/modelos/index.vue')
     assert.match(page, /import \{ workTableUi \} from '~\/utils\/workGroupedTable'/)
     assert.match(page, /:ui="workTableUi"/)
   })

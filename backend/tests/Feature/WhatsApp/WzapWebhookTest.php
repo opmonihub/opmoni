@@ -122,6 +122,50 @@ class WzapWebhookTest extends BusinessTestCase
         $this->assertSame(1, WhatsAppWebhookEvent::query()->count());
     }
 
+    public function test_falha_ao_atualizar_disparo_nao_consome_evento_e_permite_reentrega(): void
+    {
+        $dispatch = $this->disparoEnviado('atomic-message', 'wamid.ATOMIC');
+        $falhar = true;
+        WhatsAppDispatch::updating(function (WhatsAppDispatch $model) use (&$falhar, $dispatch): void {
+            if ($model->getKey() === $dispatch->getKey() && $falhar) {
+                throw new \RuntimeException('Falha de persistência simulada.');
+            }
+        });
+        $eventId = fake()->uuid();
+        $payload = ['message_ids' => ['wamid.ATOMIC'], 'status' => 'delivered'];
+
+        $this->postWebhook($payload, $eventId)->assertStatus(503);
+        $this->assertSame(0, WhatsAppWebhookEvent::count());
+        $this->assertSame(WhatsAppDispatch::STATUS_SENT, $dispatch->fresh()->status);
+
+        $falhar = false;
+        $this->postWebhook($payload, $eventId)->assertOk();
+        $this->assertSame(WhatsAppDispatch::STATUS_DELIVERED, $dispatch->fresh()->status);
+        $this->assertSame($dispatch->getKey(), WhatsAppWebhookEvent::query()->sole()->whatsapp_dispatch_id);
+    }
+
+    public function test_falha_ao_vincular_evento_reverte_tambem_o_status_do_disparo(): void
+    {
+        $dispatch = $this->disparoEnviado('atomic-link', 'wamid.LINK');
+        $falhar = true;
+        WhatsAppWebhookEvent::updating(function () use (&$falhar): void {
+            if ($falhar) {
+                throw new \RuntimeException('Falha de vínculo simulada.');
+            }
+        });
+        $eventId = fake()->uuid();
+        $payload = ['message_ids' => ['wamid.LINK'], 'status' => 'delivered'];
+
+        $this->postWebhook($payload, $eventId)->assertStatus(503);
+        $this->assertSame(WhatsAppDispatch::STATUS_SENT, $dispatch->fresh()->status);
+        $this->assertSame(0, WhatsAppWebhookEvent::count());
+
+        $falhar = false;
+        $this->postWebhook($payload, $eventId)->assertOk();
+        $this->assertSame(WhatsAppDispatch::STATUS_DELIVERED, $dispatch->fresh()->status);
+        $this->assertSame(1, WhatsAppWebhookEvent::count());
+    }
+
     public function test_apikey_invalida_responde_401_sem_tocar_em_nada(): void
     {
         $dispatch = $this->disparoEnviado('wzap-msg-5', 'wamid.SEMCHAVE');
@@ -305,6 +349,75 @@ class WzapWebhookTest extends BusinessTestCase
         ], type: 'message.status')->assertOk();
 
         $this->assertSame(WhatsAppDispatch::STATUS_DELIVERED, $dispatch->fresh()->status);
+    }
+
+    public function test_distinct_receipt_events_do_not_regress_a_stale_sent_model_after_read(): void
+    {
+        $dispatch = $this->disparoEnviado('stale-receipt', 'wamid.STALE');
+        $interleaved = false;
+        WhatsAppDispatch::retrieved(function (WhatsAppDispatch $model) use ($dispatch, &$interleaved): void {
+            if ($model->getKey() !== $dispatch->getKey() || $interleaved) {
+                return;
+            }
+
+            $interleaved = true;
+            $this->assertSame(WhatsAppDispatch::STATUS_SENT, $model->status);
+            $this->postWebhook([
+                'message_ids' => ['wamid.STALE'], 'status' => 'read',
+            ], 'stale-read-winner')->assertOk();
+        });
+
+        $this->postWebhook([
+            'message_ids' => ['wamid.STALE'], 'status' => 'delivered',
+        ], 'stale-delivered-contender')->assertOk();
+
+        $this->assertTrue($interleaved);
+        $this->assertSame(WhatsAppDispatch::STATUS_READ, $dispatch->fresh()->status);
+        $this->assertSame(2, WhatsAppWebhookEvent::where('whatsapp_dispatch_id', $dispatch->getKey())->count());
+    }
+
+    public function test_distinct_failed_event_does_not_overwrite_delivery_using_a_stale_sent_model(): void
+    {
+        $dispatch = $this->disparoEnviado('stale-failure', 'wamid.STALE-FAILURE');
+        $interleaved = false;
+        WhatsAppDispatch::retrieved(function (WhatsAppDispatch $model) use ($dispatch, &$interleaved): void {
+            if ($model->getKey() !== $dispatch->getKey() || $interleaved) {
+                return;
+            }
+
+            $interleaved = true;
+            $this->assertSame(WhatsAppDispatch::STATUS_SENT, $model->status);
+            $this->postWebhook([
+                'message_ids' => ['wamid.STALE-FAILURE'], 'status' => 'delivered',
+            ], 'delivery-before-stale-failure')->assertOk();
+        });
+
+        $this->postWebhook([
+            'message_id' => 'stale-failure', 'status' => 'failed', 'error' => 'late failure',
+        ], 'stale-failure-contender', 'message.status')->assertOk();
+
+        $this->assertTrue($interleaved);
+        $this->assertSame(WhatsAppDispatch::STATUS_DELIVERED, $dispatch->fresh()->status);
+        $this->assertNull($dispatch->fresh()->failure_reason);
+        $this->assertSame(2, WhatsAppWebhookEvent::where('whatsapp_dispatch_id', $dispatch->getKey())->count());
+    }
+
+    public function test_failed_remains_terminal_after_distinct_delivery_and_read_events(): void
+    {
+        $dispatch = $this->disparoEnviado('terminal-failure', 'wamid.TERMINAL');
+        $this->postWebhook([
+            'message_id' => 'terminal-failure', 'status' => 'failed', 'error' => 'original failure',
+        ], 'terminal-failure', 'message.status')->assertOk();
+
+        foreach (['delivered', 'read'] as $status) {
+            $this->postWebhook([
+                'message_ids' => ['wamid.TERMINAL'], 'status' => $status,
+            ], 'after-failure-'.$status)->assertOk();
+        }
+
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $dispatch->fresh()->status);
+        $this->assertSame('original failure', $dispatch->fresh()->failure_reason);
+        $this->assertSame(3, WhatsAppWebhookEvent::where('whatsapp_dispatch_id', $dispatch->getKey())->count());
     }
 
     public function test_evento_de_conexao_espelha_status_do_canal(): void

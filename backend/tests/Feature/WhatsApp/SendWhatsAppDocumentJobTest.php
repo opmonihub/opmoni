@@ -6,20 +6,25 @@ use App\Enums\SerproAuthorizationTermState;
 use App\Jobs\SendWhatsAppDocumentJob;
 use App\Models\Account;
 use App\Models\AccountCertificate;
+use App\Models\AccountUser;
 use App\Models\Client;
 use App\Models\ClientDispatchContact;
 use App\Models\SerproAuthorizationTerm;
 use App\Models\SerproConnection;
 use App\Models\SerproMonitoring;
+use App\Models\User;
 use App\Models\WhatsAppChannel;
 use App\Models\WhatsAppDispatch;
 use App\Services\SerproTokenPair;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\BusinessTestCase;
 
 /**
@@ -90,6 +95,7 @@ class SendWhatsAppDocumentJobTest extends BusinessTestCase
             'client_dispatch_contact_id' => $this->contact->getKey(),
             'artifact_type' => 'recibo',
             'competence' => '2026-01',
+            'retry_safe' => true,
         ]);
 
         // O token do Integra Contador já vale: o job não paga autenticação.
@@ -315,6 +321,204 @@ class SendWhatsAppDocumentJobTest extends BusinessTestCase
 
         Http::assertNothingSent();
         $this->assertSame(WhatsAppDispatch::STATUS_QUEUED, $this->dispatch->refresh()->status);
+    }
+
+    public function test_timeout_apos_send_nao_libera_nova_chave_sem_ciencia(): void
+    {
+        Queue::fake();
+        $this->prepareRetryPost();
+        $sendCount = 0;
+        $this->fakeReceiptDocument();
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => function () use (&$sendCount) {
+            $sendCount++;
+            $this->assertNotNull($this->dispatch->fresh()->send_attempted_at);
+            $this->assertFalse($this->dispatch->fresh()->retry_safe);
+            throw new ConnectionException('Timeout após aceitação simulada.');
+        }]);
+
+        $this->handleJob();
+        $this->assertSame(1, $sendCount, (string) $this->dispatch->fresh()->failure_reason);
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $this->dispatch->fresh()->status);
+        for ($click = 0; $click < 2; $click++) {
+            $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+                ->assertUnprocessable()->assertJsonValidationErrors('resend_acknowledgements');
+        }
+        $this->assertSame(1, WhatsAppDispatch::count());
+        Queue::assertNothingPushed();
+        $this->assertNotNull($this->dispatch->fresh()->send_attempted_at);
+        $this->travel(2)->days();
+        $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertUnprocessable();
+        $this->assertSame(1, WhatsAppDispatch::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_crash_apos_aceitacao_e_antes_save_nao_libera_nova_chave(): void
+    {
+        Queue::fake();
+        $this->prepareRetryPost();
+        $this->fakeReceiptDocument();
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => Http::response([
+            'data' => ['message_id' => 'accepted-before-crash'],
+        ], 202)]);
+        $crash = true;
+        DB::connection()->beforeExecuting(function (string $query, array $bindings) use (&$crash): void {
+            if ($crash && str_starts_with($query, 'update "whatsapp_dispatches"')
+                && in_array(WhatsAppDispatch::STATUS_SENT, $bindings, true)) {
+                $crash = false;
+                throw new \RuntimeException('Crash depois do gateway aceitar.');
+            }
+        });
+        $job = new SendWhatsAppDocumentJob($this->account->getKey(), $this->dispatch->getKey());
+        try {
+            $job->handle();
+            $this->fail('O crash deveria interromper o job.');
+        } catch (\RuntimeException $error) {
+            $job->failed($error);
+        }
+        $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertUnprocessable()->assertJsonValidationErrors('resend_acknowledgements');
+        $this->assertSame(1, WhatsAppDispatch::count());
+        $this->assertNotNull($this->dispatch->fresh()->send_attempted_at);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_job_redelivered_apos_crash_na_fronteira_nao_chama_gateway_de_novo(): void
+    {
+        $this->fakeReceiptDocument();
+        $calls = 0;
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => function () use (&$calls) {
+            $calls++;
+            throw new \RuntimeException('Processo interrompido após send.');
+        }]);
+        try {
+            $this->handleJob();
+        } catch (\RuntimeException) {
+        }
+        try {
+            $this->handleJob();
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(1, $calls);
+        $this->assertNotNull($this->dispatch->fresh()->send_attempted_at);
+    }
+
+    public function test_recibo_antecipado_nao_e_rebaixado_pelo_save_ou_falha_do_job(): void
+    {
+        $this->fakeReceiptDocument();
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => function () {
+            DB::table('whatsapp_dispatches')->where('id', $this->dispatch->getKey())
+                ->update(['status' => WhatsAppDispatch::STATUS_DELIVERED]);
+
+            return Http::response(['data' => ['message_id' => 'accepted-message']], 202);
+        }]);
+        $this->handleJob();
+        $this->assertSame(WhatsAppDispatch::STATUS_DELIVERED, $this->dispatch->fresh()->status);
+        $this->assertSame('accepted-message', $this->dispatch->fresh()->message_id);
+    }
+
+    public function test_recibo_read_antecipado_sobrevive_timeout_do_job(): void
+    {
+        $this->fakeReceiptDocument();
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => function () {
+            DB::table('whatsapp_dispatches')->where('id', $this->dispatch->getKey())
+                ->update(['status' => WhatsAppDispatch::STATUS_READ]);
+            throw new ConnectionException('Timeout após recibo.');
+        }]);
+        $this->handleJob();
+        $this->assertSame(WhatsAppDispatch::STATUS_READ, $this->dispatch->fresh()->status);
+        $this->assertNull($this->dispatch->fresh()->failure_reason);
+    }
+
+    public function test_failed_legado_sem_evidencia_pre_send_nao_libera_retry(): void
+    {
+        Queue::fake();
+        $this->prepareRetryPost();
+        $this->dispatch->forceFill(['status' => WhatsAppDispatch::STATUS_FAILED, 'retry_safe' => false])->save();
+        $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertUnprocessable()->assertJsonValidationErrors('resend_acknowledgements');
+        $this->assertSame(1, WhatsAppDispatch::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_guia_com_envio_incerto_exige_ciencia_e_ciencia_libera_novo_envio(): void
+    {
+        Queue::fake();
+        $this->prepareRetryPost();
+        $url = "/api/v1/serpro/monitoring/obligations/declaracoes/pgdas/clients/{$this->client->getKey()}/whatsapp/send-guides";
+        $payload = ['contact_ids' => [$this->contact->getKey()]];
+        $this->dispatch->delete();
+        $first = $this->postJson($url, $payload)->assertAccepted();
+        $original = WhatsAppDispatch::findOrFail($first->json('data.dispatches.0.id'));
+        $original->forceFill(['status' => WhatsAppDispatch::STATUS_FAILED, 'retry_safe' => false, 'send_attempted_at' => now()])->save();
+        Queue::fake();
+        $this->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('resend_acknowledgements');
+        $this->postJson($url, $payload)->assertUnprocessable();
+        Queue::assertNothingPushed();
+        $second = $this->postJson($url, $payload + ['resend_acknowledgements' => [$this->contact->getKey()]])
+            ->assertAccepted()->assertJsonPath('data.dispatches.0.status', WhatsAppDispatch::STATUS_QUEUED);
+        $this->assertSame(2, WhatsAppDispatch::count());
+        $this->assertNotSame($original->idempotency_key, WhatsAppDispatch::findOrFail($second->json('data.dispatches.0.id'))->idempotency_key);
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 1);
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $original->fresh()->status);
+    }
+
+    public function test_crash_antes_da_fronteira_preserva_retry_seguro_e_historico(): void
+    {
+        Queue::fake();
+        $this->prepareRetryPost();
+        $job = new SendWhatsAppDocumentJob($this->account->getKey(), $this->dispatch->getKey());
+        $job->failed(new \RuntimeException('Worker morreu antes de sendMedia.'));
+        $this->assertTrue($this->dispatch->fresh()->retry_safe);
+        $this->assertNull($this->dispatch->fresh()->send_attempted_at);
+        $retry = $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertAccepted()->assertJsonPath('data.status', WhatsAppDispatch::STATUS_QUEUED);
+        $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertAccepted()->assertJsonPath('data.id', $retry->json('data.id'));
+        $this->assertSame(2, WhatsAppDispatch::count());
+        $this->assertSame(WhatsAppDispatch::STATUS_FAILED, $this->dispatch->fresh()->status);
+        Queue::assertPushed(SendWhatsAppDocumentJob::class, 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_migration_aditiva_mantem_linhas_legadas_conservadoras(): void
+    {
+        $migration = require database_path('migrations/2026_10_15_201304_add_send_boundary_to_whatsapp_dispatches_table.php');
+        $migration->down();
+        $migration->up();
+        $legacy = WhatsAppDispatch::findOrFail($this->dispatch->getKey());
+        $this->assertFalse($legacy->retry_safe);
+        $this->assertNull($legacy->send_attempted_at);
+        $this->assertSame($this->dispatch->idempotency_key, $legacy->idempotency_key);
+        $this->assertSame(WhatsAppDispatch::STATUS_QUEUED, $legacy->status);
+    }
+
+    private function prepareRetryPost(): void
+    {
+        config()->set('whatsapp.enabled', true);
+        $actor = User::factory()->create();
+        AccountUser::create(['account_id' => $this->account->getKey(), 'user_id' => $actor->getKey(), 'role' => 'admin']);
+        $this->selectBusinessAccount($actor, $this->account->getKey());
+        $this->actingAs($actor);
+        $this->dispatch->delete();
+        $response = $this->postJson($this->retryUrl(), ['competence' => '2026-01', 'artifact' => 'recibo'])
+            ->assertAccepted();
+        $this->dispatch = WhatsAppDispatch::findOrFail($response->json('data.id'));
+        request()->attributes->remove('access.session_lock');
+        Queue::fake();
+    }
+
+    private function retryUrl(): string
+    {
+        return "/api/v1/serpro/monitoring/obligations/declaracoes/pgdas/clients/{$this->client->getKey()}/whatsapp/dispatch";
+    }
+
+    private function fakeReceiptDocument(): void
+    {
+        Http::fake(['integra.test/integra-contador/v1/Consultar' => Http::response([
+            'status' => 200, 'dados' => json_encode(['recibo' => ['pdf' => base64_encode('%PDF-1.4')]]),
+            'mensagens' => [['codigo' => '00', 'texto' => 'OK']], 'responseId' => 'resp-retry',
+        ])]);
     }
 
     private function handleJob(): void

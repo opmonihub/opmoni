@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\SerproFailure;
 use App\Enums\SerproPowerOfAttorneyState;
 use App\Enums\SerproSyncItemState;
+use App\Enums\SerproSyncRunState;
 use App\Models\AccountCertificate;
 use App\Models\Client;
 use App\Models\SerproCall;
@@ -29,6 +30,7 @@ use App\Tenant\CurrentTenant;
 use Closure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * O trabalhador de um cliente dentro de uma execução.
@@ -120,6 +122,10 @@ final class SyncSerproClientJob implements ShouldQueue
 
     private function work(): void
     {
+        if (! $this->runIsActive()) {
+            return;
+        }
+
         $item = SerproSyncRunItem::query()
             ->where('account_id', $this->accountId)
             ->where('run_id', $this->runId)
@@ -154,10 +160,65 @@ final class SyncSerproClientJob implements ShouldQueue
         }
 
         try {
+            // Outra entrega pode ter auditado a resposta sem terminar a projeção antes deste lock.
+            $item->refresh();
+
+            if ($item->state !== SerproSyncItemState::NotProcessed || ! $this->runIsActive()) {
+                return;
+            }
+
             $this->process($item, $client);
         } finally {
             $lock->release();
         }
+    }
+
+    private function runIsActive(): bool
+    {
+        return SerproSyncRun::query()
+            ->where('account_id', $this->accountId)
+            ->whereKey($this->runId)
+            ->whereIn('state', [SerproSyncRunState::Queued, SerproSyncRunState::Running])
+            ->exists();
+    }
+
+    /**
+     * The run is the shared fence with recount and the watchdog; lock order is run, then item.
+     * Only the committed send boundary leaves this transaction. No HTTP or cache lock is acquired here.
+     */
+    private function claimCall(SerproSyncRunItem $item, string $obligation): bool
+    {
+        return DB::transaction(function () use ($item, $obligation): bool {
+            $run = SerproSyncRun::query()
+                ->where('account_id', $this->accountId)
+                ->whereKey($this->runId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($run === null || ! in_array($run->state, [SerproSyncRunState::Queued, SerproSyncRunState::Running], true)) {
+                return false;
+            }
+
+            $claimed = SerproSyncRunItem::query()
+                ->where('account_id', $this->accountId)
+                ->where('run_id', $this->runId)
+                ->whereKey($item->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if ($claimed === null || $claimed->state !== SerproSyncItemState::NotProcessed
+                || $claimed->current_obligation !== null || $claimed->attempted_at !== null) {
+                return false;
+            }
+
+            $claimed->forceFill([
+                'current_obligation' => $obligation,
+                'attempted_at' => now(),
+            ])->save();
+            $item->setRawAttributes($claimed->getAttributes(), true);
+
+            return true;
+        });
     }
 
     private function process(SerproSyncRunItem $item, Client $client): void
@@ -365,6 +426,10 @@ final class SyncSerproClientJob implements ShouldQueue
         Closure $chamada,
         Closure $persistir,
     ): void {
+        if (! $this->claimCall($item, $unidade['slug'])) {
+            return;
+        }
+
         if ($unidade['slug'] !== 'procuracoes') {
             // A obrigação é consulta ao provedor e não linha do painel: o
             // vínculo é criado antes do envio porque ele é o registro de
@@ -373,11 +438,6 @@ final class SyncSerproClientJob implements ShouldQueue
             resolve(SerproMonitoringWriter::class)
                 ->store($this->accountId, $this->clientId, $unidade['slug'], [], null);
         }
-
-        $item->forceFill([
-            'current_obligation' => $unidade['slug'],
-            'attempted_at' => now(),
-        ])->save();
 
         try {
             $result = $unidade['id_servico'] === 'RELATORIOSITFIS92'
@@ -438,6 +498,14 @@ final class SyncSerproClientJob implements ShouldQueue
             }
             $this->limparFronteira($item);
             $this->release(1);
+
+            return;
+        }
+
+        // Um responseId pertence a um passo, não autoriza reiniciar a sequência sem protocolo persistido.
+        if ($unidade['id_servico'] === 'RELATORIOSITFIS92'
+            && in_array($exception->failure, [SerproFailure::Upstream, SerproFailure::Throttled], true)) {
+            $this->finish($item, SerproSyncItemState::Indeterminate, 'resposta_incerta');
 
             return;
         }

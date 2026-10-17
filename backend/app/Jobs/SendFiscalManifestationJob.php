@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\FiscalFailure;
 use App\Enums\FiscalManifestationEventType;
 use App\Enums\FiscalManifestationOutcome;
+use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Models\Client;
@@ -14,6 +15,7 @@ use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
+use App\Services\Fiscal\Manifestacao\FiscalScienceRolloutGate;
 use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
@@ -72,9 +74,16 @@ final class SendFiscalManifestationJob implements ShouldQueue
     public function handle(
         FiscalManifestationStore $store,
         RecepcaoEventoConnector $conector,
+        ?FiscalScienceRolloutGate $rolloutGate = null,
     ): void {
-        resolve(CurrentTenant::class)->run($this->accountId, function () use ($store, $conector) {
+        $rolloutGate ??= resolve(FiscalScienceRolloutGate::class);
+
+        resolve(CurrentTenant::class)->run($this->accountId, function () use ($store, $conector, $rolloutGate) {
             if (! config('fiscal.manifestacao_enabled', false)) {
+                return;
+            }
+
+            if (! $rolloutGate->evaluate($this->accountId, $this->clientId, $this->chaveAcesso)['allowed']) {
                 return;
             }
 
@@ -123,11 +132,13 @@ final class SendFiscalManifestationJob implements ShouldQueue
                 eventSeq: $this->eventSeq,
             );
 
+            $this->atualizarResumo(FiscalProcessingState::ScienceQueued);
+
             try {
                 $conector->cienciaDaEmissao(
                     $client,
                     $manifestation->refresh(),
-                    $this->emissaoDoResumo($client),
+                    $this->autorizacaoDoResumo($client),
                 );
             } catch (FiscalRequestNotSent) {
                 // O que não pode sair não é o serviço recusando: é o nosso lado sem
@@ -161,7 +172,37 @@ final class SendFiscalManifestationJob implements ShouldQueue
                 }
             }
 
+            $manifestation->refresh();
+
+            if (in_array($manifestation->outcome, [
+                FiscalManifestationOutcome::Sent,
+                FiscalManifestationOutcome::AlreadyManifested,
+            ], true)) {
+                if ($manifestation->result_code === '136') {
+                    $this->atualizarResumo(FiscalProcessingState::Deferred, now()->addHour());
+
+                    return;
+                }
+
+                $this->atualizarResumo(FiscalProcessingState::AwaitingXml);
+                RecoverFiscalXmlJob::dispatch($this->accountId, $this->clientId, $this->chaveAcesso);
+            }
+
         });
+    }
+
+    private function atualizarResumo(FiscalProcessingState $state, ?CarbonInterface $nextAttempt = null): void
+    {
+        FiscalDocument::query()
+            ->withoutGlobalScope('account')
+            ->where('account_id', $this->accountId)
+            ->where('client_id', $this->clientId)
+            ->where('chave_acesso', $this->chaveAcesso)
+            ->where('stage', FiscalStage::Summary)
+            ->update([
+                'processing_state' => $state,
+                'next_attempt_at' => $nextAttempt ?? now(),
+            ]);
     }
 
     /**
@@ -223,14 +264,16 @@ final class SendFiscalManifestationJob implements ShouldQueue
      * o prazo de 90 dias. Nula quando o resumo não está gravado — o conector
      * lê ausência de data como prazo não verificável, e o veredito é dele.
      */
-    private function emissaoDoResumo(Client $client): ?CarbonInterface
+    private function autorizacaoDoResumo(Client $client): ?CarbonInterface
     {
-        return FiscalDocument::query()
+        $summary = FiscalDocument::query()
             ->withoutGlobalScope('account')
             ->where('account_id', $this->accountId)
             ->where('client_id', $client->getKey())
             ->where('chave_acesso', $this->chaveAcesso)
             ->where('stage', FiscalStage::Summary)
-            ->value('emissao_at');
+            ->first(['authorized_at', 'emissao_at']);
+
+        return $summary?->authorized_at;
     }
 }

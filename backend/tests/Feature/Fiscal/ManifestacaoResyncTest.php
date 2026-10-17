@@ -8,6 +8,7 @@ use App\Enums\FiscalManifestationOutcome;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Jobs\RecoverFiscalXmlJob;
 use App\Jobs\SendFiscalManifestationJob;
 use App\Models\Account;
 use App\Models\Client;
@@ -51,7 +52,12 @@ class ManifestacaoResyncTest extends BusinessTestCase
         Http::preventStrayRequests();
         Cache::store('array')->clear();
 
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
+
+        Bus::fake([RecoverFiscalXmlJob::class]);
     }
 
     public function test_o_573_grava_ja_manifestado_e_a_chave_vira_elegivel_ao_resync(): void
@@ -326,6 +332,7 @@ class ManifestacaoResyncTest extends BusinessTestCase
             'stage' => FiscalStage::Summary,
             'chave_acesso' => $chave,
             'emissao_at' => now()->subDays(5),
+            'authorized_at' => now()->subDays(2),
         ]);
     }
 
@@ -387,11 +394,13 @@ class ManifestacaoResyncTest extends BusinessTestCase
         return $contents;
     }
 
-    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null): string
+    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null, ?string $chave = null): string
     {
+        $chave ??= self::CHAVE;
         $retEvento = $cStatEvento === null ? '' : '<retEvento versao="1.00">'
             .'<infEvento>'
             .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
+            ."<chNFe>{$chave}</chNFe><tpEvento>210210</tpEvento><nSeqEvento>1</nSeqEvento>"
             ."<cStat>{$cStatEvento}</cStat><xMotivo>{$xMotivoEvento}</xMotivo>"
             .'<dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
             .'</infEvento></retEvento>';

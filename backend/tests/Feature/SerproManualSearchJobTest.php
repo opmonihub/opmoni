@@ -94,6 +94,222 @@ class SerproManualSearchJobTest extends BusinessTestCase
         Http::assertSentCount(1);
     }
 
+    public function test_sucesso_com_falha_no_writer_nao_reenvia_na_reentrega(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake($this->fakePgdas());
+        $falhar = true;
+        SerproMonitoring::saving(function (SerproMonitoring $monitoring) use (&$falhar): void {
+            if ($falhar && $monitoring->source_at !== null) {
+                $falhar = false;
+
+                throw new \RuntimeException('Falha local depois da resposta.');
+            }
+        });
+
+        try {
+            (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+            $this->fail('O writer deveria interromper a primeira entrega.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Falha local depois da resposta.', $exception->getMessage());
+        }
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertSentCount(1);
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('resposta_incerta', $busca->reason);
+    }
+
+    public function test_throttle_na_segunda_unidade_retenta_so_a_segunda(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        config(['integra-contador.obligations.declaracoes/pgdas.service' => 'PGDASD/CONSDECLARACAO13+PGDASD/SEGUNDALEITURA']);
+        config(['integra-contador.services.SEGUNDALEITURA' => config('integra-contador.services.CONSDECLARACAO13')]);
+        $enviados = [];
+        $segundaTentativas = 0;
+        Http::fake(function ($request) use (&$enviados, &$segundaTentativas) {
+            $servico = $request->data()['pedidoDados']['idServico'];
+            $enviados[] = $servico;
+
+            if ($servico === 'SEGUNDALEITURA' && ++$segundaTentativas === 1) {
+                return Http::response(['code' => 'RB-00001'], 429);
+            }
+
+            return Http::response(['status' => 200, 'dados' => [], 'mensagens' => [], 'responseId' => 'resp-'.$servico]);
+        });
+
+        $job = (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->withFakeQueueInteractions();
+        $job->handle();
+        $job->assertReleased(delay: 60);
+        $this->assertSame(['PGDASD/CONSDECLARACAO13'], $busca->refresh()->completed_units);
+        $this->assertNull($busca->current_unit);
+        $this->assertNull($busca->attempted_at);
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        $this->assertSame(['CONSDECLARACAO13', 'SEGUNDALEITURA', 'SEGUNDALEITURA'], $enviados);
+        $this->assertSame(SerproManualSearchState::Completed, $busca->refresh()->state);
+    }
+
+    public function test_a_fronteira_e_duravel_antes_da_rede_e_so_fecha_depois_do_writer(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake(function () use ($account, $client, $busca) {
+            $this->assertNull(resolve(SerproClientLock::class)->acquire($account->getKey(), (string) $client->tax_id));
+            $busca->refresh();
+            $this->assertSame('PGDASD/CONSDECLARACAO13', $busca->current_unit);
+            $this->assertNotNull($busca->attempted_at);
+            $this->assertSame([], $busca->completed_units ?? []);
+
+            return Http::response(['status' => 200, 'dados' => [], 'mensagens' => [], 'responseId' => 'resposta']);
+        });
+        SerproMonitoring::saving(function (SerproMonitoring $monitoring) use ($busca): void {
+            if ($monitoring->source_at !== null) {
+                $this->assertNotNull($busca->refresh()->current_unit);
+                $this->assertSame([], $busca->completed_units ?? []);
+            }
+        });
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        $this->assertSame(['PGDASD/CONSDECLARACAO13'], $busca->refresh()->completed_units);
+        $this->assertNull($busca->current_unit);
+        $this->assertNull($busca->attempted_at);
+    }
+
+    public function test_rele_estado_terminal_sob_lock_apos_leitura_inicial_obsoleta(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake($this->fakePgdas());
+        Client::retrieved(function () use ($busca): void {
+            SerproManualSearch::withoutGlobalScope('account')->whereKey($busca->getKey())
+                ->update(['state' => SerproManualSearchState::Completed->value]);
+        });
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproManualSearchState::Completed, $busca->refresh()->state);
+    }
+
+    public function test_rele_checkpoint_sob_lock_apos_leitura_inicial_obsoleta(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake($this->fakePgdas());
+        Client::retrieved(function () use ($busca): void {
+            SerproManualSearch::withoutGlobalScope('account')->whereKey($busca->getKey())
+                ->update([
+                    'state' => SerproManualSearchState::Running->value,
+                    'completed_units' => json_encode(['PGDASD/CONSDECLARACAO13']),
+                ]);
+        });
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproManualSearchState::Completed, $busca->refresh()->state);
+    }
+
+    public function test_rele_fronteira_aberta_sob_lock_sem_reenviar(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake($this->fakePgdas());
+        Client::retrieved(function () use ($busca): void {
+            SerproManualSearch::withoutGlobalScope('account')->whereKey($busca->getKey())
+                ->update([
+                    'state' => SerproManualSearchState::Running->value,
+                    'current_unit' => 'PGDASD/CONSDECLARACAO13',
+                    'attempted_at' => now(),
+                    'completed_units' => '[]',
+                ]);
+        });
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('resposta_incerta', $busca->reason);
+    }
+
+    public function test_chamadas_de_outra_busca_nao_sao_checkpoint_desta_busca(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake($this->fakePgdas());
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+        $outraBusca = SerproManualSearch::factory()->create([
+            'account_id' => $account->getKey(),
+            'client_id' => $client->getKey(),
+            'obligation' => $busca->obligation,
+        ]);
+
+        (new RunSerproManualSearchJob($outraBusca->getKey(), $account->getKey()))->handle();
+
+        Http::assertSentCount(2);
+        $this->assertSame(SerproManualSearchState::Completed, $outraBusca->refresh()->state);
+    }
+
+    public function test_upstream_com_response_id_limpa_fronteira_e_retenta(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake(['*/integra-contador/v1/*' => Http::sequence()
+            ->push(['status' => 503, 'dados' => null, 'mensagens' => [], 'responseId' => 'recusa'], 503)
+            ->push(['status' => 200, 'dados' => [], 'mensagens' => [], 'responseId' => 'sucesso'])]);
+
+        $job = (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->withFakeQueueInteractions();
+        $job->handle();
+        $job->assertReleased(delay: 15);
+        $this->assertNull($busca->refresh()->current_unit);
+        $this->assertNull($busca->attempted_at);
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertSentCount(2);
+        $this->assertSame(SerproManualSearchState::Completed, $busca->refresh()->state);
+    }
+
+    public function test_upstream_sem_response_id_nao_reenvia(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        Http::fake(['*/integra-contador/v1/*' => Http::response(['status' => 503, 'dados' => null, 'mensagens' => []], 503)]);
+
+        $job = (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->withFakeQueueInteractions();
+        $job->handle();
+        $job->assertNotReleased();
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertSentCount(1);
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('resposta_incerta', $busca->reason);
+    }
+
+    public function test_running_legado_sem_checkpoint_nao_e_prova_de_retentativa_segura(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        $busca->forceFill(['state' => SerproManualSearchState::Running])->save();
+        Http::fake($this->fakePgdas());
+
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertNothingSent();
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('resposta_incerta', $busca->reason);
+    }
+
+    public function test_sequencia_sitfis_nao_reabre_fronteira_ao_receber_throttle(): void
+    {
+        [$account, $client, $busca] = $this->cenarioChamavel();
+        config(['integra-contador.obligations.declaracoes/pgdas.service' => 'SITFIS/RELATORIOSITFIS92']);
+        Http::fake(['*/integra-contador/v1/*' => Http::response(['code' => 'RB-00001'], 429)]);
+
+        $job = (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->withFakeQueueInteractions();
+        $job->handle();
+        $job->assertNotReleased();
+        (new RunSerproManualSearchJob($busca->getKey(), $account->getKey()))->handle();
+
+        Http::assertSentCount(1);
+        $this->assertSame(SerproManualSearchState::Failed, $busca->refresh()->state);
+        $this->assertSame('resposta_incerta', $busca->reason);
+    }
+
     public function test_sem_procuracao_conhecida_falha_sem_cobrar(): void
     {
         // Nenhuma outorga semeada: é a família que `serpro:refresh-powers`

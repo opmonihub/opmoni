@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import * as Vue from 'vue'
+import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
+import ts from 'typescript'
+import { vueSource } from './helpers/compileVueComponent.ts'
+import * as dispatchUtils from '../app/utils/whatsappDispatch.ts'
 import type { MonitoringAssessmentPeriod } from '../app/types/serpro.ts'
 import type {
   ClientDispatchContact,
@@ -101,7 +108,7 @@ describe('whatsappGuideAlreadySent', () => {
     assert.equal(whatsappGuideAlreadySent([enviado()], 11, target), false)
   })
 
-  it('falha permanente não segura o contato — a nova tentativa é legítima', () => {
+  it('failed não afirma envio confirmado — a proteção de incerteza é separada no plano', () => {
     assert.equal(whatsappGuideAlreadySent([enviado({ status: 'failed' })], 10, target), false)
   })
 
@@ -190,6 +197,79 @@ describe('whatsappSendGuidesPlan', () => {
     })
     assert.equal(plan[0]!.alreadySent, false)
     assert.equal(plan[0]!.checked, true)
+  })
+})
+
+describe('retry conservador da guia corrente', () => {
+  const target = { period: '2026-09', slipNumber: 'DAS-1' }
+  const failed = (over: Partial<WhatsAppDispatch> = {}) => dispatch(1, { contact: contact(10), status: 'failed', ...over })
+  const planFor = (dispatches: WhatsAppDispatch[]) => whatsappSendGuidesPlan({ contacts: [contact(10)], dispatches, target })[0]!
+
+  for (const scenario of [
+    { name: 'seguro pré-envio', metadata: { retry_safe: true, send_attempted_at: null }, checked: true, uncertain: false },
+    { name: 'incerto pós-fronteira', metadata: { retry_safe: false, send_attempted_at: '2026-10-15T12:00:00Z' }, checked: false, uncertain: true },
+    { name: 'legado sem metadados', metadata: {}, checked: false, uncertain: true },
+    { name: 'flag segura com tentativa registrada', metadata: { retry_safe: true, send_attempted_at: '2026-10-15T12:00:00Z' }, checked: false, uncertain: true },
+    { name: 'flag segura sem timestamp explícito', metadata: { retry_safe: true }, checked: false, uncertain: true },
+    { name: 'flag conservadora sem tentativa', metadata: { retry_safe: false, send_attempted_at: null }, checked: false, uncertain: true }
+  ]) {
+    it(`${scenario.name}: pré-seleção e ciência refletem a evidência, não só failed`, () => {
+      const item = planFor([failed(scenario.metadata)])
+      assert.equal(item.checked, scenario.checked)
+      assert.equal(item.alreadySent, false)
+      assert.equal(item.uncertain, scenario.uncertain)
+      assert.equal(dispatchUtils.whatsappSendGuidesResendLabel(item), scenario.uncertain
+        ? 'Ciência de reenvio — resultado anterior incerto; pode ter sido enviado'
+        : null)
+    })
+  }
+
+  it('considera qualquer operação relevante: falha segura antiga não esconde falha incerta posterior', () => {
+    const history = [failed({ retry_safe: true, send_attempted_at: null }), failed({ id: 2, retry_safe: false, send_attempted_at: '2026-10-15T12:00:00Z' })]
+    const item = planFor(history)
+    assert.equal(item.checked, false)
+    assert.equal(item.uncertain, true)
+    assert.equal(planFor([...history].reverse()).uncertain, true)
+  })
+
+  it('a operação corrente muda de failed seguro para queued e depois failed incerto', () => {
+    const operation = failed({ retry_safe: true, send_attempted_at: null })
+    const oldSafe = failed({ id: 0, retry_safe: true, send_attempted_at: null })
+    assert.equal(planFor([oldSafe, operation]).checked, true)
+    operation.status = 'queued'
+    assert.equal(planFor([oldSafe, operation]).alreadySent, true)
+    assert.equal(planFor([oldSafe, operation]).checked, false)
+    operation.status = 'failed'
+    operation.retry_safe = false
+    operation.send_attempted_at = '2026-10-15T12:00:00Z'
+    assert.equal(planFor([oldSafe, operation]).uncertain, true)
+    assert.equal(planFor([oldSafe, operation]).checked, false)
+  })
+
+  it('não descarta a proteção de queued/sent/delivered/read por haver failed seguro mais recente', () => {
+    for (const status of ['queued', 'sent', 'delivered', 'read'] as const) {
+      const item = planFor([dispatch(1, { contact: contact(10), status }), failed({ id: 2, retry_safe: true, send_attempted_at: null })])
+      assert.equal(item.alreadySent, true)
+      assert.equal(item.checked, false)
+      assert.equal(item.uncertain, false)
+      assert.equal(dispatchUtils.whatsappSendGuidesResendLabel(item), 'Ciência de reenvio — este contato já recebeu esta guia')
+    }
+  })
+
+  it('incerteza se limita ao contato, competência, número da guia e artefato', () => {
+    for (const over of [{ contact: contact(11) }, { competence: '2026-08' }, { slip_number: 'DAS-OUTRO' }, { artifact_type: 'recibo' as const }, { contact: null }]) {
+      const item = planFor([failed(over)])
+      assert.equal(item.checked, true)
+      assert.equal(item.uncertain, false)
+    }
+    assert.equal(whatsappSendGuidesPlan({ contacts: [contact(10)], dispatches: [failed({ slip_number: null })], target: { ...target, slipNumber: null } })[0]!.checked, false)
+  })
+
+  it('ciência explícita de falha incerta monta resend_acknowledgements só para os marcados', () => {
+    const item = planFor([failed()])
+    assert.equal(whatsappSendGuidesPayload([item], new Set()), null)
+    item.checked = true
+    assert.deepEqual(whatsappSendGuidesPayload([item], new Set([10])), { contact_ids: [10], resend_acknowledgements: [10] })
   })
 })
 
@@ -282,6 +362,113 @@ describe('apresentação do Contato de envio', () => {
     assert.equal(whatsappDispatchContactName(contact(1)), '(11) 98765-4321')
     assert.equal(whatsappDispatchContactName(contact(1, { label: '   ' })), '(11) 98765-4321')
     assert.equal(whatsappDispatchContactName(contact(1, { channel: 'email', value: 'socio@empresa.com' })), 'socio@empresa.com')
+  })
+})
+
+const require = createRequire(import.meta.url)
+const modalPath = 'components/monitoring/SendGuidesModal.vue'
+const { descriptor: modalDescriptor } = parse(vueSource(modalPath), { filename: modalPath })
+const modalScript = compileScript(modalDescriptor, { id: 'send-guides-retry' })
+const modalTemplate = compileTemplate({ source: modalDescriptor.template!.content, filename: modalPath, id: 'send-guides-retry', compilerOptions: { bindingMetadata: modalScript.bindings } })
+
+async function sendGuidesModal(history: WhatsAppDispatch[], sendError?: unknown) {
+  const writes: unknown[][] = []
+  const messages: { title: string, description: string, color: string }[] = []
+  const emitted: unknown[][] = []
+  const bindings = {
+    ref: Vue.ref, computed: Vue.computed, watch() {},
+    useToast: () => ({ add: (message: typeof messages[number]) => messages.push(message) }),
+    useDispatchContacts: () => ({ list: async () => [contact(10)] }),
+    useWhatsAppChannel: () => ({ channel: async () => ({ status: 'connected' }) }),
+    useSerpro: () => ({
+      whatsappDispatches: async () => history,
+      sendGuides: async (...args: unknown[]) => {
+        writes.push(args)
+        if (sendError) throw sendError
+        return { competence: '2026-09', dispatches: [dispatch(99)], skipped: [] }
+      }
+    })
+  }
+  function evaluate(code: string) {
+    const compiled = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+    const exports: Record<string, unknown> = {}
+    new Function('require', 'exports', ...Object.keys(bindings), compiled)((specifier: string) => {
+      if (specifier === 'vue') return { ...Vue, resolveComponent: (name: string) => ({ name }) }
+      if (specifier.endsWith('.vue')) return {}
+      return require(specifier.startsWith('~/') ? fileURLToPath(new URL(`../app/${specifier.slice(2)}.ts`, import.meta.url)) : specifier)
+    }, exports, ...Object.values(bindings))
+    return exports
+  }
+  const component = evaluate(modalScript.content).default as { setup: (props: object, context: object) => Record<string, unknown> }
+  const state = component.setup({ open: true, obligation: 'declaracoes/pgdas', clientId: 7, periods: [period({ slip_number: 'DAS-1' })] }, { expose() {}, emit: (...args: unknown[]) => emitted.push(args) }) as {
+    loadContacts: () => Promise<void>
+    confirm: () => Promise<void>
+    plan: Vue.Ref<ReturnType<typeof whatsappSendGuidesPlan>>
+  }
+  await state.loadContacts()
+  const render = evaluate(modalTemplate.code).render as (...args: unknown[]) => Vue.VNode
+  function nodes(vnode: Vue.VNode): Vue.VNode[] {
+    const result = [vnode]
+    if (Array.isArray(vnode.children)) {
+      for (const child of vnode.children) if (Vue.isVNode(child)) result.push(...nodes(child))
+    } else if (vnode.children && typeof vnode.children === 'object') {
+      for (const slot of Object.values(vnode.children)) if (typeof slot === 'function') {
+        const children = slot({ close() {} })
+        for (const child of Array.isArray(children) ? children : [children]) if (Vue.isVNode(child)) result.push(...nodes(child))
+      }
+    }
+    return result
+  }
+  return { state, writes, messages, emitted, nodes: () => nodes(render({}, [], {}, Vue.proxyRefs(state), {}, {})) }
+}
+
+const resendCheckbox = (nodes: Vue.VNode[]) => nodes.find(node => typeof node.props?.label === 'string' && node.props.label.startsWith('Ciência de reenvio'))
+
+describe('SendGuidesModal setup e template reais', () => {
+  it('falha segura pré-selecionada envia sem ciência', async () => {
+    const view = await sendGuidesModal([dispatch(1, { contact: contact(10), status: 'failed', retry_safe: true, send_attempted_at: null })])
+    assert.equal(view.state.plan.value[0]!.checked, true)
+    assert.equal(resendCheckbox(view.nodes()), undefined)
+    await view.state.confirm()
+    assert.deepEqual(view.writes, [['declaracoes/pgdas', 7, [10], []]])
+  })
+
+  for (const scenario of [
+    { name: 'incerta', metadata: { retry_safe: false, send_attempted_at: '2026-10-15T12:00:00Z' } },
+    { name: 'legada', metadata: {} }
+  ]) {
+    it(`falha ${scenario.name} desmarcada oferece ciência sem afirmar recebimento`, async () => {
+      const view = await sendGuidesModal([dispatch(1, { contact: contact(10), status: 'failed', ...scenario.metadata })])
+      assert.equal(view.state.plan.value[0]!.checked, false)
+      assert.equal(resendCheckbox(view.nodes())?.props?.label, 'Ciência de reenvio — resultado anterior incerto; pode ter sido enviado')
+      await view.state.confirm()
+      assert.deepEqual(view.writes, [])
+      assert.ok(view.nodes().some(node => String(node.children).includes(whatsappSendGuidesReasons.noneChecked)))
+    })
+  }
+
+  it('ciência explícita seleciona a falha incerta e viaja na chamada', async () => {
+    const view = await sendGuidesModal([dispatch(1, { contact: contact(10), status: 'failed' })])
+    const checkbox = resendCheckbox(view.nodes())
+    assert.ok(checkbox)
+    checkbox.props!['onUpdate:modelValue'](true)
+    await view.state.confirm()
+    assert.deepEqual(view.writes, [['declaracoes/pgdas', 7, [10], [10]]])
+  })
+
+  it('incerteza de outro contato não exige ciência', async () => {
+    const view = await sendGuidesModal([dispatch(1, { contact: contact(11), status: 'failed' })])
+    assert.equal(resendCheckbox(view.nodes()), undefined)
+    await view.state.confirm()
+    assert.deepEqual(view.writes, [['declaracoes/pgdas', 7, [10], []]])
+  })
+
+  it('422 mantém a recusa específica visível e não fecha o modal', async () => {
+    const message = 'O resultado do envio anterior é incerto. Confirme a Ciência de reenvio antes de enviar novamente.'
+    const view = await sendGuidesModal([], { statusCode: 422, data: { message: 'The given data was invalid.', errors: { resend_acknowledgements: [message] } } })
+    await view.state.confirm()
+    assert.deepEqual(view.messages, [{ title: 'Não foi possível enviar as guias', description: message, color: 'error' }])
+    assert.deepEqual(view.emitted, [])
   })
 })
 

@@ -11,7 +11,7 @@ import {
 } from '../app/utils/adminNav.ts'
 
 describe('the collapsible Admin menu', () => {
-  it('groups all seven existing routes under one native trigger', () => {
+  it('groups all admin routes under one native trigger', () => {
     const item = adminSidebarItem('/')
     assert.equal(item.label, 'Admin')
     assert.equal(item.type, 'trigger')
@@ -19,7 +19,7 @@ describe('the collapsible Admin menu', () => {
     assert.equal(item.to, '/admin')
     assert.ok(item.icon)
     assert.deepEqual(item.children?.map(child => child.to), adminPages.map(page => page.to))
-    assert.equal(item.children?.length, 7)
+    assert.equal(item.children?.length, 9)
   })
 
   it('projects text-only children while keeping the Admin root icon', () => {
@@ -40,6 +40,8 @@ describe('the collapsible Admin menu', () => {
       'i-lucide-building-2',
       'i-lucide-layers',
       'i-lucide-receipt',
+      'i-lucide-box',
+      'i-lucide-badge-check',
       'i-lucide-users',
       'i-lucide-life-buoy',
       'i-lucide-plug'

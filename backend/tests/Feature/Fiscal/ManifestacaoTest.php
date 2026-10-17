@@ -67,7 +67,10 @@ class ManifestacaoTest extends BusinessTestCase
             requestedBy: 'job:SendFiscalManifestationJob',
         );
 
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         $job = new SendFiscalManifestationJob(
             accountId: $outra->getKey(),
@@ -104,7 +107,10 @@ class ManifestacaoTest extends BusinessTestCase
             requestedBy: 'job:SendFiscalManifestationJob',
         );
 
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         resolve(CurrentTenant::class)->accountId = null;
 

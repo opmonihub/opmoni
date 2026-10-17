@@ -57,6 +57,14 @@ export function useFiscal() {
     return $api<FiscalPage>('/fiscal/documents', { query: queryOf(filters) })
   }
 
+  async function processingList(params: Record<string, unknown> = {}) {
+    return $api<{
+      data: Array<Record<string, unknown>>
+      summary: { active: number, deferred: number, attention: number }
+      meta: { total: number }
+    }>('/fiscal/processing', { query: queryOf(params) })
+  }
+
   /** A linha mais a linha do tempo e a prévia do XML. */
   async function show(id: number) {
     const response = await $api<{ data: FiscalDetail }>(`/fiscal/documents/${id}`)
@@ -93,5 +101,5 @@ export function useFiscal() {
     return response.data
   }
 
-  return { summary, clients, list, show, download, capture }
+  return { summary, clients, list, processingList, show, download, capture }
 }

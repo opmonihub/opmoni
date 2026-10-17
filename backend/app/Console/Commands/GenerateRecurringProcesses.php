@@ -45,7 +45,7 @@ class GenerateRecurringProcesses extends Command
             ->where('is_active', true)
             ->when(
                 $monthOption === '' && $month->isSameMonth($now),
-                fn ($query) => $query->where('generate_day', '<=', $now->day)
+                fn ($query) => $query->where('generate_day', '<=', $now->day === $now->daysInMonth ? 31 : $now->day)
             )
             ->orderBy('id')
             ->get();

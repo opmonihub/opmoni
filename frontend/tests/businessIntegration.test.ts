@@ -13,7 +13,7 @@ registerHooks({
 })
 
 const member = { id: 12, name: 'Office', status: 'active' as const, role: 'operador' as const }
-const identity: Identity = { id: 1, name: 'Operator', email: 'operator@example.test', is_super_admin: false, accounts: [member], current_account: member }
+const identity: Identity = { id: 1, name: 'Operator', email: 'operator@example.test', is_super_admin: false, accounts: [member], current_account: member, companies: [], current_company: null }
 
 test('business requests use current membership, same-origin proxy and csrf for multipart writes without retries', async () => {
   const states = new Map<string, ReturnType<typeof ref>>([['access-user', ref(identity)]])

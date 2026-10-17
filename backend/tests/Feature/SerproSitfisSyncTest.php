@@ -8,16 +8,24 @@ use App\Models\Client;
 use App\Models\SerproCall;
 use App\Models\SerproConnection;
 use App\Models\SerproSyncRun;
+use App\Services\SerproCallRecorder;
+use App\Services\SerproClient;
 use App\Services\SerproEnvelope;
 use App\Services\SerproException;
 use App\Services\SerproSitfisSequence;
 use App\Services\SerproTokenPair;
 use App\Tenant\CurrentTenant;
+use Carbon\CarbonInterval;
+use Closure;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\BusinessTestCase;
 
 /**
@@ -36,6 +44,276 @@ class SerproSitfisSyncTest extends BusinessTestCase
 
         Cache::flush();
         Http::preventStrayRequests();
+        Sleep::fake();
+    }
+
+    #[DataProvider('passosDaSequencia')]
+    public function test_timeout_de_transporte_nao_repete_o_passo_incerto(string $passo): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $tentativas = 0;
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request) use ($passo, &$tentativas): PromiseInterface {
+            if (($request->data()['pedidoDados']['idServico'] ?? '') !== $passo) {
+                return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => [], 'responseId' => 'protocolo']);
+            }
+
+            $tentativas++;
+
+            throw new ConnectionException('Timeout depois de possível envio; dado privado.');
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, fn (): int => 0);
+
+        $this->assertSame(1, $tentativas);
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertNull($exception->responseId);
+        $this->assertStringNotContainsString('dado privado', $exception->getMessage());
+        $this->assertSame(1, SerproCall::where('id_servico', $passo)->count());
+        $this->assertSame(SerproFailure::Upstream, SerproCall::where('id_servico', $passo)->sole()->status);
+    }
+
+    #[DataProvider('passosDaSequencia')]
+    public function test_503_sem_identificador_nao_autoriza_repetir_o_passo(string $passo): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $tentativas = 0;
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request) use ($passo, &$tentativas): PromiseInterface {
+            if (($request->data()['pedidoDados']['idServico'] ?? '') !== $passo) {
+                return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => [], 'responseId' => 'protocolo']);
+            }
+
+            $tentativas++;
+
+            return Http::response(['status' => 503, 'dados' => null, 'mensagens' => []], 503);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, fn (): int => 0);
+
+        $this->assertSame(1, $tentativas);
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertNull($exception->responseId);
+    }
+
+    public static function passosDaSequencia(): array
+    {
+        return [
+            'protocolo' => ['SOLICITARPROTOCOLO91'],
+            'emissao' => ['RELATORIOSITFIS92'],
+        ];
+    }
+
+    #[DataProvider('statusPendentesSemIdentificador')]
+    public function test_emissao_pendente_sem_identificador_nao_repete(int $status, bool $sucessoSitfis): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $emissoes = 0;
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request) use ($status, $sucessoSitfis, &$emissoes): PromiseInterface {
+            if ($request->data()['pedidoDados']['idServico'] === 'SOLICITARPROTOCOLO91') {
+                return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => []]);
+            }
+
+            $emissoes++;
+
+            return Http::response([
+                'status' => $status, 'dados' => ['tempoEspera' => 0],
+                'mensagens' => $sucessoSitfis ? [['codigo' => 'Sucesso-Sitfis-SC01', 'texto' => 'Processando.']] : [],
+            ], $status);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, fn (): int => 0);
+
+        $this->assertSame(1, $emissoes);
+        $this->assertNull($exception->responseId);
+    }
+
+    public static function statusPendentesSemIdentificador(): array
+    {
+        return ['202' => [202, false], '204' => [204, false], '304' => [304, false], '503-sucesso' => [503, true]];
+    }
+
+    public function test_503_de_protocolo_respeita_orcamento_e_nao_espera_apos_ultima_tentativa(): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $elapsed = 0;
+        $calls = 0;
+        config(['integra-contador.timeout' => 25]);
+        Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
+            $elapsed += (int) $duration->totalMilliseconds;
+        });
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request, array $options) use (&$elapsed, &$calls): PromiseInterface {
+            $this->assertLessThanOrEqual(70_000 - $elapsed, 4 * $options['timeout'] * 1000 + 1000);
+            $calls++;
+            $elapsed += 1000;
+
+            return Http::response([
+                'status' => 503,
+                'dados' => json_encode(['tempoEspera' => 1000]),
+                'mensagens' => [['codigo' => 'Sucesso-Sitfis-SC01', 'texto' => 'Processando.']],
+                'responseId' => 'protocolo-pendente',
+            ], 503);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, function () use (&$elapsed): int {
+            return $elapsed;
+        });
+
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertSame(503, $exception->status);
+        $this->assertSame('protocolo-pendente', $exception->responseId);
+        $this->assertSame(3, $calls);
+        $this->assertSame(5000, $elapsed);
+        Sleep::assertSleptTimes(2);
+        $this->assertSame(25, config('integra-contador.timeout'));
+        $this->assertSame(0, SerproCall::where('id_servico', 'RELATORIOSITFIS92')->count());
+    }
+
+    public function test_202_e_204_na_emissao_compartilham_orcamento_com_protocolo(): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $elapsed = 0;
+        $emissions = 0;
+        config(['integra-contador.timeout' => 25]);
+        Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
+            $elapsed += (int) $duration->totalMilliseconds;
+        });
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request, array $options) use (&$elapsed, &$emissions): PromiseInterface {
+            $this->assertLessThanOrEqual(70_000 - $elapsed, 4 * $options['timeout'] * 1000 + 1000);
+            $elapsed += 1000;
+
+            if (($request->data()['pedidoDados']['idServico'] ?? '') === 'SOLICITARPROTOCOLO91') {
+                return Http::response([
+                    'status' => 200,
+                    'dados' => json_encode(['protocoloRelatorio' => self::PROTOCOLO, 'tempoEspera' => 20_000]),
+                    'mensagens' => [],
+                ]);
+            }
+
+            $emissions++;
+
+            return $emissions === 1
+                ? Http::response(['status' => 202, 'dados' => json_encode(['tempoEspera' => 20_000]), 'mensagens' => [], 'responseId' => 'primeira-emissao-pendente'], 202)
+                : Http::response(['status' => 204, 'dados' => null, 'mensagens' => [], 'responseId' => 'emissao-pendente'], 204);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, function () use (&$elapsed): int {
+            return $elapsed;
+        });
+
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertSame(204, $exception->status);
+        $this->assertSame('emissao-pendente', $exception->responseId);
+        $this->assertSame(2, $emissions);
+        $this->assertSame(43_000, $elapsed);
+        Sleep::assertSleptTimes(2);
+        $this->assertSame(25, config('integra-contador.timeout'));
+        $this->assertSame(0, SerproCall::where('id_servico', 'RELATORIOSITFIS92')->count());
+    }
+
+    public function test_503_de_protocolo_interrompe_antes_de_espera_que_excede_saldo_global(): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $elapsed = 0;
+        $calls = 0;
+        Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
+            $elapsed += (int) $duration->totalMilliseconds;
+        });
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function () use (&$elapsed, &$calls): PromiseInterface {
+            $elapsed += 1000;
+            $calls++;
+
+            return Http::response(['status' => 503, 'dados' => null, 'mensagens' => [], 'responseId' => 'aguardando-protocolo'], 503);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, function () use (&$elapsed): int {
+            return $elapsed;
+        });
+
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertSame('aguardando-protocolo', $exception->responseId);
+        $this->assertSame(2, $calls);
+        $this->assertSame(34_000, $elapsed);
+        Sleep::assertSleptTimes(1);
+    }
+
+    public function test_orcamento_http_inclui_auth_e_repeticao_apos_401_e_restaura_timeout(): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $elapsed = 0;
+        $requests = 0;
+        $serviceRequests = 0;
+        config(['integra-contador.timeout' => 25]);
+        Http::fake(function (Request $request, array $options) use (&$elapsed, &$requests, &$serviceRequests): PromiseInterface {
+            $this->assertSame(17, $options['timeout']);
+            $elapsed += $options['timeout'] * 1000;
+            $requests++;
+
+            if (str_contains($request->url(), 'autenticacao.sapi.serpro.gov.br')) {
+                return Http::response(['expires_in' => 2008, 'access_token' => 'access-'.$requests, 'jwt_token' => 'jwt-'.$requests]);
+            }
+
+            $serviceRequests++;
+
+            return $serviceRequests === 1
+                ? Http::response(['status' => 401, 'mensagens' => []], 401)
+                : Http::response(['status' => 200, 'dados' => json_encode(['protocoloRelatorio' => self::PROTOCOLO]), 'mensagens' => []]);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, function () use (&$elapsed): int {
+            return $elapsed;
+        });
+
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertSame(4, $requests);
+        $this->assertSame(68_000, $elapsed);
+        $this->assertSame(25, config('integra-contador.timeout'));
+        Sleep::assertNeverSlept();
+        $this->assertSame(0, SerproCall::where('id_servico', 'RELATORIOSITFIS92')->count());
+    }
+
+    public function test_limite_de_emissoes_nao_dorme_apos_ultima_resposta_pendente(): void
+    {
+        [$account, $client, $run] = $this->cenario();
+        $emissions = 0;
+        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Http::fake(function (Request $request) use (&$emissions): PromiseInterface {
+            if (($request->data()['pedidoDados']['idServico'] ?? '') === 'SOLICITARPROTOCOLO91') {
+                return Http::response(['status' => 200, 'dados' => json_encode(['protocoloRelatorio' => self::PROTOCOLO]), 'mensagens' => []]);
+            }
+
+            $emissions++;
+
+            return $emissions === 12
+                ? Http::response(['status' => 204, 'mensagens' => [], 'responseId' => 'ultima-emissao-pendente'], 204)
+                : Http::response(['status' => 202, 'dados' => json_encode(['tempoEspera' => 0]), 'mensagens' => [], 'responseId' => 'emissao-pendente'], 202);
+        });
+
+        $exception = $this->falhaDaSequencia($account, $client, $run, fn (): int => 0);
+
+        $this->assertSame(SerproFailure::Upstream, $exception->failure);
+        $this->assertSame(204, $exception->status);
+        $this->assertSame(12, $emissions);
+        Sleep::assertSleptTimes(1);
+        $this->assertSame(0, SerproCall::where('id_servico', 'RELATORIOSITFIS92')->count());
+    }
+
+    private function falhaDaSequencia(Account $account, Client $client, SerproSyncRun $run, Closure $clock): SerproException
+    {
+        $sequence = new SerproSitfisSequence(resolve(SerproClient::class), resolve(SerproCallRecorder::class), $clock);
+
+        try {
+            $sequence->fetch($run->getKey(), $account->getKey(), $client->getKey(), '12345678000195', (string) $client->tax_id, 'token-procurador');
+            $this->fail('O processamento pendente deve voltar para a fila.');
+        } catch (SerproException $exception) {
+            $this->assertStringNotContainsString('recus', $exception->getMessage());
+
+            return $exception;
+        }
     }
 
     public function test_a_sequencia_solicita_protocolo_emite_com_o_mesmo_protocolo_e_audita_os_dois_passos(): void
@@ -150,6 +428,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
                         'status' => 204,
                         'dados' => null,
                         'mensagens' => [['codigo' => 'Aguardando', 'texto' => 'Processando.']],
+                        'responseId' => 'resp-aguarde-204',
                     ], 204);
                 }
 

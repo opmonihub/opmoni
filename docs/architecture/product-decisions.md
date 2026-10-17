@@ -32,6 +32,8 @@ Accepted by the user on 2026-10-12:
 
 Monitoring/SERPRO, Work, WhatsApp, and commercial plan/subscription management are deferred.
 
+Status as of 2026-10-13: these deferrals are superseded by D009. The Clients/Fiscal purpose remains applicable; the separate fiscal service under D001/D002 remains an unimplemented extraction target, while the integrated fiscal runtime now lives in Laravel.
+
 ### D005 — Application backend (superseded by D006)
 
 Accepted by the user on 2026-10-12: implement access and application data in the Nuxt `frontend/server/` directory. PHP is limited to the separate `services/fiscal/` microservice. Do not introduce a Laravel `backend/` into this project.
@@ -44,13 +46,15 @@ Accepted by the user on 2026-10-12 after D005: move the complete Nuxt applicatio
 
 The source review of `/home/obsidian/dev/legacy` identified an accounting-office product organized around Accounts and client portfolios, with Fiscal, Monitoring, Work, Team, Settings, and global administration modules. This is reference context, not approval to reproduce every module. Runtime behavior was not verified during that review.
 
-## Pending proposals
+## Delivery records and pending proposals
 
 ### P002 — Access and Accounts foundation
 
 Status: implemented and archived. Nuxt presentation, Laravel application APIs, PostgreSQL persistence, and Laravel-managed Redis sessions follow D006. Archived change: [add-access-accounts-foundation](../../openspec/changes/archive/2026-10-12-add-access-accounts-foundation/proposal.md); canonical contracts live in [openspec/specs](../../openspec/specs/). On 2026-10-12 the user authorized direct implementation using its recorded contracts, overriding the remaining incremental page-review gate. Onboarding is available only with zero users and zero Accounts. Login and selection use the confirmed flow below; implementation and verification evidence remains in the archived tasks.md.
 
 Use the legacy's access, Account membership, roles, provisioning, and page flows as reference, adapting implementation to the Nuxt frontend and Laravel backend (D006) and explicitly documenting proposed corrections. This proposal does not implement the remaining Clients or Fiscal pages. Capture scheduling and manifestation policy require later decisions.
+
+## Subsequent confirmed decisions
 
 ### D007 — Access foundation implementation authorization
 
@@ -67,3 +71,11 @@ Accepted by the user on 2026-10-12: supersedes D007's mandatory profile-card sel
 Accepted by the user on 2026-10-13: copy and activate the legacy business logic across Clients, Fiscal, Monitoring, Work, Team, Settings, and platform administration, while preserving the existing Opmoni route conventions, theme, access screens, session ownership, and account memberships. This supersedes the earlier review-only scope and deferred business page integration. Business APIs use `/api/v1`; the session selects the account and `X-Account-Id` asserts the displayed account. Super Admin remains a platform role and does not bypass tenant membership or grant tenant writes. Legacy support impersonation and persistent user current-account fields are superseded by the canonical access contract.
 
 The local Compose scheduler activates the imported schedules in the fiscal homologation environment. Queue workers use per-job deadlines and restore account context between jobs. External provider calls retain their existing configuration and contract guards; test verification uses provider fakes except for explicit opt-in live probes.
+
+## Specification reconciliation — 2026-10-13
+
+The user requested a complete system map with delta specs and synchronization of decisions and canonical contracts. [reconcile-system-specs](../../openspec/changes/archive/2026-10-13-reconcile-system-specs/proposal.md), archived on 2026-10-13 with all ten tasks complete and its seventeen capability deltas synchronized, documents the system contracts and preserves the access baseline. The [system reconciliation report](system-spec-reconciliation.md) links every registered application route and frontend page family to implementation evidence and records remaining differences.
+
+The earlier [add-super-admin-platform](../../openspec/changes/add-super-admin-platform/proposal.md) proposal is not a blanket description of delivered functionality. Its foreign support role/entry/exit is superseded by D009's real-membership-only authorization. Uniform envelopes, a dedicated summary API, arbitrary contracting Account selection, stricter catalog editing, and stronger lifecycle/concurrency guarantees remain pending targets where implementation is absent or unverified. Original unchecked tasks are preserved; synchronization does not authorize or claim those features.
+
+The current imported commercial behavior blocks tenant writes for inactive/missing subscriptions and enforces client/member creation limits. Current platform summary uses existing list APIs, commercial Account contact data has its own endpoint, and certificate reuse still selects the earliest Account. These behaviors and their limitations are explicitly mapped, without introducing new product approval, implementing the pending extraction, or claiming live-provider acceptance.

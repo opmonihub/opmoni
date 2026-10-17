@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\ErpPlanController as AdminErpPlanController;
+use App\Http\Controllers\Api\V1\Admin\ErpSubscriptionController as AdminErpSubscriptionController;
 use App\Http\Controllers\Api\V1\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Api\V1\Admin\SerproConnectionController as AdminSerproConnectionController;
 use App\Http\Controllers\Api\V1\Admin\SerproConnectivityController as AdminSerproConnectivityController;
@@ -21,6 +23,7 @@ use App\Http\Controllers\Api\V1\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Api\V1\Tenant\DepartmentController;
 use App\Http\Controllers\Api\V1\Tenant\FiscalClientSummaryController;
 use App\Http\Controllers\Api\V1\Tenant\FiscalDocumentController;
+use App\Http\Controllers\Api\V1\Tenant\FiscalProcessingController;
 use App\Http\Controllers\Api\V1\Tenant\ProcessController;
 use App\Http\Controllers\Api\V1\Tenant\ProcessTemplateController;
 use App\Http\Controllers\Api\V1\Tenant\SerproAccountEnablementController;
@@ -252,6 +255,8 @@ Route::middleware([ResolveAccount::class])->group(function (): void {
     Route::get('fiscal/summary', [FiscalDocumentController::class, 'summary']);
     Route::get('fiscal/clients', [FiscalClientSummaryController::class, 'index']);
     Route::get('fiscal/documents', [FiscalDocumentController::class, 'index']);
+    Route::get('fiscal/processing/summary', [FiscalProcessingController::class, 'summary']);
+    Route::get('fiscal/processing', [FiscalProcessingController::class, 'index']);
     // As específicas antes da genérica: `fiscal/documents/{fiscalDocument}` é
     // a rota que engole qualquer coisa abaixo de `fiscal/documents/`, e a
     // ordem de registro aqui é o que impede o XML de responder JSON.
@@ -267,6 +272,10 @@ Route::middleware([ResolveAccount::class])->group(function (): void {
 Route::middleware([RequireSuperAdmin::class])->prefix('admin')->group(function (): void {
     Route::apiResource('plans', AdminPlanController::class)->except(['destroy']);
     Route::apiResource('subscriptions', AdminSubscriptionController::class)->only(['index', 'show', 'update']);
+    Route::prefix('erp')->group(function (): void {
+        Route::apiResource('plans', AdminErpPlanController::class)->except(['destroy']);
+        Route::apiResource('subscriptions', AdminErpSubscriptionController::class)->only(['index', 'show', 'update']);
+    });
     Route::get('users', [AdminUserController::class, 'index']);
     Route::get('support/logs', [AdminSupportLogController::class, 'index']);
 });

@@ -6,12 +6,16 @@ import { accessDestination, apiFailure, passwordLength } from './shared/utils/ac
 import type { Identity, Membership } from './shared/types/access.ts'
 
 const office = (id: number, status: Membership['status'] = 'active'): Membership => ({ id, name: 'Office', role: 'admin', status })
-const identity = (accounts: Membership[], current_account: Membership | null = null): Identity => ({ id: 1, name: 'Owner', email: 'owner@example.test', is_super_admin: false, accounts, current_account })
+const identity = (accounts: Membership[], current_account: Membership | null = null): Identity => ({ id: 1, name: 'Owner', email: 'owner@example.test', is_super_admin: false, accounts, current_account, companies: [], current_company: null })
 test('multi-office login enters home without a profile-card gate', () => assert.equal(accessDestination(identity([office(1), office(2)], office(1))), '/'))
 test('missing authorized context never renders tenant home', () => assert.equal(accessDestination(identity([office(1), office(2)])), '/acesso-indisponivel'))
 test('selected active office survives reload routing', () => assert.equal(accessDestination(identity([office(1), office(2)], office(2))), '/'))
 test('zero active offices remain unavailable', () => assert.equal(accessDestination(identity([office(1, 'suspended')])), '/acesso-indisponivel'))
 test('suspended selection remains unavailable with alternate memberships', () => assert.equal(accessDestination(identity([office(1, 'suspended'), office(2)], office(1, 'suspended'))), '/acesso-indisponivel'))
+const company = (id: number, status: 'active' | 'suspended' = 'active') => ({ id, name: 'Empresa', status, access_kind: 'direct' as const, role: 'owner', permissions: ['erp.read'], delegated_office_id: null })
+test('company-only login enters ERP without office membership', () => assert.equal(accessDestination({ ...identity([]), companies: [company(1)], current_company: company(1) }), '/erp'))
+test('active office still wins over company for default destination', () => assert.equal(accessDestination({ ...identity([office(1)], office(1)), companies: [company(2)], current_company: company(2) }), '/'))
+test('suspended company with no office remains unavailable', () => assert.equal(accessDestination({ ...identity([]), companies: [company(1, 'suspended')], current_company: company(1, 'suspended') }), '/acesso-indisponivel'))
 test('temporary service failure is not invalid credentials', () => assert.match(apiFailure({ statusCode: 503 }).message, /temporariamente/))
 test('rate limits have distinct retry feedback', () => assert.match(apiFailure({ statusCode: 429 }).message, /tentativas/))
 

@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use App\Support\LiteralSearch;
+use App\Models\Erp\ErpCompanyMembership;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Support\LiteralSearch;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -74,6 +75,11 @@ class User extends Authenticatable
     public function accountLinks(): HasMany
     {
         return $this->hasMany(AccountMembership::class);
+    }
+
+    public function erpCompanyMemberships(): HasMany
+    {
+        return $this->hasMany(ErpCompanyMembership::class);
     }
 
     public function defaultAccountId(): ?int

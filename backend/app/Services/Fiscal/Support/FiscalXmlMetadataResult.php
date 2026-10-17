@@ -4,6 +4,7 @@ namespace App\Services\Fiscal\Support;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalProviderNoteStatus;
 use App\Enums\FiscalStage;
 use Carbon\CarbonImmutable;
 
@@ -47,6 +48,8 @@ final readonly class FiscalXmlMetadataResult
         public ?string $valorTotal,
         public ?string $digVal,
         public ?CarbonImmutable $emissaoAt,
+        public ?CarbonImmutable $authorizedAt,
+        public ?FiscalProviderNoteStatus $providerNoteStatus,
         public ?CarbonImmutable $eventoOcorridoEmAt,
         public bool $mascarado,
         public ?string $numero = null,

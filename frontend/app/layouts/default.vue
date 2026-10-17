@@ -53,6 +53,7 @@ const links = computed(() => [[{
 ].map(item => ({
   ...item,
   type: 'trigger' as const,
+  active: sidebarParentActive(item.to, route.path),
   defaultOpen: route.path === item.to || route.path.startsWith(`${item.to}/`),
   children: item.children.map(child => ({ ...child, onSelect: () => { open.value = false } }))
 }))
@@ -95,6 +96,8 @@ function expandedEntries(items: NavigationMenuItem[]) {
       source: item,
       menuItem: {
         ...item,
+        // Only the current child is highlighted when labels are visible; icon menus use the catalogue.
+        active: item.children?.length ? false : item.active,
         value: item.value ?? `leaf-${index}`,
         children: foldedSidebarChildren(item.children, pinned),
         // Content remains open for the active child, but the chevron shows a folded list.
@@ -159,7 +162,7 @@ const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
           variant="ghost"
           @click="collapse(false)"
         />
-        <AccountMenu v-else-if="user?.current_account" class="w-full min-w-0" />
+        <WorkspaceContextMenu v-else-if="user?.current_account || user?.companies?.length" class="w-full min-w-0" />
       </template>
 
       <template #default="{ collapsed }">

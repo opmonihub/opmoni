@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1\Tenant;
 
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\IndexFiscalDocumentRequest;
 use App\Http\Resources\FiscalDocumentDetailResource;
@@ -12,6 +14,7 @@ use App\Models\Client;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\Capture\FiscalCaptureDispatcher;
 use App\Services\Fiscal\Read\FiscalCoverage;
+use App\Services\Fiscal\Read\FiscalDocumentReadiness;
 use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Services\Fiscal\Support\FiscalXmlEncoding;
 use App\Services\SupportAudit;
@@ -90,9 +93,11 @@ class FiscalDocumentController extends Controller
      * O arquivo é lido depois da autorização e só para a prévia: o disco
      * privado nunca é tocado para montar a resposta de quem não pode ler.
      */
-    public function show(FiscalDocument $fiscalDocument, FiscalDocuments $documents, FiscalXmlEncoding $encoding): FiscalDocumentDetailResource
+    public function show(FiscalDocument $fiscalDocument, FiscalDocuments $documents, FiscalXmlEncoding $encoding, FiscalDocumentReadiness $readiness): FiscalDocumentDetailResource
     {
         Gate::authorize('view', $fiscalDocument);
+
+        $this->assertAccountingReady($fiscalDocument, $readiness);
 
         $accountId = (int) resolve(CurrentTenant::class)->accountId;
         $eventos = $documents->eventsOf($accountId, $fiscalDocument);
@@ -123,9 +128,23 @@ class FiscalDocumentController extends Controller
      * e o caminho interno nunca sai daqui — é a resposta que o `Content-Type`
      * e o `Content-Disposition` definem, não o JSON.
      */
-    public function download(FiscalDocument $fiscalDocument): StreamedResponse
+    public function download(FiscalDocument $fiscalDocument, FiscalDocumentReadiness $readiness): StreamedResponse
     {
         Gate::authorize('view', $fiscalDocument);
+
+        if ($fiscalDocument->stage !== FiscalStage::Document) {
+            abort(409, 'Documento contábil ainda não está pronto.');
+        }
+
+        $readiness->reconcileOne($fiscalDocument->refresh());
+
+        if ($fiscalDocument->storage_state === FiscalStorageState::Corrupt) {
+            abort(409, 'Integridade do XML completo não pôde ser verificada.');
+        }
+
+        if ($fiscalDocument->storage_state !== FiscalStorageState::Available) {
+            abort(404, 'Arquivo XML não encontrado para este documento.');
+        }
 
         $disco = Storage::disk('fiscal');
 
@@ -141,6 +160,23 @@ class FiscalDocumentController extends Controller
             $fiscalDocument->chave_acesso.'.xml',
             ['Content-Type' => 'application/xml'],
         );
+    }
+
+    private function assertAccountingReady(FiscalDocument $fiscalDocument, FiscalDocumentReadiness $readiness): void
+    {
+        if ($fiscalDocument->stage !== FiscalStage::Document) {
+            abort(409, 'Documento contábil ainda não está pronto.');
+        }
+
+        $readiness->reconcileOne($fiscalDocument->refresh());
+
+        if ($fiscalDocument->storage_state === FiscalStorageState::Corrupt) {
+            abort(409, 'Integridade do XML completo não pôde ser verificada.');
+        }
+
+        if ($fiscalDocument->storage_state !== FiscalStorageState::Available) {
+            abort(404, 'Arquivo XML não encontrado para este documento.');
+        }
     }
 
     /**

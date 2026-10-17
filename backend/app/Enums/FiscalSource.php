@@ -7,6 +7,7 @@ enum FiscalSource: string
     case NfeDistribuicao = 'nfe_distribuicao';
     case CteDistribuicao = 'cte_distribuicao';
     case NfseAdn = 'nfse_adn';
+    case ErpIssued = 'erp_issued';
 
     public function label(): string
     {
@@ -14,6 +15,7 @@ enum FiscalSource: string
             self::NfeDistribuicao => 'Distribuição NF-e',
             self::CteDistribuicao => 'Distribuição CT-e',
             self::NfseAdn => 'ADN NFS-e',
+            self::ErpIssued => 'ERP emitido',
         };
     }
 }

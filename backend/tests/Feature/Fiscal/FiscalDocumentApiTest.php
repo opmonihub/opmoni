@@ -20,6 +20,7 @@ use App\Services\Fiscal\Capture\FiscalCaptureDispatcher;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Services\Fiscal\Nfe\NfeDistributionConnector;
 use App\Services\Fiscal\Read\FiscalCoverage;
+use App\Services\Fiscal\Read\FiscalDocumentReadiness;
 use App\Services\Fiscal\Read\FiscalDocuments;
 use App\Services\Fiscal\Support\FiscalXmlEncoding;
 use App\Tenant\CurrentTenant;
@@ -772,19 +773,8 @@ class FiscalDocumentApiTest extends BusinessTestCase
 
         $this->assertSame(2, $linhas[$documento->getKey()]['event_count']);
         $this->assertSame(1, $linhas[$mesmaChave->getKey()]['event_count']);
-
-        // O campo responde "quantos eventos esta chave de acesso tem", e é o
-        // mesmo número em toda linha da chave — inclusive na linha que é um
-        // desses eventos. Uma linha de evento que reportasse N−1 colocaria, na
-        // mesma página e para a mesma chave, dois números diferentes, e o
-        // operador não teria como saber qual dos dois ler.
-        $this->assertSame(2, $linhas[$primeiro->getKey()]['event_count']);
-        $this->assertSame(2, $linhas[$segundo->getKey()]['event_count']);
-        $this->assertSame(1, $linhas[$eventoDaMesmaChave->getKey()]['event_count']);
-
-        // Documento sem evento é zero explícito, e não campo vazio: a tela
-        // escreve "sem eventos" a partir do número.
         $this->assertSame(0, $linhas[$semEvento->getKey()]['event_count']);
+        $this->assertCount(3, $linhas);
     }
 
     public function test_lista_devolve_a_identidade_do_cliente_removido_sem_credencial(): void
@@ -866,12 +856,12 @@ class FiscalDocumentApiTest extends BusinessTestCase
         // CNPJ entra por prefixo, porque é assim que o operador o digita. O
         // evento entra em `model[]=nfe` porque é uma entrega de NF-e: o modelo
         // é do documento, e o que separa a linha do evento é a etapa.
-        $this->assertSame([$alvo->getKey(), $notaDoSegundo->getKey(), $evento->getKey()], $ids('model[]=nfe'));
-        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('client_id='.$primeiro->getKey()));
-        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('issuer=1111'));
+        $this->assertSame([$alvo->getKey(), $notaDoSegundo->getKey()], $ids('model[]=nfe'));
+        $this->assertSame([$alvo->getKey(), $cte->getKey()], $ids('client_id='.$primeiro->getKey()));
+        $this->assertSame([$alvo->getKey(), $cte->getKey()], $ids('issuer=1111'));
         $this->assertSame([$notaDoSegundo->getKey()], $ids('recipient=4444'));
-        $this->assertSame([$evento->getKey()], $ids('kind=event'));
-        $this->assertSame([$alvo->getKey(), $cte->getKey(), $evento->getKey()], $ids('issued_from=2026-09-01&issued_to=2026-09-30'));
+        $this->assertSame([], $ids('kind=event'));
+        $this->assertSame([$alvo->getKey(), $cte->getKey()], $ids('issued_from=2026-09-01&issued_to=2026-09-30'));
         $this->assertSame([$notaDoSegundo->getKey()], $ids('issued_to=2026-08-31'));
 
         // E a combinação inteira, que é como a tela usa: cada filtro sozinho
@@ -1304,13 +1294,10 @@ class FiscalDocumentApiTest extends BusinessTestCase
 
         $this->assertSame(3, $detalhe->json('data.event_count'));
         $this->assertSame($detalhe->json('data.event_count'), $linhas[$documento->getKey()]['event_count']);
-        $this->assertSame(3, $linhas[$cedo->getKey()]['event_count']);
 
         $this->actingAs($membro, 'web')
             ->getJson("/api/v1/fiscal/documents/{$cedo->getKey()}")
-            ->assertOk()
-            ->assertJsonPath('data.event_count', 3)
-            ->assertJsonPath('data.event_id', '110111');
+            ->assertStatus(409);
     }
 
     public function test_detalhe_conta_eventos_da_mesma_chave_e_do_mesmo_cliente(): void
@@ -1530,40 +1517,10 @@ class FiscalDocumentApiTest extends BusinessTestCase
             'account_id' => $cliente->account_id,
         ]);
 
-        // A factory do documento só grava o arquivo com `withStoredXml()`, e
-        // esta linha existe sem ele: o byte sumiu, a linha ficou. O detalhe
-        // continua abrindo — com a prévia ausente — e o download é que diz que
-        // o arquivo não está mais lá.
-        Log::spy();
-
+        // Linha sem byte verificado: a leitura contábil recusa detalhe e download.
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->getJson("/api/v1/fiscal/documents/{$documento->getKey()}")
-            ->assertOk()
-            ->assertJsonPath('data.id', $documento->getKey())
-            ->assertJsonPath('data.xml_preview', null)
-            ->assertJsonPath('data.events', []);
-
-        // O arquivo ausente é o estado **esperado** em produção — o XML mora no
-        // disco efêmero do container e some quando o serviço é recriado — e é
-        // por isso que ele precisa aparecer no canal. Sem esta linha, uma conta
-        // inteira sem prévia respondia 200 em cada documento e a operação não
-        // tinha nenhum sinal de que aquilo era o estado normal e não um erro
-        // pontual.
-        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context) use ($documento, $cliente): bool {
-            return $channel === 'fiscal.leitura.previa_ausente'
-                && $context['reason'] === 'arquivo ausente no disco'
-                && $context['chave_acesso'] === $documento->chave_acesso
-                && $context['account_id'] === $documento->account_id
-                && $context['client_id'] === $cliente->getKey();
-        });
-
-        // E o contexto não carrega nada além do identificador e da frase: nem o
-        // caminho interno do XML, que é o segredo desta seção, nem o byte.
-        Log::shouldHaveReceived('warning')->atLeast()->once()->withArgs(function (string $channel, array $context) use ($documento): bool {
-            return $channel === 'fiscal.leitura.previa_ausente'
-                && ! array_key_exists('storage_path', $context)
-                && ! str_contains(json_encode($context, JSON_THROW_ON_ERROR), (string) $documento->storage_path);
-        });
+            ->assertNotFound();
 
         $this->actingAs($this->membroDe($account, 'operador'), 'web')
             ->get("/api/v1/fiscal/documents/{$documento->getKey()}/xml")
@@ -1839,6 +1796,7 @@ class FiscalDocumentApiTest extends BusinessTestCase
             $documento,
             app(FiscalDocuments::class),
             app(FiscalXmlEncoding::class),
+            app(FiscalDocumentReadiness::class),
         );
     }
 
@@ -2232,7 +2190,7 @@ class FiscalDocumentApiTest extends BusinessTestCase
 
     private function documento(Client $cliente, array $attributes = []): FiscalDocument
     {
-        return FiscalDocument::factory()->create(array_merge([
+        return FiscalDocument::factory()->withStoredXml()->create(array_merge([
             'client_id' => $cliente->getKey(),
             'account_id' => $cliente->account_id,
         ], $attributes));

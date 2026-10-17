@@ -17,7 +17,10 @@ class ManifestacaoDuplicidadeTest extends BusinessTestCase
 
     public function test_duas_ciencias_da_mesma_chave_deixam_um_registro(): void
     {
-        config(['fiscal.manifestacao_enabled' => true]);
+        config([
+            'fiscal.manifestacao_enabled' => true,
+            'fiscal.manifestacao_rollout_mode' => 'fleet',
+        ]);
 
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();

@@ -1,0 +1,18 @@
+{
+  "participant": "App\\Erp\\Stock\\ErpStockParticipant::reverseSaleIssues",
+  "consumer": "erp_sale_return_post",
+  "lock_order": ["erp_sale_return", "erp_stock_balances_sorted"],
+  "requires_caller_transaction": true,
+  "acquires_source_document_lock": false,
+  "source_type": "erp_sale_return",
+  "movement_direction": "in",
+  "reversal_of": "erp_stock_movements.id",
+  "source_operation_key_pattern": "{return_post_key}-reverse-{movement_id}",
+  "example": {
+    "company_id": 1,
+    "establishment_id": 1,
+    "sale_return_id": 3,
+    "operation_key_prefix": "sale-return-post-3",
+    "original_issue_source_type": "erp_sale"
+  }
+}

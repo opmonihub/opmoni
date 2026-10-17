@@ -12,6 +12,7 @@ import {
   whatsappSendGuidesPayload,
   whatsappSendGuidesPlan,
   whatsappSendGuidesReasons,
+  whatsappSendGuidesResendLabel,
   type WhatsAppSendGuidesPlanItem
 } from '~/utils/whatsappDispatch'
 import DispatchContactFormModal from '~/components/monitoring/DispatchContactFormModal.vue'
@@ -20,8 +21,8 @@ import DispatchContactFormModal from '~/components/monitoring/DispatchContactFor
  * O modal Enviar guias: lista os Contatos de envio do cliente e dispara a
  * guia corrente — a que o backend resolve (período mais recente com
  * `slip_number` ou declaração transmitida) — para os WhatsApp marcados.
- * A pré-seleção desmarca quem já recebeu essa mesma guia e oferece a
- * Ciência de reenvio; contatos de e-mail são listados e nunca enviáveis.
+ * A pré-seleção desmarca quem tem envio anterior ou resultado incerto da
+ * mesma guia e oferece Ciência de reenvio; e-mail nunca é enviável.
  * Nada dispara sem o clique em Enviar guias.
  */
 const props = defineProps<{
@@ -307,9 +308,9 @@ async function confirm() {
                 {{ item.blockedReason }}
               </p>
               <UCheckbox
-                v-else-if="item.alreadySent"
+                v-else-if="item.alreadySent || item.uncertain"
                 :model-value="resendAcknowledged.has(item.contact.id)"
-                label="Ciência de reenvio — este contato já recebeu esta guia"
+                :label="whatsappSendGuidesResendLabel(item) ?? undefined"
                 size="sm"
                 class="pl-8"
                 :ui="{ label: 'text-xs text-muted' }"

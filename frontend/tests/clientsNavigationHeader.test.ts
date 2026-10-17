@@ -209,7 +209,8 @@ describe('Clients sidebar navigation', () => {
     for (const path of ['/customers/painel', ...listPaths, '/customers/empresa/42']) {
       surface.route.path = path
       const clients = clientsItem(surface)
-      assert.equal(clients.active, true, path)
+      assert.equal(clients.active, false, `${path}: only the child is highlighted in the expanded sidebar`)
+      assert.equal(sidebarItems(surface, true).find(item => item.label === 'Clientes')?.active, true, `${path}: icon retains module context`)
       assert.deepEqual(clients.children?.filter(item => item.active).map(item => item.label), [
         path === '/customers/painel' ? 'Painel' : 'Meus clientes'
       ], path)
@@ -270,6 +271,39 @@ describe('Clients sidebar navigation', () => {
     }
     surface.route.path = '/settings/members-other'
     assert.equal(sidebarItems(surface).find(item => item.label === 'Settings')!.children?.find(child => child.label === 'Members')?.active, false)
+  })
+
+  it('highlights only the active child in expanded groups while retaining icon activity', async (t) => {
+    for (const [path, label, childLabel] of [
+      ['/customers/painel', 'Clientes', 'Painel'],
+      ['/fiscal/documentos/42', 'Fiscal', 'Documentos'],
+      ['/monitoring/declaracoes/defis/pendencias', 'Monitoramento', 'Declarações'],
+      ['/work/processos/42', 'Work', 'Processos'],
+      ['/equipe/departamentos', 'Equipe', 'Departamentos'],
+      ['/settings/members/42', 'Settings', 'Members'],
+      ['/admin/contas/42', 'Admin', 'Contas']
+    ]) {
+      const surface = setupSurface('layouts/default.vue', path!, { superAdmin: true })
+      t.after(surface.close)
+      const expanded = () => sidebarItems(surface).find(item => item.label === label)!
+      const collapsed = () => sidebarItems(surface, true).find(item => item.label === label)!
+      assert.equal(expanded().active, false, `${path}: parent stays neutral`)
+      assert.deepEqual(expanded().children?.filter(child => child.active).map(child => child.label), [childLabel], path)
+      assert.equal(collapsed().active, true, `${path}: module icon remains active`)
+      assert.equal(collapsed().children, expanded().children, `${path}: no child replacement`)
+      groupMenu(surface, label!).props!['onUpdate:modelValue'](undefined)
+      assert.equal(expanded().active, false, `${path}: pinned parent stays neutral`)
+      assert.deepEqual(expanded().children?.filter(child => child.ui?.childItem !== 'hidden').map(child => child.label), [childLabel], path)
+      assert.equal(collapsed().active, true, `${path}: folding does not mute the icon`)
+      surface.route.path = '/inbox'
+      await Vue.nextTick()
+      assert.equal(collapsed().active, false, `${path}: leaving the module clears icon activity`)
+    }
+    const surface = setupSurface('layouts/default.vue', '/')
+    t.after(surface.close)
+    const dashboard = sidebarItems(surface).find(item => item.label === 'Dashboard')!
+    assert.equal(dashboard.active, undefined, 'Standalone links keep native route activity')
+    assert.equal(dashboard.to, '/')
   })
 
   it('keeps a single fully open group through opening, closing and toggling the pinned module', async (t) => {

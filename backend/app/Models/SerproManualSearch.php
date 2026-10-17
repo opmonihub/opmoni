@@ -21,6 +21,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * request autenticado, e nenhum corpo de POST os declara. O starter grava
  * por `forceFill` com a conta explícita — no worker o `CurrentTenant`
  * carrega o valor do job anterior.
+ *
+ * `completed_units` contém pares SISTEMA/SERVICO projetados nesta busca,
+ * nunca inferidos das chamadas sem search_id. NULL distingue buscas legadas
+ * sem checkpoint de uma lista vazia inicializada pelo trabalhador seguro.
+ * `current_unit` + `attempted_at` conservam a fronteira incerta após crash.
  */
 #[Fillable([
     'obligation',
@@ -40,6 +45,8 @@ class SerproManualSearch extends Model
             'state' => SerproManualSearchState::class,
             'mode' => SerproManualSearchMode::class,
             'recalculate_date' => 'date',
+            'completed_units' => 'array',
+            'attempted_at' => 'immutable_datetime',
         ];
     }
 

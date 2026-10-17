@@ -2,11 +2,16 @@
 
 namespace App\Services\Fiscal\Capture;
 
+use App\Enums\FiscalDeliveryOrigin;
 use App\Enums\FiscalSource;
+use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Models\Client;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\Contracts\PulledDocument;
+use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
 use App\Services\Fiscal\Support\DigValComparison;
+use App\Services\Fiscal\Support\FiscalTrustedDeliveryContext;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\Log;
@@ -37,9 +42,13 @@ final class FiscalDocumentWriter
      */
     private const EVENT_ID_PATTERN = '/^(?:\d{6}-\d{1,10})?$/';
 
-    public function store(Client $client, FiscalSource $source, PulledDocument $document): FiscalDocument
-    {
-        return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $source, $document): FiscalDocument {
+    public function store(
+        Client $client,
+        FiscalSource $source,
+        PulledDocument $document,
+        ?FiscalTrustedDeliveryContext $delivery = null,
+    ): FiscalDocument {
+        return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $source, $document, $delivery): FiscalDocument {
             $path = $this->pathOf($client, $document);
 
             // O arquivo antes da linha, sempre. Uma falha de banco depois deste
@@ -47,7 +56,12 @@ final class FiscalDocumentWriter
             // consequência; a ordem inversa deixa uma linha apontando para um
             // arquivo que não existe, e o download dá 404 num documento que o
             // painel já está contando.
-            Storage::disk('fiscal')->put($path, $document->xml);
+            $stored = Storage::disk('fiscal')->put($path, $document->xml);
+            $xmlBytes = strlen($document->xml);
+            $sha256 = hash('sha256', $document->xml);
+            $storageState = $stored && Storage::disk('fiscal')->exists($path)
+                ? FiscalStorageState::Available
+                : FiscalStorageState::Missing;
 
             // `updateOrCreate` é este `firstOrNew()->fill()->save()`, escrito à mão
             // porque o veredito do `digVal` precisa da linha que já existia: uma
@@ -86,10 +100,12 @@ final class FiscalDocumentWriter
                 'destinatario_cnpj' => $document->destinatarioCnpj,
                 'valor_total' => $document->valorTotal,
                 'emissao_at' => $document->emissaoAt,
+                'authorized_at' => $document->authorizedAt,
+                'provider_note_status' => $document->providerNoteStatus,
                 'evento_ocorrido_em_at' => $document->eventoOcorridoEmAt,
                 'schema' => $document->schema,
                 'storage_path' => $path,
-                'sha256' => hash('sha256', $document->xml),
+                'sha256' => $sha256,
                 'digval' => $document->digVal,
                 'digval_confere' => $digvalConfere,
                 // Vem do parser e nunca é inferido do NSU, do `schema` declarado nem
@@ -100,9 +116,23 @@ final class FiscalDocumentWriter
                 'mascarado' => $document->mascarado,
                 'numero' => $document->numero,
                 'serie' => $document->serie,
-                'xml_bytes' => strlen($document->xml),
+                'xml_bytes' => $xmlBytes,
+                'storage_state' => $document->stage === FiscalStage::Document ? $storageState : FiscalStorageState::Unverified,
+                'storage_verified_at' => $document->stage === FiscalStage::Document ? now() : null,
                 'captured_at' => now(),
             ]);
+
+            if ($delivery !== null && $this->deliveryMatches($delivery, $client, $source)) {
+                $row->fill([
+                    'delivery_origin' => FiscalDeliveryOrigin::AuthenticatedDistribution,
+                    'delivery_environment' => $delivery->environment,
+                    'queried_tax_id' => $delivery->queriedTaxId,
+                    'delivery_received_at' => $delivery->receivedAt,
+                    'delivery_correlation_id' => $delivery->correlationId,
+                ]);
+            } elseif (! $row->exists) {
+                $row->delivery_origin = FiscalDeliveryOrigin::Unverified;
+            }
 
             // `account_id` fora do `fill()` de propósito: ele não é mass-assignável
             // nos modelos de tenant deste módulo, e o hook de criação o puxaria da
@@ -111,6 +141,17 @@ final class FiscalDocumentWriter
             $row->account_id = $client->account_id;
 
             $row->save();
+
+            if ($document->stage === FiscalStage::Summary) {
+                $account = $client->account ?? $client->account()->first();
+                if ($account !== null) {
+                    resolve(FiscalProcessingCoordinator::class)->afterSummaryStored($row, $client, $account);
+                }
+            }
+
+            if ($document->stage === FiscalStage::Document && $storageState === FiscalStorageState::Available) {
+                resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($row);
+            }
 
             // Só depois do `save()`: a linha existe, o documento está em disco e
             // então há algo para relatar. Se o `save()` falhar, o log mentiria.
@@ -194,6 +235,13 @@ final class FiscalDocumentWriter
      * `nSeqEvento` lidos do XML, e um dos dois adulterado atravessa a validação
      * de dígito verificador, que protege a chave e não o evento.
      */
+    private function deliveryMatches(FiscalTrustedDeliveryContext $delivery, Client $client, FiscalSource $source): bool
+    {
+        return $delivery->accountId === (int) $client->account_id
+            && $delivery->clientId === (int) $client->getKey()
+            && $delivery->source === $source;
+    }
+
     private function pathOf(Client $client, PulledDocument $document): string
     {
         if (! FiscalXmlMetadata::isValidChave($document->chave)) {

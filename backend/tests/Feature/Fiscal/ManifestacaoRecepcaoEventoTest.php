@@ -40,7 +40,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
 {
     use BuildsManifestationEvent, RefreshDatabase;
 
-    private const EMISSAO = '2026-09-20T12:00:00-03:00';
+    private const AUTORIZACAO = '2026-10-01T12:00:00-03:00';
 
     private const SENHA = 'segredo-unico-9f2b';
 
@@ -71,7 +71,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         $this->assertTrue($this->conector()->cienciaDaEmissao(
             $cliente,
             $registro,
-            CarbonImmutable::parse(self::EMISSAO),
+            CarbonImmutable::parse(self::AUTORIZACAO),
         ));
 
         $registro->refresh();
@@ -102,16 +102,18 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
 
     public function test_a_url_segue_o_ambiente_configurado(): void
     {
-        [$cliente] = $this->pedidoRegistrado();
+        Http::fakeSequence()
+            ->push($this->retEnvEvento('128', 'Lote de Evento Processado', '135', 'Evento registrado', tpAmb: '1'), 200)
+            ->push($this->retEnvEvento('128', 'Lote de Evento Processado', '135', 'Evento registrado', tpAmb: '2'), 200);
 
         config(['fiscal.environment' => 'producao']);
-        Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '135', 'Evento registrado'), 200)]);
-
-        $this->conector()->cienciaDaEmissao($cliente, $this->registro(), CarbonImmutable::parse(self::EMISSAO));
+        [$clienteProducao, $registroProducao] = $this->pedidoRegistrado();
+        $this->conector()->cienciaDaEmissao($clienteProducao, $registroProducao, CarbonImmutable::parse(self::AUTORIZACAO));
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'www.nfe.fazenda.gov.br'));
 
         config(['fiscal.environment' => 'homologacao']);
-        $this->conector()->cienciaDaEmissao($cliente, $this->registro(), CarbonImmutable::parse(self::EMISSAO));
+        [$clienteHomologacao, $registroHomologacao] = $this->pedidoRegistrado();
+        $this->conector()->cienciaDaEmissao($clienteHomologacao, $registroHomologacao, CarbonImmutable::parse(self::AUTORIZACAO));
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'hom1.nfe.fazenda.gov.br'));
     }
 
@@ -128,7 +130,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('', 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um ambiente fora da lista deveria recusar a montagem.');
         } catch (FiscalRequestNotSent) {
@@ -149,7 +151,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
             return Http::response($this->retEnvEvento('128', 'ok', '135', 'Evento registrado'), 200);
         }]);
 
-        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
         // O servidor de eventos usa Let's Encrypt, não ICP-Brasil: o bundle
         // de verificação é o combinado de eventos, que cobre as duas cadeias.
@@ -168,7 +170,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
             return Http::response($this->retEnvEvento('128', 'ok', '135', 'Evento registrado'), 200);
         }]);
 
-        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
         // mTLS usa o arquivo efêmero, apagado ao fim da chamada — o mesmo
         // contrato do transporte de distribuição.
@@ -186,7 +188,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         $this->assertTrue($this->conector()->cienciaDaEmissao(
             $cliente,
             $registro,
-            CarbonImmutable::parse(self::EMISSAO),
+            CarbonImmutable::parse(self::AUTORIZACAO),
         ));
 
         $registro->refresh();
@@ -206,7 +208,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '108', 'Servico paralisado momentaneamente'), 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma rejeição transitória deveria virar FiscalException retentável.');
         } catch (FiscalException $exception) {
@@ -228,7 +230,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '214', 'Rejeicao: Duplicidade de registro'), 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma rejeição definitiva deveria virar FiscalException não retentável.');
         } catch (FiscalException $exception) {
@@ -249,7 +251,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response($this->retEnvEvento('108', 'Servico paralisado momentaneamente'), 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('A indisponibilidade do lote deveria ser retentável.');
         } catch (FiscalException $exception) {
@@ -264,7 +266,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response($this->fault('    Falha    temporaria   do   servico '), 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um fault SOAP deveria ser recusa retentável.');
         } catch (FiscalException $exception) {
@@ -281,7 +283,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => fn () => throw new ConnectionException('cURL 7 sem saída')]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma falha de transporte deveria ser FiscalException.');
         } catch (FiscalException $exception) {
@@ -297,7 +299,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('<html>Bad Gateway</html>', 502)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um 502 deveria ser falha do upstream.');
         } catch (FiscalException $exception) {
@@ -312,7 +314,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><outraCoisa/></soap:Body></soap:Envelope>', 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma resposta fora do contrato não pode virar veredito.');
         } catch (FiscalException) {
@@ -336,7 +338,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('', 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Cliente sem certificado deveria ser recusado antes da chamada.');
         } catch (FiscalRequestNotSent) {
@@ -357,7 +359,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
             return Http::response($this->retEnvEvento('128', 'ok', '135', 'Evento registrado'), 200);
         }]);
 
-        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+        $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
         // O mesmo XSD que barra um lote malformado antes da rede confere, a
         // posteriori, o que foi para o fio — com o Signature do EventSigner.
@@ -384,7 +386,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         }]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
         } catch (FiscalException $exception) {
             $mensagem = $exception->getMessage();
             $this->assertStringNotContainsString(self::SENHA, $mensagem);
@@ -417,7 +419,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         )]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
         } catch (FiscalException $exception) {
             // O `detail` é onde o serviço ecoa o pedido: só o `faultstring`
             // condensado vai para a mensagem, e nada do que o `detail` traz —
@@ -450,7 +452,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         )]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um retEnvEvento fora do Body não pode virar veredito.');
         } catch (FiscalException) {
@@ -484,7 +486,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         )]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um retEnvEvento dentro de detail não pode virar veredito.');
         } catch (FiscalException) {
@@ -505,7 +507,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado', '108', 'Servico paralisado momentaneamente'), 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma rejeição transitória deveria virar FiscalException retentável.');
         } catch (FiscalException) {
@@ -527,7 +529,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><outraCoisa/></soap:Body></soap:Envelope>', 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Uma resposta fora do contrato não pode virar veredito.');
         } catch (FiscalException) {
@@ -553,7 +555,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         Http::fake(['*' => Http::response('', 200)]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Cliente sem certificado deveria ser recusado antes da chamada.');
         } catch (FiscalRequestNotSent) {
@@ -586,7 +588,7 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         )]);
 
         try {
-            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::EMISSAO));
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
 
             $this->fail('Um lote sem cStat próprio não pode ser lido como processado.');
         } catch (FiscalException) {
@@ -603,7 +605,89 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
         $resultado = resolve(ManifestationResult::class);
 
         $this->assertSame(FiscalManifestationOutcome::Sent, $resultado->classify('128', 'ok', '135', 'Evento registrado')->outcome);
+        $this->assertSame(FiscalManifestationOutcome::Sent, $resultado->classify('128', 'ok', '136', 'Evento registrado, mas ainda nao vinculado')->outcome);
         $this->assertSame(FiscalManifestationOutcome::AlreadyManifested, $resultado->classify('128', 'ok', '573', 'Duplicidade')->outcome);
+    }
+
+    public function test_aceite_de_outra_chave_nao_vira_veredito(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        Http::fake(['*' => Http::response(
+            $this->retEnvEvento('128', 'Lote de Evento Processado', '135', 'Evento registrado', chave: '35220499999999999999550010020000001240556600'),
+            200,
+        )]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
+
+            $this->fail('Um aceite de outra chave não pode virar veredito.');
+        } catch (FiscalException) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+        $this->assertNull($registro->result_code);
+    }
+
+    public function test_573_de_outro_tipo_nao_vira_ja_manifestado(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        Http::fake(['*' => Http::response(
+            $this->retEnvEvento('128', 'Lote de Evento Processado', '573', 'Duplicidade', tpEvento: '210200'),
+            200,
+        )]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
+
+            $this->fail('Um 573 de outro tipo não pode virar AlreadyManifested.');
+        } catch (FiscalException) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+    }
+
+    public function test_o_136_registrado_nao_vinculado_vira_sent(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        Http::fake(['*' => Http::response(
+            $this->retEnvEvento('128', 'Lote de Evento Processado', '136', 'Evento registrado, mas ainda nao vinculado a NF-e'),
+            200,
+        )]);
+
+        $this->assertTrue($this->conector()->cienciaDaEmissao(
+            $cliente,
+            $registro,
+            CarbonImmutable::parse(self::AUTORIZACAO),
+        ));
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Sent, $registro->outcome);
+        $this->assertSame('136', $registro->result_code);
+    }
+
+    public function test_lote_128_sem_ret_evento_nao_aceita_ciencia(): void
+    {
+        [$cliente, $registro] = $this->pedidoRegistrado();
+
+        Http::fake(['*' => Http::response($this->retEnvEvento('128', 'Lote de Evento Processado'), 200)]);
+
+        try {
+            $this->conector()->cienciaDaEmissao($cliente, $registro, CarbonImmutable::parse(self::AUTORIZACAO));
+
+            $this->fail('Lote processado sem retEvento não pode virar aceite.');
+        } catch (FiscalException) {
+            // esperado
+        }
+
+        $registro->refresh();
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
     }
 
     /**
@@ -650,30 +734,6 @@ class ManifestacaoRecepcaoEventoTest extends BusinessTestCase
     private function conector(): RecepcaoEventoConnector
     {
         return resolve(RecepcaoEventoConnector::class);
-    }
-
-    /**
-     * O `retEnvEvento` do serviço, com ou sem o `retEvento` interno.
-     */
-    private function retEnvEvento(string $cStatLote, string $xMotivoLote, ?string $cStatEvento = null, ?string $xMotivoEvento = null): string
-    {
-        $retEvento = $cStatEvento === null ? '' : '<retEvento versao="1.00">'
-            .'<infEvento>'
-            .'<tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
-            ."<cStat>{$cStatEvento}</cStat><xMotivo>{$xMotivoEvento}</xMotivo>"
-            .'<dhRegEvento>2026-10-03T15:00:01-03:00</dhRegEvento>'
-            .'</infEvento></retEvento>';
-
-        return '<?xml version="1.0" encoding="UTF-8"?>'
-            .'<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body>'
-            .'<nfeRecepcaoEventoResponse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento">'
-            .'<nfeRecepcaoEventoResult>'
-            .'<retEnvEvento xmlns="'.self::NAMESPACE_NFE.'" versao="1.00">'
-            .'<idLote>1</idLote><tpAmb>1</tpAmb><verAplic>AN_1.00</verAplic><cOrgao>91</cOrgao>'
-            ."<cStat>{$cStatLote}</cStat><xMotivo>{$xMotivoLote}</xMotivo>"
-            .$retEvento
-            .'</retEnvEvento></nfeRecepcaoEventoResult>'
-            .'</nfeRecepcaoEventoResponse></soap:Body></soap:Envelope>';
     }
 
     private function fault(string $text): string

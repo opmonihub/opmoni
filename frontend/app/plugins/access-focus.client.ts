@@ -9,14 +9,15 @@ export default defineNuxtPlugin(() => {
     if (pending || !user.value)
       return
     pending = true
-    const previous = user.value.current_account?.id
+    const previousAccount = user.value.current_account?.id
+    const previousCompany = user.value.current_company?.id
     try {
       await refresh()
       if (!user.value) {
         window.location.assign('/login')
         return
       }
-      if (previous !== user.value.current_account?.id) {
+      if (previousAccount !== user.value.current_account?.id || previousCompany !== user.value.current_company?.id) {
         window.location.assign(accessDestination(user.value))
         return
       }

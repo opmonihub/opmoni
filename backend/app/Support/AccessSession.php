@@ -21,6 +21,7 @@ class AccessSession
         self::revoke($request);
         Auth::guard('web')->login($user);
         $request->session()->regenerate(true);
+        ErpSession::clearCompanySelection($request);
         $request->session()->put(['access_deadline' => time() + 43200, 'access_authenticated' => true, 'current_account_id' => $accountId]);
     }
 

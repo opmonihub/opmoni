@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Concerns\BelongsToAccount;
+use App\Services\WhatsApp\WhatsAppChannelEffects;
 use App\Support\CurrentAccount;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -33,7 +34,7 @@ use Illuminate\Support\Facades\Crypt;
     'connected_at',
     'last_error',
 ])]
-#[Hidden(['instance_api_key_encrypted'])]
+#[Hidden(['instance_api_key_encrypted', 'last_projected_effect_id', 'last_projected_credential_effect_id'])]
 class WhatsAppChannel extends Model
 {
     /** @use HasFactory<WhatsAppChannel> */
@@ -53,9 +54,53 @@ class WhatsAppChannel extends Model
 
     public const STATUS_ERROR = 'error';
 
+    private bool $projectingReceipt = false;
+
+    protected static function booted(): void
+    {
+        $stampObservedReceipts = static function (self $channel): void {
+            if ($channel->projectingReceipt) {
+                return;
+            }
+
+            // Ordinary observations supersede receipts already visible on the primary.
+            // The marker and business fields share the caller's transaction/fencing.
+            $receipts = $channel->getConnection()->table('external_effect_journal')
+                ->where('account_id', $channel->account_id)
+                ->where('resource_hash', WhatsAppChannelEffects::resource((int) $channel->account_id))
+                ->where('state', 'confirmed')->where('receipt', 'applied');
+            $effectId = (clone $receipts)->whereIn('step', ['whatsapp.connect', 'whatsapp.disconnect'])->max('id');
+            $channel->last_projected_effect_id = max((int) $channel->last_projected_effect_id, (int) $effectId);
+            if ($channel->isDirty(['wzap_instance_id', 'instance_api_key_encrypted']) || ! $channel->exists) {
+                $credentialId = $receipts->whereIn('step', ['whatsapp.instance.create', 'whatsapp.instance.rotate'])->max('id');
+                $channel->last_projected_credential_effect_id = max((int) $channel->last_projected_credential_effect_id, (int) $credentialId);
+            }
+        };
+        // BelongsToAccount sets and validates account_id in its creating listener first.
+        static::creating($stampObservedReceipts);
+        static::saving(static function (self $channel) use ($stampObservedReceipts): void {
+            if ($channel->exists) {
+                $stampObservedReceipts($channel);
+            }
+        });
+        static::saved(function (self $channel): void {
+            $channel->projectingReceipt = false;
+        });
+    }
+
+    /** Mark only the receipt actually observed; never acknowledge a later receipt on save. */
+    public function projectEffect(int $effectId, bool $credential = false): void
+    {
+        $marker = $credential ? 'last_projected_credential_effect_id' : 'last_projected_effect_id';
+        $this->{$marker} = max((int) $this->{$marker}, $effectId);
+        $this->projectingReceipt = true;
+    }
+
     protected function casts(): array
     {
         return [
+            'last_projected_effect_id' => 'integer',
+            'last_projected_credential_effect_id' => 'integer',
             'pairing_started_at' => 'datetime',
             'connected_at' => 'datetime',
         ];

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\AccessSession;
+use App\Support\ExternalHttpBudget;
 use Closure;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +17,7 @@ class SerializedAccessSession extends StartSession
         $lock = Cache::lock('access-session:'.hash('sha256', $session->getId()), (int) config('access.lock_seconds', 30));
         try {
             $lock->block((int) config('access.lock_wait', 2));
+            $request->attributes->set('access.session_lock_acquired_at', ExternalHttpBudget::monotonicNow());
             $request->attributes->set('access.session_lock', $lock);
 
             return $this->handleStatefulRequest($request, $session, $next);

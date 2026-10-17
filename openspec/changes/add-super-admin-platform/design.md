@@ -1,3 +1,5 @@
+> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+
 ## Context
 
 See `proposal.md` for motivation and `docs/architecture/super-admin-frontend-map.md` for source evidence. The current application is Nuxt 4/Vue 3/Nuxt UI 4 frontend plus Laravel 13/PHP 8.4 application APIs, PostgreSQL persistence, and Redis-backed sessions. There is no Inertia runtime. The completed access foundation supplies trusted ingress, CSRF/origin checks, session serialization and ownership assertions, owner activation, and a request-local Account context with fail-closed model scoping.

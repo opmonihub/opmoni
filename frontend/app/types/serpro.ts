@@ -128,6 +128,8 @@ export interface MonitoringClient {
 }
 
 export interface MonitoringMessage {
+  effect_status: 'confirmed'
+  body_available: true
   id: number
   codigo: string | null
   assunto: string
@@ -135,6 +137,17 @@ export interface MonitoringMessage {
   lida_em: string | null
   ciencia_em: string | null
   prazo_limite: string | null
+}
+
+/** Local projection recovery only; this is not a recovered provider message. */
+export interface MonitoringMessageRecovery {
+  id: number
+  effect_status: 'confirmed'
+  body_available: false
+  lida_em: string | null
+  ciencia_em: string | null
+  prazo_limite: string | null
+  notice: string
 }
 
 /** `GET …/clients/{id}/declaration-detail` (PGDAS). */

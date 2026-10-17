@@ -8,14 +8,23 @@ import { pageScrollClass } from '~/utils/pageShell'
 definePageMeta({ middleware: 'auth' })
 
 const { portfolioSummary, portfolioAnalytics } = useClients()
-const toast = useToast()
+const loadError = ref<unknown>(null)
 
 const summary = ref<ClientPortfolioSummary | null>(null)
 const analytics = ref<ClientPortfolioAnalytics | null>(null)
 const loading = ref(true)
 
+const { showError, retry } = useRetryableLoad({
+  refresh: load,
+  error: loadError,
+  loading,
+  loadErrorTitle: 'Não foi possível carregar o painel',
+  sticky: true
+})
+
 async function load() {
   loading.value = true
+  loadError.value = null
   try {
     const [summaryData, analyticsData] = await Promise.all([
       portfolioSummary({}),
@@ -23,10 +32,8 @@ async function load() {
     ])
     summary.value = summaryData
     analytics.value = analyticsData
-  } catch {
-    summary.value = null
-    analytics.value = null
-    toast.add({ title: 'Não foi possível carregar o painel', color: 'error' })
+  } catch (error) {
+    loadError.value = error
   } finally {
     loading.value = false
   }
@@ -48,22 +55,31 @@ onMounted(() => {
       </div>
     </header>
 
-    <PortfolioKpis :summary="summary" :loading="loading" />
-
-    <DeadlineAlertPanels
-      :certificate="analytics?.attention.certificate ?? []"
-      :poa="analytics?.attention.poa ?? []"
+    <ErrorRetryAlert
+      v-if="showError"
+      title="Não foi possível carregar o painel"
       :loading="loading"
+      @retry="retry"
     />
 
-    <section class="flex min-w-0 flex-col gap-3 pt-1">
-      <div class="flex items-center gap-2">
-        <UIcon name="i-lucide-chart-no-axes-combined" class="size-4 shrink-0 text-muted" />
-        <h3 class="text-sm font-semibold text-highlighted">
-          Distribuição
-        </h3>
-      </div>
-      <PortfolioDistribution :analytics="analytics" :loading="loading" />
-    </section>
+    <template v-else>
+      <PortfolioKpis :summary="summary" :loading="loading" />
+
+      <DeadlineAlertPanels
+        :certificate="analytics?.attention.certificate ?? []"
+        :poa="analytics?.attention.poa ?? []"
+        :loading="loading"
+      />
+
+      <section class="flex min-w-0 flex-col gap-3 pt-1">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-chart-no-axes-combined" class="size-4 shrink-0 text-muted" />
+          <h3 class="text-sm font-semibold text-highlighted">
+            Distribuição
+          </h3>
+        </div>
+        <PortfolioDistribution :analytics="analytics" :loading="loading" />
+      </section>
+    </template>
   </div>
 </template>

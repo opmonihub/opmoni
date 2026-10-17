@@ -1,0 +1,16 @@
+{
+  "source": "https://github.com/opmonihub/sistema",
+  "commit": "e7b77beccdad983ddd990c0a045be750fc3f7e25",
+  "synced_at": "2026-10-17T18:07:55Z",
+  "bundle": "full-php-core",
+  "counts": {
+    "models": 101,
+    "services": 9,
+    "utils": 16,
+    "helpers": 2,
+    "config": 21,
+    "migrations": 292,
+    "controllers": 77
+  },
+  "note": "Read-only reference. Port into backend/ and frontend/ with erp_* tables and Opmoni access contracts."
+}

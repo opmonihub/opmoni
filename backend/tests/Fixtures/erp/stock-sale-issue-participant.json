@@ -1,0 +1,23 @@
+{
+  "participant": "App\\Erp\\Stock\\ErpStockParticipant::issueForSale",
+  "consumer": "erp_sale_post",
+  "lock_order": ["erp_sale", "erp_stock_balances_sorted", "erp_finance_obligations"],
+  "requires_caller_transaction": true,
+  "acquires_source_document_lock": false,
+  "source_type": "erp_sale",
+  "movement_direction": "out",
+  "source_operation_key_pattern": "{sale_post_key}-line-{line_id}",
+  "example": {
+    "company_id": 1,
+    "establishment_id": 1,
+    "sale_id": 7,
+    "operation_key_prefix": "sale-post-7",
+    "lines": [
+      {
+        "line_id": 1,
+        "erp_product_variant_id": 501,
+        "quantity": "3.0000"
+      }
+    ]
+  }
+}

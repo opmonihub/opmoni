@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\Api\V1\Tenant;
 
+use App\Actions\AccessAccounts;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MemberDirectoryResource;
 use App\Models\Account;
 use App\Models\AccountMembership;
+use App\Models\OwnerActivation;
 use App\Models\User;
 use App\Services\PlanLimits;
 use App\Services\SupportAudit;
 use App\Tenant\CurrentTenant;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -27,7 +30,7 @@ class AccountMemberController extends Controller
         return response()->json($this->presentMembers($account));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, AccessAccounts $accessAccounts): JsonResponse
     {
         $account = $this->tenantAccount();
         Gate::authorize('manageMembers', $account);
@@ -41,21 +44,51 @@ class AccountMemberController extends Controller
             'role' => ['required', 'in:admin,operador,user'],
         ]);
 
-        return DB::transaction(function () use ($request, $account, $data): JsonResponse {
-            Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
-            PlanLimits::assertCanCreate($account, 'users');
-            $member = User::create([
-                'name' => $data['name'], 'email' => $data['email'], 'password' => $data['password'],
-            ]);
-            $account->members()->attach($member, [
-                'role' => $data['role'], 'inviter_id' => $request->user()->getKey(),
-            ]);
-            SupportAudit::logWrite($request, 'members', 'create', $member->getKey(), [
-                'email' => $member->email, 'role' => $data['role'],
-            ]);
+        try {
+            return DB::transaction(function () use ($request, $account, $data, $accessAccounts): JsonResponse {
+                $emailKey = 'email:'.$data['email'];
+                // ResolveAccount already holds the Account row; issue/activate lock email first.
+                // Never wait here while holding that row: a busy email must be retried.
+                if (DB::getDriverName() === 'pgsql') {
+                    $lock = DB::selectOne('SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0)) AS acquired', [$emailKey]);
+                    if (! in_array($lock->acquired, [true, 1, '1', 't'], true)) {
+                        throw ValidationException::withMessages(['email' => 'Este email está sendo utilizado. Tente novamente.']);
+                    }
+                }
+                $accessAccounts->advisory($emailKey);
+                Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
+                if (User::where('email', $data['email'])->exists()
+                    || OwnerActivation::where('email', $data['email'])
+                        ->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now())->exists()) {
+                    throw ValidationException::withMessages(['email' => 'Este email já está em uso.']);
+                }
+                PlanLimits::assertCanCreate($account, 'users');
+                $member = User::create([
+                    'name' => $data['name'], 'email' => $data['email'], 'password' => $data['password'],
+                ]);
+                $account->members()->attach($member, [
+                    'role' => $data['role'], 'inviter_id' => $request->user()->getKey(),
+                ]);
+                SupportAudit::logWrite($request, 'members', 'create', $member->getKey(), [
+                    'email' => $member->email, 'role' => $data['role'],
+                ]);
 
-            return response()->json($this->presentMember($member, $data['role']), 201);
-        });
+                return response()->json($this->presentMember($member, $data['role']), 201);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            // Inspect only the driver diagnostic, never the SQL/bindings containing credentials.
+            $diagnostic = (string) ($exception->errorInfo[2] ?? '');
+            $emailCollision = match (DB::getDriverName()) {
+                'pgsql' => preg_match('/unique constraint "users_(?:normalized_email_unique|email_unique)"/', $diagnostic) === 1,
+                'sqlite' => str_contains($diagnostic, 'UNIQUE constraint failed: users.email'),
+                default => false,
+            };
+            if (! $emailCollision) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages(['email' => 'Este email já está em uso.']);
+        }
     }
 
     public function directory(): JsonResponse
@@ -110,6 +143,7 @@ class AccountMemberController extends Controller
             $membership = AccountMembership::query()->where('account_id', $account->id)->where('user_id', $member->id)->lockForUpdate()->first();
             abort_unless($membership, 404);
             $this->assertLastAdmin($account, $membership, null);
+            DB::table('department_user')->where('account_id', $account->id)->where('user_id', $member->id)->delete();
             $membership->delete();
             SupportAudit::logWrite($request, 'members', 'delete', $member->getKey(), ['email' => $member->email]);
 

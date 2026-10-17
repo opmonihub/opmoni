@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { FormSubmitEvent } from '@nuxt/ui'
 
 const fileRef = ref<HTMLInputElement>()
 
@@ -22,14 +21,13 @@ const profile = reactive<Partial<ProfileSchema>>({
   bio: undefined
 })
 const toast = useToast()
-async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
+function onSubmit() {
   toast.add({
-    title: 'Success',
-    description: 'Your settings have been updated.',
-    icon: 'i-lucide-check',
-    color: 'success'
+    title: 'Demonstração',
+    description: 'Nenhuma alteração foi salva. Este formulário é apenas demonstrativo.',
+    icon: 'i-lucide-info',
+    color: 'neutral'
   })
-  console.log(event.data)
 }
 
 function onFileChange(e: Event) {
@@ -55,15 +53,15 @@ function onFileClick() {
     @submit="onSubmit"
   >
     <UPageCard
-      title="Profile"
-      description="These informations will be displayed publicly."
+      title="Perfil (demonstração)"
+      description="Dados fictícios para demonstração. As alterações não são salvas nem alteram seu perfil real."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
     >
       <UButton
         form="settings"
-        label="Save changes"
+        label="Simular alterações"
         color="neutral"
         type="submit"
         class="w-fit lg:ms-auto"

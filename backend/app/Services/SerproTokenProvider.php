@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
+use App\Support\ExternalHttpBudget;
 use App\Support\HttpPkcs12ClientOptions;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
@@ -16,15 +17,16 @@ final class SerproTokenProvider
 
     public function __construct(private SerproCertificateMaterializer $materializer) {}
 
-    public function pair(): SerproTokenPair
+    public function pair(?ExternalHttpBudget $budget = null): SerproTokenPair
     {
+        $budget?->assertAvailable();
         $cached = Cache::get(self::CACHE_KEY);
 
         if ($cached instanceof SerproTokenPair) {
             return $cached;
         }
 
-        return $this->authenticate();
+        return $this->authenticate($budget);
     }
 
     public function forget(): void
@@ -95,7 +97,7 @@ final class SerproTokenProvider
         return $failure === SerproFailure::DoNotRetry;
     }
 
-    private function authenticate(): SerproTokenPair
+    private function authenticate(?ExternalHttpBudget $budget = null): SerproTokenPair
     {
         $connection = SerproConnection::current();
 
@@ -114,7 +116,7 @@ final class SerproTokenProvider
 
         return $this->materializer->withCertificate(
             $connection,
-            fn (string $path): SerproTokenPair => $this->request($connection, $path),
+            fn (string $path): SerproTokenPair => $this->request($connection, $path, $budget),
         );
     }
 
@@ -141,7 +143,7 @@ final class SerproTokenProvider
         }
     }
 
-    private function request(SerproConnection $connection, string $certificatePath): SerproTokenPair
+    private function request(SerproConnection $connection, string $certificatePath, ?ExternalHttpBudget $budget = null): SerproTokenPair
     {
         // O segredo não ganha nome: ele é lido, entregue ao `curl` e morre com o
         // `PendingRequest` que o carrega, sem atravessar o tratamento da
@@ -150,6 +152,7 @@ final class SerproTokenProvider
         // `SerproCertificateIdentity`: uma cópia local sobrescrita não apaga o
         // segredo de lugar nenhum, e fingir que apaga é pior que não dizer nada.
         try {
+            $budget?->beforeSend();
             $response = Http::asForm()
                 ->withBasicAuth($connection->consumer_key, $this->secretOf($connection))
                 ->withHeaders(['Role-Type' => 'TERCEIROS'])
@@ -158,6 +161,7 @@ final class SerproTokenProvider
                     $connection->certificatePassword(),
                 ))
                 ->timeout((int) config('integra-contador.timeout', 25))
+                ->withOptions($budget?->options((float) config('integra-contador.timeout', 25)) ?? [])
                 ->post((string) config('integra-contador.auth_url'), ['grant_type' => 'client_credentials']);
         } catch (ConnectionException) {
             throw new SerproException(
