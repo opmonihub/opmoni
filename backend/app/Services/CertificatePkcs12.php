@@ -145,6 +145,10 @@ final class CertificatePkcs12
                 ]);
             }
 
+            if (! openssl_x509_check_private_key($parsed['cert'], $parsed['pkey'])) {
+                throw ValidationException::withMessages(['certificate' => 'A chave privada não corresponde ao certificado.']);
+            }
+
             return [
                 'cert' => $parsed['cert'],
                 'pkey' => $parsed['pkey'],

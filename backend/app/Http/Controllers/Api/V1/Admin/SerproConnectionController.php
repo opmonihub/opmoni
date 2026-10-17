@@ -50,6 +50,8 @@ class SerproConnectionController extends Controller
             $fields['certificate'] ?? null,
             $fields['password'] ?? null,
             (bool) ($fields['use_account_certificate'] ?? false),
+            $fields['certificate_source'] ?? null,
+            isset($fields['contracting_account_id']) ? (int) $fields['contracting_account_id'] : null,
         )))->response()->setStatusCode(Response::HTTP_OK);
     }
 }

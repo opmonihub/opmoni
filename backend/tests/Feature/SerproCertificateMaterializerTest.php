@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
 use App\Services\SerproCertificateMaterializer;
+use App\Services\SerproCredentialLifecycle;
 use App\Services\SerproException;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use RuntimeException;
@@ -16,6 +18,24 @@ use Tests\BusinessTestCase;
 class SerproCertificateMaterializerTest extends BusinessTestCase
 {
     use RefreshDatabase;
+
+    public function test_snapshot_materializes_captured_generation_after_rotation_with_private_permissions_and_cleanup(): void
+    {
+        $connection = SerproConnection::factory()->create([
+            'certificate_encrypted' => Crypt::encryptString('original-pfx'),
+            'certificate_password_encrypted' => Crypt::encryptString('original-password'),
+        ]);
+        $snapshot = app(SerproCredentialLifecycle::class)->snapshot();
+        $connection->forceFill(['certificate_encrypted' => Crypt::encryptString('new-pfx'), 'certificate_password_encrypted' => Crypt::encryptString('new-password'), 'revision' => 2])->save();
+        $seen = null;
+        (new SerproCertificateMaterializer)->withCertificate($snapshot, function (string $path) use (&$seen, $snapshot): void {
+            $seen = $path;
+            $this->assertSame('original-pfx', file_get_contents($path));
+            $this->assertSame('original-password', $snapshot->certificatePassword());
+            $this->assertSame(0600, fileperms($path) & 0777);
+        });
+        $this->assertFileDoesNotExist($seen);
+    }
 
     public function test_it_passes_a_readable_file_and_removes_it_afterwards(): void
     {

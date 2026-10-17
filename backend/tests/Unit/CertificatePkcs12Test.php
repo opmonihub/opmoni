@@ -86,6 +86,19 @@ class CertificatePkcs12Test extends TestCase
         parent::tearDownAfterClass();
     }
 
+    public function test_private_key_matches_certificate_and_historical_expiry_remains_metadata(): void
+    {
+        $bytes = $this->pfx(['CN' => 'Historical certificate'], 30);
+        $this->travel(40)->days();
+        try {
+            $parsed = (new CertificatePkcs12)->inspect($bytes, self::PASSWORD);
+            $this->assertTrue(openssl_x509_check_private_key($parsed['cert'], $parsed['pkey']));
+            $this->assertTrue($parsed['valid_until']->isPast());
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     public function test_pfx_com_a_senha_certa_devolve_o_contrato_declarado(): void
     {
         $bytes = $this->pfx(['CN' => 'Escritorio Contabil Andre Siqueira'], 30);

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class UpsertSerproConnectionRequest extends FormRequest
 {
@@ -23,6 +24,15 @@ class UpsertSerproConnectionRequest extends FormRequest
                 $this->merge([$field => trim($this->input($field))]);
             }
         }
+    }
+
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($this->has('certificate_source') && $this->has('use_account_certificate')) {
+                $validator->errors()->add('certificate_source', 'Use apenas um seletor de fonte.');
+            }
+        }];
     }
 
     /**
@@ -66,7 +76,9 @@ class UpsertSerproConnectionRequest extends FormRequest
             // `SerproConnectionApiTest::test_o_upload_da_credencial_aceita_um_p12_de_verdade_como_arquivo_real`
             // sobe um `UploadedFile` real sobre um arquivo real.
             'certificate' => ['sometimes', 'file', 'extensions:pfx,p12', 'max:2048'],
-            'password' => ['sometimes', 'nullable', 'string', 'max:255', 'required_with:certificate'],
+            'password' => ['present_with:certificate', 'string', 'max:255'],
+            'certificate_source' => ['sometimes', 'string', 'in:upload,account'],
+            'contracting_account_id' => ['required_if:certificate_source,account', 'integer', 'min:1', 'prohibited_unless:certificate_source,account'],
             /*
              * "Usar o e-CNPJ do escritório" é o que a tela de `/admin/serpro`
              * oferece quando a conta 1 já tem o certificado gravado: em vez de

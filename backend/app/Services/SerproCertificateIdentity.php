@@ -77,6 +77,10 @@ final class SerproCertificateIdentity
             ]);
         }
 
+        if (Carbon::createFromTimestamp((int) $metadata['validFrom_time_t'])->isFuture()) {
+            throw ValidationException::withMessages(['certificate' => 'O certificado do contratante ainda não está vigente.']);
+        }
+
         if (Carbon::createFromTimestamp((int) $metadata['validTo_time_t'])->isPast()) {
             throw ValidationException::withMessages([
                 'certificate' => 'O certificado do contratante está vencido.',
@@ -108,39 +112,14 @@ final class SerproCertificateIdentity
      */
     public function parse(string $bytes, string $password): array
     {
-        $this->flushOpenSslErrors();
-
-        $parsed = [];
-
-        if (! openssl_pkcs12_read($bytes, $parsed, $password) || ! isset($parsed['cert'])) {
-            throw ValidationException::withMessages([
-                'password' => 'Não foi possível abrir o certificado do contratante com a senha informada.',
-            ]);
-        }
-
-        $metadata = openssl_x509_parse($parsed['cert']);
-
-        if (! is_array($metadata) || ! isset($metadata['validFrom_time_t'], $metadata['validTo_time_t'])) {
-            throw ValidationException::withMessages([
-                'certificate' => 'O certificado do contratante não contém metadados válidos.',
-            ]);
-        }
-
-        $validFrom = Carbon::createFromTimestamp((int) $metadata['validFrom_time_t']);
-        $validUntil = Carbon::createFromTimestamp((int) $metadata['validTo_time_t']);
-
-        if ($validUntil->isPast()) {
-            throw ValidationException::withMessages([
-                'certificate' => 'O certificado do contratante está vencido.',
-            ]);
-        }
+        $parsed = app(CertificatePkcs12::class)->inspect($bytes, $password);
 
         return [
-            'document' => $this->contractingDocument($metadata),
-            'subject' => is_string($metadata['name'] ?? null) ? $metadata['name'] : 'desconhecido',
-            'serial' => $this->serial($metadata),
-            'valid_from' => $validFrom,
-            'valid_until' => $validUntil,
+            'document' => $this->documentFromCertificate($parsed['cert']),
+            'subject' => $parsed['subject'],
+            'serial' => $parsed['serial'],
+            'valid_from' => $parsed['valid_from'],
+            'valid_until' => $parsed['valid_until'],
         ];
     }
 
@@ -223,23 +202,6 @@ final class SerproCertificateIdentity
         }
 
         return $candidates;
-    }
-
-    /**
-     * O número de série do próprio certificado — o `serialNumber` do *subject* é
-     * o CNPJ, e esse já foi lido como identidade.
-     *
-     * @param  array<string, mixed>  $metadata
-     */
-    private function serial(array $metadata): string
-    {
-        foreach (['serialNumber', 'serialNumberHex'] as $key) {
-            if (is_string($metadata[$key] ?? null) && $metadata[$key] !== '') {
-                return $metadata[$key];
-            }
-        }
-
-        return 'desconhecido';
     }
 
     private function flushOpenSslErrors(): void

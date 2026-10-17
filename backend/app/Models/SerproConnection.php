@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Validation\ValidationException;
 
 /*
- * As três colunas cifradas — `consumer_secret_encrypted`,
+ * A chave `consumer_key` usa o cast encrypted após migração preservadora.
+ * As outras três colunas cifradas — `consumer_secret_encrypted`,
  * `certificate_encrypted` e `certificate_password_encrypted` — e o documento
  * contratante **não** são `Fillable`, e a ausência é a garantia, não uma
  * omissão: `Fillable` é a camada por onde um
@@ -56,6 +57,7 @@ use Illuminate\Validation\ValidationException;
 // Nenhuma coluna cifrada pode sair por `toArray()`/`toJson()`: a resource lista
 // o que devolve, e isto é o que garante que uma lista nova não vaze o segredo.
 #[Hidden([
+    'consumer_key',
     'consumer_secret_encrypted',
     'certificate_encrypted',
     'certificate_password_encrypted',
@@ -77,6 +79,8 @@ class SerproConnection extends Model
     protected function casts(): array
     {
         return [
+            'consumer_key' => 'encrypted',
+            'revision' => 'integer',
             'certificate_valid_from' => 'datetime',
             'certificate_valid_until' => 'datetime',
             'term_format_proven_at' => 'datetime',
@@ -147,26 +151,16 @@ class SerproConnection extends Model
     }
 
     /**
-     * O certificado de escritório que esta credencial reusa, resolvido pela
-     * leitura da linha corrente da conta apontada.
-     *
-     * A resolução é por leitura e não por cópia porque é isso que "sem segunda
-     * cópia" quer dizer: se a conta trocar o e-CNPJ, esta credencial passa a
-     * assinar com o novo sem que nada aqui seja reescrito. `null` quando a
-     * credencial guarda o próprio arquivo — que é a forma alternativa — ou
-     * quando a conta apontada não tem certificado corrente, e é nesse segundo
-     * caso que a credencial fica sem material de assinatura.
-     *
-     * Os predicados de "corrente" são os de `AccountCertificate::currentFor()`:
-     * `replaced_at` e `removed_at` nulos, a linha de maior `id`. O escopo
-     * global de `BelongsToAccount` fica de fora. O job da fila deixa
-     * `CurrentTenant` na conta operadora; com ele ativo, `currentFor()` soma
-     * `account_id = tenant` a `account_id = contratante` e devolve `null`
-     * mesmo com e-CNPJ vigente na conta apontada. Aqui a conta contratante é
-     * a referência explícita da credencial, não o tenant da execução.
+     * Explicit platform vault FK takes precedence. A legacy Account-only link
+     * continues resolving that Account's current tenant certificate without
+     * copying its bytes or changing tenant authorization.
      */
-    public function contractingCertificate(): ?AccountCertificate
+    public function contractingCertificate(): AccountCertificate|AccountContractingCertificate|null
     {
+        if ($this->account_contracting_certificate_id !== null) {
+            return AccountContractingCertificate::find($this->account_contracting_certificate_id);
+        }
+
         if ($this->contracting_account_id === null) {
             return null;
         }

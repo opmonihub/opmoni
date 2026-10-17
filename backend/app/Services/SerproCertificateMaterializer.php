@@ -15,7 +15,7 @@ final class SerproCertificateMaterializer
      * PKCS#12 é gravado num arquivo efêmero e apagado em `finally`.
      *
      * Esta classe não vê a senha, e é de propósito: quem chama o `callback` monta
-     * as próprias opções de `curl` e lê a senha do modelo quando precisa dela.
+     * as próprias opções de `curl` e lê a senha do modelo ou snapshot quando precisa dela.
      * Ela lia aqui para sobrescrever a cópia no fim do método, e a sobrescrita era
      * teatro — uma variável local zerada não apaga o segredo de lugar nenhum, nem
      * do PFX cifrado, nem do disco efêmero, nem do processo. Fingir que apaga é
@@ -31,7 +31,7 @@ final class SerproCertificateMaterializer
      * @param  Closure(string): TReturn  $callback
      * @return TReturn
      */
-    public function withCertificate(SerproConnection $connection, Closure $callback): mixed
+    public function withCertificate(SerproConnection|SerproCredentialSnapshot $connection, Closure $callback): mixed
     {
         $bytes = $connection->certificateBytes();
 

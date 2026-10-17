@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AccessController;
 use App\Http\Controllers\Api\V1\Admin\AccountCommercialController;
+use App\Http\Controllers\Api\V1\Admin\AccountContractingCertificateController;
 use App\Http\Controllers\Api\V1\Erp\ErpRegistrationController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Middleware\AccessSecurity;
@@ -33,6 +34,8 @@ Route::prefix('v1')->group(function (): void {
             require __DIR__.'/external-mailbox.php';
             require __DIR__.'/external-whatsapp.php';
             Route::prefix('admin/accounts')->middleware(RequireSuperAdmin::class)->group(function (): void {
+                Route::get('/{account}/contracting-certificate', [AccountContractingCertificateController::class, 'show'])->whereNumber('account')->name('access.admin-contracting-certificate');
+                Route::put('/{account}/contracting-certificate', [AccountContractingCertificateController::class, 'update'])->whereNumber('account')->name('access.admin-contracting-certificate-update');
                 Route::get('/{account}/commercial', [AccountCommercialController::class, 'show'])->whereNumber('account')->name('access.admin-commercial');
                 Route::patch('/{account}/commercial', [AccountCommercialController::class, 'update'])->whereNumber('account')->name('access.admin-commercial-update');
                 Route::get('/', [AccessController::class, 'adminList'])->name('access.admin-list');

@@ -28,7 +28,7 @@ class SerproConnectionTest extends BusinessTestCase
         // A garantia quem dá é o `$hidden` do modelo, não um método auxiliar de
         // metadados: serializar a linha inteira não pode devolver nenhuma das
         // colunas cifradas, e a resource lista o que devolve por cima disso.
-        foreach (['consumer_secret_encrypted', 'certificate_encrypted', 'certificate_password_encrypted'] as $column) {
+        foreach (['consumer_key', 'consumer_secret_encrypted', 'certificate_encrypted', 'certificate_password_encrypted'] as $column) {
             $this->assertArrayNotHasKey($column, $connection->toArray());
         }
     }
@@ -41,7 +41,7 @@ class SerproConnectionTest extends BusinessTestCase
         SerproConnection::factory()->create();
         $this->assertTrue(SerproConnection::current()?->isConfigured());
 
-        SerproConnection::query()->update(['consumer_key' => '']);
+        SerproConnection::current()->update(['consumer_key' => '']);
         $this->assertFalse(SerproConnection::current()?->isConfigured());
     }
 

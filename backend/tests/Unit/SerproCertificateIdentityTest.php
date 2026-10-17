@@ -36,6 +36,26 @@ class SerproCertificateIdentityTest extends TestCase
     /** O CNPJ numérico clássico, usado no certificado de descarte. */
     private const CNPJ = '12345678000195';
 
+    public function test_future_certificate_is_rejected_in_both_identity_entrypoints(): void
+    {
+        $bytes = $this->pfx(self::CNPJ);
+        $certificate = $this->certificateFrom($bytes);
+        $this->travel(-2)->days();
+        try {
+            foreach ([fn () => $this->identity()->parse($bytes, self::PASSWORD), fn () => $this->identity()->documentFromCertificate($certificate)] as $read) {
+                try {
+                    $read();
+                    $this->fail('Future signing identity must be rejected.');
+                } catch (ValidationException $exception) {
+                    $this->assertArrayHasKey('certificate', $exception->errors());
+                    $this->assertStringContainsString('ainda não está vigente', $exception->getMessage());
+                }
+            }
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     public function test_o_documento_de_um_certificado_ja_aberto_e_o_mesmo_que_o_dos_bytes(): void
     {
         $bytes = $this->pfx(self::CNPJ);

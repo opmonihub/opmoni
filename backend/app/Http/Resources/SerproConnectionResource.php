@@ -35,17 +35,15 @@ class SerproConnectionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        // Os metadados do certificado contratante vêm de duas fontes possíveis:
-        // as colunas da própria credencial, quando ela guarda o PFX, e a linha
-        // corrente de `account_certificates` da conta apontada, quando ela
-        // reusa o e-CNPJ do escritório. A tela lê uma coisa só — quem assina e
-        // até quando — e a fonte é um detalhe que ela não precisa.
         $reused = $this->contractingCertificate();
 
         return [
             'configured' => $this->isConfigured(),
+            'certificate_source' => $this->contracting_account_id !== null ? 'account' : 'upload',
+            'contracting_account_id' => $this->contracting_account_id,
+            'legacy_account_certificate' => $this->contracting_account_id !== null && $this->account_contracting_certificate_id === null,
             'consumer_key_hint' => $this->keyHint(),
-            'contracting_document' => $this->contratante_numero,
+            'contracting_document' => $reused?->document ?? $this->contratante_numero,
             'certificate_subject' => $reused?->subject ?? $this->certificate_subject,
             'certificate_serial' => $reused?->serial_number ?? $this->certificate_serial_number,
             'certificate_not_before' => ($reused?->valid_from ?? $this->certificate_valid_from)?->toISOString(),

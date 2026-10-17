@@ -209,14 +209,14 @@ class SerproConnectionApiTest extends BusinessTestCase
         $chegouAntes = false;
 
         DB::listen(function (QueryExecuted $query) use (&$chegouAntes): void {
-            if ($chegouAntes || ! str_contains($query->sql, 'from "serpro_connections"')) {
+            if ($chegouAntes || ! str_contains($query->sql, 'select * from "serpro_connections"')) {
                 return;
             }
 
             $chegouAntes = true;
 
             DB::table('serpro_connections')->insert([
-                'consumer_key' => 'chave-que-chegou-primeiro',
+                'consumer_key' => Crypt::encryptString('chave-que-chegou-primeiro'),
                 'consumer_secret_encrypted' => Crypt::encryptString('segredo-que-chegou-primeiro'),
                 'contratante_numero' => self::CNPJ,
             ]);
@@ -445,10 +445,13 @@ class SerproConnectionApiTest extends BusinessTestCase
             'certificate_not_after',
             'certificate_not_before',
             'certificate_serial',
+            'certificate_source',
             'certificate_subject',
             'configured',
             'consumer_key_hint',
+            'contracting_account_id',
             'contracting_document',
+            'legacy_account_certificate',
             'updated_at',
         ], $this->sortedKeys($response->json('data')));
 
@@ -524,10 +527,13 @@ class SerproConnectionApiTest extends BusinessTestCase
             'certificate_not_after',
             'certificate_not_before',
             'certificate_serial',
+            'certificate_source',
             'certificate_subject',
             'configured',
             'consumer_key_hint',
+            'contracting_account_id',
             'contracting_document',
+            'legacy_account_certificate',
             'updated_at',
         ], $this->sortedKeys($response->json('data')));
     }
