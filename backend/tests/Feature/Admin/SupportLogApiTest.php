@@ -199,6 +199,48 @@ class SupportLogApiTest extends BusinessTestCase
         }
     }
 
+    public function test_audit_omits_unknown_token_like_and_oversized_resource_values_without_changing_history(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $this->actingAs($admin);
+        foreach (['Bearer historical-secret-value', 'unknown_resource', str_repeat('clients', 100)] as $resource) {
+            $metadata = ['resource' => $resource, 'resource_id' => 42];
+            $log = $this->createLog($admin, $account, 'update', $metadata);
+            $this->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', ['resource_id' => 42]);
+            $this->assertSame($metadata, $log->fresh()->metadata);
+        }
+    }
+
+    public function test_audit_preserves_all_resource_identifiers_emitted_by_current_writers(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $this->actingAs($admin);
+        foreach (['processes', 'members', 'departments', 'client_selections', 'clients', 'client_dispatch_contacts', 'fiscal', 'serpro_sync_runs', 'account_certificates', 'tags', 'client_saved_filters', 'serpro_manual_searches', 'serpro_obligation_schedules', 'serpro_monitorings', 'whatsapp_channels', 'serpro_enablement', 'serpro_messages', 'tasks', 'process_templates', 'whatsapp_dispatches'] as $resource) {
+            $metadata = ['resource' => $resource, 'resource_id' => 42];
+            $this->createLog($admin, $account, 'update', $metadata);
+            $this->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', $metadata);
+        }
+    }
+
+    public function test_audit_requires_positive_integer_record_ids_while_preserving_zero_counts_and_nullable_certificate(): void
+    {
+        $admin = $this->superAdmin();
+        $account = Account::factory()->create();
+        $this->actingAs($admin);
+        foreach ([0, null, -1, '42', true, 1.5, 42] as $resourceId) {
+            $metadata = ['resource' => 'clients', 'resource_id' => $resourceId, 'count' => 0, 'clients' => 0, 'tags' => 0, 'certificate_id' => null];
+            $log = $this->createLog($admin, $account, 'update', $metadata);
+            $expected = ['resource' => 'clients', 'count' => 0, 'clients' => 0, 'tags' => 0, 'certificate_id' => null];
+            if ($resourceId === 42) {
+                $expected = $metadata;
+            }
+            $this->getJson('/api/v1/admin/support/logs')->assertOk()->assertJsonPath('data.0.metadata', $expected);
+            $this->assertSame($metadata, $log->fresh()->metadata);
+        }
+    }
+
     private function superAdmin(): User
     {
         $superAdmin = User::factory()->create(['is_super_admin' => true]);
