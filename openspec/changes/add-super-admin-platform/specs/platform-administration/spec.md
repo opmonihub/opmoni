@@ -1,61 +1,72 @@
-> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+> Reconciled completion target (2026-10-17), preserving D009 and existing canonical access contracts. Pending guarantees are not implemented by this artifact revision; canonical synchronization follows reviewed delivery.
 
-## Purpose
+## MODIFIED Requirements
 
-Provide the platform administrator with a complete, protected administrative workspace and real global summary and identity data, independent of operational Account membership.
+### Requirement: Seven-page Super Admin workspace
+Only Super Admin SHALL access Resumo `/admin`, Contas `/admin/contas`, Planos `/admin/planos`, Assinaturas `/admin/assinaturas`, Usuários `/admin/usuarios`, Suporte `/admin/suporte`, and Serpro `/admin/serpro`. They SHALL share one administrative shell with one panel/navbar, matching title/tabs, and no Account-only wrapper. Ordinary users SHALL receive an access-denied destination. Platform navigation SHALL remain available without an active own Account, including a suspended own office and direct navigation/focus refresh, without redirect loops. Privilege loss SHALL be revalidated. Navigation SHALL preserve the current nine destinations and order: Resumo, Contas, Planos, Assinaturas, Planos ERP, Assinaturas ERP, Usuários, Suporte, Serpro. Summary matches exactly, child pages keep the Admin parent active, and collapsed/search/mobile navigation SHALL reach the same destinations with mobile selection closing the menu. No tenant destination or role SHALL be broadened.
+
+#### Scenario: No active office
+- **WHEN** a Super Admin without an active membership visits an Admin page
+- **THEN** platform navigation remains authorized while tenant business operations remain blocked
+
+#### Scenario: Shared Account shell
+- **WHEN** a Super Admin directly opens Contas and navigates through the seven original pages
+- **THEN** each renders one matching panel/title/tabs and both existing ERP destinations remain available in their current positions
+
+#### Scenario: Collapsed and mobile navigation
+- **WHEN** the administrator selects a destination through collapsed sidebar, search or mobile navigation
+- **THEN** the correct page becomes active and mobile selection closes the navigation
+
+#### Scenario: Focus after privilege change
+- **WHEN** current authorization changes before focus refresh
+- **THEN** guards enforce the refreshed privilege without a loop or implicit tenant access
+
+### Requirement: Platform APIs preserve existing response contracts
+Platform reads/writes SHALL require authentication and explicit server-side authorization; browser mutations SHALL retain origin/CSRF checks and protected responses SHALL be non-cacheable. Account lists SHALL retain `{data,meta:{page,per_page,total}}` and add `last_page`; resource-paginated users, subscriptions and support logs SHALL retain `meta.current_page`; Plan lists SHALL remain raw arrays and Plan detail/mutation SHALL retain raw resources. Identity SHALL remain top-level, Account create SHALL retain `{data,first_access}` and reissue SHALL retain `{first_access}`. The frontend SHALL use shared types/adapters for these distinct shapes. New detail/summary/platform-vault endpoints SHALL require Super Admin independently of tenant selection; existing GET `/api/v1/serpro/connection` SHALL retain its selected-active-member read exception. Unauthenticated calls SHALL return 401, forbidden calls 403, unknown authorized IDs 404, and invalid input 422 with field errors. Lists SHALL validate positive bounded pages, trim/bound search to 255 characters, treat wildcard characters literally, retain deterministic ordering and eagerly load required safe relations.
+
+#### Scenario: Ordinary member requests global users
+- **WHEN** an authenticated non-Super Admin calls `/api/v1/admin/users`
+- **THEN** the API returns 403 without global identity data
+
+#### Scenario: Invalid list filters
+- **WHEN** a user/subscription query provides an invalid documented filter
+- **THEN** the request returns 422 rather than silently ignoring it
+
+#### Scenario: Existing envelope compatibility
+- **WHEN** callers list Plans, Accounts, users, subscriptions or logs and issue/reissue owner access
+- **THEN** each existing raw/resource/pagination/issuance shape remains intact and only Account last_page is added
+
+#### Scenario: Selected member metadata exception
+- **WHEN** a non-Super Admin member of the currently selected active Account reads connection metadata
+- **THEN** the existing safe read remains permitted without granting new platform endpoints or credential writes
+
+### Requirement: Summary uses persisted global data
+GET `/api/v1/admin/summary` SHALL return `{data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}` using persisted global counts and at most five safe stored audit rows ordered timestamp DESC then ID DESC. The Admin summary SHALL consume this implemented dedicated endpoint rather than compose list requests. Four linked metric cards and date/actor/action/Account columns with column visibility SHALL reflect the response. Initial failure SHALL offer retry rather than successful zero counts; refresh failure SHALL retain the last successful result. Empty history SHALL remain distinguishable from failed loading. Audit rows SHALL use the same safe projection as the log reader; this summary ordering SHALL not change the canonical audit-list ID DESC order.
+
+#### Scenario: Summary refresh fails
+- **WHEN** a summary request fails after a successful load
+- **THEN** the previous summary remains visible with failure feedback
+
+#### Scenario: Populated and empty summary
+- **WHEN** a Super Admin requests the summary without tenant selection
+- **THEN** persisted counts and up to five safely projected timestamp/ID-descending events are returned, and actual zero counts or empty events remain valid successful data
+
+### Requirement: Global user catalog is read only
+GET `/api/v1/admin/users` SHALL provide paginated name/email search and `type=super|user` filtering with real Account-role links. It SHALL not expose password hashes, session identifiers or activation secrets, and the Admin page SHALL not provide user creation, credential reset, promotion or deletion actions. The page SHALL show ID, name/email, global type, real Account-role badges, column controls, count and pagination.
+
+#### Scenario: Multiple real memberships
+- **WHEN** a listed user belongs to multiple Accounts
+- **THEN** the resource shows the real links and roles independently of the global Super Admin flag
 
 ## ADDED Requirements
 
-### Requirement: Seven-page Super Admin navigation
-The system SHALL expose Resumo (`/admin`), Contas (`/admin/contas`), Planos (`/admin/planos`), Assinaturas (`/admin/assinaturas`), Usuários (`/admin/usuarios`), Suporte (`/admin/suporte`), and Serpro (`/admin/serpro`) under a Super Admin submenu in this order. A shared panel SHALL provide the current page title, navigation tabs, and one nested page body. The submenu and administrative search destinations SHALL be visible only to Super Admin. The summary SHALL match its route exactly; child pages SHALL keep the parent active. Selecting a child SHALL close mobile navigation. Expanded, collapsed/popover, desktop, and mobile navigation SHALL reach the same routes.
-
-#### Scenario: Navigate from Account administration
-- **WHEN** a Super Admin opens `/admin/contas` and selects Planos from the submenu
-- **THEN** `/admin/planos` renders inside the shared administrative panel with Planos active and no duplicated panel or navbar
-
-#### Scenario: Collapsed sidebar and mobile selection
-- **WHEN** the sidebar is collapsed or the mobile menu is open
-- **THEN** all seven destinations remain reachable and selecting a mobile destination closes the menu
-
-### Requirement: Platform authorization independent of tenant selection
-All administrative APIs and support/credential APIs SHALL require an authenticated session and current Super Admin authorization on the server. Unauthenticated calls SHALL return 401, authenticated non-Super Admin calls SHALL return 403 without platform data, and invalid write origins/CSRF SHALL be rejected by the existing access contract. Super Admin SHALL be able to use every Admin page without an active membership, including after their own office is suspended. Direct navigation and focus refresh SHALL preserve that access. An ordinary user visiting an Admin route SHALL receive an access-denied view with a return action; unauthenticated visitors SHALL follow the existing login/onboarding rules. Responses SHALL be non-cacheable.
-
-#### Scenario: Super Admin without an office
-- **WHEN** a Super Admin with no active memberships visits `/admin/usuarios` and refreshes window focus
-- **THEN** the administrative page remains accessible and is not redirected to unavailable operational access
-
-#### Scenario: Direct unauthorized API request
-- **WHEN** an ordinary Account admin requests a platform list or submits an administrative mutation
-- **THEN** the server returns 403 without data or mutation regardless of frontend visibility
-
-### Requirement: Stable platform API contracts
-New endpoints SHALL use `/api/v1` through the existing application ingress and session transport. New paginated lists SHALL return `{data,meta:{page,per_page,total,last_page}}` with 15 records per page, positive page validation, and descending ID order. Existing Account lists SHALL retain `meta.page`, `meta.per_page`, and `meta.total` and add `last_page`. New detail and mutation resources SHALL use `{data:resource}` unless preserving an existing response contract. Validation SHALL return field errors with 422; unknown authorized resource IDs SHALL return 404. Identity SHALL preserve its existing top-level envelope. Lists SHALL trim search text, bound it to 255 characters, validate documented filters, and treat wildcard characters as literal user input.
-
-#### Scenario: List validation and pagination
-- **WHEN** an administrator submits a negative page, unsupported status, or overlength search
-- **THEN** the API returns 422 instead of silently ignoring invalid filters
-
-### Requirement: Real global summary
-`GET /api/v1/admin/summary` SHALL return `{data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}`, containing unfiltered platform counts and the five most recent support events ordered by timestamp and ID descending. `/admin` SHALL render four linked metric cards and an audit table with date, Super Admin, action, and Account columns. The table SHALL allow column visibility changes and distinguish no audit events from failed loading.
-
-#### Scenario: Populated summary
-- **WHEN** a Super Admin loads the summary
-- **THEN** counts reflect persisted platform data, each metric links to its respective list, and no more than five recent audit events are displayed
-
-### Requirement: Read-only global user catalog
-`GET /api/v1/admin/users` SHALL support `page`, `q` matching name/email, and `type=super|user` with omission meaning all. It SHALL return each user's ID, name, email, `is_super_admin`, and `account_links` with role and Account ID/name/status. It SHALL never expose password hashes, remember tokens, activation material, or session identifiers. `/admin/usuarios` SHALL show ID, name/email, type, and Account-role badges, with search, type filtering, column visibility, count, and pagination. No creation, update, deletion, or promotion operation SHALL be introduced by this page.
-
-#### Scenario: Users with multiple memberships
-- **WHEN** a matching user belongs to multiple Accounts
-- **THEN** the list shows each real Account-role link and distinguishes the global Super Admin flag from membership roles
-
 ### Requirement: Reliable administrative screen states
-Every page SHALL distinguish initial loading, initial failure with retry, successful empty results, and successful data. A refresh failure SHALL preserve the last successful result and report the failure. Failed summary loading SHALL not render zero counts as successful data. Search/filter changes SHALL reset pagination, stale responses SHALL not replace newer results, and a list refresh SHALL recover an out-of-range page. Mutations SHALL show busy/field-error states and prevent duplicate submissions. UI labels and feedback SHALL be in Brazilian Portuguese and preserve the mapped Nuxt UI presentation.
+All seven original Admin pages SHALL distinguish initial loading, retryable initial failure, successful empty and successful populated results. Refresh failures SHALL preserve prior success with explicit feedback. Search/filter changes SHALL reset pagination; stale responses SHALL not replace newer results, and refresh SHALL recover an out-of-range page. Mutations SHALL preserve field inputs on validation errors, show busy state and prevent duplicate submission. Components SHALL remain responsive and SSR-safe, and UI copy SHALL be Brazilian Portuguese.
 
-#### Scenario: Older search returns last
-- **WHEN** a slower response for an older search arrives after the latest search result
-- **THEN** the latest search result remains displayed
+#### Scenario: Older search completes last
+- **WHEN** an older list query returns after the latest query
+- **THEN** the latest result remains displayed
 
-#### Scenario: Refresh fails after successful loading
-- **WHEN** refreshing a populated administrative list fails
-- **THEN** the previous data remains visible with explicit failure feedback and a retry action
+#### Scenario: Last page disappears
+- **WHEN** refreshing a list finds the selected page beyond the available range
+- **THEN** the page recovers to an available page without showing the stale page as current success

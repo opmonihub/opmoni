@@ -1,148 +1,123 @@
-> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+> Reconciled 2026-10-17. D009 and canonical access/session contracts remain authoritative. Retained stronger requirements are pending until evidence-backed completion; no canonical spec is synchronized by this revision.
 
 ## Context
 
-See `proposal.md` for motivation and `docs/architecture/super-admin-frontend-map.md` for source evidence. The current application is Nuxt 4/Vue 3/Nuxt UI 4 frontend plus Laravel 13/PHP 8.4 application APIs, PostgreSQL persistence, and Redis-backed sessions. There is no Inertia runtime. The completed access foundation supplies trusted ingress, CSRF/origin checks, session serialization and ownership assertions, owner activation, and a request-local Account context with fail-closed model scoping.
+The baseline is Nuxt 4/Vue 3/Nuxt UI 4 plus Laravel 13/PHP 8.4, PostgreSQL and Redis. All seven original Admin pages exist, alongside two ERP entries; integrated operational business APIs already exist. Accounts use real membership and request-local context, with session selection plus `X-Account-Id`, trusted ingress, CSRF/origin checks, serialized session ownership and an absolute deadline. Super Admin is a platform role, not a membership bypass.
 
-Only `/admin/contas` and Account list/create/PATCH/reissue APIs exist. Platform guards and focus refresh currently special-case that exact page. Current Account resources have no contact/plan data; identity only resolves current Accounts through real memberships. The legacy stores Account selection on User and has support/detail-envelope inconsistencies; these implementation details must not be copied.
-
-The access foundation has been archived, and `openspec/specs/` contains the canonical auth, accounts, isolation, and access-pages contracts. The five platform specs explicitly layer over that baseline. All planning files and implementation identifiers are English; UI copy is pt-BR. Existing dirty work must be preserved. The previous commercial/Serpro deferral is superseded for this proposed Admin change, not for the operational modules.
+Existing catalog/subscription provisioning tasks 2.2–2.4 were independently reviewed in `92bfd8f`. Baseline `5dffa2b` has parent-reported full backend evidence of 2,099 passed plus three optional external-provider skips (2,102 total, 11,980 assertions), and frontend 685 passed. Those results are baseline evidence, not execution of the remaining guarantees. Independent PostgreSQL/Redis races, full browser acceptance and final-head suites remain mandatory.
 
 ## Goals / Non-Goals
 
-**Goals:** Deliver the mapped Admin presentation with real, typed server contracts; preserve existing identities, session expiry, and activation; provide coherent additive schema/provisioning; make support a separately authorized session context; implement only the external authentication functionality required by Serpro administration.
+**Goals:** Complete the retained original Account/summary/catalog/certificate/diagnostic/frontend guarantees while preserving current API shapes, contact storage, owner identities, activation, membership, subscription gates, operational cache and unrelated business routes.
 
-**Non-Goals:** Legacy data migration, manual password assignment, user CRUD/promotion, payment processing, plan quota enforcement, Monitoring/Fiscal/Work/WhatsApp operations, or a new general Account-settings module. The contracting-certificate vault and inline Serpro source controls are included only because the mapped Serpro form depends on them.
+**Non-Goals:** Foreign SupportContext persistence/entry/exit/banner, nullable-membership admin elevation, historical foreign-write generation, user CRUD/promotion, payment processing, replacement of existing operational modules, fiscal-service extraction, deployment or real provider credential enrollment. The separate platform certificate vault authorizes platform credentials only, not foreign tenant data.
 
 ## Decisions
 
-### 1. Shared Admin shell and one typed API boundary
+### Shared frontend boundary and navigation
 
-Create `frontend/app/pages/admin.vue` with a single `UDashboardPanel`, route-derived navbar, tabs, and `NuxtPage`. Its seven children render content without another panel. Remove the current `/admin/contas` wrapper in `layouts/default.vue`. `utils/adminNav.ts` supplies routes, sidebar children, search items, titles, and active matching. The sidebar parent uses `type: 'trigger'`, `children`, and collapsed tooltip/popover support. Reuse the mapped table tokens/components rather than copy the full legacy application shell.
+Use existing `useAccessApi` and private `/api/v1` ingress, shared `frontend/shared/types/admin.ts`, canonical top-level Identity and separate pagination types/adapters. One `pages/admin.vue` shell renders one title/tabs/panel for every original direct route; remove the Account-only wrapper. Existing responsive table/metric/retry components are verified and extended only where gaps exist. Lists use bounded normalized queries, debounce/reset, latest-response protection, out-of-range recovery and retained success on refresh errors; mutations retain field input and prevent duplicate submission. Initial failures never become successful empty/zero data.
 
-All APIs go through `useAccessApi` and the existing `/api/v1/[...path]` proxy. Add `shared/types/admin.ts` and narrowly scoped support/Serpro contracts. Existing identity and issuance envelopes remain intact; existing Account pagination gains `last_page`, retaining `page`. New lists deliberately use this same pagination shape rather than propagate two legacy pagination formats.
+Preserve navigation order: Resumo, Contas, Planos, Assinaturas, Planos ERP, Assinaturas ERP, Usuários, Suporte, Serpro. Original seven-page acceptance remains required; do not delete/reorder the two ERP destinations. Exact summary matching, active parent/child, collapsed popover, search and mobile-close behavior remain binding. All Admin guards permit Super Admin without an office or with suspended own office and revalidate privilege on focus without loops. Ordinary switching resets Account-bound client data; it retains the real membership role and never widens tenant destinations.
 
-Alternative: independent panels per page or importing legacy `$api`/auth. Rejected because those duplicate navigation/authorization and bypass the current ingress/session semantics.
+### Authoritative route, type and authorization matrix
 
-### 2. Dedicated platform controllers with compatibility adapters
+Every path below is under `/api/v1`, through the existing protected ingress/session/no-store contract. Writes retain origin/CSRF validation. Authentication failures are 401, forbidden role is 403, invalid input is 422 and unknown authorized IDs are 404. All routes require Super Admin except the expressly retained metadata read exception. No platform route grants tenant operations.
 
-Use `backend/app/Http/Controllers/Api/V1/Admin/` controllers, adjacent Form Requests/Resources, `app/Actions/` services, and existing `app/Support/` conventions. These directories remain inside the established API V1 tree. Keep foundational Account actions as the authority for issue/reissue and extend them with contact/subscription work, not a second provisioning path. Admin Account listing/detail/update can move to a dedicated controller, but route names/paths and issuance outputs must remain backward compatible.
+| Method | Path | Response / input compatibility | Authorization and work |
+| --- | --- | --- | --- |
+| GET | `/admin/summary` | `{data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}` | New Super Admin read; four real counts, at most five safe logs timestamp DESC, ID DESC |
+| GET | `/admin/accounts` | `{data:PlatformAccount[],meta:{page,per_page,total,last_page}}` | Existing Super Admin read; additive last_page, literal bounded q/status/page; 15 rows, deterministic ID order |
+| POST | `/admin/accounts` | `{data,first_access:{url,expires_at}}` | Existing issuance; optional contact fields, same owner validation and transactions |
+| GET | `/admin/accounts/{id}` | `{data:PlatformAccount}` | Additive Super Admin safe detail; never private activation/settings |
+| PATCH | `/admin/accounts/{id}` | `{data:PlatformAccount}` | Existing name/status plus contacts; atomic shared contact action |
+| POST | `/admin/accounts/{id}/first-access` | `{first_access:{url,expires_at}}` | Existing reissue; no invented data wrapper |
+| GET/PATCH | `/admin/accounts/{id}/commercial` | Existing `{data:Account}` and safe commercial fields | Preserve separate Super Admin editor and envelope; same contact validation/persistence action |
+| GET/POST/GET by ID/PUT | `/admin/plans[/{id}]` | Raw Plan array/list and raw Plan detail/mutation; no data wrapper | Existing Super Admin APIs; preserve existing creation; UI remains edit-only; partial top-level update, immutable slug |
+| GET/GET by ID/PUT | `/admin/subscriptions[/{id}]` | Existing resource envelopes; list `meta.current_page` | Super Admin; q/status/page, real plan/status validation |
+| GET | `/admin/users` | Resource collection with `meta.current_page` | Existing Super Admin read-only global users/real role links |
+| GET | `/admin/support/logs` | Resource collection with `meta.current_page` | Existing Super Admin stored-event reader; canonical ID DESC |
+| POST | Existing ordinary Account-switch route | Existing top-level Identity | Active real membership required; no foreign enter/exit route |
+| GET/PUT | `/admin/accounts/{id}/contracting-certificate` | Safe configured/document/subject/serial/validity/revision metadata; multipart replacement | New Super Admin-only platform vault; active source required, no download/delete or tenant side effects |
+| GET | `/serpro/connection` | Existing `{data:{configured,...}}`, additive certificate_source/contracting_account_id | Super Admin OR member of currently selected active Account; successful unconfigured is 200, 404 is failure |
+| PUT | `/serpro/connection` | Existing safe resource, initial/update 200; legacy selector retained, new explicit upload/account selector | Super Admin; atomic rotation, field-error rollback |
+| POST | `/serpro/connectivity` | Existing named safe verdicts; 409 connection_changed, local 429 Retry-After | Super Admin; independent six/minute actor AND trusted-IP budgets |
+| Existing | `/serpro/account-certificate` | Existing legacy contract | Preserve existing authorization, tenant certificate ownership and existing links |
 
-The route matrix below fixes cross-layer interfaces. Every route uses the access ingress/session/CSRF stack plus `auth` and `RequireSuperAdmin`; it does not require tenant selection. Support operational requests additionally use the Account resolver.
+`PlatformAccount` retains `id,name,status,members_count,pending_owner` and adds safe nullable phone/state/city, boolean phone_whatsapp and nullable `subscription:{id,status,plan:{id,slug,name}}`. Pending owner exposes only name/email/expiry. Eager-load combined relation/projection data; avoid list N+1. List/search remains bounded/literal, not an all-page download. Numeric support search uses the new detail exactly once; names use paginated server search. Summary counts are read-time counts, not a transaction-wide simultaneous snapshot guarantee.
 
-| Method | Path under `/api/v1` | Contract |
-| --- | --- | --- |
-| GET | `/admin/summary` | `{data:{totals:{accounts,plans,subscriptions,users},recent_support_logs}}` |
-| GET | `/admin/accounts` | Existing list filters; extended Account resource; common pagination |
-| POST | `/admin/accounts` | Existing owner activation plus optional contact fields; existing issuance envelope |
-| GET | `/admin/accounts/{id}` | `{data:PlatformAccount}` |
-| PATCH | `/admin/accounts/{id}` | Existing name/status plus contact fields; `{data:PlatformAccount}` |
-| POST | `/admin/accounts/{id}/first-access` | Existing activation reissue contract |
-| GET | `/admin/plans` | `{data:Plan[]}`; ID ascending |
-| PUT | `/admin/plans/{id}` | `{name,limits:{users,clients,monitorings}}`; `{data:Plan}` |
-| GET | `/admin/subscriptions` | `page,q,status`; paginated Subscription resource |
-| PUT | `/admin/subscriptions/{id}` | `{plan_id,status}`; `{data:Subscription}` |
-| GET | `/admin/users` | `page,q,type`; paginated User resource with real links |
-| GET | `/admin/support/logs` | `page,account_id`; paginated safe audit resource |
-| POST | `/support/accounts/{id}/enter` | Top-level Identity with support metadata |
-| POST | `/support/exit` | Top-level Identity; idempotent |
-| GET/PUT | `/admin/accounts/{id}/contracting-certificate` | Safe certificate metadata / multipart replacement |
-| GET/PUT | `/serpro/connection` | Safe connection metadata / multipart configuration |
-| POST | `/serpro/connectivity` | Named connectivity verdict; six/min actor and trusted IP |
+### Authoritative storage and ownership matrix
 
-List search is bounded/literal, filters validated, lists ordered deterministically, relations eager-loaded, and resources explicitly allowlisted. Accounts/users include global data only behind Super Admin authorization. Summary performs real counts and a five-event query; a dedicated endpoint reduces legacy five-request fan-out. Counts are a read-time snapshot, not a claim of exact transaction-wide consistency while other sessions write.
-
-Alternative: reuse raw legacy resources/endpoints. Rejected because their detail envelopes, pagination, auth, and owner creation are incompatible.
-
-### 3. Additive data model and non-destructive initialization
-
-| Entity | Storage and constraints |
+| Entity | Retained storage and required additive work |
 | --- | --- |
-| Account | Add nullable `phone,state,city` and boolean `phone_whatsapp=false`; existing identity/activation columns untouched |
-| Plan | `id`, unique immutable `slug`, `name`, JSON `limits`, timestamps; null means unlimited |
-| Subscription | unique FK `account_id`, restricted FK `plan_id`, enum/check `active|past_due|canceled`, timestamps |
-| SupportAccessLog | actor FK, Account FK, action, trusted IP, safe JSON metadata, timestamp; indexes on Account/time and actor/time; no mutation routes |
-| SupportContext | UUID context ID, actor/target Account FKs, nullable previous Account FK, started/ended timestamps, closure reason; no bearer or raw session ID |
-| AccountContractingCertificate | unique Account FK, encrypted container/password, document and X.509 metadata, monotonically increasing revision |
-| SerproConnection | singleton ID/check, encrypted key/secret and upload container/password or Account-certificate FK, safe metadata, source, revision |
+| Account contacts | Existing settings.platform_billing_contact; root resource is a projection, no conflicting phone/state/city columns. Shared root/commercial action preserves private activation/unrelated settings and owner identity. Phone <=20, city <=255, nullable valid Brazilian UF normalized uppercase; WhatsApp requires phone. Omission preserves, explicit null clears, cleared phone forces false. |
+| Plan | Existing unique immutable slug, name, JSON limits; supplied replacement limits normalize to exactly users/clients/monitorings with null unlimited. Insert-only defaults remain basico 5/50, profissional 20/500, empresarial unlimited and monitorings unlimited. |
+| Subscription | Existing unique account_id and restricted plan_id FK; retain Account cascade compatibility. Add safe active/past_due/canceled database constraint and factories with preservation/rollback tests, not duplicate tables. Missing subscription backfill stays bounded and idempotent. |
+| SupportAccessLog | Retain stored rows; safe read allowlist and minimal nested resources. No new foreign lifecycle persistence or claimed writers. |
+| AccountCertificate | Existing private tenant vault, tenant-admin authorization, term issuance and legacy source compatibility unchanged. |
+| AccountContractingCertificate | Separate platform-owned vault, unique restricted Account FK, encrypted/hidden PKCS12/password, safe metadata and monotonic revision; no tenant certificate replacement or IssueSerproTermJob. |
+| SerproConnection | Existing singleton; preserving encryption migration for plaintext consumer_key plus hidden serialization. Keep existing tenant-source attachment and contracting_account_id; add explicit dedicated-vault FK, source identity/revisions and coherent snapshots. No blind encrypted cast over historical plaintext. |
 
-Account deletion is not exposed. Audit actor/Account references use restricted deletion so events cannot vanish through cascade. No raw session IDs are stored. Audit correlation may use a separate random non-bearer context ID.
+The six cross-contract decisions below are authoritative completion requirements. They adapt incompatible earlier wording explicitly rather than waive stronger pending acceptance.
 
-Add `PlanCatalogSeeder` that inserts only absent default slugs and a repeatable `platform:initialize` command that seeds catalog and backfills missing subscriptions in bounded chunks. Defaults follow the legacy: Básico 5 users/50 clients, Profissional 20/500, Empresarial unlimited; monitoring defaults unlimited. The command checks the unique Account subscription constraint and is safe to rerun. New onboarding/Account issuance calls an `EnsureAccountSubscription` action inside the original transaction. It inserts missing default catalog rows if needed, so first installation does not depend on a hidden manual seeding step. Initial registration remains closed only by users/Accounts, not seeded plans.
+### R1: API shapes and added reads
 
-The subscription stores commercial metadata; it does not drive suspension or quota middleware. Limits PUT is complete replacement of the three documented keys, preserving explicit null, to fix legacy unlimited-clearing ambiguity.
+Do not replace raw Plan `[]` with `{data:[]}`, resource `meta.current_page` with `meta.page`, top-level Identity, create `{data,first_access}` or reissue `{first_access}`. Account `last_page` is additive. Generic Account detail and summary are additive APIs explicitly retained as pending in the accepted decision record. The old canonical statement 'must not depend on absent summary' becomes 'uses implemented summary', not removal of the summary requirement. Keep `/commercial` and settings-backed contact storage; expose the stronger root resource fields as a safe projection. Root and commercial mutations share one validation/persistence action, preserving private activation/unrelated settings.
 
-Alternative: manually seed plans and create subscriptions later. Rejected because an edit-only Assinaturas page would be empty indefinitely and first installation would depend on undocumented ordering.
+### R2: Plan input normalization
 
-### 4. Explicit support context and unified identity
+Strict validation and deterministic unlimited clearing survive. Existing empty/sparse limits objects are legitimate complete replacements: normalize missing known keys to null. Stored/editor output has exactly `users,clients,monitorings`; unknown keys rejected; values must be null or nonnegative integral values, not coercible floats. A supplied name is 2–255 characters. Partial top-level updates remain; slug edits rejected. Record this input-compatibility adaptation explicitly in the delta before implementing; it is not D009 retirement and does not waive validation.
 
-Extend session state with `support_context:{context_id,account_id,started_at,previous_account_id}` alongside `current_account_id`. Support transitions are serialized by the existing session lock and assert ownership before state changes and before return. Session deadline and user ID never change. A new login clears support explicitly even if prior session data exists.
+### R3: Two distinct certificate ownership domains
 
-Extend `CurrentAccount` to represent a real optional membership plus `effectiveRole`, actor, and `isSupport`. Existing member contexts continue to use the persisted membership role; support computes admin only after validating the explicit session context and fresh Super Admin flag. Never instantiate a fake membership or broaden AccountScope when context is absent. `assertWrite`/`assertAdmin` consult validated effective role. Preserve Account row locking, displayed `X-Account-Id` assertion, and body rejection in `ResolveAccount`.
+`AccountCertificate` belongs to tenant operations with tenant-admin permissions and term issuance side effects. The original `AccountContractingCertificate` is a platform credential vault named by an Account, not a tenant-data authorization bypass. Implement the planned separate vault (unique account_id, restricted FK, encrypted/hidden PKCS12/password, safe metadata, revision). Platform source metadata/upload routes operate solely on this vault and have no term/sync side effects.
 
-Identity `accounts` remains a list of memberships and gains `is_member:true`; `current_account` additionally allows an active support projection with `is_member:false,role:'admin'`. `support` is null or `{account_id,account_name,started_at}`. `AccessController::identity` must reconcile support before the existing default selection; it must not silently replace a valid foreign support Account with a membership. Update `accessDestination`, AccountMenu, auth switching, focus plugin, and route guard to understand the projection. `/admin` remains available without current Account. Leaving support with no membership goes to `/admin`; regular users keep existing unavailable-access behavior.
+Keep existing `/serpro/account-certificate` and `use_account_certificate=true` behavior for current clients/links; do not migrate private tenant certificates into the platform vault automatically. Add an explicit new-source FK such as `account_contracting_certificate_id` on SerproConnection. Existing `contracting_account_id` continues representing the chosen office and legacy attachment; internal provenance distinguishes legacy tenant reuse from new platform vault. Dedicated upload clears both attachment FKs. New `certificate_source=account` resolves only the dedicated platform vault, with `contracting_account_id` required. New `certificate_source=upload` uses saved/new dedicated upload. Reject simultaneous legacy/new selector ambiguity. Existing unchanged legacy connections remain usable and display a safe legacy-source hint; a new explicit Account choice requires a platform vault certificate. The new resource adds certificate_source and contracting_account_id without exposing any credential material.
 
-Enter validates target, fresh privilege, and membership under a transaction. A member target is handled as ordinary switching, with no fabricated support event. Repeated same-target entry is a no-op. Target changes record exit/enter in one transaction. Exit rechecks previous membership/status and falls back to default active membership/null. Suspension or privilege loss is detected on every tenant request and `/me`; reconciliation clears invalid context and records its reason. Exit and logout do not require `ResolveAccount`, so a suspended target cannot trap the operator. Switching into a real membership records support exit atomically first.
+Consumer key is currently plaintext and not hidden on SerproConnection. The stronger requirement explicitly covers the key too: encrypt it and hide it from generic serialization with a preserving data migration, while retaining the resource's masked hint and internal existing reads. Never blindly add an encrypted cast over plaintext historical values. No destructive resets or bulk replacement of certificates.
 
-Use deterministic ascending Account row-lock order when a transition needs more than one Account, aligned with the existing Account-first membership-lock contract. Do not hold provider HTTP calls or unrelated global list queries inside Account transactions. Audit failure fails closed. Session ownership loss can never return a successful transition; test retries and ensure duplicate-context correlation is not mistaken for another entry. The database and Redis session are separate commit domains: no distributed atomicity is claimed. Reconcile session state against a persisted enter/exit context marker before granting support so a failed session save cannot grant unaudited access; store that marker and context ID with the audit lifecycle, and invalidate unmatched/closed contexts.
+### R4: Rotation and diagnostic isolation
 
-Alternative: copy legacy User.current_account_id or grant all Super Admins an unconditional tenant bypass. Rejected because these affect other sessions or weaken the membership-only foundation.
+Use a single explicit credential lifecycle coordinator. For new platform vault operations lock Account first (existing tenant resolver uses Account-first), then a fixed PostgreSQL advisory transaction lock for the platform credential lifecycle, then connection/source rows; session lock remains the outer HTTP lock. Operations needing no Account may take only the credential lock and connection, and must never later request an Account lock. If old/new source Accounts must both be locked, discover IDs, lock ascending, acquire credential lock and recheck source identity; retry if the discovery changed. Every path touching both domains follows this order; tests include tenant certificate replacement while diagnostic resolves legacy source.
 
-### 5. Support audit encompasses actual tenant writes
+Read one immutable snapshot of encrypted values/source identity/revisions under locks, release all DB locks before provider HTTP, and compare identity/revision/status immediately before verdict. No independent certificate/password queries after releasing snapshot locks. A changed source, removed source, suspension or rotated credentials yields 409 `connection_changed`; current unusable source fails locally as certificado. Revisions advance on actual credential/source mutation. An attached platform certificate replacement updates metadata and connection revision in the same transaction. Existing tenant source changes require equivalent generation detection (current certificate row ID plus lifecycle timestamps/version), without granting new tenant write permission.
 
-Enter/exit records and a persisted `SupportContext` lifecycle row commit together. The session references its UUID; each request checks actor, target, and open/closed state against that row. `SupportAudit` handles only explicit action/resource descriptors with allowlisted metadata. Integrate audit into the Account resolver transaction for registered tenant write handlers; new operational routes must register the resource/action and cannot opt into support silently. Existing application has no real client/fiscal write routes, so verification uses test-only tenant handlers/fixtures to prove authorization, successful-write audit, rollback, and scope isolation; it does not implement operational product modules.
+Use a diagnostic method separate from operational `pair()`/`verify()` semantics: fresh auth with saved coherent snapshot, 3s/8s budgets, TLS verification, no redirects, Basic key/secret, form grant_type=client_credentials, Role-Type=TERCEIROS, both token fields required. Discard diagnostic tokens; do not remove or overwrite a usable operational token cache. Credential changes still invalidate/version operational cache so an in-flight old auth cannot repopulate the new credential generation. Diagnostic result endpoint calls no fiscal/monitoring/job/term paths.
 
-For support mode, a successful registered tenant create/update/delete and its event commit in the same DB transaction. An unsupported tenant write handler is denied rather than perform an unaudited write. GET does not emit write events. Do not build audit metadata from entire request/response payloads. Admin global Account/catalog mutations are not mislabeled as supported tenant mutations.
+### R5: Audit secrecy survives foreign-support retirement
 
-Alternative: generic after-response logging. Rejected because it can acknowledge a mutation whose audit failed and can record rolled-back work as successful.
+Foreign lifecycle writes are retired; secrecy of stored log reads is not. Existing key-name blacklist cannot guarantee that an arbitrary benign field does not contain a token. Restrict metadata to explicit safe descriptors, initially `resource` (known short identifier), `resource_id` (positive integer), and any additional inventoried scalar action descriptors justified by current writers; drop all arbitrary nested payloads. Project nested actor as id/name/email and Account as id/name/status (retain only demonstrably safe compatibility fields if required), never tenant settings/certificates/activation data. Keep stored rows untouched. List order remains canonical descending ID; summary's five rows follow accepted timestamp DESC, ID DESC. Record the distinction explicitly rather than silently change legacy pagination ordering.
 
-### 6. Serpro uses a small credential module, not Monitoring import
+### R6: Timeout/request scopes
 
-Add dedicated certificate validation/materialization, connection storage/rotation, and connectivity actions. Encrypted text/blob storage uses the application encryption key and hidden attributes, including key and container/password. Prefer one encrypted DB object for the platform upload to avoid DB/file commit inconsistencies; the Account source is a FK to the encrypted vault row, with no copied container. Only safe certificate metadata is denormalized on the connection; rotate the source and connection revision together under a fixed lock order. Global credential rotation is serialized with an advisory lock for first creation and singleton row locks afterward. Never obtain an HTTP token inside credential-write transactions.
+The historical design's `/serpro/*` wildcard predates operational monitoring. Limit 15s to connectivity and certificate/configuration writes; keep operational long-route budgets. Access auth/identity/switch/owner/ordinary Admin paths get 10s unless a specifically bounded certificate endpoint. Provider diagnostics use 3s connect/8s total under 30s session ownership. Total applicable multipart request is at most 4MiB; certificate at most 2MiB; overflow 413 even when PHP rejects before validation. Test real ingress preservation of binary data and trusted headers, not an HTTP fake claiming proxy acceptance.
 
-Upload validation accepts `.pfx/.p12` filenames up to 2 MiB, then parses real PKCS#12 contents with OpenSSL, checks private-key/certificate match, current validity, and one CNPJ identity using supported ICP-Brasil representations. Reject conflicting identifiers rather than choose arbitrarily; avoid a numeric-only format assumption. Test native real UploadedFile inputs because MIME guesses can misclassify PKCS#12. Do not assume every legacy encrypted container opens in OpenSSL 3; report unsupported encryption safely and test runtime capabilities before using a validated compatibility path. Empty supplied password is distinct from missing input and may open a passwordless container.
+### Verification and implementation sequencing
 
-Use explicit `contracting_account_id`, not legacy Account 1. The source chooser shows safe certificate metadata and an inline upload modal/action for the selected active Account. Selecting a missing/invalid source is a field error. Replacing an attached source certificate updates connection revision and metadata transactionally. A later suspended source Account produces a local certificate-source failure for connectivity; it does not expose a certificate or silently switch source.
+Freeze the reconciled contracts and shared types first, then schema/contact/catalog/summary/audit, platform vault/lifecycle, diagnostic/ingress, and frontend completion. Existing verified tasks are reused, rerun when affected and at the final gate. New behavior gets meaningful failing cases; existing passing coverage is not relabeled a historical red test. No new implemented task is checked by this reconciliation.
 
-Connectivity reads one coherent credential/source revision snapshot before releasing database locks for HTTP. Before reporting its result, recheck both connection/source revisions and source eligibility; a concurrent rotation returns 409 `connection_changed` with a retry message instead of presenting an old-credential success as current. Never hold credential locks while waiting on the provider.
+Use independent PHP processes with real isolated PostgreSQL/Redis for provisioning/backfill, first-write singleton, source/credential rotation, legacy tenant certificate replacement versus diagnostic snapshot, membership/suspension and session-lock ownership races. Release DB locks for provider HTTP; deterministic fake provider synchronization proves the revision fence. SQLite or sync-run tests do not establish these guarantees. Browser verification covers all seven original direct routes at 1366×639 and mobile, expanded/collapsed/search/tabs, ordinary-user denial, no-office Admin, real member switching, foreign denial, focus reset, forms/errors/empty states and actual binary multipart through Nuxt+Laravel. Keep both ERP destinations intact.
 
-Connectivity follows the official [Serpro authentication guide](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/quick_start/), checked on 2026-10-12: form POST to server-configured authenticate URL, Basic key/secret, `Role-Type: TERCEIROS`, `grant_type=client_credentials`, mutual TLS using the contracting e-CNPJ, and verification that both returned tokens exist. This change discards the tokens after checking; it does not introduce a token cache without a service consumer. No automatic retries on credential refusal. Verify HTTPS/provider host from configuration, disable HTTP redirects, keep TLS verification enabled, sanitize exceptions, and do not allow users to supply arbitrary provider URLs.
-
-Materialize the decrypted container in a private random temporary path with restrictive permissions and remove it in `finally` for both success/failure. Never log request credentials, raw upstream bodies, PEM keys, or token responses. Check installed HTTP client version and use supported client certificate options; do not assume the legacy Guzzle snippet is compatible. Rate limiting uses trusted ingress IP plus actor budgets, with 429/Retry-After at the application boundary. Upstream 429 maps to a named provider verdict.
-
-Alternative: import the complete legacy `useSerpro`/service catalog or stub a successful ping. Rejected because either imports unrelated modules or fails to verify the credential.
-
-### 7. Multipart and timeout budgets are part of the contract
-
-Native PHP multipart parsing uses POST transport plus `_method=PUT` for certificate/connection writes; the resolved public API method remains PUT. Keep origin, CSRF, cookie, and trusted-ingress handling, and let the client set the multipart boundary. Test actual bytes through Nuxt and Laravel. Enforce 2 MiB file / 4 MiB total request bounds with 413 for oversized requests. Preserve existing no-store/error normalization.
-
-Provider connect timeout is 3 seconds and total request timeout 8 seconds by default. Proxy timeout is 15 seconds for `/api/v1/serpro/*` and contracting-certificate writes; unrelated access endpoints keep 10 seconds. The existing 30-second session lock remains longer than normal provider work; assert ownership before/after the action and deny success if lost. Longer configured provider budgets must require a matching proxy and session-lock budget rather than independently increasing one limit. Endpoint tests use fakes; no paid/service provider calls run during routine verification.
-
-### 8. Implementation order and independent checks
-
-Freeze API/types first, then deliver schema/provisioning and Account metadata, commercial/global APIs, support contracts/context/audit, Serpro storage/connectivity/ingress, and finally the complete frontend integration. UI shell may be built after the contract task, but no frontend page is complete before its backend dependency and authorization tests pass.
-
-Backend feature tests cover each API and error/privilege/input boundary. Existing access/tenant suites must stay green. PostgreSQL/Redis independent-process tests prove duplicate prevention, support/session fencing, rollback, suspension races, and credential rotation; in-memory feature tests are not race evidence. Frontend unit tests cover route matching, query/page behavior, stale requests, null serialization, and support destinations. Browser checks cover seven direct routes, desktop 1366×639 (the reported viewport), collapsed/sidebar/mobile behavior, forms/errors, support banner, and real multipart upload through ingress. Finish with lint/typecheck/build, backend formatting/tests, and a review of the whole change.
+Run isolated backend `php artisan test --compact` and `vendor/bin/phpunit -c phpunit.pgsql.xml`, affected focused tests, frontend `pnpm --dir frontend lint`, `typecheck`, `test`, `build`, changed-PHP `vendor/bin/pint --dirty --format agent`, OpenSpec strict validation, whole-change spec/quality review and final traceability audit. Deterministic provider fakes are accepted; real authorized SERPRO tests remain explicit optional live evidence, never inferred from mocks or local parsing. During implementation verify the official [SERPRO authentication guide](https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/quick_start/) and installed HTTP/OpenSSL capabilities; this planning revision makes no fresh web-verification claim.
 
 ## Risks / Trade-offs
 
-- Session/DB commit domains differ → persisted support-context reconciliation and session ownership fencing; no claim of distributed atomicity.
-- Existing Account-bound assumptions require a membership → inventory every membership dereference and test nullable support context before broadening tenant access.
-- Certificate/password/key material is sensitive → encrypted storage, allowlisted resources, sanitized exceptions, private temporary files, and negative disclosure assertions.
-- Runtime PKCS#12/HTTP support can differ from legacy → real certificate parsing/materialization tests and installed-version inspection before choosing options.
-- Initial catalog/backfill can overwrite production edits if copied from legacy → insert-only catalog seeding and missing-subscription backfill, with repeat-run tests.
-- Full operational modules are absent → prove support infrastructure using isolated test fixtures; do not invent client/fiscal APIs or present template sample handlers as operational data.
-- User expects the legacy interface → preserve its layout/action inventory while explicitly adapting first-access and the explicit contracting Account source.
+- Legacy API variation is retained deliberately; typed adapters avoid a breaking uniform envelope rewrite.
+- Two certificate domains require explicit source provenance and coherent versions. A dedicated platform upload must never mutate tenant vaults or dispatch term/sync jobs.
+- DB and Redis/session ownership are separate commit domains. Existing fencing remains mandatory; no foreign support persistence is added as an attempted bridge.
+- Encrypting consumer_key requires a reversible preserving data migration and negative serialization assertions; old plaintext cannot be fed into a newly encrypted cast blindly.
+- Timeout changes can break existing fiscal/export/bulk work. Bound diagnostics/configuration specifically and preserve longer operational budgets.
+- Historical audit blacklists are insufficient for arbitrary nested values; safe readers must use explicit descriptor allowlists without rewriting stored history.
 
 ## Migration Plan
 
-1. Preserve current checkout changes and inspect installed versions/runtime before implementation. Add tests and contracts first.
-2. Apply additive migrations in development/test; deploy schema before APIs in an eventual release. Do not reset existing data.
-3. Run idempotent `platform:initialize`, inspect counts/duplicates, and ensure fresh onboarding/new issuance provisions subscriptions transactionally.
-4. Add environment configuration for provider authentication/timeouts and secret-safe private materialization; credentials are entered by Super Admin at runtime, never seeded from legacy.
-5. Enable APIs and support-aware identity, then the Admin frontend. Verify access regressions and PostgreSQL/Redis races before claiming readiness.
-6. Rollback UI/routes first if needed. Retain additive tables and encrypted credentials/audits while reverting behavior; do not drop data or rotate the application key as a rollback shortcut. Revoke active support contexts before reverting to a membership-only resolver.
+1. Inventory current dirty work, runtime and versions. Preserve source data; prepare migration/rollback tests and relevant regression coverage.
+2. Add status constraints/factories, separate encrypted platform vault, explicit source FK/revisions and preserving key encryption. Do not duplicate contacts, change subscription Account cascade or copy private tenant certificates.
+3. Reuse reviewed insert-only initialization and bounded missing-subscription backfill. Verify repeat runs and transactional provisioning with existing identities/activations untouched.
+4. Configure nonsecret auth URL/timeouts/private temporary storage. Users enter authorized platform secrets at runtime; never seed legacy provider credentials.
+5. Enable additive APIs/lifecycle/diagnostic behavior, then UI, with process and browser gates before completion. Deployment remains separate from local completion.
+6. Roll back routes/UI before schema if needed. Preserve encrypted credentials, audit rows and additive vault data; document how to reverse preserving key encryption under the compatible code version. Do not reset data or rotate the application key to roll back. Foreign support contexts do not exist in this design.
 
 ## Open Questions
 
-None that affect scope, contracts, or task breakdown. Runtime-specific library certificate options and the live provider account can be verified during the explicitly listed implementation tasks; automated verification uses deterministic fake provider responses and generated certificates.
+None affecting scope or task breakdown. Runtime-specific certificate compatibility is tested during implementation. Live provider acceptance requires explicitly authorized credentials; optional skips stay visible. This change remains active until all 46 valid tasks have evidence and independent review, alongside the ten retired originals.

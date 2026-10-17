@@ -1,39 +1,64 @@
-> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+> Reconciled completion target (2026-10-17), preserving D009 and existing canonical access contracts. Pending guarantees are not implemented by this artifact revision; canonical synchronization follows reviewed delivery.
 
-## Purpose
+## MODIFIED Requirements
 
-Extend platform Account administration to the mapped legacy table and contact information while preserving the current owner activation, suspension, and identity contracts.
+### Requirement: Foundational provisioning remains authoritative
+Office creation, rename/status updates and first-access reissue SHALL retain the `/api/v1/admin/accounts` access contracts, including unused owner email, seven-day single-use links and no platform password assignment. Activation URLs SHALL appear only at issuance. Creation SHALL preserve `{data,first_access:{url,expires_at}}`; reissue SHALL preserve `{first_access:{url,expires_at}}`, active/zero-members rules, prior-link invalidation and existing 409 rejection for an already activated Account. Optional contact/subscription provisioning SHALL be atomic with issuance; failure SHALL leave no partial Account/activation/subscription. Existing identities, passwords, memberships and default-office/session behavior SHALL be preserved. Separate commercial edits SHALL not replace owner identities, credentials or stored activation metadata.
+
+#### Scenario: Commercial payload assigns credentials
+- **WHEN** an administrator sends password or owner-access fields to the commercial endpoint
+- **THEN** validation returns 422 without changing owner identity or activation
+
+#### Scenario: Issuance contact failure
+- **WHEN** contact or subscription persistence fails while creating an Account
+- **THEN** issuance rolls back without a partial Account, activation or subscription
+
+#### Scenario: Reissue after activation
+- **WHEN** an Account already has members and owner access is reissued
+- **THEN** the existing 409 response preserves identity and activation
+
+### Requirement: Separate commercial detail and update
+GET and PATCH `/api/v1/admin/accounts/{id}/commercial` SHALL require Super Admin and preserve their existing `{data:Account}` representation with safe tenant settings, `platform_billing_contact`, member count and subscription/plan when loaded. Foundational list fields including `pending_owner` SHALL retain their representation. Commercial detail SHALL remain a distinct API alongside the additive generic safe detail, and SHALL not authorize foreign tenant business data.
+
+#### Scenario: Commercial access without membership
+- **WHEN** a Super Admin without membership reads an Account's commercial detail
+- **THEN** the platform read succeeds without authorizing its client or fiscal data
+
+#### Scenario: Unknown office
+- **WHEN** a Super Admin requests commercial detail for an unknown Account
+- **THEN** the API returns 404
+
+### Requirement: Contact edits preserve unrelated settings
+Commercial PATCH and root Account create/PATCH SHALL share validation/persistence of settings-backed `platform_billing_contact`; root phone/state/city fields SHALL be a safe projection, not conflicting columns. Nullable phone SHALL be at most 20 characters, state SHALL be a valid Brazilian UF normalized uppercase, city SHALL be nullable and at most 255 characters, and WhatsApp SHALL be boolean and require nonempty phone. Omitted fields SHALL preserve saved values; explicit null/empty nullable input SHALL clear values; removing phone SHALL force phone_whatsapp false. Changes SHALL be atomic and preserve unrelated tenant settings, private activation values and owner identity. Contact editing SHALL not dispatch messages or create WhatsApp channels.
+
+#### Scenario: Clear commercial phone
+- **WHEN** an administrator clears a previously saved phone
+- **THEN** the contact no longer contains the phone or its WhatsApp flag and unrelated settings remain intact
+
+#### Scenario: Invalid UF or WhatsApp combination
+- **WHEN** root or commercial contact input contains invalid UF or enables WhatsApp without phone
+- **THEN** validation returns field errors without partial contact, owner or activation changes
+
+### Requirement: Account interface separates access and commercial actions
+The Account page SHALL use the shared table presentation with ID, name/status, plan, member count, search/status/column controls, count, pagination and row actions. It SHALL provide foundational create/edit/reissue/confirmed status controls and retain a separate commercial editor. Create/edit SHALL expose contact fields. Issued links SHALL be temporary copy material. Entry SHALL use ordinary switching only for an active real membership, preserving its role; foreign/suspended entry SHALL be disabled with feedback. Suspension SHALL block tenant access without erasing members or stored business data, and SHALL not authorize a foreign support context.
+
+#### Scenario: Reopen issuance dialog
+- **WHEN** the operator closes and later reopens the activation dialog
+- **THEN** the previously issued link is not retrieved from ordinary list/detail data
+
+#### Scenario: Suspended real membership
+- **WHEN** the selected Account is suspended before a subsequent tenant request
+- **THEN** tenant access is denied and identity/client state refresh follows the existing membership contract without elevation
 
 ## ADDED Requirements
 
-### Requirement: Extended Account resources and detail
-Platform Account list/detail resources SHALL preserve `id,name,status,members_count,pending_owner` and add nullable `phone,state,city`, boolean `phone_whatsapp`, and nullable `subscription:{id,status,plan:{id,slug,name}}`. `GET /api/v1/admin/accounts/{id}` SHALL return `{data:Account}` using the same resource as list rows. Pending-owner metadata SHALL remain limited to name/email/expiry; activation URLs and hashes SHALL never appear in list/detail responses. Existing name/ID search, status filtering, and 15-row pagination SHALL remain available.
+### Requirement: Generic safe Account projection and paginated detail
+GET `/api/v1/admin/accounts/{id}` SHALL require Super Admin and return `{data:PlatformAccount}` using the same safe projection as list rows. The resource SHALL retain `id,name,status,members_count,pending_owner` and add nullable `phone,state,city`, boolean `phone_whatsapp` and nullable `subscription:{id,status,plan:{id,slug,name}}`. Pending owner SHALL expose only name/email/expiry; activation hashes/URLs and arbitrary private settings SHALL never appear. Existing bounded literal name/ID search, status filter, deterministic ID order and 15-row `meta.page` pagination SHALL remain, with additive `last_page` and eagerly combined metadata.
 
-#### Scenario: Detail and support search use one envelope
-- **WHEN** a Super Admin opens Account editing or searches a numeric Account ID in Suporte
-- **THEN** both clients consume the same `{data:Account}` detail response
+#### Scenario: Numeric support detail lookup
+- **WHEN** a Super Admin searches a numeric Account ID in Suporte or opens Account editing
+- **THEN** both consume the same safe generic detail envelope, with unknown IDs returning 404
 
-### Requirement: Account contact editing and validation
-Creation and PATCH Account endpoints SHALL accept optional contact fields: phone up to 20 characters, a valid Brazilian UF or null, city up to 255 characters, and a boolean WhatsApp flag. Enabling the flag SHALL require a nonempty phone. Omitted fields SHALL preserve existing values; explicit null SHALL clear nullable fields. Clearing a phone SHALL force `phone_whatsapp=false`. Account name SHALL retain its existing validation and active/suspended statuses. Changes SHALL be atomic and shall not deliver messages, create a WhatsApp channel, or mutate owner identity.
-
-#### Scenario: Clear a phone previously marked for WhatsApp
-- **WHEN** an administrator clears the Account phone
-- **THEN** the phone becomes null and the WhatsApp flag becomes false in the same committed update
-
-### Requirement: Preserve foundational provisioning
-Creation SHALL continue to require Account name, owner name, and globally unused owner email; it SHALL issue the existing seven-day first-access activation without assigning a password or adding a membership before acceptance. POST `/api/v1/admin/accounts/{id}/first-access` SHALL preserve the existing active/zero-members reissue rules, email-conflict checks, prior-link invalidation, and temporary `{data,first_access:{url,expires_at}}` response. Existing owner identities and credentials SHALL remain unchanged. Contact and subscription provisioning SHALL not weaken these checks or change the initial onboarding/default-office behavior.
-
-#### Scenario: Copy a newly issued activation link
-- **WHEN** a new Account is provisioned
-- **THEN** its newly issued link is available for temporary copying, clears when the modal closes, and cannot be retrieved by reopening list/detail
-
-#### Scenario: Reissue for an activated Account
-- **WHEN** an Account already has members and an administrator requests owner-link reissue
-- **THEN** the existing 409 rejection is preserved and no identity or activation is modified
-
-### Requirement: Account table and actions
-`/admin/contas` SHALL provide ID, Account, situation, plan, member count, and row actions using the shared table presentation, search/filter/column controls, footer count, and pagination. It SHALL provide creation, detail editing, first-access reissue, confirmed suspension/reactivation, and explicit support entry for active Accounts. Contact fields SHALL appear in creation/editing; owner activation SHALL use the current form rather than the legacy password/no-access modes. Suspended Account support entry SHALL be disabled with explanatory feedback. Suspension SHALL preserve stored data and memberships while blocking operational access and activation.
-
-#### Scenario: Suspend during an open support session
-- **WHEN** the supported Account is suspended
-- **THEN** subsequent tenant requests are denied and the support context is cleared/restored according to the support contract without granting operational access
+#### Scenario: Combined Account list
+- **WHEN** a list page includes contacts, members, pending owner and subscription plan
+- **THEN** all rows use the safe common projection with existing pagination keys plus last_page and no activation material

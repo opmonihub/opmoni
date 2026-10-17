@@ -1,57 +1,41 @@
-> Reconciliation status (2026-10-13): this artifact records the earlier platform target, not the delivered system baseline. See [system reconciliation](../../../../../docs/architecture/system-spec-reconciliation.md) and `reconcile-system-specs`. D009 supersedes foreign support entry/elevation. Other stronger API, catalog, certificate-source, and concurrency guarantees remain pending where absent or unverified. Reconcile this artifact against the canonical specs before implementation, sync, or archive; do not mark its unchecked tasks complete from the import or documentation sync.
+> Reconciled completion target (2026-10-17), preserving D009 and existing canonical access contracts. Pending guarantees are not implemented by this artifact revision; canonical synchronization follows reviewed delivery.
 
-## Purpose
+## MODIFIED Requirements
 
-Allow an authorized Super Admin to operate in an active foreign Account using an explicit, auditable session context while preserving real memberships, identity, and tenant isolation.
+### Requirement: Support entry uses real membership only
+The support page SHALL search platform Accounts through bounded paginated server name search and the additive generic detail API for numeric ID exactly once, never automatically scanning all pages. It SHALL enable entry only for active real memberships through ordinary Account switching, retaining the actual membership role and absolute session deadline. Foreign support enter/exit APIs, support identity projection, implicit membership, effective support admin role and impersonation banner SHALL not be introduced. Entry, ordinary membership switching, focus identity changes and invalidation SHALL clear stale Account-bound client state under the existing access contract. Platform access SHALL remain available without an own office.
 
-## ADDED Requirements
+#### Scenario: Foreign office search result
+- **WHEN** a Super Admin finds an active Account without their membership
+- **THEN** entry is disabled and tenant access remains denied
 
-### Requirement: Explicit session-local support entry
-POST `/api/v1/support/accounts/{id}/enter` SHALL require Super Admin, an active target Account, valid origin/CSRF, and the existing serialized session. It SHALL preserve the authenticated user's identity and actual memberships, set a support context in that session only, preserve its original expiry, and return the top-level identity representation. Nonexistent targets SHALL return 404 for authorized administrators; suspended targets SHALL return 403 with `account_suspended`. An own membership SHALL use ordinary Account switching rather than fabricate support. Repeating entry to the current supported Account SHALL not duplicate the enter event; entering a different foreign Account SHALL close the previous support context before opening the new one.
+#### Scenario: Super Admin with read-only office role
+- **WHEN** the administrator enters an own Account with role user
+- **THEN** tenant writes remain forbidden rather than gain an effective admin role
 
-#### Scenario: Enter a foreign active Account
-- **WHEN** a Super Admin enters an active Account without a membership
-- **THEN** only that session enters support, no membership/user record is created or altered, and one enter event is recorded
+#### Scenario: Numeric search and stale query
+- **WHEN** numeric Account search is issued and an older name query later returns
+- **THEN** detail is requested only once and the latest search remains displayed without downloading all Account pages
 
-#### Scenario: Switch support targets
-- **WHEN** a supported administrator enters a different foreign Account
-- **THEN** the prior context records exit and the new one records enter with no mixed tenant state
+#### Scenario: Focus after ordinary member switching
+- **WHEN** a shared-session tab detects a changed real selected Account on focus
+- **THEN** previous Account-bound state is cleared before navigation continues with the refreshed real identity
 
-### Requirement: Support-aware identity and tenant authorization
-Identity SHALL retain `accounts` as real memberships, add `is_member` metadata, and include `support:null|{account_id,account_name,started_at}`. During support, `current_account` SHALL represent the active supported Account with `is_member=false` and effective role admin; this representation SHALL not masquerade as a persisted membership. Every operational request SHALL revalidate current Super Admin authorization, target existence/status, explicit support context, and the displayed Account assertion. Body-supplied Account IDs SHALL remain prohibited. Missing context SHALL fail closed; stale assertions SHALL return 409. Ordinary Account switching SHALL remain membership-only and SHALL end support with an exit event before selecting a real membership.
+### Requirement: Read-only support audit browsing
+GET `/api/v1/admin/support/logs` SHALL require Super Admin and expose existing stored rows ordered ID DESC, with positive bounded page validation, optional existing positive Account ID filter and preserved meta.current_page resource pagination. Stored rows SHALL remain untouched. Metadata SHALL be restricted to explicit safe descriptors: resource as a known short identifier and resource_id as a positive integer; additional scalar action descriptors SHALL require an inventoried safe writer justification. Arbitrary nested payloads and harmless-key secret values SHALL be dropped, not accepted through a key-name blacklist. Nested actor SHALL contain only id/name/email and Account only id/name/status, except demonstrably safe compatibility fields explicitly justified; tenant settings/certificates/activation material SHALL never appear. Safe action/time/trusted-IP fields SHALL remain. The interface SHALL retain loading/retry/empty states, Account filtering, columns/count/pagination and latest-request protection. Summary SHALL reuse the safe row projection with its separately specified timestamp DESC, ID DESC top-five order. Browsing SHALL not claim ordinary switching currently generates foreign enter/exit or write lifecycle events.
 
-#### Scenario: Stale request from the previous office
-- **WHEN** an operational request asserts the prior Account after support entry
-- **THEN** it receives `account_context_changed` without reading or modifying either Account's operational data
+#### Scenario: Filter existing Account audit
+- **WHEN** an administrator supplies an existing Account ID
+- **THEN** the response contains only matching stored audit events in descending ID order
 
-#### Scenario: Super Admin flag is revoked
-- **WHEN** an active support user's global privilege is revoked before the next request
-- **THEN** the support privilege is rejected and the user cannot continue with the effective admin role
+#### Scenario: No stored events
+- **WHEN** the authorized audit query matches no rows
+- **THEN** the page shows an empty result without claiming support operations took place
 
-### Requirement: Safe support exit and invalidation
-POST `/api/v1/support/exit` SHALL work without a selected active tenant, record exit, clear support, and restore the previous Account only if it is still an active real membership; otherwise it SHALL restore the default active membership or null. It SHALL be idempotent when no support is active and SHALL not extend session expiry. Suspension/deletion/privilege loss SHALL clear invalid support on identity refresh, record the invalidation reason where a context existed, and prevent tenant access. Logout SHALL clear support and record exit while preserving the existing logout revocation behavior. A new login SHALL never resume support. The absence of any own Account SHALL not prevent exit or platform administration.
+#### Scenario: Secret under harmless key
+- **WHEN** stored metadata includes a token under an arbitrary benign name or nested Account settings
+- **THEN** the reader omits it and returns only explicitly safe descriptors and minimal nested projections without rewriting the stored event
 
-#### Scenario: Exit with no own membership
-- **WHEN** a Super Admin with no active own Account exits support
-- **THEN** support clears successfully, current Account becomes null, and the Admin workspace remains available
-
-### Requirement: Transactional support audit
-Support audit SHALL persist actor ID, Account ID, action (`enter|exit|create|update|delete`), trusted client IP, timestamp, and allowlisted resource metadata. Enter/exit and support-mode operational mutations SHALL fail if their audit cannot commit; rolled-back mutations SHALL not leave successful audit events. Reads SHALL not create write events. Events SHALL not contain secrets, passwords, tokens, certificate bytes, raw request bodies, or session identifiers. Audit events SHALL remain available after context exit and SHALL not expose update/delete APIs. Concurrent session transitions SHALL not create duplicate or contradictory successful events.
-
-#### Scenario: Audit insertion fails during a support mutation
-- **WHEN** the application cannot persist the required audit record
-- **THEN** the operational mutation rolls back and is not reported as successful
-
-### Requirement: Support search and audit page
-`/admin/suporte` SHALL provide Entrar and Auditoria tabs. Account search SHALL use the server Account query/detail APIs, show name/ID/status, and enable entry only for active Accounts. GET `/api/v1/admin/support/logs` SHALL return a 15-row paginated list ordered by timestamp/ID descending with optional positive `account_id`, actor name/email, Account name, action, timestamp, IP, and allowlisted metadata. Auditoria SHALL provide Account filtering, column visibility, count, pagination, and explicit empty/error/loading states. Resumo SHALL reuse the same safe event representation.
-
-#### Scenario: Search and filter support data
-- **WHEN** an administrator searches by Account name and filters audit by a valid Account ID
-- **THEN** account search does not download every platform Account and audit contains only the selected Account's events
-
-### Requirement: Visible support context and tenant-state reset
-While support is active, the application SHALL show a persistent banner naming the Account, describing audited access, and offering exit. Entry, exit, real-membership switching, invalidation, and cross-tab/focus detection SHALL clear previous Account-bound client data before continuing. Navigation SHALL not return stale resources from a previous office. The Super Admin group SHALL remain available in support mode.
-
-#### Scenario: Focus after another tab exits support
-- **WHEN** a tab refreshes identity after support was exited in another tab sharing its session
-- **THEN** its support banner and previous Account-bound data are cleared and navigation uses the restored identity
+#### Scenario: Invalid audit pagination
+- **WHEN** page or Account filter is nonpositive, unbounded or invalid
+- **THEN** the API returns validation errors rather than silently broadening the query
