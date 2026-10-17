@@ -58,18 +58,18 @@ The executable checklist contains exactly the 46 surviving original IDs. V means
 
 - [ ] 10.1 Verify existing shared table/column/SSR-safe media/empty/row-action/metric/retry components against mapped source inventory and responsive rendering; fix demonstrated gaps and verify lint/typecheck without unrelated legacy imports.
 - [x] 10.2 Add tested adminNav route helpers and the seven-page sidebar/search catalog; verify exact summary matching, active child/parent, Super Admin-only destinations, collapsed popover, and mobile-close callbacks.
-- [ ] 10.3 Remove Account-only wrapper and complete existing shared Admin shell; verify one panel/navbar/title/tabs on every seven original direct routes, preserving existing ERP routes and navigation.
+- [x] 10.3 Remove Account-only wrapper and complete existing shared Admin shell; verify one panel/navbar/title/tabs on every seven original direct routes, preserving existing ERP routes and navigation.
 - [ ] 10.4 Complete route/focus guard evidence with real membership Identity only; verify ordinary-user denial, no-office/suspended-own Super Admin, privilege refresh and no loops without broadening tenant destinations or introducing support projection.
-- [ ] 10.5 Apply common typed query/pagination/latest-request handling to existing lists, especially Accounts and Support; verify debounce/filter reset, stale-result protection, invalid/out-of-range recovery and initial-error versus retained-success states.
+- [x] 10.5 Apply common typed query/pagination/latest-request handling to existing lists, especially Accounts and Support; verify debounce/filter reset, stale-result protection, invalid/out-of-range recovery and initial-error versus retained-success states.
 
 ## 11. Seven original pages connected to APIs
 
-- [ ] 11.1 Implement Resumo using the real summary endpoint, linked metric cards, five-event audit table, column menu, retry/empty states, and refresh preservation; verify API failure never renders false zero metrics.
-- [ ] 11.2 Complete shared Account table and create/edit contact fields while retaining separate commercial action, first-access flows and status confirmation. Entry uses only ordinary active real-membership switching. Verify field/loading/clipboard states, temporary links, member role and foreign denial.
+- [x] 11.1 Implement Resumo using the real summary endpoint, linked metric cards, five-event audit table, column menu, retry/empty states, and refresh preservation; verify API failure never renders false zero metrics.
+- [x] 11.2 Complete shared Account table and create/edit contact fields while retaining separate commercial action, first-access flows and status confirmation. Entry uses only ordinary active real-membership switching. Verify field/loading/clipboard states, temporary links, member role and foreign denial.
 - [x] 11.3 Implement Planos local search/table/column controls and edit-limits slideover; verify finite-to-null serialization survives save/reload and no creation/deletion action is introduced.
-- [ ] 11.4 Complete subscription field-error/catalog-retry/duplicate-submit evidence; verify real choices and retained inputs. Verify D009 preserves Account status/memberships/authorized reads while inactive subscription denies tenant writes with subscription_inactive.
+- [x] 11.4 Complete subscription field-error/catalog-retry/duplicate-submit evidence; verify real choices and retained inputs. Verify D009 preserves Account status/memberships/authorized reads while inactive subscription denies tenant writes with subscription_inactive.
 - [x] 11.5 Implement Usuários with name/email/type filtering, real Account-role badges, column controls, pagination/count, and no write actions; verify empty, multi-membership, and unauthorized states.
-- [ ] 11.6 Complete Suporte Entrar/Auditoria with numeric ID generic-detail lookup once and paginated server name search, never automatic all-page scanning; verify real-member-only entry, suspended/foreign feedback, client-state reset, safe log columns/filter/page and latest-request protection.
+- [x] 11.6 Complete Suporte Entrar/Auditoria with numeric ID generic-detail lookup once and paginated server name search, never automatic all-page scanning; verify real-member-only entry, suspended/foreign feedback, client-state reset, safe log columns/filter/page and latest-request protection.
 - [ ] 11.8 Complete Serpro explicit Account search/platform-vault metadata/upload, source-aware rotation, legacy-source hint, supplied-empty password transport and duplicate guards. Verify safe-read exception, 404 as failure, new/legacy source behavior, real multipart save, cleared secrets/results, retry and named verdicts.
 
 ## 12. Complete-change verification and handoff
@@ -352,3 +352,8 @@ Commits173290a and ebba709 implement original2.1/3.1–3.4: preserving subscript
 ## Reviewed commercial, audit and summary APIs — 2026-10-17
 
 Commits3a6be23/5b439a6 complete4.1,6.3,7.2: strict compatible nullable Plan replacement; inventoried safe audit metadata, positive resource IDs/minimal relations and preserving restrictive Account FK; real summary counts/five timestamp-ID newest events. Actual session/authorization tests retain D009 and no-office platform access. Focused post-Pint SQLite78tests496assertions and dedicatedPostgreSQL78tests496assertions passed. Sanitizer correction18tests127assertions passed; independent review and scoped re-review clean. Account case-insensitive literal search was corrected to existing shared helper after realPG regression. Cross-cutting1.3remainsopen for futurecertificate/diagnosticroutes. Validprogress20/46;10originalsretired; no final browser/process/provider claim.
+
+
+## Reviewed noncredential Admin integration — 2026-10-17
+
+Commitsb5f12f0/0edc5dd complete10.3,10.5,11.1,11.2,11.4,11.6: one sharedshell, typed actualAPIshapes, dedicatedsummary, Accounttable/rootcontacts plusseparatecommercialaction, reliablelists/subscriptionforms, boundedreal-memberSupportsearch/audit. Existing9nav/ERP,identity/issuance/contracts preserved. Focused48tests and14affectedregressions passed, fullfrontend lint/typecheckpassed; fixround1drivesactualnumber-inputundefined→schema→nullsave/reload and failedUserspagerecovery,17relatedtests passed. Independentreview/scopedrereviewclean. TypeExtendedPlatformAccountpreservesexistingaccess.ts export. SERPROspecifictypes1.2andresponsive/focusacceptance10.1/10.4remainopenuntilTask7/8; no realbrowser/build/provideracceptanceclaim. Validprogress26/46,10originalsretired.
