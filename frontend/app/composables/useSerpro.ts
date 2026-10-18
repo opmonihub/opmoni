@@ -11,6 +11,7 @@ import type {
   SerproAssociateResult,
   SerproAuthorizationTerm,
   SerproConnectivityResult,
+  SerproContractingCertificateMetadata,
   SerproConnectionMetadata,
   SerproConnectionPayload,
   SerproManualSearchQuota,
@@ -211,13 +212,28 @@ export function useSerpro() {
     const body = new FormData()
     body.append('consumer_key', payload.consumer_key)
     if (payload.consumer_secret) body.append('consumer_secret', payload.consumer_secret)
-    // "Usar o e-CNPJ da conta 1" viaja como flag e não como arquivo: os bytes
-    // já estão na linha corrente de `account_certificates`, e mandá-los de novo
-    // seria a segunda cópia que a spec proíbe.
-    if (payload.use_account_certificate) body.append('use_account_certificate', '1')
-    if (payload.certificate) body.append('certificate', payload.certificate)
-    if (payload.password) body.append('password', payload.password)
+    if (payload.certificate_source) body.append('certificate_source', payload.certificate_source)
+    if (payload.contracting_account_id !== undefined) body.append('contracting_account_id', String(payload.contracting_account_id))
+    if (payload.use_account_certificate !== undefined) body.append('use_account_certificate', payload.use_account_certificate ? '1' : '0')
+    if (payload.certificate) {
+      body.append('certificate', payload.certificate)
+      // Every selected file supplies a password field, including a passwordless container.
+      body.append('password', payload.password ?? '')
+    } else if (payload.password !== undefined) body.append('password', payload.password)
     const res = await $api<{ data: SerproConnectionMetadata }>('/serpro/connection', { method: 'PUT', body })
+    return res.data
+  }
+
+  async function contractingCertificate(accountId: number) {
+    const res = await $api<{ data: SerproContractingCertificateMetadata }>(`/admin/accounts/${accountId}/contracting-certificate`)
+    return res.data
+  }
+
+  async function uploadContractingCertificate(accountId: number, file: File, password: string) {
+    const body = new FormData()
+    body.append('certificate', file)
+    body.append('password', password)
+    const res = await $api<{ data: SerproContractingCertificateMetadata }>(`/admin/accounts/${accountId}/contracting-certificate`, { method: 'PUT', body })
     return res.data
   }
 
@@ -322,6 +338,8 @@ export function useSerpro() {
     setSchedules,
     connection,
     saveConnection,
+    contractingCertificate,
+    uploadContractingCertificate,
     testConnectivity,
     authorizationTerm,
     accountCertificate,

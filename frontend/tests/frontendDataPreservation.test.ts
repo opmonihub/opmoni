@@ -20,7 +20,11 @@ async function setupPage<T>(path: string, bindings: Record<string, unknown>, pro
   const compiled = ts.transpileModule(script.content, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText
+  const mounted: (() => unknown)[] = []
   const globals = {
+    onMounted: (fn: () => unknown) => mounted.push(fn),
+    onBeforeUnmount() {},
+    useNuxtApp: () => ({ $api: async () => [] }),
     ref: Vue.ref,
     reactive: Vue.reactive,
     computed: Vue.computed,
@@ -45,7 +49,9 @@ async function setupPage<T>(path: string, bindings: Record<string, unknown>, pro
   }
   new Function('require', 'exports', ...Object.keys(globals), compiled)(resolveImport, exports, ...Object.values(globals))
   const component = exports.default as { setup: (props: object, context: object) => Promise<T> }
-  return await component.setup(props, { expose() {}, emit() {} })
+  const state = await component.setup(props, { expose() {}, emit() {} })
+  await Promise.all(mounted.map(fn => fn()))
+  return state
 }
 
 const template: WorkTemplate = {
@@ -144,6 +150,7 @@ async function serproPage(configured: boolean | null) {
   const metadata = configured === null ? null : { configured, consumer_key_hint: '••••1234' }
   const writes: CredentialFields[] = []
   const page = await setupPage<SerproPage>('pages/admin/serpro.vue', {
+    useNuxtApp: () => ({ $api: async () => [] }),
     useSerpro: () => ({
       connection: async () => metadata,
       saveConnection: async (payload: CredentialFields) => {

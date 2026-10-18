@@ -1,4 +1,4 @@
-import type { PlatformAccount as AccessAccount } from './access'
+import type { PlatformAccount as AccessAccount, IssuedAccount } from './access'
 
 export interface Plan {
   id: number
@@ -26,11 +26,33 @@ export interface PlatformUser {
   is_super_admin: boolean
   account_links?: { role: string, account?: { id: number, name: string } | null }[]
 }
+/** Exact flat read projection emitted by SupportAccessLogMetadata::sanitize. */
+export interface SupportLogMetadata {
+  resource?: 'account_certificates' | 'client_dispatch_contacts' | 'client_saved_filters' | 'client_selections' | 'clients' | 'departments' | 'fiscal' | 'members' | 'process_templates' | 'processes' | 'serpro_enablement' | 'serpro_manual_searches' | 'serpro_messages' | 'serpro_monitorings' | 'serpro_obligation_schedules' | 'serpro_sync_runs' | 'tags' | 'tasks' | 'whatsapp_channels' | 'whatsapp_dispatches'
+  resource_id?: number
+  name?: string
+  email?: string
+  document?: string | null
+  role?: string
+  status?: string
+  person_type?: string | null
+  action?: string
+  client_id?: number
+  certificate_id?: number | null
+  previous_run_id?: number
+  count?: number
+  clients?: number
+  tags?: number
+  enabled?: boolean
+  power_refresh_queued?: boolean
+}
+export type AccountIssueResponse = IssuedAccount
+export type AccountReissueResponse = Pick<IssuedAccount, 'first_access'>
 export interface SupportAccessLog {
   id: number
   action: string
   ip?: string | null
-  metadata?: { resource?: string, resource_id?: number } | null
+  metadata?: SupportLogMetadata | null
   created_at: string
   super_admin?: { id: number, name: string, email: string } | null
   account?: { id: number, name: string, status: 'active' | 'suspended' } | null

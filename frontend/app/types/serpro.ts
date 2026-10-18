@@ -250,9 +250,22 @@ export interface MonitoringOverview {
   attention: Record<string, number>
 }
 
+export interface SerproContractingCertificateMetadata {
+  configured: boolean
+  document: string | null
+  subject: string | null
+  serial: string | null
+  not_before: string | null
+  not_after: string | null
+  updated_at: string | null
+}
+
 export interface SerproConnectionMetadata {
   configured: boolean
   consumer_key_hint: string | null
+  certificate_source: 'upload' | 'account'
+  contracting_account_id: number | null
+  legacy_account_certificate: boolean
   contracting_document: string | null
   certificate_subject: string | null
   certificate_serial: string | null
@@ -266,19 +279,16 @@ export interface SerproConnectionPayload {
   consumer_secret?: string
   certificate?: File
   password?: string
-  /**
-   * Quando verdadeiro, o certificado contratante é o e-CNPJ já gravado em
-   * Configurações da conta 1 — a linha corrente de `account_certificates`
-   * —, sem uma segunda cópia do arquivo nesta credencial. Excludente com
-   * `certificate`: o backend recusa uma request que traz os dois.
-   */
+  certificate_source?: 'upload' | 'account'
+  contracting_account_id?: number
+  /** Legacy selector retained for existing callers, never emitted by the new Admin form. */
   use_account_certificate?: boolean
 }
 
 export interface SerproConnectivityResult {
   ok: boolean
   /** `configuracao`, `certificado`, `credencial`, `provedor` — what to name. */
-  failed_element: string | null
+  failed_element: 'configuracao' | 'certificado' | 'credencial' | 'provedor' | null
   message: string | null
   checked_at: string
 }

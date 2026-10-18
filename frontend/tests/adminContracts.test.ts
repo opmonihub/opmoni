@@ -9,7 +9,7 @@ const account: ExtendedPlatformAccount = { id: 7, name: 'Office', status: 'activ
 const accounts: AccountListResponse = { data: [account], meta: { page: 2, last_page: 3, per_page: 15, total: 31 } }
 const user: PlatformUser = { id: 1, name: 'User', email: 'user@example.test', is_super_admin: true, account_links: [{ role: 'user', account }] }
 const users: ResourceListResponse<PlatformUser> = { data: [user], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
-const log: SupportAccessLog = { id: 1, action: 'update', created_at: '2026-10-17T12:00:00Z', account, metadata: { resource: 'account', resource_id: 7 } }
+const log: SupportAccessLog = { id: 1, action: 'update', created_at: '2026-10-17T12:00:00Z', account, metadata: { resource: 'clients', resource_id: 7 } }
 const summary: DetailResponse<AdminSummary> = { data: { totals: { accounts: 31, users: 1, subscriptions: 1, plans: 1 }, recent_support_logs: [log] } }
 it('preserves raw plans and both real pagination envelopes', () => {
   assert.equal(readPaginatedMeta(accounts).current_page, 2)
