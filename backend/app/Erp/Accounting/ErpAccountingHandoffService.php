@@ -193,6 +193,9 @@ class ErpAccountingHandoffService
 
             return null;
         }
+        if ($delivery->mapping_id === null) {
+            $delivery->update(['mapping_id' => $mapping->id, 'mapping_revision' => $mapping->revision]);
+        }
         $client = Client::withoutGlobalScope('account')->whereKey($mapping->client_id)->where('account_id', $account->id)->lockForUpdate()->first();
         if ($client === null || $client->status !== ClientStatus::Active) {
             $this->markBlocked($delivery, 'client_inactive');
@@ -240,9 +243,6 @@ class ErpAccountingHandoffService
             $this->markFailed($delivery, 'artifact_integrity_failed', retryable: true);
 
             return null;
-        }
-        if ($delivery->mapping_id === null) {
-            $delivery->update(['mapping_id' => $mapping->id, 'mapping_revision' => $mapping->revision]);
         }
 
         return [$document, $client, $bytes];

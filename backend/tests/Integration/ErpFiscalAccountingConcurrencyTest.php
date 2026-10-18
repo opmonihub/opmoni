@@ -240,6 +240,84 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         $this->assertSame(1, ErpAccountingMapping::where('delegation_id', $s['delegation_id'])->count());
     }
 
+    public function test_initial_concurrent_office_approvals_create_one_mapping(): void
+    {
+        $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
+        $client = resolve(CurrentTenant::class)->run($office->id, fn () => Client::factory()->company()->create(['account_id' => $office->id]));
+        $approver = User::factory()->create();
+        $membership = AccountMembership::factory()->create(['account_id' => $office->id, 'user_id' => $approver->id, 'role' => 'admin']);
+        $this->assertSame(0, ErpAccountingMapping::where('delegation_id', $delegation->id)->count());
+        $input = ['operation' => 'approve', 'account_id' => $office->id, 'membership_id' => $membership->id, 'delegation_id' => $delegation->id, 'establishment_id' => $establishment->id, 'client_id' => $client->id];
+        $results = $this->concurrent([$input, $input]);
+        foreach ($results as $result) {
+            $this->assertTrue($result['ok'], json_encode($results));
+        }
+        $this->assertSame($results[0]['mapping_id'], $results[1]['mapping_id']);
+        $mapping = ErpAccountingMapping::where('delegation_id', $delegation->id)->sole();
+        $this->assertSame($results[0]['mapping_id'], $mapping->id);
+        $this->assertSame(1, $mapping->revision);
+        $this->assertSame('active', $mapping->status);
+        $this->assertSame($approver->id, $mapping->approved_by_user_id);
+    }
+
+    public function test_new_intent_http_busy_failure_rolls_back_intent_and_job(): void
+    {
+        $s = $this->mappingScenario();
+        ErpAccountingDelivery::whereKey($s['delivery_id'])->delete();
+        $owner = User::factory()->create();
+        ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company_id'], 'user_id' => $owner->id, 'role' => 'owner']);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $s['company_id'], 'erp_plan_id' => $plan->id, 'status' => 'active']);
+        $session = $this->httpLogin($owner);
+        $intents = ErpAccountingDelivery::count();
+        $jobs = DB::table('jobs')->count();
+        DB::transaction(function () use ($s, $session): void {
+            Account::whereKey($s['account_id'])->lockForUpdate()->firstOrFail();
+            $response = $this->httpRequest(array_replace_recursive($session, [
+                'method' => 'POST', 'path' => '/api/v1/erp/accounting-deliveries',
+                'headers' => ['X-Company-Id' => (string) $s['company_id']],
+                'body' => ['erp_fiscal_document_id' => $s['document_id']],
+            ]));
+            $this->assertSame(503, $response['status']);
+            $this->assertSame('accounting_mapping_busy', $response['body']['code']);
+            $this->assertSame('1', $response['retry_after']);
+        });
+        $this->assertSame($intents, ErpAccountingDelivery::count());
+        $this->assertSame($jobs, DB::table('jobs')->count());
+        $this->assertSame(0, FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', $s['key'])->count());
+    }
+
+    public function test_new_intent_http_invalid_prerequisite_rolls_back_intent_and_job(): void
+    {
+        $s = $this->mappingScenario();
+        ErpAccountingDelivery::whereKey($s['delivery_id'])->delete();
+        $owner = User::factory()->create();
+        ErpCompanyMembership::factory()->create(['erp_company_id' => $s['company_id'], 'user_id' => $owner->id, 'role' => 'owner']);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $s['company_id'], 'erp_plan_id' => $plan->id, 'status' => 'active']);
+        $session = $this->httpLogin($owner);
+        $intents = ErpAccountingDelivery::count();
+        $jobs = DB::table('jobs')->count();
+        foreach (['inactive_client', 'missing_storage'] as $failure) {
+            Client::withoutGlobalScope('account')->whereKey($s['client_id'])->update(['status' => $failure === 'inactive_client' ? 'inactive' : 'active']);
+            if ($failure === 'missing_storage') {
+                Storage::disk('local')->delete(ErpFiscalDocument::findOrFail($s['document_id'])->storage_path);
+            }
+            $response = $this->httpRequest(array_replace_recursive($session, [
+                'method' => 'POST', 'path' => '/api/v1/erp/accounting-deliveries',
+                'headers' => ['X-Company-Id' => (string) $s['company_id']],
+                'body' => ['erp_fiscal_document_id' => $s['document_id']],
+            ]));
+            $this->assertSame(422, $response['status'], $failure);
+            $this->assertSame($intents, ErpAccountingDelivery::count(), $failure);
+            $this->assertSame($jobs, DB::table('jobs')->count(), $failure);
+            $this->assertSame(0, FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', $s['key'])->count());
+        }
+    }
+
     public function test_parent_fenced_revocation_and_status_races_prevent_late_publication(): void
     {
         foreach (['mapping' => 'mapping_revoked', 'delegation' => 'delegation_revoked', 'company' => 'company_inactive', 'account' => 'office_inactive', 'client' => 'client_inactive', 'delete-client' => 'client_inactive', 'source' => 'fiscal_document_not_authorized'] as $mutation => $reason) {
@@ -413,7 +491,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
 
     private function httpRequest(array $input): array
     {
-        $worker = new Process([PHP_BINARY, base_path('tests/Integration/request-worker.php')], base_path(), ['ERP_OPERATING_WRITES_ENABLED' => 'true', 'ERP_RELEASE_ENABLED' => 'true']);
+        $worker = new Process([PHP_BINARY, base_path('tests/Integration/request-worker.php')], base_path(), ['ERP_OPERATING_WRITES_ENABLED' => 'true', 'ERP_RELEASE_ENABLED' => 'true', 'QUEUE_CONNECTION' => 'database']);
         $worker->setInput(json_encode($input, JSON_THROW_ON_ERROR));
         $worker->setTimeout(30);
         $worker->start();

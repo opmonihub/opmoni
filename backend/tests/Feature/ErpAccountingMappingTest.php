@@ -340,6 +340,36 @@ class ErpAccountingMappingTest extends TestCase
         $this->assertDatabaseCount('erp_accounting_mappings', 2);
     }
 
+    public function test_placeholder_binds_first_approval_before_storage_failure_and_cannot_adopt_replacement(): void
+    {
+        $s = $this->scenario();
+        $handoff = app(ErpAccountingHandoffService::class);
+        $placeholder = $handoff->deliver($handoff->ensureDeliveryIntent($s['document']));
+        $this->assertNull($placeholder->mapping_id);
+        $first = $this->approveAccountingMapping($s['delegation'], $s['establishment'], $s['client']);
+        Storage::disk('local')->delete($s['document']->storage_path);
+        $failed = $handoff->retry($placeholder);
+        $this->assertSame('storage_unavailable', $failed->reason_code);
+        $this->assertSame($first->id, $failed->mapping_id);
+        $this->assertSame($first->revision, $failed->mapping_revision);
+        $this->assertSame(0, $failed->attempts);
+        $nextClient = resolve(CurrentTenant::class)->run($s['account']->id, fn () => Client::factory()->create(['account_id' => $s['account']->id]));
+        $next = $this->approveAccountingMapping($s['delegation'], $s['establishment'], $nextClient);
+        Storage::disk('local')->put($s['document']->storage_path, '<nfeProc/>');
+        $blocked = $handoff->retry($failed);
+        $this->assertSame('mapping_revoked', $blocked->reason_code);
+        $this->assertSame($first->id, $blocked->mapping_id);
+        $this->assertSame($placeholder->id, $blocked->id);
+        $this->assertSame(0, $blocked->attempts);
+        $history = $blocked->getAttributes();
+        $this->loginOwner($s);
+        $id = $this->postJson('/api/v1/erp/accounting-deliveries', ['erp_fiscal_document_id' => $s['document']->id])
+            ->assertCreated()->assertJsonPath('data.mapping_id', $next->id)->json('data.id');
+        $this->assertNotSame($placeholder->id, $id);
+        $this->assertSame($nextClient->id, $handoff->deliver(ErpAccountingDelivery::findOrFail($id))->client_id);
+        $this->assertSame($history, $blocked->fresh()->getAttributes());
+    }
+
     private function payload(array $s): array
     {
         return ['delegation_id' => $s['delegation']->id, 'erp_establishment_id' => $s['establishment']->id, 'client_id' => $s['client']->id];

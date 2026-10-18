@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\V1\Erp\Accounting;
 
 use App\Enums\Erp\ErpCompanyRole;
+use App\Erp\Accounting\AccountingMappingFence;
 use App\Erp\Accounting\ErpAccountingHandoffService;
 use App\Erp\ErpReleaseGate;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
+use App\Models\Account;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
 use App\Models\Erp\Accounting\ErpAccountingMapping;
 use App\Models\Erp\ErpOfficeDelegation;
@@ -13,6 +15,7 @@ use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ErpAccountingDeliveryController extends ErpOperationsController
 {
@@ -51,12 +54,16 @@ class ErpAccountingDeliveryController extends ErpOperationsController
         abort_unless($document->status === 'authorized', 422);
         $delegation = ErpOfficeDelegation::query()->where('erp_company_id', $context->company->id)->where('status', 'active')->first();
         abort_unless($delegation && ErpAccountingMapping::query()->where('delegation_id', $delegation->id)->where('erp_establishment_id', $document->erp_establishment_id)->where('status', 'active')->exists(), 422);
-        $intent = $this->handoff->ensureDeliveryIntent($document, (int) $request->user()->id);
-        $created = $intent->wasRecentlyCreated;
-        $result = $this->handoff->retry($intent);
-        abort_if($created && ! in_array($result->status, ['pending', 'delivered'], true), 422);
 
-        return response()->json(['data' => $this->serialize($result)], $created ? 201 : 200);
+        return DB::transaction(function () use ($request, $document, $delegation): JsonResponse {
+            resolve(AccountingMappingFence::class)->acquire(Account::query()->whereKey($delegation->account_id));
+            $intent = $this->handoff->ensureDeliveryIntent($document, (int) $request->user()->id);
+            $created = $intent->wasRecentlyCreated;
+            $result = $this->handoff->retry($intent);
+            abort_if($created && ! in_array($result->status, ['pending', 'delivered'], true), 422);
+
+            return response()->json(['data' => $this->serialize($result)], $created ? 201 : 200);
+        });
     }
 
     /** @return array<string, mixed> */
