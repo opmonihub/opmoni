@@ -105,6 +105,36 @@ class SerproDiagnosticAuthenticationTest extends BusinessTestCase
         $this->postJson('/api/v1/serpro/connectivity')->assertStatus(429)->assertHeader('Retry-After');
     }
 
+    public function test_distinct_trusted_ips_have_independent_diagnostic_budgets(): void
+    {
+        Http::preventStrayRequests();
+        for ($i = 0; $i < 6; $i++) {
+            $this->actingAs(User::factory()->create(['is_super_admin' => true]));
+            $this->withHeader('X-Opmoni-Client-IP', '192.0.2.10')->postJson('/api/v1/serpro/connectivity')->assertOk();
+        }
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]));
+        $this->withHeader('X-Opmoni-Client-IP', '192.0.2.20')->postJson('/api/v1/serpro/connectivity')->assertOk();
+        $this->actingAs(User::factory()->create(['is_super_admin' => true]));
+        $this->withHeader('X-Opmoni-Client-IP', '192.0.2.10')->withHeader('X-Forwarded-For', '192.0.2.30')
+            ->postJson('/api/v1/serpro/connectivity')->assertStatus(429)->assertHeader('Retry-After');
+        Http::assertNothingSent();
+    }
+
+    public function test_actor_diagnostic_budget_survives_trusted_ip_changes(): void
+    {
+        Http::preventStrayRequests();
+        $actor = User::factory()->create(['is_super_admin' => true]);
+        for ($i = 1; $i <= 6; $i++) {
+            $this->actingAs($actor);
+            $this->withHeader('X-Opmoni-Client-IP', '192.0.2.'.$i)->postJson('/api/v1/serpro/connectivity')->assertOk();
+        }
+
+        $this->actingAs($actor);
+        $this->withHeader('X-Opmoni-Client-IP', '192.0.2.7')->postJson('/api/v1/serpro/connectivity')->assertStatus(429)->assertHeader('Retry-After');
+        Http::assertNothingSent();
+    }
+
     #[DataProvider('providerFailures')]
     public function test_sanitized_provider_failures(int $status, array $body, string $element): void
     {

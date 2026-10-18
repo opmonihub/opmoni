@@ -17,6 +17,8 @@
     <php>
         <ini name="memory_limit" value="768M"/>
         <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_NAME" value="Opmoni" force="true"/>
+        <env name="SESSION_COOKIE" value="opmoni-session" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="BROADCAST_CONNECTION" value="null" force="true"/>
@@ -33,6 +35,7 @@
         <env name="DB_HOST" value="postgres" force="true"/>
         <env name="DB_USERNAME" value="opmoni" force="true"/>
         <env name="DB_PASSWORD" value="opmoni" force="true"/>
+        <env name="REDIS_HOST" value="redis" force="true"/>
         <env name="REDIS_DB" value="13" force="true"/>
         <env name="REDIS_CACHE_DB" value="14" force="true"/>
         <env name="REDIS_SESSION_DB" value="15" force="true"/>

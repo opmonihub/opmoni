@@ -26,6 +26,12 @@ final class SerproTokenProvider
         if ($cached instanceof SerproTokenPair) {
             return $cached;
         }
+        if (is_array($cached)
+            && is_string($cached['access_token'] ?? null) && trim($cached['access_token']) !== ''
+            && is_string($cached['jwt_token'] ?? null) && trim($cached['jwt_token']) !== ''
+            && is_int($cached['expires_in'] ?? null) && $cached['expires_in'] >= 0) {
+            return new SerproTokenPair($cached['access_token'], $cached['jwt_token'], $cached['expires_in']);
+        }
 
         return $this->authenticate($budget, $snapshot);
     }
@@ -212,16 +218,15 @@ final class SerproTokenProvider
             );
         }
 
-        $pair = new SerproTokenPair(
-            $accessToken,
-            $jwtToken,
-            (int) data_get($payload, 'expires_in', 0),
-        );
+        $expiresIn = (int) data_get($payload, 'expires_in', 0);
+        $pair = new SerproTokenPair($accessToken, $jwtToken, $expiresIn);
 
         if (! $this->lifecycle->isCurrent($connection)) {
             throw new SerproException('A conexão mudou durante a autenticação.', SerproFailure::NotSent, 0);
         }
-        Cache::put($this->cacheKey($connection), $pair, $pair->ttl());
+        Cache::put($this->cacheKey($connection), [
+            'access_token' => $accessToken, 'jwt_token' => $jwtToken, 'expires_in' => $expiresIn,
+        ], $pair->ttl());
 
         return $pair;
     }

@@ -4,6 +4,8 @@ $_SERVER['TEST_TOKEN'] = 'opmoni-'.getmypid();
 
 $testEnvironment = [
     'APP_ENV' => 'testing',
+    'APP_NAME' => 'Opmoni',
+    'SESSION_COOKIE' => 'opmoni-session',
     'APP_DEBUG' => 'false',
     'DB_CONNECTION' => 'pgsql',
     'DB_DATABASE' => 'opmoni_test',
@@ -16,6 +18,7 @@ $testEnvironment = [
     'SESSION_DRIVER' => 'redis',
     'SESSION_CONNECTION' => 'sessions',
     'SESSION_STORE' => 'sessions',
+    'REDIS_HOST' => 'redis',
     'REDIS_DB' => '13',
     'REDIS_CACHE_DB' => '14',
     'REDIS_SESSION_DB' => '15',

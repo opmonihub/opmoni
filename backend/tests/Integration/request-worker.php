@@ -9,14 +9,20 @@ use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Bootstrap\BootProviders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 
 require __DIR__.'/bootstrap.php';
 $app = require __DIR__.'/../../bootstrap/app.php';
+$input = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+if ($input['redis_failure'] ?? false) {
+    $app->beforeBootstrapping(BootProviders::class, function (): void {
+        config(['database.redis.cache.port' => 1]);
+    });
+}
 $kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
 
@@ -25,7 +31,6 @@ if (config('database.default') !== 'pgsql' || config('database.connections.pgsql
     throw new RuntimeException('Integration worker requires isolated PostgreSQL and Redis stores.');
 }
 
-$input = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
 if (($input['database_operation'] ?? null) === 'hold-account') {
     DB::transaction(function () use ($input): void {
         DB::table('accounts')->where('id', $input['account_id'])->lockForUpdate()->first();
@@ -55,10 +60,6 @@ if (($input['database_operation'] ?? null) === 'hold-erp-company') {
     });
     echo json_encode(['status' => 204]);
     exit;
-}
-if ($input['redis_failure'] ?? false) {
-    config(['database.redis.cache.port' => 1]);
-    Redis::purge('cache');
 }
 if ($input['session_write_failure'] ?? false) {
     $handler = $app->make('session')->driver()->getHandler();

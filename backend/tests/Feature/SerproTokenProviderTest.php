@@ -5,12 +5,14 @@ namespace Tests\Feature;
 use App\Enums\SerproFailure;
 use App\Models\SerproConnection;
 use App\Services\SerproException;
+use App\Services\SerproTokenPair;
 use App\Services\SerproTokenProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\BusinessTestCase;
 
 class SerproTokenProviderTest extends BusinessTestCase
@@ -104,6 +106,56 @@ class SerproTokenProviderTest extends BusinessTestCase
         $provider->pair();
 
         Http::assertSentCount(1);
+    }
+
+    public function test_serialized_cache_reuses_scalar_payload_without_allowing_php_classes(): void
+    {
+        config(['cache.stores.array.serialize' => true]);
+        Cache::purge('array');
+        $this->assertFalse(config('cache.serializable_classes'));
+        $this->connection();
+        Http::fake(['*' => Http::response(['access_token' => 'access-1', 'jwt_token' => 'jwt-1', 'expires_in' => 2008])]);
+
+        $provider = app(SerproTokenProvider::class);
+        $first = $provider->pair();
+        $second = $provider->pair();
+
+        $this->assertSame($first->accessToken(), $second->accessToken());
+        $this->assertSame($first->jwtToken(), $second->jwtToken());
+        $this->assertSame(1708, $second->ttl());
+        Http::assertSentCount(1);
+        $this->travel(1709)->seconds();
+        $provider->pair();
+        Http::assertSentCount(2);
+    }
+
+    #[DataProvider('unreadableCachedPairs')]
+    public function test_unreadable_cached_payload_reauthenticates_safely(mixed $payload): void
+    {
+        config(['cache.stores.array.serialize' => true]);
+        Cache::purge('array');
+        $this->connection();
+        Cache::put($this->serproTokenCacheKey(), $payload, 60);
+        Http::fake(['*' => Http::response(['access_token' => 'fresh-access', 'jwt_token' => 'fresh-jwt', 'expires_in' => 2008])]);
+
+        $pair = app(SerproTokenProvider::class)->pair();
+
+        $this->assertSame('fresh-access', $pair->accessToken());
+        $this->assertSame('fresh-jwt', $pair->jwtToken());
+        Http::assertSentCount(1);
+    }
+
+    public static function unreadableCachedPairs(): array
+    {
+        return [
+            'previous serialized object' => [new SerproTokenPair('old-access', 'old-jwt', 2008)],
+            'unexpected scalar' => ['invalid'],
+            'missing token' => [['access_token' => 'old-access', 'expires_in' => 2008]],
+            'invalid token type' => [['access_token' => ['invalid'], 'jwt_token' => 'old-jwt', 'expires_in' => 2008]],
+            'blank token' => [['access_token' => ' ', 'jwt_token' => 'old-jwt', 'expires_in' => 2008]],
+            'invalid expiry type' => [['access_token' => 'old-access', 'jwt_token' => 'old-jwt', 'expires_in' => '2008']],
+            'negative expiry' => [['access_token' => 'old-access', 'jwt_token' => 'old-jwt', 'expires_in' => -1]],
+        ];
     }
 
     public function test_forget_forces_a_new_acquisition(): void
