@@ -285,6 +285,10 @@ export interface FiscalDocumentEvent {
  * lista mostra.
  */
 export interface FiscalDetail extends FiscalDocumentRow {
+  /** Persisted provider authorization; never replaced by issue time. */
+  authorized_at?: string | null
+  /** Ninety-day conclusive notice; separate from automatic science eligibility. */
+  conclusive_deadline_at?: string | null
   /**
    * A distribuição que entregou o documento, ou `null` — o mesmo `?->value` do
    * Resource, pelo mesmo motivo de `FiscalLastCapture.source`. A folha de
@@ -430,4 +434,29 @@ export interface FiscalCaptureAccepted {
 export interface FiscalCaptureBlocked {
   message: string
   blocked_until: string
+}
+
+/** Safe operational projection, separate from complete accounting documents. */
+export interface FiscalProcessingRow {
+  id: number
+  client_id: number
+  client_name: string | null
+  chave_acesso: string
+  model: FiscalModel | null
+  source: FiscalSource | null
+  stage: FiscalStage | null
+  emissao_at: string | null
+  authorized_at: string | null
+  conclusive_deadline_at?: string | null
+  next_attempt_at: string | null
+  processing_state: string | null
+  processing_reason: string | null
+  processing_attempts: number
+  storage_state: string | null
+}
+
+export interface FiscalProcessingPage {
+  data: FiscalProcessingRow[]
+  summary: { active: number, deferred: number, attention: number }
+  meta: { current_page: number, last_page: number, per_page: number, total: number }
 }

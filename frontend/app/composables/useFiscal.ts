@@ -5,6 +5,7 @@ import type {
   FiscalDetail,
   FiscalListFilters,
   FiscalPage,
+  FiscalProcessingPage,
   FiscalSource,
   FiscalSummary
 } from '~/types/fiscal'
@@ -57,17 +58,13 @@ export function useFiscal() {
     return $api<FiscalPage>('/fiscal/documents', { query: queryOf(filters) })
   }
 
-  async function processingList(params: Record<string, unknown> = {}) {
-    return $api<{
-      data: Array<Record<string, unknown>>
-      summary: { active: number, deferred: number, attention: number }
-      meta: { total: number }
-    }>('/fiscal/processing', { query: queryOf(params) })
+  async function processingList(params: Record<string, unknown> = {}, options: { signal?: AbortSignal } = {}) {
+    return $api<FiscalProcessingPage>('/fiscal/processing', { query: queryOf(params), signal: options.signal })
   }
 
   /** A linha mais a linha do tempo e a prévia do XML. */
-  async function show(id: number) {
-    const response = await $api<{ data: FiscalDetail }>(`/fiscal/documents/${id}`)
+  async function show(id: number, options: { signal?: AbortSignal } = {}) {
+    const response = await $api<{ data: FiscalDetail }>(`/fiscal/documents/${id}`, { signal: options.signal })
     return response.data
   }
 
