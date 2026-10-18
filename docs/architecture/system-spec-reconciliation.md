@@ -7,7 +7,7 @@ Reconciled on 2026-10-13 from the current working tree, accepted product decisio
 - [Product decisions](product-decisions.md) govern accepted scope. D009 activates Clients, Fiscal, Monitoring, Work, Team, Settings, and platform administration while preserving real membership and existing access contracts.
 - [Reconciliation proposal](../../openspec/changes/archive/2026-10-13-reconcile-system-specs/proposal.md), [design](../../openspec/changes/archive/2026-10-13-reconcile-system-specs/design.md), and [tasks](../../openspec/changes/archive/2026-10-13-reconcile-system-specs/tasks.md) contain the reviewable delta history, archived on 2026-10-13 after completion and synchronization.
 - [Canonical specs](../../openspec/specs/) describe observable contracts after synchronization. Stronger accepted guarantees are not weakened merely because runtime verification is incomplete.
-- [Earlier platform proposal](../../openspec/changes/add-super-admin-platform/proposal.md) remains active with unchecked implementation tasks. Its original deltas are pending targets, not a description of all delivered behavior. Foreign support is superseded by D009; other differences below remain follow-up candidates.
+- The active [platform change](../../openspec/changes/add-super-admin-platform/proposal.md) has a reconciled 56-item disposition: 46 valid items and ten retired items. All 46 valid checklist tasks have local acceptance evidence; ten originals are retired, not implemented. The 2026-10-13 comparison below is historical; use the dated current-status section for today's evidence. Foreign support is superseded by D009.
 - Historical archived access artifacts remain unchanged. Source implementation, dependencies, credentials, development stores, and existing work are outside this documentation change.
 
 ## Decision reconciliation
@@ -51,46 +51,46 @@ Source and test links identify where behavior was inspected; a test link by itse
 
 ## Differences from the earlier Super Admin target
 
-This table is the historical 2026-10-13 reconciliation baseline. The later implementation replaces the pending entries described below; historical audit numbers are retained rather than presented as current gate results. The active [change evidence](../../openspec/changes/add-super-admin-platform/tasks.md#current-evidence-reconciliation--2026-10-17) owns reviewed completion status.
+The following comparison preserves the 2026-10-13 reconciliation baseline. Its observations are dated evidence, not current behavior or current gate results. The 2026-10-18 implementation column records the code and API shape; acceptance status is in the next section and the active [change evidence](../../openspec/changes/add-super-admin-platform/tasks.md#current-evidence-reconciliation--2026-10-17).
 
 ### Platform implementation update — 2026-10-18
 
-- `GET /api/v1/admin/summary` provides aggregate metrics and safe recent audit records. Account list/detail expose the combined contact/subscription/pending-owner projection; the existing commercial endpoint and settings storage remain compatible.
+- `GET /api/v1/admin/summary` returns aggregate metrics and at most five allowlisted recent audit rows. Account list/detail expose a bounded contact/subscription/pending-owner projection; the commercial endpoint and settings-backed contact storage remain compatible.
 - `platform:initialize` inserts missing catalog slugs and backfills only missing subscriptions in bounded chunks. Shared provisioning is transactional with issuance and preserves edited catalogs, statuses and identities.
-- Plan limits accept exactly the three supported nullable nonnegative integer fields. Subscription status retains its operational write gate; foreign support elevation remains superseded by D009.
-- The SERPRO UI explicitly chooses connection upload or a concrete Account's dedicated contracting vault. Metadata identifies current source safely; legacy source preservation stays compatible. Native PKCS12 validation, encryption, lock ordering and revision/generation fencing prevent mixed sources and stale authentication reuse.
-- Authentication diagnostics have separate actor/trusted-IP budgets and bounded verified transport. Trusted ingress is prioritized before throttle middleware. Independent process tests exercise real PostgreSQL lock waits, Redis sessions and serialized token reuse; external authentication is still fake transport in those tests.
+- Plan updates accept only `name` and the three nullable nonnegative integer limits; a supplied sparse limits object nulls omitted known keys. The API retains a plan-create endpoint, while the Admin page exposes editing only. Subscription statuses retain the tenant-write gate; foreign support elevation remains superseded by D009.
+- The SERPRO UI explicitly chooses connection upload or an active Account's dedicated platform contracting vault. The platform vault has a safe metadata/revision resource and is separate from the tenant vault; both store certificate material encrypted. Legacy sources remain usable until explicitly replaced. Lifecycle snapshots capture encrypted values, source identity and revisions coherently; Account-first write locks plus a joined MVCC read avoid taking a global credential lock inside an outer tenant transaction. Database locks are released before provider HTTP; revision/source changes fence stale results.
+- Authentication diagnostics have separate actor/trusted-ingress-IP budgets and bounded transport. Uploads use POST with `_method=PUT`, accept certificate files up to 2 MiB and multipart requests up to 4 MiB, and return 413 at ingress. Diagnostic defaults are 3-second connect, 8-second provider and 15-second proxy deadlines; ordinary Admin/access proxy routes use 10 seconds while longer operational routes retain their budgets. Process evidence uses real PostgreSQL/Redis and fake provider transport; it is not live SERPRO acceptance.
 
-These implementation facts supersede the absent-feature statements in the historical table, not its recorded test evidence. The final whole-suite/browser gates and 46-valid/10-retired checklist reconciliation require the active change's final review. Canonical sync and archive remain separate controller workflows. See [operational initialization and rollback](../../README.md#platform-administration-and-initialization).
+These implementation facts supersede the absent-feature statements in the historical table, not its dated audit evidence. The change still reports 56 original items as 46 valid and ten retired. As of the 2026-10-18 ledger snapshot, 46/46 valid tasks are checked; no executable checklist task remains open. The final complete backend/PostgreSQL suite and frontend checks passed; full browser acceptance passed; final independent source review is Spec PASS / Quality APPROVED with no findings. Canonical sync and archive have not occurred. See [operational initialization and rollback](../../README.md#platform-administration-and-initialization).
 
-| Earlier target | Current system | Disposition |
+| Earlier target | Observation recorded on 2026-10-13 | Current implementation recorded on 2026-10-18 |
 | --- | --- | --- |
-| Foreign support enter/exit, effective admin role and banner | Membership-only Account switching; no enter/exit routes or support projection | Superseded by D009; do not reintroduce by sync |
-| Audited support mutation lifecycle | Existing log reader; support audit helper is unreachable for ordinary membership-only HTTP operations | Do not claim active lifecycle audit coverage |
-| Dedicated GET /admin/summary | Frontend composes Account/user/subscription/plan/log APIs | Document current API composition |
-| Generic GET /admin/accounts/{id} and root contact fields | Separate GET/PATCH /admin/accounts/{id}/commercial and settings-backed platform_billing_contact | Preserve actual endpoint/envelope and owner secrecy |
-| Uniform meta.page and data-wrapped plan list | Account meta.page, resource meta.current_page, raw plan array | Frontend normalizes current pagination; uniform target remains unimplemented |
-| Commercial metadata without operational effect | ResolveAccount blocks unsafe methods when subscription is not active; PlanLimits enforces users/clients creation | D009 imported behavior now explicitly specified |
-| Exactly three fully validated nullable plan-limit keys | Controller accepts generic limits array; UI editor and API validation differ | Strict schema/finite-to-unlimited handling needs follow-up verification |
-| Insert-only full catalog seeder and platform:initialize command | Observer lazily creates Básico; additive migration backfills defaults; PlanSeeder upsert can overwrite edited catalog | Do not claim non-destructive full catalog reseeding or absent command |
-| Arbitrary contracting Account selector and global certificate API | Reuse selects earliest Account; e-CNPJ upload is tenant-admin controlled in settings | Arbitrary-source API/selector remains unimplemented |
-| certificate_source/contracting_account_id metadata and rotation revision fencing | Resource omits those fields; current singleton/rotation has fewer advertised guarantees | Retain as pending verification/design gaps |
-| Unified connectivity actor/IP budgets and fixed proxy/provider deadlines | Existing route throttle and runtime timeout configuration | Do not claim stronger budgets/fencing without dedicated checks |
-| Fully reviewed 56-task implementation | Earlier checklist remains unchecked | Import presence and successful regular tests do not complete that checklist |
+| Foreign support enter/exit, effective admin role and banner | Membership-only Account switching; no foreign support projection | Superseded by D009; ordinary switching still requires actual membership |
+| Audited support mutation lifecycle | Existing log reader; no ordinary membership enter/exit lifecycle | Existing rows are read through a safe projection; no foreign support lifecycle is claimed |
+| Dedicated `GET /admin/summary` | Frontend composed Account/user/subscription/plan/log APIs | `GET /api/v1/admin/summary` returns counts and up to five sanitized audit rows |
+| Generic Account detail and root contact fields | Separate `/commercial` route and settings-backed contact | Account list/detail return a bounded contact/subscription/pending-owner projection; `/commercial` remains compatible |
+| Uniform pagination and data-wrapped plan list | Account `meta.page`, resource `meta.current_page`, raw Plan array | Those distinct envelopes remain the contract; Account list also returns `meta.last_page` |
+| Commercial metadata without operational effect | Inactive/missing subscription blocked unsafe methods; PlanLimits enforced users/clients creation | The tenant write gate and creation limits remain active under D009 |
+| Strict nullable Plan limit updates | Older controller/UI validation differed | Plan updates allow only the known keys and normalize omitted supplied limits to null; a separate API create route remains |
+| Insert-only catalog initialization | Older observer/migration/seeder could not guarantee non-destructive full setup | `platform:initialize` inserts missing catalog slugs and only missing Account subscriptions in bounded chunks |
+| Arbitrary contracting Account selection and platform vault | Reuse selected the earliest Account; tenant certificate API was separate | Admin can select an active Account with a separate platform vault certificate; no public download/delete endpoint exists |
+| Safe source metadata and revision fencing | Older connection resource omitted source metadata | Current source and legacy-source hint are safe; lifecycle revisions fence rotation and stale diagnostics |
+| Bounded diagnostic and upload ingress | Older route throttle/runtime budgets were not the reconciled target | Actor/IP budgets, 3s/8s provider limits, 15s diagnostic/write proxy limits, 10s ordinary Admin/access limits, 2 MiB file and 4 MiB multipart limits are implemented |
+| Whole-change final acceptance | Checklist evidence was incomplete | 46/46 valid tasks are checked; local browser acceptance and documentation reconciliation are complete; source review is approved |
 
 ## Known limits and implementation follow-ups
 
 1. **Fiscal extraction:** D001/D002's services/fiscal microservice and NFePHP package layout are not implemented. Laravel currently owns capture, reconciliation, manifestation, XML storage, and jobs.
 2. **Private persistence:** disks are private, Account-separated paths under backend/storage. Local Compose preserves them through a source bind mount; no dedicated certificate/XML volume or deployed persistence policy was proven here. Keep the persistence contract and verify deployment separately.
 3. **Fiscal rollout:** CT-e manual and scheduled flags are separate; the scheduled command does not universally inherit the manual gate. NFS-e and manifestation retain their own opt-in gates. Do not treat fake contracts or a single-client canary as fleet-wide production acceptance.
-4. **SERPRO source lifecycle:** earliest-Account reuse, safe metadata, certificate validity enforcement, source rotation, and mixed-snapshot concurrency need comparison with the stronger pending target. Local regular tests do not prove external credentials or independent-process credential races.
-5. **Administrative UI:** support search traverses matching server-filtered pages; it is not the proposed one-detail-lookup workflow. Plan API has broader payload acceptance than the older strict target. Browser/mobile acceptance of every mapped state was not repeated here.
+4. **Platform acceptance:** the 46 valid tasks have local acceptance evidence, including the complete route/browser matrix and documentation reconciliation. Ten original tasks remain retired by D009. Production rollout, canonical sync and archive remain separate actions.
+5. **Provider acceptance:** optional local SERPRO probes are not live provider evidence. No live SERPRO acceptance is claimed.
 6. **Demonstration surfaces:** home widgets, inbox, and remaining template settings/sample handlers are not complete business features. They remain separately identified in the frontend inventory below.
-7. **Verification environment:** the development backend container mounts only backend at /app and sets fiscal homologation. Tests that inspect repository siblings/Compose or expect production defaults need the repository layout and explicit FISCAL_ENVIRONMENT=producao. The initial direct container run failed for these reasons; its affected test group was rerun successfully without source edits.
+7. **Verification environment:** the development backend container mounts only backend at /app and sets fiscal homologation. Tests that inspect repository siblings/Compose or expect production defaults need the repository layout and explicit FISCAL_ENVIRONMENT=producao. The initial direct container run failed for these reasons; its affected test group was rerun successfully without source edits. This is environment history, not current platform-suite evidence.
 
-## Current verification
+## Historical verification — 2026-10-13 audit
 
-| Check | Current evidence |
+| Check | Evidence recorded on 2026-10-13 |
 | --- | --- |
 | Frontend regular tests | 598 passed, zero failures/skips using pnpm test |
 | Backend initial container run | 1,672 tests, 9,131 assertions; 5 missing-sibling/Compose errors, 7 fiscal environment expectation failures, 3 optional live probes skipped |
@@ -99,13 +99,33 @@ These implementation facts supersede the absent-feature statements in the histor
 | OpenSpec strict validation, route coverage, links, idempotence, source preservation | 17 canonical specs and both active changes passed strict validation (19 items total); 121/121 API entries and 45/45 page sources mapped; all modified access scenarios retained; final link/idempotence/source checks recorded below |
 | Independent PostgreSQL/Redis processes | Not rerun in this documentation audit; prior results in the integration ledger are historical evidence only |
 | Live SERPRO/fiscal/WhatsApp providers | Not exercised; optional credentialed probes remain explicit skips |
-| Browser/lint/typecheck/build | Not rerun for this documentation-only change; earlier runtime evidence is not current acceptance |
+| Browser/lint/typecheck/build | Not rerun in that documentation-only audit; earlier runtime evidence was not treated as current acceptance |
 
-Commands and runtime details: [README](../../README.md), [integration ledger](../superpowers/plans/2026-10-13-legacy-integration.md). Temporary logs used for current evidence are local execution artifacts, not tracked credentials or provider payloads.
+Commands and runtime details from that audit: [README](../../README.md), [integration ledger](../superpowers/plans/2026-10-13-legacy-integration.md). Temporary logs were local execution artifacts, not tracked credentials or provider payloads.
+
+## Current platform acceptance 2026-10-18
+
+The active change retains all 56 original dispositions: 46 valid and ten retired by D009. Its executable checklist currently has 46/46 checked tasks. All executable tasks are complete. Local browser acceptance and documentation reconciliation passed; canonical sync and archive remain separate. The following checks cover source checkpoint `8bb5c6a`; subsequent documentation edits do not change that source. Browser evidence before and after isolated-store recovery is explicitly separated; the form/API implementations were unchanged across recovery. Earlier Account/contact/Plan/Subscription/Support observations preceded the final auth-context rebuild; the final build revalidated route access, focus refresh, source forms and error recovery. The browser did not simulate a provider-delay timeout; backend protocol/timeout regressions and named UI provider-failure verdicts cover the corresponding layers.
+
+| Final source check | Observed result |
+| --- | --- |
+| Complete backend suite, isolated store with production fiscal defaults | 2,385 total: 2,382 passed, three optional live-provider skips; 14,445 assertions, zero failures/errors |
+| Complete isolated PostgreSQL/Redis suite | 116 passed; 2,765 assertions, zero failures/errors/skips; independent-process contention and lifecycle checks included |
+| Frontend suite | 796 passed, zero failures/skips |
+| Frontend lint, typecheck and production build | Passed; build completed in 2m23s |
+| Changed PHP formatter and whitespace check | Passed |
+| Independent final source review | Spec PASS / Quality APPROVED; no confirmed findings |
+| Desktop/mobile browser matrix and forms | Seven routes at 1366×639 and 390×844 passed; shell/search/columns, real-member switch, account/contact/plan/subscription/support flows, catalog retry, direct/platform-vault upload and legacy source verified |
+| Post-fix route/focus guards | Ordinary Admin denial, no-office Admin access, selected-own suspended Account and live role revocation pass; focus refresh redirects without a hard reload |
+| Anonymous production SSR after auth-context correction | `/login` returned 200 and protected `/admin` redirected with 302; no `NUXT_E1001` in the fresh server log |
+
+The optional skips are `SerproPgdasHomologationProbeTest::test_probe_real_auto_center_quando_pre_requisitos_existem`, `SerproTrialContractTest::test_the_trial_answers_a_regime_consultation`, and `SerproTrialContractTest::test_a_throttled_trial_is_skipped_rather_than_failed`. They do not establish live SERPRO acceptance. Actual Nuxt-to-Laravel multipart acceptance and independent credential/source process races are recorded in the [active task list](../../openspec/changes/add-super-admin-platform/tasks.md); the full browser matrix and final documentation reconciliation have passed. Independent final source review is Spec PASS / Quality APPROVED with no findings. Canonical synchronization and archive have not occurred. During browser acceptance, the isolated test containers and stores disappeared. Source and evidence survived; the coordinator restored only owned test services on new named volumes, verified the isolated database and source mounts, and completed the remaining browser acceptance on a fresh synthetic baseline. Prior fixture mutations and sessions were lost, not restored. These recorded results do not authorize production rollout.
 
 ## Registered application API inventory
 
 Every registered /api/v1 route maps to a primary capability below. Auth and isolation additionally apply across every protected tenant route. Inventory counts route entries; GET|HEAD and PUT|PATCH are combined entries, not separate rows. Framework /up, development Boost logging, and framework storage routes are outside business API scope.
+
+Admin account, summary, catalog, subscription, user, and support-log routes require Super Admin. The platform contracting-certificate vault also requires Super Admin. `GET /api/v1/serpro/connection` retains its existing safe-read policy for Super Admin or a member of the selected active Account; connection mutation and connectivity diagnostics require Super Admin. A platform role never substitutes for real Account membership on tenant operations.
 
 | Method | Registered path | Primary capability |
 | --- | --- | --- |
@@ -118,10 +138,14 @@ Every registered /api/v1 route maps to a primary capability below. Auth and isol
 | POST | `api/v1/account/switch` | accounts |
 | GET / HEAD | `api/v1/admin/accounts` | platform-account-management |
 | POST | `api/v1/admin/accounts` | platform-account-management |
+| GET / HEAD | `api/v1/admin/accounts/{id}` | platform-account-management |
+| GET / HEAD | `api/v1/admin/accounts/{account}/contracting-certificate` | platform-serpro-connection |
+| PUT | `api/v1/admin/accounts/{account}/contracting-certificate` | platform-serpro-connection |
 | GET / HEAD | `api/v1/admin/accounts/{account}/commercial` | platform-account-management |
 | PATCH | `api/v1/admin/accounts/{account}/commercial` | platform-account-management |
 | PATCH | `api/v1/admin/accounts/{id}` | platform-account-management |
 | POST | `api/v1/admin/accounts/{id}/first-access` | platform-account-management |
+| GET / HEAD | `api/v1/admin/summary` | platform-administration |
 | GET / HEAD | `api/v1/admin/plans` | platform-commercial-management |
 | POST | `api/v1/admin/plans` | platform-commercial-management |
 | GET / HEAD | `api/v1/admin/plans/{plan}` | platform-commercial-management |
@@ -316,6 +340,6 @@ The merge created ten ERP specs and updated five existing capabilities, adding 4
 
 The archive preserves checklist status without turning it into deployment acceptance. Several ERP task evidence sections explicitly report that desktop/mobile browser flows were not run. ERP issuance/live model canaries, complete-core production approval, NF-e science/recovery canaries and wider fleet activation remain unverified or blocked in the recorded evidence. Existing provider, release and rollout gates were not changed. The earlier source-core inventory and verification tables above remain their dated audit evidence, not a fresh ERP acceptance report.
 
-This documentation-only workflow validates the canonical OpenSpec contracts, every selected delta, archive contents and local links. Application tests, browser sessions and live providers were not rerun. Application/runtime files and the incomplete [add-super-admin-platform](../../openspec/changes/add-super-admin-platform/tasks.md) change were preserved; that change remains active at 9/56 checked tasks.
+This documentation-only workflow validates the canonical OpenSpec contracts, every selected delta, archive contents and local links. Application tests, browser sessions and live providers were not rerun. Application/runtime files and the incomplete [add-super-admin-platform](../../openspec/changes/add-super-admin-platform/tasks.md) change were preserved; that 2026-10-13 audit snapshot recorded 9/56 checked original tasks. The reconciled 2026-10-18 snapshot separately reports 46/46 valid tasks checked after ten items were retired.
 
 Final archive verification: `openspec validate --all --strict --no-interactive` passed all 28 active items (27 specs and one change); `openspec list --json` reported only `add-super-admin-platform`. All 58 archived delta requirements matched canonical specs, all 113 checked tasks and ten metadata files were preserved, and all 227 local links across 55 scoped documents resolved. Hash comparison confirmed 1,387 application/runtime and pending-change files unchanged. The 58 archived files retained their content except for adjusted Markdown link targets.

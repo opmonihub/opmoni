@@ -84,7 +84,8 @@ abstract class PlatformProcessTestCase extends TestCase
         $deadline = microtime(true) + 12;
         while (! file_exists($this->signal($worker, $suffix))) {
             if (! $worker->isRunning() && ! file_exists($this->signal($worker, $suffix))) {
-                $this->fail('Worker exited before '.$suffix.'; exit='.$worker->getExitCode().'; output bytes='.strlen($worker->getOutput()).'; stderr bytes='.strlen($worker->getErrorOutput()));
+                $result = json_decode($worker->getOutput(), true);
+                $this->fail('Worker exited before '.$suffix.'; exception='.($result['unexpected_exception'] ?? 'none').'; exit='.$worker->getExitCode().'; output bytes='.strlen($worker->getOutput()).'; stderr bytes='.strlen($worker->getErrorOutput()));
             }
             if (microtime(true) >= $deadline) {
                 $this->fail('Worker barrier timed out: '.$suffix);

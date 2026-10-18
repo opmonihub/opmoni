@@ -26,7 +26,7 @@ class IndexSubscriptionRequest extends FormRequest
         return [
             'q' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status' => ['sometimes', Rule::in(['active', 'past_due', 'canceled'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:2147483647'],
         ];
     }
 }

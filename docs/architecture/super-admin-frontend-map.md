@@ -1,28 +1,36 @@
 # Super Admin frontend portability map
 
-Date: 2026-10-12.
+Legacy inventory date: 2026-10-12. Current destination status: 2026-10-18.
+
+## Current destination status — 2026-10-18
+
+All seven routes in the route inventory below now exist. The current Admin area includes account list/detail and contact editing, summary, plan and subscription administration, read-only global users, membership-only support search with sanitized audit browsing, and SERPRO connection administration. The dedicated summary, commercial catalog, platform certificate vault, source lifecycle, diagnostic and initialization command are implemented. Use the [system reconciliation](system-spec-reconciliation.md) and [runtime/API instructions](../../README.md#platform-administration-and-initialization) for current contracts.
+
+D009 remains controlling: Super Admin does not bypass real Account membership. Foreign support entry/exit, effective support roles and the support banner in the legacy UI are not part of this implementation. The platform certificate vault is separate from each tenant's certificate storage. The current evidence snapshot reports 56 original items as 46 valid and ten retired, with 46/46 valid tasks checked and local implementation acceptance complete; the ten retired originals remain retired. No live SERPRO acceptance is claimed.
+
+The page-by-page behavior below is a record of the legacy source and the destination gaps observed on 2026-10-12. Statements that the destination lacked pages, APIs or data are historical and are superseded by the current status above; legacy-only behavior remains reference material, not a current Opmoni contract.
 
 ## Intent and scope
 
-The user requested the same Super Admin navigation and pages as the legacy application, and a complete page inventory before copying the frontend. Three agents independently inspected page behavior, shared frontend dependencies, and the current application. This document records source inspection; it does not claim browser validation or implemented functionality.
+The user requested the same Super Admin navigation and pages as the legacy application, and a complete page inventory before copying the frontend. Three agents independently inspected page behavior, shared frontend dependencies, and the destination. This dated section records that original source inspection; current implementation and acceptance status are stated above.
 
 Source: `/home/obsidian/dev/legacy`. Destination: `/home/obsidian/dev/opmoni`.
 
-The target navigation is a Super Admin group containing Resumo, Contas, Planos, Assinaturas, Usuários, Suporte, and Serpro, in that order. The group is visible only to a platform Super Admin. This frontend inventory does not implement the missing commercial, support, or provider subsystems.
+The target navigation was a Super Admin group containing Resumo, Contas, Planos, Assinaturas, Usuários, Suporte, and Serpro, in that order. The group is visible only to a platform Super Admin. The subsequent implementation added these pages and supported APIs, subject to the acceptance limits recorded above.
 
 ## Route inventory
 
 | Label | Route | Legacy source | Current destination status |
 | --- | --- | --- | --- |
-| Resumo | `/admin` | `frontend/app/pages/admin/index.vue` | Page and summary APIs missing |
-| Contas | `/admin/contas` | `frontend/app/pages/admin/contas.vue` | Page and foundational Account APIs exist; presentation differs |
-| Planos | `/admin/planos` | `frontend/app/pages/admin/planos.vue` | Page, catalog model, and APIs missing |
-| Assinaturas | `/admin/assinaturas` | `frontend/app/pages/admin/assinaturas.vue` | Page, subscription model, and APIs missing |
-| Usuários | `/admin/usuarios` | `frontend/app/pages/admin/usuarios.vue` | Global user-list page and API missing |
-| Suporte | `/admin/suporte` | `frontend/app/pages/admin/suporte.vue` | Page, support access, and audit APIs missing |
-| Serpro | `/admin/serpro` | `frontend/app/pages/admin/serpro.vue` | Page, credential storage, and provider APIs missing |
+| Resumo | `/admin` | `frontend/app/pages/admin/index.vue` | Implemented with `GET /api/v1/admin/summary` |
+| Contas | `/admin/contas` | `frontend/app/pages/admin/contas.vue` | Implemented; account list/detail and contact projection are available |
+| Planos | `/admin/planos` | `frontend/app/pages/admin/planos.vue` | Implemented; catalog API exists and the UI exposes limit editing |
+| Assinaturas | `/admin/assinaturas` | `frontend/app/pages/admin/assinaturas.vue` | Implemented with paginated list and update APIs |
+| Usuários | `/admin/usuarios` | `frontend/app/pages/admin/usuarios.vue` | Implemented as a read-only global user list |
+| Suporte | `/admin/suporte` | `frontend/app/pages/admin/suporte.vue` | Implemented for real-member search/switch and sanitized audit browsing; foreign entry/exit is retired |
+| Serpro | `/admin/serpro` | `frontend/app/pages/admin/serpro.vue` | Implemented with a separate platform vault and bounded diagnostic; no live-provider acceptance is claimed |
 
-## Page behavior and API contracts
+## Legacy page behavior and reference contracts
 
 All source paths in this section are relative to `/home/obsidian/dev/legacy/frontend/app`. Legacy endpoints are relative to its `/api` transport. They are reference contracts, not routes currently available in Opmoni; new application endpoints must use the current `/api/v1` ingress and session/CSRF transport.
 
@@ -33,7 +41,7 @@ Source: `pages/admin/index.vue:25`, `:40`, `:47`, `:89`, `:127`.
 - Four linked metric cards: Account count, plan count, subscription count, and user count.
 - Recent support table shows five events: date, Super Admin, action, and Account. Column-visibility menu; no filters, pagination, or write actions.
 - Action badges: Entrada/info, Saída/neutral, Criação/success, Edição/warning, Exclusão/error.
-- Parallel GETs: `/admin/accounts?page=1`, `/admin/users?page=1`, `/admin/subscriptions?page=1`, `/admin/plans`, and `/admin/support/logs?page=1`. Counts come from pagination totals; the plan count comes from the returned array. There is no dedicated summary endpoint.
+- The legacy page made parallel GETs to `/admin/accounts?page=1`, `/admin/users?page=1`, `/admin/subscriptions?page=1`, `/admin/plans`, and `/admin/support/logs?page=1`. Counts came from pagination totals; the plan count came from the returned array. That legacy composition is replaced in Opmoni by `GET /api/v1/admin/summary`.
 - Initial failure replaces the entire summary with retry rather than showing false zero counts. Refresh failure preserves the previous result. Empty audit copy: “Nenhum acesso de suporte registrado ainda.”
 
 ### Contas
@@ -41,13 +49,13 @@ Source: `pages/admin/index.vue:25`, `:40`, `:47`, `:89`, `:127`.
 Source: `pages/admin/contas.vue:59`, `:101`, `:189`, `:217`, `:315`, `:377`, `:451`, `:557`, `:665`, `:781`.
 
 - Search by name/ID; active/suspended/all filter; column-visibility menu; 15-row server pagination.
-- Columns: ID, Account, status, plan, member count, and actions. The plan requires `subscription.plan.name`, which the current Account resource does not expose.
+- Columns: ID, Account, status, plan, member count, and actions. The current Opmoni platform projection now includes a safe subscription/plan summary.
 - Row actions: edit, enter support, and suspend/reactivate. Status changes have a confirmation modal.
 - Create modal includes Account name, owner name, login email, access mode, optional initial password, phone, WhatsApp flag, state, and city. The legacy permits no owner access, manual password assignment, or first-access links. These are legacy behaviors to adapt, not instructions to replace the current activation contract.
 - Edit modal fetches details and updates contact fields; owner/access controls appear only when the Account has no members. Newly issued links keep the modal open for copying.
 - GET `/admin/accounts` with `page,q,status`; POST `/admin/accounts`; GET and PATCH `/admin/accounts/{id}`. Detail expects `{data: AdminAccount}`.
-- Current supported operations remain GET/POST/PATCH `/api/v1/admin/accounts` and POST `/api/v1/admin/accounts/{id}/first-access`. Current creation requires an owner; it does not accept contact/billing fields or manual passwords.
-- Support entry uses either Account switching for a membership or an audited support endpoint for foreign Accounts. Only membership-based switching exists in the destination.
+- Current supported operations include GET/POST `/api/v1/admin/accounts`, GET/PATCH `/api/v1/admin/accounts/{id}`, GET/PATCH `/api/v1/admin/accounts/{id}/commercial`, and POST `/api/v1/admin/accounts/{id}/first-access`. Creation requires an owner and returns a temporary one-use link; the API does not assign the owner's password. Contact fields are supported through the bounded platform contact projection.
+- The legacy offered foreign support entry. Opmoni only allows ordinary Account switching for a real active membership, consistent with D009.
 - Loading, initial retry, refresh toast, empty results, modal detail loading, submit busy states, and clipboard feedback must be preserved.
 
 ### Planos
@@ -56,9 +64,9 @@ Source: `pages/admin/planos.vue:25`, `:43`, `:50`, `:90`, `:109`, `:128`, `:254`
 
 - Local search by plan name/slug; column-visibility menu; no pagination.
 - Columns: plan name/slug, user limit, client limit, monitoring limit, and actions. Missing/null limits display “Ilimitado”.
-- Only write action: “Editar limites”; no creation or deletion.
-- Slideover contains name and three number inputs. Limits are nullable nonnegative integers; empty means unlimited. Cancel/save with busy feedback. Legacy payload omits null entries from `limits`; validate how a future API clears an existing limit before copying that serialization.
-- GET `/admin/plans`; PUT `/admin/plans/{id}` with `{name,limits}`. Current backend has neither route nor catalog model.
+- Only write action in the Admin UI: “Editar limites”; no create/delete controls.
+- Slideover contains name and three number inputs. Current update validation accepts a 2–255 character name and only `users`, `clients`, and `monitorings` as nullable nonnegative integer limits. A supplied sparse limits object sets omitted known keys to null; slug and unknown fields are rejected.
+- Current API provides GET/POST `/api/v1/admin/plans`, GET `/api/v1/admin/plans/{id}`, and PUT/PATCH `/api/v1/admin/plans/{id}`; there is no delete route. The separate POST API can create plans even though the UI exposes editing only.
 - Empty copy: “Nenhum plano encontrado.” Footer compares filtered results with total plans. Initial retry and refresh preservation follow the shared pattern.
 
 ### Assinaturas
@@ -68,9 +76,9 @@ Source: `pages/admin/assinaturas.vue:35`, `:55`, `:95`, `:133`, `:153`, `:164`, 
 - Search by Account/plan; active/past_due/canceled/all status filter; column-visibility menu; 15-row server pagination.
 - Columns: ID, Account, plan, status, actions. Status badges: Ativa/success, Inadimplente/warning, Cancelada/neutral.
 - Edit slideover contains plan and status selectors. No separate creation/deletion flow.
-- GET `/admin/subscriptions` with `page,q,status`, plus GET `/admin/plans` for the plan selector; PUT `/admin/subscriptions/{id}` with `{plan_id,status}`.
+- GET `/api/v1/admin/subscriptions` with `page,q,status`, GET `/api/v1/admin/plans` for the plan selector, and PUT/PATCH `/api/v1/admin/subscriptions/{id}` with `{plan_id,status}`. List resources use `meta.current_page`; only active, past_due and canceled statuses are accepted.
 - Adjust an out-of-range page after list refresh. Loading, retry, refresh preservation, footer count, and “Nenhuma assinatura encontrada.” are explicit states.
-- Current backend has no subscription routes/model. Do not present a save as successful until that contract exists.
+- The subscription API and model are implemented. Updates require a real plan and valid status, preserve Account status/memberships, and do not call a payment provider.
 
 ### Usuários
 
@@ -81,7 +89,7 @@ Source: `pages/admin/usuarios.vue:42`, `:60`, `:90`, `:129`, `:173`, `:204`.
 - GET `/admin/users` with `page,q,type`; each row includes `is_super_admin` and `account_links[]` containing role and Account metadata.
 - No user creation, editing, deletion, promotion, or row actions in the legacy page.
 - Empty copy: “Nenhum usuário encontrado.” Loading, retry, refresh preservation, and footer count use shared list behavior.
-- User models exist in the destination, but the global listing resource/API does not.
+- The current global listing API returns allowlisted identity fields and actual Account-role links; it has no user mutation endpoints.
 
 ### Suporte
 
@@ -92,8 +100,7 @@ Source: `pages/admin/suporte.vue:49`, `:70`, `:75`, `:94`, `:120`, `:166`, `:207
 - Numeric search uses GET `/admin/accounts/{id}`. Name search downloads all Account pages and filters locally. Prefer the current server-side `q` search when adapting this interaction.
 - Entry refreshes identity and reloads the application at `/` to clear state from the previous Account.
 - Auditoria has positive Account-ID filtering; columns date, Super Admin, Account, action, IP; column menu and 15-row pagination. GET `/admin/support/logs` with `page,account_id`; empty copy: “Nenhum evento encontrado.”
-- Entry and exit APIs are POST `/support/accounts/{id}/enter` and POST `/support/exit`. A support banner names the current Account, explains that actions are audited, and offers exit.
-- Current `switchAccount()` is membership-only. A support UI requires a dedicated server-authorized support session and audited operations before entry is enabled.
+- The legacy entry/exit APIs and support banner are not implemented in Opmoni. Current `switchAccount()` is membership-only; support audit browsing is read-only and does not claim an active foreign support lifecycle.
 
 ### Serpro
 
@@ -101,13 +108,13 @@ Source: `pages/admin/serpro.vue:26`, `:54`, `:119`, `:136`, `:194`, `:213`, `:30
 
 - Single platform credential, outside tenant-specific data. No table, filters, pagination, modal, or synchronization action.
 - Configured state shows key hint, contracting document, certificate subject/serial/validity, configured badge, and “Atualizar credencial”. Never populate fields with stored secrets.
-- Unconfigured state shows instructions and the credential form. Legacy GET 404 becomes unconfigured state; any destination contract must distinguish an intentionally unconfigured credential from an unimplemented endpoint.
-- Form: required consumer key, optional replacement consumer secret, certificate source choice, `.pfx/.p12` upload, and certificate password. The Account-certificate option assumes the legacy's Account 1 certificate storage, which is absent in the destination.
-- GET `/serpro/connection` returns `{data: SerproConnectionMetadata}`. PUT `/serpro/connection` sends FormData with key and provided secret/certificate/password or `use_account_certificate: '1'`. Do not manually set multipart Content-Type. Omitted replacement secrets preserve stored values; form secrets are cleared after save/cancel.
+- Unconfigured state shows instructions and the credential form. Current unconfigured connection reads return successful metadata; a failed load remains an error.
+- Form: consumer key, optional replacement consumer secret, certificate source choice, `.pfx/.p12` upload, and certificate password. The current UI offers direct upload or an active Account's separate platform contracting-certificate vault; it does not automatically copy a tenant certificate.
+- GET `/api/v1/serpro/connection` returns `{data: SerproConnectionMetadata}`. PUT `/api/v1/serpro/connection` retains the public PUT API; the browser uses POST multipart with `_method=PUT` through Nuxt. Omitted or blank key/secret replacement fields preserve saved values, and an explicitly empty password remains distinct from omission. Secrets are write-only and cleared from the form after save/cancel.
 - POST `/serpro/connectivity` returns `{data: {ok,failed_element,message,checked_at}}`. The button tests authentication only; result shows status, failed element, message, and time. Saving clears an obsolete test result.
-- Preserve skeleton loading, retry, busy save/test states, configured/unconfigured distinction, and write-only credential behavior. Provider APIs/storage are absent in the destination.
+- Preserve skeleton loading, retry, busy save/test states, configured/unconfigured distinction, and write-only credential behavior. A bounded diagnostic is implemented; live SERPRO acceptance is not claimed.
 
-## Shared frontend inventory
+## Legacy shared frontend inventory — 2026-10-12
 
 Source paths below are relative to the legacy `frontend/app`. Adapt presentation to the destination's existing Nuxt 4, Nuxt UI 4, VueUse, Zod, Lucide, Public Sans, and green/zinc theme; copying the full legacy layout would import unrelated product modules.
 
@@ -137,9 +144,9 @@ Source paths below are relative to the legacy `frontend/app`. Adapt presentation
 
 `utils/pageShell.ts` is not a dependency of the mapped Admin pages or `PanelList.vue` and can be excluded from the minimum copy set.
 
-### Destination file set
+### Historical destination file set proposal
 
-Create/adapt the shared `frontend/app/pages/admin.vue`, the six missing route files under `frontend/app/pages/admin/`, and `frontend/app/utils/adminNav.ts`. Adapt the existing `contas.vue` in place. Port the table components/tokens, summary card, retry alert, responsive column-menu helper, and list utilities listed above. Add narrowly scoped support/Serpro types and clients only when their destination contracts are defined.
+The 2026-10-12 proposal was to create/adapt the shared `frontend/app/pages/admin.vue`, six missing route files, and `frontend/app/utils/adminNav.ts`, then port the mapped components and types. The current implementation has since added the shared shell and all seven route pages. This file set is retained as planning history, not a current implementation checklist.
 
 Modify `frontend/app/layouts/default.vue`, `frontend/app/middleware/access.global.ts`, and `frontend/app/plugins/access-focus.client.ts` to apply navigation and access behavior to the full Admin route family. Keep existing authentication and first-access files as the destination source of truth.
 
@@ -150,19 +157,21 @@ Modify `frontend/app/layouts/default.vue`, `frontend/app/middleware/access.globa
 - Group folding in the legacy keeps the active child visible while hiding siblings. Keep this behavior only if the destination adopts the corresponding sidebar helpers.
 - Command palette includes all seven destinations only for Super Admin.
 - Shared header derives its title and horizontal tabs from the same route catalog.
-- Legacy `auth` and `super-admin` page middleware and server-side guards enforce platform access independently. Destination guards must integrate with its current identity/session, including refresh-on-focus.
+- The legacy used `auth` and `super-admin` middleware. Opmoni now integrates platform route authorization and focus refresh with its existing identity/session contract; post-fix task 10.4 now verifies live privilege revocation, ordinary denial, no-office Admin and selected-own suspended Account behavior.
 - Do not copy legacy `useAuth` or `plugins/api.ts`: identity transport, API prefix, CSRF, and response envelopes differ. Both projects use Nuxt frontend and Laravel backend APIs; no Inertia migration is needed.
 
 Sources: legacy `frontend/app/layouts/default.vue:188`, `:205`, `:243`, `:283`, `:298`; `frontend/app/utils/adminNav.ts:19`; `frontend/app/middleware/super-admin.ts:1`; `backend/routes/api.php:296`.
 
-## Legacy inconsistencies to correct during the port
+## Resolved legacy contract differences
 
-1. Account detail envelope: `pages/admin/contas.vue:377` expects `{data: AdminAccount}`, while `pages/admin/suporte.vue:120` expects a direct Account. Use one destination contract.
-2. Support membership: `pages/admin/suporte.vue:94` treats presence in `accounts` as membership, although `AuthAccountLink` supports `is_member: false`. Check actual membership metadata; do not silently switch into foreign Accounts.
-3. Missing limits: the plan editor displays null as unlimited but omits null limits when saving. Confirm explicit clearing semantics in the new API.
-4. Unconfigured Serpro: a missing implementation returning 404 must not masquerade as a successfully loaded, unconfigured provider.
+1. Account detail uses the same `{data}` envelope as the Account list; the summary and commercial metadata also use `{data}`.
+2. Support entry is enabled only through an active real membership. Foreign support elevation remains superseded by D009.
+3. Plan updates serialize the three supported limit keys; null and omitted keys in a supplied replacement `limits` object mean unlimited.
+4. An unconfigured SERPRO connection returns successful metadata, while a failed read remains an error.
 
-## Current application boundaries
+## Historical destination boundaries — 2026-10-12 (superseded)
+
+The following bullets describe the destination when the legacy inventory was written. They are preserved to explain the original port decisions; they are not current instructions.
 
 - `frontend/app/layouts/default.vue:76` has a single conditional platform-account link; replace it with the nested group. The existing Settings group illustrates `children` and mobile-close callbacks.
 - `frontend/app/layouts/default.vue:165` wraps only `/admin/contas` in an administrative panel. A shared parent page should replace this special case, avoiding nested dashboard panels.
@@ -171,19 +180,19 @@ Sources: legacy `frontend/app/layouts/default.vue:188`, `:205`, `:243`, `:283`, 
 - `backend/routes/api.php:26` exposes only platform Account list, creation, update, and activation-link reissue. Sample template APIs are not administrative backends.
 - `frontend/shared/types/access.ts:16` exposes `id`, `name`, `status`, `members_count`, and `pending_owner`; no plan, billing, commercial-contact, or support fields exist.
 
-## Preserve current Account access behavior
+## Current Account access contract
 
-The current Account page must keep its implemented first-access contract when its presentation is ported:
+The Account page implements this first-access contract:
 
 - Creation accepts office name, owner name, and owner email. It issues an activation URL for temporary copying; the platform does not assign the owner's password.
 - Reissue is available only for an active Account with no members, invalidates the previous link, and does not modify an existing user's identity.
 - Activation URLs are displayed only when newly issued and cleared when the modal closes. They must not be recovered from Account lists.
 - Suspension/reactivation requires confirmation. Tenant data and memberships are preserved.
-- Super Admin status does not grant membership-free operational Account switching. Support access needs its own backend and audit contract.
+- Super Admin status does not grant membership-free operational Account switching. Foreign support entry/exit is retired; the current Support page provides member search and read-only audit browsing.
 
 Sources: `frontend/app/pages/admin/contas.vue:63`, `backend/app/Http/Controllers/Api/V1/AccessController.php:88`, and the canonical `openspec/specs/accounts/spec.md` (foundation archived under `openspec/changes/archive/2026-10-12-add-access-accounts-foundation/`).
 
-## Recommended port sequence
+## Historical port sequence — 2026-10-12
 
 1. Introduce the shared Admin page shell, route inventory, nested sidebar group, command-palette entries, and route authorization.
 2. Port shared table density, column controls, pagination, retry handling, and metadata types.
@@ -192,6 +201,6 @@ Sources: `frontend/app/pages/admin/contas.vue:63`, `backend/app/Http/Controllers
 5. Port Suporte and Serpro interfaces without enabling operations that lack server-side authorization, auditing, or credential handling.
 6. Verify direct navigation, sidebar expanded/collapsed/mobile behavior, ordinary-user denial, Super Admin access without an office, loading/failure/empty states, and Account mutations. Run frontend lint, typecheck, access tests, and build when product code is changed.
 
-## Validation of this inventory
+## Validation and acceptance status
 
-This mapping was produced through read-only source inspection. No product code, backend schema, runtime credentials, or existing local changes were modified. Browser behavior and API execution remain to be verified during implementation.
+The 2026-10-12 inventory was produced by read-only source inspection. It predates the current implementation. The 2026-10-18 evidence snapshot records 46/46 valid tasks checked, with final backend/PostgreSQL and frontend checks, complete browser acceptance, documentation reconciliation and approved independent source review. See [the platform acceptance section](system-spec-reconciliation.md#current-platform-acceptance-2026-10-18); the current task record provides the final local evidence and its live-provider limits.

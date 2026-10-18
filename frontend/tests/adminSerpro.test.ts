@@ -21,7 +21,7 @@ const flush = async () => {
 const empty = { configured: false, consumer_key_hint: null, contracting_document: null, certificate_subject: null, certificate_serial: null, certificate_not_before: null, certificate_not_after: null, updated_at: null, certificate_source: 'upload', contracting_account_id: null, legacy_account_certificate: false }
 const saved = { ...empty, configured: true, consumer_key_hint: '••••1234', certificate_subject: 'Safe subject' }
 const account = (id = 27, status = 'active') => ({ id, name: `Office ${id}`, status, members_count: 0, pending_owner: null })
-const vault = { configured: true, document: '12345678000100', subject: 'Safe source', serial: '7', not_before: '2020-01-01', not_after: '2099-01-01', updated_at: '2026-10-17' }
+const vault = { configured: true, revision: 1, document: '12345678000100', subject: 'Safe source', serial: '7', not_before: '2020-01-01', not_after: '2099-01-01', updated_at: '2026-10-17' }
 const result = { ok: true, failed_element: null, message: null, checked_at: '2026-10-17' }
 function deferred() {
   let resolve!: (value: Runtime) => void

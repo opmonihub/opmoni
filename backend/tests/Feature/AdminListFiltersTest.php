@@ -8,11 +8,31 @@ use App\Models\Plan;
 use App\Models\User;
 use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\BusinessTestCase;
 
 class AdminListFiltersTest extends BusinessTestCase
 {
     use RefreshDatabase;
+
+    public static function excessivePages(): array
+    {
+        return [
+            'users boundary' => ['users', '2147483648'],
+            'subscriptions boundary' => ['subscriptions', '2147483648'],
+            'users overflow' => ['users', '9223372036854775807'],
+            'subscriptions overflow' => ['subscriptions', '9223372036854775807'],
+        ];
+    }
+
+    #[DataProvider('excessivePages')]
+    public function test_admin_resource_lists_reject_excessive_pages(string $resource, string $page): void
+    {
+        $this->actingAs($this->superAdminWithOwnAccount(), 'web')
+            ->getJson('/api/v1/admin/'.$resource.'?page='.$page)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('page');
+    }
 
     protected function setUp(): void
     {

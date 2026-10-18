@@ -45,10 +45,11 @@ class AccountContractingCertificateApiTest extends BusinessTestCase
         $before = $legacy->fresh()->getRawOriginal();
         [$file, $bytes] = $this->certificate('');
         $url = $this->url($account);
-        $this->getJson($url)->assertOk()->assertJsonPath('data.configured', false);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.configured', false)->assertJsonPath('data.revision', null);
         $response = $this->put($url, ['certificate' => $file, 'password' => ''], ['Accept' => 'application/json'])->assertOk();
-        $this->assertSame(['configured', 'document', 'subject', 'serial', 'not_before', 'not_after', 'updated_at'], array_keys($response->json('data')));
-        $response->assertJsonPath('data.document', '12345678000195');
+        $this->assertSame(['configured', 'revision', 'document', 'subject', 'serial', 'not_before', 'not_after', 'updated_at'], array_keys($response->json('data')));
+        $response->assertJsonPath('data.document', '12345678000195')->assertJsonPath('data.revision', 1);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.revision', 1);
         $stored = AccountContractingCertificate::sole();
         $this->assertSame($bytes, $stored->certificateBytes());
         $this->assertSame('', $stored->certificatePassword());
@@ -89,7 +90,8 @@ class AccountContractingCertificateApiTest extends BusinessTestCase
             $this->assertStringNotContainsString($connection->consumer_secret_encrypted, $serialized);
         }
         [$next, $nextBytes] = $this->certificate('', '27865757000102');
-        $this->put($this->url($account), ['certificate' => $next, 'password' => ''], ['Accept' => 'application/json'])->assertOk();
+        $this->put($this->url($account), ['certificate' => $next, 'password' => ''], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('data.revision', 2);
+        $this->getJson($this->url($account))->assertOk()->assertJsonPath('data.revision', 2);
         $this->assertFalse($lifecycle->isCurrent($snapshot));
         $fresh = $lifecycle->snapshot();
         $this->assertSame($nextBytes, $fresh->certificateBytes());

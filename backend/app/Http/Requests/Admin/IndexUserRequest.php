@@ -26,7 +26,7 @@ class IndexUserRequest extends FormRequest
         return [
             'q' => ['sometimes', 'nullable', 'string', 'max:255'],
             'type' => ['sometimes', Rule::in(['super', 'user'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:2147483647'],
         ];
     }
 }

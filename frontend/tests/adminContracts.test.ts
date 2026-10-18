@@ -29,3 +29,15 @@ it('no-office Super Admin keeps all Admin destinations on focus; lost privilege 
   assert.equal(focusAccessDestination(identity, '/fiscal'), '/acesso-indisponivel')
   assert.equal(focusAccessDestination({ ...identity, is_super_admin: false }, '/acesso-indisponivel'), null)
 })
+
+it('revoked Super Admin leaves every Admin route even with an active real office', async () => {
+  const { focusAccessDestination } = await import('../shared/utils/access.ts')
+  const membership = { id: 7, name: 'Office', status: 'active' as const, role: 'user' as const }
+  const identity = { id: 1, name: 'User', email: 'user@example.test', is_super_admin: false, accounts: [membership], current_account: membership, companies: [], current_company: null }
+  for (const route of ['/admin', '/admin/contas', '/admin/planos', '/admin/assinaturas', '/admin/usuarios', '/admin/suporte', '/admin/serpro', '/admin/erp/planos', '/admin/erp/assinaturas']) {
+    assert.equal(focusAccessDestination(identity, route), '/', route)
+    assert.equal(focusAccessDestination({ ...identity, is_super_admin: true }, route), null)
+  }
+  assert.equal(focusAccessDestination(identity, '/fiscal'), null)
+  assert.equal(focusAccessDestination(identity, '/settings/profile'), null)
+})

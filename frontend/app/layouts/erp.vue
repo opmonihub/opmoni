@@ -71,9 +71,11 @@ const navbarTitle = computed(() => {
       <template #header>
         <UDashboardNavbar
           :title="navbarTitle"
-          :toggle="{ 'aria-label': 'Abrir menu ERP' }"
           :ui="{ left: 'min-w-0', title: 'hidden truncate lg:block', right: 'min-w-0' }"
         >
+          <template #toggle>
+            <UDashboardSidebarToggle aria-label="Abrir menu ERP" />
+          </template>
           <template #right>
             <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />
             <UserMenu collapsed class="lg:hidden" />

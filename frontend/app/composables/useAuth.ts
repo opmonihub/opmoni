@@ -4,14 +4,17 @@ import type { Identity } from '#shared/types/access'
 import { accessDestination, apiFailure } from '#shared/utils/access'
 
 export function useAuth() {
+  const nuxtApp = useNuxtApp()
   const user = useState<Identity | null>('access-user', () => null)
   const resolved = useState('access-resolved', () => false)
   const generation = useState('access-generation', () => 0)
   const sessionGeneration = useState('access-session-generation', () => 0)
   const { api, csrf, refreshCsrf } = useAccessApi()
   function clearAccountData() {
-    clearNuxtData()
-    clearNuxtState(key => !key.startsWith('access-'))
+    nuxtApp.runWithContext(() => {
+      clearNuxtData()
+      clearNuxtState(key => !key.startsWith('access-') && key !== '__nuxt_devtools__')
+    })
   }
   function clearSession() {
     ++generation.value

@@ -9,8 +9,8 @@ export function accessDestination(user: Identity): string {
 }
 
 export function focusAccessDestination(user: Identity, path: string): string | null {
-  if (user.is_super_admin && (path === '/admin' || path.startsWith('/admin/')))
-    return null
+  if (path === '/admin' || path.startsWith('/admin/'))
+    return user.is_super_admin ? null : accessDestination(user)
   const target = accessDestination(user)
   if (target === path)
     return null
