@@ -3,27 +3,21 @@
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpOperationJournal;
 use App\Erp\Finance\ErpDecimal;
-use App\Erp\Finance\ErpFinanceParticipant;
-use App\Erp\Finance\ErpPaymentAllocationService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Finance\ErpFinancialAccount;
-use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
-use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class ErpPaymentController extends ErpOperationsController
 {
     public function __construct(
         private ErpCatalogScope $scope,
-        private ErpPaymentAllocationService $allocations,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -96,46 +90,15 @@ class ErpPaymentController extends ErpOperationsController
         return response()->json(['data' => $this->serialize($payment)], 201);
     }
 
-    public function allocate(Request $request, int $payment): JsonResponse
+    public function allocate(Request $request, int|string $payment): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
-        $paymentModel = $this->findForCompany($request, ErpPayment::class, $payment);
-        $data = $request->validate([
-            'erp_obligation_id' => ['required', 'integer'],
-            'amount' => ['required'],
-            'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
-        ]);
-        $data = $this->normalizeIdentifiers($data);
-
-        $obligation = ErpObligation::query()
-            ->where('erp_company_id', $companyId)
-            ->whereKey($data['erp_obligation_id'])
-            ->firstOrFail();
-
-        $allocationAmount = ErpDecimal::parse($data['amount']);
         try {
-            $allocation = DB::transaction(fn (): ErpPaymentAllocation => app(ErpFinanceParticipant::class)->allocatePayment(
-                $companyId, $paymentModel->id, $obligation->id, $allocationAmount,
-                $data['source_operation_key'] ?? ('allocation-'.Str::uuid()),
-                $userId, $this->allocations,
-            ));
+            $result = app(ErpOperationJournal::class)->execute($request, $payment);
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
 
-        return response()->json([
-            'data' => [
-                'id' => $allocation->id,
-                'erp_payment_id' => $allocation->erp_payment_id,
-                'erp_obligation_id' => $allocation->erp_obligation_id,
-                'amount' => $this->decimalString($allocation->amount),
-                'obligation_open_amount' => $this->decimalString($obligation->fresh()->open_amount),
-                'obligation_status' => $obligation->fresh()->status,
-            ],
-        ]);
+        return response()->json($result['body'], $result['status']);
     }
 
     /** @return array<string, mixed> */

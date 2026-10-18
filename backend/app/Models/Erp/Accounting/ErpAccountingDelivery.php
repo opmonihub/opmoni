@@ -27,6 +27,10 @@ class ErpAccountingDelivery extends Model
         'erp_fiscal_document_id',
         'account_id',
         'client_id',
+        'delegation_id',
+        'mapping_id',
+        'mapping_revision',
+        'requested_by_user_id',
         'fiscal_document_id',
         'status',
         'reason_code',
@@ -39,6 +43,10 @@ class ErpAccountingDelivery extends Model
     {
         return [
             'delivered_at' => 'datetime',
+            'attempts' => 'integer',
+            'delegation_id' => 'integer',
+            'mapping_id' => 'integer',
+            'mapping_revision' => 'integer',
         ];
     }
 

@@ -20,10 +20,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\ApprovesErpAccountingMappings;
 use Tests\TestCase;
 
 class ErpFiscalIssuanceCompleteTest extends TestCase
 {
+    use ApprovesErpAccountingMappings;
     use RefreshDatabase;
 
     private const VALID_CNPJ = '30288513000100';
@@ -210,23 +212,28 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
     {
         $ctx = $this->ownerContext();
         $office = Account::factory()->create();
-        ErpOfficeDelegation::factory()->create([
+        $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $ctx['company']->id,
             'account_id' => $office->id,
             'authorized_by_user_id' => $ctx['user']->id,
         ]);
-        Client::factory()->company()->create([
+        $client = Client::factory()->company()->create([
             'account_id' => $office->id,
             'tax_id' => self::VALID_CNPJ,
         ]);
 
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
         $document = $this->createQueuedDocument($ctx, '55', 'handoff-on-auth-1');
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::AUTHORIZED);
 
-        $this->assertSame(1, ErpAccountingDelivery::query()->where('status', 'delivered')->count());
+        $intent = ErpAccountingDelivery::query()->sole();
+        $this->assertSame('pending', $intent->status);
+        $this->assertSame('accounting_worker_not_configured', $intent->reason_code);
+        $this->assertSame($delegation->id, $intent->delegation_id);
+        $this->assertNotNull($intent->mapping_id);
     }
 
     public function test_viewer_cannot_transmit(): void

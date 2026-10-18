@@ -3,17 +3,24 @@
 namespace App\Services\Fiscal\Capture;
 
 use App\Enums\FiscalDeliveryOrigin;
+use App\Enums\FiscalProcessingReason;
+use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
+use App\Models\Account;
 use App\Models\Client;
+use App\Models\Erp\Accounting\ErpAccountingDelivery;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\Contracts\PulledDocument;
 use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
+use App\Services\Fiscal\Read\FiscalDocumentReadiness;
 use App\Services\Fiscal\Support\DigValComparison;
 use App\Services\Fiscal\Support\FiscalTrustedDeliveryContext;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
+use App\Support\AccessTransaction;
 use App\Tenant\CurrentTenant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -48,6 +55,68 @@ final class FiscalDocumentWriter
         PulledDocument $document,
         ?FiscalTrustedDeliveryContext $delivery = null,
     ): FiscalDocument {
+        if ($document->stage !== FiscalStage::Document) {
+            return $this->storeDocument($client, $source, $document, $delivery);
+        }
+
+        return DB::transaction(function () use ($client, $source, $document, $delivery): FiscalDocument {
+            AccessTransaction::boundLockWaits();
+            Account::query()->whereKey($client->account_id)->lockForUpdate()->firstOrFail();
+            $client = Client::withoutGlobalScope('account')->whereKey($client->id)->where('account_id', $client->account_id)->lockForUpdate()->firstOrFail();
+
+            return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $source, $document, $delivery): FiscalDocument {
+                $accepted = FiscalDocument::query()->where('client_id', $client->id)->where('chave_acesso', $document->chave)
+                    ->where('stage', FiscalStage::Document)->where('event_id', $document->eventId)->lockForUpdate()->first();
+                if ($accepted !== null && ($accepted->processing_reason === FiscalProcessingReason::ArtifactConflict
+                    || $accepted->delivery_origin === FiscalDeliveryOrigin::ErpIssued
+                    || $accepted->source === FiscalSource::ErpIssued
+                    || ErpAccountingDelivery::query()->where('fiscal_document_id', $accepted->id)->where('status', 'delivered')->exists())) {
+                    return $this->preserveAcceptedErpDocument($accepted, $client, $source, $document, $delivery);
+                }
+
+                return $this->storeDocument($client, $source, $document, $delivery);
+            });
+        });
+    }
+
+    private function preserveAcceptedErpDocument(FiscalDocument $accepted, Client $client, FiscalSource $source, PulledDocument $incoming, ?FiscalTrustedDeliveryContext $delivery): FiscalDocument
+    {
+        $conflict = ! hash_equals((string) $accepted->sha256, hash('sha256', $incoming->xml))
+            || (int) $accepted->xml_bytes !== strlen($incoming->xml)
+            || $accepted->model !== $incoming->model
+            || ($incoming->emitenteCnpj !== null && $accepted->emitente_cnpj !== null && $incoming->emitenteCnpj !== $accepted->emitente_cnpj)
+            || ($delivery !== null && $this->deliveryMatches($delivery, $client, $source) && $accepted->delivery_environment !== null && $accepted->delivery_environment !== $delivery->environment);
+        if ($conflict) {
+            $trusted = $delivery !== null && $this->deliveryMatches($delivery, $client, $source);
+            Log::warning('fiscal.capture.accounting_artifact_conflict', [
+                'account_id' => (int) $accepted->account_id, 'client_id' => (int) $accepted->client_id,
+                'fiscal_document_id' => (int) $accepted->id, 'capture_source' => $source->value,
+                'accepted_sha256' => $accepted->sha256, 'incoming_sha256' => hash('sha256', $incoming->xml),
+                'incoming_byte_length' => strlen($incoming->xml),
+                'correlation_id' => $trusted ? $delivery->correlationId : null,
+                'incoming_environment' => $trusted ? $delivery->environment : null,
+            ]);
+            $accepted->forceFill(['processing_state' => FiscalProcessingState::Attention, 'processing_reason' => FiscalProcessingReason::ArtifactConflict])->save();
+
+            return $accepted;
+        }
+        $readiness = resolve(FiscalDocumentReadiness::class);
+        $readiness->reconcileOne($accepted);
+        if (! $readiness->isReadyRow($accepted)) {
+            if (! Storage::disk('fiscal')->put($accepted->storage_path, $incoming->xml)) {
+                return $accepted;
+            }
+            $readiness->reconcileOne($accepted);
+        }
+        if ($readiness->isReadyRow($accepted)) {
+            resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($accepted);
+        }
+
+        return $accepted;
+    }
+
+    private function storeDocument(Client $client, FiscalSource $source, PulledDocument $document, ?FiscalTrustedDeliveryContext $delivery): FiscalDocument
+    {
         return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $source, $document, $delivery): FiscalDocument {
             $path = $this->pathOf($client, $document);
 

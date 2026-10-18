@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\Tenant\ClientSavedFilterController;
 use App\Http\Controllers\Api\V1\Tenant\ClientSelectionController;
 use App\Http\Controllers\Api\V1\Tenant\ClientTagAssignmentController;
 use App\Http\Controllers\Api\V1\Tenant\DepartmentController;
+use App\Http\Controllers\Api\V1\Tenant\ErpAccountingMappingController;
 use App\Http\Controllers\Api\V1\Tenant\FiscalClientSummaryController;
 use App\Http\Controllers\Api\V1\Tenant\FiscalDocumentController;
 use App\Http\Controllers\Api\V1\Tenant\FiscalProcessingController;
@@ -49,6 +50,9 @@ use Illuminate\Support\Facades\Route;
 
 // Business scaffold: include inside the existing authenticated /api/v1 group after reconciliation.
 Route::middleware([ResolveAccount::class])->group(function (): void {
+    Route::get('account/erp-accounting-mappings', [ErpAccountingMappingController::class, 'index']);
+    Route::post('account/erp-accounting-mappings', [ErpAccountingMappingController::class, 'store']);
+    Route::delete('account/erp-accounting-mappings/{mapping}', [ErpAccountingMappingController::class, 'destroy'])->whereNumber('mapping');
     Route::get('clients/summary', [ClientController::class, 'summary']);
     Route::get('clients/analytics', [ClientController::class, 'analytics']);
     Route::post('clients/tags', [ClientTagAssignmentController::class, 'store']);

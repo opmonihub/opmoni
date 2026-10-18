@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Erp\ErpOperationLookupController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpCashRegisterController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpCashSessionController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpFinancialAccountController;
@@ -19,6 +20,8 @@ use App\Http\Controllers\Api\V1\Erp\Stock\ErpPurchaseReturnController;
 use App\Http\Controllers\Api\V1\Erp\Stock\ErpPurchaseXmlPreviewController;
 use App\Http\Controllers\Api\V1\Erp\Stock\ErpStockController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/operations/lookup', ErpOperationLookupController::class)->name('erp.operations.lookup');
 
 Route::get('/financial-accounts', [ErpFinancialAccountController::class, 'index'])->name('erp.financial-accounts.index');
 Route::post('/financial-accounts', [ErpFinancialAccountController::class, 'store'])->name('erp.financial-accounts.store');

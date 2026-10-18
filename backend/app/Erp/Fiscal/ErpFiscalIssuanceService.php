@@ -226,7 +226,7 @@ class ErpFiscalIssuanceService
 
                 $delivery = $this->handoff->ensureDeliveryIntent($locked);
                 if ($delivery !== null) {
-                    $this->handoff->deliver($delivery);
+                    $this->handoff->queueAfterCommit($delivery);
                 }
 
                 return $locked->fresh();
