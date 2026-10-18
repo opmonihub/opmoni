@@ -6,7 +6,7 @@ Legacy inventory date: 2026-10-12. Current destination status: 2026-10-18.
 
 All seven routes in the route inventory below now exist. The current Admin area includes account list/detail and contact editing, summary, plan and subscription administration, read-only global users, membership-only support search with sanitized audit browsing, and SERPRO connection administration. The dedicated summary, commercial catalog, platform certificate vault, source lifecycle, diagnostic and initialization command are implemented. Use the [system reconciliation](system-spec-reconciliation.md) and [runtime/API instructions](../../README.md#platform-administration-and-initialization) for current contracts.
 
-D009 remains controlling: Super Admin does not bypass real Account membership. Foreign support entry/exit, effective support roles and the support banner in the legacy UI are not part of this implementation. The platform certificate vault is separate from each tenant's certificate storage. The current evidence snapshot reports 56 original items as 46 valid and ten retired, with 43/46 valid tasks checked; full acceptance remains pending. Tasks 10.4, 12.4, and 12.6 are open in that snapshot. No live SERPRO acceptance is claimed.
+D009 remains controlling: Super Admin does not bypass real Account membership. Foreign support entry/exit, effective support roles and the support banner in the legacy UI are not part of this implementation. The platform certificate vault is separate from each tenant's certificate storage. The current evidence snapshot reports 56 original items as 46 valid and ten retired, with 46/46 valid tasks checked and local implementation acceptance complete; the ten retired originals remain retired. No live SERPRO acceptance is claimed.
 
 The page-by-page behavior below is a record of the legacy source and the destination gaps observed on 2026-10-12. Statements that the destination lacked pages, APIs or data are historical and are superseded by the current status above; legacy-only behavior remains reference material, not a current Opmoni contract.
 
@@ -157,7 +157,7 @@ Modify `frontend/app/layouts/default.vue`, `frontend/app/middleware/access.globa
 - Group folding in the legacy keeps the active child visible while hiding siblings. Keep this behavior only if the destination adopts the corresponding sidebar helpers.
 - Command palette includes all seven destinations only for Super Admin.
 - Shared header derives its title and horizontal tabs from the same route catalog.
-- The legacy used `auth` and `super-admin` middleware. Opmoni now integrates platform route authorization and focus refresh with its existing identity/session contract; complete privilege-revocation and no-office acceptance remains task 10.4.
+- The legacy used `auth` and `super-admin` middleware. Opmoni now integrates platform route authorization and focus refresh with its existing identity/session contract; post-fix task 10.4 now verifies live privilege revocation, ordinary denial, no-office Admin and selected-own suspended Account behavior.
 - Do not copy legacy `useAuth` or `plugins/api.ts`: identity transport, API prefix, CSRF, and response envelopes differ. Both projects use Nuxt frontend and Laravel backend APIs; no Inertia migration is needed.
 
 Sources: legacy `frontend/app/layouts/default.vue:188`, `:205`, `:243`, `:283`, `:298`; `frontend/app/utils/adminNav.ts:19`; `frontend/app/middleware/super-admin.ts:1`; `backend/routes/api.php:296`.
@@ -203,4 +203,4 @@ Sources: `frontend/app/pages/admin/contas.vue:63`, `backend/app/Http/Controllers
 
 ## Validation and acceptance status
 
-The 2026-10-12 inventory was produced by read-only source inspection. It predates the current implementation. The 2026-10-18 evidence snapshot records 43/46 valid tasks checked, with full browser acceptance and this documentation task still open; final backend/PostgreSQL and frontend checks passed and independent source review is approved. See [the platform acceptance section](system-spec-reconciliation.md#current-platform-acceptance-2026-10-18); this map does not claim those gates passed.
+The 2026-10-12 inventory was produced by read-only source inspection. It predates the current implementation. The 2026-10-18 evidence snapshot records 46/46 valid tasks checked, with final backend/PostgreSQL and frontend checks, complete browser acceptance, documentation reconciliation and approved independent source review. See [the platform acceptance section](system-spec-reconciliation.md#current-platform-acceptance-2026-10-18); the current task record provides the final local evidence and its live-provider limits.
