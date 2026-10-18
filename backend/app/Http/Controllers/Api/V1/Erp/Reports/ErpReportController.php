@@ -11,6 +11,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use JsonException;
+use League\Flysystem\FilesystemException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ErpReportController extends ErpOperationsController
@@ -73,16 +75,41 @@ class ErpReportController extends ErpOperationsController
             $category,
             now()->format('YmdHis').'-'.bin2hex(random_bytes(4)),
         );
-        Storage::disk('local')->put($path, json_encode($payload, JSON_THROW_ON_ERROR));
-
         $export = ErpReportExport::query()->create([
             'erp_company_id' => $companyId,
             'user_id' => $request->user()->id,
             'report_type' => $category,
             'filters' => $normalized,
+            'status' => 'pending',
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $failureCode = null;
+        try {
+            $bytes = json_encode($payload, JSON_THROW_ON_ERROR);
+            $disk = Storage::disk('local');
+            if ($disk->put($path, $bytes, ['visibility' => 'private']) !== true) {
+                $failureCode = 'export_storage_unavailable';
+            } elseif ($disk->get($path) !== $bytes) {
+                $failureCode = 'export_artifact_invalid';
+            }
+        } catch (JsonException) {
+            $failureCode = 'export_artifact_invalid';
+        } catch (FilesystemException) {
+            $failureCode = 'export_storage_unavailable';
+        }
+
+        if ($failureCode !== null) {
+            $this->failExport($export, $failureCode, $path);
+
+            return $this->exportError($export, $failureCode, 503);
+        }
+
+        $export->update([
             'status' => 'completed',
             'storage_path' => $path,
-            'expires_at' => now()->addDay(),
+            'content_sha256' => hash('sha256', $bytes),
+            'content_bytes' => strlen($bytes),
         ]);
 
         return response()->json(['data' => $this->serializeExport($export)], 201);
@@ -98,14 +125,38 @@ class ErpReportController extends ErpOperationsController
         if ($model->expires_at !== null && $model->expires_at->isPast()) {
             throw new HttpException(410, 'Exportação expirada', null, ['code' => 'export_expired']);
         }
-        if ($model->status !== 'completed' || $model->storage_path === null) {
-            abort(409, 'Exportação ainda não está disponível');
+        if ($model->status !== 'completed') {
+            return $this->exportError($model, $model->failure_code ?? 'export_not_available', 409);
         }
-        if (! Storage::disk('local')->exists($model->storage_path)) {
-            abort(503, 'Artefato de exportação indisponível');
+        if ($model->content_sha256 === null || $model->content_bytes === null) {
+            return $this->exportError($model, 'export_requires_regeneration', 409);
         }
 
-        $contents = json_decode(Storage::disk('local')->get($model->storage_path), true, 512, JSON_THROW_ON_ERROR);
+        $failureCode = null;
+        $contents = null;
+        try {
+            $bytes = $model->storage_path === null ? null : Storage::disk('local')->get($model->storage_path);
+            if (! is_string($bytes)
+                || strlen($bytes) !== $model->content_bytes
+                || ! hash_equals($model->content_sha256, hash('sha256', $bytes))) {
+                $failureCode = 'export_artifact_invalid';
+            } else {
+                $contents = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+                if (! is_array($contents)) {
+                    $failureCode = 'export_artifact_invalid';
+                }
+            }
+        } catch (JsonException) {
+            $failureCode = 'export_artifact_invalid';
+        } catch (FilesystemException) {
+            $failureCode = 'export_storage_unavailable';
+        }
+
+        if ($failureCode !== null) {
+            $this->failExport($model, $failureCode, $model->storage_path);
+
+            return $this->exportError($model, $failureCode, 503);
+        }
 
         return response()->json([
             'data' => [
@@ -113,6 +164,34 @@ class ErpReportController extends ErpOperationsController
                 'report' => $contents,
             ],
         ]);
+    }
+
+    private function failExport(ErpReportExport $export, string $failureCode, ?string $path): void
+    {
+        $export->update([
+            'status' => 'failed',
+            'storage_path' => null,
+            'failure_code' => $failureCode,
+        ]);
+
+        if ($path !== null) {
+            try {
+                Storage::disk('local')->delete($path);
+            } catch (FilesystemException) {
+                // Failure metadata remains available even when cleanup storage is unavailable.
+            }
+        }
+    }
+
+    private function exportError(ErpReportExport $export, string $code, int $status): JsonResponse
+    {
+        return response()->json([
+            'code' => $code,
+            'message' => $code === 'export_requires_regeneration'
+                ? 'Esta exportação precisa ser gerada novamente.'
+                : 'Exportação indisponível. Gere uma nova exportação ou tente novamente.',
+            'data' => $this->serializeExport($export),
+        ], $status);
     }
 
     /** @return array<string, mixed> */
@@ -124,6 +203,7 @@ class ErpReportController extends ErpOperationsController
             'filters' => $export->filters,
             'status' => $export->status,
             'expires_at' => $export->expires_at?->toIso8601String(),
+            ...($export->failure_code !== null ? ['failure_code' => $export->failure_code] : []),
         ];
     }
 }
