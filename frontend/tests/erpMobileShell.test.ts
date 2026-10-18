@@ -98,8 +98,9 @@ describe('ERP mobile shell and contract', () => {
     assert.equal(header.props?.title, 'Empresa A')
     assert.ok(named(header, 'CompanyMenu').length, 'Company switch must be available with sidebar closed')
     assert.ok(named(header, 'UserMenu').length, 'User controls must be available with sidebar closed')
-    assert.equal(named(header, 'UDashboardSidebarToggle').length, 0, 'Navbar supplies its native mobile toggle')
-    assert.equal(header.props?.toggle?.['aria-label'], 'Abrir menu ERP')
+    const toggles = named(header, 'UDashboardSidebarToggle')
+    assert.equal(toggles.length, 1, 'Navbar exposes one native mobile toggle')
+    assert.equal(toggles[0]!.props?.['aria-label'], 'Abrir menu ERP')
     currentCompany.value = { ...company(), name: 'Empresa B' }
     assert.equal(named(view.render(), 'UDashboardNavbar')[0]!.props!.title, 'Empresa B')
     const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items

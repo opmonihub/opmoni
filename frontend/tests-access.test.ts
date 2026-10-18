@@ -43,6 +43,7 @@ test('logout completes when the server session already expired and preserves sta
   }
   let cleared = 0
   Object.assign(globalThis, {
+    useNuxtApp: () => ({ runWithContext: (callback: () => unknown) => callback() }),
     useState: (key: string, initial: () => unknown) => {
       if (!states.has(key)) states.set(key, ref(initial()))
       return states.get(key)

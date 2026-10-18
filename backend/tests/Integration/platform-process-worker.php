@@ -2,9 +2,11 @@
 
 use App\Actions\AccessAccounts;
 use App\Actions\EnsureAccountSubscription;
+use App\Http\Middleware\ResolveAccount;
 use App\Models\Account;
 use App\Models\SerproConnection;
 use App\Models\Subscription;
+use App\Models\User;
 use App\Services\AccountCertificateVault;
 use App\Services\AccountContractingCertificateVault;
 use App\Services\SerproConnectionManager;
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Integration\MemberAccessConcurrencyTest;
 use Tests\Integration\PlatformProcessTestCase;
 
@@ -125,7 +128,7 @@ try {
         $materialized[] = $path;
         $expected = $input['expected'];
         $httpChecks = [
-            'outside_transaction' => DB::transactionLevel() === 0,
+            'transaction_scope' => DB::transactionLevel() === (str_starts_with($input['action'], 'tenant-') ? 1 : 0),
             'basic_matches' => ($request->header('Authorization')[0] ?? '') === 'Basic '.base64_encode($expected['key'].':'.$expected['secret']),
             'certificate_matches' => hash_file('sha256', $path) === $expected['certificate']['digest'],
             'password_matches' => $options['cert'][1] === $expected['certificate']['password'],
@@ -195,6 +198,22 @@ try {
             $result['immutable_tuple'] = PlatformProcessTestCase::tuple($snapshot, $input['expected']);
             $result['still_current'] = app(SerproCredentialLifecycle::class)->isCurrent($snapshot);
         }
+    } elseif ($action === 'tenant-pair' || $action === 'tenant-verify') {
+        $request = Request::create('http://localhost:3000/api/v1/serpro/monitoring/fixture', 'GET', server: ['HTTP_X_ACCOUNT_ID' => (string) $input['tenant']]);
+        $request->setLaravelSession(app('session')->driver());
+        $request->session()->put('current_account_id', $input['tenant']);
+        $app->instance('request', $request);
+        $request->setUserResolver(fn () => User::findOrFail($input['actor']));
+        $response = app(ResolveAccount::class)->handle($request, function () use ($action, $input, $write, $await): Response {
+            $pair = app(SerproTokenProvider::class)->{substr($action, 7)}();
+            if ($input['pause_cached'] ?? false) {
+                $write('cached', ['transaction_level' => DB::transactionLevel()]);
+                $await('release');
+            }
+
+            return response()->json(['pair_matches' => $pair === null || $pair->jwtToken() === 'synthetic-jwt-'.($input['token_label'] ?? 'fixture')]);
+        });
+        $result = ['status' => $response->getStatusCode(), ...json_decode($response->getContent(), true, flags: JSON_THROW_ON_ERROR)];
     } elseif ($action === 'pair' || $action === 'verify') {
         $pair = app(SerproTokenProvider::class)->{$action}();
         $result = ['status' => 200, 'pair_matches' => $pair === null || $pair->jwtToken() === 'synthetic-jwt-'.($input['token_label'] ?? 'fixture')];

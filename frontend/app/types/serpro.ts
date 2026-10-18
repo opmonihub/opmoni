@@ -252,6 +252,7 @@ export interface MonitoringOverview {
 
 export interface SerproContractingCertificateMetadata {
   configured: boolean
+  revision: number | null
   document: string | null
   subject: string | null
   serial: string | null

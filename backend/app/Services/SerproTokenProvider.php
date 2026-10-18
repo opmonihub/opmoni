@@ -20,7 +20,7 @@ final class SerproTokenProvider
     public function pair(?ExternalHttpBudget $budget = null): SerproTokenPair
     {
         $budget?->assertAvailable();
-        $snapshot = $this->lifecycle->snapshot();
+        $snapshot = $this->lifecycle->operationalSnapshot();
         $cached = $snapshot ? Cache::get($this->cacheKey($snapshot)) : null;
 
         if ($cached instanceof SerproTokenPair) {
@@ -43,7 +43,7 @@ final class SerproTokenProvider
 
     public function forget(): void
     {
-        $snapshot = $this->lifecycle->snapshot();
+        $snapshot = $this->lifecycle->operationalSnapshot();
         if ($snapshot !== null) {
             Cache::forget($this->cacheKey($snapshot));
         }
@@ -91,7 +91,7 @@ final class SerproTokenProvider
      */
     public function verify(): void
     {
-        $snapshot = $this->lifecycle->snapshot();
+        $snapshot = $this->lifecycle->operationalSnapshot();
         try {
             $this->authenticate(null, $snapshot);
         } catch (SerproException $exception) {
@@ -118,7 +118,7 @@ final class SerproTokenProvider
 
     private function authenticate(?ExternalHttpBudget $budget = null, ?SerproCredentialSnapshot $snapshot = null): SerproTokenPair
     {
-        $connection = $snapshot ?? $this->lifecycle->snapshot();
+        $connection = $snapshot ?? $this->lifecycle->operationalSnapshot();
 
         if ($connection === null) {
             throw new SerproException(
@@ -221,7 +221,8 @@ final class SerproTokenProvider
         $expiresIn = (int) data_get($payload, 'expires_in', 0);
         $pair = new SerproTokenPair($accessToken, $jwtToken, $expiresIn);
 
-        if (! $this->lifecycle->isCurrent($connection)) {
+        $current = $this->lifecycle->operationalSnapshot();
+        if ($current === null || ! $connection->sameGeneration($current)) {
             throw new SerproException('A conexão mudou durante a autenticação.', SerproFailure::NotSent, 0);
         }
         Cache::put($this->cacheKey($connection), [

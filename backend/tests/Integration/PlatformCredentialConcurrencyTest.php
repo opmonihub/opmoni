@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Models\Account;
 use App\Models\AccountContractingCertificate;
+use App\Models\AccountMembership;
 use App\Models\SerproConnection;
 use App\Models\User;
 use App\Services\AccountCertificateVault;
@@ -12,8 +13,10 @@ use App\Services\SerproConnectionManager;
 use App\Services\SerproCredentialLifecycle;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\Process\Process;
 
 class PlatformCredentialConcurrencyTest extends PlatformProcessTestCase
 {
@@ -29,6 +32,57 @@ class PlatformCredentialConcurrencyTest extends PlatformProcessTestCase
         $this->oldCertificate = $this->certificate('old', '12345678000195');
         $this->newCertificate = $this->certificate('new', '11222333000181');
         $this->admin = User::factory()->create(['id' => random_int(100000, 2000000000), 'is_super_admin' => true]);
+    }
+
+    public function test_cached_operational_pair_does_not_block_rotation_inside_real_tenant_transaction(): void
+    {
+        $this->linkedConnection();
+        $tenant = Account::factory()->create();
+        AccountMembership::create(['account_id' => $tenant->id, 'user_id' => $this->admin->id, 'role' => 'user']);
+        $this->assertSame(200, $this->workerResult($this->worker('pair', ['expected' => $this->expected('old'), 'token_label' => 'old']))['status']);
+        $reader = $this->worker('tenant-pair', ['actor' => $this->admin->id, 'tenant' => $tenant->id, 'pause_cached' => true, 'token_label' => 'old']);
+        $this->waitFor($reader, 'cached');
+        $this->assertSame(1, $this->signalData($reader, 'cached')['transaction_level']);
+        $this->assertNoCredentialLocks($reader);
+        $this->assertSame(200, $this->workerResult($this->worker('save', $this->saveInput('new')))['status']);
+        $this->release($reader);
+        $result = $this->workerResult($reader);
+        $this->assertSame(200, $result['status']);
+        $this->assertTrue($result['pair_matches']);
+        $this->assertSame(0, $result['http_calls']);
+    }
+
+    #[DataProvider('staleAuthentications')]
+    public function test_operational_auth_fences_rotation_without_credential_locks_inside_tenant_transaction(string $action, int $upstream, string $failure): void
+    {
+        $this->linkedConnection();
+        $tenant = Account::factory()->create();
+        AccountMembership::create(['account_id' => $tenant->id, 'user_id' => $this->admin->id, 'role' => 'user']);
+        $reader = $this->worker('tenant-'.$action, ['actor' => $this->admin->id, 'tenant' => $tenant->id, 'expected' => $this->expected('old'), 'block_http' => true, 'upstream_status' => $upstream, 'token_label' => 'old']);
+        $this->waitFor($reader, 'http-entered');
+        $this->assertTrue($this->signalData($reader, 'http-entered')['transaction_scope']);
+        $this->assertNoCredentialLocks($reader);
+        $this->assertSame(200, $this->workerResult($this->worker('save', $this->saveInput('new')))['status']);
+        $this->assertSame(200, $this->workerResult($this->worker('pair', ['expected' => $this->expected('new'), 'token_label' => 'new']))['status']);
+        $current = app(SerproCredentialLifecycle::class)->snapshot();
+        $cached = Cache::get('serpro:token-pair:'.$current->generation());
+        $this->assertNotNull($cached);
+        $this->release($reader, 'http-release');
+        $result = $this->workerResult($reader);
+        $this->assertSame($failure, $result['failure']);
+        $this->assertTrue($result['materialized_cleaned']);
+        $this->assertSame($cached, Cache::get('serpro:token-pair:'.$current->generation()));
+    }
+
+    private function assertNoCredentialLocks(Process $worker): void
+    {
+        $pid = $this->signalData($worker, 'ready')['database_pid'];
+        $this->assertSame(0, (int) DB::selectOne(
+            'SELECT count(*) AS count FROM pg_locks WHERE pid = ? AND locktype = ? AND granted', [$pid, 'advisory'],
+        )->count, 'Operational HTTP must not retain the global credential advisory lock.');
+        $this->assertSame(0, (int) DB::selectOne(
+            "SELECT count(*) AS count FROM pg_locks WHERE pid = ? AND relation IN ('serpro_connections'::regclass, 'account_contracting_certificates'::regclass, 'account_certificates'::regclass) AND mode = 'RowShareLock' AND granted", [$pid],
+        )->count, 'Operational HTTP must not retain credential row locks.');
     }
 
     public function test_competing_initial_http_writes_create_one_complete_versioned_singleton(): void
@@ -123,7 +177,7 @@ class PlatformCredentialConcurrencyTest extends PlatformProcessTestCase
             $this->assertNull($connection->certificate_password_encrypted);
             $this->assertCompleteTuple($this->currentTuple('new', $this->oldCertificate), $this->oldCertificate);
         } else {
-            $this->assertGreaterThanOrEqual(3, $result['discoveries'], 'One retry plus successful mutation and after-commit cache lookup.');
+            $this->assertGreaterThanOrEqual(2, $result['discoveries'], 'Stale discovery must retry before the successful mutation.');
             $this->assertNull($connection->contracting_account_id);
             $this->assertNull($connection->account_contracting_certificate_id);
             $this->assertCompleteTuple($this->currentTuple('new'), $this->newCertificate);
