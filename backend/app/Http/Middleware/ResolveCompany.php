@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Erp\ErpCommercialGate;
 use App\Erp\ErpCompanyAuthorization;
+use App\Erp\Finance\ErpPaymentAllocationOperation;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
@@ -15,6 +16,7 @@ use App\Support\ErpCompanyContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 class ResolveCompany
@@ -74,11 +76,16 @@ class ResolveCompany
                 abort(response()->json(['code' => 'validation_error', 'message' => 'Escritório não pode ser informado no conteúdo', 'errors' => ['account_id' => ['Campo não permitido']]], 422));
             }
 
+            $operationLookup = $request->routeIs('erp.operations.lookup');
+            if ($operationLookup) {
+                $request->validate(['operation' => ['required', 'string', Rule::in([ErpPaymentAllocationOperation::NAME])]]);
+            }
+            $effectiveWrite = ! $request->isMethodSafe() || $operationLookup;
             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
-            if (! $request->isMethodSafe() && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
+            if ($effectiveWrite && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
                 abort(response()->json(['code' => 'erp_subscription_inactive', 'message' => 'Contrato ERP inativo'], 403));
             }
-            if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'])
+            if ($effectiveWrite
                 && ! config('erp.operating_writes_enabled')
                 && ! $foundationSettingsWrite) {
                 abort(response()->json(['code' => 'erp_operating_disabled', 'message' => 'Operações ERP ainda não disponíveis'], 403));
@@ -95,7 +102,7 @@ class ResolveCompany
             );
             $request->attributes->set(CurrentCompany::class, $context);
             try {
-                $context->assertPermission((string) $request->route()?->getName(), ! $request->isMethodSafe());
+                $context->assertPermission($operationLookup ? ErpPaymentAllocationOperation::NAME : (string) $request->route()?->getName(), $effectiveWrite);
                 $module = match (true) {
                     $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
                     $request->routeIs('erp.sales.*', 'erp.sale-returns.*', 'erp.quotes.*', 'erp.orders.*') => 'add_sale',
