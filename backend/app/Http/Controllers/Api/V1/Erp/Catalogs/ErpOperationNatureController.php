@@ -40,32 +40,37 @@ class ErpOperationNatureController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $data = $this->validated($request, $context->company->id);
-        app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id'] ?? null);
-        $row = ErpOperationNature::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+        return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $data = $this->validated($request, $context->company->id);
+            app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id'] ?? null);
+            $row = ErpOperationNature::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
 
-        return response()->json(['data' => $this->serialize($row)], 201);
+            return response()->json(['data' => $this->serialize($row)], 201);
+        });
     }
 
     public function update(Request $request, int $operationNature): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $operationNature);
-        $data = $this->validated($request, $context->company->id, partial: true);
-        if (array_key_exists('erp_establishment_id', $data)) {
-            app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id']);
-        }
-        $model->fill($data);
-        $model->save();
+        return $this->write($request, function (CurrentCompany $context) use ($request, $operationNature): JsonResponse {
+            $model = $this->findForCompany($request, $operationNature);
+            $data = $this->validated(
+                $request,
+                $context->company->id,
+                partial: true,
+                unchangedHistoricalEstablishmentId: $model->erp_establishment_id !== null ? (int) $model->erp_establishment_id : null,
+            );
+            if (array_key_exists('erp_establishment_id', $data)) {
+                app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id']);
+            }
+            $model->fill($data);
+            $model->save();
 
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model->fresh())]);
+        });
     }
 
     /** @return array<string, mixed> */
-    private function validated(Request $request, int $companyId, bool $partial = false): array
+    private function validated(Request $request, int $companyId, bool $partial = false, ?int $unchangedHistoricalEstablishmentId = null): array
     {
         $data = $request->validate([
             'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
@@ -75,6 +80,11 @@ class ErpOperationNatureController extends ErpCatalogController
             'fiscal_metadata' => ['sometimes', 'nullable', 'array'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
+        $this->scope->assertActiveEstablishment(
+            $companyId,
+            $data['erp_establishment_id'] ?? null,
+            unchangedHistoricalId: $unchangedHistoricalEstablishmentId,
+        );
 
         return $data;
     }

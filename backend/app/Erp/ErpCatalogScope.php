@@ -30,6 +30,32 @@ final class ErpCatalogScope
         }
     }
 
+    /**
+     * New or changed catalog references must point at active rows. An unchanged archived
+     * reference is allowed so existing records remain editable without losing history.
+     *
+     * @param  class-string<Model>  $modelClass
+     */
+    public function assertActiveReference(string $modelClass, int $companyId, ?int $id, string $field, ?int $unchangedHistoricalId = null): void
+    {
+        if ($id === null) {
+            return;
+        }
+
+        $query = $modelClass::query()
+            ->whereKey($id)
+            ->where('erp_company_id', $companyId);
+        if ($id === $unchangedHistoricalId) {
+            $exists = $query->exists();
+        } else {
+            $exists = $query->where('status', 'active')->exists();
+        }
+
+        if (! $exists) {
+            throw ValidationException::withMessages([$field => 'Registro inválido para esta empresa']);
+        }
+    }
+
     public function assertEstablishmentBelongsToCompany(int $companyId, ?int $establishmentId, string $field = 'erp_establishment_id'): void
     {
         if ($establishmentId === null) {
@@ -46,9 +72,18 @@ final class ErpCatalogScope
         }
     }
 
-    public function assertActiveEstablishment(int $companyId, ?int $establishmentId, string $field = 'erp_establishment_id'): void
+    public function assertActiveEstablishment(int $companyId, ?int $establishmentId, string $field = 'erp_establishment_id', ?int $unchangedHistoricalId = null): void
     {
-        if ($establishmentId !== null && ! ErpEstablishment::query()->whereKey($establishmentId)->where('erp_company_id', $companyId)->where('status', 'active')->exists()) {
+        if ($establishmentId === null) {
+            return;
+        }
+
+        $query = ErpEstablishment::query()->whereKey($establishmentId)->where('erp_company_id', $companyId);
+        $exists = $establishmentId === $unchangedHistoricalId
+            ? $query->exists()
+            : $query->where('status', 'active')->exists();
+
+        if (! $exists) {
             throw ValidationException::withMessages([$field => 'Estabelecimento ativo inválido para esta empresa']);
         }
     }

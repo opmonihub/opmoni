@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
+use App\Erp\ErpCatalogDecimal;
 use App\Models\Erp\ErpPriceGroup;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ErpPriceGroupController extends ErpCatalogController
 {
@@ -35,39 +36,38 @@ class ErpPriceGroupController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $data = $this->validated($request);
-        $row = DB::transaction(function () use ($data, $context): ErpPriceGroup {
+        return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $data = $this->validated($request);
+            $this->assertNameAvailable($data['name'], (int) $context->company->id);
             if (! empty($data['is_default'])) {
                 ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->update(['is_default' => false]);
             }
-
-            return ErpPriceGroup::query()->create([
+            $row = ErpPriceGroup::query()->create([
                 ...$data,
                 'erp_company_id' => $context->company->id,
                 'status' => 'active',
             ]);
-        });
 
-        return response()->json(['data' => $this->serialize($row)], 201);
+            return response()->json(['data' => $this->serialize($row)], 201);
+        });
     }
 
     public function update(Request $request, int $priceGroup): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $priceGroup);
-        $data = $this->validated($request, partial: true);
-        DB::transaction(function () use ($data, $model, $context): void {
+        return $this->write($request, function (CurrentCompany $context) use ($request, $priceGroup): JsonResponse {
+            $model = $this->findForCompany($request, $priceGroup);
+            $data = $this->validated($request, partial: true);
+            if (isset($data['name'])) {
+                $this->assertNameAvailable($data['name'], (int) $context->company->id, $model);
+            }
             if (! empty($data['is_default'])) {
                 ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->whereKeyNot($model->id)->update(['is_default' => false]);
             }
             $model->fill($data);
             $model->save();
-        });
 
-        return response()->json(['data' => $this->serialize($model->fresh())]);
+            return response()->json(['data' => $this->serialize($model->fresh())]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -76,7 +76,23 @@ class ErpPriceGroupController extends ErpCatalogController
         return $request->validate([
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
             'is_default' => ['sometimes', 'boolean'],
-            'percentage_adjustment' => ['sometimes', 'regex:/^-?\d+(\.\d{1,4})?$/'],
+            'percentage_adjustment' => ['sometimes', ...ErpCatalogDecimal::widthRule(6, 4, signed: true)],
         ]);
+    }
+
+    private function assertNameAvailable(string $name, int $companyId, ?ErpPriceGroup $current = null): void
+    {
+        $normalized = mb_strtolower($name);
+        if ($current !== null && mb_strtolower($current->name) === $normalized) {
+            return;
+        }
+        if (ErpPriceGroup::query()
+            ->where('erp_company_id', $companyId)
+            ->where('status', 'active')
+            ->whereRaw('lower(name) = ?', [$normalized])
+            ->when($current, fn ($query) => $query->whereKeyNot($current->id))
+            ->exists()) {
+            throw ValidationException::withMessages(['name' => 'Este grupo de preços já existe nesta empresa.']);
+        }
     }
 }

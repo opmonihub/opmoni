@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
 use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Controller;
 use App\Support\CurrentCompany;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -71,14 +73,13 @@ abstract class ErpCatalogController extends Controller
 
     public function archive(Request $request, int $id): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
+        return app(ErpCatalogWriteService::class)->run($request, function () use ($request, $id): JsonResponse {
+            $model = $this->findForCompany($request, $id);
+            $model->status = 'archived';
+            $model->save();
 
-        $model = $this->findForCompany($request, $id);
-        $model->status = 'archived';
-        $model->save();
-
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model)]);
+        });
     }
 
     protected function companyId(Request $request): int
@@ -108,5 +109,11 @@ abstract class ErpCatalogController extends Controller
         }
 
         return is_string($value) ? $value : (string) $value;
+    }
+
+    /** @param Closure(CurrentCompany): JsonResponse $operation */
+    protected function write(Request $request, Closure $operation): JsonResponse
+    {
+        return app(ErpCatalogWriteService::class)->run($request, $operation);
     }
 }

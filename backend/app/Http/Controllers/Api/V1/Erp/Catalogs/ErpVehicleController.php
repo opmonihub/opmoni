@@ -45,31 +45,31 @@ class ErpVehicleController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $data = $this->validated($request, $context->company->id);
-        $row = ErpVehicle::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+        return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $data = $this->validated($request, $context->company->id);
+            $row = ErpVehicle::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
 
-        return response()->json(['data' => $this->serialize($row)], 201);
+            return response()->json(['data' => $this->serialize($row)], 201);
+        });
     }
 
     public function update(Request $request, int $vehicle): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $vehicle);
-        $data = $this->validated($request, $context->company->id, partial: true);
-        $model->fill($data);
-        $model->save();
+        return $this->write($request, function (CurrentCompany $context) use ($request, $vehicle): JsonResponse {
+            $model = $this->findForCompany($request, $vehicle);
+            $data = $this->validated($request, $context->company->id, partial: true, current: $model);
+            $model->fill($data);
+            $model->save();
 
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model->fresh())]);
+        });
     }
 
     /** @return array<string, mixed> */
-    private function validated(Request $request, int $companyId, bool $partial = false): array
+    private function validated(Request $request, int $companyId, bool $partial = false, ?ErpVehicle $current = null): array
     {
         $data = $request->validate([
-            'erp_carrier_id' => ['sometimes', 'nullable', 'integer'],
+            'erp_carrier_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'vehicle_type' => ['sometimes', 'nullable', 'string', 'max:32'],
             'plate' => [$partial ? 'sometimes' : 'required', 'string', 'max:16'],
             'uf' => ['sometimes', 'nullable', 'string', 'size:2'],
@@ -80,8 +80,14 @@ class ErpVehicleController extends ErpCatalogController
             'body_type' => ['sometimes', 'nullable', 'string', 'max:32'],
             'owner_type' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
-        if (! empty($data['erp_carrier_id'])) {
-            $this->scope->assertBelongsToCompany(ErpCarrier::class, $companyId, (int) $data['erp_carrier_id'], 'erp_carrier_id');
+        if (array_key_exists('erp_carrier_id', $data) && $data['erp_carrier_id'] !== null) {
+            $this->scope->assertActiveReference(
+                ErpCarrier::class,
+                $companyId,
+                (int) $data['erp_carrier_id'],
+                'erp_carrier_id',
+                $current !== null && (int) $current->erp_carrier_id === (int) $data['erp_carrier_id'] ? (int) $data['erp_carrier_id'] : null,
+            );
         }
 
         return $data;
