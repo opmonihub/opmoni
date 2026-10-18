@@ -42,6 +42,7 @@ const reasonLabels: Record<string, string> = {
   budget_cooldown: 'Aguardando janela de consulta', lock_occupied: 'Outra consulta está em andamento',
   attempts_exhausted: 'Limite de tentativas atingido: revisão necessária',
   storage_missing: 'Arquivo XML indisponível', storage_corrupt: 'Integridade do XML divergente',
+  artifact_conflict: 'Conflito entre arquivos XML: reconciliação necessária',
   pilot_scope: 'Fora do escopo autorizado para ciência automática', ready: 'XML pronto'
 }
 const storageLabels: Record<string, string> = {
@@ -52,6 +53,7 @@ function processingStateLabel(row: FiscalProcessingRow) {
   return stateLabels[row.processing_state ?? ''] ?? 'Aguardando classificação'
 }
 function processingReasonLabel(row: FiscalProcessingRow) {
+  if (row.processing_reason === 'artifact_conflict') return reasonLabels.artifact_conflict
   if (row.stage === 'document' && storageLabels[row.storage_state ?? '']) return storageLabels[row.storage_state ?? '']
   return reasonLabels[row.processing_reason ?? ''] ?? storageLabels[row.storage_state ?? ''] ?? 'Motivo ainda não informado'
 }
