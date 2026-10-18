@@ -29,7 +29,10 @@ class ErpReportController extends ErpOperationsController
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
-            'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
+            'erp_establishment_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'currency' => ['sometimes', 'regex:/^[A-Z]{3}$/'],
+            'status' => ['sometimes', 'string'],
+            'direction' => ['sometimes', 'string'],
         ]);
 
         try {
@@ -56,11 +59,14 @@ class ErpReportController extends ErpOperationsController
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
-            'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
+            'erp_establishment_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'currency' => ['sometimes', 'regex:/^[A-Z]{3}$/'],
+            'status' => ['sometimes', 'string'],
+            'direction' => ['sometimes', 'string'],
         ]);
 
         try {
-            $normalized = $this->reports->normalizeFilters($companyId, $filters);
+            $normalized = $this->reports->normalizeFilters($companyId, $filters, $category);
             $payload = $this->reports->report($companyId, $category, $normalized);
         } catch (InvalidArgumentException $exception) {
             return response()->json([
