@@ -8,6 +8,8 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\User;
+use App\Support\AccessTransaction;
+use Closure;
 use Illuminate\Support\Facades\DB;
 
 class ErpCompanyAuthorization
@@ -58,46 +60,62 @@ class ErpCompanyAuthorization
         return ['kind' => 'delegated', 'delegation' => $delegation, 'office_id' => $officeAccountId];
     }
 
-    public function acceptDelegation(ErpCompany $company, User $owner, int $officeAccountId, array $permissionAllowlist): ErpOfficeDelegation
+    /** @param Closure(): void|null $assertOwnership Contextual fence supplied by HTTP callers. */
+    public function acceptDelegation(ErpCompany $company, User $owner, int $officeAccountId, array $permissionAllowlist, ?Closure $assertOwnership = null): ErpOfficeDelegation
     {
-        $membership = ErpCompanyMembership::query()
-            ->where('erp_company_id', $company->id)
-            ->where('user_id', $owner->id)
-            ->first();
-        abort_unless($membership && $membership->roleEnum() === ErpCompanyRole::Owner, 403, 'Permissão insuficiente');
-
-        return DB::transaction(function () use ($company, $owner, $officeAccountId, $permissionAllowlist): ErpOfficeDelegation {
-            ErpCompany::query()->whereKey($company->id)->lockForUpdate()->first();
+        return DB::transaction(function () use ($company, $owner, $officeAccountId, $permissionAllowlist, $assertOwnership): ErpOfficeDelegation {
+            AccessTransaction::boundLockWaits();
+            $company = ErpCompany::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
+            $this->assertOwner($company, $owner);
+            if ($assertOwnership !== null) {
+                $assertOwnership();
+            }
             ErpOfficeDelegation::query()
                 ->where('erp_company_id', $company->id)
                 ->where('status', 'active')
                 ->update(['status' => 'revoked', 'revoked_at' => now()]);
 
-            return ErpOfficeDelegation::query()->create([
+            $delegation = ErpOfficeDelegation::query()->create([
                 'erp_company_id' => $company->id,
                 'account_id' => $officeAccountId,
                 'authorized_by_user_id' => $owner->id,
                 'permission_allowlist' => $permissionAllowlist === [] ? ['erp.read'] : array_values($permissionAllowlist),
                 'status' => 'active',
             ]);
+            if ($assertOwnership !== null) {
+                $assertOwnership();
+            }
+
+            return $delegation;
         });
     }
 
-    public function revokeDelegation(ErpOfficeDelegation $delegation, User $owner): void
+    /** @param Closure(): void|null $assertOwnership Contextual fence supplied by HTTP callers. */
+    public function revokeDelegation(ErpOfficeDelegation $delegation, User $owner, ?Closure $assertOwnership = null): void
     {
-        $membership = ErpCompanyMembership::query()
-            ->where('erp_company_id', $delegation->erp_company_id)
-            ->where('user_id', $owner->id)
-            ->first();
-        abort_unless($membership && $membership->roleEnum() === ErpCompanyRole::Owner, 403, 'Permissão insuficiente');
-
-        DB::transaction(function () use ($delegation): void {
-            ErpCompany::query()->whereKey($delegation->erp_company_id)->lockForUpdate()->first();
+        DB::transaction(function () use ($delegation, $owner, $assertOwnership): void {
+            AccessTransaction::boundLockWaits();
+            $company = ErpCompany::query()->whereKey($delegation->erp_company_id)->lockForUpdate()->firstOrFail();
+            $this->assertOwner($company, $owner);
+            if ($assertOwnership !== null) {
+                $assertOwnership();
+            }
             $delegation->refresh();
             if ($delegation->status !== 'active') {
                 return;
             }
             $delegation->update(['status' => 'revoked', 'revoked_at' => now()]);
+            if ($assertOwnership !== null) {
+                $assertOwnership();
+            }
         });
+    }
+
+    private function assertOwner(ErpCompany $company, User $owner): void
+    {
+        $membership = ErpCompanyMembership::query()
+            ->where('erp_company_id', $company->id)->where('user_id', $owner->id)
+            ->lockForUpdate()->first();
+        abort_unless($membership && $membership->roleEnum() === ErpCompanyRole::Owner, 403, 'Permissão insuficiente');
     }
 }

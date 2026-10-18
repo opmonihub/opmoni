@@ -43,6 +43,7 @@ class FiscalCoverage
     public function summary(int $accountId): array
     {
         return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId) {
+            resolve(FiscalDocumentReadiness::class)->reconcileQuery(FiscalDocument::query()->where('account_id', $accountId));
             $carteira = $this->carteira($accountId);
 
             return [
@@ -392,7 +393,7 @@ class FiscalCoverage
     private function documentos(int $accountId): array
     {
         return [
-            'total' => FiscalDocument::query()->where('account_id', $accountId)->count(),
+            'total' => resolve(FiscalDocumentReadiness::class)->readyScope(FiscalDocument::query()->where('account_id', $accountId))->count(),
             'models' => $this->documentosPorModelo($accountId),
             'over_time' => $this->documentosPorMes($accountId),
         ];
@@ -409,7 +410,7 @@ class FiscalCoverage
      */
     private function documentosPorModelo(int $accountId): array
     {
-        $base = FiscalDocument::query()->where('account_id', $accountId);
+        $base = resolve(FiscalDocumentReadiness::class)->readyScope(FiscalDocument::query()->where('account_id', $accountId));
         $grammar = $base->getQuery()->getGrammar();
         $modelo = $grammar->wrap('modelo');
         $total = $grammar->wrap('total');
@@ -445,7 +446,7 @@ class FiscalCoverage
      */
     private function documentosPorMes(int $accountId): array
     {
-        $base = FiscalDocument::query()->where('account_id', $accountId);
+        $base = resolve(FiscalDocumentReadiness::class)->readyScope(FiscalDocument::query()->where('account_id', $accountId));
         $grammar = $base->getQuery()->getGrammar();
         $mes = $grammar->wrap('mes');
         $total = $grammar->wrap('total');

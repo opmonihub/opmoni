@@ -29,9 +29,9 @@ final class ManifestationEventResponseCorrelator
         array $resposta,
     ): void {
         if ($resposta['chave_acesso'] === null
-            && $resposta['tp_evento'] === null
-            && $resposta['event_seq'] === null
-            && $resposta['tp_amb'] === null) {
+            || $resposta['tp_evento'] === null
+            || $resposta['event_seq'] === null
+            || $resposta['tp_amb'] === null) {
             throw new FiscalException(
                 'O lote foi processado sem veredito correlacionável para o evento.',
                 FiscalFailure::Upstream,

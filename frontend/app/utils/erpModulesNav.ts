@@ -43,6 +43,7 @@ export interface ErpModuleTab {
   label: string
   /** Caminho relativo `/api/v1` via `useAccessApi` (sem prefixo). */
   apiPath: string
+  mode?: 'report' | 'xml-preview'
   emptyTitle: string
   emptyDescription: string
 }
@@ -155,6 +156,7 @@ export const erpComprasContract: ErpModulePageContract = {
       id: 'xml-preview',
       label: 'Prévia XML',
       apiPath: '/erp/purchases/xml-preview',
+      mode: 'xml-preview',
       emptyTitle: 'Nenhuma prévia',
       emptyDescription: 'Envie XML de entrada para validar duplicidade antes de confirmar.'
     },
@@ -300,12 +302,12 @@ export const erpRelatoriosContract: ErpModulePageContract = {
   writePermission: erpPermissions.reportsExport,
   referenceNote: 'ReportController, AccountReportsController, HomeController (referência sistema).',
   tabs: [
-    { id: 'sales', label: 'Vendas', apiPath: '/erp/reports/sales', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Agregados usam snapshots e lançamentos confirmados.' },
-    { id: 'purchases', label: 'Compras', apiPath: '/erp/reports/purchases', emptyTitle: 'Sem dados de compras', emptyDescription: 'Compras lançadas e devoluções compensatórias entram nos filtros.' },
-    { id: 'stock', label: 'Estoque', apiPath: '/erp/reports/stock', emptyTitle: 'Sem dados de estoque', emptyDescription: 'Quantidades e custos seguem movimentos registrados.' },
-    { id: 'finance', label: 'Financeiro', apiPath: '/erp/reports/finance', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Recebíveis, pagáveis e aging derivam de obrigações postadas.' },
-    { id: 'fiscal', label: 'Fiscal', apiPath: '/erp/reports/fiscal', emptyTitle: 'Sem dados fiscais', emptyDescription: 'Status de autorização separado de rascunhos e indeterminados.' },
-    { id: 'dashboard', label: 'Integrado', apiPath: '/erp/reports/dashboard', emptyTitle: 'Painel indisponível', emptyDescription: 'Indicadores combinados respeitam os mesmos filtros de período.' }
+    { id: 'sales', label: 'Vendas', apiPath: '/erp/reports/sales', mode: 'report', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Agregados usam snapshots e lançamentos confirmados.' },
+    { id: 'purchases', label: 'Compras', apiPath: '/erp/reports/purchases', mode: 'report', emptyTitle: 'Sem dados de compras', emptyDescription: 'Compras lançadas e devoluções compensatórias entram nos filtros.' },
+    { id: 'stock', label: 'Estoque', apiPath: '/erp/reports/stock', mode: 'report', emptyTitle: 'Sem dados de estoque', emptyDescription: 'Quantidades e custos seguem movimentos registrados.' },
+    { id: 'finance', label: 'Financeiro', apiPath: '/erp/reports/financial', mode: 'report', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Recebíveis, pagáveis e aging derivam de obrigações postadas.' },
+    { id: 'fiscal', label: 'Fiscal', apiPath: '/erp/reports/fiscal', mode: 'report', emptyTitle: 'Sem dados fiscais', emptyDescription: 'Status de autorização separado de rascunhos e indeterminados.' },
+    { id: 'dashboard', label: 'Integrado', apiPath: '/erp/reports/overview', mode: 'report', emptyTitle: 'Painel indisponível', emptyDescription: 'Indicadores combinados respeitam os mesmos filtros de período.' }
   ]
 }
 
@@ -380,6 +382,13 @@ export interface ErpPaginatedList {
     per_page?: number
     total?: number
   }
+}
+
+export interface ErpReportPayload {
+  category: string
+  filters: Record<string, unknown>
+  totals?: Record<string, string | number>
+  sections?: Record<string, Record<string, string | number>>
 }
 
 export function erpListTotal(payload: ErpPaginatedList | null | undefined): number | null {

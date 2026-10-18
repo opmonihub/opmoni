@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
+use App\Erp\Fiscal\FakeErpFiscalProvider;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
@@ -12,6 +14,11 @@ use Illuminate\Support\Facades\DB;
 require __DIR__.'/../../vendor/autoload.php';
 $app = require __DIR__.'/../../bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
+
+if (! $app->environment('testing')) {
+    throw new RuntimeException('Fiscal concurrency worker requires the testing environment.');
+}
+$app->bind(ErpFiscalProvider::class, FakeErpFiscalProvider::class);
 
 $input = json_decode(stream_get_contents(STDIN) ?: '{}', true, flags: JSON_THROW_ON_ERROR);
 $barrier = (string) ($input['barrier'] ?? '');

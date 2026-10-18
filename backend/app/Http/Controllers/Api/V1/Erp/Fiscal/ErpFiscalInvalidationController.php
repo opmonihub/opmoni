@@ -43,8 +43,8 @@ class ErpFiscalInvalidationController extends ErpOperationsController
         $userId = $request->user()?->id;
         $data = $request->validate([
             'erp_establishment_id' => ['required', 'integer'],
-            'model' => ['required', 'string', 'max:8'],
-            'environment' => ['sometimes', 'string', 'max:16'],
+            'model' => ['required', 'in:55,65,57,58'],
+            'environment' => ['sometimes', 'in:homologation,production'],
             'series' => ['required', 'integer', 'min:1'],
             'number_from' => ['required', 'integer', 'min:1'],
             'number_to' => ['required', 'integer', 'gte:number_from'],
@@ -89,7 +89,7 @@ class ErpFiscalInvalidationController extends ErpOperationsController
         $model = $this->findForCompany($request, ErpFiscalInvalidation::class, $invalidation);
 
         try {
-            $result = $this->issuance->submitInvalidation($model);
+            $result = $this->issuance->submitInvalidation($model, $request->user()?->id);
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import type { ErpModulePageContract, ErpModuleTab, ErpPaginatedList } from '~/utils/erpModulesNav'
+import type { ErpModulePageContract, ErpModuleTab, ErpPaginatedList, ErpReportPayload } from '~/utils/erpModulesNav'
 import { erpCompanyHasPermission, erpListTotal } from '~/utils/erpModulesNav'
 import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import { panelTableUi } from '~/components/data-table/panel'
@@ -15,7 +15,6 @@ const { api } = useAccessApi()
 
 const grants = computed(() => currentCompany.value?.permissions ?? [])
 const canRead = computed(() => erpCompanyHasPermission(grants.value, props.contract.readPermission))
-const canWrite = computed(() => erpCompanyHasPermission(grants.value, props.contract.writePermission))
 
 const selectedTabId = ref(props.contract.tabs[0]?.id ?? '')
 
@@ -50,7 +49,17 @@ const loadError = ref<unknown>(null)
 const loading = ref(false)
 const rows = ref<Record<string, unknown>[]>([])
 const listTotal = ref<number | null>(null)
+const report = ref<ErpReportPayload | null>(null)
+const page = ref(1)
+const perPage = ref(15)
+const dateFrom = ref('')
+const dateTo = ref('')
 const apiUnavailable = ref(false)
+let generation = 0
+
+onScopeDispose(() => {
+  generation++
+})
 
 const { showError, retry, isLoading } = useRetryableLoad({
   refresh: load,
@@ -58,42 +67,70 @@ const { showError, retry, isLoading } = useRetryableLoad({
   loading,
   loadErrorTitle: `Não foi possível carregar ${props.contract.title.toLowerCase()}`,
   ignoreStatus: 404,
-  sticky: true
+  sticky: false
 })
 
 async function load() {
-  if (!canRead.value) {
+  const version = ++generation
+  const tab = activeTab.value
+  if (!canRead.value || !tab || tab.mode === 'xml-preview') {
     rows.value = []
+    report.value = null
     listTotal.value = null
     apiUnavailable.value = false
+    loadError.value = null
+    loading.value = false
     return
   }
-  const tab = activeTab.value
-  if (!tab)
-    return
   loading.value = true
   loadError.value = null
   apiUnavailable.value = false
   rows.value = []
+  report.value = null
   listTotal.value = null
   try {
-    const payload = await api<ErpPaginatedList>(tab.apiPath)
-    rows.value = Array.isArray(payload.data) ? payload.data : []
-    listTotal.value = erpListTotal(payload)
+    const params = new URLSearchParams()
+    if (tab.mode === 'report') {
+      if (dateFrom.value) params.set('date_from', dateFrom.value)
+      if (dateTo.value) params.set('date_to', dateTo.value)
+    } else {
+      params.set('page', String(page.value))
+    }
+    const path = `${tab.apiPath}${params.size ? `${tab.apiPath.includes('?') ? '&' : '?'}${params}` : ''}`
+    if (tab.mode === 'report') {
+      const payload = await api<{ data: ErpReportPayload }>(path)
+      if (version !== generation) return
+      if (!payload.data || (!payload.data.totals && !payload.data.sections))
+        throw new Error('Resposta do relatório inválida')
+      report.value = payload.data
+    } else {
+      const payload = await api<ErpPaginatedList>(path)
+      if (version !== generation) return
+      if (!Array.isArray(payload.data))
+        throw new Error('Resposta da listagem inválida')
+      rows.value = payload.data
+      listTotal.value = erpListTotal(payload)
+      perPage.value = payload.meta?.per_page ?? 15
+    }
   } catch (error) {
+    if (version !== generation) return
     if (apiStatus(error) === 404) {
       apiUnavailable.value = true
       return
     }
     loadError.value = error
   } finally {
-    loading.value = false
+    if (version === generation)
+      loading.value = false
   }
 }
 
-watch([selectedTabId, canRead], () => {
+watch(selectedTabId, () => {
+  page.value = 1
+}, { flush: 'sync' })
+watch([selectedTabId, canRead, page, dateFrom, dateTo, () => currentCompany.value?.id], () => {
   void load()
-}, { immediate: true })
+}, { immediate: true, flush: 'sync' })
 
 const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
   const sample = rows.value[0]
@@ -115,16 +152,10 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
         </template>
         <template #trailing>
           <UBadge
-            v-if="canWrite"
-            color="primary"
-            variant="subtle"
-            label="Escrita"
-          />
-          <UBadge
-            v-else-if="canRead"
+            v-if="canRead"
             color="neutral"
             variant="subtle"
-            label="Leitura"
+            label="Consulta"
           />
         </template>
       </UDashboardNavbar>
@@ -137,10 +168,6 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
         <p class="text-muted text-sm">
           {{ contract.description }}
         </p>
-        <p class="text-dimmed text-xs">
-          {{ contract.referenceNote }}
-        </p>
-
         <UAlert
           v-if="!canRead"
           color="warning"
@@ -151,6 +178,18 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
         />
 
         <template v-else>
+          <ErpPurchaseXmlPreview v-if="activeTab?.mode === 'xml-preview'" />
+
+          <form v-else-if="activeTab?.mode === 'report'" class="flex flex-wrap items-end gap-3" @submit.prevent="load">
+            <UFormField label="De" name="date_from">
+              <UInput v-model="dateFrom" type="date" />
+            </UFormField>
+            <UFormField label="Até" name="date_to">
+              <UInput v-model="dateTo" type="date" />
+            </UFormField>
+            <UButton type="submit" label="Atualizar" :loading="loading" />
+          </form>
+
           <ErrorRetryAlert
             v-if="showError"
             :title="apiErrorMessage(loadError) ?? `Não foi possível carregar ${contract.title.toLowerCase()}`"
@@ -158,7 +197,7 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
             @retry="retry"
           />
 
-          <template v-else>
+          <template v-else-if="activeTab?.mode !== 'xml-preview'">
             <UAlert
               v-if="apiUnavailable"
               color="neutral"
@@ -177,8 +216,10 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
               />
             </UPageGrid>
 
+            <ErpReportMetrics v-if="report" :report="report" />
+
             <UEmpty
-              v-if="!isLoading && !apiUnavailable && rows.length === 0"
+              v-else-if="!isLoading && !apiUnavailable && rows.length === 0"
               :icon="contract.icon"
               :title="activeTab?.emptyTitle ?? 'Nenhum registro'"
               :description="activeTab?.emptyDescription"
@@ -192,6 +233,14 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
                 :ui="panelTableUi"
               />
             </UCard>
+            <div v-if="listTotal !== null && listTotal > perPage" class="flex justify-end">
+              <UPagination
+                v-model:page="page"
+                :total="listTotal"
+                :items-per-page="perPage"
+                :disabled="loading"
+              />
+            </div>
           </template>
         </template>
       </div>

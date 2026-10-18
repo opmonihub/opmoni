@@ -2,6 +2,7 @@
 
 namespace App\Erp\Stock;
 
+use App\Erp\ErpCatalogScope;
 use App\Erp\Finance\ErpDecimal;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
@@ -22,6 +23,7 @@ final class ErpStockParticipant
         ?int $postedByUserId,
     ): void {
         $this->assertInCallerTransaction();
+        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
 
         $issueLines = array_values(array_filter(
             $lines,
@@ -37,6 +39,8 @@ final class ErpStockParticipant
         foreach ($issueLines as $line) {
             $variantId = (int) $line['erp_product_variant_id'];
             $needed = ErpDecimal::parse($line['quantity']);
+            abort_unless(ErpDecimal::isPositive($needed), 422, 'Quantidade deve ser positiva');
+            app(ErpCatalogScope::class)->assertVariantBelongsToCompany($companyId, $variantId);
 
             $balance = ErpStockBalance::query()
                 ->where('erp_establishment_id', $establishmentId)
@@ -82,6 +86,7 @@ final class ErpStockParticipant
         ?int $postedByUserId,
     ): void {
         $this->assertInCallerTransaction();
+        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
 
         DB::table('erp_companies')->where('id', $companyId)->lockForUpdate()->first();
 
@@ -99,6 +104,7 @@ final class ErpStockParticipant
                 continue;
             }
 
+            abort_if(ErpStockMovement::query()->where('reversal_of_id', $movement->id)->exists(), 422, 'Movimento já devolvido');
             $quantity = ErpDecimal::parse((string) $movement->quantity);
             $balance = ErpStockBalance::query()->firstOrCreate(
                 [
@@ -110,6 +116,8 @@ final class ErpStockParticipant
                     'quantity_on_hand' => ErpDecimal::zero(),
                 ],
             );
+            app(ErpStockValuation::class)->assertCompatibleReceipt($balance, (string) $movement->unit_cost);
+            $balance->average_cost = $movement->unit_cost;
             $balance->quantity_on_hand = ErpDecimal::add(
                 ErpDecimal::parse((string) $balance->quantity_on_hand),
                 $quantity,

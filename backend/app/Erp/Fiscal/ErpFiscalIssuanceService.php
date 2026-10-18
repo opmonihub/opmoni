@@ -107,8 +107,9 @@ class ErpFiscalIssuanceService
         return $this->transmit($document->fresh(), $company, $actorUserId);
     }
 
-    public function submitEvent(ErpFiscalEvent $event, ErpFiscalDocument $document): ErpFiscalEvent
+    public function submitEvent(ErpFiscalEvent $event, ErpFiscalDocument $document, ?int $actorUserId = null): ErpFiscalEvent
     {
+        $this->productionGate->assertLiveDispatch($document, $actorUserId);
         $this->assertEventAllowed($document, $event->event_type);
 
         if ($event->status === 'accepted') {
@@ -139,8 +140,9 @@ class ErpFiscalIssuanceService
         return $event->fresh();
     }
 
-    public function submitInvalidation(ErpFiscalInvalidation $invalidation): ErpFiscalInvalidation
+    public function submitInvalidation(ErpFiscalInvalidation $invalidation, ?int $actorUserId = null): ErpFiscalInvalidation
     {
+        $this->productionGate->assertLiveDispatch($invalidation, $actorUserId);
         $errors = $this->payloadBuilder->validateInvalidation([
             'model' => $invalidation->model,
             'series' => $invalidation->series,

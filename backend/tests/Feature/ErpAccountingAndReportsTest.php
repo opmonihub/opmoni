@@ -37,6 +37,7 @@ class ErpAccountingAndReportsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('fiscal');
         config([
             'access.ingress_key' => 'test-key',
             'erp.operating_writes_enabled' => true,
@@ -179,7 +180,7 @@ class ErpAccountingAndReportsTest extends TestCase
             'idempotency_key' => 'handoff-doc-retry',
             'storage_path' => 'erp/fiscal/missing.xml',
             'artifact_byte_length' => 10,
-            'artifact_sha256' => hash('sha256', 'missing'),
+            'artifact_sha256' => hash('sha256', '<nfeProc/>'),
             'authorized_at' => now(),
         ]);
 

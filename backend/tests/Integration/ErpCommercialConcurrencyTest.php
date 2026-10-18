@@ -5,6 +5,7 @@ namespace Tests\Integration;
 use App\Models\Account;
 use App\Models\User;
 use Database\Seeders\PlanSeeder;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -99,15 +100,47 @@ class ErpCommercialConcurrencyTest extends TestCase
         ];
         $anonymous = $this->anonymous('192.0.2.40');
         $results = $this->concurrent([
-            $this->mutation($anonymous, '/api/v1/erp/register', $payload),
-            $this->mutation($anonymous, '/api/v1/erp/register', $payload),
+            $this->mutation($anonymous, '/api/v1/erp/register', $payload) + ['diagnose_errors' => true],
+            $this->mutation($anonymous, '/api/v1/erp/register', $payload) + ['diagnose_errors' => true],
         ]);
         $statuses = array_column($results, 'status');
         $this->assertSame(1, count(array_filter($statuses, fn (int $status): bool => $status === 201)));
-        $this->assertSame(1, count(array_filter($statuses, fn (int $status): bool => in_array($status, [422, 403], true))));
+        $diagnostics = array_map(fn (array $result): array => ['status' => $result['status'], 'code' => $result['body']['code'] ?? null, 'exceptions' => $result['exception_types'] ?? []], $results);
+        $this->assertSame(1, count(array_filter($statuses, fn (int $status): bool => in_array($status, [422, 403, 503], true))), json_encode($diagnostics, JSON_THROW_ON_ERROR));
+        foreach ($results as $result) {
+            if ($result['status'] === 503) {
+                $this->assertSame('service_unavailable', $result['body']['code']);
+                $this->assertSame([LockTimeoutException::class], $result['exception_types']);
+            }
+        }
+        $retry = $this->request($this->mutation($this->anonymous('192.0.2.40'), '/api/v1/erp/register', $payload));
+        $this->assertSame(422, $retry['status']);
+        $this->assertArrayHasKey('email', $retry['body']['errors']);
         $this->assertSame(1, DB::table('erp_companies')->where('cnpj', self::VALID_CNPJ)->count());
         $this->assertSame(1, DB::table('erp_subscriptions')->count());
         $this->assertSame(2, DB::table('users')->count());
+    }
+
+    public function test_distinct_sessions_and_emails_cannot_register_the_same_cnpj(): void
+    {
+        $first = $this->anonymous('192.0.2.41');
+        $second = $this->anonymous('192.0.2.42');
+        $payload = [
+            'name' => 'Company Owner', 'password' => 'Exact password á 123',
+            'company_name' => 'Shared Company', 'cnpj' => self::VALID_CNPJ,
+        ];
+        $results = $this->concurrent([
+            $this->mutation($first, '/api/v1/erp/register', $payload + ['email' => 'first-cnpj@example.test']),
+            $this->mutation($second, '/api/v1/erp/register', $payload + ['email' => 'second-cnpj@example.test']),
+        ]);
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame([201, 422], $statuses);
+        $loser = array_values(array_filter($results, fn (array $result): bool => $result['status'] === 422))[0];
+        $this->assertArrayHasKey('cnpj', $loser['body']['errors']);
+        $this->assertSame(1, DB::table('erp_companies')->where('cnpj', self::VALID_CNPJ)->count());
+        $this->assertSame(1, DB::table('erp_subscriptions')->count());
+        $this->assertSame(1, DB::table('users')->whereIn('email', ['first-cnpj@example.test', 'second-cnpj@example.test'])->count());
     }
 
     public function test_committed_registration_recovers_by_login_after_session_failure(): void

@@ -27,6 +27,18 @@ abstract class ErpOperationsController extends Controller
             ->firstOrFail();
     }
 
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    protected function normalizeIdentifiers(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if ($value !== null && str_ends_with($key, '_id')) {
+                $data[$key] = (int) $value;
+            }
+        }
+
+        return $data;
+    }
+
     protected function decimalString(mixed $value): string
     {
         if ($value === null || $value === '') {

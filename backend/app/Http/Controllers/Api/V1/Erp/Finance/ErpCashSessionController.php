@@ -75,9 +75,10 @@ class ErpCashSessionController extends ErpOperationsController
         $context->assertCanMutate();
         $userId = $request->user()?->id;
         $model = $this->findForCompany($request, ErpCashSession::class, $cashSession);
+        abort_unless((int) $model->operator_user_id === (int) $userId || $context->membership?->role === 'owner', 403, 'Caixa pertence a outro operador');
         $data = $request->validate([
             'declared_closing_amount' => ['required'],
-            'movements_net' => ['sometimes'],
+            'movements_net' => ['prohibited'],
             'close_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
 
@@ -91,7 +92,7 @@ class ErpCashSessionController extends ErpOperationsController
             $result = $this->stateMachine->close(
                 $model->status,
                 $this->decimalString($model->opening_amount),
-                ErpDecimal::parse($data['movements_net'] ?? '0'),
+                ErpDecimal::zero(),
                 ErpDecimal::parse($data['declared_closing_amount']),
             );
         } catch (InvalidArgumentException $exception) {

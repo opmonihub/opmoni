@@ -22,11 +22,11 @@ The system SHALL expose `GET /api/v1/registration-status` with `{registration_av
 - **THEN** exactly one returns 201 and the other returns 403 after initialization, with only one bootstrap user and Account created
 
 ### Requirement: Password login establishes a revocable session
-The system SHALL accept `POST /api/v1/login` with email and password, return 200 with the current-user representation on success, and replace any previous session identifier. Unknown email and incorrect password SHALL return the same 422 credentials error with the message "Email ou senha inválidos". Every successful password login SHALL automatically select the default active member Account, defined as the earliest membership by membership ID among active Accounts. This SHALL apply even with multiple memberships; no active membership SHALL leave `current_account` null for unavailable access. Manual switching SHALL remain session-local; a new login SHALL return to the default rather than reuse a manual switch. Sessions SHALL expire no later than 12 hours after authentication, without a remember-me option in this release. This SHALL be an absolute deadline established at authentication; ordinary requests, cookie renewal, and Account switching SHALL NOT extend it. Successful authentication SHALL invalidate the previous session identifier so replay cannot authenticate with it.
+The system SHALL accept `POST /api/v1/login` with email and password, return 200 with the current-user representation on success, and replace any previous session identifier. Unknown email and incorrect password SHALL return the same 422 credentials error with the message "Email ou senha inválidos". Every successful password login SHALL automatically select the default active member Account, defined as the earliest membership by membership ID among active Accounts. This SHALL apply even with multiple memberships; absence of an active office membership SHALL leave `current_account` null; company workspace availability SHALL be resolved independently under erp-company-foundation. Manual switching SHALL remain session-local; a new login SHALL return to the default rather than reuse a manual switch. Sessions SHALL expire no later than 12 hours after authentication, without a remember-me option in this release. This SHALL be an absolute deadline established at authentication; ordinary requests, cookie renewal, and Account switching SHALL NOT extend it. Successful authentication SHALL invalidate the previous session identifier so replay cannot authenticate with it.
 
 #### Scenario: Valid credentials
 - **WHEN** a user supplies correct credentials
-- **THEN** subsequent requests carry an authenticated session and the response contains only public user and Account fields
+- **THEN** subsequent requests carry an authenticated session and the response contains only public user, Account and authorized Company fields
 
 #### Scenario: Invalid credentials
 - **WHEN** the email is unknown or the password is incorrect
@@ -57,7 +57,7 @@ The system SHALL accept `POST /api/v1/login` with email and password, return 200
 - **THEN** the previous identifier cannot access authenticated data, while the new session represents the authenticated identity
 
 ### Requirement: Current identity is independent of tenant access
-`GET /api/v1/me` SHALL return `{id,name,email,is_super_admin,accounts,current_account}` for an authenticated user. `accounts` SHALL include only that user's memberships, each with `{id,name,status,role}`; `current_account` SHALL contain those fields or be null. This endpoint SHALL remain available when an Account is suspended or the user has no memberships. Passwords, session credentials, owner activation secrets, and internal Account settings SHALL never be included. Access responses SHALL use `Cache-Control: no-store`.
+`GET /api/v1/me` SHALL retain `{id,name,email,is_super_admin,accounts,current_account}` and add safe `companies` and `current_company` fields for an authenticated user. Company entries SHALL expose only authorized id/name/status/role/permission projections, distinguishing direct membership from explicit office delegation. Company-only identities SHALL not acquire office memberships. Suspended company metadata SHALL not authorize operation. `accounts` SHALL include only that user's memberships, each with `{id,name,status,role}`; `current_account` SHALL contain those fields or be null. This endpoint SHALL remain available when an Account is suspended or the user has no memberships. Passwords, session credentials, owner activation secrets, and internal Account settings SHALL never be included. Access responses SHALL use `Cache-Control: no-store`.
 
 #### Scenario: Authenticated user without an available Account
 - **WHEN** an authenticated user has no active memberships
@@ -125,3 +125,17 @@ Client, fiscal, monitoring, work, member, department, and WhatsApp browser mutat
 #### Scenario: Business write without CSRF
 - **WHEN** an authenticated member posts a client with a missing or invalid CSRF token
 - **THEN** the API returns 403 before creating the client
+
+### Requirement: ERP login keeps one global session
+Company selection and login SHALL reuse the existing revocable session and absolute deadline. New password login SHALL prefer the default active office; if none exists it SHALL select the earliest active direct company membership. Company creation or selection SHALL not create an office membership, duplicate a password store or extend authenticated lifetime.
+
+#### Scenario: Login without an office but with company membership
+- **WHEN** valid credentials identify a user with no active office and an active direct company membership
+- **THEN** current_account remains null and the identity includes the default company for ERP entry
+
+### Requirement: ERP identity does not reveal foreign companies
+Company identity projections SHALL include only current direct memberships or authorized office delegations and SHALL exclude credentials, internal settings and revoked grants. The absence of an active office SHALL not prevent a permitted company identity read.
+
+#### Scenario: Delegation disappears after revocation
+- **WHEN** the user refreshes identity after their only company delegation was revoked
+- **THEN** that company no longer appears as an authorized operating destination

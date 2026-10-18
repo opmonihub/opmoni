@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\Finance\ErpDecimal;
+use App\Erp\Stock\ErpStockValuation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Stock\ErpStockAdjustment;
 use App\Models\Erp\Stock\ErpStockBalance;
@@ -33,6 +34,16 @@ class ErpStockController extends ErpOperationsController
         return $this->paginated($request, $query, fn (Model $model): array => $this->serializeMovement($model));
     }
 
+    public function adjustments(Request $request): JsonResponse
+    {
+        return $this->paginated($request, ErpStockAdjustment::query()->where('erp_company_id', $this->companyId($request)), fn (Model $model): array => $this->serializeAdjustment($model));
+    }
+
+    public function transfers(Request $request): JsonResponse
+    {
+        return $this->paginated($request, ErpStockTransfer::query()->where('erp_company_id', $this->companyId($request)), fn (Model $model): array => $this->serializeTransfer($model));
+    }
+
     public function storeAdjustment(Request $request): JsonResponse
     {
         $context = CurrentCompany::fromRequest($request);
@@ -46,10 +57,19 @@ class ErpStockController extends ErpOperationsController
             'reason' => ['required', 'string', 'max:255'],
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
 
+        $this->scope->assertVariantBelongsToCompany($companyId, $data['erp_product_variant_id']);
+        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
         $delta = ErpDecimal::parse($data['quantity_delta']);
         $operationKey = $data['source_operation_key'] ?? ('adjustment-'.uniqid('', true));
+        $existing = ErpStockAdjustment::query()->where('erp_company_id', $companyId)->where('source_operation_key', $operationKey)->first();
+        if ($existing) {
+            abort_unless($existing->erp_establishment_id === $data['erp_establishment_id'] && $existing->erp_product_variant_id === $data['erp_product_variant_id'] && $existing->reason === $data['reason'] && ErpDecimal::compare((string) $existing->quantity_delta, $delta) === 0, 409, 'Chave reutilizada com conteúdo diferente');
+
+            return response()->json(['data' => $this->serializeAdjustment($existing)]);
+        }
 
         $adjustment = DB::transaction(function () use ($data, $companyId, $userId, $delta, $operationKey): ErpStockAdjustment {
             $balance = ErpStockBalance::query()->firstOrCreate(
@@ -62,6 +82,8 @@ class ErpStockController extends ErpOperationsController
                     'quantity_on_hand' => ErpDecimal::zero(),
                 ],
             );
+            abort_if(ErpDecimal::compare(ErpDecimal::add((string) $balance->quantity_on_hand, $delta), ErpDecimal::zero()) === -1, 422, 'Estoque insuficiente');
+            abort_if(ErpDecimal::isPositive($delta) && $balance->average_cost === null, 422, 'Entrada sem custo exige recebimento de compra');
             $balance->quantity_on_hand = ErpDecimal::add($this->decimalString($balance->quantity_on_hand), $delta);
             $balance->save();
 
@@ -111,13 +133,22 @@ class ErpStockController extends ErpOperationsController
             'quantity' => ['required'],
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['from_establishment_id'], 'from_establishment_id');
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['to_establishment_id'], 'to_establishment_id');
 
+        $this->scope->assertVariantBelongsToCompany($companyId, $data['erp_product_variant_id']);
+        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
         $quantity = ErpDecimal::parse($data['quantity']);
         abort_unless(ErpDecimal::isPositive($quantity), 422, 'Quantidade inválida');
 
         $operationKey = $data['source_operation_key'] ?? ('transfer-'.uniqid('', true));
+        $existing = ErpStockTransfer::query()->where('erp_company_id', $companyId)->where('source_operation_key', $operationKey)->first();
+        if ($existing) {
+            abort_unless($existing->from_establishment_id === $data['from_establishment_id'] && $existing->to_establishment_id === $data['to_establishment_id'] && $existing->erp_product_variant_id === $data['erp_product_variant_id'] && ErpDecimal::compare((string) $existing->quantity, $quantity) === 0, 409, 'Chave reutilizada com conteúdo diferente');
+
+            return response()->json(['data' => $this->serializeTransfer($existing)]);
+        }
 
         $transfer = DB::transaction(function () use ($data, $companyId, $userId, $quantity, $operationKey): ErpStockTransfer {
             $fromBalance = ErpStockBalance::query()->firstOrCreate(
@@ -140,6 +171,8 @@ class ErpStockController extends ErpOperationsController
                 ],
                 ['erp_company_id' => $companyId, 'quantity_on_hand' => ErpDecimal::zero()],
             );
+            app(ErpStockValuation::class)->assertCompatibleReceipt($toBalance, (string) $fromBalance->average_cost);
+            $toBalance->average_cost = $fromBalance->average_cost;
             $toBalance->quantity_on_hand = ErpDecimal::add($this->decimalString($toBalance->quantity_on_hand), $quantity);
             $toBalance->save();
 
@@ -148,6 +181,7 @@ class ErpStockController extends ErpOperationsController
                 'erp_establishment_id' => $data['from_establishment_id'],
                 'erp_product_variant_id' => $data['erp_product_variant_id'],
                 'direction' => 'out',
+                'unit_cost' => $fromBalance->average_cost,
                 'quantity' => $quantity,
                 'source_type' => 'erp_stock_transfer',
                 'source_id' => 0,
@@ -160,6 +194,7 @@ class ErpStockController extends ErpOperationsController
                 'erp_establishment_id' => $data['to_establishment_id'],
                 'erp_product_variant_id' => $data['erp_product_variant_id'],
                 'direction' => 'in',
+                'unit_cost' => $fromBalance->average_cost,
                 'quantity' => $quantity,
                 'source_type' => 'erp_stock_transfer',
                 'source_id' => 0,

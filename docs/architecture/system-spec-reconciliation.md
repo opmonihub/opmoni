@@ -42,7 +42,7 @@ Source and test links identify where behavior was inspected; a test link by itse
 | [team-management](../../openspec/specs/team-management/spec.md) | Member administration, last admin, directory and departments | [AccountMemberController.php](../../backend/app/Http/Controllers/Api/V1/Tenant/AccountMemberController.php) | [MemberDirectoryTest.php](../../backend/tests/Feature/Tenancy/MemberDirectoryTest.php) |
 | [whatsapp-delivery](../../openspec/specs/whatsapp-delivery/spec.md) | Channel, contacts, explicit PGDAS send, receipts and webhook | [WzapWebhookController.php](../../backend/app/Http/Controllers/WzapWebhookController.php) | [whatsappSendGuides.test.ts](../../frontend/tests/whatsappSendGuides.test.ts) |
 | [application-runtime](../../openspec/specs/application-runtime/spec.md) | Private proxy, JSON/multipart/binary, workers, schedules and stores | [API proxy](../../frontend/server/api/v1/[...path].ts) | [AccessConcurrencyTest.php](../../backend/tests/Integration/AccessConcurrencyTest.php) |
-| [erp-company-foundation](../../openspec/changes/add-erp-company-foundation/specs/erp-company-foundation/spec.md) | Company tenant, session selection, delegation, ERP shell and operating-write gate | [erp.php](../../backend/routes/erp.php), [erp.vue](../../frontend/app/layouts/erp.vue) | [ErpCompanyFoundationTest.php](../../backend/tests/Feature/ErpCompanyFoundationTest.php), [ErpCompanyConcurrencyTest.php](../../backend/tests/Integration/ErpCompanyConcurrencyTest.php) |
+| [erp-company-foundation](../../openspec/specs/erp-company-foundation/spec.md) | Company tenant, session selection, delegation, ERP shell and operating-write gate | [erp.php](../../backend/routes/erp.php), [erp.vue](../../frontend/app/layouts/erp.vue) | [ErpCompanyFoundationTest.php](../../backend/tests/Feature/ErpCompanyFoundationTest.php), [ErpCompanyConcurrencyTest.php](../../backend/tests/Integration/ErpCompanyConcurrencyTest.php) |
 | [platform-administration](../../openspec/specs/platform-administration/spec.md) | Seven pages, summary composition, global read-only users | [index.vue](../../frontend/app/pages/admin/index.vue) | [adminNav.test.ts](../../frontend/tests/adminNav.test.ts) |
 | [platform-account-management](../../openspec/specs/platform-account-management/spec.md) | Access issuance plus separate commercial editor | [AccountCommercialController.php](../../backend/app/Http/Controllers/Api/V1/Admin/AccountCommercialController.php) | [BusinessIntegrationTest.php](../../backend/tests/Feature/BusinessIntegrationTest.php) |
 | [platform-commercial-management](../../openspec/specs/platform-commercial-management/spec.md) | Catalog, subscriptions, operational gate and creation limits | [PlanLimits.php](../../backend/app/Services/PlanLimits.php) | [SecurityRefactorTest.php](../../backend/tests/Feature/Tenancy/SecurityRefactorTest.php) |
@@ -267,9 +267,9 @@ Every page source is mapped below. Auth/access-pages and isolation are cross-cut
 | [work/calendario.vue](../../frontend/app/pages/work/calendario.vue) | work-management |
 | [work/clientes.vue](../../frontend/app/pages/work/clientes.vue) | work-management |
 | [work/modelos/[id].vue](../../frontend/app/pages/work/modelos/[id].vue) | work-management |
-| [work/modelos.vue](../../frontend/app/pages/work/modelos.vue) | work-management |
+| [work/modelos/index.vue](../../frontend/app/pages/work/modelos/index.vue) | work-management |
 | [work/processos/[id].vue](../../frontend/app/pages/work/processos/[id].vue) | work-management |
-| [work/processos.vue](../../frontend/app/pages/work/processos.vue) | work-management |
+| [work/processos/index.vue](../../frontend/app/pages/work/processos/index.vue) | work-management |
 | [work/tarefas.vue](../../frontend/app/pages/work/tarefas.vue) | work-management |
 | [work.vue](../../frontend/app/pages/work.vue) | work-management |
 
@@ -282,3 +282,28 @@ All documentation links checked in this reconciliation resolve locally. The sync
 The apply review found that the surviving auth bootstrap requirement still prohibited subscriptions and default departments, contradicting Account/commercial defaults and the Account creation observer. With explicit user approval, the auth delta now describes those defaults in the creation transaction and preserves all three original bootstrap scenarios. No application behavior was changed.
 
 The follow-up audit checked 126 local documentation links, all 121 registered application routes, all 45 frontend page sources, and 1,062 application/runtime/historical-archive file hashes. The regular frontend rerun (`docker compose exec -T frontend pnpm test`) passed all 598 tests with no skips. The backend rerun from `backend/` (`FISCAL_ENVIRONMENT=producao php artisan test --compact`) passed 1,669 tests with 9,206 assertions and three optional live-probe skips, out of 1,672 total tests. PostgreSQL/Redis races and live providers remain outside this audit's verification evidence.
+
+## ERP and complete-XML archive — 2026-10-17
+
+At the user's request, the ten changes with completed checklists were synchronized to canonical specs before archival. All use the `spec-driven` schema and have complete proposal, specs, design and tasks artifacts. The 113 checked tasks and their existing evidence remain in the archives below.
+
+| Archived change | Checked tasks | Canonical capability |
+| --- | --- | --- |
+| [add-erp-company-foundation](../../openspec/changes/archive/2026-10-17-add-erp-company-foundation/tasks.md) | 10/10 | [erp-company-foundation](../../openspec/specs/erp-company-foundation/spec.md), auth, access-pages, isolation, application-runtime |
+| [add-erp-commercial-access](../../openspec/changes/archive/2026-10-17-add-erp-commercial-access/tasks.md) | 7/7 | [erp-commercial-access](../../openspec/specs/erp-commercial-access/spec.md) |
+| [add-erp-core-catalogs](../../openspec/changes/archive/2026-10-17-add-erp-core-catalogs/tasks.md) | 10/10 | [erp-core-catalogs](../../openspec/specs/erp-core-catalogs/spec.md) |
+| [add-erp-finance-and-cash](../../openspec/changes/archive/2026-10-17-add-erp-finance-and-cash/tasks.md) | 10/10 | [erp-finance-and-cash](../../openspec/specs/erp-finance-and-cash/spec.md) |
+| [add-erp-purchasing-and-stock](../../openspec/changes/archive/2026-10-17-add-erp-purchasing-and-stock/tasks.md) | 8/8 | [erp-purchasing](../../openspec/specs/erp-purchasing/spec.md), [erp-inventory](../../openspec/specs/erp-inventory/spec.md) |
+| [add-erp-sales-and-orders](../../openspec/changes/archive/2026-10-17-add-erp-sales-and-orders/tasks.md) | 7/7 | [erp-sales](../../openspec/specs/erp-sales/spec.md) |
+| [add-erp-fiscal-issuance](../../openspec/changes/archive/2026-10-17-add-erp-fiscal-issuance/tasks.md) | 17/17 | [erp-fiscal-issuance](../../openspec/specs/erp-fiscal-issuance/spec.md) |
+| [add-erp-accounting-documents](../../openspec/changes/archive/2026-10-17-add-erp-accounting-documents/tasks.md) | 7/7 | [erp-accounting-documents](../../openspec/specs/erp-accounting-documents/spec.md), fiscal-documents |
+| [add-erp-reports-and-launch](../../openspec/changes/archive/2026-10-17-add-erp-reports-and-launch/tasks.md) | 8/8 | [erp-reports](../../openspec/specs/erp-reports/spec.md), application-runtime |
+| [complete-xml-accounting-workflow](../../openspec/changes/archive/2026-10-17-complete-xml-accounting-workflow/tasks.md) | 29/29 | [fiscal-documents](../../openspec/specs/fiscal-documents/spec.md), application-runtime |
+
+The merge created ten ERP specs and updated five existing capabilities, adding 45 requirements and modifying 13. Existing Purpose text, unrelated requirements and surviving scenarios were retained. All 58 delta requirements were compared with the resulting main specs, and a second merge produced no changes. Relative links between archived changes and repository references were adjusted; `.openspec.yaml` metadata was preserved. Two older Work page links now point to their existing nested `index.vue` files.
+
+The archive preserves checklist status without turning it into deployment acceptance. Several ERP task evidence sections explicitly report that desktop/mobile browser flows were not run. ERP issuance/live model canaries, complete-core production approval, NF-e science/recovery canaries and wider fleet activation remain unverified or blocked in the recorded evidence. Existing provider, release and rollout gates were not changed. The earlier source-core inventory and verification tables above remain their dated audit evidence, not a fresh ERP acceptance report.
+
+This documentation-only workflow validates the canonical OpenSpec contracts, every selected delta, archive contents and local links. Application tests, browser sessions and live providers were not rerun. Application/runtime files and the incomplete [add-super-admin-platform](../../openspec/changes/add-super-admin-platform/tasks.md) change were preserved; that change remains active at 9/56 checked tasks.
+
+Final archive verification: `openspec validate --all --strict --no-interactive` passed all 28 active items (27 specs and one change); `openspec list --json` reported only `add-super-admin-platform`. All 58 archived delta requirements matched canonical specs, all 113 checked tasks and ten metadata files were preserved, and all 227 local links across 55 scoped documents resolved. Hash comparison confirmed 1,387 application/runtime and pending-change files unchanged. The 58 archived files retained their content except for adjusted Markdown link targets.

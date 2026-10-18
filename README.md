@@ -9,9 +9,11 @@
 
 ## Specifications and coverage
 
-[Canonical OpenSpec contracts](openspec/specs/) cover access, Account isolation, Clients, Fiscal, Monitoring/SERPRO, Work, Team, WhatsApp, platform administration, and runtime boundaries. The [system reconciliation map](docs/architecture/system-spec-reconciliation.md) links all registered application routes and frontend page families to their specs and implementation evidence, records D001-D009 status, and distinguishes delivered behavior from pending platform targets.
+[Canonical OpenSpec contracts](openspec/specs/) cover access, Account isolation, Clients, Fiscal, Monitoring/SERPRO, Work, Team, WhatsApp, company ERP, platform administration, and runtime boundaries. The [system reconciliation map](docs/architecture/system-spec-reconciliation.md) links registered application routes and frontend page families to their specs and implementation evidence, records D001-D009 status, and distinguishes delivered behavior from pending platform targets.
 
 The [archived reconcile-system-specs change](openspec/changes/archive/2026-10-13-reconcile-system-specs/proposal.md) preserves the delta history. The earlier [Super Admin proposal](openspec/changes/add-super-admin-platform/proposal.md) remains pending where its stronger contracts differ from the integrated baseline; its foreign support elevation is superseded by D009. Syncing specs does not complete its implementation checklist.
+
+The nine ERP changes and complete-XML accounting workflow were synchronized and archived on 2026-10-17; the [archive record](docs/architecture/system-spec-reconciliation.md#erp-and-complete-xml-archive--2026-10-17) lists their scope and evidence limits. Live fiscal canaries, production release approval, and several browser acceptance flows remain unverified in the recorded evidence. Archiving does not enable ERP production, fiscal transmission, or wider automatic science.
 
 ## Development
 

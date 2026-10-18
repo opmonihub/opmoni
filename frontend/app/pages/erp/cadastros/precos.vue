@@ -23,6 +23,13 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
           { accessorKey: 'is_default', header: 'Padrão', cell: ({ row }) => row.original.is_default ? 'Sim' : 'Não' }
         ]"
       />
+      <ErpCatalogPagination
+        v-model:page="groups.page.value"
+        :meta="groups.state.value?.meta"
+        :pending="groups.pending.value"
+        :error="groups.error.value"
+        @retry="groups.refresh"
+      />
     </UCard>
     <UCard>
       <template #header>
@@ -37,6 +44,13 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
           { accessorKey: 'value', header: 'Valor', cell: ({ row }) => formatErpDecimal(row.original.value) },
           { accessorKey: 'coupon_code', header: 'Cupom' }
         ]"
+      />
+      <ErpCatalogPagination
+        v-model:page="discounts.page.value"
+        :meta="discounts.state.value?.meta"
+        :pending="discounts.pending.value"
+        :error="discounts.error.value"
+        @retry="discounts.refresh"
       />
     </UCard>
   </ErpCatalogPageShell>

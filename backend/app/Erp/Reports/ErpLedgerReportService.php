@@ -215,7 +215,7 @@ class ErpLedgerReportService
     {
         $query = ErpFiscalDocument::query()
             ->where('erp_company_id', $companyId)
-            ->whereBetween('authorized_at', [$filters['date_from'], $filters['date_to']]);
+            ->whereBetween('created_at', [$filters['date_from'], $filters['date_to']]);
         if ($filters['erp_establishment_id'] !== null) {
             $query->where('erp_establishment_id', $filters['erp_establishment_id']);
         }

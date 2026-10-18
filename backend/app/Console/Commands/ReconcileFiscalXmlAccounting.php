@@ -3,16 +3,16 @@
 namespace App\Console\Commands;
 
 use App\Enums\FiscalDeliveryOrigin;
-use App\Enums\FiscalProcessingReason;
 use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
 use App\Models\Account;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\Manifestacao\FiscalScienceEligibility;
-use App\Services\Fiscal\Manifestacao\ManifestacaoDispatcher;
+use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
 use App\Services\Fiscal\Read\FiscalDocumentReadiness;
 use App\Services\Fiscal\Support\FiscalXmlMetadata;
+use App\Tenant\CurrentTenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,7 +29,6 @@ final class ReconcileFiscalXmlAccounting extends Command
         FiscalXmlMetadata $metadata,
         FiscalScienceEligibility $eligibility,
         FiscalDocumentReadiness $readiness,
-        ManifestacaoDispatcher $manifestacao,
     ): int {
         $accountId = (int) $this->option('account');
 
@@ -39,6 +38,11 @@ final class ReconcileFiscalXmlAccounting extends Command
             return self::FAILURE;
         }
 
+        return resolve(CurrentTenant::class)->run($accountId, fn (): int => $this->reconcileAccount($accountId, $metadata, $eligibility, $readiness));
+    }
+
+    private function reconcileAccount(int $accountId, FiscalXmlMetadata $metadata, FiscalScienceEligibility $eligibility, FiscalDocumentReadiness $readiness): int
+    {
         $clientId = $this->option('client') !== null ? (int) $this->option('client') : null;
         $apply = (bool) $this->option('apply');
 
@@ -51,7 +55,37 @@ final class ReconcileFiscalXmlAccounting extends Command
 
         $account = Account::query()->findOrFail($accountId);
 
-        $query->clone()->where('stage', FiscalStage::Summary)->orderBy('id')->chunkById(100, function ($summaries) use ($eligibility, $account, $apply, $manifestacao, &$classified): void {
+        $query->clone()->where('stage', FiscalStage::Document)->orderBy('id')->chunkById(100, function ($documents) use ($metadata, $readiness, $apply, &$classified): void {
+            foreach ($documents as $document) {
+                $state = $readiness->stateOf($document);
+                if ($state === FiscalStorageState::Available && $document->authorized_at === null) {
+                    try {
+                        $parsed = $metadata->extract(Storage::disk('fiscal')->get($document->storage_path), $document->model);
+                        if ($apply && $parsed->authorizedAt !== null) {
+                            $document->forceFill(['authorized_at' => $parsed->authorizedAt])->saveQuietly();
+                        }
+                    } catch (\RuntimeException) {
+                        $state = FiscalStorageState::Corrupt;
+                    }
+                }
+
+                $this->line("documento {$document->id}: storage={$state->value} ready=".($state === FiscalStorageState::Available ? 'sim' : 'não'));
+                $classified++;
+
+                if ($apply) {
+                    $document->forceFill([
+                        'storage_state' => $state,
+                        'storage_verified_at' => now(),
+                        'delivery_origin' => $document->delivery_origin ?? FiscalDeliveryOrigin::Unverified,
+                    ])->saveQuietly();
+                    if ($state === FiscalStorageState::Available) {
+                        resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($document);
+                    }
+                }
+            }
+        });
+
+        $query->clone()->where('stage', FiscalStage::Summary)->orderBy('id')->chunkById(100, function ($summaries) use ($eligibility, $account, $apply, &$classified): void {
             foreach ($summaries as $summary) {
                 $summary->loadMissing('client');
                 $client = $summary->client;
@@ -76,67 +110,7 @@ final class ReconcileFiscalXmlAccounting extends Command
                     continue;
                 }
 
-                if ($decision['eligible']) {
-                    if (! in_array($summary->processing_state, [
-                        FiscalProcessingState::AwaitingScience,
-                        FiscalProcessingState::AwaitingXml,
-                        FiscalProcessingState::Deferred,
-                    ], true)) {
-                        $summary->forceFill([
-                            'processing_state' => FiscalProcessingState::AwaitingScience,
-                            'processing_reason' => null,
-                            'next_attempt_at' => now(),
-                        ])->saveQuietly();
-                    }
-
-                    $manifestacao->enfileirarCiencia(
-                        (int) $account->getKey(),
-                        $client,
-                        $summary->chave_acesso,
-                    );
-                } elseif ($summary->processing_state !== FiscalProcessingState::Attention
-                    || $summary->processing_reason !== $decision['reason']) {
-                    $summary->forceFill([
-                        'processing_state' => FiscalProcessingState::Attention,
-                        'processing_reason' => $decision['reason'] ?? FiscalProcessingReason::DeliveryUnverified,
-                        'next_attempt_at' => null,
-                    ])->saveQuietly();
-                }
-            }
-        });
-
-        $query->clone()->where('stage', FiscalStage::Document)->orderBy('id')->chunkById(100, function ($documents) use ($metadata, $readiness, $apply, &$classified): void {
-            foreach ($documents as $document) {
-                $state = FiscalStorageState::Unverified;
-                $path = $document->storage_path;
-
-                if ($path !== '' && Storage::disk('fiscal')->exists($path)) {
-                    $bytes = Storage::disk('fiscal')->get($path);
-                    $parsed = $metadata->extract($bytes, $document->model);
-                    $state = hash('sha256', $bytes) === $document->sha256
-                        ? FiscalStorageState::Available
-                        : FiscalStorageState::Corrupt;
-                    if ($apply && $document->authorized_at === null && $parsed->authorizedAt !== null) {
-                        $document->forceFill(['authorized_at' => $parsed->authorizedAt])->saveQuietly();
-                    }
-                } elseif ($path !== '') {
-                    $state = FiscalStorageState::Missing;
-                }
-
-                $this->line("documento {$document->id}: storage={$state->value} ready=".($readiness->isReadyRow($document) ? 'sim' : 'não'));
-                $classified++;
-
-                if ($apply) {
-                    $document->forceFill([
-                        'storage_state' => $state,
-                        'storage_verified_at' => now(),
-                        'delivery_origin' => $document->delivery_origin ?? FiscalDeliveryOrigin::Unverified,
-                    ])->saveQuietly();
-
-                    if ($document->processing_state === FiscalProcessingState::Complete) {
-                        continue;
-                    }
-                }
+                resolve(FiscalProcessingCoordinator::class)->afterSummaryStored($summary, $client, $account);
             }
         });
 

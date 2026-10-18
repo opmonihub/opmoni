@@ -3,7 +3,7 @@
 namespace App\Providers;
 
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
-use App\Erp\Fiscal\FakeErpFiscalProvider;
+use App\Erp\Fiscal\UnavailableErpFiscalProvider;
 use App\Models\Account;
 use App\Observers\AccountObserver;
 use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(CurrentTenant::class);
         $this->app->scoped(ErpCompanyContext::class);
         $this->app->bind(FiscalConnectorRegistry::class);
-        $this->app->bind(ErpFiscalProvider::class, FakeErpFiscalProvider::class);
+        $this->app->bind(ErpFiscalProvider::class, UnavailableErpFiscalProvider::class);
     }
 
     /**

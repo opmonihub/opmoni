@@ -47,6 +47,7 @@ class ErpObligationController extends ErpOperationsController
             'erp_financial_account_id' => ['sometimes', 'nullable', 'integer'],
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
         $this->scope->assertBelongsToCompany(
             ErpFinancialAccount::class,
@@ -56,6 +57,7 @@ class ErpObligationController extends ErpOperationsController
         );
 
         $amount = ErpDecimal::parse($data['amount']);
+        abort_unless(ErpDecimal::isPositive($amount), 422, 'Valor deve ser positivo');
         $operationKey = $data['source_operation_key'] ?? null;
         if ($operationKey !== null) {
             $existing = ErpObligation::query()
@@ -63,6 +65,8 @@ class ErpObligationController extends ErpOperationsController
                 ->where('source_operation_key', $operationKey)
                 ->first();
             if ($existing) {
+                abort_unless(ErpDecimal::compare((string) $existing->amount, $amount) === 0 && $existing->direction === $data['direction'] && $existing->category === $data['category'] && $existing->currency === ($data['currency'] ?? 'BRL') && $existing->erp_establishment_id === ($data['erp_establishment_id'] ?? null) && $existing->erp_financial_account_id === ($data['erp_financial_account_id'] ?? null) && $existing->due_on?->format('Y-m-d') === ($data['due_on'] ?? null), 409, 'Chave de operação reutilizada com conteúdo diferente');
+
                 return response()->json(['data' => $this->serialize($existing)]);
             }
         }

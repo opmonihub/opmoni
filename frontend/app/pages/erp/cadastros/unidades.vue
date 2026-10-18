@@ -5,7 +5,7 @@ definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Unidades · Cadastros ERP' })
 
 type UnitRow = { id: number, short_name: string, actual_name: string, status: string }
-const { search, pending, state, error } = useErpCatalogList<UnitRow>(erpCatalogRoutes.units)
+const { search, page, pending, state, error, refresh } = useErpCatalogList<UnitRow>(erpCatalogRoutes.units)
 </script>
 
 <template>
@@ -13,7 +13,6 @@ const { search, pending, state, error } = useErpCatalogList<UnitRow>(erpCatalogR
     <UFormField label="Busca" class="max-w-md">
       <UInput v-model="search" />
     </UFormField>
-    <UAlert v-if="error" color="error" :title="error" />
     <UTable
       :loading="pending"
       :data="state?.data ?? []"
@@ -22,6 +21,13 @@ const { search, pending, state, error } = useErpCatalogList<UnitRow>(erpCatalogR
         { accessorKey: 'actual_name', header: 'Nome' },
         { accessorKey: 'status', header: 'Status' }
       ]"
+    />
+    <ErpCatalogPagination
+      v-model:page="page"
+      :meta="state?.meta"
+      :pending="pending"
+      :error="error"
+      @retry="refresh"
     />
   </ErpCatalogPageShell>
 </template>

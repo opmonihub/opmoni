@@ -3,6 +3,8 @@
 namespace App\Erp\Stock;
 
 use App\Erp\Finance\ErpDecimal;
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\Stock\ErpStockBalance;
 use InvalidArgumentException;
 
 final class ErpStockValuation
@@ -10,6 +12,20 @@ final class ErpStockValuation
     public const FIFO = 'fifo';
 
     public const LIFO = 'lifo';
+
+    public function assertSupportedCompany(int $companyId): void
+    {
+        $company = ErpCompany::query()->findOrFail($companyId);
+        $method = $company->operating_settings['accounting_method'] ?? self::FIFO;
+        abort_unless($method === self::FIFO, 422, 'LIFO requer alocação por lotes ainda indisponível');
+    }
+
+    public function assertCompatibleReceipt(ErpStockBalance $balance, string $unitCost): void
+    {
+        if (ErpDecimal::isPositive((string) $balance->quantity_on_hand)) {
+            abort_unless($balance->average_cost !== null && ErpDecimal::compare((string) $balance->average_cost, $unitCost) === 0, 422, 'Recebimentos com custos diferentes requerem alocação por lotes ainda indisponível');
+        }
+    }
 
     /**
      * @param  list<array{quantity: string, unit_cost: string}>  $receipts

@@ -165,12 +165,11 @@ class ErpOperationsApiTest extends TestCase
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/cash-sessions/'.$sessionResponse->json('data.id').'/close', [
                 'declared_closing_amount' => '130,00',
-                'movements_net' => '25,50',
             ])
             ->assertOk()
             ->assertJsonPath('data.status', 'closed')
-            ->assertJsonPath('data.expected_closing_amount', '125.5000')
-            ->assertJsonPath('data.closing_difference', '4.5000');
+            ->assertJsonPath('data.expected_closing_amount', '100.0000')
+            ->assertJsonPath('data.closing_difference', '30.0000');
     }
 
     public function test_purchase_post_updates_stock_and_foreign_company_isolation(): void

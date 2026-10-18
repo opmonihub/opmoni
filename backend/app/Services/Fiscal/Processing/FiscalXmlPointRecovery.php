@@ -4,8 +4,10 @@ namespace App\Services\Fiscal\Processing;
 
 use App\Enums\FiscalFailure;
 use App\Enums\FiscalKind;
+use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Services\Fiscal\Capture\FiscalCaptureLock;
@@ -81,12 +83,15 @@ final class FiscalXmlPointRecovery
             return 'not_found';
         }
 
-        if (! $this->isCompleteDocumentForKey($document, $chaveAcesso)) {
+        if (! $this->isCompleteDocumentForKey($document, $chaveAcesso, $client)) {
             return 'invalid_response';
         }
 
         try {
-            $this->writer->store($client, FiscalSource::NfeDistribuicao, $document);
+            $stored = $this->writer->store($client, FiscalSource::NfeDistribuicao, $document);
+            if ($stored->storage_state !== FiscalStorageState::Available) {
+                return 'storage_failed';
+            }
         } catch (RuntimeException $exception) {
             Log::warning('fiscal.xml_point_recovery.gravacao_recusada', [
                 'account_id' => (int) $client->account_id,
@@ -101,11 +106,14 @@ final class FiscalXmlPointRecovery
         return 'recovered';
     }
 
-    private function isCompleteDocumentForKey(PulledDocument $document, string $chaveAcesso): bool
+    private function isCompleteDocumentForKey(PulledDocument $document, string $chaveAcesso, Client $client): bool
     {
         return $document->chave === $chaveAcesso
             && $document->stage === FiscalStage::Document
-            && $document->kind === FiscalKind::Document;
+            && $document->kind === FiscalKind::Document
+            && $document->model === FiscalModel::Nfe
+            && preg_replace('/\D/', '', (string) $document->destinatarioCnpj) !== ''
+            && preg_replace('/\D/', '', (string) $document->destinatarioCnpj) === preg_replace('/\D/', '', (string) $client->tax_id);
     }
 
     private function bloquear(Client $client): void

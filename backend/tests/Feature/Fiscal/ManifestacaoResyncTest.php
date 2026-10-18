@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Fiscal;
 
+use App\Enums\FiscalDeliveryOrigin;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalManifestationEventType;
 use App\Enums\FiscalManifestationOutcome;
@@ -18,6 +19,7 @@ use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Capture\FiscalLookupBudget;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
 use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
+use App\Services\Fiscal\Support\FiscalEnvironment;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -333,6 +335,12 @@ class ManifestacaoResyncTest extends BusinessTestCase
             'chave_acesso' => $chave,
             'emissao_at' => now()->subDays(5),
             'authorized_at' => now()->subDays(2),
+            'delivery_origin' => FiscalDeliveryOrigin::AuthenticatedDistribution,
+            'delivery_environment' => FiscalEnvironment::selecionar(),
+            'queried_tax_id' => $cliente->tax_id,
+            'delivery_received_at' => now(),
+            'delivery_correlation_id' => fake()->uuid(),
+            'emitente_cnpj' => '99999999999999',
         ]);
     }
 

@@ -65,6 +65,12 @@ class ErpSaleController extends ErpOperationsController
             'tax_rate_percent' => ['sometimes', 'nullable'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        foreach ($data['lines'] as $index => $line) {
+            $this->scope->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id'] ?? null, "lines.{$index}.erp_product_variant_id");
+            abort_unless(ErpDecimal::isPositive(ErpDecimal::parse($line['quantity'])), 422, 'Quantidade deve ser positiva');
+            $price = ErpDecimal::parse($line['unit_cost'] ?? $line['unit_price']);
+            abort_if(ErpDecimal::compare($price, ErpDecimal::zero()) === -1, 422, 'Preço não pode ser negativo');
+        }
 
         $totals = $this->totalsCalculator->calculate(
             $data['lines'],

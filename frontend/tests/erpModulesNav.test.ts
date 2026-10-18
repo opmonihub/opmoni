@@ -57,7 +57,7 @@ describe('erpModulesNav', () => {
     assert.equal(erpFinanceiroContract.tabs.map(tab => tab.apiPath).join(','), '/erp/financial-accounts,/erp/obligations,/erp/payments')
     assert.equal(erpCaixaContract.tabs[0]?.apiPath, '/erp/cash-registers')
     assert.equal(erpFiscalContract.tabs.some(tab => tab.apiPath.startsWith('/erp/fiscal/documents')), true)
-    assert.equal(erpRelatoriosContract.tabs.some(tab => tab.apiPath === '/erp/reports/dashboard'), true)
+    assert.equal(erpRelatoriosContract.tabs.some(tab => tab.apiPath === '/erp/reports/overview'), true)
     assert.equal(erpModulePageContracts.length, 8)
   })
 

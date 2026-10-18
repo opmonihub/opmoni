@@ -38,11 +38,24 @@ class CurrentCompany
         return [];
     }
 
+    public function assertPermission(string $permission, bool $write = false): void
+    {
+        if ($write && ($this->accessKind === 'delegated' || ! $this->membership?->roleEnum()->canMutate())) {
+            abort(403, 'Permissão insuficiente');
+        }
+        $permissions = $this->permissions();
+        $family = preg_replace('/\.[^.]+$/', '', $permission);
+        foreach (['*', $permission, $family.'.*', $family.($write ? '.write' : '.read'), $write ? 'erp.write' : 'erp.read'] as $candidate) {
+            if (in_array($candidate, $permissions, true)) {
+                return;
+            }
+        }
+        abort(403, 'Permissão insuficiente');
+    }
+
     public function assertCanMutate(): void
     {
-        if ($this->accessKind === 'direct' && $this->membership) {
-            abort_unless($this->membership->roleEnum()->canMutate(), 403, 'Permissão insuficiente');
-        }
+        $this->assertPermission((string) request()->route()?->getName(), true);
         if ($this->accessKind === 'delegated') {
             abort(response()->json(['code' => 'forbidden', 'message' => 'Acesso delegado somente leitura'], 403));
         }

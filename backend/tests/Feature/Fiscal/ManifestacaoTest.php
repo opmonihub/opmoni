@@ -129,10 +129,9 @@ class ManifestacaoTest extends BusinessTestCase
 
         $registro = FiscalManifestation::withoutGlobalScope('account')->firstOrFail();
 
-        // O cliente foi achado e o job executou: sem resumo gravado para a
-        // chave, `emissao_at` é nulo e o conector lê ausência de data como
-        // prazo não verificável — o veredito `deadline_missed` é a prova de
-        // que a execução chegou ao conector, coisa que `pending` não provaria.
-        $this->assertSame(FiscalManifestationOutcome::DeadlineMissed, $registro->outcome);
+        // Uma manifestação sem resumo elegível não autoriza um novo envio.
+        $this->assertSame(FiscalManifestationOutcome::Pending, $registro->outcome);
+        $this->assertNull($registro->sent_at);
+        $this->assertNull(resolve(CurrentTenant::class)->accountId);
     }
 }

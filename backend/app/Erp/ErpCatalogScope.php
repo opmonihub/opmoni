@@ -4,6 +4,7 @@ namespace App\Erp;
 
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpProduct;
+use App\Models\Erp\ErpProductVariant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -48,6 +49,16 @@ final class ErpCatalogScope
     public function assertProductBelongsToCompany(int $companyId, int $productId): void
     {
         $this->assertBelongsToCompany(ErpProduct::class, $companyId, $productId, 'erp_product_id');
+    }
+
+    public function assertVariantBelongsToCompany(int $companyId, ?int $variantId, string $field = 'erp_product_variant_id'): void
+    {
+        if ($variantId === null) {
+            return;
+        }
+        if (! ErpProductVariant::query()->whereKey($variantId)->whereHas('product', fn ($query) => $query->where('erp_company_id', $companyId)->where('status', 'active'))->where('status', 'active')->exists()) {
+            throw ValidationException::withMessages([$field => 'Variante inválida para esta empresa']);
+        }
     }
 
     /** @return array{per_page: int, search: ?string, status: ?string} */

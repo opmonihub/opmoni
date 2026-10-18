@@ -56,8 +56,8 @@ class ErpFiscalDocumentController extends ErpOperationsController
             'erp_establishment_id' => ['required', 'integer'],
             'erp_fiscal_certificate_id' => ['sometimes', 'nullable', 'integer'],
             'erp_sale_id' => ['sometimes', 'nullable', 'integer'],
-            'model' => ['required', 'string', 'max:8'],
-            'environment' => ['sometimes', 'string', 'max:16'],
+            'model' => ['required', 'in:55,65,57,58'],
+            'environment' => ['sometimes', 'in:homologation,production'],
             'series' => ['sometimes', 'integer', 'min:1'],
             'number' => ['required', 'integer', 'min:1'],
             'access_key' => ['sometimes', 'nullable', 'string', 'size:44'],
@@ -68,6 +68,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
             'source_document_id' => ['sometimes', 'nullable', 'integer'],
             'document_kind' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
         $this->scope->assertBelongsToCompany(
             ErpFiscalCertificate::class,
@@ -93,6 +94,12 @@ class ErpFiscalDocumentController extends ErpOperationsController
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
 
+        $snapshot = null;
+        if (isset($data['erp_sale_id'])) {
+            $sale = ErpSale::query()->where('erp_company_id', $companyId)->whereKey($data['erp_sale_id'])->with('lines')->firstOrFail();
+            abort_unless($sale->status === 'posted' && $sale->erp_establishment_id === $data['erp_establishment_id'], 422, 'Venda precisa estar lançada no estabelecimento emissor');
+            $snapshot = ['sale_id' => $sale->id, 'total_amount' => (string) $sale->total_amount, 'subtotal_amount' => (string) $sale->subtotal_amount, 'discount_amount' => (string) $sale->discount_amount, 'tax_amount' => (string) $sale->tax_amount, 'currency' => $sale->currency, 'lines' => $sale->lines->toArray()];
+        }
         $metadata = [];
         if (($data['document_kind'] ?? null) === 'return' && isset($data['source_document_id'])) {
             $source = ErpFiscalDocument::query()
@@ -110,6 +117,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
             'environment' => $data['environment'] ?? 'homologation',
             'series' => $data['series'] ?? 1,
             'metadata' => $metadata === [] ? null : $metadata,
+            'commercial_snapshot' => $snapshot,
         ]);
 
         return response()->json(['data' => $this->serialize($document)], 201);

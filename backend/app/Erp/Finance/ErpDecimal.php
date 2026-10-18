@@ -2,6 +2,8 @@
 
 namespace App\Erp\Finance;
 
+use Illuminate\Validation\ValidationException;
+
 /**
  * Fixed-scale decimal helpers ported from sistema {@see Util::num_uf} semantics.
  */
@@ -9,7 +11,7 @@ final class ErpDecimal
 {
     public const SCALE = 4;
 
-    public static function parse(string|int|float|null $value): string
+    public static function parse(mixed $value): string
     {
         if ($value === null || $value === '') {
             return self::zero();
@@ -19,6 +21,9 @@ final class ErpDecimal
             return self::normalize((string) $value);
         }
 
+        if (! is_string($value)) {
+            throw ValidationException::withMessages(['amount' => 'Valor decimal inválido']);
+        }
         $input = trim($value);
         if (str_contains($input, '.') && ! str_contains($input, ',')) {
             return self::normalize($input);
@@ -63,7 +68,13 @@ final class ErpDecimal
     private static function normalize(string $value): string
     {
         if (! is_numeric($value)) {
-            return self::zero();
+            throw ValidationException::withMessages(['amount' => 'Valor decimal inválido']);
+        }
+        if (str_contains($value, '.')) {
+            $value = rtrim(rtrim($value, '0'), '.');
+        }
+        if (! preg_match('/^-?\d{1,18}(?:\.\d{1,4})?$/D', $value)) {
+            throw ValidationException::withMessages(['amount' => 'Valor decimal inválido ou precisão não suportada']);
         }
 
         return bcadd($value, '0', self::SCALE);

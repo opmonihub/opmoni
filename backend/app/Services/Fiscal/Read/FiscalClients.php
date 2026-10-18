@@ -4,12 +4,12 @@ namespace App\Services\Fiscal\Read;
 
 use App\Enums\FiscalKind;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Models\Client;
 use App\Models\FiscalDocument;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * O agregado fiscal por cliente: uma linha por cliente com totais, direção,
@@ -26,9 +26,8 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  * Como a mesma consulta agrega vários clientes, o `CASE` compara contra a
  * coluna `clients.tax_id` normalizada no banco, e não contra um valor fixo.
  *
- * Cada chave do cliente entra uma vez: o documento completo prevalece sobre
- * o resumo, e o resumo permanece enquanto o completo não chegou. Eventos
- * são entregas da mesma chave e não entram no total.
+ * Cada chave do cliente entra uma vez, apenas quando o XML completo está
+ * disponível e íntegro. Resumos e eventos permanecem fora do agregado.
  */
 class FiscalClients
 {
@@ -41,6 +40,7 @@ class FiscalClients
     public function summary(int $accountId, array $filters): array
     {
         return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId, $filters) {
+            resolve(FiscalDocumentReadiness::class)->reconcileQuery(FiscalDocument::query()->where('account_id', $accountId));
             $clientes = Client::query()
                 ->where('account_id', $accountId)
                 ->whereIn('id', $this->clientesComDocumento($accountId, $filters))
@@ -209,21 +209,8 @@ class FiscalClients
         return FiscalDocument::query()
             ->where("{$tabela}.account_id", $accountId)
             ->where("{$tabela}.kind", FiscalKind::Document->value)
-            ->where(function (Builder $query) use ($tabela): void {
-                $query->where("{$tabela}.stage", FiscalStage::Document->value)
-                    ->orWhere(function (Builder $summaries) use ($tabela): void {
-                        $summaries->where("{$tabela}.stage", FiscalStage::Summary->value)
-                            ->whereNotExists(function (QueryBuilder $completeDocuments) use ($tabela): void {
-                                $completeDocuments->selectRaw('1')
-                                    ->from("{$tabela} as full_documents")
-                                    ->whereColumn('full_documents.account_id', "{$tabela}.account_id")
-                                    ->whereColumn('full_documents.client_id', "{$tabela}.client_id")
-                                    ->whereColumn('full_documents.chave_acesso', "{$tabela}.chave_acesso")
-                                    ->where('full_documents.kind', FiscalKind::Document->value)
-                                    ->where('full_documents.stage', FiscalStage::Document->value);
-                            });
-                    });
-            })
+            ->where("{$tabela}.stage", FiscalStage::Document->value)
+            ->where("{$tabela}.storage_state", FiscalStorageState::Available->value)
             ->when(
                 $filters['model'] ?? null,
                 fn (Builder $query, array $models): Builder => $query->whereIn("{$tabela}.model", $models)

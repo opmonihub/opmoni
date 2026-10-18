@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Erp\ErpCommercialCatalog;
+use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalActionCatalog;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
+use App\Erp\Fiscal\FakeErpFiscalProvider;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
@@ -29,6 +31,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->app->bind(ErpFiscalProvider::class, FakeErpFiscalProvider::class);
         Storage::fake('local');
         config([
             'access.ingress_key' => 'test-key',

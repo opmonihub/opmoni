@@ -81,9 +81,7 @@ final class ErpFiscalArtifactStore
 
     public function renderPdfBytes(ErpFiscalDocument $document): string
     {
-        $chave = $document->access_key ?? 'sem-chave';
-
-        return "%PDF-1.4\n% Opmoni ERP fiscal auxiliary\n/Chave {$chave}\n";
+        abort(503, 'Documento auxiliar indisponível: renderizador fiscal não implementado');
     }
 
     public function cleanupPath(?string $path): void
