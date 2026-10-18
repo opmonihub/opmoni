@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import type { ErpReportPayload } from '~/utils/erpModulesNav'
+import type { ErpReportSnapshot } from '#shared/types/erpReports'
 
-const props = defineProps<{ report: ErpReportPayload }>()
+const props = defineProps<{ report: ErpReportSnapshot }>()
 const sections = computed(() => props.report.sections ?? { [props.report.category]: props.report.totals ?? {} })
 const labels: Record<string, string> = {
   sales: 'Vendas', purchases: 'Compras', stock: 'Estoque', financial: 'Financeiro', fiscal: 'Fiscal',
   document_count: 'Documentos lançados', posted_total: 'Valor lançado', balance_lines: 'Saldos de estoque',
   quantity_on_hand: 'Quantidade disponível', inventory_value: 'Valor do estoque',
   obligations_amount: 'Obrigações', obligations_open_amount: 'Saldo em aberto', payments_posted_total: 'Pagamentos lançados',
-  authorized_count: 'Autorizados', draft_count: 'Rascunhos', rejected_count: 'Rejeitados'
+  authorized_count: 'Autorizados', draft_count: 'Rascunhos', rejected_count: 'Rejeitados',
+  queued_count: 'Na fila', submitting_count: 'Em envio', indeterminate_count: 'Indeterminados',
+  canceled_count: 'Cancelados', contingency_local_count: 'Contingência local'
 }
 </script>
 
@@ -24,7 +26,7 @@ const labels: Record<string, string> = {
             {{ labels[metric] ?? metric }}
           </dt>
           <dd class="text-highlighted mt-1 text-xl font-semibold tabular-nums">
-            {{ value }}
+            {{ category === 'stock' && metric === 'inventory_value' ? 'Indisponível: moeda do estoque não atribuída' : value }}
           </dd>
         </div>
       </dl>
