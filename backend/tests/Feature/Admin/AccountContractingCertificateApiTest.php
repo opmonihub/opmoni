@@ -151,6 +151,7 @@ class AccountContractingCertificateApiTest extends BusinessTestCase
         [$bad] = $this->certificate('pw', $kind === 'ambiguous' ? '12345678000195:27865757000102' : ($kind === 'unsupported' ? 'NO DOCUMENT' : '12345678000195'));
         if ($kind === 'malformed' || $kind === 'oversized') {
             file_put_contents($bad->getPathname(), $kind === 'malformed' ? 'not-pkcs12' : str_repeat('x', 2097153));
+            clearstatcache(true, $bad->getPathname());
         }
         if ($kind === 'expired') {
             $this->travel(400)->days();

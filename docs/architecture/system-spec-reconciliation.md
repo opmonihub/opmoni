@@ -51,6 +51,18 @@ Source and test links identify where behavior was inspected; a test link by itse
 
 ## Differences from the earlier Super Admin target
 
+This table is the historical 2026-10-13 reconciliation baseline. The later implementation replaces the pending entries described below; historical audit numbers are retained rather than presented as current gate results. The active [change evidence](../../openspec/changes/add-super-admin-platform/tasks.md#current-evidence-reconciliation--2026-10-17) owns reviewed completion status.
+
+### Platform implementation update — 2026-10-18
+
+- `GET /api/v1/admin/summary` provides aggregate metrics and safe recent audit records. Account list/detail expose the combined contact/subscription/pending-owner projection; the existing commercial endpoint and settings storage remain compatible.
+- `platform:initialize` inserts missing catalog slugs and backfills only missing subscriptions in bounded chunks. Shared provisioning is transactional with issuance and preserves edited catalogs, statuses and identities.
+- Plan limits accept exactly the three supported nullable nonnegative integer fields. Subscription status retains its operational write gate; foreign support elevation remains superseded by D009.
+- The SERPRO UI explicitly chooses connection upload or a concrete Account's dedicated contracting vault. Metadata identifies current source safely; legacy source preservation stays compatible. Native PKCS12 validation, encryption, lock ordering and revision/generation fencing prevent mixed sources and stale authentication reuse.
+- Authentication diagnostics have separate actor/trusted-IP budgets and bounded verified transport. Trusted ingress is prioritized before throttle middleware. Independent process tests exercise real PostgreSQL lock waits, Redis sessions and serialized token reuse; external authentication is still fake transport in those tests.
+
+These implementation facts supersede the absent-feature statements in the historical table, not its recorded test evidence. The final whole-suite/browser gates and 46-valid/10-retired checklist reconciliation require the active change's final review. Canonical sync and archive remain separate controller workflows. See [operational initialization and rollback](../../README.md#platform-administration-and-initialization).
+
 | Earlier target | Current system | Disposition |
 | --- | --- | --- |
 | Foreign support enter/exit, effective admin role and banner | Membership-only Account switching; no enter/exit routes or support projection | Superseded by D009; do not reintroduce by sync |

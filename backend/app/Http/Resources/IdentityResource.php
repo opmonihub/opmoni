@@ -20,7 +20,7 @@ class IdentityResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
-            'is_super_admin' => $this->is_super_admin,
+            'is_super_admin' => $this->resource->isSuperAdmin(),
             'accounts' => $accounts,
             'current_account' => $current,
             'companies' => $erpIdentity->companies($this->resource, $officeId),

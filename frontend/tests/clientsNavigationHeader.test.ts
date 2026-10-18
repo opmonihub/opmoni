@@ -416,7 +416,13 @@ describe('Clients sidebar navigation', () => {
     })!
     assert.equal(admin.props!.modelValue, 'admin')
     assert.deepEqual((admin.props!.items as NavigationMenuItem[])[0]?.children?.map(item => item.to), adminNav.adminPages.map(item => item.to))
-    assert.ok(named(view(), 'UDashboardPanel').some(node => node.props?.id === 'platform-accounts'))
+    const adminPage = setupSurface('pages/admin.vue', '/admin/contas', { superAdmin: true })
+    t.after(adminPage.close)
+    const layoutPanels = named(view(), 'UDashboardPanel')
+    const routedPanels = named(nodes(adminPage.render()), 'UDashboardPanel')
+    assert.equal(layoutPanels.length, 0, 'The layout must not wrap Admin Accounts in a second panel')
+    assert.equal(routedPanels.length, 1, 'The routed Admin shell owns exactly one panel')
+    assert.equal(routedPanels[0]!.props?.id, 'admin')
     surface.route.path = '/customers/certificados'
     await Vue.nextTick()
     const menus = named(view(), 'UNavigationMenu')

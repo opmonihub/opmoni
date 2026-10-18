@@ -139,6 +139,29 @@ After password login, the default active member office enters directly, includin
 
 Super Admin can manage office names/status and issue one-use, seven-day owner links under `/admin/contas`. Copy new links at issuance; ordinary lists never reveal the token, and reissue invalidates the old link. Existing owner identities cannot be overwritten. Suspended offices retain their data but deny tenant operations and activation.
 
+### Platform administration and initialization
+
+Apply additive schema changes before exposing the matching API and Admin UI. From the backend runtime, initialize the commercial catalog and missing Account subscriptions explicitly:
+
+```bash
+php artisan migrate --force --no-interaction
+php artisan platform:initialize --no-interaction
+```
+
+Initialization inserts missing catalog slugs and visits Accounts in bounded chunks. It creates one active Básico subscription only when an Account has none, preserving edited plans, subscription status, identities and pending owner links. Repeating the command is supported. Existing provisioning paths use the same action when creating or issuing an Account. This command does not activate an existing canceled subscription or charge a customer.
+
+The seven platform routes are `/admin`, `/admin/contas`, `/admin/planos`, `/admin/assinaturas`, `/admin/usuarios`, `/admin/suporte` and `/admin/serpro`. They accept a Super Admin without any Account membership. Entering tenant operations still requires actual membership; support search exposes ordinary member switching only. An active Account with an inactive subscription remains readable by its members while tenant writes are denied. Platform subscription editing and company ERP contracts remain separate.
+
+Account APIs retain their existing contracts: list pagination uses `meta.page`; other resource lists use `meta.current_page`; plans return a raw array. Account detail, summary and commercial metadata use `{data}`. Account issuance returns `{data, first_access}` and reissue returns `{first_access}`. Only issuance responses contain the one-use activation URL. Contact metadata merges sparse changes into the platform billing settings without replacing operational settings or user credentials. Supplying `phone: null` clears both the phone and its WhatsApp flag; supplied UF is normalized while omitted values are preserved.
+
+SERPRO administration supports explicit connection upload or an explicitly selected Account's dedicated platform contracting vault. The vault is separate from tenant certificate storage and does not require or create tenant membership. Legacy attached tenant sources remain readable and can be preserved until explicitly replaced. Uploads accept native PKCS12 e-CNPJ certificates up to 2 MiB, including an explicit empty password; requests above 4 MiB are rejected at ingress. Safe metadata never hydrates secret, password or file inputs. Account suspension and source replacement participate in the same credential revision fence as connection changes.
+
+The diagnostic performs a bounded authentication request and discards returned tokens. Defaults are a 3-second connection timeout, 8-second provider timeout and 15-second diagnostic proxy deadline, below the session-lock budget. The backend checks the configured HTTPS authentication host, verifies TLS, disables redirects and retries, and limits both actor and trusted ingress IP independently to six diagnostic requests per minute. `409 connection_changed` and `429 rate_limited` are request failures; named diagnostic verdicts remain configuration, certificate, credential and provider. Local fakes and generated-certificate mTLS fixtures establish protocol behavior, not acceptance of a live SERPRO account.
+
+Keep `SERPRO_AUTH_URL` and `SERPRO_AUTH_TRUSTED_HOSTS` server-controlled; diagnostic overrides are `SERPRO_DIAGNOSTIC_CONNECT_TIMEOUT` and `SERPRO_DIAGNOSTIC_TIMEOUT`. `SERPRO_TEMP_DIR` may point to a writable private directory for short-lived PKCS12 material; the materializer removes files after use. Keep frontend `NUXT_BACKEND_URL` private, set matching backend/frontend ingress keys, and configure `FRONTEND_ORIGIN` to the actual browser origin. Timeout changes must preserve the diagnostic/provider/proxy/session-lock ordering rather than simply increasing one layer.
+
+For application rollback, disable the new Admin UI and routes first and restore a compatible application version while retaining additive catalog/subscription records, encrypted certificate sources and audit history. Preserve `APP_KEY`, private storage and database backups. Do not use `migrate:fresh`, destructive table drops, identity recreation or key rotation as rollback shortcuts. The dedicated source vault's absence of a public deletion endpoint is intentional; source changes use the explicit replacement flow.
+
 ### ERP commercial access (disabled by default)
 
 Company ERP plans, subscriptions and module entitlements are separate from office `plans` / `subscriptions`. Public signup uses `POST /api/v1/erp/register` only when the platform is already bootstrapped **and** `ERP_REGISTRATION_ENABLED=true` in the backend environment. New companies receive a **pending** subscription; Super Admin activates contracts under `/admin/erp/assinaturas` (no payment provider call). Owners read status at `/erp/contrato`. Ordinary ERP operating writes require an **active** company subscription (`403 erp_subscription_inactive`); foundation company settings remain editable while pending. Keep `ERP_REGISTRATION_ENABLED=false` until launch acceptance. `ERP_OPERATING_WRITES_ENABLED` remains independent and does not bypass the commercial gate.
