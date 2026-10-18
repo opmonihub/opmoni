@@ -18,6 +18,9 @@ class ErpReportExport extends Model
         'filters',
         'status',
         'storage_path',
+        'content_sha256',
+        'content_bytes',
+        'failure_code',
         'expires_at',
     ];
 
@@ -27,6 +30,7 @@ class ErpReportExport extends Model
         return [
             'filters' => 'array',
             'expires_at' => 'datetime',
+            'content_bytes' => 'integer',
         ];
     }
 

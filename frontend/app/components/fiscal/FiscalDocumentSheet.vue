@@ -34,7 +34,8 @@ import { formatTaxId } from '~/utils/taxId'
  * `fiscalPresentation.ts`, e o que é comportamento fica num dos dois arquivos.
  */
 const { show, download, capture } = useFiscal()
-const { canManageClients } = useAuth()
+const { canManageClients, currentAccount } = useAuth()
+const sessionGeneration = useState('access-session-generation', () => 0)
 const toast = useToast()
 
 const open = ref(false)
@@ -54,6 +55,8 @@ const detailPending = ref(false)
  * precisa se defender.
  */
 let detailGeneration = 0
+let detailController: AbortController | undefined
+let disposed = false
 
 /**
  * Abre a folha no documento pedido.
@@ -63,13 +66,16 @@ let detailGeneration = 0
  * linha que o operador tinha na tela.
  */
 async function openDocument(id: number) {
-  const seen = ++detailGeneration
+  if (disposed || !currentAccount.value?.id) return
+  invalidateDetail()
+  detailController = new AbortController()
+  const seen = detailGeneration
   open.value = true
   detail.value = null
   detailPending.value = true
 
   try {
-    const loaded = await show(id)
+    const loaded = await show(id, { signal: detailController.signal })
     if (seen !== detailGeneration) return
     detail.value = loaded
   } catch {
@@ -137,13 +143,24 @@ const xmlPreview = computed(() => detail.value?.xml_preview ?? null)
  */
 const downloading = ref(false)
 
+const authorizationLabel = computed(() => {
+  const value = detail.value?.authorized_at
+  const timestamp = value ? Date.parse(value) : Number.NaN
+  return Number.isFinite(timestamp) && timestamp <= Date.now() ? formatFiscalDateTime(value!) : 'não verificável'
+})
+const conclusiveDeadlineLabel = computed(() => authorizationLabel.value !== 'não verificável' && detail.value?.conclusive_deadline_at
+  ? formatFiscalDateTime(detail.value.conclusive_deadline_at)
+  : 'não verificável')
+
 async function downloadXml() {
   const target = detail.value
   if (!target || downloading.value) return
 
+  const seen = detailGeneration
   downloading.value = true
   try {
     const blob = await download(target.id)
+    if (seen !== detailGeneration) return
     const url = URL.createObjectURL(blob)
     try {
       const link = document.createElement('a')
@@ -157,9 +174,10 @@ async function downloadXml() {
       URL.revokeObjectURL(url)
     }
   } catch {
+    if (seen !== detailGeneration) return
     toast.add({ title: 'Não foi possível baixar o XML', color: 'error' })
   } finally {
-    downloading.value = false
+    if (seen === detailGeneration) downloading.value = false
   }
 }
 
@@ -207,11 +225,13 @@ async function triggerCapture() {
   // distribuição a consultar: o botão nem aparece nesse caso, e a guarda aqui é
   // a segunda metade do mesmo acordo — o template não é a única coisa que
   // protege o `capture` de receber uma fonte que não existe.
-  if (!target || !target.source || capturing.value) return
+  if (!canManageClients.value || !target || !target.source || capturing.value) return
+  const seen = detailGeneration
 
   capturing.value = true
   try {
     await capture(target.client.id, target.source)
+    if (seen !== detailGeneration) return
     // A frase mora no módulo porque é decisão, não marcação: o `.vue` não é
     // importável pelo runner de teste, e uma decisão que só existe aqui dentro
     // fica sem guarda. O que ela não faz é prometer documento — o detalhe não
@@ -223,6 +243,7 @@ async function triggerCapture() {
     })
     refreshRequest.value += 1
   } catch (error) {
+    if (seen !== detailGeneration) return
     const blocked = blockedRefusal(error)
     if (blocked) {
       toast.add({
@@ -238,9 +259,29 @@ async function triggerCapture() {
       color: 'error'
     })
   } finally {
-    capturing.value = false
+    if (seen === detailGeneration) capturing.value = false
   }
 }
+
+function invalidateDetail() {
+  detailGeneration++
+  detailController?.abort()
+  detail.value = null
+  detailPending.value = false
+  downloading.value = false
+  capturing.value = false
+}
+watch([() => currentAccount.value?.id, sessionGeneration], () => {
+  invalidateDetail()
+  open.value = false
+}, { flush: 'sync' })
+watch(open, (value) => {
+  if (!value) invalidateDetail()
+}, { flush: 'sync' })
+onBeforeUnmount(() => {
+  disposed = true
+  invalidateDetail()
+})
 </script>
 
 <template>
@@ -268,6 +309,19 @@ async function triggerCapture() {
 
       <div v-else class="flex min-w-0 flex-col gap-5">
         <DataTableMetaList :items="detailFacts" columns="grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2" />
+
+        <section v-if="detail.model === 'nfe'" aria-label="Manifestação do destinatário" class="space-y-2 text-sm">
+          <h4 class="font-semibold text-highlighted">
+            Manifestação do destinatário
+          </h4>
+          <p class="text-muted">
+            A ciência da emissão (210210) e a disponibilidade do XML não confirmam a operação.
+            A manifestação conclusiva permanece sob responsabilidade do destinatário em até 90 dias da autorização pelo fisco, conforme as regras aplicáveis.
+            A elegibilidade da ciência automática é de 10 dias da autorização; recuperar o XML não substitui a manifestação conclusiva.
+          </p>
+          <p>Autorização pelo fisco: {{ authorizationLabel }}</p>
+          <p>Prazo conclusivo: {{ conclusiveDeadlineLabel }}</p>
+        </section>
 
         <section class="flex min-w-0 flex-col gap-2">
           <div class="flex items-center gap-2">

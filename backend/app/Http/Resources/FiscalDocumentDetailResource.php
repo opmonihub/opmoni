@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\FiscalModel;
 use App\Models\FiscalDocument;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -50,6 +51,10 @@ class FiscalDocumentDetailResource extends FiscalDocumentResource
     {
         return array_merge(parent::toArray($request), [
             'source' => $this->source?->value,
+            'authorized_at' => $this->authorized_at?->toIso8601String(),
+            'conclusive_deadline_at' => $this->model === FiscalModel::Nfe && $this->authorized_at !== null && ! $this->authorized_at->isFuture()
+                ? $this->authorized_at->copy()->addDays(90)->toIso8601String()
+                : null,
             'nsu' => $this->nsu,
             'event_id' => $this->event_id,
             'schema' => $this->schema,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\FiscalModel;
 use App\Models\FiscalDocument;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,6 +25,9 @@ class FiscalProcessingResource extends JsonResource
             'stage' => $this->stage?->value,
             'emissao_at' => $this->emissao_at?->toIso8601String(),
             'authorized_at' => $this->authorized_at?->toIso8601String(),
+            'conclusive_deadline_at' => $this->model === FiscalModel::Nfe && $this->authorized_at !== null && ! $this->authorized_at->isFuture()
+                ? $this->authorized_at->copy()->addDays(90)->toIso8601String()
+                : null,
             'processing_state' => $this->processing_state?->value,
             'processing_reason' => $this->processing_reason?->value,
             'processing_attempts' => $this->processing_attempts,
