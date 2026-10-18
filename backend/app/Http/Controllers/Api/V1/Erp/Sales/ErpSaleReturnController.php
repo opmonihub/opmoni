@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Sales;
 
 use App\Erp\Finance\ErpDecimal;
+use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Stock\ErpStockParticipant;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Sales\ErpSale;
@@ -52,6 +53,9 @@ class ErpSaleReturnController extends ErpOperationsController
 
         abort_unless($sale->status === 'posted', 422, 'Venda precisa estar lançada');
 
+        abort_unless(ErpDecimal::compare(ErpDecimal::parse($data['total_amount']), (string) $sale->total_amount) === 0 && ErpDecimal::isPositive((string) $sale->total_amount), 422, 'Somente devolução integral é suportada; devoluções parciais requerem linhas');
+        abort_if(ErpSaleReturn::query()->where('erp_sale_id', $sale->id)->where('status', 'posted')->exists(), 422, 'Origem já devolvida');
+
         $return = ErpSaleReturn::query()->create([
             'erp_sale_id' => $sale->id,
             'erp_company_id' => $companyId,
@@ -75,6 +79,8 @@ class ErpSaleReturnController extends ErpOperationsController
             return response()->json(['data' => $this->serialize($model)]);
         }
         abort_unless($model->status === 'draft', 422, 'Devolução não está em rascunho');
+        $source = ErpSale::query()->where('erp_company_id', $model->erp_company_id)->whereKey($model->erp_sale_id)->firstOrFail();
+        abort_unless(ErpDecimal::compare((string) $model->total_amount, (string) $source->total_amount) === 0 && ErpDecimal::isPositive((string) $model->total_amount), 422, 'Somente devolução integral é suportada');
 
         $operationKey = $request->validate([
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
@@ -89,6 +95,8 @@ class ErpSaleReturnController extends ErpOperationsController
 
         DB::transaction(function () use ($model, $userId, $operationKey, $originalIssues): void {
             ErpSaleReturn::query()->whereKey($model->id)->lockForUpdate()->first();
+            abort_if(ErpSaleReturn::query()->where('erp_sale_id', $model->erp_sale_id)->where('status', 'posted')->exists(), 422, 'Venda já devolvida');
+            app(ErpFinanceParticipant::class)->reverseSourceObligation($model->erp_company_id, 'erp_sale', $model->erp_sale_id, 'erp_sale_return', $model->id, $userId);
 
             $this->stockParticipant->reverseSaleIssues(
                 $model->erp_company_id,

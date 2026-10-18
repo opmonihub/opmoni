@@ -5,9 +5,11 @@ namespace App\Jobs;
 use App\Enums\FiscalFailure;
 use App\Enums\FiscalManifestationEventType;
 use App\Enums\FiscalManifestationOutcome;
+use App\Enums\FiscalProcessingReason;
 use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalCursor;
 use App\Models\FiscalDocument;
@@ -15,8 +17,10 @@ use App\Models\FiscalManifestation;
 use App\Services\Fiscal\Exceptions\FiscalException;
 use App\Services\Fiscal\Exceptions\FiscalRequestNotSent;
 use App\Services\Fiscal\Manifestacao\FiscalManifestationStore;
+use App\Services\Fiscal\Manifestacao\FiscalScienceEligibility;
 use App\Services\Fiscal\Manifestacao\FiscalScienceRolloutGate;
 use App\Services\Fiscal\Manifestacao\RecepcaoEventoConnector;
+use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
 use App\Tenant\CurrentTenant;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -34,7 +38,7 @@ use Illuminate\Foundation\Queue\Queueable;
  * deduplicação, prazo — e cada guarda devolve antes de gastar a mais cara.
  *
  * O que ele não faz: montar evento, assinar, classificar cStat ou medir o
- * prazo de 90 dias — isso é do `RecepcaoEventoConnector`, que é quem fala com
+ * prazo de dez dias — isso é do `RecepcaoEventoConnector`, que é quem fala com
  * o serviço. O que ele decide: quando chamar o conector, e o que fazer com as
  * duas exceções que não são veredito (`FiscalRequestNotSent` vira `NotSendable`;
  * `FiscalException` transitória re-enfileira, e a definitiva fica `pending`
@@ -64,7 +68,7 @@ final class SendFiscalManifestationJob implements ShouldQueue
      * tempo, não de tentativa: passado um dia do despacho, o worker falha a
      * reentrega em vez de devolvê-la — a desistência que o churn de fila
      * não sinalizava. É generoso de propósito: o evento tem prazo legal de
-     * 90 dias e o que desiste cedo é quem perde a manifestação.
+     * dez dias e o que desiste cedo é quem perde a manifestação.
      */
     public function retryUntil(): int
     {
@@ -124,67 +128,110 @@ final class SendFiscalManifestationJob implements ShouldQueue
                 return;
             }
 
-            $store->marcarEnfileirado(
-                accountId: $this->accountId,
-                clientId: $this->clientId,
-                chaveAcesso: $this->chaveAcesso,
-                eventType: $this->eventType,
-                eventSeq: $this->eventSeq,
-            );
-
-            $this->atualizarResumo(FiscalProcessingState::ScienceQueued);
-
-            try {
-                $conector->cienciaDaEmissao(
-                    $client,
-                    $manifestation->refresh(),
-                    $this->autorizacaoDoResumo($client),
-                );
-            } catch (FiscalRequestNotSent) {
-                // O que não pode sair não é o serviço recusando: é o nosso lado sem
-                // condição de montar — sem certificado, sem senha, UF fora da
-                // tabela. Nenhum retry produz o A1, então o veredito é o nosso.
-                $store->veredito(
-                    $manifestation->refresh(),
-                    FiscalManifestationOutcome::NotSendable,
-                    null,
-                    'Manifestação não enviada: condição do cliente não atendida.',
-                );
-            } catch (FiscalException $exception) {
-                // O `656` é parada do CNPJ inteiro, e a janela só passa a existir
-                // quando alguém a grava: a guarda de bloqueio acima lê o cursor,
-                // e um `blocked_until` que ninguém escreveu é uma reentrega que
-                // reexecuta e reenvia dentro da janela — o uso indevido que ela
-                // existe para impedir. Mesma coluna e mesmo token da captura, da
-                // reconciliação e do resync, porque o `656` vale para o CNPJ, não
-                // para o caminho que o descobriu.
-                if ($exception->failure === FiscalFailure::Blocked) {
-                    $this->bloquear($client);
-                }
-
-                // A recusa transitória do serviço re-enfileira: a fila decide a
-                // hora, e a guarda de bloqueio acima decide se ela chegou. A
-                // rejeição definitiva já gravou o `Failed` com cStat e motivo no
-                // conector — o registro fica como o que o fisco respondeu, e a
-                // ressincronização não a consulta.
-                if ($exception->failure->retryable()) {
-                    $this->release((int) config('fiscal.block_minutes', 60) * 60);
-                }
+            $summary = FiscalDocument::query()->where('account_id', $this->accountId)
+                ->where('client_id', $this->clientId)->where('chave_acesso', $this->chaveAcesso)
+                ->where('stage', FiscalStage::Summary)->first();
+            $account = Account::query()->find($this->accountId);
+            if ($summary === null || $account === null) {
+                return;
             }
 
-            $manifestation->refresh();
-
-            if (in_array($manifestation->outcome, [
-                FiscalManifestationOutcome::Sent,
-                FiscalManifestationOutcome::AlreadyManifested,
-            ], true)) {
-                if ($manifestation->result_code === '136') {
-                    $this->atualizarResumo(FiscalProcessingState::Deferred, now()->addHour());
-
-                    return;
+            $decision = resolve(FiscalScienceEligibility::class)->forSummary($summary, $client, $account);
+            if (! $decision['eligible']) {
+                if ($decision['reason'] === FiscalProcessingReason::Ready) {
+                    resolve(FiscalProcessingCoordinator::class)->afterSummaryStored($summary, $client, $account);
+                } else {
+                    $summary->forceFill(['processing_state' => FiscalProcessingState::Attention, 'processing_reason' => $decision['reason'], 'next_attempt_at' => null])->saveQuietly();
                 }
 
-                $this->atualizarResumo(FiscalProcessingState::AwaitingXml);
+                return;
+            }
+
+            $coordinator = resolve(FiscalProcessingCoordinator::class);
+            if (! $coordinator->claim($summary)) {
+                return;
+            }
+            $recoverXml = false;
+            try {
+                $store->marcarEnfileirado(
+                    accountId: $this->accountId,
+                    clientId: $this->clientId,
+                    chaveAcesso: $this->chaveAcesso,
+                    eventType: $this->eventType,
+                    eventSeq: $this->eventSeq,
+                );
+
+                $this->atualizarResumo(FiscalProcessingState::ScienceQueued);
+
+                try {
+                    $conector->cienciaDaEmissao(
+                        $client,
+                        $manifestation->refresh(),
+                        $this->autorizacaoDoResumo($client),
+                    );
+                } catch (FiscalRequestNotSent) {
+                    // O que não pode sair não é o serviço recusando: é o nosso lado sem
+                    // condição de montar — sem certificado, sem senha, UF fora da
+                    // tabela. Nenhum retry produz o A1, então o veredito é o nosso.
+                    $store->veredito(
+                        $manifestation->refresh(),
+                        FiscalManifestationOutcome::NotSendable,
+                        null,
+                        'Manifestação não enviada: condição do cliente não atendida.',
+                    );
+                } catch (FiscalException $exception) {
+                    // O `656` é parada do CNPJ inteiro, e a janela só passa a existir
+                    // quando alguém a grava: a guarda de bloqueio acima lê o cursor,
+                    // e um `blocked_until` que ninguém escreveu é uma reentrega que
+                    // reexecuta e reenvia dentro da janela — o uso indevido que ela
+                    // existe para impedir. Mesma coluna e mesmo token da captura, da
+                    // reconciliação e do resync, porque o `656` vale para o CNPJ, não
+                    // para o caminho que o descobriu.
+                    if ($exception->failure === FiscalFailure::Blocked) {
+                        $this->bloquear($client);
+                    }
+
+                    // A recusa transitória do serviço re-enfileira: a fila decide a
+                    // hora, e a guarda de bloqueio acima decide se ela chegou. A
+                    // rejeição definitiva já gravou o `Failed` com cStat e motivo no
+                    // conector — o registro fica como o que o fisco respondeu, e a
+                    // ressincronização não a consulta.
+                    if ($exception->failure->retryable()) {
+                        $this->release((int) config('fiscal.block_minutes', 60) * 60);
+                    }
+                }
+
+                $manifestation->refresh();
+
+                if (in_array($manifestation->outcome, [
+                    FiscalManifestationOutcome::Sent,
+                    FiscalManifestationOutcome::AlreadyManifested,
+                ], true)) {
+                    if ($manifestation->result_code === '136') {
+                        $this->atualizarResumo(FiscalProcessingState::Deferred, now()->addHour());
+
+                        return;
+                    }
+
+                    $this->atualizarResumo(FiscalProcessingState::AwaitingXml);
+                    $recoverXml = true;
+                } else {
+                    $terminal = match ($manifestation->outcome) {
+                        FiscalManifestationOutcome::DeadlineMissed => FiscalProcessingReason::ScienceDeadlineExpired,
+                        FiscalManifestationOutcome::NotSendable => FiscalProcessingReason::CertificateMissing,
+                        FiscalManifestationOutcome::Failed => FiscalProcessingReason::ProviderRejected,
+                        default => null,
+                    };
+                    FiscalDocument::query()->whereKey($summary->id)->update([
+                        'processing_state' => $terminal === null ? FiscalProcessingState::Deferred : FiscalProcessingState::Attention,
+                        'processing_reason' => $terminal ?? FiscalProcessingReason::ProviderTransient,
+                        'next_attempt_at' => $terminal === null ? now()->addHour() : null,
+                    ]);
+                }
+            } finally {
+                $coordinator->releaseClaim($summary);
+            }
+            if ($recoverXml) {
                 RecoverFiscalXmlJob::dispatch($this->accountId, $this->clientId, $this->chaveAcesso);
             }
 
@@ -261,7 +308,7 @@ final class SendFiscalManifestationJob implements ShouldQueue
 
     /**
      * A data da autorização que o resumo gravou, e que o conector compara com
-     * o prazo de 90 dias. Nula quando o resumo não está gravado — o conector
+     * o prazo de dez dias. Nula quando o resumo não está gravado — o conector
      * lê ausência de data como prazo não verificável, e o veredito é dele.
      */
     private function autorizacaoDoResumo(Client $client): ?CarbonInterface

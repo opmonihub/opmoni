@@ -80,10 +80,10 @@ class ErpModulesSchemaAndDomainTest extends TestCase
     {
         $service = new ErpPaymentAllocationService;
 
-        $service->assertAllocationAllowed('100.0000', '40.0000', [['amount' => '50.0000']]);
+        $service->assertAllocationAllowed('50.0000', '40.0000');
 
         $this->expectException(InvalidArgumentException::class);
-        $service->assertAllocationAllowed('100.0000', '60.0000', [['amount' => '50.0000']]);
+        $service->assertAllocationAllowed('50.0000', '60.0000');
     }
 
     public function test_cash_session_close_records_explicit_difference(): void

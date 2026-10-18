@@ -403,6 +403,30 @@ class SendWhatsAppDocumentJobTest extends BusinessTestCase
         $this->assertNotNull($this->dispatch->fresh()->send_attempted_at);
     }
 
+    public function test_crash_during_acceptance_cannot_commit_sent_without_gateway_identity(): void
+    {
+        $this->fakeReceiptDocument();
+        Http::fake(['wzap.test/instances/inst-1/messages/media' => Http::response([
+            'data' => ['message_id' => 'accepted-atomic'],
+        ], 202)]);
+        $crashed = false;
+        DB::listen(function ($query) use (&$crashed): void {
+            if (! $crashed && str_starts_with($query->sql, 'update "whatsapp_dispatches"')
+                && in_array(WhatsAppDispatch::STATUS_SENT, $query->bindings, true)) {
+                $crashed = true;
+                throw new \RuntimeException('Interrupted after acceptance write.');
+            }
+        });
+        try {
+            $this->handleJob();
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertTrue($crashed);
+        $dispatch = $this->dispatch->fresh();
+        $this->assertFalse($dispatch->status === WhatsAppDispatch::STATUS_SENT && $dispatch->message_id === null);
+    }
+
     public function test_recibo_antecipado_nao_e_rebaixado_pelo_save_ou_falha_do_job(): void
     {
         $this->fakeReceiptDocument();

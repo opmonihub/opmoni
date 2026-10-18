@@ -193,7 +193,7 @@ class FiscalClientsTest extends BusinessTestCase
         $this->assertSame(1, $linha['total']);
     }
 
-    public function test_resumo_e_documento_completo_contam_uma_vez_e_resumo_isolado_permanece(): void
+    public function test_apenas_xml_completo_disponivel_entra_no_agregado(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
@@ -219,9 +219,9 @@ class FiscalClientsTest extends BusinessTestCase
 
         $row = $this->linhas($account)[$client->getKey()];
 
-        $this->assertSame(2, $row['total']);
-        $this->assertSame(['qtd' => 2, 'valor' => '125.00'], $row['saidas']);
-        $this->assertSame(['nfe' => 2], $row['por_modelo']);
+        $this->assertSame(1, $row['total']);
+        $this->assertSame(['qtd' => 1, 'valor' => '100.00'], $row['saidas']);
+        $this->assertSame(['nfe' => 1], $row['por_modelo']);
     }
 
     public function test_prefere_metadados_do_completo_antes_de_filtrar_o_periodo(): void
@@ -257,7 +257,7 @@ class FiscalClientsTest extends BusinessTestCase
             ->assertJsonPath('data.0.ultima_emissao_at', '2026-09-05T10:00:00.000000Z');
     }
 
-    public function test_completo_de_outro_cliente_nao_exclui_resumo_da_mesma_chave(): void
+    public function test_completo_de_outro_cliente_nao_publica_resumo_da_mesma_chave(): void
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->getKey();
@@ -268,7 +268,7 @@ class FiscalClientsTest extends BusinessTestCase
 
         $rows = $this->linhas($account);
 
-        $this->assertSame(1, $rows[$client->getKey()]['total']);
+        $this->assertArrayNotHasKey($client->getKey(), $rows);
         $this->assertSame(1, $rows[$neighbor->getKey()]['total']);
     }
 

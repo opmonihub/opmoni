@@ -85,13 +85,13 @@ final class RecoverFiscalXmlJob implements ShouldQueue
             $summary->refresh();
             $maxAttempts = (int) config('fiscal.manifestacao_resync_max_attempts', 3);
 
-            if ($outcome === 'recovered') {
+            if ($outcome === 'recovered' || $summary->processing_state === FiscalProcessingState::Complete) {
                 $coordinator->releaseClaim($summary);
 
                 return;
             }
 
-            $attempts = (int) $summary->processing_attempts + 1;
+            $attempts = (int) $summary->processing_attempts + (in_array($outcome, ['blocked', 'deferred', 'not_sendable'], true) ? 0 : 1);
             $nextAttempt = CarbonImmutable::now()->addHour();
 
             $reason = match ($outcome) {
@@ -102,10 +102,10 @@ final class RecoverFiscalXmlJob implements ShouldQueue
                 default => FiscalProcessingReason::ProviderTransient,
             };
 
-            if ($attempts >= $maxAttempts && ! in_array($outcome, ['blocked', 'deferred'], true)) {
+            if ($outcome === 'not_sendable' || ($attempts >= $maxAttempts && ! in_array($outcome, ['blocked', 'deferred'], true))) {
                 $summary->forceFill([
                     'processing_state' => FiscalProcessingState::Attention,
-                    'processing_reason' => FiscalProcessingReason::AttemptsExhausted,
+                    'processing_reason' => $outcome === 'not_sendable' ? FiscalProcessingReason::CertificateMissing : FiscalProcessingReason::AttemptsExhausted,
                     'processing_attempts' => $attempts,
                     'next_attempt_at' => null,
                     'processing_claim_expires_at' => null,

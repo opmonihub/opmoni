@@ -6,18 +6,15 @@ use App\Enums\FiscalManifestationOutcome;
 use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalStage;
 use App\Jobs\RecoverFiscalXmlJob;
+use App\Models\Account;
 use App\Models\Client;
 use App\Models\FiscalDocument;
 use App\Models\FiscalManifestation;
-use App\Services\Fiscal\Manifestacao\ManifestacaoDispatcher;
+use App\Tenant\CurrentTenant;
 
 final class FiscalProcessingDueWork
 {
     private const CHUNK = 40;
-
-    public function __construct(
-        private readonly ManifestacaoDispatcher $manifestacao,
-    ) {}
 
     public function dispatchDue(): int
     {
@@ -33,6 +30,7 @@ final class FiscalProcessingDueWork
             ->where('stage', FiscalStage::Summary)
             ->whereIn('processing_state', [
                 FiscalProcessingState::AwaitingScience,
+                FiscalProcessingState::ScienceQueued,
                 FiscalProcessingState::AwaitingXml,
                 FiscalProcessingState::RecoveryQueued,
                 FiscalProcessingState::Deferred,
@@ -71,6 +69,7 @@ final class FiscalProcessingDueWork
 
         return match ($summary->processing_state) {
             FiscalProcessingState::AwaitingScience,
+            FiscalProcessingState::ScienceQueued,
             FiscalProcessingState::Deferred => $this->dispatchScience($summary, $client),
             FiscalProcessingState::AwaitingXml,
             FiscalProcessingState::RecoveryQueued => $this->dispatchRecovery($summary),
@@ -106,34 +105,25 @@ final class FiscalProcessingDueWork
             return true;
         }
 
-        if (! $this->manifestacao->enfileirarCiencia(
-            (int) $summary->account_id,
-            $client,
-            $summary->chave_acesso,
-        )) {
-            return false;
-        }
+        return resolve(CurrentTenant::class)->run((int) $summary->account_id, function () use ($summary, $client): bool {
+            $account = Account::query()->find($summary->account_id);
+            if ($account === null) {
+                return false;
+            }
+            resolve(FiscalProcessingCoordinator::class)->afterSummaryStored($summary, $client, $account);
 
-        $summary->forceFill([
-            'processing_state' => FiscalProcessingState::ScienceQueued,
-            'next_attempt_at' => now()->addMinutes(5),
-        ])->saveQuietly();
-
-        return true;
+            return in_array($summary->fresh()->processing_state, [FiscalProcessingState::ScienceQueued, FiscalProcessingState::AwaitingScience, FiscalProcessingState::AwaitingXml], true);
+        });
     }
 
     private function dispatchRecovery(FiscalDocument $summary): bool
     {
-        RecoverFiscalXmlJob::dispatch(
-            (int) $summary->account_id,
-            (int) $summary->client_id,
-            $summary->chave_acesso,
-        );
-
         $summary->forceFill([
             'processing_state' => FiscalProcessingState::RecoveryQueued,
             'next_attempt_at' => now()->addHour(),
         ])->saveQuietly();
+
+        RecoverFiscalXmlJob::dispatch((int) $summary->account_id, (int) $summary->client_id, $summary->chave_acesso);
 
         return true;
     }

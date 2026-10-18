@@ -94,6 +94,7 @@ class ErpAccessController extends Controller
             $request->user(),
             (int) $data['account_id'],
             $data['permissions'] ?? ['erp.read'],
+            fn () => AccessSession::assertOwnership($request),
         );
 
         return response()->json(['data' => [
@@ -107,7 +108,7 @@ class ErpAccessController extends Controller
 
     public function revokeDelegation(Request $request, ErpOfficeDelegation $delegation): JsonResponse
     {
-        $this->authorization->revokeDelegation($delegation, $request->user());
+        $this->authorization->revokeDelegation($delegation, $request->user(), fn () => AccessSession::assertOwnership($request));
 
         return response()->json(['data' => ['id' => $delegation->id, 'status' => $delegation->fresh()->status]]);
     }

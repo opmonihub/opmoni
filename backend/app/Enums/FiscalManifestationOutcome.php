@@ -15,7 +15,7 @@ enum FiscalManifestationOutcome: string
      */
     case NotSendable = 'not_sendable';
     /**
-     * A ciência da emissão tem prazo legal de 90 dias; vencido, enviar é uma
+     * A ciência da emissão tem prazo de dez dias da autorização; vencido, enviar é uma
      * rejeição certa que custa tentativa, então o veredito é registrado sem
      * envio.
      */

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\Finance\ErpDecimal;
+use App\Erp\Finance\ErpFinanceParticipant;
+use App\Erp\Stock\ErpStockValuation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpPurchaseLine;
@@ -46,6 +48,13 @@ class ErpPurchaseController extends ErpOperationsController
         $companyId = $context->company->id;
         $data = $this->validatedPayload($request);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        foreach ($data['lines'] as $index => $line) {
+            $this->scope->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id'] ?? null, "lines.{$index}.erp_product_variant_id");
+            abort_unless(ErpDecimal::isPositive(ErpDecimal::parse($line['quantity'])), 422, 'Quantidade deve ser positiva');
+            abort_unless(ErpDecimal::isPositive(ErpDecimal::parse($line['unit_conversion_factor'] ?? '1')), 422, 'Fator de conversão inválido');
+            $price = ErpDecimal::parse($line['unit_cost'] ?? $line['unit_price']);
+            abort_if(ErpDecimal::compare($price, ErpDecimal::zero()) === -1, 422, 'Preço não pode ser negativo');
+        }
 
         $purchase = DB::transaction(function () use ($data, $companyId): ErpPurchase {
             $lines = $data['lines'];
@@ -76,7 +85,7 @@ class ErpPurchaseController extends ErpOperationsController
                     'quantity' => $quantity,
                     'unit_cost' => $unitCost,
                     'line_total' => ErpDecimal::mul($quantity, $unitCost),
-                    'unit_conversion_factor' => $line['unit_conversion_factor'] ?? '1',
+                    'unit_conversion_factor' => ErpDecimal::parse($line['unit_conversion_factor'] ?? '1'),
                 ]);
             }
 
@@ -107,6 +116,7 @@ class ErpPurchaseController extends ErpOperationsController
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ])['source_operation_key'] ?? ('purchase-post-'.$model->id);
 
+        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
         DB::transaction(function () use ($model, $companyId, $userId, $operationKey): void {
             foreach ($model->lines as $line) {
                 if ($line->erp_product_variant_id === null) {
@@ -122,11 +132,11 @@ class ErpPurchaseController extends ErpOperationsController
                         'quantity_on_hand' => ErpDecimal::zero(),
                     ],
                 );
-                $balance->quantity_on_hand = ErpDecimal::add(
-                    $this->decimalString($balance->quantity_on_hand),
-                    $this->decimalString($line->quantity),
-                );
-                $balance->average_cost = $this->decimalString($line->unit_cost);
+                $quantity = ErpDecimal::mul((string) $line->quantity, (string) $line->unit_conversion_factor);
+                $unitCost = bcdiv((string) $line->unit_cost, (string) $line->unit_conversion_factor, ErpDecimal::SCALE);
+                app(ErpStockValuation::class)->assertCompatibleReceipt($balance, $unitCost);
+                $balance->quantity_on_hand = ErpDecimal::add((string) $balance->quantity_on_hand, $quantity);
+                $balance->average_cost = $unitCost;
                 $balance->save();
 
                 ErpStockMovement::query()->create([
@@ -134,8 +144,8 @@ class ErpPurchaseController extends ErpOperationsController
                     'erp_establishment_id' => $model->erp_establishment_id,
                     'erp_product_variant_id' => $line->erp_product_variant_id,
                     'direction' => 'in',
-                    'quantity' => $this->decimalString($line->quantity),
-                    'unit_cost' => $this->decimalString($line->unit_cost),
+                    'quantity' => $quantity,
+                    'unit_cost' => $unitCost,
                     'source_type' => 'erp_purchase',
                     'source_id' => $model->id,
                     'source_operation_key' => $operationKey.'-line-'.$line->id,
@@ -143,6 +153,8 @@ class ErpPurchaseController extends ErpOperationsController
                     'posted_at' => now(),
                 ]);
             }
+
+            app(ErpFinanceParticipant::class)->postPayableForPurchase($companyId, $model->erp_establishment_id, $model->id, (string) $model->total_amount, $model->currency, $operationKey.'-obligation', $userId);
 
             $model->status = 'posted';
             $model->source_operation_key = $operationKey;

@@ -2,10 +2,12 @@
 
 namespace App\Erp\Accounting;
 
+use App\Enums\FiscalDeliveryOrigin;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
+use App\Enums\FiscalStorageState;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
@@ -14,9 +16,13 @@ use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\FiscalDocument;
 use App\Services\BrazilianTaxId;
+use App\Services\Fiscal\Capture\FiscalXmlPath;
+use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
+use App\Services\Fiscal\Read\FiscalDocumentReadiness;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 class ErpAccountingHandoffService
 {
@@ -96,7 +102,17 @@ class ErpAccountingHandoffService
                 return $this->markFailed($locked, 'storage_unavailable', retryable: true);
             }
 
-            $officeDocument = $this->publishToOffice($locked, $document, $client, $company);
+            $bytes = Storage::disk('local')->get($document->storage_path);
+            if ($bytes === null || strlen($bytes) !== (int) $document->artifact_byte_length
+                || ! hash_equals($document->artifact_sha256, hash('sha256', $bytes))) {
+                return $this->markFailed($locked, 'artifact_integrity_failed', retryable: true);
+            }
+
+            try {
+                $officeDocument = $this->publishToOffice($locked, $document, $client, $company, $bytes);
+            } catch (RuntimeException) {
+                return $this->markFailed($locked, 'publication_failed', retryable: true);
+            }
 
             $locked->update([
                 'client_id' => $client->id,
@@ -146,41 +162,74 @@ class ErpAccountingHandoffService
         ErpFiscalDocument $document,
         Client $client,
         ErpCompany $company,
+        string $bytes,
     ): FiscalDocument {
         $existing = FiscalDocument::withoutGlobalScope('account')
             ->where('client_id', $client->id)
             ->where('chave_acesso', $document->access_key)
+            ->where('stage', FiscalStage::Document)
             ->where('event_id', '')
             ->first();
         if ($existing !== null) {
             abort_unless((int) $existing->account_id === (int) $delivery->account_id, 422, 'Documento fiscal já publicado em outro escritório');
 
-            return $existing;
+            if (! hash_equals($existing->sha256, $document->artifact_sha256) || (int) $existing->xml_bytes !== (int) $document->artifact_byte_length) {
+                throw new RuntimeException('Existing fiscal artifact identity differs.');
+            }
+            $readiness = resolve(FiscalDocumentReadiness::class);
+            $readiness->reconcileOne($existing);
+            if ($readiness->isReadyRow($existing)) {
+                resolve(CurrentTenant::class)->run((int) $delivery->account_id, fn () => resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($existing));
+
+                return $existing;
+            }
         }
 
         $model = FiscalModel::fromDocumentModel($document->model) ?? FiscalModel::Nfe;
 
-        return resolve(CurrentTenant::class)->run((int) $delivery->account_id, function () use ($delivery, $client, $document, $company, $model): FiscalDocument {
-            return FiscalDocument::withoutGlobalScope('account')->create([
-                'account_id' => $delivery->account_id,
-                'client_id' => $client->id,
-                'source' => FiscalSource::ErpIssued,
-                'model' => $model,
-                'kind' => FiscalKind::Document,
-                'stage' => FiscalStage::Document,
-                'chave_acesso' => $document->access_key,
-                'event_id' => '',
-                'nsu' => (int) $document->id,
-                'emitente_cnpj' => $this->taxId->normalize($company->cnpj ?? ''),
-                'destinatario_cnpj' => null,
-                'valor_total' => $document->commercial_snapshot['total_amount'] ?? null,
-                'emissao_at' => $document->authorized_at,
-                'storage_path' => $document->storage_path,
-                'sha256' => $document->artifact_sha256,
-                'xml_bytes' => (int) $document->artifact_byte_length,
-                'mascarado' => false,
-                'captured_at' => now(),
-            ]);
+        return resolve(CurrentTenant::class)->run((int) $delivery->account_id, function () use ($delivery, $client, $document, $company, $model, $bytes, $existing): FiscalDocument {
+            $path = FiscalXmlPath::for((int) $delivery->account_id, (int) $client->id, $document->access_key, '', FiscalStage::Document);
+            if (! Storage::disk('fiscal')->put($path, $bytes)) {
+                throw new RuntimeException('Fiscal XML publication unavailable.');
+            }
+            $published = $existing ?? new FiscalDocument;
+            $published->account_id = $delivery->account_id;
+            if ($existing === null) {
+                $published->fill([
+                    'account_id' => $delivery->account_id,
+                    'client_id' => $client->id,
+                    'source' => FiscalSource::ErpIssued,
+                    'model' => $model,
+                    'kind' => FiscalKind::Document,
+                    'stage' => FiscalStage::Document,
+                    'chave_acesso' => $document->access_key,
+                    'event_id' => '',
+                    'nsu' => (int) $document->id,
+                    'emitente_cnpj' => $this->taxId->normalize($company->cnpj ?? ''),
+                    'destinatario_cnpj' => null,
+                    'valor_total' => $document->commercial_snapshot['total_amount'] ?? null,
+                    'emissao_at' => $document->authorized_at,
+                    'authorized_at' => $document->authorized_at,
+                    'delivery_origin' => FiscalDeliveryOrigin::ErpIssued,
+                    'storage_path' => $path,
+                    'sha256' => $document->artifact_sha256,
+                    'xml_bytes' => (int) $document->artifact_byte_length,
+                    'mascarado' => false,
+                    'captured_at' => now(),
+                    'storage_state' => FiscalStorageState::Unverified,
+                ]);
+            } else {
+                $published->storage_path = $path;
+            }
+            $published->save();
+            $readiness = resolve(FiscalDocumentReadiness::class);
+            $readiness->reconcileOne($published);
+            if (! $readiness->isReadyRow($published)) {
+                throw new RuntimeException('Fiscal XML integrity could not be verified.');
+            }
+            resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($published);
+
+            return $published;
         });
     }
 

@@ -22,7 +22,7 @@ class ErpReportController extends ErpOperationsController
 
     public function show(Request $request, string $category): JsonResponse
     {
-        $this->releaseGate->assertReleased();
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         $companyId = $this->companyId($request);
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
@@ -44,7 +44,7 @@ class ErpReportController extends ErpOperationsController
 
     public function storeExport(Request $request, string $category): JsonResponse
     {
-        $this->releaseGate->assertReleased();
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         CurrentCompany::fromRequest($request)->assertCanMutate();
         if (! in_array($category, ErpLedgerReportService::CATEGORIES, true)) {
             abort(422, 'Categoria de relatório inválida');
@@ -90,7 +90,7 @@ class ErpReportController extends ErpOperationsController
 
     public function showExport(Request $request, int $export): JsonResponse
     {
-        $this->releaseGate->assertReleased();
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         $model = $this->findForCompany($request, ErpReportExport::class, $export);
         if ($model->user_id !== $request->user()?->id) {
             abort(403, 'Exportação pertence a outro usuário');

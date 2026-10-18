@@ -86,7 +86,7 @@ class ErpFiscalEventController extends ErpOperationsController
         $document = ErpFiscalDocument::query()->findOrFail($model->erp_fiscal_document_id);
 
         try {
-            $result = $this->issuance->submitEvent($model, $document);
+            $result = $this->issuance->submitEvent($model, $document, $request->user()?->id);
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }

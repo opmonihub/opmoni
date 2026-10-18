@@ -71,7 +71,7 @@ final class RecepcaoEventoConnector
 
         // O prazo vem antes de qualquer material sensível: fora dele não há
         // evento a montar, nem certificado a abrir, nem byte a viajar.
-        if ($authorizedAt === null || $authorizedAt->diffInDays($agora) > self::PRAZO_DIAS) {
+        if ($authorizedAt === null || $authorizedAt->greaterThan($agora) || $authorizedAt->diffInDays($agora) > self::PRAZO_DIAS) {
             $this->store->veredito(
                 $manifestation,
                 FiscalManifestationOutcome::DeadlineMissed,

@@ -5,7 +5,7 @@ import { erpCatalogRoutes, formatErpDecimal } from '#shared/utils/erpCatalogs'
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Produtos · Cadastros ERP' })
 
-const { search, pending, state, error } = useErpCatalogList<ErpProductRecord>(erpCatalogRoutes.products)
+const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpProductRecord>(erpCatalogRoutes.products)
 </script>
 
 <template>
@@ -13,7 +13,6 @@ const { search, pending, state, error } = useErpCatalogList<ErpProductRecord>(er
     <UFormField label="Busca" class="max-w-md">
       <UInput v-model="search" placeholder="Nome, SKU ou código de barras" />
     </UFormField>
-    <UAlert v-if="error" color="error" :title="error" />
     <UTable
       :loading="pending"
       :data="state?.data ?? []"
@@ -23,6 +22,13 @@ const { search, pending, state, error } = useErpCatalogList<ErpProductRecord>(er
         { accessorKey: 'sale_price', header: 'Preço', cell: ({ row }) => formatErpDecimal(row.original.sale_price) },
         { accessorKey: 'status', header: 'Status' }
       ]"
+    />
+    <ErpCatalogPagination
+      v-model:page="page"
+      :meta="state?.meta"
+      :pending="pending"
+      :error="error"
+      @retry="refresh"
     />
   </ErpCatalogPageShell>
 </template>

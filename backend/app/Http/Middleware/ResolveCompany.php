@@ -5,6 +5,9 @@ namespace App\Http\Middleware;
 use App\Erp\ErpCommercialGate;
 use App\Erp\ErpCompanyAuthorization;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\Erp\Fiscal\ErpFiscalEvent;
+use App\Models\Erp\Fiscal\ErpFiscalInvalidation;
 use App\Support\AccessSession;
 use App\Support\AccessTransaction;
 use App\Support\CurrentCompany;
@@ -92,6 +95,19 @@ class ResolveCompany
             );
             $request->attributes->set(CurrentCompany::class, $context);
             try {
+                $context->assertPermission((string) $request->route()?->getName(), ! $request->isMethodSafe());
+                $module = match (true) {
+                    $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
+                    $request->routeIs('erp.sales.*', 'erp.sale-returns.*', 'erp.quotes.*', 'erp.orders.*') => 'add_sale',
+                    $request->routeIs('erp.stock.transfers.*') => 'stock_transfers',
+                    $request->routeIs('erp.stock.adjustments.*') => 'stock_adjustment',
+                    default => null,
+                };
+                $module ??= $this->fiscalModule($request, $companyId);
+                if ($module !== null && ! $this->commercialGate->moduleEnabled($company, $module)) {
+                    abort(response()->json(['code' => 'erp_module_disabled', 'message' => 'Módulo não habilitado no contrato'], 403));
+                }
+
                 AccessSession::assertOwnership($request);
                 $response = $next($request);
                 AccessSession::assertOwnership($request);
@@ -103,5 +119,35 @@ class ResolveCompany
                 $request->attributes->remove(CurrentCompany::class);
             }
         });
+    }
+
+    private function fiscalModule(Request $request, int $companyId): ?string
+    {
+        if (! $request->routeIs('erp.fiscal.*')) {
+            return null;
+        }
+        $model = null;
+        if ($request->route('document') !== null) {
+            $id = $request->route('document');
+            $model = ErpFiscalDocument::query()->where('erp_company_id', $companyId)->whereKey($id)->value('model');
+        } elseif ($request->route('event') !== null) {
+            $event = ErpFiscalEvent::query()->whereHas('document', fn ($query) => $query->where('erp_company_id', $companyId))->with('document')->whereKey($request->route('event'))->first();
+            $model = $event?->document?->model;
+        } elseif ($request->route('invalidation') !== null) {
+            $model = ErpFiscalInvalidation::query()->where('erp_company_id', $companyId)->whereKey($request->route('invalidation'))->value('model');
+        } elseif ($request->routeIs('erp.fiscal.events.store')) {
+            $id = $request->input('erp_fiscal_document_id');
+            if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+                $model = ErpFiscalDocument::query()->where('erp_company_id', $companyId)->whereKey($id)->value('model');
+            }
+        } elseif ($request->routeIs('erp.fiscal.documents.store', 'erp.fiscal.invalidations.store')) {
+            $model = $request->input('model');
+        }
+
+        return match ((string) $model) {
+            '57' => 'cte',
+            '58' => 'mdfe',
+            default => null,
+        };
     }
 }

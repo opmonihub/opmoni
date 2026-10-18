@@ -129,7 +129,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             ['operation' => 'fiscal-transmit', 'document_id' => $documentId],
         ]);
         $successes = count(array_filter($results, fn (array $row): bool => ($row['ok'] ?? false) === true));
-        $this->assertGreaterThanOrEqual(1, $successes);
+        $this->assertGreaterThanOrEqual(1, $successes, json_encode($results, JSON_THROW_ON_ERROR));
         $this->assertSame(
             ErpFiscalDocumentStateMachine::AUTHORIZED,
             ErpFiscalDocument::query()->findOrFail($documentId)->status,

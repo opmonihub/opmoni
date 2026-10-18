@@ -28,6 +28,24 @@ final class FiscalDocumentReadiness
             ->where('storage_state', FiscalStorageState::Available);
     }
 
+    /** Verify every complete candidate in bounded memory before publishing counts or rows. */
+    public function reconcileQuery(Builder $query): void
+    {
+        (clone $query)->where('kind', FiscalKind::Document)->where('stage', FiscalStage::Document)
+            ->reorder()->chunkById(100, function (Collection $documents): void {
+                $states = [];
+                foreach ($documents as $document) {
+                    $states[$this->stateOf($document)->value][] = $document->id;
+                }
+                foreach ($states as $state => $ids) {
+                    FiscalDocument::query()->whereIn('id', $ids)->update([
+                        'storage_state' => $state,
+                        'storage_verified_at' => now(),
+                    ]);
+                }
+            });
+    }
+
     public function isReadyRow(?FiscalDocument $document): bool
     {
         if ($document === null) {
@@ -63,47 +81,31 @@ final class FiscalDocumentReadiness
             return;
         }
 
+        $document->forceFill([
+            'storage_state' => $this->stateOf($document),
+            'storage_verified_at' => now(),
+        ])->saveQuietly();
+    }
+
+    public function stateOf(FiscalDocument $document): FiscalStorageState
+    {
         try {
             $disk = Storage::disk('fiscal');
         } catch (RuntimeException $exception) {
             throw new RuntimeException('Fiscal storage unavailable.', 0, $exception);
         }
 
-        if (! $disk->exists($document->storage_path)) {
-            $document->forceFill([
-                'storage_state' => FiscalStorageState::Missing,
-                'storage_verified_at' => now(),
-            ])->saveQuietly();
-
-            return;
+        if (! filled($document->storage_path) || ! $disk->exists($document->storage_path)) {
+            return FiscalStorageState::Missing;
         }
-
         $bytes = $disk->get($document->storage_path);
-
         if ($bytes === null) {
-            $document->forceFill([
-                'storage_state' => FiscalStorageState::Missing,
-                'storage_verified_at' => now(),
-            ])->saveQuietly();
-
-            return;
+            return FiscalStorageState::Missing;
         }
 
-        $length = strlen($bytes);
-        $hash = hash('sha256', $bytes);
-
-        if ($length !== (int) $document->xml_bytes || ! hash_equals((string) $document->sha256, $hash)) {
-            $document->forceFill([
-                'storage_state' => FiscalStorageState::Corrupt,
-                'storage_verified_at' => now(),
-            ])->saveQuietly();
-
-            return;
-        }
-
-        $document->forceFill([
-            'storage_state' => FiscalStorageState::Available,
-            'storage_verified_at' => now(),
-        ])->saveQuietly();
+        return strlen($bytes) === (int) $document->xml_bytes
+            && hash_equals((string) $document->sha256, hash('sha256', $bytes))
+                ? FiscalStorageState::Available
+                : FiscalStorageState::Corrupt;
     }
 }

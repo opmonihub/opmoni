@@ -13,6 +13,7 @@ use App\Tenant\CurrentTenant;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -157,17 +158,25 @@ final class SendWhatsAppDocumentJob implements ShouldQueue
             return;
         }
 
-        WhatsAppDispatch::query()->withoutGlobalScope('account')
-            ->where('account_id', $this->accountId)->whereKey($dispatch->getKey())
-            ->where('status', WhatsAppDispatch::STATUS_QUEUED)
-            ->update(['status' => WhatsAppDispatch::STATUS_SENT, 'failure_reason' => null]);
-
-        if (isset($resposta['message_id'])) {
-            WhatsAppDispatch::query()->withoutGlobalScope('account')
+        DB::transaction(function () use ($dispatch, $resposta): void {
+            $current = WhatsAppDispatch::query()->withoutGlobalScope('account')
                 ->where('account_id', $this->accountId)->whereKey($dispatch->getKey())
-                ->whereNull('message_id')
-                ->update(['message_id' => (string) $resposta['message_id']]);
-        }
+                ->lockForUpdate()->first();
+            if ($current === null) {
+                return;
+            }
+            $changes = [];
+            if ($current->status === WhatsAppDispatch::STATUS_QUEUED) {
+                $changes = ['status' => WhatsAppDispatch::STATUS_SENT, 'failure_reason' => null];
+            }
+            if ($current->message_id === null && isset($resposta['message_id'])) {
+                $changes['message_id'] = (string) $resposta['message_id'];
+            }
+            if ($changes !== []) {
+                WhatsAppDispatch::query()->withoutGlobalScope('account')
+                    ->where('account_id', $this->accountId)->whereKey($current->getKey())->update($changes);
+            }
+        });
     }
 
     /**

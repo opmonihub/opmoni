@@ -19,7 +19,7 @@ class ErpAccountingDeliveryController extends ErpOperationsController
 
     public function index(Request $request): JsonResponse
     {
-        $this->releaseGate->assertReleased();
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         $query = ErpAccountingDelivery::query()
             ->where('erp_company_id', $this->companyId($request))
             ->with(['erpFiscalDocument']);
@@ -29,7 +29,7 @@ class ErpAccountingDeliveryController extends ErpOperationsController
 
     public function retry(Request $request, int $delivery): JsonResponse
     {
-        $this->releaseGate->assertReleased();
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         CurrentCompany::fromRequest($request)->assertCanMutate();
         $model = $this->findForCompany($request, ErpAccountingDelivery::class, $delivery);
         $result = $this->handoff->retry($model);

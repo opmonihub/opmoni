@@ -6,7 +6,7 @@ import { apiFailure } from '#shared/utils/access'
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Contatos · Cadastros ERP' })
 
-const { search, pending, state, error, refresh } = useErpCatalogList<ErpContactRecord>(erpCatalogRoutes.contacts)
+const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpContactRecord>(erpCatalogRoutes.contacts)
 const { api, refreshCsrf } = useAccessApi()
 const creating = ref(false)
 const form = reactive({ name: '', tax_id: '', is_customer: true, is_supplier: false })
@@ -63,7 +63,6 @@ async function createContact() {
       </form>
     </UCard>
 
-    <UAlert v-if="error" color="error" :title="error" />
     <UTable
       :loading="pending"
       :data="state?.data ?? []"
@@ -72,6 +71,13 @@ async function createContact() {
         { accessorKey: 'tax_id', header: 'Documento' },
         { accessorKey: 'status', header: 'Status' }
       ]"
+    />
+    <ErpCatalogPagination
+      v-model:page="page"
+      :meta="state?.meta"
+      :pending="pending"
+      :error="error"
+      @retry="refresh"
     />
   </ErpCatalogPageShell>
 </template>

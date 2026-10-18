@@ -5,15 +5,17 @@ namespace App\Actions;
 use App\Erp\ErpCompanyProvisioning;
 use App\Models\Account;
 use App\Models\Erp\ErpCompany;
+use App\Models\OwnerActivation;
 use App\Models\User;
 use App\Support\AccessTransaction;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class ErpCommercialRegistration
 {
-    public function __construct(private ErpCompanyProvisioning $provisioning) {}
+    public function __construct(private ErpCompanyProvisioning $provisioning, private AccessAccounts $identities) {}
 
     public function assertPlatformReady(): void
     {
@@ -39,11 +41,16 @@ class ErpCommercialRegistration
 
         $hash = Hash::make($data['password']);
 
-        return DB::transaction(function () use ($data, $email, $hash): array {
+        return $this->withIdentityCollisionValidation(fn (): array => DB::transaction(function () use ($data, $email, $hash): array {
             AccessTransaction::boundLockWaits();
-            $this->advisory('erp-register:'.$email);
+            $this->identities->advisory('email:'.$email);
+            $this->advisory('erp-company:'.$data['cnpj']);
             if (User::query()->where('email', $email)->exists()) {
                 throw ValidationException::withMessages(['email' => 'Este email já possui cadastro. Faça login para continuar.']);
+            }
+            if (OwnerActivation::query()->where('email', $email)
+                ->whereNull('consumed_at')->whereNull('revoked_at')->where('expires_at', '>', now())->exists()) {
+                throw ValidationException::withMessages(['email' => 'Este email já está em uso.']);
             }
             if (ErpCompany::query()->where('cnpj', $data['cnpj'])->exists()) {
                 throw ValidationException::withMessages(['cnpj' => 'CNPJ já cadastrado']);
@@ -60,13 +67,13 @@ class ErpCommercialRegistration
             ]);
 
             return [$user, $company];
-        });
+        }));
     }
 
     /** @param  array{name: string, cnpj: string, establishment_name?: string|null}  $data */
     public function createCompanyForAuthenticated(User $user, array $data): ErpCompany
     {
-        return DB::transaction(function () use ($user, $data): ErpCompany {
+        return $this->withIdentityCollisionValidation(fn (): ErpCompany => DB::transaction(function () use ($user, $data): ErpCompany {
             AccessTransaction::boundLockWaits();
             $this->advisory('erp-company:'.$data['cnpj']);
             if (ErpCompany::query()->where('cnpj', $data['cnpj'])->exists()) {
@@ -74,7 +81,42 @@ class ErpCommercialRegistration
             }
 
             return $this->provisioning->createCompanyForOwner($user, $data);
-        });
+        }));
+    }
+
+    /**
+     * @template T
+     *
+     * @param  \Closure(): T  $operation
+     * @return T
+     */
+    private function withIdentityCollisionValidation(\Closure $operation): mixed
+    {
+        try {
+            return $operation();
+        } catch (UniqueConstraintViolationException $exception) {
+            $diagnostic = (string) ($exception->errorInfo[2] ?? '');
+            $field = match (DB::getDriverName()) {
+                'pgsql' => match (true) {
+                    preg_match('/unique constraint "erp_companies_cnpj_unique"/', $diagnostic) === 1 => 'cnpj',
+                    preg_match('/unique constraint "users_(?:normalized_email_unique|email_unique)"/', $diagnostic) === 1 => 'email',
+                    default => null,
+                },
+                'sqlite' => match ($diagnostic) {
+                    'UNIQUE constraint failed: erp_companies.cnpj' => 'cnpj',
+                    'UNIQUE constraint failed: users.email' => 'email',
+                    default => null,
+                },
+                default => null,
+            };
+            if ($field === null) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                $field => $field === 'cnpj' ? 'CNPJ já cadastrado' : 'Este email já possui cadastro. Faça login para continuar.',
+            ]);
+        }
     }
 
     private function advisory(string $key): void

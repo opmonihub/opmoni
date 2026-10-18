@@ -4,7 +4,6 @@ namespace App\Services\Fiscal\Read;
 
 use App\Enums\FiscalModel;
 use App\Enums\FiscalStage;
-use App\Enums\FiscalStorageState;
 use App\Models\FiscalDocument;
 use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -46,11 +45,7 @@ class FiscalDocuments
         return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId, $filters) {
             $filtrada = $this->filtered($accountId, $filters);
             $readiness = resolve(FiscalDocumentReadiness::class);
-            $candidates = (clone $filtrada)
-                ->where('storage_state', FiscalStorageState::Available)
-                ->limit(500)
-                ->get();
-            $readiness->reconcile($candidates);
+            $readiness->reconcileQuery($filtrada);
             $pronta = $readiness->readyScope($filtrada);
             $modelos = $this->modelosDisponiveis($pronta, $filters);
 

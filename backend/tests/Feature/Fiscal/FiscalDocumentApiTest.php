@@ -2256,6 +2256,7 @@ class FiscalDocumentApiTest extends BusinessTestCase
             ->map(fn (array $query): string => strtolower($query['query']))
             ->first(fn (string $query): bool => str_contains($query, 'from "fiscal_documents"')
                 && str_contains($query, 'order by')
+                && str_contains($query, 'is null')
                 && ! str_contains($query, 'count(*)'));
 
         DB::disableQueryLog();

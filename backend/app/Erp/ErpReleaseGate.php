@@ -56,10 +56,10 @@ class ErpReleaseGate
             }
             $allowedCompany = (int) ($entry['company_id'] ?? 0);
             $allowedUser = (int) ($entry['user_id'] ?? 0);
-            if ($allowedCompany !== 0 && $companyId !== null && $allowedCompany !== $companyId) {
+            if ($allowedCompany !== 0 && $allowedCompany !== $companyId) {
                 continue;
             }
-            if ($allowedUser !== 0 && $userId !== null && $allowedUser !== $userId) {
+            if ($allowedUser !== 0 && $allowedUser !== $userId) {
                 continue;
             }
 

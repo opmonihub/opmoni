@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\Finance\ErpDecimal;
+use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Finance\ErpPaymentAllocationService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Finance\ErpFinancialAccount;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class ErpPaymentController extends ErpOperationsController
@@ -52,6 +54,7 @@ class ErpPaymentController extends ErpOperationsController
             'erp_financial_account_id' => ['sometimes', 'nullable', 'integer'],
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
         $this->scope->assertBelongsToCompany(
             ErpFinancialAccount::class,
@@ -61,12 +64,16 @@ class ErpPaymentController extends ErpOperationsController
         );
 
         $amount = ErpDecimal::parse($data['amount']);
-        if ($operationKey = $data['source_operation_key'] ?? null) {
+        abort_unless(ErpDecimal::isPositive($amount), 422, 'Valor deve ser positivo');
+        $operationKey = $data['source_operation_key'] ?? null;
+        if ($operationKey !== null) {
             $existing = ErpPayment::query()
                 ->where('erp_company_id', $companyId)
                 ->where('source_operation_key', $operationKey)
                 ->first();
             if ($existing) {
+                abort_unless(ErpDecimal::compare((string) $existing->amount, $amount) === 0 && $existing->method === $data['method'] && $existing->currency === ($data['currency'] ?? 'BRL') && $existing->erp_establishment_id === ($data['erp_establishment_id'] ?? null) && $existing->erp_financial_account_id === ($data['erp_financial_account_id'] ?? null), 409, 'Chave de operação reutilizada com conteúdo diferente');
+
                 return response()->json(['data' => $this->serialize($existing)]);
             }
         }
@@ -101,6 +108,7 @@ class ErpPaymentController extends ErpOperationsController
             'amount' => ['required'],
             'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        $data = $this->normalizeIdentifiers($data);
 
         $obligation = ErpObligation::query()
             ->where('erp_company_id', $companyId)
@@ -108,40 +116,15 @@ class ErpPaymentController extends ErpOperationsController
             ->firstOrFail();
 
         $allocationAmount = ErpDecimal::parse($data['amount']);
-        $existingRows = $obligation->allocations()
-            ->get(['amount'])
-            ->map(fn (ErpPaymentAllocation $row): array => ['amount' => $this->decimalString($row->amount)])
-            ->all();
-
         try {
-            $this->allocations->assertAllocationAllowed(
-                $this->decimalString($obligation->open_amount),
-                $allocationAmount,
-                $existingRows,
-            );
+            $allocation = DB::transaction(fn (): ErpPaymentAllocation => app(ErpFinanceParticipant::class)->allocatePayment(
+                $companyId, $paymentModel->id, $obligation->id, $allocationAmount,
+                $data['source_operation_key'] ?? ('allocation-'.Str::uuid()),
+                $userId, $this->allocations,
+            ));
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
-
-        $allocation = DB::transaction(function () use ($paymentModel, $obligation, $allocationAmount, $data, $userId): ErpPaymentAllocation {
-            $allocation = ErpPaymentAllocation::query()->create([
-                'erp_payment_id' => $paymentModel->id,
-                'erp_obligation_id' => $obligation->id,
-                'amount' => $allocationAmount,
-                'source_operation_key' => $data['source_operation_key'] ?? null,
-                'posted_by_user_id' => $userId,
-                'posted_at' => now(),
-            ]);
-
-            $remaining = ErpDecimal::sub($this->decimalString($obligation->open_amount), $allocationAmount);
-            $obligation->open_amount = $remaining;
-            if (ErpDecimal::compare($remaining, ErpDecimal::zero()) === 0) {
-                $obligation->status = 'settled';
-            }
-            $obligation->save();
-
-            return $allocation;
-        });
 
         return response()->json([
             'data' => [

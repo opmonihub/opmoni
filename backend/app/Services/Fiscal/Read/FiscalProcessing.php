@@ -22,6 +22,7 @@ final class FiscalProcessing
     public function page(int $accountId, array $filters): array
     {
         return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId, $filters) {
+            resolve(FiscalDocumentReadiness::class)->reconcileQuery(FiscalDocument::query()->where('account_id', $accountId));
             $query = $this->baseQuery($accountId, $filters);
 
             return [
@@ -31,7 +32,7 @@ final class FiscalProcessing
                     ->orderByDesc('id')
                     ->paginate(min(max((int) ($filters['per_page'] ?? 25), 1), 100))
                     ->withQueryString(),
-                'summary' => $this->summaryCounts($accountId),
+                'summary' => $this->countsFor($accountId),
             ];
         });
     }
@@ -41,26 +42,16 @@ final class FiscalProcessing
      */
     public function summaryCounts(int $accountId): array
     {
-        $rows = FiscalDocument::query()
-            ->withoutGlobalScope('account')
-            ->where('account_id', $accountId)
-            ->where(function (Builder $query): void {
-                $query->where(function (Builder $summary): void {
-                    $summary->where('stage', FiscalStage::Summary)
-                        ->where(function (Builder $states): void {
-                            $states->whereNull('processing_state')
-                                ->orWhere('processing_state', '!=', FiscalProcessingState::Complete);
-                        });
-                })->orWhere(function (Builder $document): void {
-                    $document->where('stage', FiscalStage::Document)
-                        ->whereIn('storage_state', [
-                            FiscalStorageState::Missing,
-                            FiscalStorageState::Corrupt,
-                            FiscalStorageState::Unverified,
-                        ]);
-                });
-            })
-            ->get(['processing_state', 'stage', 'storage_state']);
+        return resolve(CurrentTenant::class)->run($accountId, function () use ($accountId): array {
+            resolve(FiscalDocumentReadiness::class)->reconcileQuery(FiscalDocument::query()->where('account_id', $accountId));
+
+            return $this->countsFor($accountId);
+        });
+    }
+
+    private function countsFor(int $accountId): array
+    {
+        $rows = $this->baseQuery($accountId, [])->get(['processing_state', 'stage', 'storage_state']);
 
         $active = 0;
         $deferred = 0;
@@ -104,7 +95,7 @@ final class FiscalProcessing
                     if ($filters['state'] === 'attention') {
                         $query->where(function (Builder $inner): void {
                             $inner->where('processing_state', FiscalProcessingState::Attention)
-                                ->orWhereIn('storage_state', [FiscalStorageState::Missing, FiscalStorageState::Corrupt]);
+                                ->orWhereIn('storage_state', [FiscalStorageState::Missing, FiscalStorageState::Corrupt, FiscalStorageState::Unverified]);
                         });
                     } else {
                         $query->where('processing_state', $filters['state']);
@@ -114,6 +105,13 @@ final class FiscalProcessing
             ->where(function (Builder $query): void {
                 $query->where(function (Builder $summary): void {
                     $summary->where('stage', FiscalStage::Summary)
+                        ->whereNotExists(function (\Illuminate\Database\Query\Builder $complete): void {
+                            $complete->selectRaw('1')->from('fiscal_documents as completed')
+                                ->whereColumn('completed.account_id', 'fiscal_documents.account_id')
+                                ->whereColumn('completed.client_id', 'fiscal_documents.client_id')
+                                ->whereColumn('completed.chave_acesso', 'fiscal_documents.chave_acesso')
+                                ->where('completed.stage', FiscalStage::Document);
+                        })
                         ->where(function (Builder $states): void {
                             $states->whereNull('processing_state')
                                 ->orWhereIn('processing_state', [

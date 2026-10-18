@@ -3,7 +3,7 @@ import { accessDestination } from '#shared/utils/access'
 export default defineNuxtRouteMiddleware(async (to) => {
   const { user, resolved, refresh } = useAuth()
   const { api } = useAccessApi()
-  const publicPage = ['/login', '/onboarding', '/primeiro-acesso'].includes(to.path)
+  const publicPage = ['/login', '/onboarding', '/primeiro-acesso', '/erp/cadastro'].includes(to.path)
   if (!resolved.value) {
     try {
       await refresh()
@@ -14,7 +14,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
   if (!user.value) {
-    if (to.path === '/primeiro-acesso')
+    if (to.path === '/primeiro-acesso' || to.path === '/erp/cadastro')
       return
     let available = false
     try {

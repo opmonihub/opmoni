@@ -7,7 +7,9 @@ use App\Erp\Finance\ErpPaymentAllocationService;
 use App\Erp\Stock\ErpStockParticipant;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpEstablishment;
+use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
+use App\Models\Erp\ErpUnit;
 use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Stock\ErpStockBalance;
@@ -56,7 +58,9 @@ class ErpPostingParticipantContractTest extends TestCase
     {
         $company = ErpCompany::factory()->create();
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
-        $variant = ErpProductVariant::factory()->create();
+        $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
+        $product = ErpProduct::factory()->create(['erp_company_id' => $company->id, 'erp_unit_id' => $unit->id]);
+        $variant = ErpProductVariant::factory()->create(['erp_product_id' => $product->id]);
         ErpStockBalance::query()->create([
             'erp_company_id' => $company->id,
             'erp_establishment_id' => $establishment->id,

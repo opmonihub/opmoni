@@ -37,6 +37,7 @@ final class ErpSaleTotalsCalculator
                 : $raw;
         }
 
+        abort_if(ErpDecimal::compare($discountAmount, ErpDecimal::zero()) === -1 || ErpDecimal::compare($discountAmount, $subtotal) === 1, 422, 'Desconto inválido');
         $taxable = ErpDecimal::sub($subtotal, $discountAmount);
         $taxAmount = ErpDecimal::zero();
         if ($taxRatePercent !== null && ErpDecimal::compare(ErpDecimal::parse($taxRatePercent), ErpDecimal::zero()) === 1) {

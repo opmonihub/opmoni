@@ -4,6 +4,7 @@ use App\Http\Middleware\AccessSecurity;
 use App\Http\Middleware\SerializedAccessSession;
 use App\Http\Middleware\TrustedIngress;
 use App\Support\AccessSession;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -184,6 +185,12 @@ $server = [
 foreach ($input['headers'] ?? [] as $name => $value) {
     $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
 }
+$diagnosticExceptionTypes = [];
+if ($input['diagnose_errors'] ?? false) {
+    $app->make(ExceptionHandler::class)->reportable(function (Throwable $error) use (&$diagnosticExceptionTypes): void {
+        $diagnosticExceptionTypes[] = $error::class;
+    });
+}
 $request = Request::create(
     'http://localhost:3000'.$input['path'],
     $input['method'] ?? 'GET',
@@ -200,6 +207,7 @@ foreach ($response->headers->getCookies() as $cookie) {
 }
 echo json_encode([
     'status' => $response->getStatusCode(),
+    'exception_types' => $diagnosticExceptionTypes,
     'body' => json_decode($response->getContent(), true),
     'cookies' => $cookies,
     'cookie_attributes' => array_map(fn ($cookie) => [
