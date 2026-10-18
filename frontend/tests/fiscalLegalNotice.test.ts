@@ -38,21 +38,31 @@ function nodes(node: Vue.VNode): Vue.VNode[] {
 }
 function sheet(authorizedAt: string | null, deadline: string | null, load?: (options: {
   signal?: AbortSignal
-}) => Promise<unknown>) {
+}) => Promise<unknown>, download: () => Promise<Blob> = async () => new Blob(['<nfeProc/>'])) {
   let exposed!: {
     open: (id: number) => Promise<void>
   }
   const account = Vue.ref({ id: 7 })
+  const session = Vue.ref(1)
+  const downloads: string[] = []
   const unmounted: (() => void)[] = []
   const toasts: unknown[] = []
   const component = compileVueComponent('components/fiscal/FiscalDocumentSheet.vue', {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
+    URL: {
+      createObjectURL: () => {
+        downloads.push('created')
+        return 'blob:fiscal'
+      },
+      revokeObjectURL: () => downloads.push('revoked')
+    },
+    document: { createElement: () => ({ click: () => downloads.push('clicked'), remove() {} }), body: { append() {} } },
     onBeforeUnmount: (fn: () => void) => unmounted.push(fn),
-    useFiscal: () => ({ show: async (_id: number, options: {
+    useFiscal: () => ({ download, show: async (_id: number, options: {
       signal?: AbortSignal
     }) => load ? load(options) : ({ id: 1, client: { id: 2, name: 'Cliente' }, model: 'nfe', kind: 'document', stage: 'document', events: [], source: 'nfe_distribuicao', authorized_at: authorizedAt, conclusive_deadline_at: deadline, emissao_at: '2022-04-04', captured_at: '2026-10-02', xml_bytes: 444, sha256: 'abc', xml_preview: '<nfeProc/>' }) }),
     useAuth: () => ({ canManageClients: Vue.ref(false), currentAccount: account }),
-    useToast: () => ({ add: (value: unknown) => toasts.push(value) }), useState: () => Vue.ref(0)
+    useToast: () => ({ add: (value: unknown) => toasts.push(value) }), useState: (key: string) => key === 'access-session-generation' ? session : Vue.ref(0)
   }) as {
     setup: (props: object, context: object) => (context: object, cache: unknown[]) => Vue.VNode
   }
@@ -63,7 +73,7 @@ function sheet(authorizedAt: string | null, deadline: string | null, load?: (opt
     }
   }))!
   return {
-    account, toasts, open: () => exposed.open(1), nodes: () => nodes(render({}, [])),
+    account, session, downloads, toasts, open: () => exposed.open(1), nodes: () => nodes(render({}, [])),
     text: () => nodes(render({}, [])).map(node => node.type !== Vue.Comment && typeof node.children === 'string' ? node.children : '').join(' '),
     stop: () => {
       unmounted.forEach(fn => fn())
@@ -122,6 +132,41 @@ describe('Completed NF-e actual detail legal context', () => {
         if (change === 'account')
           view.stop()
       })
+  it('discards same-Account prior-session detail success and closes the protected sheet', async (t) => {
+    let resolve!: (value: unknown) => void
+    let signal: AbortSignal | undefined
+    const pending = new Promise((done) => {
+      resolve = done
+    })
+    const view = sheet(null, null, (options) => {
+      signal = options.signal
+      return pending
+    })
+    t.after(view.stop)
+    const opening = view.open()
+    view.session.value++
+    assert.equal(signal?.aborted, true)
+    resolve({ id: 1, client: { name: 'OLD' }, model: 'nfe', events: [], xml_preview: 'OLD SESSION XML' })
+    await opening
+    assert.doesNotMatch(view.text(), /OLD SESSION XML/)
+    assert.equal(view.nodes().find(node => node.props?.label === 'Baixar XML')?.props?.disabled, true)
+  })
+  it('never creates a Blob URL or clicks a stale same-Account prior-session XML download', async (t) => {
+    let resolve!: (value: Blob) => void
+    const pending = new Promise<Blob>((done) => {
+      resolve = done
+    })
+    const view = sheet('2026-10-01T12:00:00Z', '2026-12-30T12:00:00Z', undefined, () => pending)
+    t.after(view.stop)
+    await view.open()
+    const downloading = view.nodes().find(node => node.props?.label === 'Baixar XML')!.props!.onClick()
+    view.session.value++
+    resolve(new Blob(['OLD SESSION XML']))
+    await downloading
+    assert.deepEqual(view.downloads, [])
+    assert.deepEqual(view.toasts, [])
+    assert.doesNotMatch(view.text(), /<nfeProc/)
+  })
   it('clears completed legal/document context when Account changes', async (t) => {
     const view = sheet('2026-10-01T12:00:00Z', '2026-12-30T12:00:00Z')
     t.after(view.stop)

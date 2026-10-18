@@ -54,6 +54,7 @@ function nodes(vnode: Vue.VNode): Vue.VNode[] {
 }
 function page() {
   const mounted: (() => void)[] = [], unmounted: (() => void)[] = []
+  const session = Vue.ref(1)
   const account = Vue.ref<{
     id: number
   } | null>({ id: 7 })
@@ -65,6 +66,7 @@ function page() {
   const document = { visibilityState: 'visible' }
   const component = compileVueComponent('pages/fiscal/processamento.vue', {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch,
+    useState: () => session,
     definePageMeta() { }, useAuth: () => ({ currentAccount: account }),
     onMounted: (callback: () => void) => mounted.push(callback),
     onBeforeUnmount: (callback: () => void) => unmounted.push(callback),
@@ -87,7 +89,7 @@ function page() {
   const scope = Vue.effectScope()
   const render = scope.run(() => component.setup({}, { expose() { } }))!
   return {
-    account, reads, document, start: () => mounted.forEach(fn => fn()),
+    account, session, reads, document, start: () => mounted.forEach(fn => fn()),
     poll: () => tick?.(), cleared: () => cleared, nodes: () => nodes(render({}, [])),
     text: () => nodes(render({}, [])).map(node => node.type !== Vue.Comment && typeof node.children === 'string' ? node.children : '').join(' '),
     stop: () => {
@@ -157,6 +159,22 @@ describe('Fiscal processing actual page lifecycle', () => {
       await flush()
       assert.match(view.text(), /Cliente B/)
       assert.doesNotMatch(view.text(), /PRIVATE OLD CLIENT|Não foi possível/)
+    })
+  for (const failing of [false, true])
+    it(`invalidates same-Account prior-session processing ${failing ? 'failure' : 'success'}`, async (t) => {
+      const view = page()
+      t.after(view.stop)
+      view.start()
+      view.session.value++
+      assert.equal(view.reads[0]!.signal?.aborted, true)
+      assert.equal(view.reads.length, 2)
+      view.reads[1]!.resolve(response('Current session'))
+      await flush()
+      if (failing) view.reads[0]!.reject(new Error('old session failure'))
+      else view.reads[0]!.resolve(response('OLD SESSION PRIVATE ROW'))
+      await flush()
+      assert.match(view.text(), /Current session/)
+      assert.doesNotMatch(view.text(), /OLD SESSION PRIVATE ROW|Não foi possível/)
     })
   it('resets page and invalidates delayed failures on filter changes; page changes keep filter', async (t) => {
     const view = page()

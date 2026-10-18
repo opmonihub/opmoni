@@ -35,6 +35,7 @@ import { formatTaxId } from '~/utils/taxId'
  */
 const { show, download, capture } = useFiscal()
 const { canManageClients, currentAccount } = useAuth()
+const sessionGeneration = useState('access-session-generation', () => 0)
 const toast = useToast()
 
 const open = ref(false)
@@ -270,7 +271,7 @@ function invalidateDetail() {
   downloading.value = false
   capturing.value = false
 }
-watch(() => currentAccount.value?.id, () => {
+watch([() => currentAccount.value?.id, sessionGeneration], () => {
   invalidateDetail()
   open.value = false
 }, { flush: 'sync' })

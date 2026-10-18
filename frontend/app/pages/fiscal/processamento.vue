@@ -7,6 +7,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { processingList } = useFiscal()
 const { currentAccount } = useAuth()
+const sessionGeneration = useState('access-session-generation', () => 0)
 const rows = ref<FiscalProcessingPage['data']>([])
 const summary = ref<FiscalProcessingPage['summary'] | null>(null)
 const meta = ref<FiscalProcessingPage['meta'] | null>(null)
@@ -65,9 +66,10 @@ function authorizationLabel(authorizedAt: string | null) {
 async function refresh() {
   if (pending.value || disposed || !currentAccount.value?.id) return
   const accountId = currentAccount.value.id
+  const session = sessionGeneration.value
   controller = new AbortController()
   const signal = controller.signal
-  const isCurrent = () => !disposed && !signal.aborted && currentAccount.value?.id === accountId
+  const isCurrent = () => !disposed && !signal.aborted && currentAccount.value?.id === accountId && sessionGeneration.value === session
   pending.value = true
   error.value = null
   await runLatest(() => processingList({ page: page.value, per_page: 25, state: stateFilter.value === 'all' ? undefined : stateFilter.value }, { signal }), {
@@ -87,11 +89,11 @@ async function refresh() {
   })
 }
 
-watch([() => currentAccount.value?.id, stateFilter, page], ([accountId, state], [previousAccount, previousState]) => {
+watch([() => currentAccount.value?.id, stateFilter, page, sessionGeneration], ([accountId, state, , session], [previousAccount, previousState, , previousSession]) => {
   if (resetting) return
   controller?.abort()
   resetting = true
-  if (accountId !== previousAccount || state !== previousState) page.value = 1
+  if (accountId !== previousAccount || state !== previousState || session !== previousSession) page.value = 1
   resetting = false
   rows.value = []
   summary.value = null
@@ -158,6 +160,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="summary" class="flex flex-wrap gap-3 text-sm">
+      <span class="font-medium">No escritório</span>
       <span>Ativos: {{ summary.active }}</span>
       <span>Adiados: {{ summary.deferred }}</span>
       <span>Atenção: {{ summary.attention }}</span>
