@@ -3,6 +3,7 @@
 namespace App\Erp;
 
 use App\Enums\Erp\ErpCompanyRole;
+use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
@@ -11,13 +12,15 @@ use App\Models\User;
 use App\Support\AccessTransaction;
 use Closure;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ErpCompanyAuthorization
 {
     /**
-     * @return array{kind: 'direct', membership: ErpCompanyMembership}|array{kind: 'delegated', delegation: ErpOfficeDelegation, office_id: int}|null
+     * @return array{kind: 'direct', membership: ErpCompanyMembership}|array{kind: 'delegated', delegation: ErpOfficeDelegation, office_id: int, office_role: string}|null
      */
-    public function resolveAccess(User $user, ErpCompany $company, ?int $officeAccountId): ?array
+    public function resolveAccess(User $user, ErpCompany $company, ?int $officeAccountId, bool $lockForWrite = false): ?array
     {
         if ($company->status !== 'active') {
             return null;
@@ -44,26 +47,38 @@ class ErpCompanyAuthorization
             return null;
         }
 
-        $officeMembership = AccountMembership::query()
-            ->join('accounts', 'accounts.id', '=', 'account_memberships.account_id')
-            ->where('account_memberships.account_id', $officeAccountId)
-            ->where('account_memberships.user_id', $user->id)
-            ->where('accounts.status', 'active')
-            ->first(['account_memberships.*']);
-        if (! $officeMembership) {
+        $office = $lockForWrite
+            ? app(CompanyAccessFence::class)->acquire($officeAccountId)
+            : Account::query()->find($officeAccountId);
+        if (! $office || $office->status !== 'active') {
             return null;
         }
-        if ($officeMembership->role === 'user') {
+        $membershipQuery = AccountMembership::query()
+            ->where('account_id', $officeAccountId)
+            ->where('user_id', $user->id);
+        if ($lockForWrite) {
+            $membershipQuery->lockForUpdate();
+        }
+        $officeMembership = $membershipQuery->first();
+        if (! $officeMembership || ! in_array($officeMembership->role, ['admin', 'operador', 'user'], true)) {
+            return null;
+        }
+        $delegation->refresh();
+        if (! $delegation->isActive() || (int) $delegation->account_id !== $officeAccountId) {
             return null;
         }
 
-        return ['kind' => 'delegated', 'delegation' => $delegation, 'office_id' => $officeAccountId];
+        return ['kind' => 'delegated', 'delegation' => $delegation, 'office_id' => $officeAccountId, 'office_role' => $officeMembership->role];
     }
 
     /** @param Closure(): void|null $assertOwnership Contextual fence supplied by HTTP callers. */
     public function acceptDelegation(ErpCompany $company, User $owner, int $officeAccountId, array $permissionAllowlist, ?Closure $assertOwnership = null): ErpOfficeDelegation
     {
         return DB::transaction(function () use ($company, $owner, $officeAccountId, $permissionAllowlist, $assertOwnership): ErpOfficeDelegation {
+            Validator::make(['permissions' => $permissionAllowlist], [
+                'permissions' => ['array'],
+                'permissions.*' => ['string', Rule::in(ErpCompanyPermissions::delegatedNames())],
+            ])->validate();
             AccessTransaction::boundLockWaits();
             $company = ErpCompany::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
             $this->assertOwner($company, $owner);

@@ -36,9 +36,9 @@ final class ErpCompanyAdministration
             if ($ownerOnly) {
                 $this->assertOwner($request);
             } else {
-                $access = app(ErpCompanyAuthorization::class)->resolveAccess($request->user(), $company, $context->delegatedOfficeId);
+                $access = app(ErpCompanyAuthorization::class)->resolveAccess($request->user(), $company, $context->delegatedOfficeId, true);
                 abort_unless($access !== null && $access['kind'] === $context->accessKind, 403);
-                $fresh = new CurrentCompany($company, $access['kind'], $access['membership'] ?? null, $access['delegation'] ?? null, $access['office_id'] ?? null);
+                $fresh = new CurrentCompany($company, $access['kind'], $access['membership'] ?? null, $access['delegation'] ?? null, $access['office_id'] ?? null, $access['office_role'] ?? null);
                 $permission = (string) $request->route()->getName();
                 if ($fresh->membership?->role === 'operator') {
                     abort_unless(in_array($permission, $fresh->membership->action_permissions ?? [], true), 403, 'Permissão insuficiente');

@@ -45,7 +45,7 @@ class ResolveCompany
                 abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));
             }
 
-            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId);
+            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId, ! $request->isMethodSafe() || $request->routeIs('erp.operations.lookup'));
             if ($access === null) {
                 abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
             }
@@ -100,6 +100,7 @@ class ResolveCompany
                 $access['kind'] === 'direct' ? $access['membership'] : null,
                 $access['kind'] === 'delegated' ? $access['delegation'] : null,
                 $access['kind'] === 'delegated' ? $access['office_id'] : null,
+                $access['kind'] === 'delegated' ? $access['office_role'] : null,
             );
             $request->attributes->set(CurrentCompany::class, $context);
             try {

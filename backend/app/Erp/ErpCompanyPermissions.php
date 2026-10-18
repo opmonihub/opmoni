@@ -155,6 +155,40 @@ final class ErpCompanyPermissions
     ];
 
     /** @return list<string> */
+    public static function delegatedNames(): array
+    {
+        return array_values(array_diff(self::names(), ['erp.accounting-mappings.index', 'erp.accounting-deliveries.store']));
+    }
+
+    /** @param list<string> $allowlist */
+    public static function delegatedAllows(string $permission, bool $write, array $allowlist, ?string $officeRole): bool
+    {
+        if (! in_array($officeRole, ['admin', 'operador', 'user'], true)
+            || ($write && $officeRole === 'user')
+            || ! in_array($permission, self::delegatedNames(), true)
+            || self::ACTIONS[$permission] !== $write) {
+            return false;
+        }
+        if ($permission === 'erp.read') {
+            return in_array('erp.read', $allowlist, true) || in_array('*', $allowlist, true);
+        }
+        $family = preg_replace('/\.[^.]+$/', '', $permission);
+        foreach (['*', $permission, $family.'.*', $family.($write ? '.write' : '.read'), $write ? 'erp.write' : 'erp.read'] as $candidate) {
+            if (in_array($candidate, $allowlist, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param list<string> $allowlist @return list<string> */
+    public static function delegatedEffective(array $allowlist, ?string $officeRole): array
+    {
+        return array_values(array_filter(self::delegatedNames(), fn (string $permission): bool => self::delegatedAllows($permission, self::ACTIONS[$permission], $allowlist, $officeRole)));
+    }
+
+    /** @return list<string> */
     public static function names(): array
     {
         return array_keys(self::ACTIONS);

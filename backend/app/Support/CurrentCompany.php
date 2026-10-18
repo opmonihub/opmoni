@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Erp\ErpCompanyPermissions;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpOfficeDelegation;
@@ -15,6 +16,7 @@ class CurrentCompany
         public readonly ?ErpCompanyMembership $membership,
         public readonly ?ErpOfficeDelegation $delegation,
         public readonly ?int $delegatedOfficeId,
+        public readonly ?string $delegatedOfficeRole = null,
     ) {}
 
     public static function fromRequest(?Request $request = null): self
@@ -32,7 +34,7 @@ class CurrentCompany
             return $this->membership->effectivePermissions();
         }
         if ($this->accessKind === 'delegated' && $this->delegation) {
-            return $this->delegation->effectivePermissions();
+            return ErpCompanyPermissions::delegatedEffective($this->delegation->effectivePermissions(), $this->delegatedOfficeRole);
         }
 
         return [];
@@ -40,7 +42,12 @@ class CurrentCompany
 
     public function assertPermission(string $permission, bool $write = false): void
     {
-        if ($write && ($this->accessKind === 'delegated' || ! $this->membership?->roleEnum()->canMutate())) {
+        if ($this->accessKind === 'delegated') {
+            abort_unless(ErpCompanyPermissions::delegatedAllows($permission, $write, $this->delegation?->effectivePermissions() ?? [], $this->delegatedOfficeRole), 403, 'Permissão insuficiente');
+
+            return;
+        }
+        if ($write && ! $this->membership?->roleEnum()->canMutate()) {
             abort(403, 'Permissão insuficiente');
         }
         $permissions = $this->permissions();
@@ -56,8 +63,5 @@ class CurrentCompany
     public function assertCanMutate(): void
     {
         $this->assertPermission((string) request()->route()?->getName(), true);
-        if ($this->accessKind === 'delegated') {
-            abort(response()->json(['code' => 'forbidden', 'message' => 'Acesso delegado somente leitura'], 403));
-        }
     }
 }

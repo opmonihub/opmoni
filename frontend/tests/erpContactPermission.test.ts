@@ -58,6 +58,14 @@ function fill(view: ReturnType<typeof contacts>) {
 }
 
 describe('Contact mutation permissions and input preservation', () => {
+  it('allows delegated creation only with the effective exact action from the server', async (t) => {
+    const view = contacts({ access_kind: 'delegated', role: 'delegated', permissions: ['erp.contacts.store'] })
+    t.after(view.close)
+    assert.ok(createForm(view))
+    fill(view)
+    await view.state.createContact()
+    assert.equal(view.writes.length, 1)
+  })
   for (const grants of [['*'], ['erp.contacts.store'], ['erp.contacts.*'], ['erp.contacts.write'], ['erp.write']]) {
     it(`allows a direct owner with actual server grants ${grants}`, async (t) => {
       const view = contacts({ permissions: grants })

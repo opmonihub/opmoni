@@ -12,9 +12,10 @@ const { currentCompany, currentAccount } = useAuth()
 const canCreateContact = computed(() => {
   const company = currentCompany.value
   return company?.status === 'active'
-    && company.access_kind === 'direct'
-    && ['owner', 'manager', 'operator'].includes(company.role)
-    && company.permissions.some(permission => ['*', 'erp.contacts.store', 'erp.contacts.*', 'erp.contacts.write', 'erp.write'].includes(permission))
+    && (company.access_kind === 'delegated'
+      ? company.permissions.includes('erp.contacts.store')
+      : ['owner', 'manager', 'operator'].includes(company.role)
+        && company.permissions.some(permission => ['*', 'erp.contacts.store', 'erp.contacts.*', 'erp.contacts.write', 'erp.write'].includes(permission)))
 })
 const creating = ref(false)
 const form = reactive({ name: '', tax_id: '', is_customer: true, is_supplier: false })

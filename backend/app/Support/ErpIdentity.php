@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\Erp\ErpCompanyRole;
 use App\Erp\ErpCompanyAuthorization;
+use App\Erp\ErpCompanyPermissions;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpOfficeDelegation;
@@ -72,9 +73,7 @@ class ErpIdentity
                 'status' => $delegation->status,
                 'access_kind' => 'delegated',
                 'role' => 'delegated',
-                'permissions' => is_array($delegation->permission_allowlist)
-                    ? array_values(array_map(strval(...), $delegation->permission_allowlist))
-                    : ['erp.read'],
+                'permissions' => ErpCompanyPermissions::delegatedEffective($access['delegation']->effectivePermissions(), $access['office_role']),
                 'delegated_office_id' => (int) $delegation->account_id,
             ];
         }
@@ -103,7 +102,7 @@ class ErpIdentity
         $sessionKind = $request->session()->get('current_company_access_kind');
         $sessionOffice = $request->session()->get('current_company_office_id');
         if ($access['kind'] === 'delegated') {
-            if ($sessionKind !== 'delegated' || (int) $sessionOffice !== $access['office_id']) {
+            if ($sessionKind !== 'delegated' || (int) $sessionOffice !== $access['office_id'] || (int) $request->session()->get('current_company_delegation_id') !== (int) $access['delegation']->id) {
                 return null;
             }
         } elseif ($sessionKind === 'delegated') {
@@ -130,7 +129,7 @@ class ErpIdentity
             'status' => $company->status,
             'access_kind' => 'delegated',
             'role' => 'delegated',
-            'permissions' => $access['delegation']->effectivePermissions(),
+            'permissions' => ErpCompanyPermissions::delegatedEffective($access['delegation']->effectivePermissions(), $access['office_role']),
             'delegated_office_id' => $access['office_id'],
         ];
     }

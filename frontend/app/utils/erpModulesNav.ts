@@ -322,6 +322,18 @@ export const erpModulePageContracts: readonly ErpModulePageContract[] = [
   erpRelatoriosContract
 ]
 
+const effectiveReadFamilies: Partial<Record<ErpPermission, readonly string[]>> = {
+  [erpPermissions.catalogRead]: ['contacts', 'products', 'units', 'categories', 'brands', 'price-groups', 'discount-rules', 'tax-rates', 'operation-natures', 'carriers', 'vehicles', 'drivers', 'catalog'],
+  [erpPermissions.financeRead]: ['financial-accounts', 'obligations', 'payments'],
+  [erpPermissions.cashRead]: ['cash-registers', 'cash-sessions'],
+  [erpPermissions.purchasesRead]: ['purchases', 'purchase-returns'],
+  [erpPermissions.stockRead]: ['stock'],
+  [erpPermissions.salesRead]: ['quotes', 'orders', 'sales', 'sale-returns'],
+  [erpPermissions.fiscalRead]: ['fiscal'],
+  [erpPermissions.accountingRead]: ['accounting-deliveries'],
+  [erpPermissions.reportsRead]: ['reports']
+}
+
 export function erpCompanyHasPermission(grants: readonly string[] | undefined, permission: ErpPermission | string): boolean {
   if (!grants?.length)
     return false
@@ -331,7 +343,9 @@ export function erpCompanyHasPermission(grants: readonly string[] | undefined, p
     return true
   if (permission.endsWith('.read') && grants.includes(erpPermissions.read))
     return true
-  return false
+  const families = effectiveReadFamilies[permission as ErpPermission]
+  return !!families && grants.some(grant => /\.(index|show|xml|pdf)$/.test(grant)
+    && families.some(family => grant.startsWith(`erp.${family}.`)))
 }
 
 export function erpVisibleNavModules(grants: readonly string[] | undefined): readonly ErpNavModule[] {
