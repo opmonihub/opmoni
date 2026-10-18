@@ -83,7 +83,7 @@ class SerproMailboxEffectsTest extends BusinessTestCase
             'certificate_password_encrypted' => Crypt::encryptString('senha'),
             'contratante_numero' => '12345678000195', 'certificate_valid_until' => now()->addYear(),
         ]);
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-secret', 'jwt-secret', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-secret', 'jwt-secret', 2008), 2008);
         Http::fake(['*/integra-contador/v1/Consultar' => function () {
             request()->attributes->get('access.session_lock')->forceRelease();
 
@@ -110,7 +110,6 @@ class SerproMailboxEffectsTest extends BusinessTestCase
         SerproAuthorizationTerm::query()->withoutGlobalScope('account')->delete();
         AccountCertificate::query()->withoutGlobalScope('account')->delete();
         SerproConnection::query()->delete();
-        Cache::forget('serpro:token-pair');
         Http::fake();
         $this->actingAs($actor)->postJson($uri, ['ciencia' => true])->assertConflict()->assertJsonPath('code', 'operation_confirmed');
         $this->actingAs($actor)->postJson($uri.'/reconcile')->assertOk()

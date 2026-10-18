@@ -2405,6 +2405,7 @@ class SerproAuthorizationTermTest extends BusinessTestCase
             'certificate_encrypted' => Crypt::encryptString($this->pfxDaPlataforma()),
             'certificate_password_encrypted' => Crypt::encryptString(self::SENHA),
             'certificate_subject' => 'CN=Plataforma de Teste:'.self::PLATAFORMA,
+            'certificate_valid_from' => now()->subYear(),
             'contratante_numero' => self::PLATAFORMA,
             'contratante_tipo' => 2,
             'certificate_valid_until' => now()->addYear(),
@@ -2513,7 +2514,7 @@ class SerproAuthorizationTermTest extends BusinessTestCase
 
     private function fakeTokenAutenticado(): void
     {
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
     }
 
     /**
@@ -2644,7 +2645,7 @@ class SerproAuthorizationTermTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificado = openssl_csr_sign($csr, null, $chave, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificado = $this->signScenarioCertificate($csr, $chave);
         $this->assertNotFalse($certificado);
 
         $pfx = '';

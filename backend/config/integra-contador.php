@@ -8,6 +8,11 @@ return [
      */
     'auth_url' => env('SERPRO_AUTH_URL', 'https://autenticacao.sapi.serpro.gov.br/authenticate'),
 
+    'auth_trusted_hosts' => array_filter(explode(',', env('SERPRO_AUTH_TRUSTED_HOSTS', 'autenticacao.sapi.serpro.gov.br'))),
+    'diagnostic_connect_timeout' => (float) env('SERPRO_DIAGNOSTIC_CONNECT_TIMEOUT', 3),
+    'diagnostic_timeout' => (float) env('SERPRO_DIAGNOSTIC_TIMEOUT', 8),
+    'diagnostic_proxy_timeout' => 15,
+
     'gateway_url' => env('SERPRO_GATEWAY_URL', 'https://gateway.apiserpro.serpro.gov.br/integra-contador/v1'),
 
     'trial_gateway_url' => env('SERPRO_TRIAL_GATEWAY_URL', 'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial/v1'),
@@ -27,7 +32,7 @@ return [
     /** Segundos de margem sobre a validade informada antes de considerar o token vencido. */
     'token_margin' => 300,
 
-    'temp_dir' => storage_path('app/private/serpro-tmp'),
+    'temp_dir' => env('SERPRO_TEMP_DIR', storage_path('app/private/serpro-tmp')),
 
     /*
      * A régua de consumo do contratante: o gateway cobra por chamada, e o

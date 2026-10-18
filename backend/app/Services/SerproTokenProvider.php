@@ -3,34 +3,44 @@
 namespace App\Services;
 
 use App\Enums\SerproFailure;
-use App\Models\SerproConnection;
 use App\Support\ExternalHttpBudget;
 use App\Support\HttpPkcs12ClientOptions;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
 
 final class SerproTokenProvider
 {
     private const CACHE_KEY = 'serpro:token-pair';
 
-    public function __construct(private SerproCertificateMaterializer $materializer) {}
+    public function __construct(private SerproCertificateMaterializer $materializer, private SerproCredentialLifecycle $lifecycle) {}
 
     public function pair(?ExternalHttpBudget $budget = null): SerproTokenPair
     {
         $budget?->assertAvailable();
-        $cached = Cache::get(self::CACHE_KEY);
+        $snapshot = $this->lifecycle->snapshot();
+        $cached = $snapshot ? Cache::get($this->cacheKey($snapshot)) : null;
 
         if ($cached instanceof SerproTokenPair) {
             return $cached;
         }
 
-        return $this->authenticate($budget);
+        return $this->authenticate($budget, $snapshot);
+    }
+
+    private function cacheKey(SerproCredentialSnapshot $snapshot): string
+    {
+        return self::CACHE_KEY.':'.$snapshot->generation();
     }
 
     public function forget(): void
     {
+        $snapshot = $this->lifecycle->snapshot();
+        if ($snapshot !== null) {
+            Cache::forget($this->cacheKey($snapshot));
+        }
         Cache::forget(self::CACHE_KEY);
     }
 
@@ -75,11 +85,14 @@ final class SerproTokenProvider
      */
     public function verify(): void
     {
+        $snapshot = $this->lifecycle->snapshot();
         try {
-            $this->authenticate();
+            $this->authenticate(null, $snapshot);
         } catch (SerproException $exception) {
             if ($this->discardsCachedPair($exception->failure)) {
-                $this->forget();
+                if ($snapshot !== null) {
+                    Cache::forget($this->cacheKey($snapshot));
+                }
             }
 
             throw $exception;
@@ -97,9 +110,9 @@ final class SerproTokenProvider
         return $failure === SerproFailure::DoNotRetry;
     }
 
-    private function authenticate(?ExternalHttpBudget $budget = null): SerproTokenPair
+    private function authenticate(?ExternalHttpBudget $budget = null, ?SerproCredentialSnapshot $snapshot = null): SerproTokenPair
     {
-        $connection = SerproConnection::current();
+        $connection = $snapshot ?? $this->lifecycle->snapshot();
 
         if ($connection === null) {
             throw new SerproException(
@@ -112,7 +125,17 @@ final class SerproTokenProvider
         // A identidade é conferida antes de qualquer autenticação: pedir token
         // com um certificado que não é o do contratante gasta uma chamada
         // recusada para descobrir o que já se sabe localmente.
-        $connection->assertIdentity();
+        try {
+            if (! $connection->hasUsableCertificate() || app(SerproCertificateIdentity::class)->document(
+                $connection->certificateBytes() ?? '', $connection->certificatePassword() ?? '',
+            ) !== $connection->document) {
+                throw new ValidationException(validator([], []));
+            }
+        } catch (ValidationException) {
+            throw new SerproException('Certificado do contratante inválido.', SerproFailure::DoNotRetry, 0);
+        } catch (DecryptException) {
+            throw new SerproException('Certificado guardado ilegível.', SerproFailure::NotSent, 0);
+        }
 
         return $this->materializer->withCertificate(
             $connection,
@@ -130,7 +153,7 @@ final class SerproTokenProvider
      *
      * @throws SerproException
      */
-    private function secretOf(SerproConnection $connection): string
+    private function secretOf(SerproCredentialSnapshot $connection): string
     {
         try {
             return $connection->consumerSecret();
@@ -143,7 +166,7 @@ final class SerproTokenProvider
         }
     }
 
-    private function request(SerproConnection $connection, string $certificatePath, ?ExternalHttpBudget $budget = null): SerproTokenPair
+    private function request(SerproCredentialSnapshot $connection, string $certificatePath, ?ExternalHttpBudget $budget = null): SerproTokenPair
     {
         // O segredo não ganha nome: ele é lido, entregue ao `curl` e morre com o
         // `PendingRequest` que o carrega, sem atravessar o tratamento da
@@ -154,7 +177,7 @@ final class SerproTokenProvider
         try {
             $budget?->beforeSend();
             $response = Http::asForm()
-                ->withBasicAuth($connection->consumer_key, $this->secretOf($connection))
+                ->withBasicAuth($connection->consumerKey(), $this->secretOf($connection))
                 ->withHeaders(['Role-Type' => 'TERCEIROS'])
                 ->withOptions(HttpPkcs12ClientOptions::forPath(
                     $certificatePath,
@@ -195,7 +218,10 @@ final class SerproTokenProvider
             (int) data_get($payload, 'expires_in', 0),
         );
 
-        Cache::put(self::CACHE_KEY, $pair, $pair->ttl());
+        if (! $this->lifecycle->isCurrent($connection)) {
+            throw new SerproException('A conexão mudou durante a autenticação.', SerproFailure::NotSent, 0);
+        }
+        Cache::put($this->cacheKey($connection), $pair, $pair->ttl());
 
         return $pair;
     }

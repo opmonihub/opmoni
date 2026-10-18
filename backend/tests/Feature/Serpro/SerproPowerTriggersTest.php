@@ -231,7 +231,7 @@ class SerproPowerTriggersTest extends BusinessTestCase
             'document' => '12345678000195',
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         return $account;
     }

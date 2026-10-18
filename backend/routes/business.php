@@ -307,5 +307,5 @@ Route::group([], function (): void {
      * que a cota gasto por uma sessão de teste seja irrelevante.
      */
     Route::post('serpro/connectivity', AdminSerproConnectivityController::class)
-        ->middleware([RequireSuperAdmin::class, 'throttle:6,1']);
+        ->middleware([RequireSuperAdmin::class, 'throttle:serpro-connectivity']);
 });

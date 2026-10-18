@@ -381,7 +381,7 @@ class SerproConnectionApiTest extends BusinessTestCase
             $this->fail('Uma identidade divergente deve levantar SerproException na autenticação.');
         } catch (SerproException $exception) {
             $this->assertSame(SerproFailure::DoNotRetry, $exception->failure);
-            $this->assertStringContainsString(self::CNPJ, $exception->getMessage());
+            $this->assertSame('Certificado do contratante inválido.', $exception->getMessage());
         }
 
         Http::assertNothingSent();

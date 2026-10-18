@@ -390,7 +390,7 @@ class SerproMonitoringApiTest extends BusinessTestCase
         ]);
         $member = $this->memberOf($account, 'operador');
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
         Http::fake([
             'autenticacao.sapi.serpro.gov.br/*' => Http::response([
                 'expires_in' => 2008,
@@ -639,7 +639,7 @@ class SerproMonitoringApiTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

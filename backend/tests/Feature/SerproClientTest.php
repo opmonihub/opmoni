@@ -66,7 +66,7 @@ class SerproClientTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';
@@ -88,7 +88,7 @@ class SerproClientTest extends BusinessTestCase
 
     private function cacheTokenPair(): void
     {
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
     }
 
     public function test_budget_propagates_to_auth_and_service_and_arm_only_precedes_service(): void

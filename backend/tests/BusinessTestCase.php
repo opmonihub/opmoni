@@ -4,11 +4,15 @@ namespace Tests;
 
 use App\Models\AccountMembership;
 use App\Models\User;
+use App\Services\SerproCredentialLifecycle;
 use App\Tenant\CurrentTenant;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Tests\Concerns\SignsScenarioCertificate;
 
 abstract class BusinessTestCase extends TestCase
 {
+    use SignsScenarioCertificate;
+
     /** @var array<int, int> */
     private array $selectedBusinessAccounts = [];
 
@@ -17,6 +21,15 @@ abstract class BusinessTestCase extends TestCase
         parent::setUp();
         config(['access.ingress_key' => 'business-test-key', 'access.origin' => 'http://localhost:3000', 'cache.default' => 'array', 'session.driver' => 'array', 'session.store' => null]);
         $this->withHeaders(['X-Opmoni-Ingress-Key' => 'business-test-key', 'X-Opmoni-Client-IP' => '127.0.0.1', 'X-Opmoni-Client-Proto' => 'http', 'Origin' => 'http://localhost:3000']);
+    }
+
+    /** Seed operational fixtures against the exact captured credential generation. */
+    protected function serproTokenCacheKey(): string
+    {
+        $snapshot = app(SerproCredentialLifecycle::class)->snapshot();
+        $this->assertNotNull($snapshot, 'Create the connection before seeding its operational token.');
+
+        return 'serpro:token-pair:'.$snapshot->generation();
     }
 
     protected function selectBusinessAccount(User $user, int $accountId): User

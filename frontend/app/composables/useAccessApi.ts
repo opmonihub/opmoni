@@ -1,4 +1,5 @@
 import type { $Fetch, FetchOptions, ResponseType } from 'ofetch'
+import { multipartTransport } from '#shared/utils/ingress'
 import type { Identity } from '#shared/types/access'
 import { tenantApiPath, tenantMembership } from '#shared/utils/business'
 import { erpCompanySelection, erpOperatingApiPath } from '#shared/utils/erp'
@@ -33,6 +34,7 @@ export function useAccessApi() {
       : []
     return await request<T, R>(`/api/v1${path}`, {
       ...options,
+      ...multipartTransport(options.method, options.body) as Pick<FetchOptions<R>, 'method' | 'body'>,
       // Nitro 2 fetchWithEvent spreads init.headers, so use an enumerable record.
       headers: Object.fromEntries(headers.entries()),
       retry: 0,

@@ -99,7 +99,7 @@ class SendWhatsAppDocumentJobTest extends BusinessTestCase
         ]);
 
         // O token do Integra Contador já vale: o job não paga autenticação.
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
     }
 
     protected function tearDown(): void
@@ -586,7 +586,7 @@ class SendWhatsAppDocumentJobTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

@@ -401,7 +401,7 @@ class SerproSyncJobsTest extends BusinessTestCase
 
         // O par de tokens vai em cache: sem a semente a autenticação sairia
         // como uma segunda chamada HTTP e `assertSentCount` contaria os dois.
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         // Nenhuma autorização pré-semeada: é o oráculo da execução que grava
         // a família `00006`, e é ela que torna a caixa postal elegível.
@@ -507,7 +507,7 @@ class SerproSyncJobsTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

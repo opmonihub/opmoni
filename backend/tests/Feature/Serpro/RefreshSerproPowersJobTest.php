@@ -233,7 +233,7 @@ class RefreshSerproPowersJobTest extends BusinessTestCase
             'document' => '12345678000195',
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $client = Client::factory()->company()->create([
             'account_id' => $account->getKey(),
@@ -284,7 +284,7 @@ class RefreshSerproPowersJobTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

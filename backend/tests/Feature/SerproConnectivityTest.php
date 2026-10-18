@@ -600,7 +600,7 @@ class SerproConnectivityTest extends BusinessTestCase
         });
     }
 
-    public function test_o_par_recem_emitido_fica_em_cache_para_a_execucao_seguinte(): void
+    public function test_o_diagnostico_descarta_tokens_e_a_execucao_seguinte_autentica(): void
     {
         Http::fake([self::AUTHENTICATION => Http::response([
             'expires_in' => 2008,
@@ -614,16 +614,9 @@ class SerproConnectivityTest extends BusinessTestCase
             ->assertOk()
             ->assertJsonPath('data.ok', true);
 
-        $pair = Cache::get('serpro:token-pair');
-
-        $this->assertInstanceOf(SerproTokenPair::class, $pair);
-        $this->assertSame('jwt-1', $pair->jwtToken());
-
-        // Testar a conexão não pode custar uma autenticação à próxima execução
-        // de verdade: o par emitido aqui é o que a sincronização reaproveita.
+        $this->assertNull(Cache::get('serpro:token-pair'));
         resolve(SerproTokenProvider::class)->pair();
-
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_o_par_em_cache_nao_e_aceito_como_teste_de_conectividade(): void

@@ -10,8 +10,11 @@ use App\Services\Fiscal\Capture\FiscalConnectorRegistry;
 use App\Support\AbsoluteSessionHandler;
 use App\Support\ErpCompanyContext;
 use App\Tenant\CurrentTenant;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
 
@@ -33,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('serpro-connectivity', fn (Request $request): array => [
+            Limit::perMinute(6)->by('serpro-actor:'.$request->user()->getAuthIdentifier()),
+            Limit::perMinute(6)->by('serpro-ip:'.$request->attributes->get('access.client_ip')),
+        ]);
         Account::observe(AccountObserver::class);
         foreach (glob(app_path('Policies/*Policy.php')) as $policyFile) {
             $name = basename($policyFile, 'Policy.php');

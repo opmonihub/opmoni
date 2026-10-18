@@ -84,7 +84,7 @@ class SerproPgdasHomologationProbeHttpTest extends BusinessTestCase
             '*/integra-contador/v1/Consultar' => Http::response($fixture),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $report = resolve(SerproPgdasHomologationProbe::class)->run(
             $account->getKey(),
@@ -120,7 +120,7 @@ class SerproPgdasHomologationProbeHttpTest extends BusinessTestCase
             ], 429),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $report = resolve(SerproPgdasHomologationProbe::class)->run($account->getKey(), self::CANARY, 2018);
 
@@ -149,7 +149,7 @@ class SerproPgdasHomologationProbeHttpTest extends BusinessTestCase
             ], 400),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $report = resolve(SerproPgdasHomologationProbe::class)->run($account->getKey(), self::CANARY, 2018);
 
@@ -173,7 +173,7 @@ class SerproPgdasHomologationProbeHttpTest extends BusinessTestCase
             '*/integra-contador/v1/Consultar' => Http::response(['status' => 200, 'dados' => '{}', 'mensagens' => []]),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $report = resolve(SerproPgdasHomologationProbe::class)->run($account->getKey(), self::CANARY, 2018);
 
@@ -256,7 +256,7 @@ class SerproPgdasHomologationProbeHttpTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

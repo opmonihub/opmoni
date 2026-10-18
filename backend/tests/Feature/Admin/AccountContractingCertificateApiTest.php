@@ -158,7 +158,7 @@ class AccountContractingCertificateApiTest extends BusinessTestCase
         if ($kind === 'future') {
             $this->travel(-2)->days();
         }
-        $this->put($this->url($account), ['certificate' => $bad, 'password' => $kind === 'password' ? 'wrong' : 'pw'], ['Accept' => 'application/json'])->assertUnprocessable();
+        $this->put($this->url($account), ['certificate' => $bad, 'password' => $kind === 'password' ? 'wrong' : 'pw'], ['Accept' => 'application/json'])->assertStatus($kind === 'oversized' ? 413 : 422);
         $this->travelBack();
         $this->assertSame(1, AccountContractingCertificate::sole()->revision);
         $this->assertTrue(app(SerproCredentialLifecycle::class)->isCurrent($snapshot));

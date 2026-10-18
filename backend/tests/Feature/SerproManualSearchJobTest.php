@@ -491,7 +491,7 @@ class SerproManualSearchJobTest extends BusinessTestCase
 
         // O par de tokens vai em cache: sem a semente a autenticação sairia
         // como uma segunda chamada HTTP.
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $client = Client::factory()->company()->create([
             'account_id' => $account->getKey(),
@@ -576,7 +576,7 @@ class SerproManualSearchJobTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

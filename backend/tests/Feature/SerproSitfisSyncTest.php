@@ -52,7 +52,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
     {
         [$account, $client, $run] = $this->cenario();
         $tentativas = 0;
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request) use ($passo, &$tentativas): PromiseInterface {
             if (($request->data()['pedidoDados']['idServico'] ?? '') !== $passo) {
                 return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => [], 'responseId' => 'protocolo']);
@@ -78,7 +78,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
     {
         [$account, $client, $run] = $this->cenario();
         $tentativas = 0;
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request) use ($passo, &$tentativas): PromiseInterface {
             if (($request->data()['pedidoDados']['idServico'] ?? '') !== $passo) {
                 return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => [], 'responseId' => 'protocolo']);
@@ -109,7 +109,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
     {
         [$account, $client, $run] = $this->cenario();
         $emissoes = 0;
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request) use ($status, $sucessoSitfis, &$emissoes): PromiseInterface {
             if ($request->data()['pedidoDados']['idServico'] === 'SOLICITARPROTOCOLO91') {
                 return Http::response(['status' => 200, 'dados' => ['protocoloRelatorio' => self::PROTOCOLO], 'mensagens' => []]);
@@ -143,7 +143,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
         Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
             $elapsed += (int) $duration->totalMilliseconds;
         });
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request, array $options) use (&$elapsed, &$calls): PromiseInterface {
             $this->assertLessThanOrEqual(70_000 - $elapsed, 4 * $options['timeout'] * 1000 + 1000);
             $calls++;
@@ -180,7 +180,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
         Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
             $elapsed += (int) $duration->totalMilliseconds;
         });
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request, array $options) use (&$elapsed, &$emissions): PromiseInterface {
             $this->assertLessThanOrEqual(70_000 - $elapsed, 4 * $options['timeout'] * 1000 + 1000);
             $elapsed += 1000;
@@ -222,7 +222,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
         Sleep::whenFakingSleep(function (CarbonInterval $duration) use (&$elapsed): void {
             $elapsed += (int) $duration->totalMilliseconds;
         });
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function () use (&$elapsed, &$calls): PromiseInterface {
             $elapsed += 1000;
             $calls++;
@@ -280,7 +280,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
     {
         [$account, $client, $run] = $this->cenario();
         $emissions = 0;
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
         Http::fake(function (Request $request) use (&$emissions): PromiseInterface {
             if (($request->data()['pedidoDados']['idServico'] ?? '') === 'SOLICITARPROTOCOLO91') {
                 return Http::response(['status' => 200, 'dados' => json_encode(['protocoloRelatorio' => self::PROTOCOLO]), 'mensagens' => []]);
@@ -355,7 +355,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
             },
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
 
         $result = resolve(SerproSitfisSequence::class)->fetch(
             $run->getKey(),
@@ -441,7 +441,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
             },
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
 
         resolve(SerproSitfisSequence::class)->fetch(
             $run->getKey(),
@@ -474,7 +474,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
             ]),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
 
         try {
             resolve(SerproSitfisSequence::class)->fetch(
@@ -525,7 +525,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
             },
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
 
         try {
             resolve(SerproSitfisSequence::class)->fetch(
@@ -579,7 +579,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
             },
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 600);
 
         try {
             resolve(SerproSitfisSequence::class)->fetch(
@@ -666,7 +666,7 @@ class SerproSitfisSyncTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

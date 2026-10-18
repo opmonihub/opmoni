@@ -207,7 +207,7 @@ class SerproMailboxReadTest extends BusinessTestCase
     public function test_diagnostico_lease_perdido_na_autenticacao_impede_envio_de_msgdetalhamento62(): void
     {
         [$account, $client] = $this->cenario();
-        Cache::forget('serpro:token-pair');
+        Cache::forget($this->serproTokenCacheKey());
         $autenticacaoInvalidouLease = false;
         $this->fakeLeituraComSucesso();
 
@@ -361,13 +361,13 @@ class SerproMailboxReadTest extends BusinessTestCase
     public function test_pending_failure_before_service_send_allows_fresh_attempt(): void
     {
         [$account, $client] = $this->cenario();
-        Cache::forget('serpro:token-pair');
+        Cache::forget($this->serproTokenCacheKey());
         Http::fake([(string) config('integra-contador.auth_url') => Http::failedConnection()]);
         $actor = $this->memberOf($account, 'operador');
         $this->actingAs($actor)->postJson($this->rota($client, 82838), ['ciencia' => true])
             ->assertStatus(502)->assertJsonPath('code', 'operation_before_send');
         $this->assertSame('pending', resolve(ExternalEffectJournalConnection::class)->connection()->table('external_effect_journal')->sole()->state);
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
         $this->fakeLeituraComSucesso();
         $this->actingAs($actor)->postJson($this->rota($client, 82838), ['ciencia' => true])->assertOk();
     }
@@ -618,7 +618,7 @@ class SerproMailboxReadTest extends BusinessTestCase
             'unread' => true,
         ]]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         return [$account, $client];
     }
@@ -734,7 +734,7 @@ class SerproMailboxReadTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';

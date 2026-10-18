@@ -115,7 +115,7 @@ class SerproProbePgdasCommandTest extends BusinessTestCase
             ]),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $exit = Artisan::call('serpro:probe-pgdas', ['--account' => $account->getKey()]);
 
@@ -140,7 +140,7 @@ class SerproProbePgdasCommandTest extends BusinessTestCase
             ], 429),
         ]);
 
-        Cache::put('serpro:token-pair', new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
+        Cache::put($this->serproTokenCacheKey(), new SerproTokenPair('access-1', 'jwt-1', 2008), 2008);
 
         $exit = Artisan::call('serpro:probe-pgdas', ['--account' => $account->getKey()]);
 
@@ -216,7 +216,7 @@ class SerproProbePgdasCommandTest extends BusinessTestCase
         );
         $this->assertNotFalse($csr);
 
-        $certificate = openssl_csr_sign($csr, null, $key, 365, array_merge(['digest_alg' => 'sha256'], $config));
+        $certificate = $this->signScenarioCertificate($csr, $key);
         $this->assertNotFalse($certificate);
 
         $pfx = '';
