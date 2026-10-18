@@ -470,6 +470,10 @@ watch(contextKey, () => {
 }, { immediate: true, flush: 'sync' })
 
 watch(clientQuery, (query) => {
+  if (searchingClients.value && query.trim() !== submittedClientQuery.value) {
+    clientSearchGeneration++
+    searchingClients.value = false
+  }
   const matchesLastSearch = query.trim() === clientResultsQuery.value
   if (!matchesLastSearch) {
     clientResultsStale.value = clients.value.length > 0
@@ -552,6 +556,20 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
             </UBadge>
           </div>
           <div v-if="ownerState.delegation.status === 'active'" class="space-y-3">
+            <h3 class="font-medium">
+              Aprovação pelo escritório
+            </h3>
+            <p v-if="!ownerState.mappings.length" class="text-muted text-sm" role="status">
+              Aguardando aprovação pelo escritório. Nenhum vínculo foi aprovado para esta delegação.
+            </p>
+            <ul v-else class="space-y-2" aria-label="Vínculos contábeis dos estabelecimentos">
+              <li v-for="mapping in ownerState.mappings" :key="mapping.id" class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>Estabelecimento #{{ mapping.erp_establishment_id }} · Revisão {{ mapping.revision }}</span>
+                <UBadge :color="mapping.status === 'active' ? 'success' : 'neutral'" variant="subtle">
+                  {{ mapping.status === 'active' ? 'Aprovado' : mapping.status === 'revoked' ? 'Revogado' : 'Aguardando aprovação' }}
+                </UBadge>
+              </li>
+            </ul>
             <UButton
               color="error"
               variant="soft"

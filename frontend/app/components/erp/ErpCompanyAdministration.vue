@@ -121,9 +121,12 @@ function clearProtectedRows() {
 
 function handleAuthorityError(error: unknown) {
   const status = apiStatus(error)
-  if ([401, 403].includes(status ?? 0)) {
+  const contextChanged = status === 409 && (error as { data?: { code?: string } }).data?.code === 'company_context_changed'
+  if ([401, 403].includes(status ?? 0) || contextChanged) {
+    listRequestGeneration++
+    loading.value = false
     clearProtectedRows()
-    identityMatch.value = null
+    resetForm()
     formOpen.value = false
     confirmTarget.value = null
     authorityBlocked.value = true
@@ -544,7 +547,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           <label class="flex items-center gap-2 text-sm"><input v-model="form.establishmentScope" type="radio" value="all"> Todos os estabelecimentos</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="form.establishmentScope" type="radio" value="selected"> Somente os selecionados</label>
           <div v-if="form.establishmentScope === 'selected'" class="grid gap-2 sm:grid-cols-2">
-            <form class="col-span-full flex flex-wrap gap-2" @submit.prevent="applyEstablishmentSearch">
+            <div class="col-span-full flex flex-wrap gap-2" @keydown.enter.prevent.stop="applyEstablishmentSearch">
               <label class="sr-only" for="member-establishment-search">Pesquisar estabelecimentos permitidos</label>
               <input
                 id="member-establishment-search"
@@ -553,14 +556,15 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
                 placeholder="Pesquisar estabelecimentos"
               >
               <UButton
-                type="submit"
+                type="button"
                 color="neutral"
                 variant="outline"
                 :disabled="loading"
+                @click="applyEstablishmentSearch"
               >
                 Pesquisar
               </UButton>
-            </form>
+            </div>
             <label v-for="establishment in establishments" :key="establishment.id" class="flex items-center gap-2 text-sm">
               <input type="checkbox" :checked="form.establishmentIds.includes(establishment.id)" @change="setEstablishment(establishment.id, ($event.target as HTMLInputElement).checked)">
               {{ establishment.name }} <span v-if="establishment.status === 'inactive'" class="text-muted">(inativo)</span>

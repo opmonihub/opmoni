@@ -5,6 +5,7 @@ import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { erpCompanyHasPermission } from '../app/utils/erpModulesNav.ts'
+import { settingsTabs } from '../app/utils/settingsNav.ts'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/useApiError.ts'
 
 const routeFile = new URL('../app/pages/erp/configuracoes.vue', import.meta.url)
@@ -288,15 +289,23 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
 function clickButton(root: HostNode, label: string) {
   const button = findHostNodes(root, node => node.tag === 'button' && hostText(node).includes(label))[0]
   assert.ok(button, `button “${label}” should be rendered`)
-  const event = { target: button, preventDefault() {} }
+  let stopped = false
+  const event = {
+    target: button,
+    preventDefault() {},
+    stopPropagation() { stopped = true }
+  }
   const click = button.props.onClick
   assert.equal(typeof click, 'function')
   ;(click as (event: typeof event) => void)(event)
   if (button.props.type === 'submit') {
-    let parent = button.parent as { tag: string, props: Record<string, unknown>, parent: unknown } | null
-    while (parent && parent.tag !== 'form') parent = parent.parent as typeof parent
-    const submit = parent?.props.onSubmit
-    if (typeof submit === 'function') (submit as (event: typeof event) => void)(event)
+    let parent = button.parent
+    while (parent && parent.tag !== 'form') parent = parent.parent
+    while (parent && !stopped) {
+      const submit = parent.props.onSubmit
+      if (typeof submit === 'function') (submit as (event: typeof event) => void)(event)
+      parent = parent.parent
+    }
   }
 }
 
@@ -313,8 +322,8 @@ function settingsLinks(company: {
   access_kind: 'direct' | 'delegated'
   role: string
   permissions: string[]
-} | null) {
-  const { descriptor } = parse(readFileSync(routeFile, 'utf8'), { filename: routeFile.pathname })
+} | null, account: TestIdentity['current_account'] = null, file = routeFile) {
+  const { descriptor } = parse(readFileSync(file, 'utf8'), { filename: file.pathname })
   const script = compileScript(descriptor, { id: 'erp-settings-admin-links' })
   const compiled = ts.transpileModule(script.content, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
@@ -324,10 +333,10 @@ function settingsLinks(company: {
     computed: Vue.computed,
     definePageMeta() {},
     useRoute: () => ({ path: '/erp/configuracoes' }),
-    useAuth: () => ({ currentCompany: Vue.ref(company) })
+    useAuth: () => ({ currentCompany: Vue.ref(company), currentAccount: Vue.ref(account), canManageMembers: Vue.computed(() => account?.role === 'admin') })
   }
   new Function('require', 'exports', ...Object.keys(globals), compiled.outputText)(
-    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : (() => { throw new Error(`Unexpected import: ${name}`) })(),
+    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : name === '~/utils/settingsNav' ? { settingsTabs } : (() => { throw new Error(`Unexpected import: ${name}`) })(),
     exports,
     ...Object.values(globals)
   )
@@ -337,6 +346,20 @@ function settingsLinks(company: {
 }
 
 describe('ERP company administration navigation', () => {
+  it('includes the office approval header tab only for the selected active Account administrator', (t) => {
+    const file = new URL('../app/pages/settings.vue', import.meta.url)
+    for (const [account, expected] of [
+      [{ id: 1, name: 'Office', status: 'active', role: 'admin' }, true],
+      [{ id: 1, name: 'Office', status: 'active', role: 'user' }, false],
+      [{ id: 1, name: 'Office', status: 'suspended', role: 'admin' }, false],
+      [null, false]
+    ] as const) {
+      const header = settingsLinks(null, account, file)
+      t.after(header.close)
+      assert.equal(header.links.some(link => link.to === '/settings/integracoes-erp'), expected)
+    }
+  })
+
   it('shows owner controls only for a direct owner company context', (t) => {
     const owner = settingsLinks({ id: 10, status: 'active', access_kind: 'direct', role: 'owner', permissions: ['erp.read'] })
     t.after(owner.close)
@@ -519,6 +542,56 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.equal(hostText(mount.root as never).includes('Seleção preservada: #7'), true)
   })
 
+  it('searches member establishments without saving edits on click or Enter', async (t) => {
+    const member = { id: 2, user: { id: 2, name: 'Operador', email: 'operator@example.test' }, role: 'operator', action_permissions: [], effective_permissions: ['erp.read'], establishment_scope: 'selected', establishment_ids: [7] }
+    const writes: Array<Record<string, unknown>> = []
+    const mount = compileAndMount(companyAdministrationFile, { kind: 'members' }, defaultOwnerIdentity(), async (path, options) => {
+      if (options?.method === 'PATCH') {
+        writes.push(options)
+        return { data: member }
+      }
+      if (path.startsWith('/erp/members?')) return { data: [member], meta: { current_page: 1, last_page: 1 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 7, name: 'Filial', cnpj: null, status: 'active' }], meta: { current_page: 1, last_page: 1 } }
+      if (path === '/erp/member-permissions') return { data: [] }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+    mount.instance.beginEdit(mount.instance.rows[0])
+    mount.instance.form.role = 'manager'
+    await Vue.nextTick()
+    changeInput(mount.root, node => node.props.id === 'member-establishment-search', 'Filial')
+    clickButton(mount.root, 'Pesquisar')
+    await flushVue()
+    assert.equal(writes.length, 0, 'search must not submit the enclosing member editor')
+    assert.equal(mount.instance.formOpen, true)
+    assert.equal(mount.instance.form.role, 'manager')
+    assert.ok(mount.calls.some(call => call.path.includes('search=Filial')))
+
+    const input = findHostNodes(mount.root, node => node.props.id === 'member-establishment-search')[0]!
+    let stopped = false
+    let prevented = false
+    const event = {
+      target: input,
+      key: 'Enter',
+      preventDefault() { prevented = true },
+      stopPropagation() { stopped = true }
+    }
+    let node: HostNode | null = input
+    while (node && !stopped) {
+      const handler = node.props.onKeydown
+      if (typeof handler === 'function') handler(event)
+      node = node.parent
+    }
+    await flushVue()
+    assert.equal(prevented, true, 'Enter must search rather than implicitly submitting the member editor')
+    assert.equal(writes.length, 0)
+    clickButton(mount.root, 'Salvar')
+    await flushVue()
+    assert.equal(writes.length, 1)
+    assert.equal((writes[0]?.body as { role: string }).role, 'manager')
+  })
+
   it('ignores an older same-context list response after a newer request completes', async (t) => {
     const pending: Array<(value: unknown) => void> = []
     const mount = compileAndMount(companyAdministrationFile, { kind: 'establishments' }, defaultOwnerIdentity(), async (path) => {
@@ -583,6 +656,31 @@ describe('ERP administration rendered SFC interactions', () => {
       establishment_scope: 'selected',
       establishment_ids: []
     })
+  })
+
+  it('shows office approval state to the owner without exposing office client details', async (t) => {
+    for (const mappings of [[], [
+      { id: 1, erp_establishment_id: 42, revision: 2, status: 'active' },
+      { id: 2, erp_establishment_id: 43, revision: 1, status: 'revoked' }
+    ]]) {
+      const mount = compileAndMount(mappingApprovalFile, { mode: 'owner' }, defaultOwnerIdentity(), async (path) => {
+        if (path === '/erp/accounting-mappings') return { data: { delegation_id: 31, status: 'active', delegation: { id: 31, account: { id: 55, name: 'Escritório' }, status: 'active', effective_permissions: ['erp.read'] }, mappings } }
+        if (path === '/erp/member-permissions') return { data: [] }
+        throw new Error(`Unexpected ERP request: ${path}`)
+      })
+      t.after(mount.unmount)
+      await flushVue()
+      const text = hostText(mount.root)
+      if (mappings.length) {
+        assert.ok(text.includes('Estabelecimento #42'))
+        assert.ok(text.includes('Aprovado'))
+        assert.ok(text.includes('Estabelecimento #43'))
+        assert.ok(text.includes('Revogado'))
+      } else {
+        assert.ok(text.includes('Aguardando aprovação pelo escritório'))
+      }
+      assert.equal(mount.calls.some(call => call.path.startsWith('/clients')), false)
+    }
   })
 
   it('prevents duplicate owner delegation writes and requires the confirmation button', async (t) => {
@@ -693,6 +791,50 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.equal(mount.calls.some(call => call.path.startsWith('/clients?') && call.path.includes('status=active')), true)
   })
 
+  it('discards client search results and errors when the query changes during a request', async (t) => {
+    for (const outcome of ['success', 'error']) {
+      const identity = defaultOwnerIdentity()
+      identity.current_account = { id: 55, name: 'Escritório', status: 'active', role: 'admin' }
+      const pending: Array<{ resolve: (value: unknown) => void, reject: (error: unknown) => void }> = []
+      const mount = compileAndMount(mappingApprovalFile, { mode: 'office' }, identity, async (path) => {
+        if (path.startsWith('/account/erp-accounting-mappings/context?')) return { data: { delegation_id: 31, status: 'active', establishments: [{ id: 42, name: 'Matriz' }] }, meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+        if (path.startsWith('/account/erp-accounting-mappings?company_id=')) return { data: [] }
+        if (path.startsWith('/clients?')) return await new Promise((resolve, reject) => pending.push({ resolve, reject }))
+        throw new Error(`Unexpected ERP request: ${path}`)
+      })
+      t.after(mount.unmount)
+      await flushVue()
+      mount.instance.selectOfficeCompany('10')
+      await flushVue()
+      changeInput(mount.root, node => node.props.placeholder === 'Nome ou documento', 'Antigo')
+      clickButton(mount.root, 'Pesquisar clientes')
+      await flushVue()
+      assert.equal(pending.length, 1)
+      changeInput(mount.root, node => node.props.placeholder === 'Nome ou documento', 'Atual')
+      await Vue.nextTick()
+      const button = findHostNodes(mount.root, node => node.tag === 'button' && hostText(node).includes('Pesquisar clientes'))[0]!
+      assert.equal(button.props.disabled, false, 'a changed query must be searchable without waiting for the obsolete request')
+      clickButton(mount.root, 'Pesquisar clientes')
+      await flushVue()
+      assert.equal(pending.length, 2)
+      if (outcome === 'success') {
+        pending[0]!.resolve({ data: [{ id: 1, name: 'Antigo', status: 'active', tax_id: null }], meta: { current_page: 1, last_page: 1 } })
+        await flushVue()
+        assert.deepEqual(mount.instance.clients, [])
+        assert.equal(button.props.disabled, true, 'obsolete finally must not finish the current search')
+      }
+      pending[1]!.resolve({ data: [{ id: 2, name: 'Atual', status: 'active', tax_id: null }], meta: { current_page: 1, last_page: 1 } })
+      await flushVue()
+      if (outcome === 'error') {
+        pending[0]!.reject({ statusCode: 503, data: { message: 'Obsolete failure' } })
+        await flushVue()
+      }
+      assert.deepEqual(mount.instance.clients.map((client: { id: number }) => client.id), [2])
+      assert.equal(mount.instance.clientResultsStale, false)
+      assert.equal(mount.instance.errorMessage, '')
+    }
+  })
+
   it('marks same-office client results stale on transient errors and clears protected results on authorization loss', async (t) => {
     const identity = defaultOwnerIdentity()
     identity.current_account = { id: 55, name: 'Escritório', status: 'active', role: 'admin' }
@@ -786,6 +928,39 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.equal(mount.instance.formOpen, false)
     assert.equal(mount.instance.canView, false)
     assert.equal(hostText(mount.root as never).includes('Member'), false)
+  })
+
+  it('blocks a stale company editor on context conflict while preserving ordinary conflict edits', async (t) => {
+    for (const code of ['company_context_changed', 'duplicate_member']) {
+      const mount = compileAndMount(companyAdministrationFile, { kind: 'members' }, defaultOwnerIdentity(), async (path, options) => {
+        if (path === '/erp/members/2' && options?.method === 'PATCH') throw { statusCode: 409, data: { code, message: 'Conflict.' } }
+        if (path.startsWith('/erp/members?')) return { data: [{ id: 2, user: { id: 8, name: 'Protected member', email: 'member@example.test' }, role: 'manager', action_permissions: [], effective_permissions: ['*'], establishment_scope: 'all', establishment_ids: [] }], meta: { current_page: 1, last_page: 1 } }
+        if (path.startsWith('/erp/establishments?')) return { data: [], meta: { current_page: 1, last_page: 1 } }
+        if (path === '/erp/member-permissions') return { data: [] }
+        throw new Error(`Unexpected ERP request: ${path}`)
+      })
+      t.after(mount.unmount)
+      await flushVue()
+      mount.instance.beginEdit(mount.instance.rows[0])
+      mount.instance.form.role = 'operator'
+      await Vue.nextTick()
+      clickButton(mount.root, 'Salvar')
+      await flushVue()
+      if (code === 'company_context_changed') {
+        assert.equal(mount.instance.formOpen, false)
+        assert.equal(mount.instance.authorityBlocked, true)
+        assert.equal(mount.instance.canWrite, false)
+        assert.equal(mount.instance.form.id, null)
+        assert.equal(hostText(mount.root).includes('member@example.test'), false)
+        const before = mount.calls.length
+        await mount.instance.submitForm()
+        assert.equal(mount.calls.length, before)
+      } else {
+        assert.equal(mount.instance.formOpen, true)
+        assert.equal(mount.instance.form.role, 'operator')
+        assert.equal(mount.instance.authorityBlocked, false)
+      }
+    }
   })
 
   it('clears protected establishment state after a forbidden write response', async (t) => {
