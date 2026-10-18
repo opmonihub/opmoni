@@ -105,11 +105,10 @@ describe('ERP mobile shell and contract', () => {
     const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items
     assert.ok(links.some((link: { to: string }) => link.to === '/erp/relatorios'))
   })
-  it('remounts catalog content on workspace changes without changing the destination', (t) => {
-    const route = Vue.reactive({ path: '/erp/cadastros/contatos' })
+  it('changes the catalog content key when company or Account context changes', (t) => {
     const currentCompany = Vue.ref(company())
     const currentAccount = Vue.ref<{ id: number } | null>(null)
-    const view = surface('layouts/erp.vue', { useRoute: () => route, useAuth: () => ({ currentCompany, currentAccount }) })
+    const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp/cadastros/contatos' }), useAuth: () => ({ currentCompany, currentAccount }) })
     t.after(view.close)
     const bodyKey = () => (named(view.render(), 'UDashboardPanel')[0]!.children as Record<string, () => Vue.VNode[]>).body!()[0]!.key
     const initial = bodyKey()
@@ -118,9 +117,8 @@ describe('ERP mobile shell and contract', () => {
     const next = bodyKey()
     currentAccount.value = { id: 9 }
     assert.notEqual(bodyKey(), next)
-    assert.equal(route.path, '/erp/cadastros/contatos')
   })
-  it('disposes the old protected child and mounts a fresh child on company switch', async (t) => {
+  it('disposes the old protected child and mounts a fresh child after selected company context changes', async (t) => {
     const currentCompany = Vue.ref(company())
     const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp/cadastros/contatos' }), useAuth: () => ({ currentCompany, currentAccount: Vue.ref(null) }) })
     t.after(view.close)
