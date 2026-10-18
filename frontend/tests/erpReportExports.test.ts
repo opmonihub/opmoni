@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { describe, it } from 'node:test'
+import { createServer } from 'node:http'
+import { createRequire } from 'node:module'
+import { once } from 'node:events'
 import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
@@ -8,6 +11,9 @@ import { renderToString } from 'vue/server-renderer'
 import type { ErpReportExport, ErpReportSnapshot } from '../shared/types/erpReports.ts'
 import * as nav from '../app/utils/erpModulesNav.ts'
 import * as errors from '../app/composables/useApiError.ts'
+import * as business from '../shared/utils/business.ts'
+import * as erp from '../shared/utils/erp.ts'
+import type { Identity } from '../shared/types/access.ts'
 
 const filters = { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: 7 }
 const report = { category: 'sales', filters, totals: { document_count: 2, posted_total: '9007199254740993.1234' } }
@@ -36,7 +42,9 @@ function deferred() {
   })
   return { promise, resolve }
 }
-function view(name: string, api: (path: string, options?: { method?: string, body?: unknown }) => Promise<unknown>, initial: Record<string, unknown> = {}) {
+type TestApi = (path: string, options?: { method?: string, body?: unknown, signal?: AbortSignal }) => Promise<unknown>
+
+function view(name: string, api: TestApi, initial: Record<string, unknown> = {}) {
   const file = new URL(`../app/components/erp/${name}.vue`, import.meta.url)
   assert.ok(existsSync(file), `${name} must implement the real report workflow`)
   const { descriptor } = parse(readFileSync(file, 'utf8'))
@@ -191,12 +199,13 @@ describe('private report exports', () => {
   })
   it('locks ambiguous POST failure against blind retry and supports explicit reference inspection', async (t) => {
     let posts = 0
+    let inspected = { export: exported, report }
     const app = view('ErpReportExportPanel', async (_path, options) => {
       if (options?.method === 'POST') {
         posts++
         throw new TypeError('network lost')
       }
-      return { data: { export: exported, report } }
+      return { data: inspected }
     })
     t.after(app.stop)
     await app.state.createExport()
@@ -207,7 +216,88 @@ describe('private report exports', () => {
     await app.state.inspect()
     assert.equal(app.state.exportRecord.value?.id, 21)
     assert.equal(app.downloads(), 0)
+    assert.equal(app.state.ambiguous.value, true, 'An inspected reference cannot identify the lost POST, even when filters match')
+    await app.state.createExport()
+    assert.equal(posts, 1, 'Inspecting an older export must not enable a second POST')
+    const unrelatedFilters = { ...filters, erp_establishment_id: 9 }
+    inspected = { export: { ...exported, id: 22, report_type: 'purchases', filters: unrelatedFilters }, report: { ...report, category: 'purchases', filters: unrelatedFilters } }
+    app.state.reference.value = '22'
+    await app.state.inspect()
+    assert.equal(app.state.exportRecord.value?.id, 22)
+    assert.equal(app.state.error.value, '')
+    await app.state.createExport()
+    assert.equal(posts, 1, 'A different category/filter lookup must leave the original intent unresolved')
+    assert.equal(app.state.ambiguous.value, true)
   })
+  for (const invalidation of ['company switch', 'disposal']) {
+    it(`does not dispatch an old POST after delayed real CSRF and ${invalidation}`, async (t) => {
+      const csrfSeen = deferred()
+      let releaseCsrf!: () => void
+      const posts: { company: string | undefined, body: string }[] = []
+      const server = createServer((request, response) => {
+        response.setHeader('Content-Type', 'application/json')
+        if (request.url === '/api/v1/csrf') {
+          releaseCsrf = () => response.end(JSON.stringify({ csrf_token: 'test-csrf' }))
+          csrfSeen.resolve(null)
+          return
+        }
+        let body = ''
+        request.on('data', (chunk) => {
+          body += chunk
+        })
+        request.on('end', () => {
+          posts.push({ company: request.headers['x-company-id'] as string | undefined, body })
+          response.end(JSON.stringify({ data: exported }))
+        })
+      })
+      server.listen(0, '127.0.0.1')
+      await once(server, 'listening')
+      t.after(() => {
+        server.closeAllConnections()
+        server.close()
+      })
+      const address = server.address()
+      assert.ok(address && typeof address !== 'string')
+      const require = createRequire(import.meta.resolve('nuxt/package.json'))
+      const { $fetch } = require('ofetch') as { $fetch: { create: (options: { baseURL: string }) => TestApi } }
+      const request = $fetch.create({ baseURL: `http://127.0.0.1:${address.port}` })
+      const company = { id: 1, name: 'Company one', status: 'active', access_kind: 'direct', role: 'owner', permissions: ['*'], delegated_office_id: null } as const
+      const identity = Vue.ref<Identity>({ id: 1, name: 'Actor', email: 'actor@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [{ ...company, permissions: ['*'] }], current_company: { ...company, permissions: ['*'] } })
+      const states = new Map<string, Vue.Ref<unknown>>([['access-user', identity]])
+      const bindings = {
+        useRequestFetch: () => request,
+        useRequestEvent: () => null,
+        useState: (key: string, initial: () => unknown) => {
+          if (!states.has(key)) states.set(key, Vue.ref(initial()))
+          return states.get(key)
+        }
+      }
+      const source = readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8').replaceAll('import.meta.server', 'false')
+      const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+      const module: { useAccessApi?: () => { api: TestApi } } = {}
+      const imports: Record<string, unknown> = { '#shared/utils/business': business, '#shared/utils/erp': erp }
+      new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], module, ...Object.values(bindings))
+      const transport = module.useAccessApi!()
+      const app = view('ErpReportExportPanel', transport.api, { filters: { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: null } })
+      t.after(app.stop)
+      const pending = app.state.createExport()
+      await csrfSeen.promise
+      const nextCompany = { ...company, id: 2, name: 'Company two', permissions: ['*'] }
+      identity.value = { ...identity.value, companies: [nextCompany], current_company: nextCompany }
+      if (invalidation === 'company switch') app.props.contextKey = 'company-2'
+      else app.stop()
+      releaseCsrf()
+      await pending
+      assert.deepEqual(posts, [], 'No old intent may reach the real HTTP server under the next company')
+      assert.equal(app.state.exportRecord.value, null)
+      if (invalidation === 'company switch') {
+        await app.state.createExport()
+        assert.equal(posts.length, 1, 'The current context gets a fresh, usable cancellation signal')
+        assert.equal(posts[0]?.company, '2')
+        assert.equal(JSON.parse(posts[0]!.body).erp_establishment_id, null)
+      }
+    })
+  }
   it('rechecks server authorization and expiry before exposing a download', async (t) => {
     let result: unknown = { data: { export: exported, report } }
     let reject = false
@@ -231,7 +321,12 @@ describe('private report exports', () => {
   it('rejects empty/partial artifacts and download failures and invalidates late export responses', async (t) => {
     const old = deferred()
     let response: unknown = { data: exported }
-    const app = view('ErpReportExportPanel', async (_path, options) => options?.method === 'POST' ? { data: exported } : response)
+    let downloadSignal: AbortSignal | undefined
+    const app = view('ErpReportExportPanel', async (_path, options) => {
+      if (options?.method === 'POST') return { data: exported }
+      downloadSignal = options?.signal
+      return response
+    })
     t.after(app.stop)
     await app.state.createExport()
     for (const partial of [null, {}, { ...report, totals: {} }, { ...report, totals: { document_count: 2 } }, { ...report, totals: { document_count: 2, posted_total: 12.34 } }]) {
@@ -243,6 +338,7 @@ describe('private report exports', () => {
     response = old.promise
     const downloading = app.state.download()
     app.props.contextKey = 'company-2'
+    assert.equal(downloadSignal?.aborted, true, 'The protected GET is also cancelled on context change')
     await settle()
     old.resolve({ data: { export: exported, report } })
     await downloading

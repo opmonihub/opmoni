@@ -13,6 +13,7 @@ const ready = ref(false)
 const intent = ref<{ category: string, filters: ErpReportFilters } | null>(null)
 const statusLabels = { pending: 'Pendente', completed: 'Concluída', failed: 'Falhou' }
 let generation = 0
+let activeRequest: AbortController | null = null
 
 function record(value: unknown): ErpReportExport | null {
   if (!value || typeof value !== 'object') return null
@@ -59,13 +60,15 @@ function acceptFailure(failure: unknown) {
 async function createExport() {
   if (busy.value || ambiguous.value || exportRecord.value?.status === 'pending' || !props.canExport) return
   const version = ++generation
+  const controller = new AbortController()
+  activeRequest = controller
   busy.value = true
   error.value = ''
   ready.value = false
   exportRecord.value = null
   intent.value = { category: props.category, filters: { ...props.filters } }
   try {
-    const response = await api<{ data: ErpReportExport }>(`/erp/reports/${intent.value.category}/exports`, { method: 'POST', body: intent.value.filters })
+    const response = await api<{ data: ErpReportExport }>(`/erp/reports/${intent.value.category}/exports`, { method: 'POST', body: intent.value.filters, signal: controller.signal })
     if (version !== generation) return
     const metadata = record(response.data)
     if (!metadata) {
@@ -81,6 +84,7 @@ async function createExport() {
     const status = apiStatus(failure)
     if (!exportRecord.value && (status === null || status >= 500 || status === 408)) ambiguous.value = true
   } finally {
+    if (activeRequest === controller) activeRequest = null
     if (version === generation) busy.value = false
   }
 }
@@ -90,18 +94,19 @@ async function inspect(downloadFile = false) {
   const version = ++generation
   const id = Number(reference.value)
   if (!Number.isSafeInteger(id)) return
+  const controller = new AbortController()
+  activeRequest = controller
   busy.value = true
   error.value = ''
   ready.value = false
   try {
-    const response = await api<{ data: { export: ErpReportExport, report: ErpReportSnapshot } }>(`/erp/reports/exports/${id}`)
+    const response = await api<{ data: { export: ErpReportExport, report: ErpReportSnapshot } }>(`/erp/reports/exports/${id}`, { signal: controller.signal })
     if (version !== generation) return
     const metadata = record(response.data?.export)
     if (!metadata || metadata.id !== id) throw new Error('Resposta da exportação inválida')
     exportRecord.value = metadata
     if (metadata.status !== 'completed' || !metadata.expires_at || Date.parse(metadata.expires_at) <= Date.now() || !Number.isFinite(Date.parse(metadata.expires_at)) || !validReport(response.data.report, metadata)) throw new Error('Exportação incompleta, expirada ou indisponível. Consulte novamente.')
     ready.value = true
-    ambiguous.value = false
     if (downloadFile) {
       const url = URL.createObjectURL(new Blob([JSON.stringify(response.data.report, null, 2)], { type: 'application/json' }))
       try {
@@ -114,6 +119,7 @@ async function inspect(downloadFile = false) {
   } catch (failure) {
     if (version === generation) acceptFailure(failure)
   } finally {
+    if (activeRequest === controller) activeRequest = null
     if (version === generation) busy.value = false
   }
 }
@@ -125,6 +131,8 @@ async function download() {
 }
 
 watch(() => props.contextKey, () => {
+  activeRequest?.abort()
+  activeRequest = null
   generation++
   exportRecord.value = null
   intent.value = null
@@ -135,6 +143,8 @@ watch(() => props.contextKey, () => {
   busy.value = false
 }, { flush: 'sync' })
 onScopeDispose(() => {
+  activeRequest?.abort()
+  activeRequest = null
   generation++
 })
 </script>
@@ -165,7 +175,7 @@ onScopeDispose(() => {
       description="A conexão foi interrompida sem confirmar a geração. Não repita a solicitação. Se você recebeu uma referência, consulte-a abaixo."
     />
     <UAlert v-if="error" color="error" :title="error" />
-    <div v-if="intent && !exportRecord" class="text-muted space-y-1 text-sm">
+    <div v-if="intent && (!exportRecord || ambiguous)" class="text-muted space-y-1 text-sm">
       <p>Solicitação preservada: {{ intent.category }}</p>
       <p>
         De {{ intent.filters.date_from }} até {{ intent.filters.date_to }} · Estabelecimento {{ intent.filters.erp_establishment_id ?? 'Todos' }}<template v-if="intent.filters.currency">
