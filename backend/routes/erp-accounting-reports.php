@@ -1,8 +1,12 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Erp\Accounting\ErpAccountingDeliveryController;
+use App\Http\Controllers\Api\V1\Erp\Accounting\ErpAccountingMappingController;
 use App\Http\Controllers\Api\V1\Erp\Reports\ErpReportController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/accounting-mappings', [ErpAccountingMappingController::class, 'index'])->name('erp.accounting-mappings.index');
+Route::post('/accounting-deliveries', [ErpAccountingDeliveryController::class, 'store'])->name('erp.accounting-deliveries.store');
 
 Route::get('/accounting-deliveries', [ErpAccountingDeliveryController::class, 'index'])
     ->name('erp.accounting-deliveries.index');

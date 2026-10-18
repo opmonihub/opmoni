@@ -2,16 +2,24 @@
 
 namespace App\Erp\Accounting;
 
+use App\Enums\ClientStatus;
 use App\Enums\FiscalDeliveryOrigin;
 use App\Enums\FiscalKind;
 use App\Enums\FiscalModel;
+use App\Enums\FiscalProcessingReason;
+use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
+use App\Exceptions\AccountingPublicationFailed;
+use App\Jobs\DeliverErpAccountingDocument;
+use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
+use App\Models\Erp\Accounting\ErpAccountingMapping;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\FiscalDocument;
@@ -19,10 +27,12 @@ use App\Services\BrazilianTaxId;
 use App\Services\Fiscal\Capture\FiscalXmlPath;
 use App\Services\Fiscal\Processing\FiscalProcessingCoordinator;
 use App\Services\Fiscal\Read\FiscalDocumentReadiness;
+use App\Support\AccessTransaction;
+use App\Support\ErpCompanyContext;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use RuntimeException;
+use League\Flysystem\FilesystemException;
 
 class ErpAccountingHandoffService
 {
@@ -30,90 +40,83 @@ class ErpAccountingHandoffService
 
     public function __construct(private BrazilianTaxId $taxId) {}
 
-    public function ensureDeliveryIntent(ErpFiscalDocument $document): ?ErpAccountingDelivery
+    public function ensureDeliveryIntent(ErpFiscalDocument $document, ?int $requestedByUserId = null): ?ErpAccountingDelivery
     {
-        $delegation = ErpOfficeDelegation::query()
-            ->where('erp_company_id', $document->erp_company_id)
-            ->where('status', 'active')
-            ->first();
-        if ($delegation === null) {
-            return null;
-        }
-
-        return ErpAccountingDelivery::query()->firstOrCreate(
-            [
+        return DB::transaction(function () use ($document, $requestedByUserId): ?ErpAccountingDelivery {
+            $document = ErpFiscalDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            $delegation = ErpOfficeDelegation::query()->where('erp_company_id', $document->erp_company_id)->where('status', 'active')->first();
+            if ($delegation === null) {
+                return null;
+            }
+            $mapping = ErpAccountingMapping::query()->where('delegation_id', $delegation->id)
+                ->where('erp_establishment_id', $document->erp_establishment_id)->where('status', 'active')->first();
+            $identity = [
                 'erp_company_id' => $document->erp_company_id,
                 'erp_fiscal_document_id' => $document->id,
                 'account_id' => $delegation->account_id,
-            ],
-            [
+                'delegation_id' => $delegation->id,
+            ];
+            $existing = ErpAccountingDelivery::query()->where($identity)->where('mapping_id', $mapping?->id)->first();
+            if ($existing !== null) {
+                return $existing;
+            }
+            if ($mapping !== null) {
+                $placeholder = ErpAccountingDelivery::query()->where($identity)->whereNull('mapping_id')
+                    ->where(function ($query): void {
+                        $query->whereIn('status', ['pending', 'failed'])
+                            ->orWhere(fn ($query) => $query->where('status', 'blocked')->whereIn('reason_code', ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized']));
+                    })->first();
+                if ($placeholder !== null) {
+                    return $placeholder;
+                }
+            }
+
+            return ErpAccountingDelivery::query()->firstOrCreate($identity + ['mapping_id' => $mapping?->id], [
+                'mapping_revision' => $mapping?->revision,
+                'requested_by_user_id' => $requestedByUserId,
                 'status' => ErpAccountingDelivery::STATUS_PENDING,
                 'attempts' => 0,
-            ],
-        );
+            ]);
+        });
+    }
+
+    public function queueAfterCommit(ErpAccountingDelivery $delivery): ErpAccountingDelivery
+    {
+        if ($delivery->status !== ErpAccountingDelivery::STATUS_PENDING) {
+            return $delivery;
+        }
+        $connection = (string) config('queue.default');
+        if (! in_array(config('queue.connections.'.$connection.'.driver'), ['database', 'redis', 'sqs', 'beanstalkd'], true)) {
+            $delivery->update(['reason_code' => 'accounting_worker_not_configured']);
+
+            return $delivery;
+        }
+        DeliverErpAccountingDocument::dispatch((int) $delivery->id)->onConnection($connection)->afterCommit();
+
+        return $delivery;
     }
 
     public function deliver(ErpAccountingDelivery $delivery): ErpAccountingDelivery
     {
-        return DB::transaction(function () use ($delivery): ErpAccountingDelivery {
-            /** @var ErpAccountingDelivery $locked */
-            $locked = ErpAccountingDelivery::query()->whereKey($delivery->id)->lockForUpdate()->firstOrFail();
-            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
-                return $locked;
+        return $this->withFences($delivery, function (ErpAccountingDelivery $locked, ErpCompany $company, ?Account $account): ErpAccountingDelivery {
+            $ready = $this->revalidate($locked, $company, $account);
+            if ($ready === null) {
+                return $locked->fresh();
             }
-
-            $document = ErpFiscalDocument::query()->findOrFail($locked->erp_fiscal_document_id);
-            $company = ErpCompany::query()->whereKey($locked->erp_company_id)->lockForUpdate()->firstOrFail();
-
-            if ($company->status !== 'active') {
-                return $this->markBlocked($locked, 'company_inactive');
-            }
-
-            $delegation = ErpOfficeDelegation::query()
-                ->where('erp_company_id', $company->id)
-                ->where('account_id', $locked->account_id)
-                ->where('status', 'active')
-                ->first();
-            if ($delegation === null) {
-                return $this->markBlocked($locked, 'delegation_revoked');
-            }
-
-            if ($locked->attempts >= self::MAX_ATTEMPTS) {
-                return $this->markFailed($locked, 'max_attempts_exceeded', retryable: false);
-            }
-
-            $client = $this->resolveMappedClient($delegation, $company);
-            if ($client === null) {
-                return $this->markBlocked($locked, 'client_mapping_missing');
-            }
-
-            if ($document->status !== ErpFiscalDocumentStateMachine::AUTHORIZED) {
-                return $this->markBlocked($locked, 'fiscal_document_not_authorized');
-            }
-
-            if ($document->access_key === null
-                || $document->storage_path === null
-                || $document->artifact_sha256 === null
-                || $document->artifact_byte_length === null) {
-                return $this->markFailed($locked, 'artifact_incomplete', retryable: true);
-            }
-
-            if (! Storage::disk('local')->exists($document->storage_path)) {
-                return $this->markFailed($locked, 'storage_unavailable', retryable: true);
-            }
-
-            $bytes = Storage::disk('local')->get($document->storage_path);
-            if ($bytes === null || strlen($bytes) !== (int) $document->artifact_byte_length
-                || ! hash_equals($document->artifact_sha256, hash('sha256', $bytes))) {
-                return $this->markFailed($locked, 'artifact_integrity_failed', retryable: true);
-            }
-
+            [$document, $client, $bytes] = $ready;
+            $locked->increment('attempts');
             try {
-                $officeDocument = $this->publishToOffice($locked, $document, $client, $company, $bytes);
-            } catch (RuntimeException) {
+                $officeDocument = resolve(CurrentTenant::class)->run((int) $locked->account_id,
+                    fn () => $this->publishToOffice($locked, $document, $client, $company, $bytes));
+            } catch (AccountingPublicationFailed $error) {
+                if ($error->reason === 'artifact_conflict') {
+                    return $this->markBlocked($locked, 'artifact_conflict');
+                }
+
+                return $this->markFailed($locked, 'publication_failed', retryable: true);
+            } catch (FilesystemException) {
                 return $this->markFailed($locked, 'publication_failed', retryable: true);
             }
-
             $locked->update([
                 'client_id' => $client->id,
                 'fiscal_document_id' => $officeDocument->id,
@@ -128,33 +131,121 @@ class ErpAccountingHandoffService
 
     public function retry(ErpAccountingDelivery $delivery): ErpAccountingDelivery
     {
-        return DB::transaction(function () use ($delivery): ErpAccountingDelivery {
-            /** @var ErpAccountingDelivery $locked */
-            $locked = ErpAccountingDelivery::query()->whereKey($delivery->id)->lockForUpdate()->firstOrFail();
-            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
-                return $locked;
+        return $this->withFences($delivery, function (ErpAccountingDelivery $locked, ErpCompany $company, ?Account $account): ErpAccountingDelivery {
+            if ($this->revalidate($locked, $company, $account) === null) {
+                return $locked->fresh();
             }
-            if ($locked->status === ErpAccountingDelivery::STATUS_BLOCKED) {
-                return $locked;
-            }
+            $locked->update(['status' => ErpAccountingDelivery::STATUS_PENDING, 'reason_code' => null]);
 
-            $locked->increment('attempts');
-
-            return $this->deliver($locked->fresh());
+            return $this->queueAfterCommit($locked);
         });
     }
 
-    private function resolveMappedClient(ErpOfficeDelegation $delegation, ErpCompany $company): ?Client
+    private function withFences(ErpAccountingDelivery $delivery, callable $callback): ErpAccountingDelivery
     {
-        $normalizedCnpj = $this->taxId->normalize($company->cnpj);
+        $identity = ErpAccountingDelivery::query()->findOrFail($delivery->id);
 
-        foreach (Client::withoutGlobalScope('account')->where('account_id', $delegation->account_id)->cursor() as $client) {
-            if ($this->taxId->normalize((string) ($client->tax_id ?? '')) === $normalizedCnpj) {
-                return $client;
+        return DB::transaction(function () use ($identity, $callback): ErpAccountingDelivery {
+            AccessTransaction::boundLockWaits();
+            $company = ErpCompany::query()->whereKey($identity->erp_company_id)->lockForUpdate()->firstOrFail();
+            $account = resolve(AccountingMappingFence::class)->acquire(Account::query()->whereKey($identity->account_id));
+            ErpFiscalDocument::query()->whereKey($identity->erp_fiscal_document_id)->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
+            $locked = ErpAccountingDelivery::query()->whereKey($identity->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $locked->erp_company_id === (int) $company->id && (int) $locked->account_id === (int) $identity->account_id && (int) $locked->erp_fiscal_document_id === (int) $identity->erp_fiscal_document_id, 409);
+            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
+                return $locked;
             }
+
+            return resolve(ErpCompanyContext::class)->run((int) $company->id, fn () => $callback($locked, $company, $account));
+        });
+    }
+
+    /** @return array{ErpFiscalDocument, Client, string}|null */
+    private function revalidate(ErpAccountingDelivery $delivery, ErpCompany $company, ?Account $account): ?array
+    {
+        if ($delivery->status === ErpAccountingDelivery::STATUS_BLOCKED && ! in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized'], true)) {
+            return null;
+        }
+        $reason = match (true) {
+            $company->status !== 'active' => 'company_inactive',
+            $account === null || $account->status !== 'active' => 'office_inactive',
+            $delivery->delegation_id === null => 'intent_delegation_unverified',
+            default => null,
+        };
+        if ($reason !== null) {
+            $this->markBlocked($delivery, $reason);
+
+            return null;
+        }
+        $delegation = ErpOfficeDelegation::query()->whereKey($delivery->delegation_id)->lockForUpdate()->first();
+        if ($delegation === null || $delegation->status !== 'active'
+            || (int) $delegation->erp_company_id !== (int) $company->id || (int) $delegation->account_id !== (int) $delivery->account_id) {
+            $this->markBlocked($delivery, 'delegation_revoked');
+
+            return null;
+        }
+        $document = ErpFiscalDocument::query()->whereKey($delivery->erp_fiscal_document_id)->where('erp_company_id', $company->id)->firstOrFail();
+        $mappingQuery = ErpAccountingMapping::query()->where('delegation_id', $delegation->id)
+            ->where('erp_establishment_id', $document->erp_establishment_id)->where('erp_company_id', $company->id)->where('account_id', $account->id);
+        $mapping = ($delivery->mapping_id === null ? $mappingQuery->where('status', 'active') : $mappingQuery->whereKey($delivery->mapping_id))->lockForUpdate()->first();
+        if ($mapping === null || $mapping->status !== 'active' || ($delivery->mapping_id !== null && (int) $delivery->mapping_revision !== (int) $mapping->revision)) {
+            $this->markBlocked($delivery, $delivery->mapping_id === null ? 'client_mapping_missing' : 'mapping_revoked');
+
+            return null;
+        }
+        $client = Client::withoutGlobalScope('account')->whereKey($mapping->client_id)->where('account_id', $account->id)->lockForUpdate()->first();
+        if ($client === null || $client->status !== ClientStatus::Active) {
+            $this->markBlocked($delivery, 'client_inactive');
+
+            return null;
+        }
+        $establishment = ErpEstablishment::query()->whereKey($document->erp_establishment_id)->where('erp_company_id', $company->id)->first();
+        if ($establishment === null || $establishment->status !== 'active') {
+            $this->markBlocked($delivery, 'establishment_inactive');
+
+            return null;
+        }
+        $document = ErpFiscalDocument::query()->whereKey($document->id)->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
+        if ((int) $document->erp_establishment_id !== (int) $mapping->erp_establishment_id) {
+            $this->markBlocked($delivery, 'mapping_revoked');
+
+            return null;
+        }
+        if ($document->status !== ErpFiscalDocumentStateMachine::AUTHORIZED) {
+            $this->markBlocked($delivery, 'fiscal_document_not_authorized');
+
+            return null;
+        }
+        if ($delivery->attempts >= self::MAX_ATTEMPTS) {
+            $this->markFailed($delivery, 'max_attempts_exceeded', retryable: false);
+
+            return null;
+        }
+        if ($document->access_key === null || $document->storage_path === null || $document->artifact_sha256 === null || $document->artifact_byte_length === null) {
+            $this->markFailed($delivery, 'artifact_incomplete', retryable: true);
+
+            return null;
+        }
+        try {
+            $bytes = Storage::disk('local')->get($document->storage_path);
+        } catch (FilesystemException) {
+            $bytes = null;
+        }
+        if ($bytes === null) {
+            $this->markFailed($delivery, 'storage_unavailable', retryable: true);
+
+            return null;
+        }
+        if (strlen($bytes) !== (int) $document->artifact_byte_length || ! hash_equals($document->artifact_sha256, hash('sha256', $bytes))) {
+            $this->markFailed($delivery, 'artifact_integrity_failed', retryable: true);
+
+            return null;
+        }
+        if ($delivery->mapping_id === null) {
+            $delivery->update(['mapping_id' => $mapping->id, 'mapping_revision' => $mapping->revision]);
         }
 
-        return null;
+        return [$document, $client, $bytes];
     }
 
     private function publishToOffice(
@@ -173,8 +264,12 @@ class ErpAccountingHandoffService
         if ($existing !== null) {
             abort_unless((int) $existing->account_id === (int) $delivery->account_id, 422, 'Documento fiscal já publicado em outro escritório');
 
-            if (! hash_equals($existing->sha256, $document->artifact_sha256) || (int) $existing->xml_bytes !== (int) $document->artifact_byte_length) {
-                throw new RuntimeException('Existing fiscal artifact identity differs.');
+            if (! hash_equals($existing->sha256, $document->artifact_sha256) || (int) $existing->xml_bytes !== (int) $document->artifact_byte_length
+                || $existing->model !== (FiscalModel::fromDocumentModel($document->model) ?? FiscalModel::Nfe)
+                || ($existing->emitente_cnpj !== null && $existing->emitente_cnpj !== $this->taxId->normalize($company->cnpj ?? ''))
+                || ($existing->delivery_environment !== null && $existing->delivery_environment !== ($document->environment === 'production' ? 'producao' : 'homologacao'))) {
+                $existing->forceFill(['processing_state' => FiscalProcessingState::Attention, 'processing_reason' => FiscalProcessingReason::ArtifactConflict])->save();
+                throw new AccountingPublicationFailed('Existing fiscal artifact identity differs.', 'artifact_conflict');
             }
             $readiness = resolve(FiscalDocumentReadiness::class);
             $readiness->reconcileOne($existing);
@@ -190,7 +285,7 @@ class ErpAccountingHandoffService
         return resolve(CurrentTenant::class)->run((int) $delivery->account_id, function () use ($delivery, $client, $document, $company, $model, $bytes, $existing): FiscalDocument {
             $path = FiscalXmlPath::for((int) $delivery->account_id, (int) $client->id, $document->access_key, '', FiscalStage::Document);
             if (! Storage::disk('fiscal')->put($path, $bytes)) {
-                throw new RuntimeException('Fiscal XML publication unavailable.');
+                throw new AccountingPublicationFailed('Fiscal XML publication unavailable.');
             }
             $published = $existing ?? new FiscalDocument;
             $published->account_id = $delivery->account_id;
@@ -211,6 +306,7 @@ class ErpAccountingHandoffService
                     'emissao_at' => $document->authorized_at,
                     'authorized_at' => $document->authorized_at,
                     'delivery_origin' => FiscalDeliveryOrigin::ErpIssued,
+                    'delivery_environment' => $document->environment === 'production' ? 'producao' : 'homologacao',
                     'storage_path' => $path,
                     'sha256' => $document->artifact_sha256,
                     'xml_bytes' => (int) $document->artifact_byte_length,
@@ -225,7 +321,7 @@ class ErpAccountingHandoffService
             $readiness = resolve(FiscalDocumentReadiness::class);
             $readiness->reconcileOne($published);
             if (! $readiness->isReadyRow($published)) {
-                throw new RuntimeException('Fiscal XML integrity could not be verified.');
+                throw new AccountingPublicationFailed('Fiscal XML integrity could not be verified.');
             }
             resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($published);
 

@@ -26,10 +26,12 @@ use App\Models\User;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\ApprovesErpAccountingMappings;
 use Tests\TestCase;
 
 class ErpAccountingAndReportsTest extends TestCase
 {
+    use ApprovesErpAccountingMappings;
     use RefreshDatabase;
 
     private const VALID_CNPJ = '30288513000100';
@@ -129,12 +131,13 @@ class ErpAccountingAndReportsTest extends TestCase
     {
         $ctx = $this->ownerContext();
         $office = Account::factory()->create();
-        ErpOfficeDelegation::factory()->create([
+        $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $ctx['company']->id,
             'account_id' => $office->id,
             'authorized_by_user_id' => $ctx['user']->id,
         ]);
         $client = $this->officeClient($office);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
 
         $document = $this->authorizedFiscalDocument($ctx['company'], $ctx['establishment']);
         $handoff = app(ErpAccountingHandoffService::class);
@@ -160,12 +163,13 @@ class ErpAccountingAndReportsTest extends TestCase
     {
         $ctx = $this->ownerContext();
         $office = Account::factory()->create();
-        ErpOfficeDelegation::factory()->create([
+        $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $ctx['company']->id,
             'account_id' => $office->id,
             'authorized_by_user_id' => $ctx['user']->id,
         ]);
-        $this->officeClient($office);
+        $client = $this->officeClient($office);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
 
         Storage::fake('local');
         $document = ErpFiscalDocument::query()->create([
@@ -195,7 +199,9 @@ class ErpAccountingAndReportsTest extends TestCase
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/accounting-deliveries/'.$failed->id.'/retry')
             ->assertOk()
-            ->assertJsonPath('data.status', 'delivered');
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.reason_code', 'accounting_worker_not_configured');
+        $this->assertSame('delivered', $handoff->deliver($failed->fresh())->status);
     }
 
     public function test_foreign_office_client_is_not_used_for_handoff(): void
@@ -203,7 +209,7 @@ class ErpAccountingAndReportsTest extends TestCase
         $ctx = $this->ownerContext();
         $office = Account::factory()->create();
         $foreignOffice = Account::factory()->create();
-        ErpOfficeDelegation::factory()->create([
+        $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $ctx['company']->id,
             'account_id' => $office->id,
             'authorized_by_user_id' => $ctx['user']->id,
@@ -314,7 +320,7 @@ class ErpAccountingAndReportsTest extends TestCase
             'user_id' => $delegateUser->id,
             'role' => 'admin',
         ]);
-        ErpOfficeDelegation::factory()->create([
+        $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $ctx['company']->id,
             'account_id' => $office->id,
             'authorized_by_user_id' => $ctx['user']->id,

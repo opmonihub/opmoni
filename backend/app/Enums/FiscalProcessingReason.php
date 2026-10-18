@@ -25,6 +25,7 @@ enum FiscalProcessingReason: string
     case AttemptsExhausted = 'attempts_exhausted';
     case StorageMissing = 'storage_missing';
     case StorageCorrupt = 'storage_corrupt';
+    case ArtifactConflict = 'artifact_conflict';
     case PilotScope = 'pilot_scope';
     case Ready = 'ready';
 }
