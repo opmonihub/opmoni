@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Finance\ErpFinancialAccount;
@@ -49,12 +50,17 @@ class ErpObligationController extends ErpOperationsController
         ]);
         $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
+        app(ErpEstablishmentAccess::class)->assertNullableRelated($context, $data['erp_establishment_id'] ?? null);
         $this->scope->assertBelongsToCompany(
             ErpFinancialAccount::class,
             $companyId,
             $data['erp_financial_account_id'] ?? null,
             'erp_financial_account_id',
         );
+        if (isset($data['erp_financial_account_id'])) {
+            $account = ErpFinancialAccount::query()->where('erp_company_id', $companyId)->findOrFail($data['erp_financial_account_id']);
+            app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $account, 'erp_financial_account_id');
+        }
 
         $amount = ErpDecimal::parse($data['amount']);
         abort_unless(ErpDecimal::isPositive($amount), 422, 'Valor deve ser positivo');
@@ -66,10 +72,13 @@ class ErpObligationController extends ErpOperationsController
                 ->first();
             if ($existing) {
                 abort_unless(ErpDecimal::compare((string) $existing->amount, $amount) === 0 && $existing->direction === $data['direction'] && $existing->category === $data['category'] && $existing->currency === ($data['currency'] ?? 'BRL') && $existing->erp_establishment_id === ($data['erp_establishment_id'] ?? null) && $existing->erp_financial_account_id === ($data['erp_financial_account_id'] ?? null) && $existing->due_on?->format('Y-m-d') === ($data['due_on'] ?? null), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                app(ErpEstablishmentAccess::class)->assertResource($context, $existing);
 
                 return response()->json(['data' => $this->serialize($existing)]);
             }
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
 
         $obligation = DB::transaction(function () use ($data, $companyId, $userId, $amount): ErpObligation {
             return ErpObligation::query()->create([

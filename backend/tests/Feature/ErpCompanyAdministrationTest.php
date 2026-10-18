@@ -126,6 +126,31 @@ class ErpCompanyAdministrationTest extends TestCase
         }
     }
 
+    public function test_selected_direct_member_scope_limits_establishment_list_and_detail(): void
+    {
+        $allowed = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $denied = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $member = User::factory()->create();
+
+        $response = $this->postJson('/api/v1/erp/members', [
+            'user_id' => $member->id,
+            'role' => 'manager',
+            'action_permissions' => [],
+            'establishment_scope' => 'selected',
+            'establishment_ids' => [$allowed->id],
+        ])->assertCreated()
+            ->assertJsonPath('data.establishment_scope', 'selected')
+            ->assertJsonPath('data.establishment_ids', [$allowed->id]);
+
+        $this->assertNotEmpty($response->json('data.id'));
+        $this->actingAs($member);
+        $this->getJson('/api/v1/erp/establishments')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $allowed->id);
+        $this->getJson('/api/v1/erp/establishments/'.$denied->id)->assertNotFound();
+    }
+
     public function test_establishment_writes_require_role_or_exact_grant_and_contract_release(): void
     {
         $membership = ErpCompanyMembership::where('user_id', $this->owner->id)->firstOrFail();
@@ -222,9 +247,11 @@ class ErpCompanyAdministrationTest extends TestCase
     {
         $target = User::factory()->create();
         $id = $this->postJson('/api/v1/erp/members', $this->memberPayload($target))->assertCreated()->json('data.id');
-        foreach ([['user_id' => $this->owner->id], ['erp_company_id' => 123], ['company_id' => 123], ['account_id' => 123], ['password' => 'changed'], ['role' => 'owner'], ['establishment_scope' => 'selected', 'establishment_ids' => []], ['establishment_scope' => 'all', 'establishment_ids' => [1]], ['action_permissions' => ['erp.write']], ['action_permissions' => ['erp.delegations.accept']], []] as $bad) {
+        foreach ([['user_id' => $this->owner->id], ['erp_company_id' => 123], ['company_id' => 123], ['account_id' => 123], ['password' => 'changed'], ['role' => 'owner'], ['establishment_scope' => 'all', 'establishment_ids' => [1]], ['action_permissions' => ['erp.write']], ['action_permissions' => ['erp.delegations.accept']], []] as $bad) {
             $this->patchJson('/api/v1/erp/members/'.$id, $bad)->assertUnprocessable();
         }
+        $this->patchJson('/api/v1/erp/members/'.$id, ['establishment_scope' => 'selected', 'establishment_ids' => []])
+            ->assertOk()->assertJsonPath('data.establishment_scope', 'selected')->assertJsonPath('data.establishment_ids', []);
         $this->patchJson('/api/v1/erp/members/'.$id, ['action_permissions' => ['erp.brands.store', 'erp.brands.index']])->assertOk();
         $this->patchJson('/api/v1/erp/members/'.$id, ['action_permissions' => ['erp.brands.index']])->assertOk()->assertJsonPath('data.effective_permissions', ['erp.brands.index']);
         $this->patchJson('/api/v1/erp/members/'.$id, ['action_permissions' => null])->assertOk()->assertJsonPath('data.effective_permissions', ['erp.read']);

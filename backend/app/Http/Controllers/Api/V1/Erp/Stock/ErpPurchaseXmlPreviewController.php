@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
+use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\LegacyPort\LegacyNfeXmlParser;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Support\CurrentCompany;
@@ -19,8 +21,11 @@ class ErpPurchaseXmlPreviewController extends ErpOperationsController
         $context->assertCanMutate();
 
         $data = $request->validate([
+            'erp_establishment_id' => ['required', 'integer', 'min:1', 'max:9007199254740991'],
             'xml' => ['required', 'string'],
         ]);
+        app(ErpEstablishmentAccess::class)->assertRelated($context, (int) $data['erp_establishment_id']);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, (int) $data['erp_establishment_id']);
 
         try {
             $parsed = $this->parser->parse($data['xml']);

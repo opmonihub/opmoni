@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Stock\ErpStockValuation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
@@ -59,6 +60,7 @@ class ErpStockController extends ErpOperationsController
         ]);
         $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['erp_establishment_id']);
 
         $this->scope->assertVariantBelongsToCompany($companyId, $data['erp_product_variant_id']);
         app(ErpStockValuation::class)->assertSupportedCompany($companyId);
@@ -67,9 +69,12 @@ class ErpStockController extends ErpOperationsController
         $existing = ErpStockAdjustment::query()->where('erp_company_id', $companyId)->where('source_operation_key', $operationKey)->first();
         if ($existing) {
             abort_unless($existing->erp_establishment_id === $data['erp_establishment_id'] && $existing->erp_product_variant_id === $data['erp_product_variant_id'] && $existing->reason === $data['reason'] && ErpDecimal::compare((string) $existing->quantity_delta, $delta) === 0, 409, 'Chave reutilizada com conteúdo diferente');
+            app(ErpEstablishmentAccess::class)->assertResource($context, $existing);
 
             return response()->json(['data' => $this->serializeAdjustment($existing)]);
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
 
         $adjustment = DB::transaction(function () use ($data, $companyId, $userId, $delta, $operationKey): ErpStockAdjustment {
             $balance = ErpStockBalance::query()->firstOrCreate(
@@ -136,6 +141,8 @@ class ErpStockController extends ErpOperationsController
         $data = $this->normalizeIdentifiers($data);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['from_establishment_id'], 'from_establishment_id');
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['to_establishment_id'], 'to_establishment_id');
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['from_establishment_id'], 'from_establishment_id');
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['to_establishment_id'], 'to_establishment_id');
 
         $this->scope->assertVariantBelongsToCompany($companyId, $data['erp_product_variant_id']);
         app(ErpStockValuation::class)->assertSupportedCompany($companyId);
@@ -146,9 +153,13 @@ class ErpStockController extends ErpOperationsController
         $existing = ErpStockTransfer::query()->where('erp_company_id', $companyId)->where('source_operation_key', $operationKey)->first();
         if ($existing) {
             abort_unless($existing->from_establishment_id === $data['from_establishment_id'] && $existing->to_establishment_id === $data['to_establishment_id'] && $existing->erp_product_variant_id === $data['erp_product_variant_id'] && ErpDecimal::compare((string) $existing->quantity, $quantity) === 0, 409, 'Chave reutilizada com conteúdo diferente');
+            app(ErpEstablishmentAccess::class)->assertResource($context, $existing);
 
             return response()->json(['data' => $this->serializeTransfer($existing)]);
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $data['from_establishment_id'], 'from_establishment_id');
+        $this->scope->assertActiveEstablishment($companyId, $data['to_establishment_id'], 'to_establishment_id');
 
         $transfer = DB::transaction(function () use ($data, $companyId, $userId, $quantity, $operationKey): ErpStockTransfer {
             $fromBalance = ErpStockBalance::query()->firstOrCreate(

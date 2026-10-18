@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpCashSessionStateMachine;
 use App\Erp\Finance\ErpDecimal;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
@@ -52,6 +53,9 @@ class ErpCashSessionController extends ErpOperationsController
             ->where('erp_company_id', $companyId)
             ->whereKey($data['erp_cash_register_id'])
             ->firstOrFail();
+        app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $register, 'erp_cash_register_id');
+        abort_unless($register->status === 'active', 422, 'Caixa inativo');
+        $this->scope->assertActiveEstablishment($companyId, $register->erp_establishment_id);
 
         $session = DB::transaction(function () use ($register, $companyId, $userId, $data): ErpCashSession {
             return ErpCashSession::query()->create([
@@ -87,6 +91,8 @@ class ErpCashSessionController extends ErpOperationsController
             && $model->close_operation_key === $data['close_operation_key']) {
             return response()->json(['data' => $this->serialize($model)]);
         }
+
+        $this->scope->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         try {
             $result = $this->stateMachine->close(

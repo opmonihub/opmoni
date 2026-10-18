@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Erp;
 
+use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpCompanyAdministration;
+use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Controller;
 use App\Models\Erp\ErpEstablishment;
 use App\Services\BrazilianTaxId;
@@ -14,12 +16,17 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ErpEstablishmentController extends Controller
 {
-    public function __construct(private ErpCompanyAdministration $administration, private BrazilianTaxId $taxId) {}
+    public function __construct(private ErpCompanyAdministration $administration, private BrazilianTaxId $taxId, private ErpEstablishmentAccess $establishmentAccess) {}
 
     public function index(Request $request): JsonResponse
     {
         $params = $this->administration->listParams($request, true);
-        $query = ErpEstablishment::query()->where('erp_company_id', CurrentCompany::fromRequest($request)->company->id);
+        $context = CurrentCompany::fromRequest($request);
+        $query = $this->establishmentAccess->apply(
+            ErpEstablishment::query()->where('erp_company_id', $context->company->id),
+            $context,
+            ErpEstablishmentResource::Establishment,
+        );
         if (($params['status'] ?? 'all') !== 'all') {
             $query->where('status', $params['status']);
         }
@@ -33,12 +40,17 @@ class ErpEstablishmentController extends Controller
 
     public function show(Request $request, int $establishment): JsonResponse
     {
-        return response()->json(['data' => $this->administration->establishmentPayload($this->administration->establishment(CurrentCompany::fromRequest($request)->company->id, $establishment))]);
+        $context = CurrentCompany::fromRequest($request);
+        $model = $this->administration->establishment($context->company->id, $establishment);
+        $this->establishmentAccess->assertResource($context, $model);
+
+        return response()->json(['data' => $this->administration->establishmentPayload($model)]);
     }
 
     public function store(Request $request): Response
     {
         return $this->administration->mutate($request, false, function (int $companyId) use ($request): JsonResponse {
+            $this->establishmentAccess->assertAllScope(CurrentCompany::fromRequest($request));
             $data = $this->establishmentData($request, true);
             $establishment = ErpEstablishment::query()->create(['erp_company_id' => $companyId, ...$data]);
 
@@ -50,6 +62,7 @@ class ErpEstablishmentController extends Controller
     {
         return $this->administration->mutate($request, false, function (int $companyId) use ($request, $establishment): JsonResponse {
             $model = $this->administration->establishment($companyId, $establishment, true);
+            $this->establishmentAccess->assertResource(CurrentCompany::fromRequest($request), $model);
             $model->fill($this->establishmentData($request, false))->save();
 
             return response()->json(['data' => $this->administration->establishmentPayload($model)]);

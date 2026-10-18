@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Sales;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Sales\ErpCommercialDocumentStateMachine;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
@@ -48,6 +49,8 @@ class ErpQuoteController extends ErpOperationsController
             'currency' => ['sometimes', 'string', 'size:3'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['erp_establishment_id']);
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
 
         $quote = ErpQuote::query()->create([
             'erp_company_id' => $companyId,
@@ -67,6 +70,7 @@ class ErpQuoteController extends ErpOperationsController
         $context->assertCanMutate();
         $companyId = $context->company->id;
         $model = $this->findForCompany($request, ErpQuote::class, $quote);
+        $this->scope->assertActiveEstablishment($companyId, $model->erp_establishment_id);
         $data = $request->validate([
             'order_no' => ['required', 'string', 'max:64'],
         ]);

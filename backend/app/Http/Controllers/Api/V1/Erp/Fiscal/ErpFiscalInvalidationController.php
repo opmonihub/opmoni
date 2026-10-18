@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Erp\Fiscal\ErpFiscalPayloadBuilder;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
@@ -51,7 +52,8 @@ class ErpFiscalInvalidationController extends ErpOperationsController
             'justification' => ['required', 'string'],
             'idempotency_key' => ['required', 'string', 'max:128'],
         ]);
-        $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        $access = app(ErpEstablishmentAccess::class);
+        $access->assertRelated($context, $data['erp_establishment_id']);
         $validationErrors = $this->payloadBuilder->validateInvalidation([
             'model' => $data['model'],
             'series' => $data['series'],
@@ -68,8 +70,12 @@ class ErpFiscalInvalidationController extends ErpOperationsController
             ->where('idempotency_key', $data['idempotency_key'])
             ->first();
         if ($existing) {
+            $access->assertResource($context, $existing);
+
             return response()->json(['data' => $this->serialize($existing)]);
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
 
         $invalidation = ErpFiscalInvalidation::query()->create([
             ...$data,
@@ -87,6 +93,9 @@ class ErpFiscalInvalidationController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalInvalidation::class, $invalidation);
+        if ($model->status !== 'accepted') {
+            $this->scope->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         try {
             $result = $this->issuance->submitInvalidation($model, $request->user()?->id);

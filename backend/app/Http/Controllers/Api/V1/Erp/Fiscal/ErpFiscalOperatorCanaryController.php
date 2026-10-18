@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
+use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Erp\Fiscal\ErpFiscalProductionGate;
 use App\Http\Controllers\Controller;
@@ -45,6 +47,10 @@ class ErpFiscalOperatorCanaryController extends Controller
             ->where('erp_company_id', $context->company->id)
             ->whereKey($document)
             ->firstOrFail();
+        app(ErpEstablishmentAccess::class)->assertResource($context, $model);
+        if ($model->status !== 'authorized') {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         $this->productionGate->assertLiveDispatch($model, $request->user()?->id);
         $result = $this->issuance->transmit($model, $context->company, $request->user()?->id);

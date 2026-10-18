@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Sales;
 
+use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Stock\ErpStockParticipant;
@@ -50,6 +52,8 @@ class ErpSaleReturnController extends ErpOperationsController
             ->where('erp_company_id', $companyId)
             ->whereKey($data['erp_sale_id'])
             ->firstOrFail();
+        app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $sale, 'erp_sale_id');
+        app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $sale->erp_establishment_id);
 
         abort_unless($sale->status === 'posted', 422, 'Venda precisa estar lançada');
 
@@ -80,6 +84,8 @@ class ErpSaleReturnController extends ErpOperationsController
         }
         abort_unless($model->status === 'draft', 422, 'Devolução não está em rascunho');
         $source = ErpSale::query()->where('erp_company_id', $model->erp_company_id)->whereKey($model->erp_sale_id)->firstOrFail();
+        app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $source, 'erp_sale_id');
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $source->erp_establishment_id);
         abort_unless(ErpDecimal::compare((string) $model->total_amount, (string) $source->total_amount) === 0 && ErpDecimal::isPositive((string) $model->total_amount), 422, 'Somente devolução integral é suportada');
 
         $operationKey = $request->validate([

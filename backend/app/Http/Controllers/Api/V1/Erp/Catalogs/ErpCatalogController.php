@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
+use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Controller;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,6 +31,10 @@ abstract class ErpCatalogController extends Controller
         $query = $this->modelClass()::query()
             ->where('erp_company_id', $companyId)
             ->orderBy('id');
+        $resource = ErpEstablishmentResource::forModel($this->modelClass());
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+        }
 
         if ($params['status'] !== null) {
             $query->where('status', $params['status']);
@@ -84,10 +90,15 @@ abstract class ErpCatalogController extends Controller
     {
         $companyId = $this->companyId($request);
 
-        return $this->modelClass()::query()
+        $query = $this->modelClass()::query()
             ->where('erp_company_id', $companyId)
-            ->whereKey($id)
-            ->firstOrFail();
+            ->whereKey($id);
+        $resource = ErpEstablishmentResource::forModel($this->modelClass());
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+        }
+
+        return $query->firstOrFail();
     }
 
     protected function decimalString(mixed $value): string

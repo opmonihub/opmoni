@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
 use App\Erp\BrazilianStateCode;
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
@@ -51,6 +52,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
     {
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
+        $access = app(ErpEstablishmentAccess::class);
         $companyId = $context->company->id;
         $data = $request->validate([
             'erp_establishment_id' => ['required', 'integer'],
@@ -69,15 +71,17 @@ class ErpFiscalDocumentController extends ErpOperationsController
             'document_kind' => ['sometimes', 'nullable', 'string', 'max:32'],
         ]);
         $data = $this->normalizeIdentifiers($data);
-        $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
-        $this->scope->assertBelongsToCompany(
-            ErpFiscalCertificate::class,
-            $companyId,
-            $data['erp_fiscal_certificate_id'] ?? null,
-            'erp_fiscal_certificate_id',
-        );
+        $access->assertRelated($context, $data['erp_establishment_id']);
+        if (isset($data['erp_fiscal_certificate_id'])) {
+            $this->scope->assertBelongsToCompany(ErpFiscalCertificate::class, $companyId, $data['erp_fiscal_certificate_id'], 'erp_fiscal_certificate_id');
+            $certificate = ErpFiscalCertificate::query()->where('erp_company_id', $companyId)->whereKey($data['erp_fiscal_certificate_id'])->firstOrFail();
+            $access->assertRelatedResource($context, $certificate, 'erp_fiscal_certificate_id');
+            $access->assertNullableRelated($context, $certificate->erp_establishment_id, 'erp_fiscal_certificate_id');
+        }
         if (isset($data['erp_sale_id'])) {
             $this->scope->assertBelongsToCompany(ErpSale::class, $companyId, $data['erp_sale_id'], 'erp_sale_id');
+            $sale = ErpSale::query()->where('erp_company_id', $companyId)->whereKey($data['erp_sale_id'])->firstOrFail();
+            $access->assertRelatedResource($context, $sale, 'erp_sale_id');
         }
 
         $existing = ErpFiscalDocument::query()
@@ -85,8 +89,12 @@ class ErpFiscalDocumentController extends ErpOperationsController
             ->where('idempotency_key', $data['idempotency_key'])
             ->first();
         if ($existing) {
+            $access->assertResource($context, $existing);
+
             return response()->json(['data' => $this->serialize($existing)]);
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
 
         try {
             $accessKey = $this->resolveAccessKey($context->company, $data);
@@ -97,15 +105,16 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $snapshot = null;
         if (isset($data['erp_sale_id'])) {
             $sale = ErpSale::query()->where('erp_company_id', $companyId)->whereKey($data['erp_sale_id'])->with('lines')->firstOrFail();
+            $access->assertResource($context, $sale);
+            $this->scope->assertActiveEstablishment($companyId, $sale->erp_establishment_id, 'erp_sale_id');
             abort_unless($sale->status === 'posted' && $sale->erp_establishment_id === $data['erp_establishment_id'], 422, 'Venda precisa estar lançada no estabelecimento emissor');
             $snapshot = ['sale_id' => $sale->id, 'total_amount' => (string) $sale->total_amount, 'subtotal_amount' => (string) $sale->subtotal_amount, 'discount_amount' => (string) $sale->discount_amount, 'tax_amount' => (string) $sale->tax_amount, 'currency' => $sale->currency, 'lines' => $sale->lines->toArray()];
         }
         $metadata = [];
         if (($data['document_kind'] ?? null) === 'return' && isset($data['source_document_id'])) {
-            $source = ErpFiscalDocument::query()
-                ->where('erp_company_id', $companyId)
-                ->whereKey($data['source_document_id'])
-                ->firstOrFail();
+            $this->scope->assertBelongsToCompany(ErpFiscalDocument::class, $companyId, $data['source_document_id'], 'source_document_id');
+            $source = ErpFiscalDocument::query()->where('erp_company_id', $companyId)->whereKey($data['source_document_id'])->firstOrFail();
+            $access->assertRelatedResource($context, $source, 'source_document_id');
             $metadata['return'] = ['source_document_id' => $source->id, 'source_access_key' => $source->access_key];
         }
 
@@ -132,6 +141,8 @@ class ErpFiscalDocumentController extends ErpOperationsController
         if ($model->status === ErpFiscalDocumentStateMachine::QUEUED) {
             return response()->json(['data' => $this->serialize($model)]);
         }
+
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         if ($model->access_key === null || $model->access_key === '') {
             try {
@@ -161,6 +172,9 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        if ($model->status !== ErpFiscalDocumentStateMachine::AUTHORIZED) {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         try {
             $result = $this->issuance->transmit($model, $context->company, $request->user()?->id);
@@ -176,6 +190,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         try {
             $result = $this->issuance->consult($model, $context->company);
@@ -191,6 +206,9 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        if ($model->status !== ErpFiscalDocumentStateMachine::CONTINGENCY_LOCAL) {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         try {
             $result = $this->issuance->enableContingency($model, $context->company);
@@ -206,6 +224,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         try {
             $result = $this->issuance->reconcileContingency($model, $context->company, $request->user()?->id);

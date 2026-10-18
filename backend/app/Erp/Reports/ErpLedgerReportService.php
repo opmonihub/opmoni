@@ -10,6 +10,7 @@ use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpStockBalance;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 
@@ -22,38 +23,49 @@ class ErpLedgerReportService
 
     /**
      * @param  array{date_from?: ?string, date_to?: ?string, erp_establishment_id?: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    public function report(int $companyId, string $category, array $filters): array
+    public function report(int $companyId, string $category, array $filters, ?array $allowedEstablishmentIds, bool $includeCompanywideFinance): array
     {
         if (! in_array($category, self::CATEGORIES, true)) {
             throw new InvalidArgumentException("Categoria de relatório inválida: {$category}");
         }
 
-        $normalized = $this->normalizeFilters($companyId, $filters, $category);
+        $normalized = $this->normalizeFilters($companyId, $filters, $category, $allowedEstablishmentIds, $includeCompanywideFinance);
 
         return match ($category) {
-            'sales' => $this->sales($companyId, $normalized),
-            'purchases' => $this->purchases($companyId, $normalized),
-            'stock' => $this->stock($companyId, $normalized),
-            'financial' => $this->financial($companyId, $normalized),
-            'fiscal' => $this->fiscal($companyId, $normalized),
-            'overview' => $this->overview($companyId, $normalized),
+            'sales' => $this->sales($companyId, $normalized, $allowedEstablishmentIds),
+            'purchases' => $this->purchases($companyId, $normalized, $allowedEstablishmentIds),
+            'stock' => $this->stock($companyId, $normalized, $allowedEstablishmentIds),
+            'financial' => $this->financial($companyId, $normalized, $allowedEstablishmentIds, $includeCompanywideFinance),
+            'fiscal' => $this->fiscal($companyId, $normalized, $allowedEstablishmentIds),
+            'overview' => $this->overview($companyId, $normalized, $allowedEstablishmentIds, $includeCompanywideFinance),
         };
     }
 
     /**
      * @param  array{date_from?: ?string, date_to?: ?string, erp_establishment_id?: ?int, currency?: string, status?: string, direction?: string}  $filters
-     * @return array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}
+     * @param  list<int>|null  $allowedEstablishmentIds
+     * @return array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}
      */
-    public function normalizeFilters(int $companyId, array $filters, ?string $category = null): array
+    public function normalizeFilters(int $companyId, array $filters, ?string $category, ?array $allowedEstablishmentIds, bool $includeCompanywideFinance): array
     {
         $establishmentId = isset($filters['erp_establishment_id']) ? (int) $filters['erp_establishment_id'] : null;
         if ($establishmentId !== null) {
             $this->scope->assertEstablishmentBelongsToCompany($companyId, $establishmentId);
+            if ($allowedEstablishmentIds !== null && ! in_array($establishmentId, $allowedEstablishmentIds, true)) {
+                throw new InvalidArgumentException('Estabelecimento não autorizado para esta associação');
+            }
         } else {
             $establishmentId = null;
         }
+        $effectiveEstablishmentIds = $establishmentId !== null
+            ? [$establishmentId]
+            : $allowedEstablishmentIds;
+        $includesCompanywideFinance = $includeCompanywideFinance
+            && in_array($category, ['financial', 'overview'], true)
+            && $establishmentId === null;
 
         $dateFrom = isset($filters['date_from']) ? Carbon::parse((string) $filters['date_from'])->startOfDay() : now()->startOfMonth();
         $dateTo = isset($filters['date_to']) ? Carbon::parse((string) $filters['date_to'])->endOfDay() : now()->endOfDay();
@@ -93,23 +105,25 @@ class ErpLedgerReportService
             'date_from' => $dateFrom->toIso8601String(),
             'date_to' => $dateTo->toIso8601String(),
             'erp_establishment_id' => $establishmentId,
+            'authorized_establishment_scope' => $effectiveEstablishmentIds === null ? 'all' : 'selected',
+            'authorized_establishment_ids' => $effectiveEstablishmentIds,
+            'authorized_companywide_finance' => $includesCompanywideFinance,
         ];
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function sales(int $companyId, array $filters): array
+    private function sales(int $companyId, array $filters, ?array $allowedEstablishmentIds): array
     {
         $query = ErpSale::query()
             ->where('erp_company_id', $companyId)
             ->where('status', 'posted')
             ->where('currency', $filters['currency'])
             ->whereBetween('posted_at', [$filters['date_from'], $filters['date_to']]);
-        if ($filters['erp_establishment_id'] !== null) {
-            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
-        }
+        $this->applyEstablishmentFilter($query, $filters, $allowedEstablishmentIds);
 
         $total = ErpDecimal::zero();
         $count = 0;
@@ -129,19 +143,18 @@ class ErpLedgerReportService
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function purchases(int $companyId, array $filters): array
+    private function purchases(int $companyId, array $filters, ?array $allowedEstablishmentIds): array
     {
         $query = ErpPurchase::query()
             ->where('erp_company_id', $companyId)
             ->where('status', 'posted')
             ->where('currency', $filters['currency'])
             ->whereBetween('posted_at', [$filters['date_from'], $filters['date_to']]);
-        if ($filters['erp_establishment_id'] !== null) {
-            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
-        }
+        $this->applyEstablishmentFilter($query, $filters, $allowedEstablishmentIds);
 
         $total = ErpDecimal::zero();
         $count = 0;
@@ -161,15 +174,14 @@ class ErpLedgerReportService
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function stock(int $companyId, array $filters): array
+    private function stock(int $companyId, array $filters, ?array $allowedEstablishmentIds): array
     {
         $query = ErpStockBalance::query()->where('erp_company_id', $companyId);
-        if ($filters['erp_establishment_id'] !== null) {
-            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
-        }
+        $this->applyEstablishmentFilter($query, $filters, $allowedEstablishmentIds);
 
         $quantity = ErpDecimal::zero();
         $inventoryValue = ErpDecimal::zero();
@@ -196,10 +208,11 @@ class ErpLedgerReportService
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function financial(int $companyId, array $filters): array
+    private function financial(int $companyId, array $filters, ?array $allowedEstablishmentIds, bool $includeCompanywideFinance): array
     {
         $obligationQuery = ErpObligation::query()
             ->where('currency', $filters['currency'])
@@ -210,10 +223,8 @@ class ErpLedgerReportService
             ->where('status', 'posted')
             ->where('currency', $filters['currency'])
             ->whereBetween('posted_at', [$filters['date_from'], $filters['date_to']]);
-        if ($filters['erp_establishment_id'] !== null) {
-            $obligationQuery->where('erp_establishment_id', $filters['erp_establishment_id']);
-            $paymentQuery->where('erp_establishment_id', $filters['erp_establishment_id']);
-        }
+        $this->applyFinancialEstablishmentFilter($obligationQuery, $filters, $allowedEstablishmentIds, $includeCompanywideFinance);
+        $this->applyFinancialEstablishmentFilter($paymentQuery, $filters, $allowedEstablishmentIds, $includeCompanywideFinance);
 
         if (isset($filters['status'])) {
             $obligationQuery->where('status', $filters['status']);
@@ -246,17 +257,16 @@ class ErpLedgerReportService
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function fiscal(int $companyId, array $filters): array
+    private function fiscal(int $companyId, array $filters, ?array $allowedEstablishmentIds): array
     {
         $query = ErpFiscalDocument::query()
             ->where('erp_company_id', $companyId)
             ->whereBetween('created_at', [$filters['date_from'], $filters['date_to']]);
-        if ($filters['erp_establishment_id'] !== null) {
-            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
-        }
+        $this->applyEstablishmentFilter($query, $filters, $allowedEstablishmentIds);
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -281,21 +291,61 @@ class ErpLedgerReportService
     }
 
     /**
-     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string}  $filters
+     * @param  array{date_from: string, date_to: string, erp_establishment_id: ?int, currency?: string, status?: string, direction?: string, authorized_establishment_scope: string, authorized_establishment_ids: ?list<int>}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
      * @return array<string, mixed>
      */
-    private function overview(int $companyId, array $filters): array
+    private function overview(int $companyId, array $filters, ?array $allowedEstablishmentIds, bool $includeCompanywideFinance): array
     {
         return [
             'category' => 'overview',
             'filters' => $filters,
             'sections' => [
-                'sales' => $this->sales($companyId, $filters)['totals'],
-                'purchases' => $this->purchases($companyId, $filters)['totals'],
-                'stock' => $this->stock($companyId, $filters)['totals'],
-                'financial' => $this->financial($companyId, $filters)['totals'],
-                'fiscal' => $this->fiscal($companyId, $filters)['totals'],
+                'sales' => $this->sales($companyId, $filters, $allowedEstablishmentIds)['totals'],
+                'purchases' => $this->purchases($companyId, $filters, $allowedEstablishmentIds)['totals'],
+                'stock' => $this->stock($companyId, $filters, $allowedEstablishmentIds)['totals'],
+                'financial' => $this->financial($companyId, $filters, $allowedEstablishmentIds, $includeCompanywideFinance)['totals'],
+                'fiscal' => $this->fiscal($companyId, $filters, $allowedEstablishmentIds)['totals'],
             ],
         ];
+    }
+
+    /**
+     * @param  Builder<ErpSale|ErpPurchase|ErpStockBalance|ErpObligation|ErpPayment|ErpFiscalDocument>  $query
+     * @param  array{erp_establishment_id: ?int}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
+     */
+    private function applyEstablishmentFilter(Builder $query, array $filters, ?array $allowedEstablishmentIds): void
+    {
+        if ($filters['erp_establishment_id'] !== null) {
+            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
+
+            return;
+        }
+        if ($allowedEstablishmentIds !== null) {
+            $query->whereIn('erp_establishment_id', $allowedEstablishmentIds);
+        }
+    }
+
+    /**
+     * @param  Builder<ErpObligation|ErpPayment>  $query
+     * @param  array{erp_establishment_id: ?int}  $filters
+     * @param  list<int>|null  $allowedEstablishmentIds
+     */
+    private function applyFinancialEstablishmentFilter(Builder $query, array $filters, ?array $allowedEstablishmentIds, bool $includeCompanywideFinance): void
+    {
+        if ($filters['erp_establishment_id'] !== null) {
+            $query->where('erp_establishment_id', $filters['erp_establishment_id']);
+
+            return;
+        }
+        if ($allowedEstablishmentIds !== null) {
+            $query->whereIn('erp_establishment_id', $allowedEstablishmentIds);
+
+            return;
+        }
+        if (! $includeCompanywideFinance) {
+            $query->whereNotNull('erp_establishment_id');
+        }
     }
 }

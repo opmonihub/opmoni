@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Finance\ErpCashRegister;
 use App\Support\CurrentCompany;
@@ -38,6 +39,8 @@ class ErpCashRegisterController extends ErpOperationsController
             'erp_establishment_id' => ['required', 'integer'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['erp_establishment_id']);
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
 
         $register = ErpCashRegister::query()->create([
             'erp_company_id' => $companyId,

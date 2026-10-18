@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Finance\ErpFinancialAccount;
 use App\Support\CurrentCompany;
@@ -40,6 +41,8 @@ class ErpFinancialAccountController extends ErpOperationsController
             'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
+        app(ErpEstablishmentAccess::class)->assertNullableRelated($context, isset($data['erp_establishment_id']) ? (int) $data['erp_establishment_id'] : null);
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
 
         $account = ErpFinancialAccount::query()->create([
             ...$data,

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Sales;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Sales\ErpCommercialDocumentStateMachine;
@@ -39,11 +40,7 @@ class ErpSaleController extends ErpOperationsController
 
     public function show(Request $request, int $sale): JsonResponse
     {
-        $model = ErpSale::query()
-            ->where('erp_company_id', $this->companyId($request))
-            ->with('lines')
-            ->whereKey($sale)
-            ->firstOrFail();
+        $model = $this->findForCompany($request, ErpSale::class, $sale)->load('lines');
 
         return response()->json(['data' => $this->serialize($model)]);
     }
@@ -65,6 +62,8 @@ class ErpSaleController extends ErpOperationsController
             'tax_rate_percent' => ['sometimes', 'nullable'],
         ]);
         $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
+        app(ErpEstablishmentAccess::class)->assertRelated($context, $data['erp_establishment_id']);
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
         foreach ($data['lines'] as $index => $line) {
             $this->scope->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id'] ?? null, "lines.{$index}.erp_product_variant_id");
             abort_unless(ErpDecimal::isPositive(ErpDecimal::parse($line['quantity'])), 422, 'Quantidade deve ser positiva');
@@ -121,15 +120,13 @@ class ErpSaleController extends ErpOperationsController
         $context->assertCanMutate();
         $companyId = $context->company->id;
         $userId = $request->user()?->id;
-        $model = ErpSale::query()
-            ->where('erp_company_id', $companyId)
-            ->with('lines')
-            ->whereKey($sale)
-            ->firstOrFail();
+        $model = $this->findForCompany($request, ErpSale::class, $sale)->load('lines');
 
         if ($model->status === ErpCommercialDocumentStateMachine::SALE_POSTED) {
             return response()->json(['data' => $this->serialize($model)]);
         }
+
+        $this->scope->assertActiveEstablishment($companyId, $model->erp_establishment_id);
 
         try {
             $nextStatus = $this->stateMachine->postSale($model->status);

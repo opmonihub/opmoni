@@ -283,7 +283,7 @@ XML;
         $ctx = $this->ownerContext(self::DEST_CNPJ);
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases/xml-preview', ['xml' => $this->sampleNfeXml()])
+            ->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $ctx['establishment']->id, 'xml' => $this->sampleNfeXml()])
             ->assertOk()
             ->assertJsonPath('data.chave', '35251030288513000100550010000000011000000012')
             ->assertJsonPath('data.emit.cpf_cnpj', '30.288.513/0001-00')
@@ -298,7 +298,7 @@ XML;
         $ctx = $this->ownerContext('30288513000100');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases/xml-preview', ['xml' => $this->sampleNfeXml()])
+            ->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $ctx['establishment']->id, 'xml' => $this->sampleNfeXml()])
             ->assertStatus(422)
             ->assertJsonPath('code', 'validation_error');
     }

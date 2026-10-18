@@ -3,6 +3,7 @@
 namespace App\Erp\Finance;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Finance\ErpPaymentAllocation;
@@ -44,6 +45,9 @@ final class ErpPaymentAllocationOperation
         if (! $obligation) {
             throw ValidationException::withMessages(['erp_obligation_id' => 'Registro inválido para esta empresa']);
         }
+        $access = app(ErpEstablishmentAccess::class);
+        $access->assertResource($context, $payment);
+        $access->assertRelatedResource($context, $obligation, 'erp_obligation_id');
         foreach ([$payment, $obligation] as $source) {
             app(ErpCatalogScope::class)->assertEstablishmentBelongsToCompany($companyId, $source->erp_establishment_id);
         }
@@ -55,9 +59,13 @@ final class ErpPaymentAllocationOperation
     /** @param array{payment_id:int, erp_obligation_id:int, amount:string} $payload */
     public function post(Request $request, array $payload, string $participantKey): array
     {
-        $companyId = CurrentCompany::fromRequest($request)->company->id;
+        $context = CurrentCompany::fromRequest($request);
+        $companyId = $context->company->id;
         $payment = ErpPayment::query()->where('erp_company_id', $companyId)->findOrFail($payload['payment_id']);
         $obligation = ErpObligation::query()->where('erp_company_id', $companyId)->findOrFail($payload['erp_obligation_id']);
+        $access = app(ErpEstablishmentAccess::class);
+        $access->assertResource($context, $payment);
+        $access->assertRelatedResource($context, $obligation, 'erp_obligation_id');
         foreach ([$payment, $obligation] as $source) {
             app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $source->erp_establishment_id);
         }

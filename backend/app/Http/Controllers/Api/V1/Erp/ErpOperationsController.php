@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Erp;
 
+use App\Enums\Erp\ErpEstablishmentResource;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpDecimal;
 use App\Http\Controllers\Controller;
 use App\Support\CurrentCompany;
@@ -21,10 +23,16 @@ abstract class ErpOperationsController extends Controller
     /** @param  class-string<Model>  $modelClass */
     protected function findForCompany(Request $request, string $modelClass, int $id, ?string $companyColumn = 'erp_company_id'): Model
     {
-        return $modelClass::query()
+        $context = CurrentCompany::fromRequest($request);
+        $query = $modelClass::query()
             ->where($companyColumn, $this->companyId($request))
-            ->whereKey($id)
-            ->firstOrFail();
+            ->whereKey($id);
+        $resource = ErpEstablishmentResource::forModel($modelClass);
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, $context, $resource);
+        }
+
+        return $query->firstOrFail();
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -65,6 +73,10 @@ abstract class ErpOperationsController extends Controller
      */
     protected function paginated(Request $request, Builder $query, callable $serialize): JsonResponse
     {
+        $resource = ErpEstablishmentResource::forModel($query->getModel()::class);
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+        }
         $params = $this->listParams($request);
         if ($params['status'] !== null && $query->getModel()->isFillable('status')) {
             $query->where('status', $params['status']);

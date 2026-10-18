@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Reports;
 
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\ErpReleaseGate;
 use App\Erp\Reports\ErpLedgerReportService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
@@ -25,7 +26,11 @@ class ErpReportController extends ErpOperationsController
     public function show(Request $request, string $category): JsonResponse
     {
         $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
-        $companyId = $this->companyId($request);
+        $context = CurrentCompany::fromRequest($request);
+        $companyId = $context->company->id;
+        $access = app(ErpEstablishmentAccess::class);
+        $allowedEstablishmentIds = $access->allowedIds($context);
+        $includeCompanywideFinance = $access->allowsCompanywideNullableRecords($context);
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
@@ -36,7 +41,7 @@ class ErpReportController extends ErpOperationsController
         ]);
 
         try {
-            $payload = $this->reports->report($companyId, $category, $filters);
+            $payload = $this->reports->report($companyId, $category, $filters, $allowedEstablishmentIds, $includeCompanywideFinance);
         } catch (InvalidArgumentException $exception) {
             return response()->json([
                 'code' => 'validation_error',
@@ -56,6 +61,10 @@ class ErpReportController extends ErpOperationsController
         }
 
         $companyId = $this->companyId($request);
+        $context = CurrentCompany::fromRequest($request);
+        $access = app(ErpEstablishmentAccess::class);
+        $allowedEstablishmentIds = $access->allowedIds($context);
+        $includeCompanywideFinance = $access->allowsCompanywideNullableRecords($context);
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
@@ -66,8 +75,8 @@ class ErpReportController extends ErpOperationsController
         ]);
 
         try {
-            $normalized = $this->reports->normalizeFilters($companyId, $filters, $category);
-            $payload = $this->reports->report($companyId, $category, $normalized);
+            $normalized = $this->reports->normalizeFilters($companyId, $filters, $category, $allowedEstablishmentIds, $includeCompanywideFinance);
+            $payload = $this->reports->report($companyId, $category, $normalized, $allowedEstablishmentIds, $includeCompanywideFinance);
         } catch (InvalidArgumentException $exception) {
             return response()->json([
                 'code' => 'validation_error',
@@ -75,6 +84,10 @@ class ErpReportController extends ErpOperationsController
             ], 422);
         }
 
+        $authorizedEstablishmentIds = $allowedEstablishmentIds;
+        if ($normalized['erp_establishment_id'] !== null) {
+            $authorizedEstablishmentIds = [$normalized['erp_establishment_id']];
+        }
         $path = sprintf(
             'erp/report-exports/%d/%s-%s.json',
             $companyId,
@@ -86,6 +99,9 @@ class ErpReportController extends ErpOperationsController
             'user_id' => $request->user()->id,
             'report_type' => $category,
             'filters' => $normalized,
+            'authorized_establishment_scope' => $normalized['authorized_establishment_scope'],
+            'authorized_establishment_ids' => $authorizedEstablishmentIds,
+            'authorized_companywide_finance' => $normalized['authorized_companywide_finance'],
             'status' => 'pending',
             'expires_at' => now()->addDay(),
         ]);
@@ -135,6 +151,11 @@ class ErpReportController extends ErpOperationsController
             return $this->exportError($model, $model->failure_code ?? 'export_not_available', 409);
         }
         if ($model->content_sha256 === null || $model->content_bytes === null) {
+            return $this->exportError($model, 'export_requires_regeneration', 409);
+        }
+        $access = app(ErpEstablishmentAccess::class);
+        $context = CurrentCompany::fromRequest($request);
+        if (! $this->exportScopeAllows($model, $access->allowedIds($context), $access->allowsCompanywideNullableRecords($context))) {
             return $this->exportError($model, 'export_requires_regeneration', 409);
         }
 
@@ -187,6 +208,24 @@ class ErpReportController extends ErpOperationsController
                 // Failure metadata remains available even when cleanup storage is unavailable.
             }
         }
+    }
+
+    /** @param list<int>|null $currentIds Null means all locations. */
+    private function exportScopeAllows(ErpReportExport $export, ?array $currentIds, bool $currentCompanywideFinance): bool
+    {
+        if ($export->authorized_companywide_finance === null && ! $currentCompanywideFinance) {
+            return false;
+        }
+        if ($export->authorized_companywide_finance === true && ! $currentCompanywideFinance) {
+            return false;
+        }
+
+        if ($export->authorized_establishment_scope === null || $export->authorized_establishment_scope === 'all') {
+            return $currentIds === null;
+        }
+        $authorizedIds = $export->authorized_establishment_ids ?? [];
+
+        return $currentIds === null || array_diff($authorizedIds, $currentIds) === [];
     }
 
     private function exportError(ErpReportExport $export, string $code, int $status): JsonResponse

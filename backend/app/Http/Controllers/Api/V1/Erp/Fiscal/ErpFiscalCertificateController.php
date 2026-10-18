@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Fiscal\ErpFiscalCertificateValidator;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Fiscal\ErpFiscalCertificate;
@@ -47,7 +48,9 @@ class ErpFiscalCertificateController extends ErpOperationsController
             'certificate_content' => ['required', 'string'],
             'password' => ['required', 'string', 'max:255'],
         ]);
-        $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
+        $access = app(ErpEstablishmentAccess::class);
+        $access->assertNullableRelated($context, $data['erp_establishment_id'] ?? null);
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
 
         $rawCertificate = base64_decode($data['certificate_content'], true);
         abort_if($rawCertificate === false, 422, 'Certificado inválido');
@@ -87,6 +90,7 @@ class ErpFiscalCertificateController extends ErpOperationsController
         $companyId = $context->company->id;
         $userId = $request->user()?->id;
         $existing = $this->findForCompany($request, ErpFiscalCertificate::class, $certificate);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $existing->erp_establishment_id);
         /** @var ErpFiscalCertificate $existing */
         $data = $request->validate([
             'certificate_content' => ['required', 'string'],

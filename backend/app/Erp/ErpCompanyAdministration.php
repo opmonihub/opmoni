@@ -76,6 +76,10 @@ final class ErpCompanyAdministration
     public function memberPayload(ErpCompanyMembership $membership): array
     {
         $membership->loadMissing('user:id,name,email');
+        $hasAllEstablishmentAccess = $membership->hasAllEstablishmentAccess();
+        $establishmentIds = $hasAllEstablishmentAccess
+            ? []
+            : $membership->establishments()->pluck('erp_establishments.id')->map(fn ($id): int => (int) $id)->all();
 
         return [
             'id' => $membership->id,
@@ -83,8 +87,8 @@ final class ErpCompanyAdministration
             'role' => $membership->role,
             'action_permissions' => $membership->action_permissions,
             'effective_permissions' => $membership->effectivePermissions(),
-            'establishment_scope' => 'all',
-            'establishment_ids' => [],
+            'establishment_scope' => $hasAllEstablishmentAccess ? 'all' : 'selected',
+            'establishment_ids' => $establishmentIds,
         ];
     }
 

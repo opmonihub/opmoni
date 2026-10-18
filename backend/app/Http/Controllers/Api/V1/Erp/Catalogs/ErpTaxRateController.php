@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpEstablishmentAccess;
 use App\Models\Erp\ErpTaxRate;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
@@ -42,6 +43,7 @@ class ErpTaxRateController extends ErpCatalogController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $data = $this->validated($request, $context->company->id);
+        app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id'] ?? null);
         $row = ErpTaxRate::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
 
         return response()->json(['data' => $this->serialize($row)], 201);
@@ -53,6 +55,9 @@ class ErpTaxRateController extends ErpCatalogController
         $context->assertCanMutate();
         $model = $this->findForCompany($request, $taxRate);
         $data = $this->validated($request, $context->company->id, partial: true);
+        if (array_key_exists('erp_establishment_id', $data)) {
+            app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id']);
+        }
         $model->fill($data);
         $model->save();
 
