@@ -4,6 +4,7 @@ import { erpModuleActive, erpModuleNavbarTitle, erpNavModules, erpVisibleNavModu
 const route = useRoute()
 const { currentCompany, currentAccount } = useAuth()
 const open = ref(false)
+const { closeForNavigation } = useErpSidebarNavigation(open)
 const workspaceKey = computed(() => `${currentAccount.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${currentCompany.value?.access_kind ?? ''}`)
 // Operational modules and settings provide their own native panel and header.
 const pageOwnsPanel = computed(() => erpNavModules.some(module =>
@@ -18,7 +19,7 @@ const links = computed(() => [[
     icon: module.icon,
     to: module.to,
     active: erpModuleActive(route.path, module),
-    onSelect: () => { open.value = false }
+    onSelect: closeForNavigation
   }))
 ]])
 
@@ -74,7 +75,7 @@ const navbarTitle = computed(() => {
           :ui="{ left: 'min-w-0', title: 'hidden truncate lg:block', right: 'min-w-0' }"
         >
           <template #toggle>
-            <UDashboardSidebarToggle aria-label="Abrir menu ERP" />
+            <UDashboardSidebarToggle aria-label="Abrir menu ERP" data-erp-sidebar-trigger />
           </template>
           <template #right>
             <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />

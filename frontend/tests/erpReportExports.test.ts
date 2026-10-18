@@ -73,15 +73,21 @@ describe('authoritative report workspace', () => {
     const { descriptor } = parse(readFileSync(new URL('../app/components/erp/ErpReportsWorkspace.vue', import.meta.url), 'utf8'))
     const script = compileScript(descriptor, { id: 'report-layout', inlineTemplate: true })
     const output = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-    const bindings = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose, useRoute: () => ({ hash: '' }), useAuth: () => ({ currentCompany: Vue.ref(null) }), useAccessApi: () => ({ api: async () => ({}) }) }
+    const bindings = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose, useRoute: () => ({ hash: '#finance' }), useAuth: () => ({ currentCompany: Vue.ref({ id: 1, permissions: ['*'], access_kind: 'direct', role: 'owner' }) }), useAccessApi: () => ({ api: async () => ({ data: [], meta: { last_page: 1 } }) }) }
     const exports: { default?: Vue.Component } = {}
     const imports: Record<string, unknown> = { 'vue': Vue, '~/utils/erpModulesNav': nav, '~/composables/useApiError': errors }
     new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], exports, ...Object.values(bindings))
     const app = Vue.createSSRApp(exports.default!)
     app.component('UDashboardPanel', { setup: (_, { slots, attrs }) => () => Vue.h('section', attrs, [slots.header?.(), slots.body?.()]) })
-    app.component('UDashboardNavbar', { props: ['title'], setup: (props, { slots }) => () => Vue.h('header', [Vue.h('h1', String(props.title)), slots.leading?.()]) })
+    app.component('UDashboardNavbar', { props: ['title'], setup: (props, { slots }) => () => Vue.h('header', [slots.toggle?.(), slots.leading?.(), Vue.h('h1', String(props.title))]) })
     app.component('UDashboardSidebarToggle', { setup: (_, { attrs }) => () => Vue.h('button', attrs, 'Navegação') })
-    for (const name of ['UDashboardToolbar', 'UNavigationMenu', 'UAlert', 'UFormField', 'UInput', 'USelect', 'UButton', 'ErrorRetryAlert', 'UEmpty', 'ErpReportMetrics', 'ErpReportExportPanel']) {
+    app.component('USelect', { props: ['items', 'modelValue'], setup: (props) => {
+      const items = props.items as Array<{ value: string }>
+      assert.ok(items.every(item => item.value !== ''), 'Reka SelectItem reserves the empty value for clearing')
+      assert.ok(items.some(item => item.value === props.modelValue), 'the all-records selection must match a valid item')
+      return () => Vue.h('select')
+    } })
+    for (const name of ['UDashboardToolbar', 'UNavigationMenu', 'UAlert', 'UFormField', 'UInput', 'UButton', 'ErrorRetryAlert', 'UEmpty', 'ErpReportMetrics', 'ErpReportExportPanel']) {
       app.component(name, { setup: (_, { slots }) => () => Vue.h('div', slots.default?.()) })
     }
     const markup = await renderToString(app)

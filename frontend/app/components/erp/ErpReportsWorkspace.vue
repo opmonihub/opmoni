@@ -16,6 +16,15 @@ const canExport = computed(() => currentCompany.value?.access_kind === 'direct'
   && (currentCompany.value.permissions.some(grant => ['*', 'erp.write', 'erp.reports.exports.store', 'erp.reports.exports.*', 'erp.reports.exports.write'].includes(grant))))
 const contextKey = computed(() => `${currentCompany.value?.id}:${currentCompany.value?.access_kind}:${currentCompany.value?.role}:${currentCompany.value?.permissions.join(',')}`)
 const filters = reactive({ date_from: '', date_to: '', erp_establishment_id: '', currency: 'BRL', status: '', direction: '' })
+function selectFilter(field: 'erp_establishment_id' | 'status' | 'direction') {
+  return computed({
+    get: () => filters[field] || 'all',
+    set: (value: string) => { filters[field] = value === 'all' ? '' : value }
+  })
+}
+const establishmentFilter = selectFilter('erp_establishment_id')
+const statusFilter = selectFilter('status')
+const directionFilter = selectFilter('direction')
 const report = ref<ErpReportSnapshot | null>(null)
 const loading = ref(false)
 const loadError = ref('')
@@ -102,8 +111,8 @@ onScopeDispose(() => {
   <UDashboardPanel id="erp-relatorios">
     <template #header>
       <UDashboardNavbar title="Relatórios">
-        <template #leading>
-          <UDashboardSidebarToggle aria-label="Abrir navegação e empresa" />
+        <template #toggle>
+          <UDashboardSidebarToggle aria-label="Abrir navegação e empresa" data-erp-sidebar-trigger />
         </template>
       </UDashboardNavbar>
       <UDashboardToolbar>
@@ -125,7 +134,7 @@ onScopeDispose(() => {
               <UInput v-model="filters.date_to" type="date" />
             </UFormField>
             <UFormField label="Estabelecimento" name="erp_establishment_id">
-              <USelect v-model="filters.erp_establishment_id" :items="[{ label: 'Todos', value: '' }, ...establishments.map(row => ({ label: row.name, value: String(row.id) }))]" class="w-52" />
+              <USelect v-model="establishmentFilter" :items="[{ label: 'Todos', value: 'all' }, ...establishments.map(row => ({ label: row.name, value: String(row.id) }))]" class="w-52" />
             </UFormField>
             <UFormField v-if="hasCurrency" label="Moeda" name="currency">
               <UInput
@@ -137,10 +146,10 @@ onScopeDispose(() => {
               />
             </UFormField>
             <UFormField v-if="statuses.length" :label="category === 'financial' ? 'Status da obrigação' : 'Status fiscal'" name="status">
-              <USelect v-model="filters.status" :items="[{ label: 'Todos', value: '' }, ...statuses]" class="w-44" />
+              <USelect v-model="statusFilter" :items="[{ label: 'Todos', value: 'all' }, ...statuses]" class="w-44" />
             </UFormField>
             <UFormField v-if="category === 'financial'" label="Direção da obrigação" name="direction">
-              <USelect v-model="filters.direction" :items="[{ label: 'Todas', value: '' }, { label: 'A receber', value: 'receivable' }, { label: 'A pagar', value: 'payable' }]" class="w-40" />
+              <USelect v-model="directionFilter" :items="[{ label: 'Todas', value: 'all' }, { label: 'A receber', value: 'receivable' }, { label: 'A pagar', value: 'payable' }]" class="w-40" />
             </UFormField>
             <UButton type="submit" label="Aplicar filtros" :loading="loading" />
           </form>

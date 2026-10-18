@@ -44,7 +44,7 @@ const links = computed(() => [[
     <template #header>
       <UDashboardNavbar title="Configurações da empresa">
         <template #toggle>
-          <UDashboardSidebarToggle aria-label="Abrir menu ERP" />
+          <UDashboardSidebarToggle aria-label="Abrir menu ERP" data-erp-sidebar-trigger />
         </template>
       </UDashboardNavbar>
       <UDashboardToolbar>
