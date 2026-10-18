@@ -72,6 +72,8 @@ class ErpPaymentController extends ErpOperationsController
             }
         }
 
+        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
+
         $payment = ErpPayment::query()->create([
             'erp_company_id' => $companyId,
             'erp_establishment_id' => $data['erp_establishment_id'] ?? null,

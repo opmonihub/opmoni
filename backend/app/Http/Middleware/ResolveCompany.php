@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Erp\ErpCommercialGate;
+use App\Erp\ErpCompanyAdministration;
 use App\Erp\ErpCompanyAuthorization;
 use App\Erp\Finance\ErpPaymentAllocationOperation;
 use App\Models\Erp\ErpCompany;
@@ -102,7 +103,11 @@ class ResolveCompany
             );
             $request->attributes->set(CurrentCompany::class, $context);
             try {
-                $context->assertPermission($operationLookup ? ErpPaymentAllocationOperation::NAME : (string) $request->route()?->getName(), $effectiveWrite);
+                if ($request->routeIs('erp.members.index', 'erp.members.show', 'erp.members.permissions', 'erp.members.identity-lookup', 'erp.members.store', 'erp.members.update', 'erp.members.destroy')) {
+                    app(ErpCompanyAdministration::class)->assertOwner($request);
+                } else {
+                    $context->assertPermission($operationLookup ? ErpPaymentAllocationOperation::NAME : (string) $request->route()?->getName(), $effectiveWrite);
+                }
                 $module = match (true) {
                     $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
                     $request->routeIs('erp.sales.*', 'erp.sale-returns.*', 'erp.quotes.*', 'erp.orders.*') => 'add_sale',

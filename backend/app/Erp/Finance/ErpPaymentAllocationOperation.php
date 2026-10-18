@@ -55,6 +55,12 @@ final class ErpPaymentAllocationOperation
     /** @param array{payment_id:int, erp_obligation_id:int, amount:string} $payload */
     public function post(Request $request, array $payload, string $participantKey): array
     {
+        $companyId = CurrentCompany::fromRequest($request)->company->id;
+        $payment = ErpPayment::query()->where('erp_company_id', $companyId)->findOrFail($payload['payment_id']);
+        $obligation = ErpObligation::query()->where('erp_company_id', $companyId)->findOrFail($payload['erp_obligation_id']);
+        foreach ([$payment, $obligation] as $source) {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $source->erp_establishment_id);
+        }
         $allocation = app(ErpFinanceParticipant::class)->allocatePayment(
             CurrentCompany::fromRequest($request)->company->id, $payload['payment_id'], $payload['erp_obligation_id'], $payload['amount'],
             $participantKey, $request->user()->id, app(ErpPaymentAllocationService::class),

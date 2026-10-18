@@ -46,6 +46,13 @@ final class ErpCatalogScope
         }
     }
 
+    public function assertActiveEstablishment(int $companyId, ?int $establishmentId, string $field = 'erp_establishment_id'): void
+    {
+        if ($establishmentId !== null && ! ErpEstablishment::query()->whereKey($establishmentId)->where('erp_company_id', $companyId)->where('status', 'active')->exists()) {
+            throw ValidationException::withMessages([$field => 'Estabelecimento ativo inválido para esta empresa']);
+        }
+    }
+
     public function assertProductBelongsToCompany(int $companyId, int $productId): void
     {
         $this->assertBelongsToCompany(ErpProduct::class, $companyId, $productId, 'erp_product_id');
