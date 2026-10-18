@@ -15,6 +15,7 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
         Grupos de preço
       </template>
       <UTable
+        v-if="groups.hasLoaded.value && groups.state.value?.data.length"
         :loading="groups.pending.value"
         :data="groups.state.value?.data ?? []"
         :columns="[
@@ -28,7 +29,13 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
         :meta="groups.state.value?.meta"
         :pending="groups.pending.value"
         :error="groups.error.value"
-        @retry="groups.refresh"
+        :loaded="groups.hasLoaded.value"
+        :has-rows="Boolean(groups.state.value?.data.length)"
+        :stale="groups.stale.value"
+        :search-pending="groups.searchPending.value"
+        :authority-blocked="groups.authorityBlocked.value"
+        :search="groups.search.value"
+        @retry="groups.retry"
       />
     </UCard>
     <UCard>
@@ -36,6 +43,7 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
         Descontos e cupons
       </template>
       <UTable
+        v-if="discounts.hasLoaded.value && discounts.state.value?.data.length"
         :loading="discounts.pending.value"
         :data="discounts.state.value?.data ?? []"
         :columns="[
@@ -50,7 +58,13 @@ const discounts = useErpCatalogList<Discount>(erpCatalogRoutes.discountRules)
         :meta="discounts.state.value?.meta"
         :pending="discounts.pending.value"
         :error="discounts.error.value"
-        @retry="discounts.refresh"
+        :loaded="discounts.hasLoaded.value"
+        :has-rows="Boolean(discounts.state.value?.data.length)"
+        :stale="discounts.stale.value"
+        :search-pending="discounts.searchPending.value"
+        :authority-blocked="discounts.authorityBlocked.value"
+        :search="discounts.search.value"
+        @retry="discounts.retry"
       />
     </UCard>
   </ErpCatalogPageShell>

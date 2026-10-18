@@ -6,7 +6,7 @@ import { apiFailure } from '#shared/utils/access'
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Contatos · Cadastros ERP' })
 
-const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpContactRecord>(erpCatalogRoutes.contacts)
+const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked, refresh, retry } = useErpCatalogList<ErpContactRecord>(erpCatalogRoutes.contacts)
 const { api, refreshCsrf } = useAccessApi()
 const { currentCompany, currentAccount } = useAuth()
 const canCreateContact = computed(() => {
@@ -91,6 +91,7 @@ async function createContact() {
     </UCard>
 
     <UTable
+      v-if="hasLoaded && state?.data.length"
       :loading="pending"
       :data="state?.data ?? []"
       :columns="[
@@ -104,7 +105,13 @@ async function createContact() {
       :meta="state?.meta"
       :pending="pending"
       :error="error"
-      @retry="refresh"
+      :loaded="hasLoaded"
+      :has-rows="Boolean(state?.data.length)"
+      :stale="stale"
+      :search-pending="searchPending"
+      :authority-blocked="authorityBlocked"
+      :search="search"
+      @retry="retry"
     />
   </ErpCatalogPageShell>
 </template>

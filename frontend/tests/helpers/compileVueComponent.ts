@@ -23,9 +23,13 @@ export function compileVueComponent(path: string, bindings: Record<string, unkno
   const module = { exports: {} as { default: vue.Component } }
   const context = { computed: vue.computed, ...bindings }
   const execute = new Function('require', 'module', 'exports', ...Object.keys(context), compiled.outputText)
-  const resolveImport = (specifier: string) => require(specifier.startsWith('~/')
-    ? fileURLToPath(new URL(`../../app/${specifier.slice(2)}.ts`, import.meta.url))
-    : specifier)
+  const resolveImport = (specifier: string) => {
+    if (specifier.startsWith('~/'))
+      return require(fileURLToPath(new URL(`../../app/${specifier.slice(2)}.ts`, import.meta.url)))
+    if (specifier.startsWith('#shared/'))
+      return require(fileURLToPath(new URL(`../../shared/${specifier.slice('#shared/'.length)}.ts`, import.meta.url)))
+    return require(specifier)
+  }
   execute(resolveImport, module, module.exports, ...Object.values(context))
   return module.exports.default
 }

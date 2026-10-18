@@ -5,7 +5,7 @@ import { erpCatalogRoutes, formatErpDecimal } from '#shared/utils/erpCatalogs'
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Produtos · Cadastros ERP' })
 
-const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpProductRecord>(erpCatalogRoutes.products)
+const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked, retry } = useErpCatalogList<ErpProductRecord>(erpCatalogRoutes.products)
 </script>
 
 <template>
@@ -14,6 +14,7 @@ const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpPr
       <UInput v-model="search" placeholder="Nome, SKU ou código de barras" />
     </UFormField>
     <UTable
+      v-if="hasLoaded && state?.data.length"
       :loading="pending"
       :data="state?.data ?? []"
       :columns="[
@@ -28,7 +29,13 @@ const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpPr
       :meta="state?.meta"
       :pending="pending"
       :error="error"
-      @retry="refresh"
+      :loaded="hasLoaded"
+      :has-rows="Boolean(state?.data.length)"
+      :stale="stale"
+      :search-pending="searchPending"
+      :authority-blocked="authorityBlocked"
+      :search="search"
+      @retry="retry"
     />
   </ErpCatalogPageShell>
 </template>
