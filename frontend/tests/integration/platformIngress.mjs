@@ -65,6 +65,16 @@ assert.match(response.headers.get('x-test-trusted-ip'), /127\.0\.0\.1/)
 assert.equal(response.headers.get('x-test-forwarded-for'), '')
 assert.match(response.headers.get('cache-control'), /no-store/)
 assert.equal((await response.json()).data.configured, true)
+// Laravel routes accept literal trailing slashes and a single percent decode.
+// Prove those spellings still reach the real certificate handler for valid data.
+for (const url of [`${path}/`, path.replace('contracting-certificate', '%63ontracting%2Dcertificate/')]) {
+  const accepted = await admin.send(url, { method: 'POST', body: upload() })
+  assert.equal(accepted.status, 200, await accepted.clone().text())
+  assert.equal(accepted.headers.get('x-test-effective-method'), 'PUT')
+  assert.equal(accepted.headers.get('x-test-file-sha256'), fixture.sha256)
+  assert.match(accepted.headers.get('cache-control'), /no-store/)
+  console.log(`PASS noncanonical upload ${url}: 200, effective PUT, complete file SHA256`)
+}
 assert.equal((await admin.send(path, { method: 'POST', body: upload(Buffer.alloc(2 * 1024 * 1024 + 1)) })).status, 413)
 const oversized = new FormData()
 oversized.set('_method', 'PUT')
@@ -83,15 +93,27 @@ const metadata = await member.send('/api/v1/serpro/connection', { headers: { 'X-
 assert.equal(metadata.status, 200, await metadata.clone().text())
 assert.match(metadata.headers.get('cache-control'), /no-store/)
 assert.equal((await metadata.json()).data.configured, true)
-// No Content-Length: enforce the streaming body bound before forwarding.
-const chunked = await admin.send('/api/v1/serpro/connection', {
-  method: 'POST', duplex: 'half', headers: { 'Content-Type': 'application/octet-stream' },
-  body: new ReadableStream({ start(controller) {
-    for (let i = 0; i < 65; i++) controller.enqueue(new Uint8Array(65536))
-    controller.close()
-  } })
-})
-assert.equal(chunked.status, 413)
+// Exercise both Content-Length and chunked bodies; the missing fixture header
+// proves Nuxt rejected the body before forwarding it to Laravel's own limit.
+for (const url of [
+  '/api/v1/serpro/connection', '/api/v1/serpro/connection/', '/api/v1/serpro/%63onnection/',
+  `${path}/`, path.replace('contracting-certificate', '%63ontracting%2Dcertificate/')
+]) {
+  for (const transport of ['content-length', 'chunked']) {
+    const body = transport === 'content-length'
+      ? Buffer.alloc(4 * 1024 * 1024 + 1)
+      : new ReadableStream({ start(controller) {
+          for (let i = 0; i < 65; i++) controller.enqueue(new Uint8Array(65536))
+          controller.close()
+        } })
+    const rejected = await admin.send(url, { method: 'POST', duplex: 'half', headers: { 'Content-Type': 'application/octet-stream' }, body })
+    assert.equal(rejected.status, 413, `${transport} ${url}`)
+    assert.equal((await rejected.json()).code, 'payload_too_large')
+    assert.match(rejected.headers.get('cache-control'), /no-store/)
+    assert.equal(rejected.headers.get('x-test-effective-method'), null, `must reject before Laravel: ${transport} ${url}`)
+    console.log(`PASS bounded ingress ${transport} ${url}: 413, no-store, no backend dispatch`)
+  }
+}
 // PHP post_max_size may erase fields/files before Laravel runs; the global
 // scoped guard must still classify the original Content-Length as 413.
 if (process.env.OPMONI_DIRECT_BACKEND) {
