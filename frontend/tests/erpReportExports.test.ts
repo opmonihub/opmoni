@@ -13,6 +13,7 @@ import * as nav from '../app/utils/erpModulesNav.ts'
 import * as errors from '../app/composables/useApiError.ts'
 import * as business from '../shared/utils/business.ts'
 import * as erp from '../shared/utils/erp.ts'
+import * as ingress from '../shared/utils/ingress.ts'
 import type { Identity } from '../shared/types/access.ts'
 
 const filters = { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: 7 }
@@ -275,7 +276,7 @@ describe('private report exports', () => {
       const source = readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8').replaceAll('import.meta.server', 'false')
       const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
       const module: { useAccessApi?: () => { api: TestApi } } = {}
-      const imports: Record<string, unknown> = { '#shared/utils/business': business, '#shared/utils/erp': erp }
+      const imports: Record<string, unknown> = { '#shared/utils/business': business, '#shared/utils/erp': erp, '#shared/utils/ingress': ingress }
       new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], module, ...Object.values(bindings))
       const transport = module.useAccessApi!()
       const app = view('ErpReportExportPanel', transport.api, { filters: { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: null } })
