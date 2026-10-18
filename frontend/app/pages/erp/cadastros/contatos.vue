@@ -8,25 +8,51 @@ useHead({ title: 'Contatos · Cadastros ERP' })
 
 const { search, page, pending, state, error, refresh } = useErpCatalogList<ErpContactRecord>(erpCatalogRoutes.contacts)
 const { api, refreshCsrf } = useAccessApi()
+const { currentCompany, currentAccount } = useAuth()
+const canCreateContact = computed(() => {
+  const company = currentCompany.value
+  return company?.status === 'active'
+    && company.access_kind === 'direct'
+    && ['owner', 'manager', 'operator'].includes(company.role)
+    && company.permissions.some(permission => ['*', 'erp.contacts.store', 'erp.contacts.*', 'erp.contacts.write', 'erp.write'].includes(permission))
+})
 const creating = ref(false)
 const form = reactive({ name: '', tax_id: '', is_customer: true, is_supplier: false })
 const formError = ref('')
+let generation = 0
+
+watch([() => currentCompany.value?.id, () => currentAccount.value?.id], () => {
+  generation++
+  Object.assign(form, { name: '', tax_id: '', is_customer: true, is_supplier: false })
+  formError.value = ''
+  creating.value = false
+}, { flush: 'sync' })
+onScopeDispose(() => {
+  generation++
+})
 
 async function createContact() {
-  if (creating.value || !form.name.trim())
+  if (!canCreateContact.value || creating.value || !form.name.trim())
     return
+  const version = ++generation
   creating.value = true
   formError.value = ''
   try {
     await refreshCsrf()
+    if (version !== generation || !canCreateContact.value)
+      return
     await api(erpCatalogRoutes.contacts, { method: 'POST', body: { ...form, tax_id: form.tax_id || null } })
+    if (version !== generation)
+      return
     form.name = ''
     form.tax_id = ''
     await refresh()
   } catch (err) {
-    formError.value = apiFailure(err).message
+    if (version === generation)
+      formError.value = apiFailure(err).message
   } finally {
-    creating.value = false
+    if (version === generation)
+      creating.value = false
   }
 }
 </script>
@@ -42,7 +68,7 @@ async function createContact() {
       </UFormField>
     </div>
 
-    <UCard>
+    <UCard v-if="canCreateContact">
       <form class="grid gap-3 sm:grid-cols-2" @submit.prevent="createContact">
         <UFormField label="Nome" required>
           <UInput v-model="form.name" />

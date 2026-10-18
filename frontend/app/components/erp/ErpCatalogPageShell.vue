@@ -6,7 +6,7 @@ defineProps<{
 </script>
 
 <template>
-  <UDashboardPanelContent class="space-y-4 p-4 sm:p-6">
+  <div class="space-y-4 p-4 sm:p-6">
     <div>
       <h1 class="text-highlighted text-2xl font-semibold">
         {{ title }}
@@ -16,5 +16,5 @@ defineProps<{
       </p>
     </div>
     <slot />
-  </UDashboardPanelContent>
+  </div>
 </template>

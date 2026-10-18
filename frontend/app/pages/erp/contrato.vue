@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Contrato ERP · Opmoni' })
 
 interface ErpSubscriptionPayload {
@@ -11,9 +11,21 @@ interface ErpSubscriptionPayload {
 }
 
 const { $api } = useNuxtApp()
+const { currentCompany, currentAccount } = useAuth()
 const loading = ref(true)
 const error = ref<unknown>(null)
 const subscription = ref<ErpSubscriptionPayload['data'] | null>(null)
+let generation = 0
+
+watch([() => currentCompany.value?.id, () => currentAccount.value?.id], () => {
+  generation++
+  subscription.value = null
+  error.value = null
+  loading.value = false
+}, { flush: 'sync' })
+onScopeDispose(() => {
+  generation++
+})
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
@@ -26,15 +38,19 @@ const statusLabel = computed(() => {
 })
 
 async function load() {
+  const version = ++generation
   loading.value = true
   error.value = null
   try {
     const response = await $api<ErpSubscriptionPayload>('/erp/subscription')
-    subscription.value = response.data
+    if (version === generation)
+      subscription.value = response.data
   } catch (err) {
-    error.value = err
+    if (version === generation)
+      error.value = err
   } finally {
-    loading.value = false
+    if (version === generation)
+      loading.value = false
   }
 }
 
@@ -43,13 +59,23 @@ onMounted(load)
 
 <template>
   <div class="mx-auto max-w-2xl space-y-6 p-6">
-    <div>
-      <h1 class="text-2xl font-semibold">
-        Contrato ERP
-      </h1>
-      <p class="text-muted text-sm">
-        Status real do contrato da empresa selecionada. Nenhum pagamento é processado nesta etapa.
-      </p>
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">
+          Contrato ERP
+        </h1>
+        <p class="text-muted text-sm">
+          Status real do contrato da empresa selecionada. Nenhum pagamento é processado nesta etapa.
+        </p>
+      </div>
+      <UButton
+        color="neutral"
+        variant="outline"
+        :loading="loading"
+        @click="load"
+      >
+        Atualizar
+      </UButton>
     </div>
     <UAlert v-if="error" color="error" title="Não foi possível carregar o contrato">
       <template #description>
@@ -58,7 +84,7 @@ onMounted(load)
         </UButton>
       </template>
     </UAlert>
-    <UCard v-else-if="subscription">
+    <UCard v-if="subscription">
       <dl class="grid gap-3 text-sm">
         <div class="flex justify-between gap-4">
           <dt class="text-muted">

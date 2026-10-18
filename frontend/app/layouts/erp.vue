@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { erpModuleActive, erpModuleNavbarTitle, erpVisibleNavModules } from '~/utils/erpModulesNav'
+import { erpModuleActive, erpModuleNavbarTitle, erpNavModules, erpVisibleNavModules } from '~/utils/erpModulesNav'
 
 const route = useRoute()
-const { currentCompany } = useAuth()
+const { currentCompany, currentAccount } = useAuth()
 const open = ref(false)
+const workspaceKey = computed(() => `${currentAccount.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${currentCompany.value?.access_kind ?? ''}`)
+// Operational modules and settings provide their own native panel and header.
+const pageOwnsPanel = computed(() => erpNavModules.some(module =>
+  !['overview', 'cadastros'].includes(module.id) && erpModuleActive(route.path, module)
+))
 
 const companyGrants = computed(() => currentCompany.value?.permissions)
 
@@ -61,15 +66,23 @@ const navbarTitle = computed(() => {
       </template>
     </UDashboardSidebar>
 
-    <UDashboardPanel>
+    <slot v-if="pageOwnsPanel" :key="workspaceKey" />
+    <UDashboardPanel v-else :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>
-        <UDashboardNavbar :title="navbarTitle">
-          <template #leading>
-            <UDashboardSidebarToggle />
+        <UDashboardNavbar
+          :title="navbarTitle"
+          :toggle="{ 'aria-label': 'Abrir menu ERP' }"
+          :ui="{ left: 'min-w-0', title: 'hidden truncate lg:block', right: 'min-w-0' }"
+        >
+          <template #right>
+            <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />
+            <UserMenu collapsed class="lg:hidden" />
           </template>
         </UDashboardNavbar>
       </template>
-      <slot />
+      <template #body>
+        <slot :key="workspaceKey" />
+      </template>
     </UDashboardPanel>
   </UDashboardGroup>
 </template>
