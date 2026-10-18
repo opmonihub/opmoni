@@ -18,7 +18,13 @@ final class ErpPaymentAllocationOperation
     /** @return array{payment_id:int, erp_obligation_id:int, amount:string} */
     public function canonical(Request $request, int|string $payment): array
     {
-        $data = Validator::make(['payment_id' => $payment, 'erp_obligation_id' => $request->input('erp_obligation_id'), 'amount' => $request->input('amount')], [
+        $identifiers = ['payment_id' => $payment, 'erp_obligation_id' => $request->input('erp_obligation_id')];
+        foreach ($identifiers as $field => $identifier) {
+            if (! is_int($identifier) && ! is_string($identifier)) {
+                throw ValidationException::withMessages([$field => 'Identificador deve ser inteiro ou texto numérico']);
+            }
+        }
+        $data = Validator::make($identifiers + ['amount' => $request->input('amount')], [
             'payment_id' => ['required', 'integer', 'min:1', 'max:9007199254740991'],
             'erp_obligation_id' => ['required', 'integer', 'min:1', 'max:9007199254740991'],
             'amount' => ['required', 'string'],

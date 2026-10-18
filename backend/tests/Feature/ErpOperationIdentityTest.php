@@ -13,6 +13,7 @@ use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ErpOperationIdentityTest extends TestCase
@@ -321,5 +322,40 @@ class ErpOperationIdentityTest extends TestCase
         $this->postJson($path, $body, ['Idempotency-Key' => 'orphan'])->assertConflict()->assertJsonPath('code', 'legacy_operation_requires_reconciliation');
         $this->assertDatabaseCount('erp_payment_allocations', 1);
         $this->assertDatabaseCount('erp_operation_receipts', 0);
+    }
+
+    public static function malformedIdentifierTypes(): array
+    {
+        return ['boolean' => [true], 'integral float' => [1.0]];
+    }
+
+    #[DataProvider('malformedIdentifierTypes')]
+    public function test_malformed_identifier_types_cannot_create_an_allocation(bool|float $identifier): void
+    {
+        $ctx = $this->allocationContext();
+        $this->assertSame(1, $ctx['obligation']);
+        $this->postJson('/api/v1/erp/payments/'.$ctx['payment'].'/allocate', [
+            'erp_obligation_id' => $identifier, 'amount' => '10',
+        ], ['Idempotency-Key' => 'invalid-identifier'], JSON_PRESERVE_ZERO_FRACTION)
+            ->assertUnprocessable()->assertJsonValidationErrors('erp_obligation_id')->assertJsonMissingPath('data');
+        $this->assertDatabaseCount('erp_payment_allocations', 0);
+        $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->assertSame('100.0000', ErpObligation::findOrFail($ctx['obligation'])->open_amount);
+    }
+
+    #[DataProvider('malformedIdentifierTypes')]
+    public function test_malformed_identifier_types_cannot_replay_an_existing_receipt(bool|float $identifier): void
+    {
+        $ctx = $this->allocationContext();
+        $this->assertSame(1, $ctx['obligation']);
+        $path = '/api/v1/erp/payments/'.$ctx['payment'].'/allocate';
+        $this->withHeader('Idempotency-Key', 'existing-identifier');
+        $original = $this->postJson($path, ['erp_obligation_id' => $ctx['obligation'], 'amount' => '10'])->assertOk()->json();
+        $this->postJson($path, ['erp_obligation_id' => $identifier, 'amount' => '10'], [], JSON_PRESERVE_ZERO_FRACTION)
+            ->assertUnprocessable()->assertJsonValidationErrors('erp_obligation_id')->assertJsonMissingPath('data');
+        $this->assertDatabaseCount('erp_payment_allocations', 1);
+        $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $this->assertSame('90.0000', ErpObligation::findOrFail($ctx['obligation'])->open_amount);
+        $this->postJson($path, ['erp_obligation_id' => (string) $ctx['obligation'], 'amount' => '10.0000'])->assertOk()->assertExactJson($original);
     }
 }
