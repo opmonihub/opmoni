@@ -337,11 +337,17 @@ const effectiveReadFamilies: Partial<Record<ErpPermission, readonly string[]>> =
 export function erpCompanyHasPermission(grants: readonly string[] | undefined, permission: ErpPermission | string): boolean {
   if (!grants?.length)
     return false
-  if (grants.includes('*'))
-    return true
   if (grants.includes(permission))
     return true
-  if (permission.endsWith('.read') && grants.includes(erpPermissions.read))
+  const family = permission.replace(/\.[^.]+$/, '')
+  const isReadAction = /\.(index|show|read|xml|pdf)$/.test(permission)
+  const actionScope = isReadAction ? 'read' : 'write'
+  if ([
+    '*',
+    `${family}.*`,
+    `${family}.${actionScope}`,
+    isReadAction ? erpPermissions.read : 'erp.write'
+  ].some(grant => grants.includes(grant)))
     return true
   const families = effectiveReadFamilies[permission as ErpPermission]
   return !!families && grants.some(grant => /\.(index|show|xml|pdf)$/.test(grant)

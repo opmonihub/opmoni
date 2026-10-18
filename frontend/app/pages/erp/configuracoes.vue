@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 
 const route = useRoute()
+const { currentCompany } = useAuth()
+const showOwnerControls = computed(() => currentCompany.value?.status === 'active'
+  && currentCompany.value.access_kind === 'direct'
+  && currentCompany.value.role === 'owner')
+const showEstablishmentControl = computed(() => currentCompany.value?.status === 'active'
+  && erpCompanyHasPermission(currentCompany.value.permissions, 'erp.establishments.index'))
 
 const links = computed(() => [[
   { label: 'Empresa', icon: 'i-lucide-building-2', to: '/erp/configuracoes/empresa', exact: true },
+  ...(showEstablishmentControl.value
+    ? [
+        { label: 'Estabelecimentos', icon: 'i-lucide-map-pin-house', to: '/erp/configuracoes/estabelecimentos' }
+      ]
+    : []),
+  ...(showOwnerControls.value
+    ? [
+        { label: 'Membros', icon: 'i-lucide-users-round', to: '/erp/configuracoes/membros' },
+        { label: 'Escritório', icon: 'i-lucide-building', to: '/erp/configuracoes/escritorio' }
+      ]
+    : []),
   { label: 'Taxas', icon: 'i-lucide-percent', to: '/erp/configuracoes/taxas' },
   { label: 'Produto', icon: 'i-lucide-package', to: '/erp/configuracoes/produto' },
   { label: 'Vendas', icon: 'i-lucide-shopping-cart', to: '/erp/configuracoes/vendas' },
@@ -25,8 +43,8 @@ const links = computed(() => [[
   <UDashboardPanel id="erp-configuracoes">
     <template #header>
       <UDashboardNavbar title="Configurações da empresa">
-        <template #leading>
-          <UDashboardSidebarToggle />
+        <template #toggle>
+          <UDashboardSidebarToggle aria-label="Abrir menu ERP" />
         </template>
       </UDashboardNavbar>
       <UDashboardToolbar>

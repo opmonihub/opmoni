@@ -147,8 +147,8 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
   <UDashboardPanel :id="`erp-${contract.id}`">
     <template #header>
       <UDashboardNavbar :title="contract.title">
-        <template #leading>
-          <UDashboardSidebarToggle />
+        <template #toggle>
+          <UDashboardSidebarToggle aria-label="Abrir menu ERP" />
         </template>
         <template #trailing>
           <UBadge

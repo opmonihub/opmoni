@@ -22,6 +22,7 @@ class ErpEstablishmentController extends Controller
     {
         $params = $this->administration->listParams($request, true);
         $context = CurrentCompany::fromRequest($request);
+        $hasAllEstablishments = $this->establishmentAccess->allowedIds($context) === null;
         $query = $this->establishmentAccess->apply(
             ErpEstablishment::query()->where('erp_company_id', $context->company->id),
             $context,
@@ -35,7 +36,7 @@ class ErpEstablishmentController extends Controller
         }
         $page = $query->orderBy('id')->paginate($params['per_page'] ?? 15);
 
-        return response()->json(['data' => $page->getCollection()->map($this->administration->establishmentPayload(...))->all(), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'per_page' => $page->perPage(), 'total' => $page->total()]]);
+        return response()->json(['data' => $page->getCollection()->map($this->administration->establishmentPayload(...))->all(), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'all_establishments' => $hasAllEstablishments]]);
     }
 
     public function show(Request $request, int $establishment): JsonResponse

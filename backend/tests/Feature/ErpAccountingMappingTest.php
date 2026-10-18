@@ -370,6 +370,87 @@ class ErpAccountingMappingTest extends TestCase
         $this->assertSame($history, $blocked->fresh()->getAttributes());
     }
 
+    public function test_office_admin_context_read_lists_only_active_establishments_for_the_selected_company(): void
+    {
+        $s = $this->scenario();
+        $second = ErpEstablishment::factory()->create(['erp_company_id' => $s['company']->id, 'name' => 'Filial B', 'status' => 'active']);
+        ErpEstablishment::factory()->create(['erp_company_id' => $s['company']->id, 'name' => 'Arquivada', 'status' => 'inactive']);
+        $this->loginOffice($s);
+
+        $response = $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$s['company']->id.'&page=1&per_page=1')
+            ->assertOk()
+            ->assertJsonPath('data.delegation_id', $s['delegation']->id)
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.establishments.0.id', $s['establishment']->id)
+            ->assertJsonPath('data.establishments.0.name', $s['establishment']->name)
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('meta.total', 2);
+
+        $this->assertSame(['id', 'name'], array_keys($response->json('data.establishments.0')));
+        $this->assertNull($response->json('data.establishments.0.cnpj'));
+        $this->assertNotSame($second->id, $response->json('data.establishments.0.id'));
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$s['company']->id.'&page=2&per_page=1')
+            ->assertOk()->assertJsonPath('data.establishments.0.id', $second->id);
+    }
+
+    public function test_office_context_read_hides_foreign_unknown_inactive_and_undelegated_companies(): void
+    {
+        $s = $this->scenario();
+        $otherAccount = Account::factory()->create();
+        $foreignDelegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $s['company']->id, 'account_id' => $otherAccount->id]);
+        $foreignCompany = ErpCompany::factory()->create();
+        ErpEstablishment::factory()->create(['erp_company_id' => $foreignCompany->id]);
+        $this->loginOffice($s);
+
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$foreignCompany->id)->assertNotFound();
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id=999999999')->assertNotFound();
+
+        $inactive = ErpCompany::factory()->create(['status' => 'inactive']);
+        ErpOfficeDelegation::factory()->create(['erp_company_id' => $inactive->id, 'account_id' => $s['account']->id]);
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$inactive->id)->assertNotFound();
+
+        $noDelegation = ErpCompany::factory()->create();
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$noDelegation->id)->assertNotFound();
+
+        $foreignDelegation->update(['status' => 'revoked']);
+        $s['delegation']->update(['status' => 'revoked']);
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$s['company']->id)->assertNotFound();
+    }
+
+    public function test_office_context_read_requires_real_current_account_admin_and_positive_company_id(): void
+    {
+        $s = $this->scenario();
+        $this->loginOffice($s, 'operador');
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id='.$s['company']->id)->assertForbidden();
+
+        $this->loginOffice($s);
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context')->assertUnprocessable();
+        $this->getJson('/api/v1/account/erp-accounting-mappings/context?company_id=0')->assertUnprocessable();
+    }
+
+    public function test_owner_mapping_read_reloads_only_the_current_delegation_target_and_permissions(): void
+    {
+        $s = $this->scenario();
+        Account::factory()->create(['name' => 'Unrelated office']);
+        $s['delegation']->update(['permission_allowlist' => ['erp.read', 'erp.contacts.*']]);
+        $this->loginOwner($s);
+
+        $view = $this->getJson('/api/v1/erp/accounting-mappings')->assertOk()->json('data');
+        $this->assertSame($s['delegation']->id, $view['delegation']['id']);
+        $this->assertSame(['id' => $s['account']->id, 'name' => $s['account']->name], $view['delegation']['account']);
+        $this->assertSame('active', $view['delegation']['status']);
+        $this->assertSame($s['delegation']->fresh()->effectivePermissions(), $view['delegation']['effective_permissions']);
+        $this->assertSame([], $view['mappings']);
+        $this->assertArrayNotHasKey('client_id', $view['delegation']);
+
+        $s['delegation']->update(['status' => 'revoked']);
+        $empty = $this->getJson('/api/v1/erp/accounting-mappings')->assertOk()->json('data');
+        $this->assertNull($empty['delegation']);
+        $this->assertSame([], $empty['mappings']);
+    }
+
     private function payload(array $s): array
     {
         return ['delegation_id' => $s['delegation']->id, 'erp_establishment_id' => $s['establishment']->id, 'client_id' => $s['client']->id];

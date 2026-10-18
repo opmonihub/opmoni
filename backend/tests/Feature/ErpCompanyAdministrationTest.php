@@ -112,6 +112,7 @@ class ErpCompanyAdministrationTest extends TestCase
     public function test_establishment_crud_preserves_inactive_history_and_validates_tax_identity(): void
     {
         $response = $this->postJson('/api/v1/erp/establishments', ['name' => 'Filial', 'cnpj' => '30.288.513/0001-00', 'status' => 'active'])->assertCreated()->assertJsonPath('data.cnpj', '30288513000100');
+        $this->getJson('/api/v1/erp/establishments?status=all')->assertOk()->assertJsonPath('meta.all_establishments', true);
         $id = $response->json('data.id');
         $this->patchJson('/api/v1/erp/establishments/'.$id, ['status' => 'inactive'])->assertOk();
         $this->getJson('/api/v1/erp/establishments/'.$id)->assertOk()->assertJsonPath('data.status', 'inactive');
@@ -147,6 +148,7 @@ class ErpCompanyAdministrationTest extends TestCase
         $this->getJson('/api/v1/erp/establishments')
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.all_establishments', false)
             ->assertJsonPath('data.0.id', $allowed->id);
         $this->getJson('/api/v1/erp/establishments/'.$denied->id)->assertNotFound();
     }
@@ -156,6 +158,9 @@ class ErpCompanyAdministrationTest extends TestCase
         $membership = ErpCompanyMembership::where('user_id', $this->owner->id)->firstOrFail();
         foreach ([['manager', [], 201], ['operator', [], 403], ['operator', ['*'], 403], ['operator', ['erp.write'], 403], ['operator', ['erp.establishments.store'], 201], ['viewer', ['erp.establishments.store'], 403]] as [$role, $permissions, $status]) {
             $membership->update(['role' => $role, 'action_permissions' => $permissions]);
+            if ($role === 'manager') {
+                $this->getJson('/api/v1/erp/establishments?status=all')->assertOk()->assertJsonPath('meta.all_establishments', true);
+            }
             $this->postJson('/api/v1/erp/establishments', ['name' => 'Filial', 'status' => 'active'])->assertStatus($status);
         }
         $membership->update(['role' => 'owner', 'action_permissions' => []]);
