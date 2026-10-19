@@ -311,7 +311,8 @@ class ErpTypedCatalogSetupTest extends TestCase
 
         $this->withHeaders($headers)
             ->patchJson('/api/v1/erp/products/'.$productId, ['name' => 'Não salvar', 'ncm' => '0'])
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.ncm.0', 'Informe o NCM com 8 dígitos ou 00.');
 
         foreach ([
             ['icms_rate' => 1.25],

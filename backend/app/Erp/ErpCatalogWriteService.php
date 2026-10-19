@@ -148,7 +148,7 @@ final class ErpCatalogWriteService
             'variants.*.barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
             'variants.*.status' => ['sometimes', 'in:archived'],
             ...$this->productFiscalRules(),
-        ])->validate();
+        ], $this->productFiscalMessages())->validate();
 
         if (! $partial && collect($data['variants'] ?? [])->contains(fn (array $variant): bool => array_key_exists('id', $variant))) {
             throw ValidationException::withMessages(['variants' => 'Novas variantes não podem informar um identificador.']);
@@ -236,6 +236,30 @@ final class ErpCatalogWriteService
             'ipi_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
             'simple_national_credit_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
         ];
+    }
+
+    /** @return array<string, string> */
+    private function productFiscalMessages(): array
+    {
+        $codeMessages = [
+            'ncm' => 'Informe o NCM com 8 dígitos ou 00.',
+            'cest' => 'Informe o CEST com 7 dígitos.',
+            'origin_code' => 'Informe o código de origem com 1 dígito.',
+            'icms_cst' => 'Informe o CST do ICMS com 2 dígitos.',
+            'icms_csosn' => 'Informe o CSOSN com 3 dígitos.',
+            'pis_cst' => 'Informe o CST do PIS com 2 dígitos.',
+            'cofins_cst' => 'Informe o CST da COFINS com 2 dígitos.',
+            'ipi_cst' => 'Informe o CST do IPI com 2 dígitos.',
+            'ibs_cbs_cst' => 'Informe o CST IBS/CBS com 3 dígitos.',
+            'ibs_cbs_classification_code' => 'Informe a classificação IBS/CBS com 6 dígitos.',
+        ];
+        $messages = [];
+        foreach ($codeMessages as $field => $message) {
+            $messages[$field.'.regex'] = $message;
+            $messages[$field.'.string'] = $message;
+        }
+
+        return $messages;
     }
 
     /** @param list<array<string, mixed>> $variants */
