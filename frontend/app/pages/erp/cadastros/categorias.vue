@@ -1,32 +1,28 @@
 <script setup lang="ts">
-import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
+import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
+import ErpCategoryCatalogForm from '~/components/erp/catalogs/ErpCategoryCatalogForm.vue'
+import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
-type Row = { id: number, name: string, parent_id: number | null, status: string }
-const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked, retry } = useErpCatalogList<Row>(erpCatalogRoutes.categories)
+useHead({ title: 'Categorias · Cadastros ERP' })
+
+const columns = [
+  { accessorKey: 'name', header: 'Categoria' },
+  { accessorKey: 'parent_id', header: 'Categoria superior', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.parent_id ? `#${row.original.parent_id}` : '—' },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
+]
+const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '')
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Categorias">
-    <UInput v-model="search" class="max-w-md" />
-    <UTable
-      v-if="hasLoaded && state?.data.length"
-      :loading="pending"
-      :data="state?.data ?? []"
-      :columns="[{ accessorKey: 'name', header: 'Categoria' }, { accessorKey: 'status', header: 'Status' }]"
-    />
-    <ErpCatalogPagination
-      v-model:page="page"
-      :meta="state?.meta"
-      :pending="pending"
-      :error="error"
-      :loaded="hasLoaded"
-      :has-rows="Boolean(state?.data.length)"
-      :stale="stale"
-      :search-pending="searchPending"
-      :authority-blocked="authorityBlocked"
-      :search="search"
-      @retry="retry"
+  <ErpCatalogPageShell title="Categorias" description="Organize os produtos em uma hierarquia da própria empresa.">
+    <ErpCatalogResource
+      :path="erpCatalogRoutes.categories"
+      title="Categorias"
+      :form="ErpCategoryCatalogForm"
+      :columns="columns"
+      :record-label="recordLabel"
     />
   </ErpCatalogPageShell>
 </template>

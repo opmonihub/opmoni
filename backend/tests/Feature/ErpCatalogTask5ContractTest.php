@@ -20,6 +20,7 @@ use App\Models\Erp\ErpUnit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ErpCatalogTask5ContractTest extends TestCase
@@ -143,6 +144,62 @@ class ErpCatalogTask5ContractTest extends TestCase
             ->assertJsonValidationErrors('conversion_factor');
 
         $this->assertSame('100.00000000', (string) $derived->fresh()->conversion_factor);
+    }
+
+    public function test_unit_patch_with_zero_factor_and_another_change_keeps_the_whole_row_unchanged(): void
+    {
+        $context = $this->ownerContext();
+        $base = ErpUnit::factory()->create([
+            'erp_company_id' => $context['company']->id,
+            'short_name' => 'm',
+            'allow_decimal' => false,
+        ]);
+        $derived = ErpUnit::factory()->create([
+            'erp_company_id' => $context['company']->id,
+            'short_name' => 'cm',
+            'actual_name' => 'Centímetro',
+            'allow_decimal' => true,
+            'base_unit_id' => $base->id,
+            'conversion_factor' => '100.00000000',
+        ]);
+        $before = $derived->fresh()->only(['short_name', 'actual_name', 'allow_decimal', 'base_unit_id', 'conversion_factor']);
+
+        $this->withHeaders([...$context['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->patchJson('/api/v1/erp/units/'.$derived->id, [
+                'actual_name' => 'Alteração que não deve persistir',
+                'conversion_factor' => '0.00000000',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('conversion_factor');
+
+        $this->assertSame($before, $derived->fresh()->only(['short_name', 'actual_name', 'allow_decimal', 'base_unit_id', 'conversion_factor']));
+    }
+
+    public function test_derived_unit_can_allow_decimals_when_its_base_unit_does_not(): void
+    {
+        $context = $this->ownerContext();
+        $base = ErpUnit::factory()->create([
+            'erp_company_id' => $context['company']->id,
+            'short_name' => 'cx',
+            'allow_decimal' => false,
+        ]);
+
+        $response = $this->withHeaders([...$context['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->postJson('/api/v1/erp/units', [
+                'short_name' => 'un',
+                'actual_name' => 'Unidade fracionável',
+                'allow_decimal' => true,
+                'base_unit_id' => $base->id,
+                'conversion_factor' => '1000.00000000',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.allow_decimal', true)
+            ->assertJsonPath('data.base_unit_id', $base->id)
+            ->assertJsonPath('data.conversion_factor', '1000.00000000');
+
+        $derived = ErpUnit::query()->findOrFail($response->json('data.id'));
+        $this->assertTrue($derived->allow_decimal);
+        $this->assertSame('1000.00000000', (string) $derived->conversion_factor);
     }
 
     public function test_category_patch_rejects_a_cycle_without_changing_the_parent(): void
@@ -579,6 +636,42 @@ class ErpCatalogTask5ContractTest extends TestCase
             ->postJson('/api/v1/erp/brands', ['name' => 'OFICINA'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('name');
+    }
+
+    public function test_price_group_default_switch_validation_failure_restores_the_prior_default(): void
+    {
+        $context = $this->ownerContext();
+        $priorDefault = ErpPriceGroup::factory()->create([
+            'erp_company_id' => $context['company']->id,
+            'name' => 'Padrão atual',
+            'is_default' => true,
+        ]);
+        $observedPriorDefaultCleared = false;
+        $event = 'eloquent.creating: '.ErpPriceGroup::class;
+        Event::listen($event, function (ErpPriceGroup $group) use (&$observedPriorDefaultCleared, $priorDefault): void {
+            if ($group->name !== 'Falha injetada ao criar') {
+                return;
+            }
+
+            $observedPriorDefaultCleared = ! $priorDefault->fresh()->is_default;
+            throw ValidationException::withMessages(['name' => 'Falha de validação injetada após a troca do padrão.']);
+        });
+
+        try {
+            $response = $this->withHeaders([...$context['headers'], 'X-CSRF-Token' => $this->csrf()])
+                ->postJson('/api/v1/erp/price-groups', [
+                    'name' => 'Falha injetada ao criar',
+                    'percentage_adjustment' => '0.0000',
+                    'is_default' => true,
+                ]);
+        } finally {
+            Event::forget($event);
+        }
+
+        $response->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->assertTrue($observedPriorDefaultCleared, 'The injected failure must happen after the old default is cleared inside the write transaction.');
+        $this->assertTrue($priorDefault->fresh()->is_default);
+        $this->assertSame(1, ErpPriceGroup::query()->where('erp_company_id', $context['company']->id)->count());
     }
 
     public function test_unit_short_name_duplicate_including_archived_row_returns_field_error(): void

@@ -46,25 +46,26 @@ function catalogRuntime() {
   const useState = <T>(key: string, init: () => T) => key === 'access-session-generation'
     ? sessionGeneration as Vue.Ref<T>
     : Vue.ref(init())
+  const bindings = {
+    useAuth,
+    useState,
+    useAccessApi: () => ({ api, refreshCsrf: async () => undefined }),
+    apiFailure,
+    ref: Vue.ref,
+    computed: Vue.computed,
+    watch: Vue.watch,
+    onScopeDispose: Vue.onScopeDispose
+  }
   const { useErpCatalogList } = loadAppComposable<{ useErpCatalogList(path: string): (typeof lists)[number] }>(
-    'composables/useErpCatalogList.ts',
-    {
-      useAuth,
-      useState,
-      useAccessApi: () => ({ api }),
-      apiFailure,
-      ref: Vue.ref,
-      computed: Vue.computed,
-      watch: Vue.watch,
-      onScopeDispose: Vue.onScopeDispose
-    }
+    'composables/useErpCatalogList.ts', bindings
   )
+  const editorModule = loadAppComposable<Record<string, unknown>>('composables/useErpCatalogEditor.ts', bindings)
   const createList = (path: string) => {
     const list = useErpCatalogList(path)
     lists.push(list)
     return list
   }
-  return { requests, lists, createList }
+  return { requests, lists, createList, bindings, editorModule }
 }
 
 function createHostRenderer() {
@@ -132,9 +133,13 @@ function slotWrapper(name: string, tag: string) {
 function mountCatalogPage(path: string) {
   const runtime = catalogRuntime()
   const page = compileVueComponent(path, {
+    ...runtime.bindings,
     useErpCatalogList: runtime.createList,
     definePageMeta() {},
     useHead() {}
+  }, {
+    '~/composables/useErpCatalogList': { useErpCatalogList: runtime.createList },
+    '~/composables/useErpCatalogEditor': runtime.editorModule
   })
   const pagination = compileVueComponent('components/erp/ErpCatalogPagination.vue')
   const { renderer, createNode } = createHostRenderer()
@@ -142,6 +147,12 @@ function mountCatalogPage(path: string) {
   app.component('ErpCatalogPageShell', slotWrapper('ErpCatalogPageShell', 'main'))
   app.component('UCard', slotWrapper('UCard', 'section'))
   app.component('UFormField', slotWrapper('UFormField', 'label'))
+  app.component('UModal', Vue.defineComponent({
+    props: ['open'],
+    setup(props, { slots }) {
+      return () => props.open ? Vue.h('dialog', {}, [slots.body?.(), slots.footer?.()]) : null
+    }
+  }))
   app.component('UInput', Vue.defineComponent({
     name: 'UInput',
     props: ['modelValue', 'placeholder'],

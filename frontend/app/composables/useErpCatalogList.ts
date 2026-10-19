@@ -17,7 +17,8 @@ const catalogReadPermissions: Record<string, string> = {
   [erpCatalogRoutes.operationNatures]: 'erp.operation-natures.index',
   [erpCatalogRoutes.carriers]: 'erp.carriers.index',
   [erpCatalogRoutes.vehicles]: 'erp.vehicles.index',
-  [erpCatalogRoutes.drivers]: 'erp.drivers.index'
+  [erpCatalogRoutes.drivers]: 'erp.drivers.index',
+  '/erp/establishments': 'erp.establishments.index'
 }
 
 const searchDebounceMs = 250
@@ -92,6 +93,14 @@ export function useErpCatalogList<T>(path: string) {
     pending.value = false
   }
 
+  function blockAuthority(message: string) {
+    clearSearchTimer()
+    invalidateRequest()
+    state.value = null
+    blockedContextKey.value = contextKey.value
+    error.value = message
+  }
+
   function requestIsCurrent(sequence: number, token: ReturnType<typeof capture>): boolean {
     return !disposed && requestSequence === sequence && isCurrent(token)
   }
@@ -129,11 +138,10 @@ export function useErpCatalogList<T>(path: string) {
       if (!requestIsCurrent(sequence, token))
         return
       const details = apiFailure(failure)
-      if (isAuthorityLoss(details)) {
-        state.value = null
-        blockedContextKey.value = token.key
-      }
-      error.value = details.message
+      if (isAuthorityLoss(details))
+        blockAuthority(details.message)
+      else
+        error.value = details.message
     } finally {
       if (requestIsCurrent(sequence, token)) {
         pending.value = false
@@ -237,5 +245,5 @@ export function useErpCatalogList<T>(path: string) {
     error.value = ''
   })
 
-  return { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked, refresh, retry }
+  return { search, page, pending, searchPending, state, error, hasLoaded, stale, canRead, authorityBlocked, blockAuthority, refresh, retry }
 }

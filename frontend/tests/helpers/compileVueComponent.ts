@@ -13,7 +13,11 @@ export function vueSource(path: string): string {
 }
 
 /** Compile the real SFC without a browser, Nuxt server, or new test dependencies. */
-export function compileVueComponent(path: string, bindings: Record<string, unknown> = {}): vue.Component {
+export function compileVueComponent(
+  path: string,
+  bindings: Record<string, unknown> = {},
+  moduleMocks: Record<string, unknown> = {}
+): vue.Component {
   const source = vueSource(path)
   const { descriptor } = parse(source, { filename: path })
   const script = compileScript(descriptor, { id: path, inlineTemplate: true })
@@ -21,13 +25,35 @@ export function compileVueComponent(path: string, bindings: Record<string, unkno
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   })
   const module = { exports: {} as { default: vue.Component } }
-  const context = { computed: vue.computed, ...bindings }
+  const context = {
+    computed: vue.computed,
+    onScopeDispose: vue.onScopeDispose,
+    reactive: vue.reactive,
+    ref: vue.ref,
+    watch: vue.watch,
+    ...bindings
+  }
   const execute = new Function('require', 'module', 'exports', ...Object.keys(context), compiled.outputText)
+  const asDefaultModule = (value: unknown) => {
+    if (value && typeof value === 'object' && '__esModule' in value)
+      return value
+    return { __esModule: true, default: value }
+  }
   const resolveImport = (specifier: string) => {
-    if (specifier.startsWith('~/'))
-      return require(fileURLToPath(new URL(`../../app/${specifier.slice(2)}.ts`, import.meta.url)))
-    if (specifier.startsWith('#shared/'))
-      return require(fileURLToPath(new URL(`../../shared/${specifier.slice('#shared/'.length)}.ts`, import.meta.url)))
+    if (Object.hasOwn(moduleMocks, specifier))
+      return specifier.endsWith('.vue') ? asDefaultModule(moduleMocks[specifier]) : moduleMocks[specifier]
+    if (specifier.startsWith('~/')) {
+      const modulePath = specifier.slice(2)
+      if (modulePath.endsWith('.vue'))
+        return asDefaultModule(compileVueComponent(modulePath, bindings, moduleMocks))
+      const sourcePath = modulePath.endsWith('.ts') ? modulePath : `${modulePath}.ts`
+      return require(fileURLToPath(new URL(`../../app/${sourcePath}`, import.meta.url)))
+    }
+    if (specifier.startsWith('#shared/')) {
+      const modulePath = specifier.slice('#shared/'.length)
+      const sourcePath = modulePath.endsWith('.ts') ? modulePath : `${modulePath}.ts`
+      return require(fileURLToPath(new URL(`../../shared/${sourcePath}`, import.meta.url)))
+    }
     return require(specifier)
   }
   execute(resolveImport, module, module.exports, ...Object.values(context))

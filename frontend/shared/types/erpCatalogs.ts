@@ -1,5 +1,7 @@
 export type ErpCatalogStatus = 'active' | 'archived'
 
+export type ErpCatalogEditorMode = 'create' | 'detail' | 'edit'
+
 export type ErpContactRecord = {
   id: number
   name: string
@@ -37,6 +39,99 @@ export type ErpProductVariantRecord = {
   name: string
   sale_price: string | null
   barcode: string | null
+  status: ErpCatalogStatus
+}
+
+export type ErpUnitRecord = {
+  id: number
+  short_name: string
+  actual_name: string
+  allow_decimal: boolean
+  base_unit_id: number | null
+  conversion_factor: string | null
+  status: ErpCatalogStatus
+}
+
+export type ErpCategoryRecord = {
+  id: number
+  parent_id: number | null
+  name: string
+  status: ErpCatalogStatus
+}
+
+export type ErpBrandRecord = {
+  id: number
+  name: string
+  status: ErpCatalogStatus
+}
+
+export type ErpPriceGroupRecord = {
+  id: number
+  name: string
+  percentage_adjustment: string
+  is_default: boolean
+  status: ErpCatalogStatus
+}
+
+export type ErpDiscountRuleRecord = {
+  id: number
+  name: string
+  kind: 'percentage' | 'fixed'
+  value: string
+  coupon_code: string | null
+  conditions: Record<string, unknown> | null
+  status: ErpCatalogStatus
+}
+
+export type ErpTaxRateRecord = {
+  id: number
+  erp_establishment_id: number | null
+  name: string
+  rate: string
+  tax_kind: string
+  metadata: Record<string, unknown> | null
+  status: ErpCatalogStatus
+}
+
+export type ErpOperationNatureRecord = {
+  id: number
+  erp_establishment_id: number | null
+  cfop: string
+  description: string
+  movement: 'in' | 'out'
+  fiscal_metadata: Record<string, unknown> | null
+  status: ErpCatalogStatus
+}
+
+export type ErpCarrierRecord = {
+  id: number
+  legal_name: string
+  tax_id: string | null
+  ie: string | null
+  address: Record<string, string> | null
+  status: ErpCatalogStatus
+}
+
+export type ErpVehicleRecord = {
+  id: number
+  erp_carrier_id: number | null
+  vehicle_type: string | null
+  plate: string
+  uf: string | null
+  color: string | null
+  model: string | null
+  brand: string | null
+  wheel_type: string | null
+  body_type: string | null
+  owner_type: string | null
+  status: ErpCatalogStatus
+}
+
+export type ErpDriverRecord = {
+  id: number
+  name: string
+  tax_id: string | null
+  license_number: string | null
   status: ErpCatalogStatus
 }
 

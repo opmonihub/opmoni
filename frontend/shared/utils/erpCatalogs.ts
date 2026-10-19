@@ -35,6 +35,16 @@ export function formatErpDecimal(value: string | number | null | undefined): str
   return String(value)
 }
 
+export function formatErpCatalogStatus(status: unknown): string {
+  if (status === 'active')
+    return 'Ativo'
+  if (status === 'archived')
+    return 'Arquivado'
+  if (status === 'inactive')
+    return 'Inativo'
+  return status === null || status === undefined || status === '' ? '—' : String(status)
+}
+
 export function emptyPaginated<T>(): ErpPaginated<T> {
   return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
 }
