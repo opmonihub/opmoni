@@ -7,6 +7,7 @@ use Database\Factories\Erp\ErpContactFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ErpContact extends Model
 {
@@ -36,5 +37,10 @@ class ErpContact extends Model
     public function customerGroup(): BelongsTo
     {
         return $this->belongsTo(ErpCustomerGroup::class, 'erp_customer_group_id');
+    }
+
+    public function documentNotes(): HasMany
+    {
+        return $this->hasMany(ErpContactNote::class, 'erp_contact_id');
     }
 }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpTaxRateController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpUnitController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpVehicleController;
+use App\Http\Controllers\Api\V1\Erp\ErpContactNoteController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/contacts', [ErpContactController::class, 'index'])->name('erp.contacts.index');
@@ -22,6 +23,15 @@ Route::post('/contacts', [ErpContactController::class, 'store'])->name('erp.cont
 Route::get('/contacts/{contact}', [ErpContactController::class, 'show'])->whereNumber('contact')->name('erp.contacts.show');
 Route::patch('/contacts/{contact}', [ErpContactController::class, 'update'])->whereNumber('contact')->name('erp.contacts.update');
 Route::delete('/contacts/{contact}', [ErpContactController::class, 'archive'])->whereNumber('contact')->name('erp.contacts.archive');
+
+Route::get('/contacts/{contact}/notes', [ErpContactNoteController::class, 'index'])->whereNumber('contact')->name('erp.contacts.notes.index');
+Route::post('/contacts/{contact}/notes', [ErpContactNoteController::class, 'store'])->whereNumber('contact')->name('erp.contacts.notes.store');
+Route::get('/contacts/{contact}/notes/{note}', [ErpContactNoteController::class, 'show'])->whereNumber('contact')->whereNumber('note')->name('erp.contacts.notes.show');
+Route::patch('/contacts/{contact}/notes/{note}', [ErpContactNoteController::class, 'update'])->whereNumber('contact')->whereNumber('note')->name('erp.contacts.notes.update');
+Route::delete('/contacts/{contact}/notes/{note}', [ErpContactNoteController::class, 'archive'])->whereNumber('contact')->whereNumber('note')->name('erp.contacts.notes.archive');
+Route::post('/contacts/{contact}/notes/{note}/attachments', [ErpContactNoteController::class, 'storeAttachment'])->whereNumber('contact')->whereNumber('note')->name('erp.contacts.notes.attachments.store');
+Route::get('/contacts/{contact}/notes/{note}/attachments/{attachment}/download', [ErpContactNoteController::class, 'downloadAttachment'])->whereNumber('contact')->whereNumber('note')->whereNumber('attachment')->name('erp.contacts.notes.attachments.download');
+Route::delete('/contacts/{contact}/notes/{note}/attachments/{attachment}', [ErpContactNoteController::class, 'archiveAttachment'])->whereNumber('contact')->whereNumber('note')->whereNumber('attachment')->name('erp.contacts.notes.attachments.archive');
 
 Route::get('/products', [ErpProductController::class, 'index'])->name('erp.products.index');
 Route::post('/products', [ErpProductController::class, 'store'])->name('erp.products.store');
