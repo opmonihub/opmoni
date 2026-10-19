@@ -445,7 +445,7 @@ function labelFor(row: CatalogRow): string {
       v-if="!loadingDetail && mode === 'detail' && record && hasDetailPanel"
       v-model="detailTab"
       :items="detailTabs"
-      :unmount-on-hide="true"
+      :unmount-on-hide="false"
       class="min-w-0"
     >
       <template #record>

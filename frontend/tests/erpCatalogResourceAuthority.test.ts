@@ -98,7 +98,7 @@ function rowActionTrigger(root: HostNode, label: string): HostNode | undefined {
   return descendants(root).find(node => node.tag === 'button' && node.props['aria-label'] === label)
 }
 
-function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[] } = {}) {
+function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[], detailPanel?: Vue.Component, detailFormLabel?: string, detailPanelLabel?: string } = {}) {
   const accessKind = options.accessKind ?? 'direct'
   const permissions = options.permissions ?? ['erp.units.index', 'erp.units.show', 'erp.units.store', 'erp.units.update', 'erp.units.archive']
   const user = Vue.ref<{ id: number } | null>({ id: 5 })
@@ -166,13 +166,25 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   )
   const { renderer: host, makeNode, allNodes } = renderer()
-  const app = host.createApp(component, {
+  const resourceProps = {
     path: '/erp/units',
     title: 'Unidades',
+    detailFormLabel: options.detailFormLabel,
+    detailPanelLabel: options.detailPanelLabel,
     form: Vue.defineComponent({ setup: () => () => Vue.h('form') }),
     columns: [{ accessorKey: 'status', header: 'Status' }],
     recordLabel: (record: { short_name?: string, id: number }) => record.short_name ?? `Unidade ${record.id}`
-  })
+  }
+  const rootComponent = options.detailPanel
+    ? Vue.defineComponent({
+        setup: () => () => Vue.h(component, resourceProps, {
+          'detail-panel': () => Vue.h(options.detailPanel!, { contactId: 31 })
+        })
+      })
+    : component
+  const app = options.detailPanel
+    ? host.createApp(rootComponent)
+    : host.createApp(rootComponent, resourceProps)
   const passthrough = Vue.defineComponent({
     inheritAttrs: false,
     props: ['label', 'disabled', 'loading', 'color', 'variant'],
@@ -186,7 +198,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
       return () => Vue.h('div', { 'data-modal-open': String(props.open) }, props.open ? [slots.body?.(), slots.footer?.()] : [])
     }
   })
-  for (const name of ['UButton', 'UCard', 'UFormField', 'UInput'])
+  for (const name of ['UButton', 'UCard', ...(options.detailPanel ? [] : ['UFormField', 'UInput'])])
     app.component(name, passthrough)
   app.component('UDashboardToolbar', Vue.defineComponent({
     props: ['ui'],
@@ -219,12 +231,107 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   }))
   app.component('UModal', modal)
+  app.component('UTabs', Vue.defineComponent({
+    props: ['items', 'modelValue', 'unmountOnHide'],
+    emits: ['update:modelValue'],
+    setup(props, { emit, slots }) {
+      return () => Vue.h('div', { 'data-tabs-unmount-on-hide': String(props.unmountOnHide) }, [
+        ...((props.items as Array<{ label: string, value: string, slot: string }> | undefined) ?? []).map(item => Vue.h('button', {
+          'type': 'button',
+          'data-tab-value': item.value,
+          'onClick': () => emit('update:modelValue', item.value)
+        }, item.label)),
+        ...((props.items as Array<{ label: string, value: string, slot: string }> | undefined) ?? [])
+          .filter(item => props.unmountOnHide !== true || item.value === props.modelValue)
+          .map(item => Vue.h('section', { 'data-tab-panel': item.value, 'hidden': item.value !== props.modelValue }, slots[item.slot]?.()))
+      ])
+    }
+  }))
   app.component('UAlert', Vue.defineComponent({
     props: ['title'],
     setup(props, { slots }) {
       return () => Vue.h('section', { role: 'alert' }, [Vue.h('p', String(props.title ?? '')), slots.actions?.()])
     }
   }))
+  if (options.detailPanel) {
+    app.component('UForm', Vue.defineComponent({
+      props: ['state'],
+      emits: ['submit'],
+      setup(props, { emit, slots }) {
+        return () => Vue.h('form', {
+          onSubmit: (event: { preventDefault(): void }) => {
+            event.preventDefault()
+            emit('submit', { data: props.state })
+          }
+        }, slots.default?.())
+      }
+    }))
+    app.component('UFormField', Vue.defineComponent({
+      props: ['label', 'name', 'error'],
+      setup(props, { slots }) {
+        return () => Vue.h('div', { 'data-field': props.name }, [
+          Vue.h('label', String(props.label ?? '')),
+          slots.default?.(),
+          props.error ? Vue.h('span', { 'data-error': props.error }, String(props.error)) : null
+        ])
+      }
+    }))
+    app.component('UInput', Vue.defineComponent({
+      props: ['modelValue', 'name', 'type', 'disabled', 'maxlength'],
+      emits: ['update:modelValue'],
+      setup(props, { emit }) {
+        return () => Vue.h('input', {
+          name: props.name,
+          type: props.type ?? 'text',
+          value: props.modelValue ?? '',
+          disabled: props.disabled,
+          maxlength: props.maxlength,
+          onInput: (event: { target: { value: string } }) => emit('update:modelValue', event.target.value)
+        })
+      }
+    }))
+    app.component('UTextarea', Vue.defineComponent({
+      props: ['modelValue', 'name', 'disabled', 'maxlength'],
+      emits: ['update:modelValue'],
+      setup(props, { emit }) {
+        return () => Vue.h('textarea', {
+          name: props.name,
+          value: props.modelValue ?? '',
+          disabled: props.disabled,
+          maxlength: props.maxlength,
+          onInput: (event: { target: { value: string } }) => emit('update:modelValue', event.target.value)
+        })
+      }
+    }))
+    app.component('UCheckbox', Vue.defineComponent({
+      props: ['modelValue', 'name', 'label', 'disabled'],
+      emits: ['update:modelValue'],
+      setup(props, { emit }) {
+        return () => Vue.h('label', [Vue.h('input', {
+          type: 'checkbox',
+          name: props.name,
+          checked: props.modelValue,
+          disabled: props.disabled,
+          onChange: (event: { target: { checked: boolean } }) => emit('update:modelValue', event.target.checked)
+        }), String(props.label ?? '')])
+      }
+    }))
+    app.component('UFileUpload', Vue.defineComponent({
+      props: ['modelValue', 'name', 'disabled', 'fileImage', 'accept'],
+      emits: ['update:modelValue'],
+      setup(props, { emit }) {
+        return () => Vue.h('input', {
+          'type': 'file',
+          'name': props.name,
+          'disabled': props.disabled,
+          'accept': props.accept,
+          'data-file-image': String(props.fileImage),
+          'data-selected-file': (props.modelValue as File | null)?.name ?? '',
+          'onChange': (event: { target: { files: File[] } }) => emit('update:modelValue', event.target.files[0] ?? null)
+        })
+      }
+    }))
+  }
   app.component('UPagination', Vue.defineComponent({ setup: () => () => Vue.h('div') }))
   app.component('UTable', table)
   const root = makeNode('root')
@@ -252,6 +359,104 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
 }
 
 describe('ERP catalog shared resource authority', () => {
+  it('keeps the real Contact notes panel draft and selected File across native-style detail tab switches', async (t) => {
+    const noteRow = {
+      id: 7,
+      heading: 'Acordo comercial',
+      description: 'Revisar no próximo mês.',
+      is_private: false,
+      state: 'active' as const,
+      can_change_privacy: true,
+      attachments_count: 0,
+      created_at: '2026-10-19T12:00:00.000Z',
+      updated_at: '2026-10-19T12:00:00.000Z'
+    }
+    const noteDetail = { ...noteRow, attachments: [], deletion_pending_attachments_count: 0 }
+    const rows = Vue.ref([noteRow])
+    const selectedNote = Vue.ref<typeof noteDetail | null>(null)
+    const contextKey = Vue.ref('actor-5-company-41-contact-31')
+    const noteApi = {
+      notes: rows,
+      selectedNote,
+      page: Vue.ref(1),
+      filter: Vue.ref<'active' | 'deletion_pending'>('active'),
+      listMeta: Vue.ref({ current_page: 1, last_page: 1, per_page: 25, total: 1, state: 'active' as const }),
+      attachmentsMeta: Vue.ref({ current_page: 1, last_page: 1, per_page: 25, total: 0 }),
+      pending: Vue.ref(false),
+      hasLoaded: Vue.ref(true),
+      loadingDetail: Vue.ref(false),
+      saving: Vue.ref(false),
+      archiving: Vue.ref(false),
+      uploading: Vue.ref(false),
+      archivingAttachment: Vue.ref(false),
+      mutationPending: Vue.ref(false),
+      error: Vue.ref(''),
+      fieldErrors: Vue.ref<Record<string, string[]>>({}),
+      stale: Vue.ref(false),
+      authorityBlocked: Vue.ref(false),
+      noteVisibilityEvent: Vue.ref(null),
+      permissions: {
+        index: Vue.ref(true), show: Vue.ref(true), store: Vue.ref(true), update: Vue.ref(true), archive: Vue.ref(true),
+        attachmentStore: Vue.ref(true), attachmentDownload: Vue.ref(true), attachmentArchive: Vue.ref(true)
+      },
+      contextKey,
+      refresh: async () => undefined,
+      setFilter: async () => undefined,
+      selectNote: async () => { selectedNote.value = noteDetail },
+      createNote: async () => false,
+      updateNote: async () => false,
+      archiveNote: async () => false,
+      uploadAttachment: async () => false,
+      downloadAttachment: async () => true,
+      archiveAttachment: async () => false
+    }
+    const panel = compileVueComponent(
+      'components/erp/catalogs/ErpContactNotesPanel.vue',
+      {},
+      { '~/composables/useErpContactNotes': { useErpContactNotes: () => noteApi } }
+    )
+    const resource = setupResource({ detailPanel: panel, detailFormLabel: 'Dados do cadastro', detailPanelLabel: 'Notas e anexos' })
+    t.after(resource.stop)
+    resource.requests.find(request => request.url === '/erp/units?page=1')!.resolve({
+      data: [],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 }
+    })
+    await resource.settle()
+
+    const opening = resource.editor.view(24)
+    resource.requests.find(request => request.url === '/erp/units/24')!.resolve({ data: { id: 24, short_name: 'Contato', status: 'active' } })
+    await opening
+    await resource.settle()
+    const findAll = (predicate: (node: HostNode) => boolean) => descendants(resource.root).filter(predicate)
+    const tab = (label: string) => findAll(node => node.tag === 'button' && node.text === label)[0]
+    tab('Notas e anexos').props.onClick?.()
+    await resource.settle()
+    const headingInputs = () => findAll(node => node.tag === 'input' && node.props.name === 'heading')
+    headingInputs()[0].props.onInput?.({ target: { value: 'Novo rascunho para depois' } })
+    tab('Ver detalhes').props.onClick?.()
+    await resource.settle()
+    headingInputs()[1].props.onInput?.({ target: { value: 'Editar antes de trocar' } })
+    const fileInput = findAll(node => node.tag === 'input' && node.props.type === 'file')[0]
+    const file = new File(['contract'], 'contrato.pdf', { type: 'application/pdf' })
+    fileInput.props.onChange?.({ target: { files: [file] } })
+    await resource.settle()
+
+    tab('Dados do cadastro').props.onClick?.()
+    await resource.settle()
+    assert.equal(headingInputs().length, 2, 'the hidden notes tab keeps the real panel mounted')
+    assert.equal(isAttachedTo(resource.root, fileInput), true, 'the selected File input remains attached while its tab is hidden')
+    assert.equal(headingInputs()[0]?.props.value, 'Novo rascunho para depois')
+    assert.equal(headingInputs()[1]?.props.value, 'Editar antes de trocar')
+    assert.equal(fileInput.props['data-selected-file'], 'contrato.pdf')
+    assert.equal(findAll(node => node.props['data-tab-panel'] === 'panel' && node.props.hidden === true).length, 1)
+
+    tab('Notas e anexos').props.onClick?.()
+    await resource.settle()
+    assert.equal(headingInputs()[0].props.value, 'Novo rascunho para depois')
+    assert.equal(headingInputs()[1].props.value, 'Editar antes de trocar')
+    assert.equal(fileInput.props['data-selected-file'], 'contrato.pdf')
+  })
+
   it('blocks the editor when list authority is rejected and ignores its delayed detail response', async (t) => {
     const resource = setupResource()
     t.after(resource.stop)

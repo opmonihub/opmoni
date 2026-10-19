@@ -33,6 +33,7 @@ function loadNotesModule() {
     fieldErrors: Vue.Ref<Record<string, string[]>>
     stale: Vue.ComputedRef<boolean>
     authorityBlocked: Vue.ComputedRef<boolean>
+    noteVisibilityEvent: Vue.Ref<{ noteId: number, phase: 'resolving' | 'lost', sequence: number } | null>
     permissions: Record<'index' | 'show' | 'store' | 'update' | 'archive' | 'attachmentStore' | 'attachmentDownload' | 'attachmentArchive', Vue.ComputedRef<boolean>>
     refresh(page?: number): Promise<void>
     setFilter(filter: 'active' | 'deletion_pending'): Promise<void>
@@ -346,6 +347,324 @@ describe('ERP Contact notes lifecycle', () => {
     assert.equal(app.notes.notes.value[0]?.heading, 'Título aceito')
     assert.equal(app.notes.selectedNote.value?.heading, 'Título aceito')
   })
+
+  it('removes a note after a visibility 404 and fences its late list and download responses only', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+    await app.settle()
+
+    const openingFirst = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await openingFirst
+    const staleRefresh = app.notes.refresh()
+    const staleList = app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+
+    const urlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+    let urlsCreated = 0
+    let clicks = 0
+    const revoked: string[] = []
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => `blob:visible-${++urlsCreated}` })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: (url: string) => {
+        revoked.push(url)
+      }
+    })
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        body: { appendChild() {} },
+        createElement: () => ({ click() { clicks++ }, remove() {} })
+      }
+    })
+
+    try {
+      const alreadyVisibleDownload = app.notes.downloadAttachment(noteRow.id, attachment)
+      const alreadyVisibleBlob = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      alreadyVisibleBlob.resolve(new Blob(['already visible'], { type: 'application/pdf' }))
+      assert.equal(await alreadyVisibleDownload, true)
+      assert.equal(urlsCreated, 1)
+
+      const lateDetail = app.notes.selectNote(noteRow.id)
+      const lateDetailRequest = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      const firstDownload = app.notes.downloadAttachment(noteRow.id, attachment)
+      const lateBlob = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+
+      const update = app.notes.updateNote(noteRow.id, { heading: 'No longer visible' })
+      await app.settle()
+      const patch = app.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+      patch.reject({ statusCode: 404, data: { message: 'Not found' } })
+      assert.equal(await update, false)
+      assert.deepEqual(app.notes.notes.value.map(note => note.id), [otherNoteRow.id])
+      assert.equal(app.notes.selectedNote.value, null)
+      assert.deepEqual(app.notes.noteVisibilityEvent.value?.noteId, noteRow.id)
+      assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'lost')
+      assert.deepEqual(revoked, ['blob:visible-1'])
+
+      staleList.resolve(listResponse([noteRow, otherNoteRow]))
+      lateDetailRequest.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await Promise.all([staleRefresh, lateDetail])
+      assert.deepEqual(app.notes.notes.value.map(note => note.id), [otherNoteRow.id])
+      assert.equal(app.notes.selectedNote.value, null)
+
+      const openingSecond = app.notes.selectNote(otherNoteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } })
+      await openingSecond
+      const secondDownload = app.notes.downloadAttachment(otherNoteRow.id, { ...attachment, id: 10 })
+      const secondBlob = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+
+      lateBlob.resolve(new Blob(['private bytes'], { type: 'application/pdf' }))
+      secondBlob.resolve(new Blob(['visible bytes'], { type: 'application/pdf' }))
+      assert.equal(await firstDownload, false)
+      assert.equal(await secondDownload, true)
+      assert.equal(urlsCreated, 2)
+      assert.equal(clicks, 2)
+    } finally {
+      if (urlDescriptor) Object.defineProperty(URL, 'createObjectURL', urlDescriptor)
+      else Reflect.deleteProperty(URL, 'createObjectURL')
+      if (revokeDescriptor) Object.defineProperty(URL, 'revokeObjectURL', revokeDescriptor)
+      else Reflect.deleteProperty(URL, 'revokeObjectURL')
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('hides a note while an attachment 404 is reconciled and restores it only when detail remains visible', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse())
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const upload = app.notes.uploadAttachment(noteRow.id, new File(['new bytes'], 'new.pdf', { type: 'application/pdf' }))
+    await app.settle()
+    const post = app.requests.filter(request => request.options.method === 'POST').at(-1)!
+    post.reject({ statusCode: 404, data: { message: 'Not found' } })
+    await app.settle()
+    assert.deepEqual(app.notes.notes.value, [])
+    assert.equal(app.notes.selectedNote.value, null)
+    assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'resolving')
+    assert.equal(app.notes.loadingDetail.value, true)
+
+    const recheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+    assert.notEqual(recheck, post)
+    recheck.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    assert.equal(await upload, false)
+    assert.deepEqual(app.notes.notes.value, [noteRow])
+    assert.equal(app.notes.selectedNote.value?.id, noteRow.id)
+    assert.equal(app.notes.loadingDetail.value, false)
+    assert.match(app.notes.error.value, /arquivo não está mais disponível/i)
+  })
+
+  it('reconciles download 404s with the note detail route and clears loading after either result', async (t) => {
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) }
+    })
+
+    try {
+      for (const remainsVisible of [true, false]) {
+        const app = setup({ ignoreAbort: () => true })
+        t.after(app.stop)
+        app.initialListRequest()!.resolve(listResponse())
+        await app.settle()
+        const opening = app.notes.selectNote(noteRow.id)
+        app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+          .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+        await opening
+
+        const download = app.notes.downloadAttachment(noteRow.id, attachment)
+        const blobRequest = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+        blobRequest.reject({ statusCode: 404, data: { message: 'Not found' } })
+        await app.settle()
+        const recheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'resolving')
+        assert.equal(app.notes.loadingDetail.value, true)
+
+        if (remainsVisible) {
+          recheck.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+        } else {
+          recheck.reject({ statusCode: 404, data: { message: 'Not found' } })
+        }
+
+        assert.equal(await download, false)
+        assert.equal(app.notes.loadingDetail.value, false)
+        if (remainsVisible) {
+          assert.deepEqual(app.notes.notes.value, [noteRow])
+          assert.equal(app.notes.selectedNote.value?.id, noteRow.id)
+          assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'resolving')
+        } else {
+          assert.deepEqual(app.notes.notes.value, [])
+          assert.equal(app.notes.selectedNote.value, null)
+          assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'lost')
+        }
+      }
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('ignores a same-note mutation response after visibility loss but accepts an unrelated note response', async (t) => {
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) }
+    })
+
+    try {
+      const sameNoteApp = setup({ ignoreAbort: () => true })
+      t.after(sameNoteApp.stop)
+      sameNoteApp.initialListRequest()!.resolve(listResponse())
+      await sameNoteApp.settle()
+      const opening = sameNoteApp.notes.selectNote(noteRow.id)
+      sameNoteApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await opening
+
+      const sameNoteUpdate = sameNoteApp.notes.updateNote(noteRow.id, { heading: 'Stale private update' })
+      await sameNoteApp.settle()
+      const sameNotePatch = sameNoteApp.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+      const oldDownload = sameNoteApp.notes.downloadAttachment(noteRow.id, attachment)
+      const oldBlob = sameNoteApp.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      oldBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await sameNoteApp.settle()
+      const missingNoteRecheck = sameNoteApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      missingNoteRecheck.reject({ statusCode: 404, data: { message: 'Not found' } })
+      assert.equal(await oldDownload, false)
+      sameNotePatch.resolve({ data: { ...noteRow, heading: 'Stale private update' } })
+      assert.equal(await sameNoteUpdate, false)
+      assert.deepEqual(sameNoteApp.notes.notes.value, [])
+
+      const unrelatedApp = setup({ ignoreAbort: () => true })
+      t.after(unrelatedApp.stop)
+      unrelatedApp.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+      await unrelatedApp.settle()
+      const openingOther = unrelatedApp.notes.selectNote(noteRow.id)
+      unrelatedApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await openingOther
+
+      const otherUpdate = unrelatedApp.notes.updateNote(otherNoteRow.id, { heading: 'Still visible' })
+      await unrelatedApp.settle()
+      const otherPatch = unrelatedApp.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+      const otherDownload = unrelatedApp.notes.downloadAttachment(noteRow.id, attachment)
+      const otherBlob = unrelatedApp.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      otherBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await unrelatedApp.settle()
+      const noteRecheck = unrelatedApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      noteRecheck.reject({ statusCode: 404, data: { message: 'Not found' } })
+      assert.equal(await otherDownload, false)
+      otherPatch.resolve({ data: { ...otherNoteRow, heading: 'Still visible' } })
+      assert.equal(await otherUpdate, true)
+      assert.deepEqual(unrelatedApp.notes.notes.value.map(note => note.id), [otherNoteRow.id])
+      assert.equal(unrelatedApp.notes.notes.value[0]?.heading, 'Still visible')
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('treats an attachment 404 followed by a note 404 as note visibility loss', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse())
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const upload = app.notes.uploadAttachment(noteRow.id, new File(['new bytes'], 'new.pdf', { type: 'application/pdf' }))
+    await app.settle()
+    app.requests.filter(request => request.options.method === 'POST').at(-1)!
+      .reject({ statusCode: 404, data: { message: 'Not found' } })
+    await app.settle()
+    const recheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+    recheck.reject({ statusCode: 404, data: { message: 'Not found' } })
+    assert.equal(await upload, false)
+    assert.deepEqual(app.notes.notes.value, [])
+    assert.equal(app.notes.selectedNote.value, null)
+    assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'lost')
+  })
+
+  it('does not restore a note after attachment reconciliation when the user selects another note', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) } })
+    try {
+      const download = app.notes.downloadAttachment(noteRow.id, attachment)
+      const blobRequest = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      blobRequest.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      const oldNoteRecheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      assert.equal(app.notes.selectedNote.value, null)
+      assert.deepEqual(app.notes.notes.value.map(note => note.id), [otherNoteRow.id])
+
+      const openingOther = app.notes.selectNote(otherNoteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } })
+      await openingOther
+      oldNoteRecheck.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      assert.equal(await download, false)
+      assert.deepEqual(app.notes.notes.value.map(note => note.id), [otherNoteRow.id])
+      assert.equal(app.notes.selectedNote.value?.id, otherNoteRow.id)
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('does not restore attachment detail from a prior Company after its 404 recheck resolves', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse())
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) } })
+    try {
+      const download = app.notes.downloadAttachment(noteRow.id, attachment)
+      const blobRequest = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      blobRequest.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      const oldCompanyRecheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+
+      app.currentCompany.value = { ...app.currentCompany.value!, id: 42 }
+      await app.settle()
+      const newCompanyList = app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+      newCompanyList.resolve(listResponse([]))
+      await app.settle()
+      oldCompanyRecheck.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      assert.equal(await download, false)
+      assert.deepEqual(app.notes.notes.value, [])
+      assert.equal(app.notes.selectedNote.value, null)
+    } finally {
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
 })
 
 type HostNode = {
@@ -409,6 +728,7 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
   const selectedNote = Vue.ref<NoteDetail | null>(null)
   const rows = Vue.ref<Note[]>(initial.deferNoteId === otherNoteRow.id ? [noteRow, otherNoteRow] : [noteRow])
   const contextKey = Vue.ref('actor-5-company-41')
+  const noteVisibilityEvent = Vue.ref<{ noteId: number, phase: 'resolving' | 'lost', sequence: number } | null>(null)
   let createPayload: unknown
   let uploadFile: File | undefined
   let releaseCreatePost: (() => void) | null = null
@@ -435,6 +755,7 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
     fieldErrors,
     stale: Vue.ref(false),
     authorityBlocked: Vue.ref(false),
+    noteVisibilityEvent,
     permissions: {
       index: Vue.ref(true), show: Vue.ref(true), store: Vue.ref(true), update: Vue.ref(true), archive: Vue.ref(true),
       attachmentStore: Vue.ref(true), attachmentDownload: Vue.ref(true), attachmentArchive: Vue.ref(true)
@@ -609,6 +930,7 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
     resolveCreatePost: () => releaseCreatePost?.(),
     resolveCreateRefresh: () => releaseCreateRefresh?.(),
     isCreateRefreshPending: () => createRefreshPending,
+    setNoteVisibilityEvent: (event: { noteId: number, phase: 'resolving' | 'lost', sequence: number } | null) => { noteVisibilityEvent.value = event },
     resolveDetail: () => releaseDetail?.()
   }
 }
@@ -730,6 +1052,57 @@ describe('ERP Contact notes panel', () => {
     assert.equal(panel.notesApi.selectedNote.value?.attachments_count, 2)
     assert.equal(headingInputs()[1].props.value, 'Rascunho ainda não salvo')
     assert.equal(fileInput.props['data-selected-file'], '')
+  })
+
+  it('clears note-local input during visibility reconciliation while preserving a new note draft', async (t) => {
+    const panel = mountPanel()
+    t.after(() => panel.app.unmount())
+    const settle = async () => {
+      await Vue.nextTick()
+      await Promise.resolve()
+      await Vue.nextTick()
+    }
+    const findAll = (predicate: (node: HostNode) => boolean) => hostDescendants(panel.root).filter(predicate)
+    const createHeading = () => findAll(node => node.tag === 'input' && node.props.name === 'heading')[0]
+    createHeading().props.onInput?.({ target: { value: 'Novo rascunho preservado' } })
+    findAll(node => node.tag === 'button' && hostText(node) === 'Ver detalhes')[0].props.onClick?.()
+    await settle()
+
+    const editHeading = () => findAll(node => node.tag === 'input' && node.props.name === 'heading')[1]
+    editHeading().props.onInput?.({ target: { value: 'Rascunho da nota afetada' } })
+    const file = new File(['attachment'], 'anexo-local.pdf', { type: 'application/pdf' })
+    const fileInput = () => findAll(node => node.tag === 'input' && node.props.type === 'file')[0]
+    fileInput().props.onChange?.({ target: { files: [file] } })
+    await settle()
+    assert.equal(fileInput().props['data-selected-file'], 'anexo-local.pdf')
+    findAll(node => node.tag === 'button' && hostText(node) === 'Solicitar remoção').at(-1)!.props.onClick?.()
+    await settle()
+    assert.equal(findAll(node => node.tag === 'button' && hostText(node) === 'Confirmar remoção').length, 1)
+
+    panel.setNoteVisibilityEvent({ noteId: noteRow.id, phase: 'resolving', sequence: 1 })
+    panel.notesApi.selectedNote.value = null
+    panel.notesApi.loadingDetail.value = true
+    panel.notesApi.notes.value = []
+    await settle()
+    assert.equal(findAll(node => node.tag === 'input' && node.props.name === 'heading').length, 1)
+    assert.equal(findAll(node => node.tag === 'button' && hostText(node) === 'Confirmar remoção').length, 0)
+
+    panel.notesApi.selectedNote.value = detail
+    panel.notesApi.loadingDetail.value = false
+    panel.notesApi.notes.value = [noteRow]
+    await settle()
+    assert.equal(fileInput().props['data-selected-file'], '')
+    assert.equal(editHeading().props.value, detail.heading)
+    assert.equal(createHeading().props.value, 'Novo rascunho preservado')
+
+    panel.setNoteVisibilityEvent({ noteId: noteRow.id, phase: 'lost', sequence: 2 })
+    panel.notesApi.selectedNote.value = null
+    panel.notesApi.notes.value = []
+    await settle()
+    createHeading().props.onInput?.({ target: { value: 'Rascunho após 404' } })
+    await settle()
+    assert.equal(createHeading().props.value, 'Rascunho após 404')
+    assert.equal(findAll(node => node.tag === 'button' && hostText(node) === 'Atualizar detalhes').length, 0)
   })
 
   it('clears private drafts and a selected file after same-context authority is blocked', async (t) => {

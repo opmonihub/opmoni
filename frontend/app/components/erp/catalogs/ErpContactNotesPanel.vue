@@ -26,7 +26,8 @@ const {
   stale,
   authorityBlocked,
   permissions,
-  contextKey
+  contextKey,
+  noteVisibilityEvent
 } = notesApi
 
 const createDraft = reactive({ heading: '', description: '', is_private: false })
@@ -92,6 +93,21 @@ function resetEditDraft() {
   editDraft.description = ''
   editDraft.is_private = false
 }
+
+watch(noteVisibilityEvent, (event) => {
+  if (!event)
+    return
+
+  if (removalTarget.value?.noteId === event.noteId)
+    removalTarget.value = null
+  if (selectedNoteId.value !== event.noteId)
+    return
+
+  selectedFile.value = null
+  resetEditDraft()
+  if (event.phase === 'lost')
+    selectedNoteId.value = null
+}, { flush: 'sync' })
 
 async function openNote(noteId: number) {
   const requestContext = contextKey.value
@@ -374,6 +390,9 @@ function formatDate(value: string | null) {
       <section aria-label="Detalhes e arquivos da anotação" class="border-default min-w-0 space-y-4 rounded-lg border p-4">
         <div v-if="!canShow" class="text-muted text-sm">
           É necessária permissão de consulta para abrir os detalhes e arquivos.
+        </div>
+        <div v-else-if="loadingDetail && selectedNoteId !== null" role="status" class="text-muted text-sm">
+          Confirmando a disponibilidade desta anotação…
         </div>
         <div v-else-if="!selectedNote" class="text-muted text-sm">
           Selecione uma anotação para consultar o conteúdo e os arquivos.

@@ -18,6 +18,7 @@ type NoteAction = 'index' | 'show' | 'store' | 'update' | 'archive' | 'attachmen
 type NoteResponse = { data: ErpContactNote }
 type AttachmentResponse = { data: ErpContactNoteAttachment }
 type UnavailableAttachmentResponse = { data?: ErpContactNoteAttachment }
+type NoteVisibilityEvent = { noteId: number, phase: 'resolving' | 'lost', sequence: number }
 
 const permissionNames: Record<NoteAction, string> = {
   'index': 'erp.contacts.notes.index',
@@ -52,16 +53,21 @@ export function useErpContactNotes(contactId: Ref<number>) {
   const staleList = ref(false)
   const staleDetail = ref(false)
   const blockedContextKey = ref<string | null>(null)
+  const noteVisibilityEvent = ref<NoteVisibilityEvent | null>(null)
   const authorityBlocked = computed(() => blockedContextKey.value === context.key.value)
   const mutationPending = computed(() => saving.value || archiving.value || uploading.value || archivingAttachment.value)
   const stale = computed(() => staleList.value || staleDetail.value)
   const controllers = new Set<AbortController>()
-  const objectUrls = new Map<string, ReturnType<typeof setTimeout>>()
+  const objectUrls = new Map<string, { timer: ReturnType<typeof setTimeout>, noteId: number }>()
+  const noteVisibilityGenerations = new Map<number, number>()
   let listController: AbortController | null = null
   let detailController: AbortController | null = null
   let listSequence = 0
   let detailSequence = 0
   let mutationSequence = 0
+  let visibilitySequence = 0
+  let visibilityEventSequence = 0
+  let visibilityController: AbortController | null = null
   let disposed = false
 
   function hasAction(action: NoteAction): boolean {
@@ -102,6 +108,16 @@ export function useErpContactNotes(contactId: Ref<number>) {
     return !disposed && !authorityBlocked.value && context.isCurrent(token) && (expected === undefined || sequence === expected)
   }
 
+  function isNoteMutationCurrent(
+    token: ReturnType<typeof context.capture>,
+    requestSequence: number,
+    noteId: number,
+    visibilityGeneration: number
+  ): boolean {
+    return isCurrent(token, mutationSequence, requestSequence)
+      && noteVisibilityGeneration(noteId) === visibilityGeneration
+  }
+
   function makeController() {
     const controller = new AbortController()
     controllers.add(controller)
@@ -112,9 +128,18 @@ export function useErpContactNotes(contactId: Ref<number>) {
     controllers.delete(controller)
   }
 
+  function abortVisibilityReconciliation() {
+    visibilitySequence++
+    visibilityController?.abort()
+    if (visibilityController)
+      finishController(visibilityController)
+    visibilityController = null
+  }
+
   function abortReads() {
     listSequence++
     detailSequence++
+    abortVisibilityReconciliation()
     listController?.abort()
     detailController?.abort()
     if (listController)
@@ -136,11 +161,26 @@ export function useErpContactNotes(contactId: Ref<number>) {
   }
 
   function revokeAllObjectUrls() {
-    for (const [url, timer] of objectUrls) {
-      clearTimeout(timer)
+    for (const [url, owned] of objectUrls) {
+      clearTimeout(owned.timer)
       URL.revokeObjectURL(url)
     }
     objectUrls.clear()
+  }
+
+  function noteVisibilityGeneration(noteId: number): number {
+    return noteVisibilityGenerations.get(noteId) ?? 0
+  }
+
+  function invalidateNoteVisibility(noteId: number) {
+    noteVisibilityGenerations.set(noteId, noteVisibilityGeneration(noteId) + 1)
+    for (const [url, owned] of objectUrls) {
+      if (owned.noteId !== noteId)
+        continue
+      clearTimeout(owned.timer)
+      URL.revokeObjectURL(url)
+      objectUrls.delete(url)
+    }
   }
 
   function abortAll() {
@@ -167,6 +207,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
     staleDetail.value = false
     error.value = ''
     fieldErrors.value = {}
+    noteVisibilityEvent.value = null
   }
 
   function clearErrors() {
@@ -199,6 +240,121 @@ export function useErpContactNotes(contactId: Ref<number>) {
 
   function updateListRow(note: ErpContactNote) {
     notes.value = notes.value.map(row => row.id === note.id ? note : row)
+  }
+
+  function removeVisibleNote(noteId: number): boolean {
+    const hadRow = notes.value.some(note => note.id === noteId)
+    const hadSelected = selectedNote.value?.id === noteId
+    notes.value = notes.value.filter(note => note.id !== noteId)
+    if (hadSelected) {
+      selectedNote.value = null
+      attachmentsMeta.value = null
+    }
+    if (hadRow && listMeta.value && listMeta.value.total > 0) {
+      listMeta.value = { ...listMeta.value, total: listMeta.value.total - 1 }
+    }
+    return hadRow
+  }
+
+  function noteRowFromDetail(detail: ErpContactNoteDetail): ErpContactNote {
+    return {
+      id: detail.id,
+      heading: detail.heading,
+      description: detail.description,
+      is_private: detail.is_private,
+      state: detail.state,
+      can_change_privacy: detail.can_change_privacy,
+      attachments_count: detail.attachments_count,
+      created_at: detail.created_at,
+      updated_at: detail.updated_at
+    }
+  }
+
+  function emitNoteVisibility(noteId: number, phase: NoteVisibilityEvent['phase']) {
+    noteVisibilityEvent.value = { noteId, phase, sequence: ++visibilityEventSequence }
+  }
+
+  function loseNoteVisibility(noteId: number, message = 'Esta anotação não está mais disponível para este contato.') {
+    abortReads()
+    invalidateNoteVisibility(noteId)
+    removeVisibleNote(noteId)
+    staleDetail.value = false
+    fieldErrors.value = {}
+    error.value = message
+    emitNoteVisibility(noteId, 'lost')
+  }
+
+  async function reconcileAttachmentNotFound(
+    noteId: number,
+    token: ReturnType<typeof context.capture>,
+    operationIsCurrent: () => boolean
+  ): Promise<void> {
+    if (!isCurrent(token) || !operationIsCurrent())
+      return
+    if (!permissions.show.value) {
+      loseNoteVisibility(noteId)
+      return
+    }
+
+    const rowIndex = notes.value.findIndex(note => note.id === noteId)
+    const previousRow = rowIndex >= 0 ? notes.value[rowIndex] : null
+    const shouldRestoreSelected = selectedNote.value?.id === noteId
+    abortReads()
+    invalidateNoteVisibility(noteId)
+    const requestSequence = visibilitySequence
+    const listRequestSequence = listSequence
+    const wasProjected = removeVisibleNote(noteId)
+    if (shouldRestoreSelected)
+      staleDetail.value = false
+    loadingDetail.value = shouldRestoreSelected
+    emitNoteVisibility(noteId, 'resolving')
+    const controller = makeController()
+    visibilityController = controller
+
+    // The triggering operation's note generation is checked before this
+    // reconciliation starts. Reconciliation itself advances that generation
+    // to invalidate older callbacks for this note, so its lease must use the
+    // operation sequence and visibility sequence only.
+    const current = () => isCurrent(token, visibilitySequence, requestSequence) && operationIsCurrent()
+    try {
+      const response = await api<ErpContactNoteDetailResponse>(
+        erpContactNoteRoutes.show(contactId.value, noteId, 1),
+        { signal: controller.signal }
+      )
+      if (!current())
+        return
+
+      if (listSequence === listRequestSequence && filter.value === response.data.state) {
+        if (previousRow !== null) {
+          const nextRows = [...notes.value]
+          nextRows.splice(Math.min(rowIndex, nextRows.length), 0, noteRowFromDetail(response.data))
+          notes.value = nextRows
+        }
+        if (wasProjected && listMeta.value)
+          listMeta.value = { ...listMeta.value, total: listMeta.value.total + 1 }
+      }
+      if (shouldRestoreSelected) {
+        selectedNote.value = response.data
+        attachmentsMeta.value = response.meta.attachments
+      }
+      error.value = 'O arquivo não está mais disponível para esta anotação.'
+      fieldErrors.value = {}
+    } catch (failure) {
+      if (!current())
+        return
+      const details = apiFailure(failure)
+      if (details.status === 404) {
+        loseNoteVisibility(noteId)
+      } else {
+        handleFailure(failure)
+      }
+    } finally {
+      finishController(controller)
+      if (visibilityController === controller)
+        visibilityController = null
+      if (current())
+        loadingDetail.value = false
+    }
   }
 
   function setPendingNote(noteId: number) {
@@ -279,6 +435,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
         error.value = 'Você não tem permissão para consultar o conteúdo desta anotação.'
       return
     }
+    abortVisibilityReconciliation()
     const requestSequence = ++detailSequence
     const token = context.capture()
     detailController?.abort()
@@ -303,11 +460,11 @@ export function useErpContactNotes(contactId: Ref<number>) {
       staleDetail.value = false
     } catch (failure) {
       if (isCurrent(token, detailSequence, requestSequence)) {
-        const details = handleFailure(failure)
+        const details = apiFailure(failure)
         if (details.status === 404) {
-          notes.value = notes.value.filter(note => note.id !== noteId)
-          selectedNote.value = null
+          loseNoteVisibility(noteId)
         } else {
+          handleFailure(failure)
           staleDetail.value = selectedNote.value !== null && !isAuthorityLoss(details.status, details.code)
         }
       }
@@ -366,26 +523,32 @@ export function useErpContactNotes(contactId: Ref<number>) {
       return false
     }
     const { requestSequence, token, controller } = beginMutation()
+    const visibilityGeneration = noteVisibilityGeneration(noteId)
     saving.value = true
     clearErrors()
     try {
       await refreshCsrf()
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       const response = await api<NoteResponse>(erpContactNoteRoutes.note(contactId.value, noteId), {
         method: 'PATCH',
         body: payload,
         signal: controller.signal
       })
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       updateListRow(response.data)
       if (selectedNote.value?.id === noteId)
         selectedNote.value = { ...selectedNote.value, ...response.data }
       return true
     } catch (failure) {
-      if (isCurrent(token, mutationSequence, requestSequence))
-        handleFailure(failure)
+      if (isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration)) {
+        const details = apiFailure(failure)
+        if (details.status === 404)
+          loseNoteVisibility(noteId)
+        else
+          handleFailure(failure)
+      }
       return false
     } finally {
       finishController(controller)
@@ -400,23 +563,29 @@ export function useErpContactNotes(contactId: Ref<number>) {
       return false
     }
     const { requestSequence, token, controller } = beginMutation()
+    const visibilityGeneration = noteVisibilityGeneration(noteId)
     archiving.value = true
     clearErrors()
     try {
       await refreshCsrf()
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       await api(erpContactNoteRoutes.note(contactId.value, noteId), { method: 'DELETE', signal: controller.signal })
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       setPendingNote(noteId)
       await refresh(page.value, true)
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       return true
     } catch (failure) {
-      if (isCurrent(token, mutationSequence, requestSequence))
-        handleFailure(failure)
+      if (isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration)) {
+        const details = apiFailure(failure)
+        if (details.status === 404)
+          loseNoteVisibility(noteId)
+        else
+          handleFailure(failure)
+      }
       return false
     } finally {
       finishController(controller)
@@ -432,20 +601,21 @@ export function useErpContactNotes(contactId: Ref<number>) {
       return false
     }
     const { requestSequence, token, controller } = beginMutation()
+    const visibilityGeneration = noteVisibilityGeneration(noteId)
     const formData = new FormData()
     formData.append('file', file, file.name)
     uploading.value = true
     clearErrors()
     try {
       await refreshCsrf()
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       const response = await api<AttachmentResponse>(erpContactNoteRoutes.attachments(contactId.value, noteId), {
         method: 'POST',
         body: formData,
         signal: controller.signal
       })
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       if (selectedNote.value?.id === noteId) {
         selectedNote.value = {
@@ -456,14 +626,19 @@ export function useErpContactNotes(contactId: Ref<number>) {
       }
       return true
     } catch (failure) {
-      if (isCurrent(token, mutationSequence, requestSequence)) {
-        const details = handleFailure(failure)
-        const unavailable = (failure as { data?: UnavailableAttachmentResponse }).data?.data
-        if (details.status === 503 && unavailable && selectedNote.value?.id === noteId) {
-          selectedNote.value = {
-            ...selectedNote.value,
-            attachments: [unavailable, ...selectedNote.value.attachments.filter(item => item.id !== unavailable.id)],
-            attachments_count: selectedNote.value.attachments_count + 1
+      if (isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration)) {
+        const details = apiFailure(failure)
+        if (details.status === 404) {
+          await reconcileAttachmentNotFound(noteId, token, () => isCurrent(token, mutationSequence, requestSequence))
+        } else {
+          handleFailure(failure)
+          const unavailable = (failure as { data?: UnavailableAttachmentResponse }).data?.data
+          if (details.status === 503 && unavailable && selectedNote.value?.id === noteId) {
+            selectedNote.value = {
+              ...selectedNote.value,
+              attachments: [unavailable, ...selectedNote.value.attachments.filter(item => item.id !== unavailable.id)],
+              attachments_count: selectedNote.value.attachments_count + 1
+            }
           }
         }
       }
@@ -481,17 +656,18 @@ export function useErpContactNotes(contactId: Ref<number>) {
       return false
     }
     const { requestSequence, token, controller } = beginMutation()
+    const visibilityGeneration = noteVisibilityGeneration(noteId)
     archivingAttachment.value = true
     clearErrors()
     try {
       await refreshCsrf()
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       await api(erpContactNoteRoutes.attachment(contactId.value, noteId, attachmentId), {
         method: 'DELETE',
         signal: controller.signal
       })
-      if (!isCurrent(token, mutationSequence, requestSequence))
+      if (!isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration))
         return false
       if (selectedNote.value?.id === noteId) {
         const attachment = selectedNote.value.attachments.find(item => item.id === attachmentId)
@@ -510,8 +686,13 @@ export function useErpContactNotes(contactId: Ref<number>) {
       }
       return true
     } catch (failure) {
-      if (isCurrent(token, mutationSequence, requestSequence))
-        handleFailure(failure)
+      if (isNoteMutationCurrent(token, requestSequence, noteId, visibilityGeneration)) {
+        const details = apiFailure(failure)
+        if (details.status === 404)
+          await reconcileAttachmentNotFound(noteId, token, () => isCurrent(token, mutationSequence, requestSequence))
+        else
+          handleFailure(failure)
+      }
       return false
     } finally {
       finishController(controller)
@@ -544,6 +725,8 @@ export function useErpContactNotes(contactId: Ref<number>) {
       return false
     }
     const token = context.capture()
+    const visibilityGeneration = noteVisibilityGeneration(noteId)
+    const downloadIsCurrent = () => isCurrent(token) && noteVisibilityGeneration(noteId) === visibilityGeneration
     const controller = makeController()
     clearErrors()
     try {
@@ -551,7 +734,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
         responseType: 'blob',
         signal: controller.signal
       })
-      if (!isCurrent(token))
+      if (!downloadIsCurrent())
         return false
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -565,11 +748,17 @@ export function useErpContactNotes(contactId: Ref<number>) {
         URL.revokeObjectURL(url)
         objectUrls.delete(url)
       }, 60_000)
-      objectUrls.set(url, timer)
+      objectUrls.set(url, { timer, noteId })
       return true
     } catch (failure) {
-      if (isCurrent(token))
-        handleFailure(failure)
+      if (downloadIsCurrent()) {
+        const details = apiFailure(failure)
+        if (details.status === 404) {
+          await reconcileAttachmentNotFound(noteId, token, () => isCurrent(token))
+        } else {
+          handleFailure(failure)
+        }
+      }
       return false
     } finally {
       finishController(controller)
@@ -614,6 +803,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
     fieldErrors,
     stale,
     authorityBlocked,
+    noteVisibilityEvent,
     permissions,
     contextKey: context.key,
     refresh,
