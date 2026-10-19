@@ -8,6 +8,7 @@ use App\Models\AccountMembership;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpContact;
+use App\Models\Erp\ErpCustomerGroup;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpSubscription;
@@ -94,14 +95,10 @@ class ErpTypedCatalogSetupTest extends TestCase
             ->assertJsonPath('data.percentage_adjustment', '0.0000');
         $groupId = $group->json('data.id');
         $foreignCompany = $this->newCompany();
-        $foreignGroupId = DB::table('erp_customer_groups')->insertGetId([
+        $foreignGroupId = ErpCustomerGroup::factory()->create([
             'erp_company_id' => $foreignCompany->id,
             'name' => 'Grupo de outra empresa',
-            'percentage_adjustment' => '0.0000',
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        ])->id;
 
         $this->withHeaders($context['headers'])
             ->getJson('/api/v1/erp/customer-groups/'.$foreignGroupId)
