@@ -27,7 +27,10 @@ const newVariant = (): FormVariant => ({ name: 'Padrão', sku: '', sale_price: '
 const form = reactive({
   name: '', sku: '', kind: 'goods' as 'goods' | 'service', track_stock: true,
   erp_unit_id: null as number | null, erp_brand_id: null as number | null, erp_category_id: null as number | null,
-  sale_price: '0.0000', warranty_months: '', warranty_description: '', barcode: '', variants: [] as FormVariant[]
+  sale_price: '0.0000', warranty_months: '', warranty_description: '', barcode: '',
+  ncm: '', cest: '', origin_code: '', icms_cst: '', icms_csosn: '', icms_rate: '', simple_national_credit_rate: '',
+  pis_cst: '', pis_rate: '', cofins_cst: '', cofins_rate: '', ipi_cst: '', ipi_rate: '',
+  ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[]
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
 const pendingVariantArchive = ref<number | null>(null)
@@ -57,6 +60,21 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.warranty_months = record?.warranty_months === null || record?.warranty_months === undefined ? '' : String(record.warranty_months)
   form.warranty_description = record?.warranty_description ?? ''
   form.barcode = record?.barcode ?? ''
+  form.ncm = record?.ncm ?? ''
+  form.cest = record?.cest ?? ''
+  form.origin_code = record?.origin_code ?? ''
+  form.icms_cst = record?.icms_cst ?? ''
+  form.icms_csosn = record?.icms_csosn ?? ''
+  form.icms_rate = record?.icms_rate ?? ''
+  form.simple_national_credit_rate = record?.simple_national_credit_rate ?? ''
+  form.pis_cst = record?.pis_cst ?? ''
+  form.pis_rate = record?.pis_rate ?? ''
+  form.cofins_cst = record?.cofins_cst ?? ''
+  form.cofins_rate = record?.cofins_rate ?? ''
+  form.ipi_cst = record?.ipi_cst ?? ''
+  form.ipi_rate = record?.ipi_rate ?? ''
+  form.ibs_cbs_cst = record?.ibs_cbs_cst ?? ''
+  form.ibs_cbs_classification_code = record?.ibs_cbs_classification_code ?? ''
   form.variants = record?.variants.length
     ? record.variants.map(variant => ({
         id: variant.id,
@@ -101,6 +119,10 @@ function variantIdError(index: number): string | undefined {
   return props.fieldErrors?.[`variants.${index}.id`]?.[0]
 }
 
+function nullableFiscalValue(value: string): string | null {
+  return value === '' ? null : value
+}
+
 function submit() {
   if (disabled.value)
     return
@@ -128,6 +150,21 @@ function submit() {
     warranty_months: form.warranty_months === '' ? null : Number(form.warranty_months),
     warranty_description: form.warranty_description || null,
     barcode: form.barcode || null,
+    ncm: nullableFiscalValue(form.ncm),
+    cest: nullableFiscalValue(form.cest),
+    origin_code: nullableFiscalValue(form.origin_code),
+    icms_cst: nullableFiscalValue(form.icms_cst),
+    icms_csosn: nullableFiscalValue(form.icms_csosn),
+    icms_rate: nullableFiscalValue(form.icms_rate),
+    simple_national_credit_rate: nullableFiscalValue(form.simple_national_credit_rate),
+    pis_cst: nullableFiscalValue(form.pis_cst),
+    pis_rate: nullableFiscalValue(form.pis_rate),
+    cofins_cst: nullableFiscalValue(form.cofins_cst),
+    cofins_rate: nullableFiscalValue(form.cofins_rate),
+    ipi_cst: nullableFiscalValue(form.ipi_cst),
+    ipi_rate: nullableFiscalValue(form.ipi_rate),
+    ibs_cbs_cst: nullableFiscalValue(form.ibs_cbs_cst),
+    ibs_cbs_classification_code: nullableFiscalValue(form.ibs_cbs_classification_code),
     variants
   })
 }
@@ -262,6 +299,206 @@ function submit() {
         />
       </ErpCatalogField>
     </fieldset>
+
+    <section aria-labelledby="product-fiscal-title" class="space-y-4">
+      <div>
+        <h3 id="product-fiscal-title" class="text-highlighted font-medium">
+          Dados fiscais
+        </h3>
+        <p class="text-muted text-sm">
+          O cadastro pode ficar incompleto. Informe os códigos e percentuais já definidos para este produto.
+        </p>
+      </div>
+
+      <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <legend class="text-highlighted font-medium sm:col-span-2 xl:col-span-3">
+          Classificação
+        </legend>
+        <ErpCatalogField label="NCM" name="ncm" :error="fieldErrors?.ncm?.[0]">
+          <UInput
+            v-model="form.ncm"
+            name="ncm"
+            type="text"
+            inputmode="numeric"
+            maxlength="8"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="CEST" name="cest" :error="fieldErrors?.cest?.[0]">
+          <UInput
+            v-model="form.cest"
+            name="cest"
+            type="text"
+            inputmode="numeric"
+            maxlength="7"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Origem" name="origin_code" :error="fieldErrors?.origin_code?.[0]">
+          <UInput
+            v-model="form.origin_code"
+            name="origin_code"
+            type="text"
+            inputmode="numeric"
+            maxlength="1"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+      </fieldset>
+
+      <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <legend class="text-highlighted font-medium sm:col-span-2 xl:col-span-3">
+          ICMS
+        </legend>
+        <ErpCatalogField label="CST do ICMS" name="icms_cst" :error="fieldErrors?.icms_cst?.[0]">
+          <UInput
+            v-model="form.icms_cst"
+            name="icms_cst"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="CSOSN" name="icms_csosn" :error="fieldErrors?.icms_csosn?.[0]">
+          <UInput
+            v-model="form.icms_csosn"
+            name="icms_csosn"
+            type="text"
+            inputmode="numeric"
+            maxlength="3"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Alíquota de ICMS (%)" name="icms_rate" :error="fieldErrors?.icms_rate?.[0]">
+          <UInput
+            v-model="form.icms_rate"
+            name="icms_rate"
+            type="text"
+            inputmode="decimal"
+            maxlength="9"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Crédito do Simples Nacional (%)" name="simple_national_credit_rate" :error="fieldErrors?.simple_national_credit_rate?.[0]">
+          <UInput
+            v-model="form.simple_national_credit_rate"
+            name="simple_national_credit_rate"
+            type="text"
+            inputmode="decimal"
+            maxlength="9"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+      </fieldset>
+
+      <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+        <legend class="text-highlighted font-medium sm:col-span-2">
+          PIS, COFINS e IPI
+        </legend>
+        <ErpCatalogField label="CST do PIS" name="pis_cst" :error="fieldErrors?.pis_cst?.[0]">
+          <UInput
+            v-model="form.pis_cst"
+            name="pis_cst"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Alíquota do PIS (%)" name="pis_rate" :error="fieldErrors?.pis_rate?.[0]">
+          <UInput
+            v-model="form.pis_rate"
+            name="pis_rate"
+            type="text"
+            inputmode="decimal"
+            maxlength="9"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="CST da COFINS" name="cofins_cst" :error="fieldErrors?.cofins_cst?.[0]">
+          <UInput
+            v-model="form.cofins_cst"
+            name="cofins_cst"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Alíquota da COFINS (%)" name="cofins_rate" :error="fieldErrors?.cofins_rate?.[0]">
+          <UInput
+            v-model="form.cofins_rate"
+            name="cofins_rate"
+            type="text"
+            inputmode="decimal"
+            maxlength="9"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="CST do IPI" name="ipi_cst" :error="fieldErrors?.ipi_cst?.[0]">
+          <UInput
+            v-model="form.ipi_cst"
+            name="ipi_cst"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Alíquota do IPI (%)" name="ipi_rate" :error="fieldErrors?.ipi_rate?.[0]">
+          <UInput
+            v-model="form.ipi_rate"
+            name="ipi_rate"
+            type="text"
+            inputmode="decimal"
+            maxlength="9"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+      </fieldset>
+
+      <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <legend class="text-highlighted font-medium sm:col-span-2 xl:col-span-3">
+          Reforma tributária (IBS/CBS)
+        </legend>
+        <ErpCatalogField label="CST IBS/CBS" name="ibs_cbs_cst" :error="fieldErrors?.ibs_cbs_cst?.[0]">
+          <UInput
+            v-model="form.ibs_cbs_cst"
+            name="ibs_cbs_cst"
+            type="text"
+            inputmode="numeric"
+            maxlength="3"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Classificação IBS/CBS" name="ibs_cbs_classification_code" :error="fieldErrors?.ibs_cbs_classification_code?.[0]">
+          <UInput
+            v-model="form.ibs_cbs_classification_code"
+            name="ibs_cbs_classification_code"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+      </fieldset>
+    </section>
 
     <section aria-labelledby="product-variants-title" class="space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-2">

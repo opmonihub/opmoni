@@ -14,6 +14,7 @@ const permissionBases: Record<string, string> = {
   [erpCatalogRoutes.categories]: 'erp.categories',
   [erpCatalogRoutes.brands]: 'erp.brands',
   [erpCatalogRoutes.priceGroups]: 'erp.price-groups',
+  [erpCatalogRoutes.customerGroups]: 'erp.customer-groups',
   [erpCatalogRoutes.discountRules]: 'erp.discount-rules',
   [erpCatalogRoutes.taxRates]: 'erp.tax-rates',
   [erpCatalogRoutes.operationNatures]: 'erp.operation-natures',

@@ -74,6 +74,7 @@ function company(overrides: Partial<Company> = {}): Company {
 }
 
 function setupEditor(initial: {
+  path?: string
   company?: Company | null
   account?: Account | null
   actorId?: number | null
@@ -115,7 +116,7 @@ function setupEditor(initial: {
     erpCompanyHasPermission
   })
   const scope = Vue.effectScope()
-  const editor = scope.run(() => useErpCatalogEditor(erpCatalogRoutes.products, async () => {
+  const editor = scope.run(() => useErpCatalogEditor(initial.path ?? erpCatalogRoutes.products, async () => {
     refreshListCalls++
   }))!
 
@@ -140,6 +141,29 @@ function setupEditor(initial: {
 }
 
 describe('ERP catalog editor authority and request lifecycle', () => {
+  it('uses the distinct customer-group permissions and keeps delegated user access read-only', () => {
+    const direct = setupEditor({
+      path: erpCatalogRoutes.customerGroups,
+      company: company({ permissions: ['erp.customer-groups.show', 'erp.customer-groups.store', 'erp.customer-groups.update', 'erp.customer-groups.archive'] })
+    })
+    assert.equal(direct.editor.permissions.show.value, true)
+    assert.equal(direct.editor.permissions.store.value, true)
+    assert.equal(direct.editor.permissions.edit.value, true)
+    assert.equal(direct.editor.permissions.archive.value, true)
+    direct.stop()
+
+    const delegated = setupEditor({
+      path: erpCatalogRoutes.customerGroups,
+      company: company({ access_kind: 'delegated', delegated_office_id: 77, permissions: ['erp.customer-groups.show', 'erp.customer-groups.store', 'erp.customer-groups.update', 'erp.customer-groups.archive'] }),
+      account: { id: 77, status: 'active', role: 'user' }
+    })
+    assert.equal(delegated.editor.permissions.show.value, true)
+    assert.equal(delegated.editor.permissions.store.value, false)
+    assert.equal(delegated.editor.permissions.edit.value, false)
+    assert.equal(delegated.editor.permissions.archive.value, false)
+    delegated.stop()
+  })
+
   it('provides read-only detail for show-only members without exposing edit or archive', async () => {
     const app = setupEditor({
       company: company({ role: 'viewer', permissions: ['erp.products.show'] })

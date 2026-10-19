@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ErpCatalogEditorMode, ErpContactRecord } from '#shared/types/erpCatalogs'
+import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
+import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
 
 const props = defineProps<{
   record: ErpContactRecord | null
@@ -13,6 +15,7 @@ const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state'] as const
 const form = reactive({
   name: '', trade_name: '', tax_id: '', email: '', phone: '', notes: '', is_customer: true, is_supplier: false,
+  erp_customer_group_id: null as number | null,
   address: {} as Record<string, string>,
   street_type: '', street: '', number: '', complement: '', district: '', postal_code: '', city: '', state: ''
 })
@@ -28,6 +31,7 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.notes = record?.notes ?? ''
   form.is_customer = record?.is_customer ?? true
   form.is_supplier = record?.is_supplier ?? false
+  form.erp_customer_group_id = record?.erp_customer_group_id ?? null
   form.address = { ...address }
   for (const key of addressKeys)
     form[key] = address[key] ?? ''
@@ -51,6 +55,7 @@ function submit() {
     notes: form.notes || null,
     is_customer: form.is_customer,
     is_supplier: form.is_supplier,
+    erp_customer_group_id: form.erp_customer_group_id,
     address: Object.keys(address).length ? address : null
   })
 }
@@ -117,13 +122,23 @@ function submit() {
       <legend class="text-highlighted font-medium">
         Relação com a empresa
       </legend>
-      <div class="flex flex-wrap gap-x-6 gap-y-3">
+      <div class="grid gap-4 sm:grid-cols-2">
         <UFormField name="is_customer" :error="fieldErrors?.is_customer?.[0]">
           <UCheckbox v-model="form.is_customer" name="is_customer" label="Cliente" />
         </UFormField>
         <UFormField name="is_supplier" :error="fieldErrors?.is_supplier?.[0]">
           <UCheckbox v-model="form.is_supplier" name="is_supplier" label="Fornecedor" />
         </UFormField>
+        <ErpCatalogReferenceSelect
+          v-model="form.erp_customer_group_id"
+          :path="erpCatalogRoutes.customerGroups"
+          label="Grupo de clientes"
+          label-key="name"
+          name="erp_customer_group_id"
+          optional
+          :disabled="disabled"
+          :error="fieldErrors?.erp_customer_group_id?.[0]"
+        />
       </div>
     </fieldset>
     <fieldset :disabled="disabled" class="min-w-0 space-y-4">

@@ -36,6 +36,7 @@ const createLabel = computed(() => ({
   '/erp/categories': 'Adicionar categoria',
   '/erp/brands': 'Adicionar marca',
   '/erp/price-groups': 'Adicionar grupo de preço',
+  '/erp/customer-groups': 'Adicionar grupo de clientes',
   '/erp/discount-rules': 'Adicionar regra de desconto',
   '/erp/tax-settings/tax-rates': 'Adicionar alíquota',
   '/erp/tax-settings/operation-natures': 'Adicionar natureza',

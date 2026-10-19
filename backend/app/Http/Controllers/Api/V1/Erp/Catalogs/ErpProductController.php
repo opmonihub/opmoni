@@ -41,6 +41,21 @@ class ErpProductController extends ErpCatalogController
             'warranty_months' => $model->warranty_months,
             'warranty_description' => $model->warranty_description,
             'barcode' => $model->barcode,
+            'ncm' => $model->ncm,
+            'cest' => $model->cest,
+            'origin_code' => $model->origin_code,
+            'icms_cst' => $model->icms_cst,
+            'icms_csosn' => $model->icms_csosn,
+            'pis_cst' => $model->pis_cst,
+            'cofins_cst' => $model->cofins_cst,
+            'ipi_cst' => $model->ipi_cst,
+            'icms_rate' => $this->nullableDecimalString($model->icms_rate),
+            'pis_rate' => $this->nullableDecimalString($model->pis_rate),
+            'cofins_rate' => $this->nullableDecimalString($model->cofins_rate),
+            'ipi_rate' => $this->nullableDecimalString($model->ipi_rate),
+            'simple_national_credit_rate' => $this->nullableDecimalString($model->simple_national_credit_rate),
+            'ibs_cbs_cst' => $model->ibs_cbs_cst,
+            'ibs_cbs_classification_code' => $model->ibs_cbs_classification_code,
             'status' => $model->status,
             'variants' => $model->relationLoaded('variants')
                 ? $model->variants->map(fn (ErpProductVariant $v): array => [
@@ -98,5 +113,10 @@ class ErpProductController extends ErpCatalogController
 
             return response()->json(['data' => $this->serialize($model->fresh('variants'))]);
         });
+    }
+
+    private function nullableDecimalString(mixed $value): ?string
+    {
+        return $value === null ? null : $this->decimalString($value);
     }
 }

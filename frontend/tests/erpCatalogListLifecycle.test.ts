@@ -148,6 +148,7 @@ describe('shared ERP catalog list lifecycle', () => {
       ['/erp/categories', 'erp.categories.index'],
       ['/erp/brands', 'erp.brands.index'],
       ['/erp/price-groups', 'erp.price-groups.index'],
+      ['/erp/customer-groups', 'erp.customer-groups.index'],
       ['/erp/discount-rules', 'erp.discount-rules.index'],
       ['/erp/tax-settings/tax-rates', 'erp.tax-rates.index'],
       ['/erp/tax-settings/operation-natures', 'erp.operation-natures.index'],

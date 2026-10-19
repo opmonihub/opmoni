@@ -22,6 +22,7 @@ const forms = [
   ['components/erp/catalogs/ErpCategoryCatalogForm.vue', 'name'],
   ['components/erp/catalogs/ErpBrandCatalogForm.vue', 'name'],
   ['components/erp/catalogs/ErpPriceGroupCatalogForm.vue', 'name'],
+  ['components/erp/catalogs/ErpCustomerGroupCatalogForm.vue', 'name'],
   ['components/erp/catalogs/ErpDiscountRuleCatalogForm.vue', 'name'],
   ['components/erp/catalogs/ErpTaxRateCatalogForm.vue', 'name'],
   ['components/erp/catalogs/ErpOperationNatureCatalogForm.vue', 'cfop'],
@@ -303,7 +304,7 @@ const editCases: FormCase[] = [
     original: 'Comercial Silva',
     changed: 'Comercial Silva Atualizado',
     record: {
-      id: 17, name: 'Comercial Silva', trade_name: 'Silva', tax_id: '11223344000199', email: 'contato@silva.com',
+      id: 17, erp_customer_group_id: 8, name: 'Comercial Silva', trade_name: 'Silva', tax_id: '11223344000199', email: 'contato@silva.com',
       phone: '11988887777', notes: 'Ligar após as 14h', is_customer: true, is_supplier: true,
       address: {
         integration_code: 'CLIENT-77', street_type: 'Avenida', street: 'Paulista', number: '1000', complement: 'Conj. 5',
@@ -311,7 +312,7 @@ const editCases: FormCase[] = [
       }
     },
     expected: {
-      name: 'Comercial Silva Atualizado', trade_name: 'Silva', tax_id: '11223344000199', email: 'contato@silva.com',
+      erp_customer_group_id: 8, name: 'Comercial Silva Atualizado', trade_name: 'Silva', tax_id: '11223344000199', email: 'contato@silva.com',
       phone: '11988887777', notes: 'Ligar após as 14h', is_customer: true, is_supplier: true,
       address: {
         integration_code: 'CLIENT-77', street_type: 'Avenida', street: 'Paulista', number: '1000', complement: 'Conj. 5',
@@ -327,15 +328,29 @@ const editCases: FormCase[] = [
     record: {
       id: 77, name: 'Mercadoria', sku: 'ABC', kind: 'goods', track_stock: true, erp_unit_id: 4, erp_brand_id: 5,
       erp_category_id: 6, sale_price: '19.2500', warranty_months: 12, warranty_description: '12 meses',
-      barcode: '7890001112223', status: 'active',
+      barcode: '7890001112223', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
+      pis_cst: '01', cofins_cst: '02', ipi_cst: '03', icms_rate: '0.0001', pis_rate: '0.0000',
+      cofins_rate: '1.2300', ipi_rate: '0.5000', simple_national_credit_rate: '0.0001',
+      ibs_cbs_cst: '999', ibs_cbs_classification_code: '123456', status: 'active',
       variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223', status: 'active' }]
     },
     expected: {
       name: 'Mercadoria Atualizada', sku: 'ABC', kind: 'goods', track_stock: true, erp_unit_id: 4, erp_brand_id: 5,
       erp_category_id: 6, sale_price: '19.2500', warranty_months: 12, warranty_description: '12 meses',
-      barcode: '7890001112223',
+      barcode: '7890001112223', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
+      pis_cst: '01', cofins_cst: '02', ipi_cst: '03', icms_rate: '0.0001', pis_rate: '0.0000',
+      cofins_rate: '1.2300', ipi_rate: '0.5000', simple_national_credit_rate: '0.0001',
+      ibs_cbs_cst: '999', ibs_cbs_classification_code: '123456',
       variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223' }]
     }
+  },
+  {
+    path: 'components/erp/catalogs/ErpCustomerGroupCatalogForm.vue',
+    field: 'name',
+    original: 'Atacado',
+    changed: 'Atacado Sul',
+    record: { id: 51, name: 'Atacado', percentage_adjustment: '-2.5000', status: 'active' },
+    expected: { name: 'Atacado Sul', percentage_adjustment: '-2.5000' }
   },
   {
     path: 'components/erp/catalogs/ErpUnitCatalogForm.vue',
@@ -480,6 +495,8 @@ describe('ERP catalog family forms', () => {
       if (path.endsWith('ErpProductCatalogForm.vue')) {
         assert.deepEqual(form.emitted[0]?.variants, [{ name: 'Padrão', sku: null, sale_price: null, barcode: null }])
       }
+      if (path.endsWith('ErpCustomerGroupCatalogForm.vue'))
+        assert.equal(form.emitted[0]?.percentage_adjustment, '0.0000')
     })
   }
 
@@ -490,6 +507,37 @@ describe('ERP catalog family forms', () => {
     assert.equal(form.buttons().some(button => button.props.type === 'submit'), false)
     await form.submit()
     assert.deepEqual(form.emitted, [])
+  })
+
+  it('keeps fiscal codes and decimal strings lossless, supports optional clearing, and uses the customer group reference', async (t) => {
+    const contact = mountForm('components/erp/catalogs/ErpContactCatalogForm.vue', editCases[0]!.record, 'edit')
+    const product = mountForm('components/erp/catalogs/ErpProductCatalogForm.vue', editCases[1]!.record, 'edit')
+    const newProduct = mountForm('components/erp/catalogs/ErpProductCatalogForm.vue')
+    t.after(contact.unmount)
+    t.after(product.unmount)
+    t.after(newProduct.unmount)
+
+    assert.equal(contact.selectValue('Grupo de clientes'), 8)
+    await contact.select('Grupo de clientes', 12)
+    await contact.submit()
+    assert.equal(contact.emitted[0]?.erp_customer_group_id, 12)
+
+    await product.input('icms_cst', '00')
+    await product.input('icms_csosn', '000')
+    await product.input('icms_rate', '0.0001')
+    await product.setFieldErrors({ icms_rate: ['Revise a alíquota.'] })
+    assert.equal(product.inputValue('icms_cst'), '00')
+    assert.equal(product.inputValue('icms_csosn'), '000')
+    assert.equal(product.inputValue('icms_rate'), '0.0001')
+    await product.submit()
+    assert.equal(product.emitted[0]?.icms_cst, '00')
+    assert.equal(product.emitted[0]?.icms_csosn, '000')
+    assert.equal(product.emitted[0]?.icms_rate, '0.0001')
+
+    await newProduct.input('name', 'Produto sem dados fiscais')
+    await newProduct.submit()
+    for (const field of ['ncm', 'cest', 'origin_code', 'icms_cst', 'icms_csosn', 'icms_rate', 'simple_national_credit_rate', 'pis_cst', 'pis_rate', 'cofins_cst', 'cofins_rate', 'ipi_cst', 'ipi_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code'])
+      assert.equal(newProduct.emitted[0]?.[field], null, `${field} should remain optional`)
   })
 
   it('uses a reactive Nuxt UI form state and registered field names for every catalog family', async (t) => {

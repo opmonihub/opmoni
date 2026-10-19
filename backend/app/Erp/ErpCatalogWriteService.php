@@ -6,6 +6,7 @@ use App\Models\Erp\ErpBrand;
 use App\Models\Erp\ErpCategory;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpContact;
+use App\Models\Erp\ErpCustomerGroup;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\ErpUnit;
@@ -104,7 +105,7 @@ final class ErpCatalogWriteService
     /** @param array<string, mixed> $payload */
     public function createContact(int $companyId, array $payload): ErpContact
     {
-        $data = $this->contactData($payload);
+        $data = $this->contactData($payload, $companyId);
 
         return ErpContact::query()->create([
             ...$data,
@@ -114,9 +115,9 @@ final class ErpCatalogWriteService
     }
 
     /** @param array<string, mixed> $payload */
-    public function updateContact(ErpContact $contact, array $payload): ErpContact
+    public function updateContact(CurrentCompany $context, ErpContact $contact, array $payload): ErpContact
     {
-        $contact->fill($this->contactData($payload, partial: true));
+        $contact->fill($this->contactData($payload, (int) $context->company->id, partial: true, current: $contact));
         $contact->save();
 
         return $contact->fresh();
@@ -146,6 +147,7 @@ final class ErpCatalogWriteService
             'variants.*.sale_price' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(16, 4)],
             'variants.*.barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
             'variants.*.status' => ['sometimes', 'in:archived'],
+            ...$this->productFiscalRules(),
         ])->validate();
 
         if (! $partial && collect($data['variants'] ?? [])->contains(fn (array $variant): bool => array_key_exists('id', $variant))) {
@@ -183,10 +185,11 @@ final class ErpCatalogWriteService
     /** @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
-    private function contactData(array $payload, bool $partial = false): array
+    private function contactData(array $payload, int $companyId, bool $partial = false, ?ErpContact $current = null): array
     {
         $data = Validator::make($payload, [
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
+            'erp_customer_group_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'trade_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'tax_id' => ['sometimes', 'nullable', 'string', 'max:20'],
             'email' => ['sometimes', 'nullable', 'email', 'max:254'],
@@ -199,8 +202,40 @@ final class ErpCatalogWriteService
         if (isset($data['tax_id']) && is_string($data['tax_id']) && $data['tax_id'] !== '') {
             $data['tax_id'] = $this->taxId->normalize($data['tax_id']);
         }
+        if (isset($data['erp_customer_group_id'])) {
+            $groupId = (int) $data['erp_customer_group_id'];
+            $this->scope->assertActiveReference(
+                ErpCustomerGroup::class,
+                $companyId,
+                $groupId,
+                'erp_customer_group_id',
+                $current?->erp_customer_group_id !== null ? (int) $current->erp_customer_group_id : null,
+            );
+        }
 
         return $data;
+    }
+
+    /** @return array<string, list<mixed>> */
+    private function productFiscalRules(): array
+    {
+        return [
+            'ncm' => ['sometimes', 'nullable', 'string', 'regex:/\A(?:\d{8}|00)\z/'],
+            'cest' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{7}\z/'],
+            'origin_code' => ['sometimes', 'nullable', 'string', 'regex:/\A\d\z/'],
+            'icms_cst' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'icms_csosn' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{3}\z/'],
+            'pis_cst' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'cofins_cst' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'ipi_cst' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'ibs_cbs_cst' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{3}\z/'],
+            'ibs_cbs_classification_code' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{6}\z/'],
+            'icms_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'pis_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'cofins_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'ipi_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'simple_national_credit_rate' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+        ];
     }
 
     /** @param list<array<string, mixed>> $variants */

@@ -323,7 +323,7 @@ export const erpModulePageContracts: readonly ErpModulePageContract[] = [
 ]
 
 const effectiveReadFamilies: Partial<Record<ErpPermission, readonly string[]>> = {
-  [erpPermissions.catalogRead]: ['contacts', 'products', 'units', 'categories', 'brands', 'price-groups', 'discount-rules', 'tax-rates', 'operation-natures', 'carriers', 'vehicles', 'drivers', 'catalog'],
+  [erpPermissions.catalogRead]: ['contacts', 'products', 'units', 'categories', 'brands', 'price-groups', 'customer-groups', 'discount-rules', 'tax-rates', 'operation-natures', 'carriers', 'vehicles', 'drivers', 'catalog'],
   [erpPermissions.financeRead]: ['financial-accounts', 'obligations', 'payments'],
   [erpPermissions.cashRead]: ['cash-registers', 'cash-sessions'],
   [erpPermissions.purchasesRead]: ['purchases', 'purchase-returns'],

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpCatalogImportController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpCatalogPrintController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpCategoryController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpContactController;
+use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpCustomerGroupController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpDiscountRuleController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpDriverController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpOperationNatureController;
@@ -51,6 +52,12 @@ Route::post('/price-groups', [ErpPriceGroupController::class, 'store'])->name('e
 Route::get('/price-groups/{priceGroup}', [ErpPriceGroupController::class, 'show'])->whereNumber('priceGroup')->name('erp.price-groups.show');
 Route::patch('/price-groups/{priceGroup}', [ErpPriceGroupController::class, 'update'])->whereNumber('priceGroup')->name('erp.price-groups.update');
 Route::delete('/price-groups/{priceGroup}', [ErpPriceGroupController::class, 'archive'])->whereNumber('priceGroup')->name('erp.price-groups.archive');
+
+Route::get('/customer-groups', [ErpCustomerGroupController::class, 'index'])->name('erp.customer-groups.index');
+Route::post('/customer-groups', [ErpCustomerGroupController::class, 'store'])->name('erp.customer-groups.store');
+Route::get('/customer-groups/{customerGroup}', [ErpCustomerGroupController::class, 'show'])->whereNumber('customerGroup')->name('erp.customer-groups.show');
+Route::patch('/customer-groups/{customerGroup}', [ErpCustomerGroupController::class, 'update'])->whereNumber('customerGroup')->name('erp.customer-groups.update');
+Route::delete('/customer-groups/{customerGroup}', [ErpCustomerGroupController::class, 'archive'])->whereNumber('customerGroup')->name('erp.customer-groups.archive');
 
 Route::get('/discount-rules', [ErpDiscountRuleController::class, 'index'])->name('erp.discount-rules.index');
 Route::post('/discount-rules', [ErpDiscountRuleController::class, 'store'])->name('erp.discount-rules.store');

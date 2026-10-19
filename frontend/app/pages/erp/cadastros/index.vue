@@ -6,6 +6,7 @@ useHead({ title: 'Cadastros · ERP' })
 
 const sections = [
   { label: 'Contatos', to: erpCadastrosPages.contacts, icon: 'i-lucide-users' },
+  { label: 'Grupos de clientes', to: erpCadastrosPages.customerGroups, icon: 'i-lucide-users-round' },
   { label: 'Produtos', to: erpCadastrosPages.products, icon: 'i-lucide-package' },
   { label: 'Unidades', to: erpCadastrosPages.units, icon: 'i-lucide-ruler' },
   { label: 'Marcas', to: erpCadastrosPages.brands, icon: 'i-lucide-tag' },

@@ -28,6 +28,7 @@ class ErpContactController extends ErpCatalogController
         /** @var ErpContact $model */
         return [
             'id' => $model->id,
+            'erp_customer_group_id' => $model->erp_customer_group_id,
             'name' => $model->name,
             'trade_name' => $model->trade_name,
             'tax_id' => $model->tax_id,
@@ -52,9 +53,9 @@ class ErpContactController extends ErpCatalogController
 
     public function update(Request $request, int $contact): JsonResponse
     {
-        return $this->writes->run($request, function () use ($request, $contact): JsonResponse {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $contact): JsonResponse {
             $model = $this->findForCompany($request, $contact);
-            $model = $this->writes->updateContact($model, $request->all());
+            $model = $this->writes->updateContact($context, $model, $request->all());
 
             return response()->json(['data' => $this->serialize($model)]);
         });

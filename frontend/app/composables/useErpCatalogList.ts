@@ -12,6 +12,7 @@ const catalogReadPermissions: Record<string, string> = {
   [erpCatalogRoutes.categories]: 'erp.categories.index',
   [erpCatalogRoutes.brands]: 'erp.brands.index',
   [erpCatalogRoutes.priceGroups]: 'erp.price-groups.index',
+  [erpCatalogRoutes.customerGroups]: 'erp.customer-groups.index',
   [erpCatalogRoutes.discountRules]: 'erp.discount-rules.index',
   [erpCatalogRoutes.taxRates]: 'erp.tax-rates.index',
   [erpCatalogRoutes.operationNatures]: 'erp.operation-natures.index',

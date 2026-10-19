@@ -4,6 +4,7 @@ export type ErpCatalogEditorMode = 'create' | 'detail' | 'edit'
 
 export type ErpContactRecord = {
   id: number
+  erp_customer_group_id: number | null
   name: string
   trade_name: string | null
   tax_id: string | null
@@ -13,6 +14,13 @@ export type ErpContactRecord = {
   is_supplier: boolean
   address: Record<string, string> | null
   notes: string | null
+  status: ErpCatalogStatus
+}
+
+export type ErpCustomerGroupRecord = {
+  id: number
+  name: string
+  percentage_adjustment: string
   status: ErpCatalogStatus
 }
 
@@ -29,6 +37,21 @@ export type ErpProductRecord = {
   warranty_months: number | null
   warranty_description: string | null
   barcode: string | null
+  ncm: string | null
+  cest: string | null
+  origin_code: string | null
+  icms_cst: string | null
+  icms_csosn: string | null
+  pis_cst: string | null
+  cofins_cst: string | null
+  ipi_cst: string | null
+  icms_rate: string | null
+  pis_rate: string | null
+  cofins_rate: string | null
+  ipi_rate: string | null
+  simple_national_credit_rate: string | null
+  ibs_cbs_cst: string | null
+  ibs_cbs_classification_code: string | null
   status: ErpCatalogStatus
   variants: ErpProductVariantRecord[]
 }
