@@ -818,6 +818,116 @@ describe('ERP Contact notes lifecycle', () => {
     }
   })
 
+  it('keeps an authorized list refresh available when a failed write cancels a background visibility check', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    const urlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) }
+    })
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:background-write-cancel' })
+    try {
+      app.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+      await app.settle()
+      const openingOther = app.notes.selectNote(otherNoteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await openingOther
+
+      const backgroundDownload = app.notes.downloadAttachment(otherNoteRow.id, { ...attachment, id: 10 })
+      const backgroundBlob = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      const openingSelected = app.notes.selectNote(noteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await openingSelected
+
+      backgroundBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      const backgroundCheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      assert.deepEqual(app.notes.notes.value, [noteRow], 'the unverified background note stays hidden')
+      assert.equal(app.notes.noteVisibilityRecovery.value, null, 'background checks do not own selected-note recovery')
+      assert.equal(app.notes.stale.value, false)
+
+      const create = app.notes.createNote({ heading: 'Novo registro', description: null, is_private: false })
+      await app.settle()
+      assert.equal(backgroundCheck.options.signal?.aborted, true)
+      assert.equal(app.notes.stale.value, true, 'cancelling a hidden projection must expose the existing refresh action')
+      app.requests.filter(request => request.options.method === 'POST').at(-1)!
+        .reject({ statusCode: 422, data: { errors: { heading: ['Inválido'] } } })
+      assert.equal(await create, false)
+      assert.equal(app.notes.stale.value, true)
+      backgroundCheck.resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      assert.equal(await backgroundDownload, false)
+      await app.settle()
+      assert.deepEqual(app.notes.notes.value, [noteRow], 'late cancelled detail cannot restore unverified content')
+      assert.equal(app.notes.selectedNote.value?.id, noteRow.id)
+
+      const refresh = app.notes.refresh()
+      app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+        .resolve(listResponse([noteRow, otherNoteRow]))
+      await refresh
+      assert.deepEqual(app.notes.notes.value, [noteRow, otherNoteRow])
+      assert.equal(app.notes.stale.value, false)
+    } finally {
+      if (urlDescriptor) Object.defineProperty(URL, 'createObjectURL', urlDescriptor)
+      else Reflect.deleteProperty(URL, 'createObjectURL')
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('keeps the stale-list affordance when manual selection cancels a background visibility check', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    const urlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) }
+    })
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:background-select-cancel' })
+    try {
+      app.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+      await app.settle()
+      const openingOther = app.notes.selectNote(otherNoteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await openingOther
+
+      const backgroundDownload = app.notes.downloadAttachment(otherNoteRow.id, { ...attachment, id: 10 })
+      const backgroundBlob = app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      const openingSelected = app.notes.selectNote(noteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await openingSelected
+      backgroundBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      const backgroundCheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      assert.equal(app.notes.stale.value, false)
+
+      const selectingAgain = app.notes.selectNote(noteRow.id)
+      assert.equal(backgroundCheck.options.signal?.aborted, true)
+      assert.equal(app.notes.stale.value, true, 'superseding hidden background reconciliation keeps list refresh available')
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await selectingAgain
+      backgroundCheck.resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      assert.equal(await backgroundDownload, false)
+      await app.settle()
+      assert.deepEqual(app.notes.notes.value, [noteRow])
+      assert.equal(app.notes.selectedNote.value?.id, noteRow.id)
+      assert.equal(app.notes.noteVisibilityRecovery.value, null)
+      assert.equal(app.notes.stale.value, true)
+    } finally {
+      if (urlDescriptor) Object.defineProperty(URL, 'createObjectURL', urlDescriptor)
+      else Reflect.deleteProperty(URL, 'createObjectURL')
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
   it('does not decrement the pending-filter count when a retained active selection is lost', async (t) => {
     const app = setup()
     t.after(app.stop)

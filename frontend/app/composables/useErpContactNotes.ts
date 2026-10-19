@@ -144,9 +144,13 @@ export function useErpContactNotes(contactId: Ref<number>) {
 
   function abortVisibilityReconciliation() {
     visibilitySequence++
-    visibilityController?.abort()
-    if (visibilityController)
-      finishController(visibilityController)
+    const controller = visibilityController
+    if (!controller)
+      return
+
+    staleList.value = true
+    controller.abort()
+    finishController(controller)
     visibilityController = null
   }
 
@@ -171,12 +175,6 @@ export function useErpContactNotes(contactId: Ref<number>) {
     if (!recovery || !recovery.restoreSelected || recovery.phase !== 'resolving')
       return
 
-    visibilitySequence++
-    visibilityController?.abort()
-    if (visibilityController)
-      finishController(visibilityController)
-    visibilityController = null
-    loadingDetail.value = false
     noteVisibilityRecovery.value = { ...recovery, phase: 'retryable' }
     emitNoteVisibility(recovery.noteId, 'retryable')
   }
@@ -357,12 +355,6 @@ export function useErpContactNotes(contactId: Ref<number>) {
     const selectedRecovery = currentRecovery.restoreSelected || noteVisibilityRecovery.value?.noteId === noteId
     const previousRecovery = noteVisibilityRecovery.value
     if (previousRecovery?.phase === 'resolving' && previousRecovery.noteId !== noteId) {
-      visibilitySequence++
-      visibilityController?.abort()
-      if (visibilityController)
-        finishController(visibilityController)
-      visibilityController = null
-      loadingDetail.value = false
       noteVisibilityRecovery.value = { ...previousRecovery, phase: 'retryable' }
       emitNoteVisibility(previousRecovery.noteId, 'retryable')
     }
