@@ -18,7 +18,17 @@ type NoteAction = 'index' | 'show' | 'store' | 'update' | 'archive' | 'attachmen
 type NoteResponse = { data: ErpContactNote }
 type AttachmentResponse = { data: ErpContactNoteAttachment }
 type UnavailableAttachmentResponse = { data?: ErpContactNoteAttachment }
-type NoteVisibilityEvent = { noteId: number, phase: 'resolving' | 'lost', sequence: number }
+type NoteVisibilityEvent = { noteId: number, phase: 'resolving' | 'retryable' | 'lost', sequence: number }
+type NoteVisibilityRecovery = {
+  noteId: number
+  contextKey: string
+  rowIndex: number
+  wasProjected: boolean
+  restoreSelected: boolean
+  filter: ErpContactNoteListState
+  totalBeforeHide: number | null
+  listDataRevision: number
+}
 
 const permissionNames: Record<NoteAction, string> = {
   'index': 'erp.contacts.notes.index',
@@ -54,15 +64,18 @@ export function useErpContactNotes(contactId: Ref<number>) {
   const staleDetail = ref(false)
   const blockedContextKey = ref<string | null>(null)
   const noteVisibilityEvent = ref<NoteVisibilityEvent | null>(null)
+  const noteVisibilityRecovery = ref<NoteVisibilityRecovery | null>(null)
   const authorityBlocked = computed(() => blockedContextKey.value === context.key.value)
   const mutationPending = computed(() => saving.value || archiving.value || uploading.value || archivingAttachment.value)
   const stale = computed(() => staleList.value || staleDetail.value)
   const controllers = new Set<AbortController>()
   const objectUrls = new Map<string, { timer: ReturnType<typeof setTimeout>, noteId: number }>()
   const noteVisibilityGenerations = new Map<number, number>()
+  const pendingDownloadGenerations = new Map<number, number>()
   let listController: AbortController | null = null
   let detailController: AbortController | null = null
   let listSequence = 0
+  let listDataRevision = 0
   let detailSequence = 0
   let mutationSequence = 0
   let visibilitySequence = 0
@@ -152,7 +165,10 @@ export function useErpContactNotes(contactId: Ref<number>) {
     loadingDetail.value = false
   }
 
-  function beginMutation() {
+  function beginMutation(noteId?: number) {
+    if (noteId !== undefined) {
+      pendingDownloadGenerations.set(noteId, pendingDownloadGeneration(noteId) + 1)
+    }
     abortReads()
     const requestSequence = ++mutationSequence
     const token = context.capture()
@@ -170,6 +186,10 @@ export function useErpContactNotes(contactId: Ref<number>) {
 
   function noteVisibilityGeneration(noteId: number): number {
     return noteVisibilityGenerations.get(noteId) ?? 0
+  }
+
+  function pendingDownloadGeneration(noteId: number): number {
+    return pendingDownloadGenerations.get(noteId) ?? 0
   }
 
   function invalidateNoteVisibility(noteId: number) {
@@ -208,6 +228,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
     error.value = ''
     fieldErrors.value = {}
     noteVisibilityEvent.value = null
+    noteVisibilityRecovery.value = null
   }
 
   function clearErrors() {
@@ -277,6 +298,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
   function loseNoteVisibility(noteId: number, message = 'Esta anotação não está mais disponível para este contato.') {
     abortReads()
     invalidateNoteVisibility(noteId)
+    noteVisibilityRecovery.value = null
     removeVisibleNote(noteId)
     staleDetail.value = false
     fieldErrors.value = {}
@@ -287,7 +309,8 @@ export function useErpContactNotes(contactId: Ref<number>) {
   async function reconcileAttachmentNotFound(
     noteId: number,
     token: ReturnType<typeof context.capture>,
-    operationIsCurrent: () => boolean
+    operationIsCurrent: () => boolean,
+    recovery?: NoteVisibilityRecovery
   ): Promise<void> {
     if (!isCurrent(token) || !operationIsCurrent())
       return
@@ -297,16 +320,27 @@ export function useErpContactNotes(contactId: Ref<number>) {
     }
 
     const rowIndex = notes.value.findIndex(note => note.id === noteId)
-    const previousRow = rowIndex >= 0 ? notes.value[rowIndex] : null
-    const shouldRestoreSelected = selectedNote.value?.id === noteId
+    const currentRecovery = recovery ?? {
+      noteId,
+      contextKey: context.key.value,
+      rowIndex,
+      wasProjected: rowIndex >= 0,
+      restoreSelected: selectedNote.value?.id === noteId,
+      filter: filter.value,
+      totalBeforeHide: listMeta.value?.total ?? null,
+      listDataRevision
+    }
+    if (currentRecovery.noteId !== noteId || currentRecovery.contextKey !== context.key.value) {
+      return
+    }
     abortReads()
     invalidateNoteVisibility(noteId)
     const requestSequence = visibilitySequence
-    const listRequestSequence = listSequence
-    const wasProjected = removeVisibleNote(noteId)
-    if (shouldRestoreSelected)
+    removeVisibleNote(noteId)
+    noteVisibilityRecovery.value = currentRecovery
+    if (currentRecovery.restoreSelected)
       staleDetail.value = false
-    loadingDetail.value = shouldRestoreSelected
+    loadingDetail.value = currentRecovery.restoreSelected
     emitNoteVisibility(noteId, 'resolving')
     const controller = makeController()
     visibilityController = controller
@@ -324,19 +358,31 @@ export function useErpContactNotes(contactId: Ref<number>) {
       if (!current())
         return
 
-      if (listSequence === listRequestSequence && filter.value === response.data.state) {
-        if (previousRow !== null) {
+      let refreshProjection = false
+      if (currentRecovery.wasProjected && filter.value === response.data.state) {
+        const existingIndex = notes.value.findIndex(note => note.id === noteId)
+        if (existingIndex >= 0) {
+          updateListRow(noteRowFromDetail(response.data))
+        } else if (filter.value === currentRecovery.filter && listDataRevision === currentRecovery.listDataRevision) {
           const nextRows = [...notes.value]
-          nextRows.splice(Math.min(rowIndex, nextRows.length), 0, noteRowFromDetail(response.data))
+          nextRows.splice(Math.min(currentRecovery.rowIndex, nextRows.length), 0, noteRowFromDetail(response.data))
           notes.value = nextRows
+          if (listMeta.value && currentRecovery.totalBeforeHide !== null)
+            listMeta.value = { ...listMeta.value, total: currentRecovery.totalBeforeHide }
+        } else {
+          refreshProjection = true
         }
-        if (wasProjected && listMeta.value)
-          listMeta.value = { ...listMeta.value, total: listMeta.value.total + 1 }
       }
-      if (shouldRestoreSelected) {
+      if (currentRecovery.restoreSelected) {
         selectedNote.value = response.data
         attachmentsMeta.value = response.meta.attachments
       }
+      if (refreshProjection) {
+        await refresh(page.value, true)
+        if (!current())
+          return
+      }
+      noteVisibilityRecovery.value = null
       error.value = 'O arquivo não está mais disponível para esta anotação.'
       fieldErrors.value = {}
     } catch (failure) {
@@ -346,7 +392,14 @@ export function useErpContactNotes(contactId: Ref<number>) {
       if (details.status === 404) {
         loseNoteVisibility(noteId)
       } else {
-        handleFailure(failure)
+        if (isAuthorityLoss(details.status, details.code)) {
+          handleFailure(failure)
+        } else {
+          noteVisibilityRecovery.value = currentRecovery
+          error.value = 'Não foi possível confirmar a disponibilidade da anotação. O conteúdo permanece oculto.'
+          fieldErrors.value = {}
+          emitNoteVisibility(noteId, 'retryable')
+        }
       }
     } finally {
       finishController(controller)
@@ -355,6 +408,25 @@ export function useErpContactNotes(contactId: Ref<number>) {
       if (current())
         loadingDetail.value = false
     }
+  }
+
+  async function retryNoteAvailability(noteId: number): Promise<boolean> {
+    const recovery = noteVisibilityRecovery.value
+    if (
+      !recovery
+      || recovery.noteId !== noteId
+      || recovery.contextKey !== context.key.value
+      || authorityBlocked.value
+      || mutationPending.value
+      || loadingDetail.value
+      || !permissions.show.value
+    ) {
+      return false
+    }
+
+    const token = context.capture()
+    await reconcileAttachmentNotFound(noteId, token, () => isCurrent(token), recovery)
+    return selectedNote.value?.id === noteId
   }
 
   function setPendingNote(noteId: number) {
@@ -402,6 +474,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
       if (!isCurrent(token, listSequence, requestSequence))
         return
       notes.value = response.data
+      listDataRevision++
       listMeta.value = response.meta
       page.value = response.meta.current_page
       hasLoaded.value = true
@@ -435,6 +508,11 @@ export function useErpContactNotes(contactId: Ref<number>) {
         error.value = 'Você não tem permissão para consultar o conteúdo desta anotação.'
       return
     }
+    if (noteVisibilityRecovery.value?.noteId !== noteId) {
+      noteVisibilityRecovery.value = null
+      if (noteVisibilityEvent.value?.phase === 'retryable')
+        noteVisibilityEvent.value = null
+    }
     abortVisibilityReconciliation()
     const requestSequence = ++detailSequence
     const token = context.capture()
@@ -455,6 +533,11 @@ export function useErpContactNotes(contactId: Ref<number>) {
       )
       if (!isCurrent(token, detailSequence, requestSequence))
         return
+      if (noteVisibilityRecovery.value?.noteId === noteId) {
+        noteVisibilityRecovery.value = null
+        if (noteVisibilityEvent.value?.noteId === noteId)
+          noteVisibilityEvent.value = null
+      }
       selectedNote.value = response.data
       attachmentsMeta.value = response.meta.attachments
       staleDetail.value = false
@@ -522,7 +605,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
       error.value = 'Somente a pessoa que criou a anotação pode alterar sua privacidade.'
       return false
     }
-    const { requestSequence, token, controller } = beginMutation()
+    const { requestSequence, token, controller } = beginMutation(noteId)
     const visibilityGeneration = noteVisibilityGeneration(noteId)
     saving.value = true
     clearErrors()
@@ -562,7 +645,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
       error.value = 'Você não tem permissão para solicitar a remoção desta anotação.'
       return false
     }
-    const { requestSequence, token, controller } = beginMutation()
+    const { requestSequence, token, controller } = beginMutation(noteId)
     const visibilityGeneration = noteVisibilityGeneration(noteId)
     archiving.value = true
     clearErrors()
@@ -600,7 +683,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
       error.value = 'O envio de arquivos não está disponível para esta anotação.'
       return false
     }
-    const { requestSequence, token, controller } = beginMutation()
+    const { requestSequence, token, controller } = beginMutation(noteId)
     const visibilityGeneration = noteVisibilityGeneration(noteId)
     const formData = new FormData()
     formData.append('file', file, file.name)
@@ -655,7 +738,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
       error.value = 'Você não tem permissão para solicitar a remoção deste arquivo.'
       return false
     }
-    const { requestSequence, token, controller } = beginMutation()
+    const { requestSequence, token, controller } = beginMutation(noteId)
     const visibilityGeneration = noteVisibilityGeneration(noteId)
     archivingAttachment.value = true
     clearErrors()
@@ -702,6 +785,10 @@ export function useErpContactNotes(contactId: Ref<number>) {
   }
 
   async function downloadAttachment(noteId: number, attachment: ErpContactNoteAttachment): Promise<boolean> {
+    if (mutationPending.value) {
+      error.value = 'Aguarde a conclusão da alteração antes de baixar um arquivo.'
+      return false
+    }
     if (authorityBlocked.value || !permissions.show.value || !permissions.attachmentDownload.value) {
       error.value = 'Você não tem permissão para baixar este arquivo.'
       return false
@@ -726,7 +813,10 @@ export function useErpContactNotes(contactId: Ref<number>) {
     }
     const token = context.capture()
     const visibilityGeneration = noteVisibilityGeneration(noteId)
-    const downloadIsCurrent = () => isCurrent(token) && noteVisibilityGeneration(noteId) === visibilityGeneration
+    const downloadMutationGeneration = pendingDownloadGeneration(noteId)
+    const downloadIsCurrent = () => isCurrent(token)
+      && noteVisibilityGeneration(noteId) === visibilityGeneration
+      && pendingDownloadGeneration(noteId) === downloadMutationGeneration
     const controller = makeController()
     clearErrors()
     try {
@@ -804,11 +894,13 @@ export function useErpContactNotes(contactId: Ref<number>) {
     stale,
     authorityBlocked,
     noteVisibilityEvent,
+    noteVisibilityRecovery,
     permissions,
     contextKey: context.key,
     refresh,
     setFilter,
     selectNote,
+    retryNoteAvailability,
     createNote,
     updateNote,
     archiveNote,

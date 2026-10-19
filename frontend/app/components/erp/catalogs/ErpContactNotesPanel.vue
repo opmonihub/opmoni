@@ -27,7 +27,8 @@ const {
   authorityBlocked,
   permissions,
   contextKey,
-  noteVisibilityEvent
+  noteVisibilityEvent,
+  retryNoteAvailability
 } = notesApi
 
 const createDraft = reactive({ heading: '', description: '', is_private: false })
@@ -47,7 +48,7 @@ const canShow = computed(() => permissions.show.value && !authorityBlocked.value
 const canEditSelected = computed(() => permissions.update.value && !authorityBlocked.value && !loadingDetail.value && selectedNote.value?.id === selectedNoteId.value && selectedNote.value.state === 'active')
 const canChangeSelectedPrivacy = computed(() => canEditSelected.value && selectedNote.value?.can_change_privacy === true)
 const canUploadSelected = computed(() => permissions.attachmentStore.value && !authorityBlocked.value && !loadingDetail.value && selectedNote.value?.id === selectedNoteId.value && selectedNote.value.state === 'active')
-const canDownloadSelected = computed(() => permissions.show.value && permissions.attachmentDownload.value && !authorityBlocked.value && !loadingDetail.value && selectedNote.value?.id === selectedNoteId.value && selectedNote.value.state === 'active')
+const canDownloadSelected = computed(() => permissions.show.value && permissions.attachmentDownload.value && !authorityBlocked.value && !loadingDetail.value && !mutationPending.value && selectedNote.value?.id === selectedNoteId.value && selectedNote.value.state === 'active')
 const canArchiveSelected = computed(() => permissions.archive.value && !authorityBlocked.value && !loadingDetail.value && selectedNote.value?.id === selectedNoteId.value)
 const pageCount = computed(() => listMeta.value?.last_page ?? 1)
 const attachmentPageCount = computed(() => attachmentsMeta.value?.last_page ?? 1)
@@ -131,6 +132,22 @@ async function changeAttachmentsPage(nextPage: number) {
   if (noteId === null)
     return
   await notesApi.selectNote(noteId, nextPage)
+  if (contextKey.value !== requestContext || selectedNoteId.value !== noteId)
+    return
+}
+
+async function retryHiddenNote() {
+  const noteId = selectedNoteId.value
+  const requestContext = contextKey.value
+  if (
+    noteId === null
+    || noteVisibilityEvent.value?.phase !== 'retryable'
+    || noteVisibilityEvent.value.noteId !== noteId
+  ) {
+    return
+  }
+
+  await retryNoteAvailability(noteId)
   if (contextKey.value !== requestContext || selectedNoteId.value !== noteId)
     return
 }
@@ -393,6 +410,17 @@ function formatDate(value: string | null) {
         </div>
         <div v-else-if="loadingDetail && selectedNoteId !== null" role="status" class="text-muted text-sm">
           Confirmando a disponibilidade desta anotação…
+        </div>
+        <div v-else-if="noteVisibilityEvent?.phase === 'retryable' && noteVisibilityEvent.noteId === selectedNoteId" class="space-y-3" role="status">
+          <p class="text-muted text-sm">
+            O conteúdo continua oculto enquanto confirmamos a disponibilidade da anotação.
+          </p>
+          <UButton
+            label="Tentar novamente"
+            variant="outline"
+            :disabled="mutationPending"
+            @click="retryHiddenNote"
+          />
         </div>
         <div v-else-if="!selectedNote" class="text-muted text-sm">
           Selecione uma anotação para consultar o conteúdo e os arquivos.

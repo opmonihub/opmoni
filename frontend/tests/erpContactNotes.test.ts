@@ -33,7 +33,8 @@ function loadNotesModule() {
     fieldErrors: Vue.Ref<Record<string, string[]>>
     stale: Vue.ComputedRef<boolean>
     authorityBlocked: Vue.ComputedRef<boolean>
-    noteVisibilityEvent: Vue.Ref<{ noteId: number, phase: 'resolving' | 'lost', sequence: number } | null>
+    noteVisibilityEvent: Vue.Ref<{ noteId: number, phase: 'resolving' | 'retryable' | 'lost', sequence: number } | null>
+    retryNoteAvailability(noteId: number): Promise<boolean>
     permissions: Record<'index' | 'show' | 'store' | 'update' | 'archive' | 'attachmentStore' | 'attachmentDownload' | 'attachmentArchive', Vue.ComputedRef<boolean>>
     refresh(page?: number): Promise<void>
     setFilter(filter: 'active' | 'deletion_pending'): Promise<void>
@@ -514,7 +515,180 @@ describe('ERP Contact notes lifecycle', () => {
     }
   })
 
-  it('ignores a same-note mutation response after visibility loss but accepts an unrelated note response', async (t) => {
+  it('keeps note recovery retryable and restores or loses only after its authorized retry', async (t) => {
+    for (const remainsVisible of [true, false]) {
+      const app = setup({ ignoreAbort: () => true })
+      t.after(app.stop)
+      app.initialListRequest()!.resolve(listResponse())
+      await app.settle()
+      const opening = app.notes.selectNote(noteRow.id)
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+      await opening
+
+      const upload = app.notes.uploadAttachment(noteRow.id, new File(['new bytes'], 'new.pdf', { type: 'application/pdf' }))
+      await app.settle()
+      app.requests.filter(request => request.options.method === 'POST').at(-1)!
+        .reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      const firstRecheck = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      firstRecheck.reject({ statusCode: 503, data: { message: 'Unavailable' } })
+      assert.equal(await upload, false)
+      assert.deepEqual(app.notes.notes.value, [])
+      assert.equal(app.notes.selectedNote.value, null)
+      assert.equal(app.notes.listMeta.value?.total, 0)
+      assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'retryable')
+      assert.match(app.notes.error.value, /conteúdo permanece oculto/i)
+
+      const firstRetry = app.notes.retryNoteAvailability(noteRow.id)
+      await app.settle()
+      const retryRequest = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      if (remainsVisible) {
+        retryRequest.reject({ statusCode: 503, data: { message: 'Unavailable again' } })
+        assert.equal(await firstRetry, false)
+        assert.deepEqual(app.notes.notes.value, [])
+        assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'retryable')
+
+        const refreshedWhileHidden = app.notes.refresh()
+        app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+          .resolve(listResponse([otherNoteRow]))
+        await refreshedWhileHidden
+
+        const finalRetry = app.notes.retryNoteAvailability(noteRow.id)
+        await app.settle()
+        const finalRequest = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        finalRequest.resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+        await app.settle()
+        const recoveredList = app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+        recoveredList.resolve(listResponse([noteRow, otherNoteRow]))
+        assert.equal(await finalRetry, true)
+        assert.deepEqual(app.notes.notes.value, [noteRow, otherNoteRow])
+        assert.equal(app.notes.listMeta.value?.total, 2)
+        assert.equal(app.notes.selectedNote.value?.id, noteRow.id)
+      } else {
+        retryRequest.reject({ statusCode: 404, data: { message: 'Not found' } })
+        assert.equal(await firstRetry, false)
+        assert.deepEqual(app.notes.notes.value, [])
+        assert.equal(app.notes.selectedNote.value, null)
+        assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'lost')
+      }
+    }
+  })
+
+  it('binds a retryable note check to the current selection and context', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse([noteRow, otherNoteRow]))
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const upload = app.notes.uploadAttachment(noteRow.id, new File(['new bytes'], 'new.pdf', { type: 'application/pdf' }))
+    await app.settle()
+    app.requests.filter(request => request.options.method === 'POST').at(-1)!
+      .reject({ statusCode: 404, data: { message: 'Not found' } })
+    await app.settle()
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .reject({ statusCode: 503, data: { message: 'Unavailable' } })
+    assert.equal(await upload, false)
+    assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'retryable')
+
+    const requestCount = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).length
+    const updateOther = app.notes.updateNote(otherNoteRow.id, { heading: 'Alteração em andamento' })
+    await app.settle()
+    const otherPatch = app.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+    assert.equal(await app.notes.retryNoteAvailability(noteRow.id), false)
+    assert.equal(app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).length, requestCount)
+    otherPatch.resolve({ data: { ...otherNoteRow, heading: 'Alteração em andamento' } })
+    assert.equal(await updateOther, true)
+
+    const openingOther = app.notes.selectNote(otherNoteRow.id)
+    const otherRequest = app.requests.filter(request => request.url === `/erp/contacts/31/notes/${otherNoteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+    otherRequest.resolve({ data: otherDetail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } })
+    await openingOther
+    assert.equal(app.notes.selectedNote.value?.id, otherNoteRow.id)
+  })
+
+  it('clears a stale retry marker after an authorized manual detail read of the same note', async (t) => {
+    const app = setup({ ignoreAbort: () => true })
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse())
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const upload = app.notes.uploadAttachment(noteRow.id, new File(['new bytes'], 'new.pdf', { type: 'application/pdf' }))
+    await app.settle()
+    app.requests.filter(request => request.options.method === 'POST').at(-1)!
+      .reject({ statusCode: 404, data: { message: 'Not found' } })
+    await app.settle()
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .reject({ statusCode: 503, data: { message: 'Unavailable' } })
+    assert.equal(await upload, false)
+    assert.equal(app.notes.noteVisibilityEvent.value?.phase, 'retryable')
+
+    const refreshed = app.notes.refresh()
+    app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=active').at(-1)!
+      .resolve(listResponse())
+    await refreshed
+    const manualOpen = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await manualOpen
+
+    assert.equal(app.notes.noteVisibilityEvent.value, null)
+    assert.equal(app.notes.selectedNote.value?.heading, detail.heading)
+    assert.equal(await app.notes.retryNoteAvailability(noteRow.id), false)
+  })
+
+  it('does not decrement the pending-filter count when a retained active selection is lost', async (t) => {
+    const app = setup()
+    t.after(app.stop)
+    app.initialListRequest()!.resolve(listResponse())
+    await app.settle()
+    const opening = app.notes.selectNote(noteRow.id)
+    app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+      .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
+    await opening
+
+    const changingFilter = app.notes.setFilter('deletion_pending')
+    const pendingRow = { ...otherNoteRow, state: 'deletion_pending' as const }
+    app.requests.filter(request => request.url === '/erp/contacts/31/notes?page=1&state=deletion_pending').at(-1)!
+      .resolve({ data: [pendingRow], meta: { current_page: 1, last_page: 1, per_page: 25, total: 3, state: 'deletion_pending' } })
+    await changingFilter
+    assert.equal(app.notes.selectedNote.value?.id, noteRow.id, 'the active detail remains selected while the list uses another filter')
+    assert.equal(app.notes.listMeta.value?.total, 3)
+
+    const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
+    const urlDescriptor = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { body: { appendChild() {} }, createElement: () => ({ click() {}, remove() {} }) }
+    })
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:pending-filter' })
+    try {
+      const download = app.notes.downloadAttachment(noteRow.id, attachment)
+      app.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+        .reject({ statusCode: 404, data: { message: 'Not found' } })
+      await app.settle()
+      assert.equal(app.notes.listMeta.value?.total, 3, 'the active note was not a member of the pending list projection')
+      app.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
+        .reject({ statusCode: 404, data: { message: 'Not found' } })
+      assert.equal(await download, false)
+      assert.equal(app.notes.listMeta.value?.total, 3)
+    } finally {
+      if (urlDescriptor) Object.defineProperty(URL, 'createObjectURL', urlDescriptor)
+      else Reflect.deleteProperty(URL, 'createObjectURL')
+      if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument })
+    }
+  })
+
+  it('refuses new downloads during a write and ignores a same-note download started before it', async (t) => {
     const previousDocument = (globalThis as typeof globalThis & { document?: unknown }).document
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
@@ -531,19 +705,27 @@ describe('ERP Contact notes lifecycle', () => {
         .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
       await opening
 
-      const sameNoteUpdate = sameNoteApp.notes.updateNote(noteRow.id, { heading: 'Stale private update' })
+      const sameNoteUpdate = sameNoteApp.notes.updateNote(noteRow.id, { heading: 'First accepted update' })
       await sameNoteApp.settle()
       const sameNotePatch = sameNoteApp.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+      assert.equal(await sameNoteApp.notes.downloadAttachment(noteRow.id, attachment), false)
+      assert.equal(sameNoteApp.requests.filter(request => request.options.responseType === 'blob').length, 0)
+      sameNotePatch.resolve({ data: { ...noteRow, heading: 'First accepted update' } })
+      assert.equal(await sameNoteUpdate, true)
+      assert.equal(sameNoteApp.notes.selectedNote.value?.heading, 'First accepted update')
+
       const oldDownload = sameNoteApp.notes.downloadAttachment(noteRow.id, attachment)
       const oldBlob = sameNoteApp.requests.filter(request => request.options.responseType === 'blob').at(-1)!
-      oldBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
+      const acceptedUpdate = sameNoteApp.notes.updateNote(noteRow.id, { heading: 'Second accepted update' })
       await sameNoteApp.settle()
-      const missingNoteRecheck = sameNoteApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
-      missingNoteRecheck.reject({ statusCode: 404, data: { message: 'Not found' } })
+      const acceptedPatch = sameNoteApp.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+      assert.equal(oldBlob.options.signal?.aborted, false, 'starting the write does not revoke an issued download request')
+      oldBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
       assert.equal(await oldDownload, false)
-      sameNotePatch.resolve({ data: { ...noteRow, heading: 'Stale private update' } })
-      assert.equal(await sameNoteUpdate, false)
-      assert.deepEqual(sameNoteApp.notes.notes.value, [])
+      assert.equal(sameNoteApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).length, 1, 'the late download 404 must not start a detail recheck')
+      acceptedPatch.resolve({ data: { ...noteRow, heading: 'Second accepted update' } })
+      assert.equal(await acceptedUpdate, true)
+      assert.equal(sameNoteApp.notes.selectedNote.value?.heading, 'Second accepted update')
 
       const unrelatedApp = setup({ ignoreAbort: () => true })
       t.after(unrelatedApp.stop)
@@ -554,11 +736,12 @@ describe('ERP Contact notes lifecycle', () => {
         .resolve({ data: detail, meta: { attachments: { current_page: 1, last_page: 1, per_page: 25, total: 1 } } })
       await openingOther
 
+      const otherDownload = unrelatedApp.notes.downloadAttachment(noteRow.id, attachment)
+      const otherBlob = unrelatedApp.requests.filter(request => request.options.responseType === 'blob').at(-1)!
       const otherUpdate = unrelatedApp.notes.updateNote(otherNoteRow.id, { heading: 'Still visible' })
       await unrelatedApp.settle()
       const otherPatch = unrelatedApp.requests.filter(request => request.options.method === 'PATCH').at(-1)!
-      const otherDownload = unrelatedApp.notes.downloadAttachment(noteRow.id, attachment)
-      const otherBlob = unrelatedApp.requests.filter(request => request.options.responseType === 'blob').at(-1)!
+      assert.equal(otherBlob.options.signal?.aborted, false, 'an unrelated note write must not abort the pending file request')
       otherBlob.reject({ statusCode: 404, data: { message: 'Not found' } })
       await unrelatedApp.settle()
       const noteRecheck = unrelatedApp.requests.filter(request => request.url === `/erp/contacts/31/notes/${noteRow.id}?attachments_page=1&attachments_per_page=25`).at(-1)!
@@ -728,9 +911,11 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
   const selectedNote = Vue.ref<NoteDetail | null>(null)
   const rows = Vue.ref<Note[]>(initial.deferNoteId === otherNoteRow.id ? [noteRow, otherNoteRow] : [noteRow])
   const contextKey = Vue.ref('actor-5-company-41')
-  const noteVisibilityEvent = Vue.ref<{ noteId: number, phase: 'resolving' | 'lost', sequence: number } | null>(null)
+  const noteVisibilityEvent = Vue.ref<{ noteId: number, phase: 'resolving' | 'retryable' | 'lost', sequence: number } | null>(null)
+  const mutationPending = Vue.ref(false)
   let createPayload: unknown
   let uploadFile: File | undefined
+  let retriedNoteId: number | null = null
   let releaseCreatePost: (() => void) | null = null
   let releaseCreateRefresh: (() => void) | null = null
   let createRefreshPending = false
@@ -750,7 +935,7 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
     archiving: Vue.ref(false),
     uploading: Vue.ref(false),
     archivingAttachment: Vue.ref(false),
-    mutationPending: Vue.ref(false),
+    mutationPending,
     error,
     fieldErrors,
     stale: Vue.ref(false),
@@ -761,6 +946,10 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
       attachmentStore: Vue.ref(true), attachmentDownload: Vue.ref(true), attachmentArchive: Vue.ref(true)
     },
     contextKey,
+    retryNoteAvailability: async (noteId: number) => {
+      retriedNoteId = noteId
+      return false
+    },
     refresh: async () => undefined,
     setFilter: async () => undefined,
     selectNote: async (noteId: number) => {
@@ -930,7 +1119,8 @@ function mountPanel(initial: { deferNoteId?: number, uploadSucceeds?: boolean, d
     resolveCreatePost: () => releaseCreatePost?.(),
     resolveCreateRefresh: () => releaseCreateRefresh?.(),
     isCreateRefreshPending: () => createRefreshPending,
-    setNoteVisibilityEvent: (event: { noteId: number, phase: 'resolving' | 'lost', sequence: number } | null) => { noteVisibilityEvent.value = event },
+    setNoteVisibilityEvent: (event: { noteId: number, phase: 'resolving' | 'retryable' | 'lost', sequence: number } | null) => { noteVisibilityEvent.value = event },
+    getRetriedNoteId: () => retriedNoteId,
     resolveDetail: () => releaseDetail?.()
   }
 }
@@ -1103,6 +1293,52 @@ describe('ERP Contact notes panel', () => {
     await settle()
     assert.equal(createHeading().props.value, 'Rascunho após 404')
     assert.equal(findAll(node => node.tag === 'button' && hostText(node) === 'Atualizar detalhes').length, 0)
+  })
+
+  it('keeps note content hidden during a retryable check and retries from the mounted panel', async (t) => {
+    const panel = mountPanel()
+    t.after(() => panel.app.unmount())
+    const settle = async () => {
+      await Vue.nextTick()
+      await Promise.resolve()
+      await Vue.nextTick()
+    }
+    const findAll = (predicate: (node: HostNode) => boolean) => hostDescendants(panel.root).filter(predicate)
+    findAll(node => node.tag === 'button' && hostText(node) === 'Ver detalhes')[0].props.onClick?.()
+    await settle()
+    assert.ok(hostText(panel.root).includes(noteRow.heading!))
+    const downloadButton = findAll(node => node.tag === 'button' && hostText(node) === 'Baixar')[0]
+    assert.ok(downloadButton)
+    panel.notesApi.mutationPending.value = true
+    await settle()
+    assert.equal(downloadButton.props.disabled, true)
+    panel.notesApi.mutationPending.value = false
+    await settle()
+
+    panel.setNoteVisibilityEvent({ noteId: noteRow.id, phase: 'resolving', sequence: 1 })
+    panel.notesApi.selectedNote.value = null
+    panel.notesApi.notes.value = []
+    panel.notesApi.loadingDetail.value = true
+    await settle()
+    panel.notesApi.loadingDetail.value = false
+    panel.setNoteVisibilityEvent({ noteId: noteRow.id, phase: 'retryable', sequence: 2 })
+    await settle()
+
+    const hiddenText = hostText(panel.root)
+    assert.ok(hiddenText.includes('O conteúdo continua oculto'))
+    assert.equal(hiddenText.includes(noteRow.heading!), false)
+    assert.equal(hiddenText.includes(noteRow.description!), false)
+    assert.equal(hiddenText.includes(attachment.original_name), false)
+    const retryButton = findAll(node => node.tag === 'button' && hostText(node) === 'Tentar novamente')[0]
+    assert.ok(retryButton)
+    panel.notesApi.mutationPending.value = true
+    await settle()
+    assert.equal(retryButton.props.disabled, true)
+    panel.notesApi.mutationPending.value = false
+    await settle()
+    retryButton.props.onClick?.()
+    await settle()
+    assert.equal(panel.getRetriedNoteId(), noteRow.id)
   })
 
   it('clears private drafts and a selected file after same-context authority is blocked', async (t) => {
