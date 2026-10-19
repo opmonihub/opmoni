@@ -31,7 +31,7 @@ const navbarTitle = computed(() => {
 </script>
 
 <template>
-  <UDashboardGroup unit="rem">
+  <UDashboardGroup unit="rem" data-erp-workspace>
     <UDashboardSidebar
       id="erp"
       v-model:open="open"

@@ -17,6 +17,14 @@
   --color-green-950: #052E16;
 }
 
+/* Root tokens also reach native overlays teleported outside the ERP dashboard. */
+:root:not(.dark):has([data-erp-workspace]) {
+  --ui-primary: var(--ui-color-primary-900);
+  --ui-success: var(--ui-color-success-800);
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  --ui-text-muted: var(--ui-color-neutral-600);
+}
+
 /* Calendar template tokens (nuxt-ui-templates/calendar) — scoped chrome for /work/calendario */
 :root {
   --glass-bg: rgb(255 255 255 / 0.42);
