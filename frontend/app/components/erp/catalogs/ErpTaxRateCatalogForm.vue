@@ -30,14 +30,19 @@ function submit() {
 <template>
   <form class="space-y-4" @submit.prevent="submit">
     <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogReferenceSelect
-        v-model="form.erp_establishment_id"
-        path="/erp/establishments"
-        label="Estabelecimento"
-        label-key="name"
-        optional
-        :disabled="disabled"
-      />
+      <div class="space-y-1">
+        <ErpCatalogReferenceSelect
+          v-model="form.erp_establishment_id"
+          path="/erp/establishments"
+          label="Estabelecimento"
+          label-key="name"
+          optional
+          :disabled="disabled"
+        />
+        <p v-if="fieldErrors?.erp_establishment_id?.[0]" role="alert" class="text-error text-xs">
+          {{ fieldErrors.erp_establishment_id[0] }}
+        </p>
+      </div>
       <ErpCatalogField label="Nome da alíquota" required :error="fieldErrors?.name?.[0]">
         <UInput
           v-model="form.name"

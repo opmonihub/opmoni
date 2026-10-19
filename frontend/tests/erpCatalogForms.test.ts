@@ -82,6 +82,16 @@ function descendants(root: HostNode): HostNode[] {
   return [root, ...root.children.flatMap(descendants)]
 }
 
+function isEffectivelyDisabled(node: HostNode): boolean {
+  let current: HostNode | null = node
+  while (current) {
+    if (current.props.disabled === true)
+      return true
+    current = current.parent
+  }
+  return false
+}
+
 function mountForm(
   path: string,
   record: Record<string, unknown> | null = null,
@@ -183,6 +193,15 @@ function mountForm(
       await Vue.nextTick()
     },
     inputValue: (name: string) => descendants(root).find(item => item.tag === 'input' && item.props.name === name)?.props.value,
+    select: async (label: string, value: number) => {
+      const node = descendants(root).find(item => item.tag === 'select' && item.props['aria-label'] === label)
+      assert.ok(node, `Expected reference select ${label} in ${path}`)
+      const onChange = node.props.onChange as ((event: Event) => void) | undefined
+      assert.ok(onChange, `Expected a selection handler for ${label} in ${path}`)
+      onChange({ target: { value: String(value) } } as unknown as Event)
+      await Vue.nextTick()
+    },
+    selectValue: (label: string) => descendants(root).find(item => item.tag === 'select' && item.props['aria-label'] === label)?.props.value,
     text: () => descendants(root).map(node => node.text).join(' '),
     buttons: () => descendants(root).filter(node => node.tag === 'button'),
     setFieldErrors: async (value: Record<string, string[]>) => {
@@ -348,6 +367,30 @@ const editCases: FormCase[] = [
   }
 ]
 
+const referenceErrorCases = [
+  {
+    path: 'components/erp/catalogs/ErpTaxRateCatalogForm.vue',
+    referenceLabel: 'Estabelecimento',
+    referenceField: 'erp_establishment_id',
+    referenceId: 3,
+    message: 'O estabelecimento não pertence à empresa selecionada.'
+  },
+  {
+    path: 'components/erp/catalogs/ErpOperationNatureCatalogForm.vue',
+    referenceLabel: 'Estabelecimento',
+    referenceField: 'erp_establishment_id',
+    referenceId: 3,
+    message: 'O estabelecimento está inativo.'
+  },
+  {
+    path: 'components/erp/catalogs/ErpVehicleCatalogForm.vue',
+    referenceLabel: 'Transportadora',
+    referenceField: 'erp_carrier_id',
+    referenceId: 42,
+    message: 'A transportadora não está autorizada.'
+  }
+] as const
+
 describe('ERP catalog family forms', () => {
   for (const item of editCases) {
     it(`edits and submits the saved ${item.path.split('/').at(-1)} fixture without losing its references or stored values`, async (t) => {
@@ -383,6 +426,65 @@ describe('ERP catalog family forms', () => {
     await form.submit()
     assert.deepEqual(form.emitted, [])
   })
+
+  for (const item of editCases) {
+    it(`disables ${item.field} and hides submit in ${item.path.split('/').at(-1)} detail mode`, async (t) => {
+      const form = mountForm(item.path, item.record, 'detail')
+      t.after(form.unmount)
+      const primaryField = descendants(form.root).find(node => node.tag === 'input' && node.props.name === item.field)
+      assert.ok(primaryField, `Expected primary field ${item.field} in ${item.path}`)
+      assert.equal(isEffectivelyDisabled(primaryField), true)
+      assert.equal(form.buttons().some(button => button.props.type === 'submit'), false)
+      await form.submit()
+      assert.deepEqual(form.emitted, [])
+    })
+
+    it(`retains ${item.field} after server field validation in ${item.path.split('/').at(-1)}`, async (t) => {
+      const form = mountForm(item.path, item.record, 'edit')
+      t.after(form.unmount)
+      const message = 'Revise este campo.'
+      await form.input(item.field, item.changed)
+      await form.submit()
+      assert.deepEqual(form.emitted, [item.expected])
+
+      await form.setFieldErrors({ [item.field]: [message] })
+      assert.ok(form.text().includes(message))
+      assert.equal(form.inputValue(item.field), item.changed)
+    })
+  }
+
+  for (const referenceCase of referenceErrorCases) {
+    it(`keeps ${referenceCase.referenceLabel.toLocaleLowerCase()} and edits visible after ${referenceCase.referenceField} validation fails`, async (t) => {
+      const item = editCases.find(candidate => candidate.path === referenceCase.path)!
+      const form = mountForm(item.path, item.record, 'edit')
+      t.after(form.unmount)
+
+      await form.select(referenceCase.referenceLabel, referenceCase.referenceId)
+      await form.input(item.field, item.changed)
+      await form.submit()
+      assert.deepEqual(form.emitted, [{ ...item.expected, [referenceCase.referenceField]: referenceCase.referenceId }])
+
+      await form.setFieldErrors({ [referenceCase.referenceField]: [referenceCase.message] })
+      assert.ok(form.text().includes(referenceCase.message))
+      assert.equal(form.selectValue(referenceCase.referenceLabel), referenceCase.referenceId)
+      assert.equal(form.inputValue(item.field), item.changed)
+    })
+
+    it(`disables ${referenceCase.referenceLabel.toLocaleLowerCase()} and form controls in ${referenceCase.path.split('/').at(-1)} detail mode`, async (t) => {
+      const item = editCases.find(candidate => candidate.path === referenceCase.path)!
+      const form = mountForm(item.path, item.record, 'detail')
+      t.after(form.unmount)
+      const fieldsets = descendants(form.root).filter(node => node.tag === 'fieldset')
+      assert.equal(fieldsets.length, 1)
+      assert.equal(fieldsets[0]?.props.disabled, true)
+      const reference = descendants(form.root).find(node => node.tag === 'select' && node.props['aria-label'] === referenceCase.referenceLabel)
+      assert.ok(reference)
+      assert.equal(reference.props.disabled, true)
+      assert.equal(form.buttons().some(button => button.props.type === 'submit'), false)
+      await form.submit()
+      assert.deepEqual(form.emitted, [])
+    })
+  }
 
   it('disables actual variant inputs in product detail and while a mutation is pending', async (t) => {
     const item = editCases.find(candidate => candidate.path.endsWith('ErpProductCatalogForm.vue'))!
@@ -430,18 +532,5 @@ describe('ERP catalog family forms', () => {
     await form.setBusy(false)
     await form.submit()
     assert.equal((form.emitted[0]?.variants as Array<Record<string, unknown>>)[0]?.status, undefined)
-  })
-
-  it('retains an edited contact value when only server field errors change', async (t) => {
-    const item = editCases.find(candidate => candidate.path.endsWith('ErpContactCatalogForm.vue'))!
-    const form = mountForm(item.path, item.record, 'edit')
-    t.after(form.unmount)
-    await form.input('name', item.changed)
-    await form.setFieldErrors({ name: ['Este nome já está em uso.'] })
-    assert.match(form.text(), /Este nome já está em uso\./)
-    assert.equal(form.inputValue('name'), item.changed)
-    await form.submit()
-    assert.equal(form.emitted[0]?.name, item.changed)
-    assert.equal(form.emitted[0]?.notes, 'Ligar após as 14h')
   })
 })

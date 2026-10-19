@@ -67,17 +67,19 @@ function descendants(root: HostNode): HostNode[] {
   return [root, ...root.children.flatMap(descendants)]
 }
 
-function setupResource() {
+function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[] } = {}) {
+  const accessKind = options.accessKind ?? 'direct'
+  const permissions = options.permissions ?? ['erp.units.index', 'erp.units.show', 'erp.units.store', 'erp.units.update', 'erp.units.archive']
   const user = Vue.ref<{ id: number } | null>({ id: 5 })
   const currentCompany = Vue.ref({
     id: 41,
     status: 'active',
-    access_kind: 'direct',
-    role: 'owner',
-    permissions: ['erp.units.index', 'erp.units.show', 'erp.units.store', 'erp.units.update', 'erp.units.archive'],
-    delegated_office_id: null
+    access_kind: accessKind,
+    role: accessKind === 'direct' ? 'owner' : 'member',
+    permissions,
+    delegated_office_id: accessKind === 'delegated' ? 77 : null
   })
-  const currentAccount = Vue.ref(null)
+  const currentAccount = Vue.ref(accessKind === 'delegated' ? { id: 77, status: 'active', role: 'user' } : null)
   const sessionGeneration = Vue.ref(7)
   const requests: Request[] = []
   let authRefresh: () => Promise<unknown> = async () => user.value
@@ -112,18 +114,19 @@ function setupResource() {
     list = listModule.useErpCatalogList('/erp/units')
     editor = editorModule.useErpCatalogEditor('/erp/units', list.refresh)
   })
-  const pagination = Vue.defineComponent({ setup: () => () => Vue.h('div') })
   const table = Vue.defineComponent({
     props: ['data', 'columns', 'loading'],
-    setup: () => () => Vue.h('div')
+    setup: props => () => Vue.h('div', { 'data-row-count': String(props.data.length) }, props.data.map((record: { id: number }) => {
+      const actions = props.columns.find((column: { id?: string }) => column.id === 'actions')?.cell as ((args: { row: { original: { id: number } } }) => unknown) | undefined
+      return actions?.({ row: { original: record } })
+    }))
   })
   const component = compileVueComponent(
     'components/erp/catalogs/ErpCatalogResource.vue',
     bindings,
     {
       '~/composables/useErpCatalogList': { useErpCatalogList: () => list },
-      '~/composables/useErpCatalogEditor': { useErpCatalogEditor: () => editor },
-      '~/components/erp/ErpCatalogPagination.vue': pagination
+      '~/composables/useErpCatalogEditor': { useErpCatalogEditor: () => editor }
     }
   )
   const { renderer: host, makeNode } = renderer()
@@ -141,8 +144,22 @@ function setupResource() {
       return () => Vue.h('button', { ...attrs, disabled: props.disabled }, slots.default?.() ?? String(props.label ?? ''))
     }
   })
-  for (const name of ['UButton', 'UModal', 'UCard', 'UFormField', 'UInput'])
+  const modal = Vue.defineComponent({
+    props: ['open'],
+    setup(props, { slots }) {
+      return () => Vue.h('div', { 'data-modal-open': String(props.open) }, props.open ? [slots.body?.(), slots.footer?.()] : [])
+    }
+  })
+  for (const name of ['UButton', 'UCard', 'UFormField', 'UInput'])
     app.component(name, passthrough)
+  app.component('UModal', modal)
+  app.component('UAlert', Vue.defineComponent({
+    props: ['title'],
+    setup(props, { slots }) {
+      return () => Vue.h('section', { role: 'alert' }, [Vue.h('p', String(props.title ?? '')), slots.actions?.()])
+    }
+  }))
+  app.component('UPagination', Vue.defineComponent({ setup: () => () => Vue.h('div') }))
   app.component('UTable', table)
   const root = makeNode('root')
   app.mount(root)
@@ -297,6 +314,137 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.editor.authorityBlocked.value, false)
     assert.equal(resource.list.state.value?.data[0]?.id, 33)
   })
+
+  it('recovers shared Resource authority when retry is clicked inside the real pagination alert', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    const firstListRequest = resource.requests.find(request => request.url === '/erp/units?page=1')
+    assert.ok(firstListRequest)
+    firstListRequest.reject({ statusCode: 403, data: { message: 'Permissão revogada' } })
+    await resource.settle()
+
+    const paginationAlert = descendants(resource.root).find(node => node.tag === 'section' && node.props.role === 'alert')
+    assert.ok(paginationAlert)
+    const retry = descendants(paginationAlert).find(node => node.tag === 'button' && node.text === 'Revalidar acesso')
+    assert.ok(retry)
+    const click = retry.props.onClick as (() => Promise<void>) | undefined
+    assert.ok(click)
+    const pendingRecovery = click()
+    await resource.settle()
+
+    const retriedListRequest = resource.requests.filter(request => request.url === '/erp/units?page=1').at(-1)!
+    assert.notEqual(retriedListRequest, firstListRequest)
+    retriedListRequest.resolve({
+      data: [{ id: 35, short_name: 'Recuperada pela paginação', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await pendingRecovery
+    await resource.settle()
+
+    assert.equal(resource.list.authorityBlocked.value, false)
+    assert.equal(resource.editor.authorityBlocked.value, false)
+    assert.equal(resource.list.state.value?.data[0]?.id, 35)
+    assert.equal(descendants(resource.root).some(node => node.tag === 'button' && node.text === 'Revalidar acesso'), false)
+  })
+
+  it('keeps the next company archive confirmation open when the prior company delete finishes late', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    const firstListRequest = resource.requests.find(request => request.url === '/erp/units?page=1')
+    assert.ok(firstListRequest)
+    firstListRequest.resolve({
+      data: [{ id: 8, short_name: 'Unidade da empresa A', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await resource.settle()
+
+    const archiveA = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Arquivar')
+    assert.ok(archiveA)
+    ;(archiveA.props.onClick as (() => void) | undefined)?.()
+    await resource.settle()
+    const confirmA = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Confirmar arquivamento')
+    assert.ok(confirmA)
+    const pendingArchiveA = (confirmA.props.onClick as (() => Promise<void>) | undefined)?.()
+    assert.ok(pendingArchiveA)
+    await resource.settle()
+    const deleteA = resource.requests.filter(request => request.options.method === 'DELETE').at(-1)!
+    assert.ok(deleteA)
+
+    resource.currentCompany.value = {
+      id: 42,
+      status: 'active',
+      access_kind: 'direct',
+      role: 'owner',
+      permissions: ['erp.units.index', 'erp.units.show', 'erp.units.store', 'erp.units.update', 'erp.units.archive'],
+      delegated_office_id: null
+    }
+    await resource.settle()
+    const companyBList = resource.requests.filter(request => request.url === '/erp/units?page=1').at(-1)!
+    assert.notEqual(companyBList, firstListRequest)
+    companyBList.resolve({
+      data: [{ id: 9, short_name: 'Unidade da empresa B', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await resource.settle()
+
+    const archiveB = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Arquivar')
+    assert.ok(archiveB)
+    ;(archiveB.props.onClick as (() => void) | undefined)?.()
+    await resource.settle()
+    assert.ok(descendants(resource.root).some(node => node.tag === 'button' && node.text === 'Confirmar arquivamento'))
+    assert.equal(resource.requests.filter(request => request.options.method === 'DELETE').length, 1)
+
+    deleteA.resolve({ data: { id: 8 } })
+    await pendingArchiveA
+    await resource.settle()
+
+    assert.equal(resource.list.state.value?.data[0]?.short_name, 'Unidade da empresa B')
+    assert.ok(descendants(resource.root).some(node => node.tag === 'button' && node.text === 'Confirmar arquivamento'), 'the company B archive dialog remains open')
+    assert.equal(resource.requests.filter(request => request.options.method === 'DELETE').length, 1, 'the company B record was not archived')
+  })
+
+  for (const accessKind of ['direct', 'delegated'] as const) {
+    it(`restores the list for a valid ${accessKind} index-only actor without exposing record actions`, async (t) => {
+      const resource = setupResource({ accessKind, permissions: ['erp.units.index'] })
+      t.after(resource.stop)
+      const firstListRequest = resource.requests.find(request => request.url === '/erp/units?page=1')
+      assert.ok(firstListRequest)
+      firstListRequest.reject({ statusCode: 403, data: { message: 'Falha temporária de autorização' } })
+      await resource.settle()
+
+      assert.equal(resource.list.authorityBlocked.value, true)
+      assert.equal(resource.editor.authorityBlocked.value, true)
+      assert.equal(resource.list.canRead.value, true)
+      assert.equal(resource.editor.permissions.show.value, false)
+      assert.equal(resource.editor.permissions.store.value, false)
+      assert.equal(resource.editor.permissions.edit.value, false)
+      assert.equal(resource.editor.permissions.archive.value, false)
+      const rejectedContext = resource.editor.contextKey.value
+
+      const recovery = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Revalidar acesso')
+      assert.ok(recovery)
+      const click = recovery.props.onClick as (() => Promise<void>) | undefined
+      assert.ok(click)
+      const pendingRecovery = click()
+      await resource.settle()
+      const retriedListRequest = resource.requests.filter(request => request.url === '/erp/units?page=1').at(-1)!
+      assert.notEqual(retriedListRequest, firstListRequest)
+      retriedListRequest.resolve({
+        data: [{ id: 73, short_name: 'Unidade permitida', status: 'active' }],
+        meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+      })
+      await pendingRecovery
+      await resource.settle()
+
+      assert.equal(resource.editor.contextKey.value, rejectedContext)
+      assert.equal(resource.list.authorityBlocked.value, false)
+      assert.equal(resource.editor.authorityBlocked.value, false)
+      assert.equal(resource.list.state.value?.data[0]?.id, 73)
+      const table = descendants(resource.root).find(node => node.props['data-row-count'] === '1')
+      assert.ok(table, 'the successfully revalidated list row is rendered')
+      assert.equal(descendants(resource.root).some(node => node.tag === 'button' && ['Ver', 'Editar', 'Arquivar', 'Adicionar unidades'].includes(node.text)), false)
+    })
+  }
 
   it('ignores an old authority recovery after the selected company changes', async (t) => {
     const resource = setupResource()

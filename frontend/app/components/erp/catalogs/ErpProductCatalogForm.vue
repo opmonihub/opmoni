@@ -41,8 +41,8 @@ const variantArchiveOpen = computed({
 const variantArchiveDescription = computed(() => {
   const variant = pendingVariantArchive.value === null ? null : form.variants[pendingVariantArchive.value]
   return variant
-    ? `Arquivar a variante ${variant.name}? O histórico existente será mantido.`
-    : 'Confirme o arquivamento da variante. O histórico existente será mantido.'
+    ? `Arquivar a variante ${variant.name}? O arquivamento será aplicado ao salvar o produto. O histórico será mantido.`
+    : 'O arquivamento será aplicado ao salvar o produto. O histórico será mantido.'
 })
 
 watch(() => [props.record, props.mode] as const, ([record]) => {

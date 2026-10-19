@@ -167,6 +167,68 @@ describe('ERP catalog editor authority and request lifecycle', () => {
     app.stop()
   })
 
+  it('keeps a delegated office user read-only when the Company grants catalog mutation permissions', async () => {
+    const app = setupEditor({
+      company: company({
+        access_kind: 'delegated',
+        role: 'member',
+        delegated_office_id: 77,
+        permissions: ['erp.products.show', 'erp.products.store', 'erp.products.update', 'erp.products.archive']
+      }),
+      account: { id: 77, status: 'active', role: 'user' }
+    })
+
+    assert.equal(app.editor.permissions.show.value, true)
+    assert.equal(app.editor.permissions.store.value, false)
+    assert.equal(app.editor.permissions.update.value, false)
+    assert.equal(app.editor.permissions.archive.value, false)
+    assert.equal(app.editor.permissions.edit.value, false)
+
+    const viewing = app.editor.view(17)
+    assert.equal(app.requests[0]?.url, '/erp/products/17')
+    app.requests[0]!.resolve({ data: { id: 17, name: 'Consulta delegada' } })
+    await viewing
+    await app.settle()
+    assert.equal(app.editor.mode.value, 'detail')
+    assert.equal(app.editor.record.value?.id, 17)
+    assert.equal(app.editor.canSave.value, false)
+
+    const requestCount = app.requests.length
+    await app.editor.edit(17)
+    await app.editor.save({ name: 'Não permitido' })
+    await app.editor.archive(17)
+    assert.equal(app.requests.length, requestCount)
+    app.stop()
+  })
+
+  it('denies delegated catalog actions when the selected office membership does not match', async () => {
+    const app = setupEditor({
+      company: company({
+        access_kind: 'delegated',
+        role: 'member',
+        delegated_office_id: 77,
+        permissions: ['erp.products.show', 'erp.products.store', 'erp.products.update', 'erp.products.archive']
+      }),
+      account: { id: 88, status: 'active', role: 'admin' }
+    })
+
+    assert.equal(app.editor.permissions.show.value, false)
+    assert.equal(app.editor.permissions.store.value, false)
+    assert.equal(app.editor.permissions.update.value, false)
+    assert.equal(app.editor.permissions.archive.value, false)
+    assert.equal(app.editor.permissions.edit.value, false)
+
+    app.editor.create()
+    await app.editor.view(17)
+    await app.editor.edit(17)
+    await app.editor.save({ name: 'Não permitido' })
+    await app.editor.archive(17)
+    assert.equal(app.requests.length, 0)
+    assert.equal(app.editor.open.value, false)
+    assert.equal(app.editor.record.value, null)
+    app.stop()
+  })
+
   it('requires show and update to edit, and fetches the real record before opening edit mode', async () => {
     const app = setupEditor({ company: company({ permissions: ['erp.products.update'] }) })
     assert.equal(app.editor.permissions.update.value, true)

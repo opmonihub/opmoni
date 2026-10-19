@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, nextTick, resolveComponent, useId } from 'vue'
+import { h, nextTick, onScopeDispose, resolveComponent, useId } from 'vue'
 import type { Component } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import ErpCatalogPagination from '~/components/erp/ErpCatalogPagination.vue'
@@ -19,7 +19,7 @@ const props = defineProps<{
 
 const list = useErpCatalogList<CatalogRow>(props.path)
 const editor = useErpCatalogEditor(props.path, list.refresh)
-const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked, retry } = list
+const { search, page, pending, searchPending, state, error, hasLoaded, stale, authorityBlocked } = list
 const { record, mode, open, loadingDetail, archiving, error: editorError, fieldErrors } = editor
 const archiveTarget = ref<CatalogRow | null>(null)
 const editorRegion = ref<HTMLElement | null>(null)
@@ -32,6 +32,8 @@ const resourceAuthorityBlocked = computed(() => resourceBlocked.value || authori
 const editorTitleId = useId()
 let propagatingAuthorityBlock = false
 let resourceRecoverySequence = 0
+let resourceContextGeneration = 0
+let resourceDisposed = false
 const canStore = computed(() => editor.permissions.store.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
 const canShow = computed(() => editor.permissions.show.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
 const canEdit = computed(() => editor.permissions.edit.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
@@ -79,6 +81,7 @@ watch([authorityBlocked, editor.authorityBlocked], ([listBlocked, editorBlocked]
 }, { flush: 'sync' })
 
 watch(editor.contextKey, () => {
+  resourceContextGeneration++
   resourceRecoverySequence++
   resourceRefreshing.value = false
   archiveTarget.value = null
@@ -86,6 +89,12 @@ watch(editor.contextKey, () => {
   resourceBlocked.value = false
   resourceError.value = ''
 }, { flush: 'sync' })
+
+onScopeDispose(() => {
+  resourceDisposed = true
+  resourceContextGeneration++
+  resourceRecoverySequence++
+})
 
 watch(open, async (isOpen) => {
   if (isOpen) {
@@ -149,7 +158,10 @@ async function confirmArchive() {
   const target = archiveTarget.value
   if (!target || !canArchive.value)
     return
+  const contextGeneration = resourceContextGeneration
   await editor.archive(target.id)
+  if (resourceDisposed || contextGeneration !== resourceContextGeneration || archiveTarget.value !== target)
+    return
   if (!editor.error.value)
     archiveTarget.value = null
 }
@@ -195,7 +207,7 @@ function labelFor(row: CatalogRow): string {
         :search-pending="searchPending"
         :authority-blocked="authorityBlocked"
         :search="search"
-        @retry="retry"
+        @retry="retryResource"
       />
     </div>
   </UCard>

@@ -64,6 +64,22 @@ export function useErpCatalogEditor(path: string, refresh: () => Promise<void>) 
   }
 
   const permissions = {
+    index: computed(() => {
+      const actor = user.value
+      const company = currentCompany.value
+      if (!actor?.id || !company || company.status !== 'active' || !base)
+        return false
+
+      if (company.access_kind === 'delegated') {
+        const office = currentAccount.value
+        if (office?.status !== 'active' || office.id !== company.delegated_office_id)
+          return false
+      } else if (company.access_kind !== 'direct') {
+        return false
+      }
+
+      return erpCompanyHasPermission(company.permissions, `${base}.index`)
+    }),
     show: computed(() => hasAction('show')),
     store: computed(() => hasAction('store')),
     update: computed(() => hasAction('update')),
@@ -291,7 +307,8 @@ export function useErpCatalogEditor(path: string, refresh: () => Promise<void>) 
       if (disposed || context.key.value !== rejectedContext)
         return false
       if (!identity || !(
-        permissions.show.value
+        permissions.index.value
+        || permissions.show.value
         || permissions.store.value
         || permissions.update.value
         || permissions.archive.value
