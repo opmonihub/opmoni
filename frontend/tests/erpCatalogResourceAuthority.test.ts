@@ -395,6 +395,7 @@ describe('ERP catalog shared resource authority', () => {
       stale: Vue.ref(false),
       authorityBlocked: Vue.ref(false),
       noteVisibilityEvent: Vue.ref(null),
+      noteVisibilityRecovery: Vue.ref(null),
       permissions: {
         index: Vue.ref(true), show: Vue.ref(true), store: Vue.ref(true), update: Vue.ref(true), archive: Vue.ref(true),
         attachmentStore: Vue.ref(true), attachmentDownload: Vue.ref(true), attachmentArchive: Vue.ref(true)

@@ -28,6 +28,7 @@ const {
   permissions,
   contextKey,
   noteVisibilityEvent,
+  noteVisibilityRecovery,
   retryNoteAvailability
 } = notesApi
 
@@ -141,8 +142,8 @@ async function retryHiddenNote() {
   const requestContext = contextKey.value
   if (
     noteId === null
-    || noteVisibilityEvent.value?.phase !== 'retryable'
-    || noteVisibilityEvent.value.noteId !== noteId
+    || noteVisibilityRecovery.value?.phase !== 'retryable'
+    || noteVisibilityRecovery.value.noteId !== noteId
   ) {
     return
   }
@@ -411,7 +412,7 @@ function formatDate(value: string | null) {
         <div v-else-if="loadingDetail && selectedNoteId !== null" role="status" class="text-muted text-sm">
           Confirmando a disponibilidade desta anotação…
         </div>
-        <div v-else-if="noteVisibilityEvent?.phase === 'retryable' && noteVisibilityEvent.noteId === selectedNoteId" class="space-y-3" role="status">
+        <div v-else-if="noteVisibilityRecovery?.phase === 'retryable' && noteVisibilityRecovery.noteId === selectedNoteId && noteVisibilityRecovery.contextKey === contextKey" class="space-y-3" role="status">
           <p class="text-muted text-sm">
             O conteúdo continua oculto enquanto confirmamos a disponibilidade da anotação.
           </p>

@@ -22,6 +22,7 @@ type NoteVisibilityEvent = { noteId: number, phase: 'resolving' | 'retryable' | 
 type NoteVisibilityRecovery = {
   noteId: number
   contextKey: string
+  phase: 'resolving' | 'retryable'
   rowIndex: number
   wasProjected: boolean
   restoreSelected: boolean
@@ -165,7 +166,23 @@ export function useErpContactNotes(contactId: Ref<number>) {
     loadingDetail.value = false
   }
 
+  function interruptSelectedVisibilityForMutation() {
+    const recovery = noteVisibilityRecovery.value
+    if (!recovery || !recovery.restoreSelected || recovery.phase !== 'resolving')
+      return
+
+    visibilitySequence++
+    visibilityController?.abort()
+    if (visibilityController)
+      finishController(visibilityController)
+    visibilityController = null
+    loadingDetail.value = false
+    noteVisibilityRecovery.value = { ...recovery, phase: 'retryable' }
+    emitNoteVisibility(recovery.noteId, 'retryable')
+  }
+
   function beginMutation(noteId?: number) {
+    interruptSelectedVisibilityForMutation()
     if (noteId !== undefined) {
       pendingDownloadGenerations.set(noteId, pendingDownloadGeneration(noteId) + 1)
     }
@@ -274,6 +291,8 @@ export function useErpContactNotes(contactId: Ref<number>) {
     if (hadRow && listMeta.value && listMeta.value.total > 0) {
       listMeta.value = { ...listMeta.value, total: listMeta.value.total - 1 }
     }
+    if (hadRow)
+      listDataRevision++
     return hadRow
   }
 
@@ -298,7 +317,8 @@ export function useErpContactNotes(contactId: Ref<number>) {
   function loseNoteVisibility(noteId: number, message = 'Esta anotação não está mais disponível para este contato.') {
     abortReads()
     invalidateNoteVisibility(noteId)
-    noteVisibilityRecovery.value = null
+    if (noteVisibilityRecovery.value?.noteId === noteId)
+      noteVisibilityRecovery.value = null
     removeVisibleNote(noteId)
     staleDetail.value = false
     fieldErrors.value = {}
@@ -323,6 +343,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
     const currentRecovery = recovery ?? {
       noteId,
       contextKey: context.key.value,
+      phase: 'resolving' as const,
       rowIndex,
       wasProjected: rowIndex >= 0,
       restoreSelected: selectedNote.value?.id === noteId,
@@ -333,11 +354,29 @@ export function useErpContactNotes(contactId: Ref<number>) {
     if (currentRecovery.noteId !== noteId || currentRecovery.contextKey !== context.key.value) {
       return
     }
+    const selectedRecovery = currentRecovery.restoreSelected || noteVisibilityRecovery.value?.noteId === noteId
+    const previousRecovery = noteVisibilityRecovery.value
+    if (previousRecovery?.phase === 'resolving' && previousRecovery.noteId !== noteId) {
+      visibilitySequence++
+      visibilityController?.abort()
+      if (visibilityController)
+        finishController(visibilityController)
+      visibilityController = null
+      loadingDetail.value = false
+      noteVisibilityRecovery.value = { ...previousRecovery, phase: 'retryable' }
+      emitNoteVisibility(previousRecovery.noteId, 'retryable')
+    }
     abortReads()
     invalidateNoteVisibility(noteId)
     const requestSequence = visibilitySequence
     removeVisibleNote(noteId)
-    noteVisibilityRecovery.value = currentRecovery
+    const activeRecovery = {
+      ...currentRecovery,
+      phase: 'resolving' as const,
+      listDataRevision: recovery ? currentRecovery.listDataRevision : listDataRevision
+    }
+    if (selectedRecovery)
+      noteVisibilityRecovery.value = activeRecovery
     if (currentRecovery.restoreSelected)
       staleDetail.value = false
     loadingDetail.value = currentRecovery.restoreSelected
@@ -363,7 +402,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
         const existingIndex = notes.value.findIndex(note => note.id === noteId)
         if (existingIndex >= 0) {
           updateListRow(noteRowFromDetail(response.data))
-        } else if (filter.value === currentRecovery.filter && listDataRevision === currentRecovery.listDataRevision) {
+        } else if (filter.value === activeRecovery.filter && listDataRevision === activeRecovery.listDataRevision) {
           const nextRows = [...notes.value]
           nextRows.splice(Math.min(currentRecovery.rowIndex, nextRows.length), 0, noteRowFromDetail(response.data))
           notes.value = nextRows
@@ -382,7 +421,8 @@ export function useErpContactNotes(contactId: Ref<number>) {
         if (!current())
           return
       }
-      noteVisibilityRecovery.value = null
+      if (noteVisibilityRecovery.value?.noteId === noteId)
+        noteVisibilityRecovery.value = null
       error.value = 'O arquivo não está mais disponível para esta anotação.'
       fieldErrors.value = {}
     } catch (failure) {
@@ -395,8 +435,12 @@ export function useErpContactNotes(contactId: Ref<number>) {
         if (isAuthorityLoss(details.status, details.code)) {
           handleFailure(failure)
         } else {
-          noteVisibilityRecovery.value = currentRecovery
-          error.value = 'Não foi possível confirmar a disponibilidade da anotação. O conteúdo permanece oculto.'
+          if (selectedRecovery) {
+            noteVisibilityRecovery.value = { ...activeRecovery, phase: 'retryable' }
+            error.value = 'Não foi possível confirmar a disponibilidade da anotação. O conteúdo permanece oculto.'
+          } else {
+            staleList.value = true
+          }
           fieldErrors.value = {}
           emitNoteVisibility(noteId, 'retryable')
         }
@@ -415,6 +459,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
     if (
       !recovery
       || recovery.noteId !== noteId
+      || recovery.phase !== 'retryable'
       || recovery.contextKey !== context.key.value
       || authorityBlocked.value
       || mutationPending.value
@@ -508,7 +553,7 @@ export function useErpContactNotes(contactId: Ref<number>) {
         error.value = 'Você não tem permissão para consultar o conteúdo desta anotação.'
       return
     }
-    if (noteVisibilityRecovery.value?.noteId !== noteId) {
+    if (noteVisibilityRecovery.value && noteVisibilityRecovery.value.noteId !== noteId) {
       noteVisibilityRecovery.value = null
       if (noteVisibilityEvent.value?.phase === 'retryable')
         noteVisibilityEvent.value = null
