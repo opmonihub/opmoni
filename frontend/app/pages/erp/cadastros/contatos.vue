@@ -2,6 +2,7 @@
 import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
 import ErpContactCatalogForm from '~/components/erp/catalogs/ErpContactCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
+import ErpContactNotesPanel from '~/components/erp/catalogs/ErpContactNotesPanel.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
@@ -27,6 +28,12 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
       :form="ErpContactCatalogForm"
       :columns="columns"
       :record-label="recordLabel"
-    />
+      detail-form-label="Dados do cadastro"
+      detail-panel-label="Notas e anexos"
+    >
+      <template #detail-panel="{ record }">
+        <ErpContactNotesPanel :key="record.id" :contact-id="record.id" />
+      </template>
+    </ErpCatalogResource>
   </ErpCatalogPageShell>
 </template>

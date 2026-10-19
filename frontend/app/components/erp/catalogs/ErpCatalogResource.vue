@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, nextTick, onScopeDispose, resolveComponent, useId } from 'vue'
+import { h, nextTick, onScopeDispose, resolveComponent, useId, useSlots } from 'vue'
 import type { Component, ComponentPublicInstance } from 'vue'
 import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
 import ErpCatalogPagination from '~/components/erp/ErpCatalogPagination.vue'
@@ -18,7 +18,10 @@ const props = withDefaults(defineProps<{
   recordLabel: (record: CatalogRow) => string
   searchPlaceholder?: string
   showHeading?: boolean
-}>(), { showHeading: true })
+  detailFormLabel?: string
+  detailPanelLabel?: string
+}>(), { showHeading: true, detailFormLabel: 'Cadastro', detailPanelLabel: 'Detalhes adicionais' })
+const slots = useSlots()
 
 const list = useErpCatalogList<CatalogRow>(props.path)
 const editor = useErpCatalogEditor(props.path, list.refresh)
@@ -49,6 +52,12 @@ const resourceError = ref('')
 const resourceRefreshing = ref(false)
 const resourceAuthorityBlocked = computed(() => resourceBlocked.value || authorityBlocked.value || editor.authorityBlocked.value)
 const editorTitleId = useId()
+const detailTab = ref('record')
+const detailTabs = computed(() => [
+  { label: props.detailFormLabel, value: 'record', slot: 'record' },
+  { label: props.detailPanelLabel, value: 'panel', slot: 'panel' }
+])
+const hasDetailPanel = computed(() => typeof slots['detail-panel'] === 'function')
 let propagatingAuthorityBlock = false
 let resourceRecoverySequence = 0
 let resourceContextGeneration = 0
@@ -210,6 +219,10 @@ watch(editor.contextKey, () => {
   resourceBlocked.value = false
   resourceError.value = ''
 }, { flush: 'sync' })
+
+watch(() => record.value?.id, () => {
+  detailTab.value = 'record'
+})
 
 async function restoreRowActionFocus() {
   if (resourceDisposed || open.value || editor.mutationPending.value)
@@ -428,9 +441,32 @@ function labelFor(row: CatalogRow): string {
     <p v-if="loadingDetail" role="status" class="text-muted text-sm">
       Carregando registro…
     </p>
+    <UTabs
+      v-if="!loadingDetail && mode === 'detail' && record && hasDetailPanel"
+      v-model="detailTab"
+      :items="detailTabs"
+      :unmount-on-hide="true"
+      class="min-w-0"
+    >
+      <template #record>
+        <component
+          :is="form"
+          :record="record"
+          :mode="mode"
+          :can-save="editor.canSave.value"
+          :can-archive="editor.permissions.archive.value"
+          :busy="editor.mutationPending.value"
+          :field-errors="fieldErrors"
+          @save="editor.save"
+        />
+      </template>
+      <template #panel>
+        <slot name="detail-panel" :record="record" />
+      </template>
+    </UTabs>
     <component
       :is="form"
-      v-if="!loadingDetail && (mode === 'create' || record)"
+      v-else-if="!loadingDetail && (mode === 'create' || record)"
       :record="record"
       :mode="mode"
       :can-save="editor.canSave.value"
