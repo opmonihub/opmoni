@@ -27,9 +27,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Categoria" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Identificação e hierarquia
+      </legend>
+      <ErpCatalogField
+        label="Categoria"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -43,12 +56,11 @@ function submit() {
         :path="erpCatalogRoutes.categories"
         label="Categoria superior"
         label-key="name"
+        name="parent_id"
         optional
         :disabled="disabled"
+        :error="fieldErrors?.parent_id?.[0]"
       />
-      <p v-if="fieldErrors?.parent_id?.[0]" role="alert" class="text-error text-xs sm:col-span-2">
-        {{ fieldErrors.parent_id[0] }}
-      </p>
     </fieldset>
     <div v-if="mode !== 'detail'" class="flex justify-end">
       <UButton
@@ -58,5 +70,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

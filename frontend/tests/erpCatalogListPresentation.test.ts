@@ -121,11 +121,11 @@ function findHostNodes(root: HostNode, predicate: (node: HostNode) => boolean): 
   return found
 }
 
-function slotWrapper(name: string, tag: string) {
+function slotBoundary(name: string, tag: string, slotNames: string[]) {
   return Vue.defineComponent({
     name,
     setup(_, { slots, attrs }) {
-      return () => Vue.h(tag, attrs, [slots.header?.(), slots.default?.(), slots.actions?.()].filter(Boolean))
+      return () => Vue.h(tag, { ...attrs, 'data-nuxt-ui-component': name }, slotNames.flatMap(slot => slots[slot]?.() ?? []))
     }
   })
 }
@@ -141,12 +141,61 @@ function mountCatalogPage(path: string) {
     '~/composables/useErpCatalogList': { useErpCatalogList: runtime.createList },
     '~/composables/useErpCatalogEditor': runtime.editorModule
   })
-  const pagination = compileVueComponent('components/erp/ErpCatalogPagination.vue')
   const { renderer, createNode } = createHostRenderer()
   const app = renderer.createApp(page)
-  app.component('ErpCatalogPageShell', slotWrapper('ErpCatalogPageShell', 'main'))
-  app.component('UCard', slotWrapper('UCard', 'section'))
-  app.component('UFormField', slotWrapper('UFormField', 'label'))
+  app.component('UDashboardPanel', slotBoundary('UDashboardPanel', 'section', ['header', 'body']))
+  app.component('UDashboardNavbar', Vue.defineComponent({
+    name: 'UDashboardNavbar',
+    props: ['title', 'toggle'],
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('header', { ...attrs, 'data-nuxt-ui-component': 'UDashboardNavbar', 'data-toggle': String(props.toggle) }, [
+        ...(slots.leading?.() ?? []),
+        Vue.h('h1', {}, String(props.title ?? '')),
+        ...(slots.right?.() ?? [])
+      ])
+    }
+  }))
+  app.component('UDashboardSidebarToggle', slotBoundary('UDashboardSidebarToggle', 'button', []))
+  app.component('CompanyMenu', slotBoundary('CompanyMenu', 'button', []))
+  app.component('UserMenu', slotBoundary('UserMenu', 'button', []))
+  app.component('UDashboardToolbar', Vue.defineComponent({
+    name: 'UDashboardToolbar',
+    props: ['ui'],
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('div', {
+        ...attrs,
+        'data-nuxt-ui-component': 'UDashboardToolbar',
+        'data-ui-root': props.ui?.root,
+        'data-ui-left': props.ui?.left,
+        'data-ui-right': props.ui?.right
+      }, [...(slots.left?.() ?? []), ...(slots.right?.() ?? [])])
+    }
+  }))
+  app.component('UDropdownMenu', Vue.defineComponent({
+    name: 'UDropdownMenu',
+    setup(_, { attrs, slots }) {
+      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, slots.default?.())
+    }
+  }))
+  app.component('UBadge', Vue.defineComponent({
+    name: 'UBadge',
+    props: ['label'],
+    setup(props) {
+      return () => Vue.h('span', { 'data-nuxt-ui-component': 'UBadge' }, String(props.label ?? ''))
+    }
+  }))
+  app.component('UCard', slotBoundary('UCard', 'section', ['header', 'default', 'actions']))
+  app.component('UFormField', Vue.defineComponent({
+    name: 'UFormField',
+    props: ['label', 'name', 'error'],
+    setup(props, { slots }) {
+      return () => Vue.h('label', { 'data-field-name': props.name }, [
+        props.label ? Vue.h('span', String(props.label)) : null,
+        ...(slots.default?.() ?? []),
+        props.error ? Vue.h('span', { role: 'alert' }, String(props.error)) : null
+      ])
+    }
+  }))
   app.component('UModal', Vue.defineComponent({
     props: ['open'],
     setup(props, { slots }) {
@@ -191,7 +240,6 @@ function mountCatalogPage(path: string) {
     props: ['page', 'total', 'itemsPerPage', 'disabled'],
     setup() { return () => Vue.h('nav', {}, 'Paginação') }
   }))
-  app.component('ErpCatalogPagination', pagination)
   const root = createNode('root')
   app.mount(root)
 
@@ -199,6 +247,10 @@ function mountCatalogPage(path: string) {
     ...runtime,
     root,
     text: () => hostText(root),
+    panels: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardPanel'),
+    navbars: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardNavbar'),
+    toolbars: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardToolbar'),
+    shellComponents: (name: string) => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === name),
     tables: () => findHostNodes(root, node => node.tag === 'table'),
     buttons: () => findHostNodes(root, node => node.tag === 'button'),
     click: (button: HostNode) => {
@@ -220,6 +272,12 @@ describe('ERP catalog list SFC states', () => {
   it('mounts the real Products page without rendering initial or failed loads as an empty table', async (t) => {
     const page = mountCatalogPage('pages/erp/cadastros/produtos.vue')
     t.after(page.unmount)
+    assert.equal(page.panels().length, 1)
+    assert.equal(page.navbars().length, 1)
+    assert.equal(page.toolbars().length, 1)
+    assert.equal(page.shellComponents('UDashboardSidebarToggle').length, 1)
+    assert.equal(page.shellComponents('CompanyMenu').length, 1)
+    assert.equal(page.shellComponents('UserMenu').length, 1)
     assert.equal(page.requests.length, 1)
     assert.equal(page.tables().length, 0)
     assert.match(page.text(), /carregando/i)
@@ -228,9 +286,10 @@ describe('ERP catalog list SFC states', () => {
     await settle()
     assert.equal(page.tables().length, 0)
     assert.match(page.text(), /temporariamente indisponível/i)
-    assert.equal(page.buttons().length, 1)
+    const retryButton = page.buttons().find(button => hostText(button).trim() === 'Tentar novamente')
+    assert.ok(retryButton)
 
-    page.click(page.buttons()[0]!)
+    page.click(retryButton)
     assert.equal(page.requests.length, 2)
     page.requests[1]!.resolve({
       data: [{ id: 1, name: 'Produto confirmado', sku: 'P-1', sale_price: '10.00', status: 'active' }],
@@ -252,6 +311,9 @@ describe('ERP catalog list SFC states', () => {
   it('keeps the real Pricing page lists independent through pending, error, retry and confirmed empty', async (t) => {
     const page = mountCatalogPage('pages/erp/cadastros/precos.vue')
     t.after(page.unmount)
+    assert.equal(page.panels().length, 1)
+    assert.equal(page.navbars().length, 1)
+    assert.equal(page.toolbars().length, 2)
     assert.equal(page.requests.length, 2)
     assert.equal(page.tables().length, 0)
     assert.equal((page.text().match(/carregando/gi) ?? []).length, 2)

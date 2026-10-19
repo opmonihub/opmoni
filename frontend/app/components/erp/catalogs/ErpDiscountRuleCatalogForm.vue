@@ -27,9 +27,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Nome da regra" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Regra comercial
+      </legend>
+      <ErpCatalogField
+        label="Nome da regra"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -38,22 +51,26 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de desconto" required :error="fieldErrors?.kind?.[0]">
-        <select
+      <ErpCatalogField
+        label="Tipo de desconto"
+        required
+        name="kind"
+        :error="fieldErrors?.kind?.[0]"
+      >
+        <USelect
           v-model="form.kind"
           name="kind"
+          :items="[{ label: 'Percentual', value: 'percentage' }, { label: 'Valor fixo', value: 'fixed' }]"
           required
-          class="border-default bg-default w-full rounded-md border px-3 py-2 text-sm"
-        >
-          <option value="percentage">
-            Percentual
-          </option>
-          <option value="fixed">
-            Valor fixo
-          </option>
-        </select>
+          class="w-full"
+        />
       </ErpCatalogField>
-      <ErpCatalogField label="Valor" required :error="fieldErrors?.value?.[0]">
+      <ErpCatalogField
+        label="Valor"
+        required
+        name="value"
+        :error="fieldErrors?.value?.[0]"
+      >
         <UInput
           v-model="form.value"
           name="value"
@@ -64,7 +81,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Cupom" :error="fieldErrors?.coupon_code?.[0]">
+      <ErpCatalogField label="Cupom" name="coupon_code" :error="fieldErrors?.coupon_code?.[0]">
         <UInput
           v-model="form.coupon_code"
           name="coupon_code"
@@ -85,5 +102,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

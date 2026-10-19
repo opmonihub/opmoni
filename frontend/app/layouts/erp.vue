@@ -6,9 +6,9 @@ const { currentCompany, currentAccount } = useAuth()
 const open = ref(false)
 const { closeForNavigation } = useErpSidebarNavigation(open)
 const workspaceKey = computed(() => `${currentAccount.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${currentCompany.value?.access_kind ?? ''}`)
-// Operational modules and settings provide their own native panel and header.
+// Operational modules, catalogs and settings provide their own native panel and header.
 const pageOwnsPanel = computed(() => erpNavModules.some(module =>
-  !['overview', 'cadastros'].includes(module.id) && erpModuleActive(route.path, module)
+  module.id !== 'overview' && erpModuleActive(route.path, module)
 ))
 
 const companyGrants = computed(() => currentCompany.value?.permissions)

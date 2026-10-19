@@ -12,6 +12,7 @@ type HostNode = {
   children: HostNode[]
   parent: HostNode | null
   text: string
+  focusCalls: number
   focus(): void
 }
 
@@ -23,9 +24,25 @@ interface Request {
 }
 
 function renderer() {
-  const makeNode = (tag: string, text = ''): HostNode => ({ tag, props: {}, children: [], parent: null, text, focus() {} })
+  const allNodes: HostNode[] = []
+  const makeNode = (tag: string, text = '') => {
+    const node: HostNode = {
+      tag,
+      props: {},
+      children: [],
+      parent: null,
+      text,
+      focusCalls: 0,
+      focus() {
+        this.focusCalls++
+      }
+    }
+    allNodes.push(node)
+    return node
+  }
   return {
     makeNode,
+    allNodes,
     renderer: Vue.createRenderer<HostNode, HostNode>({
       patchProp(node, key, _previous, next) { node.props[key] = next },
       insert(node, parent, anchor = null) {
@@ -65,6 +82,20 @@ function renderer() {
 
 function descendants(root: HostNode): HostNode[] {
   return [root, ...root.children.flatMap(descendants)]
+}
+
+function isAttachedTo(root: HostNode, node: HostNode): boolean {
+  let current: HostNode | null = node
+  while (current) {
+    if (current === root)
+      return true
+    current = current.parent
+  }
+  return false
+}
+
+function rowActionTrigger(root: HostNode, label: string): HostNode | undefined {
+  return descendants(root).find(node => node.tag === 'button' && node.props['aria-label'] === label)
 }
 
 function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[] } = {}) {
@@ -117,8 +148,13 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   const table = Vue.defineComponent({
     props: ['data', 'columns', 'loading'],
     setup: props => () => Vue.h('div', { 'data-row-count': String(props.data.length) }, props.data.map((record: { id: number }) => {
-      const actions = props.columns.find((column: { id?: string }) => column.id === 'actions')?.cell as ((args: { row: { original: { id: number } } }) => unknown) | undefined
-      return actions?.({ row: { original: record } })
+      const row = { original: record }
+      const columns = props.columns as Array<{ id?: string, accessorKey?: string, cell?: (args: { row: { original: { id: number } } }) => unknown }>
+      return Vue.h('div', { 'data-row-id': record.id }, columns.flatMap((column) => {
+        if (column.id !== 'actions' && column.accessorKey !== 'status')
+          return []
+        return column.cell ? [Vue.h(column.cell as Vue.Component, { row })] : []
+      }))
     }))
   })
   const component = compileVueComponent(
@@ -129,12 +165,12 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
       '~/composables/useErpCatalogEditor': { useErpCatalogEditor: () => editor }
     }
   )
-  const { renderer: host, makeNode } = renderer()
+  const { renderer: host, makeNode, allNodes } = renderer()
   const app = host.createApp(component, {
     path: '/erp/units',
     title: 'Unidades',
     form: Vue.defineComponent({ setup: () => () => Vue.h('form') }),
-    columns: [],
+    columns: [{ accessorKey: 'status', header: 'Status' }],
     recordLabel: (record: { short_name?: string, id: number }) => record.short_name ?? `Unidade ${record.id}`
   })
   const passthrough = Vue.defineComponent({
@@ -152,6 +188,36 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   })
   for (const name of ['UButton', 'UCard', 'UFormField', 'UInput'])
     app.component(name, passthrough)
+  app.component('UDashboardToolbar', Vue.defineComponent({
+    props: ['ui'],
+    setup(props, { slots }) {
+      return () => Vue.h('div', {
+        'data-nuxt-ui-component': 'UDashboardToolbar',
+        'data-ui-root': props.ui?.root,
+        'data-ui-left': props.ui?.left,
+        'data-ui-right': props.ui?.right
+      }, [slots.left?.(), slots.right?.()])
+    }
+  }))
+  app.component('UDropdownMenu', Vue.defineComponent({
+    props: ['items', 'content'],
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, [
+        slots.default?.(),
+        ...((props.items as Array<Array<{ label?: string, onSelect?: () => void }>> | undefined) ?? []).flatMap(group => group.map(item => Vue.h('button', {
+          'type': 'button',
+          'data-menu-action': item.label,
+          'onClick': () => item.onSelect?.()
+        }, item.label ?? '')))
+      ])
+    }
+  }))
+  app.component('UBadge', Vue.defineComponent({
+    props: ['label'],
+    setup(props) {
+      return () => Vue.h('span', { 'data-nuxt-ui-component': 'UBadge' }, String(props.label ?? ''))
+    }
+  }))
   app.component('UModal', modal)
   app.component('UAlert', Vue.defineComponent({
     props: ['title'],
@@ -165,6 +231,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   app.mount(root)
   return {
     root,
+    allNodes,
     list,
     editor,
     requests,
@@ -403,6 +470,32 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.requests.filter(request => request.options.method === 'DELETE').length, 1, 'the company B record was not archived')
   })
 
+  it('uses a wrapping full-width toolbar and shows only the confirmed server count', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    const toolbar = descendants(resource.root).find(node => node.props['data-nuxt-ui-component'] === 'UDashboardToolbar')
+    assert.ok(toolbar)
+    assert.match(String(toolbar.props['data-ui-root']), /flex-col/)
+    assert.match(String(toolbar.props['data-ui-root']), /sm:flex-row/)
+    assert.match(String(toolbar.props['data-ui-left']), /min-w-0/)
+    assert.match(String(toolbar.props['data-ui-right']), /w-full/)
+    const search = descendants(resource.root).find(node => node.props.placeholder === 'Buscar unidades')
+    assert.ok(search)
+    assert.match(String(search.props.class), /w-full/)
+    assert.equal(descendants(resource.root).some(node => node.tag === 'p' && /^\d+ registros?$/.test(node.text)), false)
+
+    const listRequest = resource.requests.find(request => request.url === '/erp/units?page=1')
+    assert.ok(listRequest)
+    listRequest.resolve({
+      data: [{ id: 1, short_name: 'kg', status: 'active' }, { id: 2, short_name: 'g', status: 'archived' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 27 }
+    })
+    await resource.settle()
+    assert.ok(descendants(resource.root).some(node => node.tag === 'p' && node.text === '27 registros'))
+    assert.ok(descendants(resource.root).some(node => node.props['data-nuxt-ui-component'] === 'UBadge' && node.text === 'Ativo'))
+    assert.ok(descendants(resource.root).some(node => node.props['data-nuxt-ui-component'] === 'UBadge' && node.text === 'Arquivado'))
+  })
+
   for (const accessKind of ['direct', 'delegated'] as const) {
     it(`restores the list for a valid ${accessKind} index-only actor without exposing record actions`, async (t) => {
       const resource = setupResource({ accessKind, permissions: ['erp.units.index'] })
@@ -442,9 +535,89 @@ describe('ERP catalog shared resource authority', () => {
       assert.equal(resource.list.state.value?.data[0]?.id, 73)
       const table = descendants(resource.root).find(node => node.props['data-row-count'] === '1')
       assert.ok(table, 'the successfully revalidated list row is rendered')
-      assert.equal(descendants(resource.root).some(node => node.tag === 'button' && ['Ver', 'Editar', 'Arquivar', 'Adicionar unidades'].includes(node.text)), false)
+      assert.equal(descendants(resource.root).some(node => node.tag === 'button' && ['Ver', 'Editar', 'Arquivar', 'Adicionar unidade'].includes(node.text)), false)
+      assert.equal(descendants(resource.root).some(node => node.props['aria-label']?.toString().startsWith('Ações de ')), false, 'index-only users do not get empty row action menus')
     })
   }
+
+  it('uses record-specific edit headings and restores row-menu focus after cancel and save', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    const listRequest = resource.requests.find(request => request.url === '/erp/units?page=1')
+    assert.ok(listRequest)
+    listRequest.resolve({
+      data: [{ id: 8, short_name: 'Quilograma', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await resource.settle()
+
+    const trigger = rowActionTrigger(resource.root, 'Ações de Quilograma')
+    assert.ok(trigger)
+    assert.equal(isAttachedTo(resource.root, trigger), true)
+    const edit = descendants(resource.root).find(node => node.props['data-menu-action'] === 'Editar')
+    assert.ok(edit)
+    ;(edit.props.onClick as (() => void) | undefined)?.()
+    await resource.settle()
+    const detailRequest = resource.requests.find(request => request.url === '/erp/units/8')
+    assert.ok(detailRequest)
+    detailRequest.resolve({ data: { id: 8, short_name: 'Quilograma', status: 'active' } })
+    await resource.settle()
+    assert.ok(descendants(resource.root).some(node => node.tag === 'h2' && node.text.includes('Editar · Quilograma')))
+
+    resource.editor.cancel()
+    await resource.settle()
+    assert.ok(trigger.focusCalls > 0, 'cancel returns focus to the actual row action button')
+
+    const secondEdit = descendants(resource.root).find(node => node.props['data-menu-action'] === 'Editar')
+    assert.ok(secondEdit)
+    ;(secondEdit.props.onClick as (() => void) | undefined)?.()
+    await resource.settle()
+    const secondDetail = resource.requests.filter(request => request.url === '/erp/units/8').at(-1)!
+    secondDetail.resolve({ data: { id: 8, short_name: 'Quilograma', status: 'active' } })
+    await resource.settle()
+    const triggerBeforeSave = rowActionTrigger(resource.root, 'Ações de Quilograma')
+    assert.ok(triggerBeforeSave)
+    const createTriggerBeforeSave = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Adicionar unidade')
+    assert.ok(createTriggerBeforeSave)
+    const focusCallsBeforeSave = triggerBeforeSave.focusCalls
+    assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true)
+    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true)
+    const saving = resource.editor.save({ short_name: 'kg', actual_name: 'Quilograma' })
+    await resource.settle()
+    assert.equal(resource.editor.open.value, true, 'the editor stays open while the PATCH is pending')
+    assert.equal(resource.editor.mutationPending.value, true, 'the PATCH is pending')
+    assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true, 'the same row action button remains mounted during the PATCH')
+    assert.equal(triggerBeforeSave.props.disabled, true, 'the row action button is disabled during the PATCH')
+    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true, 'the create button remains mounted during the PATCH')
+    assert.equal(createTriggerBeforeSave.props.disabled, true, 'the create button is disabled during the PATCH')
+    assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave, 'focus stays in the editor while the PATCH is pending')
+    const mutation = resource.requests.filter(request => request.options.method === 'PATCH').at(-1)!
+    mutation.resolve({ data: { id: 8, short_name: 'Quilograma', status: 'active' } })
+    await resource.settle()
+    const refreshedList = resource.requests.filter(request => request.url === '/erp/units?page=1').at(-1)!
+    assert.notEqual(refreshedList, listRequest, 'the save started a distinct list refresh')
+    assert.equal(resource.editor.open.value, false, 'the editor closes after the PATCH succeeds')
+    assert.equal(resource.editor.mutationPending.value, true, 'the save stays pending while the refreshed list is held')
+    assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true, 'the same row action button remains mounted during list refresh')
+    assert.equal(triggerBeforeSave.props.disabled, true, 'the row action button remains disabled during list refresh')
+    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true, 'the create button remains mounted during list refresh')
+    assert.equal(createTriggerBeforeSave.props.disabled, true, 'the create button remains disabled during list refresh')
+    assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave, 'focus is not restored before list refresh completes')
+    refreshedList.resolve({
+      data: [{ id: 8, short_name: 'Quilograma', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await saving
+    await resource.settle()
+    const triggerAfterSave = rowActionTrigger(resource.root, 'Ações de Quilograma')
+    assert.equal(triggerAfterSave, triggerBeforeSave, 'the mounted list keeps the same row action trigger while editing')
+    assert.equal(resource.editor.mutationPending.value, false, 'the save and list refresh have settled')
+    assert.equal(triggerBeforeSave.props.disabled, false, 'the row action button is enabled after the save settles')
+    assert.equal(createTriggerBeforeSave.props.disabled, false, 'the create button is enabled after the save settles')
+    assert.equal(descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Adicionar unidade'), createTriggerBeforeSave)
+    assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave + 1, 'saving returns focus to the connected row action trigger')
+    assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true)
+  })
 
   it('ignores an old authority recovery after the selected company changes', async (t) => {
     const resource = setupResource()

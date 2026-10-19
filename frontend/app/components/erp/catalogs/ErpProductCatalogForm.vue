@@ -134,9 +134,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-5" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Nome" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-5"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Identificação e classificação
+      </legend>
+      <ErpCatalogField
+        label="Nome"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -145,7 +158,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="SKU" :error="fieldErrors?.sku?.[0]">
+      <ErpCatalogField label="SKU" name="sku" :error="fieldErrors?.sku?.[0]">
         <UInput
           v-model="form.sku"
           name="sku"
@@ -154,22 +167,27 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo" required :error="fieldErrors?.kind?.[0]">
-        <select
+      <ErpCatalogField
+        label="Tipo"
+        required
+        name="kind"
+        :error="fieldErrors?.kind?.[0]"
+      >
+        <USelect
           v-model="form.kind"
           name="kind"
+          :items="[{ label: 'Mercadoria', value: 'goods' }, { label: 'Serviço', value: 'service' }]"
           required
-          class="border-default bg-default w-full rounded-md border px-3 py-2 text-sm"
-        >
-          <option value="goods">
-            Mercadoria
-          </option>
-          <option value="service">
-            Serviço
-          </option>
-        </select>
+          class="w-full"
+        />
       </ErpCatalogField>
-      <ErpCatalogField label="Preço de venda" :error="fieldErrors?.sale_price?.[0]">
+    </fieldset>
+
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Preço, vínculos e garantia
+      </legend>
+      <ErpCatalogField label="Preço de venda" name="sale_price" :error="fieldErrors?.sale_price?.[0]">
         <UInput
           v-model="form.sale_price"
           name="sale_price"
@@ -184,34 +202,39 @@ function submit() {
         :path="erpCatalogRoutes.units"
         label="Unidade"
         label-key="short_name"
+        name="erp_unit_id"
         :disabled="disabled"
+        :error="fieldErrors?.erp_unit_id?.[0]"
       />
       <ErpCatalogReferenceSelect
         v-model="form.erp_brand_id"
         :path="erpCatalogRoutes.brands"
         label="Marca"
         label-key="name"
+        name="erp_brand_id"
         optional
         :disabled="disabled"
+        :error="fieldErrors?.erp_brand_id?.[0]"
       />
       <ErpCatalogReferenceSelect
         v-model="form.erp_category_id"
         :path="erpCatalogRoutes.categories"
         label="Categoria"
         label-key="name"
+        name="erp_category_id"
         optional
         :disabled="disabled"
+        :error="fieldErrors?.erp_category_id?.[0]"
       />
-      <label class="flex items-center gap-2 text-sm sm:col-span-2">
-        <input
+      <UFormField name="track_stock" :error="fieldErrors?.track_stock?.[0]" class="sm:col-span-2">
+        <UCheckbox
           v-model="form.track_stock"
           name="track_stock"
-          type="checkbox"
-          :disabled="form.kind === 'service'"
-        >
-        <span>Controla estoque</span>
-      </label>
-      <ErpCatalogField label="Garantia (meses)" :error="fieldErrors?.warranty_months?.[0]">
+          label="Controla estoque"
+          :disabled="disabled || form.kind === 'service'"
+        />
+      </UFormField>
+      <ErpCatalogField label="Garantia (meses)" name="warranty_months" :error="fieldErrors?.warranty_months?.[0]">
         <UInput
           v-model="form.warranty_months"
           name="warranty_months"
@@ -221,7 +244,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Descrição da garantia" :error="fieldErrors?.warranty_description?.[0]">
+      <ErpCatalogField label="Descrição da garantia" name="warranty_description" :error="fieldErrors?.warranty_description?.[0]">
         <UInput
           v-model="form.warranty_description"
           name="warranty_description"
@@ -229,7 +252,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Código de barras" :error="fieldErrors?.barcode?.[0]">
+      <ErpCatalogField label="Código de barras" name="barcode" :error="fieldErrors?.barcode?.[0]">
         <UInput
           v-model="form.barcode"
           name="barcode"
@@ -238,15 +261,6 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <p v-if="fieldErrors?.erp_unit_id?.[0]" role="alert" class="text-error text-xs sm:col-span-2">
-        {{ fieldErrors.erp_unit_id[0] }}
-      </p>
-      <p v-if="fieldErrors?.erp_brand_id?.[0]" role="alert" class="text-error text-xs sm:col-span-2">
-        {{ fieldErrors.erp_brand_id[0] }}
-      </p>
-      <p v-if="fieldErrors?.erp_category_id?.[0]" role="alert" class="text-error text-xs sm:col-span-2">
-        {{ fieldErrors.erp_category_id[0] }}
-      </p>
     </fieldset>
 
     <section aria-labelledby="product-variants-title" class="space-y-3">
@@ -272,7 +286,12 @@ function submit() {
         <p class="text-muted text-xs sm:col-span-2">
           {{ variant.id ? `Variante #${variant.id}` : 'Nova variante' }}<span v-if="variant.status === 'archived'"> · arquivada</span>
         </p>
-        <ErpCatalogField label="Nome da variante" required :error="fieldErrors?.[`variants.${index}.name`]?.[0]">
+        <ErpCatalogField
+          label="Nome da variante"
+          required
+          :name="`variants.${index}.name`"
+          :error="fieldErrors?.[`variants.${index}.name`]?.[0]"
+        >
           <UInput
             v-model="variant.name"
             :name="`variants.${index}.name`"
@@ -282,7 +301,7 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="SKU da variante" :error="fieldErrors?.[`variants.${index}.sku`]?.[0]">
+        <ErpCatalogField label="SKU da variante" :name="`variants.${index}.sku`" :error="fieldErrors?.[`variants.${index}.sku`]?.[0]">
           <UInput
             v-model="variant.sku"
             :name="`variants.${index}.sku`"
@@ -292,7 +311,7 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="Preço da variante" :error="fieldErrors?.[`variants.${index}.sale_price`]?.[0]">
+        <ErpCatalogField label="Preço da variante" :name="`variants.${index}.sale_price`" :error="fieldErrors?.[`variants.${index}.sale_price`]?.[0]">
           <UInput
             v-model="variant.sale_price"
             :name="`variants.${index}.sale_price`"
@@ -303,7 +322,7 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="Código de barras da variante" :error="fieldErrors?.[`variants.${index}.barcode`]?.[0]">
+        <ErpCatalogField label="Código de barras da variante" :name="`variants.${index}.barcode`" :error="fieldErrors?.[`variants.${index}.barcode`]?.[0]">
           <UInput
             v-model="variant.barcode"
             :name="`variants.${index}.barcode`"
@@ -348,7 +367,7 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
   <UModal
     v-model:open="variantArchiveOpen"
     title="Arquivar variante"

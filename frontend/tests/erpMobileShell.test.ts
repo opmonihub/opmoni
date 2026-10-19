@@ -27,7 +27,9 @@ function surface(path: string, bindings: Record<string, unknown> = {}, props = {
   const component = evaluate(script.content, {
     ref: Vue.ref, computed: Vue.computed, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose,
     onMounted: (fn: () => Promise<void>) => mounted.push(fn),
-    definePageMeta: (meta: Record<string, unknown>) => metadata.push(meta), useHead() {}, ...bindings
+    definePageMeta: (meta: Record<string, unknown>) => metadata.push(meta), useHead() {},
+    useErpSidebarNavigation: () => ({ closeForNavigation() {} }),
+    ...bindings
   }).default
   const state = scope.run(() => component.setup(props, { expose() {} }))
   const render = evaluate(template.code).render
@@ -87,9 +89,9 @@ function contract(api: () => Promise<unknown>) {
 const payload = (status = 'active') => ({ data: { status, company: { name: 'Empresa A' }, plan: { name: 'Plano A', modules: [] } } })
 
 describe('ERP mobile shell and contract', () => {
-  it('keeps native header slots visible and exposes company/user controls with sidebar closed', (t) => {
+  it('keeps the operational native header visible with company/user controls and one sidebar toggle', (t) => {
     const currentCompany = Vue.ref(company())
-    const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp/cadastros/contatos' }), useAuth: () => ({ currentCompany, currentAccount: Vue.ref(null) }) })
+    const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp' }), useAuth: () => ({ currentCompany, currentAccount: Vue.ref(null) }) })
     t.after(view.close)
     const slots = named(view.render(), 'UDashboardPanel')[0]!.children as Record<string, () => Vue.VNode[]>
     assert.equal(slots.default, undefined, 'Nuxt UI default slot replaces the header and body')
@@ -106,18 +108,29 @@ describe('ERP mobile shell and contract', () => {
     const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items
     assert.ok(links.some((link: { to: string }) => link.to === '/erp/relatorios'))
   })
+  it('lets every catalog route provide its own single native panel', (t) => {
+    const route = Vue.reactive({ path: '/erp/cadastros/contatos' })
+    const view = surface('layouts/erp.vue', { useRoute: () => route, useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) }) })
+    t.after(view.close)
+    for (const path of ['/erp/cadastros/contatos', '/erp/cadastros/produtos', '/erp/cadastros/unidades', '/erp/cadastros/categorias', '/erp/cadastros/marcas', '/erp/cadastros/precos', '/erp/cadastros/fiscal', '/erp/cadastros/logistica', '/erp/cadastros/importacao', '/erp/cadastros/etiquetas']) {
+      route.path = path
+      const layout = view.render({ default: () => [Vue.h('main', { 'data-catalog-page': true })] })
+      assert.equal(named(layout, 'UDashboardPanel').length, 0, `The ${path} page supplies the panel without nesting it in the layout panel`)
+      assert.ok(nodes(layout).some(node => node.type === 'main'), `The ${path} page content remains in the layout slot`)
+    }
+  })
   it('changes the catalog content key when company or Account context changes', (t) => {
     const currentCompany = Vue.ref(company())
     const currentAccount = Vue.ref<{ id: number } | null>(null)
     const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp/cadastros/contatos' }), useAuth: () => ({ currentCompany, currentAccount }) })
     t.after(view.close)
-    const bodyKey = () => (named(view.render(), 'UDashboardPanel')[0]!.children as Record<string, () => Vue.VNode[]>).body!()[0]!.key
-    const initial = bodyKey()
+    const slotKey = () => nodes(view.render({ default: () => [Vue.h('main')] })).find(node => node.type === Vue.Fragment)?.key
+    const initial = slotKey()
     currentCompany.value = { ...company(), id: 2 }
-    assert.notEqual(bodyKey(), initial)
-    const next = bodyKey()
+    assert.notEqual(slotKey(), initial)
+    const next = slotKey()
     currentAccount.value = { id: 9 }
-    assert.notEqual(bodyKey(), next)
+    assert.notEqual(slotKey(), next)
   })
   it('disposes the old protected child and mounts a fresh child after selected company context changes', async (t) => {
     const currentCompany = Vue.ref(company())
@@ -133,10 +146,7 @@ describe('ERP mobile shell and contract', () => {
         return () => Vue.h('p', `Company ${id}`)
       }
     })
-    const unmount = mount(() => {
-      const panel = named(view.render({ default: () => [Vue.h(child)] }), 'UDashboardPanel')[0]!
-      return Vue.h('main', null, (panel.children as Record<string, () => Vue.VNode[]>).body!())
-    })
+    const unmount = mount(() => nodes(view.render({ default: () => [Vue.h(child)] })).find(node => node.type === Vue.Fragment)!)
     t.after(unmount)
     assert.deepEqual(mounted, [1])
     currentCompany.value = { ...company(), id: 2 }
@@ -153,10 +163,20 @@ describe('ERP mobile shell and contract', () => {
       assert.equal(named(view.render(), 'UDashboardPanel').length, 0, path)
     }
   })
-  it('uses regular catalog content inside the single layout panel', (t) => {
+  it('uses a native panel, page title, context controls and one marked sidebar toggle for catalogs', (t) => {
     const view = surface('components/erp/ErpCatalogPageShell.vue', {}, { title: 'Contatos' })
     t.after(view.close)
-    assert.equal(view.render().type, 'div', 'Catalog content must not create an unresolved dashboard component')
+    const root = view.render({ default: () => [Vue.h('main', { 'data-catalog-page': true })] })
+    const panels = named(root, 'UDashboardPanel')
+    assert.equal(panels.length, 1)
+    const slots = panels[0]!.children as Record<string, () => Vue.VNode[]>
+    const header = slots.header!()[0]!
+    assert.equal(header.props?.title, 'Contatos')
+    assert.equal(header.props?.toggle, false, 'The explicit trigger owns the only mobile toggle')
+    assert.equal(named(header, 'UDashboardSidebarToggle').length, 1)
+    assert.equal(named(header, 'CompanyMenu').length, 1)
+    assert.equal(named(header, 'UserMenu').length, 1)
+    assert.ok(nodes(slots.body!()[0]!).some(node => node.type === 'main'))
   })
   it('renders overview content inside the ERP layout panel', (t) => {
     const view = surface('pages/erp/index.vue', { useAuth: () => ({ currentCompany: Vue.ref(company()) }) })

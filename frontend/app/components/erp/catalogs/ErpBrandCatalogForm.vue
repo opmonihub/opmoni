@@ -10,25 +10,38 @@ const props = defineProps<{
   fieldErrors?: Record<string, string[]>
 }>()
 const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
-const name = ref('')
+const form = reactive({ name: '' })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
 
 watch(() => [props.record, props.mode] as const, ([record]) => {
-  name.value = record?.name ?? ''
+  form.name = record?.name ?? ''
 }, { immediate: true })
 
 function submit() {
   if (!disabled.value)
-    emit('save', { name: name.value })
+    emit('save', { name: form.name })
 }
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled">
-      <ErpCatalogField label="Marca" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="space-y-4">
+      <legend class="text-highlighted font-medium">
+        Identificação
+      </legend>
+      <ErpCatalogField
+        label="Marca"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
-          v-model="name"
+          v-model="form.name"
           name="name"
           required
           maxlength="255"
@@ -44,5 +57,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

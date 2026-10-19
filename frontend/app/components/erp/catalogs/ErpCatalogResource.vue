@@ -1,21 +1,24 @@
 <script setup lang="ts">
 import { h, nextTick, onScopeDispose, resolveComponent, useId } from 'vue'
-import type { Component } from 'vue'
-import type { TableColumn } from '@nuxt/ui'
+import type { Component, ComponentPublicInstance } from 'vue'
+import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
 import ErpCatalogPagination from '~/components/erp/ErpCatalogPagination.vue'
+import { formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
 import { useErpCatalogEditor } from '~/composables/useErpCatalogEditor'
 import { useErpCatalogList } from '~/composables/useErpCatalogList'
 
 type CatalogRow = Record<string, unknown> & { id: number, status?: string }
+type FocusTarget = { focus(): void, isConnected?: boolean }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   path: string
   title: string
   form: Component
   columns: TableColumn<CatalogRow>[]
   recordLabel: (record: CatalogRow) => string
   searchPlaceholder?: string
-}>()
+  showHeading?: boolean
+}>(), { showHeading: true })
 
 const list = useErpCatalogList<CatalogRow>(props.path)
 const editor = useErpCatalogEditor(props.path, list.refresh)
@@ -23,8 +26,23 @@ const { search, page, pending, searchPending, state, error, hasLoaded, stale, au
 const { record, mode, open, loadingDetail, archiving, error: editorError, fieldErrors } = editor
 const archiveTarget = ref<CatalogRow | null>(null)
 const editorRegion = ref<HTMLElement | null>(null)
-const restoreFocusTarget = ref<HTMLElement | null>(null)
+const restoreFocusTarget = ref<FocusTarget | null>(null)
+const rowActionTriggers = new Map<number, FocusTarget>()
 const rows = computed(() => state.value?.data ?? [])
+const createLabel = computed(() => ({
+  '/erp/contacts': 'Adicionar contato',
+  '/erp/products': 'Adicionar produto',
+  '/erp/units': 'Adicionar unidade',
+  '/erp/categories': 'Adicionar categoria',
+  '/erp/brands': 'Adicionar marca',
+  '/erp/price-groups': 'Adicionar grupo de preço',
+  '/erp/discount-rules': 'Adicionar regra de desconto',
+  '/erp/tax-settings/tax-rates': 'Adicionar alíquota',
+  '/erp/tax-settings/operation-natures': 'Adicionar natureza',
+  '/erp/carriers': 'Adicionar transportadora',
+  '/erp/vehicles': 'Adicionar veículo',
+  '/erp/drivers': 'Adicionar motorista'
+}[props.path] ?? `Adicionar ${props.title.toLocaleLowerCase()}`))
 const resourceBlocked = ref(false)
 const resourceError = ref('')
 const resourceRefreshing = ref(false)
@@ -34,10 +52,10 @@ let propagatingAuthorityBlock = false
 let resourceRecoverySequence = 0
 let resourceContextGeneration = 0
 let resourceDisposed = false
-const canStore = computed(() => editor.permissions.store.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
-const canShow = computed(() => editor.permissions.show.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
-const canEdit = computed(() => editor.permissions.edit.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
-const canArchive = computed(() => editor.permissions.archive.value && !resourceAuthorityBlocked.value && !editor.mutationPending.value)
+const canStore = computed(() => editor.permissions.store.value && !resourceAuthorityBlocked.value)
+const canShow = computed(() => editor.permissions.show.value && !resourceAuthorityBlocked.value)
+const canEdit = computed(() => editor.permissions.edit.value && !resourceAuthorityBlocked.value)
+const canArchive = computed(() => editor.permissions.archive.value && !resourceAuthorityBlocked.value)
 const isSaving = computed(() => editor.saving.value || editor.archiving.value)
 const archiveOpen = computed({
   get: () => archiveTarget.value !== null,
@@ -47,18 +65,109 @@ const archiveOpen = computed({
   }
 })
 const UButton = resolveComponent('UButton')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
+const UBadge = resolveComponent('UBadge')
+
+function renderRowActions({ row }: { row: { original: CatalogRow } }) {
+  const items = rowActionItems(row.original)
+  if (!items.length)
+    return null
+  return h(UDropdownMenu, {
+    items,
+    'content': { align: 'end' },
+    'aria-label': `Ações de ${labelFor(row.original)}`
+  }, () => h(UButton, {
+    'ref': (instance: Element | ComponentPublicInstance | null) => rememberRowActionTrigger(row.original.id, instance),
+    'icon': 'i-lucide-ellipsis',
+    'color': 'neutral',
+    'variant': 'ghost',
+    'disabled': isSaving.value,
+    'aria-label': `Ações de ${labelFor(row.original)}`
+  }))
+}
+
 const tableColumns = computed<TableColumn<CatalogRow>[]>(() => [
-  ...props.columns,
+  ...props.columns.map((column) => {
+    if (!('accessorKey' in column) || column.accessorKey !== 'status')
+      return column
+    return {
+      ...column,
+      cell: ({ row }: { row: { original: CatalogRow } }) => {
+        const status = row.original.status
+        const color = status === 'active' ? 'success' : status === 'inactive' ? 'warning' : 'neutral'
+        return h(UBadge, { label: formatErpCatalogStatus(status), color, variant: 'subtle' })
+      }
+    }
+  }),
   {
     id: 'actions',
-    header: 'Ações',
-    cell: ({ row }: { row: { original: CatalogRow } }) => h('div', { class: 'flex flex-wrap gap-2' }, [
-      canShow.value ? h(UButton, { label: 'Ver', color: 'neutral', variant: 'soft', onClick: () => void editor.view(row.original.id) }) : null,
-      canEdit.value ? h(UButton, { label: 'Editar', color: 'neutral', variant: 'soft', onClick: () => void editor.edit(row.original.id) }) : null,
-      canArchive.value ? h(UButton, { label: 'Arquivar', color: 'error', variant: 'soft', onClick: () => openArchive(row.original) }) : null
-    ])
+    header: '',
+    meta: { class: { th: 'w-14', td: 'text-right' } },
+    cell: renderRowActions
   }
 ])
+
+function focusTarget(instance: Element | ComponentPublicInstance | null): FocusTarget | null {
+  const candidate = instance && typeof instance === 'object' && '$el' in instance
+    ? instance.$el
+    : instance
+  if (candidate && typeof candidate === 'object' && 'focus' in candidate && typeof candidate.focus === 'function')
+    return candidate as FocusTarget
+  return null
+}
+
+function rememberRowActionTrigger(id: number, instance: Element | ComponentPublicInstance | null) {
+  const target = focusTarget(instance)
+  if (target)
+    rowActionTriggers.set(id, target)
+  else
+    rowActionTriggers.delete(id)
+}
+
+function prepareRowAction(row: CatalogRow) {
+  const target = rowActionTriggers.get(row.id)
+  restoreFocusTarget.value = target && target.isConnected !== false ? target : null
+}
+
+function rowActionItems(row: CatalogRow): DropdownMenuItem[][] {
+  const actions: DropdownMenuItem[] = []
+  if (canShow.value) {
+    actions.push({
+      label: 'Ver',
+      icon: 'i-lucide-eye',
+      onSelect: () => {
+        if (!canShow.value || editor.mutationPending.value)
+          return
+        prepareRowAction(row)
+        void editor.view(row.id)
+      }
+    })
+  }
+  if (canEdit.value) {
+    actions.push({
+      label: 'Editar',
+      icon: 'i-lucide-pencil',
+      onSelect: () => {
+        if (!canEdit.value || editor.mutationPending.value)
+          return
+        prepareRowAction(row)
+        void editor.edit(row.id)
+      }
+    })
+  }
+  const groups = actions.length ? [actions] : []
+  if (canArchive.value) {
+    groups.push([{
+      label: 'Arquivar',
+      icon: 'i-lucide-archive',
+      color: 'error',
+      onSelect: () => {
+        openArchive(row)
+      }
+    }])
+  }
+  return groups
+}
 
 function blockResourceAuthority(message = editor.error.value || error.value || 'Confirme seu acesso antes de continuar.') {
   resourceBlocked.value = true
@@ -90,6 +199,31 @@ watch(editor.contextKey, () => {
   resourceError.value = ''
 }, { flush: 'sync' })
 
+async function restoreRowActionFocus() {
+  if (resourceDisposed || open.value || editor.mutationPending.value)
+    return
+
+  const target = restoreFocusTarget.value
+  if (!target)
+    return
+
+  const contextGeneration = resourceContextGeneration
+  await nextTick()
+  if (
+    resourceDisposed
+    || contextGeneration !== resourceContextGeneration
+    || open.value
+    || editor.mutationPending.value
+    || restoreFocusTarget.value !== target
+  ) {
+    return
+  }
+
+  restoreFocusTarget.value = null
+  if (target.isConnected !== false)
+    target.focus()
+}
+
 onScopeDispose(() => {
   resourceDisposed = true
   resourceContextGeneration++
@@ -98,22 +232,28 @@ onScopeDispose(() => {
 
 watch(open, async (isOpen) => {
   if (isOpen) {
-    restoreFocusTarget.value = typeof document === 'undefined' || !(document.activeElement instanceof HTMLElement)
-      ? null
-      : document.activeElement
+    if (!restoreFocusTarget.value) {
+      const activeElement = typeof document === 'undefined' ? null : document.activeElement
+      restoreFocusTarget.value = activeElement && typeof activeElement === 'object' && 'focus' in activeElement
+        ? activeElement as FocusTarget
+        : null
+    }
+    const contextGeneration = resourceContextGeneration
     await nextTick()
-    editorRegion.value?.focus()
+    if (!resourceDisposed && contextGeneration === resourceContextGeneration && open.value)
+      editorRegion.value?.focus()
     return
   }
-  const target = restoreFocusTarget.value
-  restoreFocusTarget.value = null
-  await nextTick()
-  if (target?.isConnected)
-    target.focus()
+  await restoreRowActionFocus()
+})
+
+watch(editor.mutationPending, (pending) => {
+  if (!pending && !open.value)
+    void restoreRowActionFocus()
 })
 
 function openArchive(row: CatalogRow) {
-  if (canArchive.value)
+  if (canArchive.value && !editor.mutationPending.value)
     archiveTarget.value = row
 }
 
@@ -156,7 +296,7 @@ async function retryResource() {
 
 async function confirmArchive() {
   const target = archiveTarget.value
-  if (!target || !canArchive.value)
+  if (!target || !canArchive.value || editor.mutationPending.value)
     return
   const contextGeneration = resourceContextGeneration
   await editor.archive(target.id)
@@ -172,28 +312,44 @@ function labelFor(row: CatalogRow): string {
 </script>
 
 <template>
-  <UCard>
-    <template #header>
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 class="text-highlighted text-lg font-semibold">
-            {{ title }}
-          </h2>
+  <div :class="['space-y-4', { hidden: open }]">
+    <h2 v-if="showHeading" class="text-highlighted text-lg font-semibold">
+      {{ title }}
+    </h2>
+    <UDashboardToolbar :ui="{ root: 'w-full min-w-0 flex-col items-stretch justify-start gap-3 overflow-visible sm:flex-row sm:items-end sm:justify-between', left: 'w-full min-w-0 flex-1', right: 'w-full min-w-0 sm:w-auto sm:shrink-0' }">
+      <template #left>
+        <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+          <UFormField :label="`Buscar ${title.toLocaleLowerCase()}`" class="min-w-0 w-full flex-1 sm:max-w-md">
+            <UInput
+              v-model="search"
+              icon="i-lucide-search"
+              :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`"
+              class="w-full"
+            />
+          </UFormField>
+          <p v-if="hasLoaded && state?.meta" class="text-muted shrink-0 pb-2 text-sm" aria-live="polite">
+            {{ state.meta.total }} {{ state.meta.total === 1 ? 'registro' : 'registros' }}
+          </p>
         </div>
-        <UButton v-if="canStore" :label="`Adicionar ${title.toLocaleLowerCase()}`" @click="editor.create" />
-      </div>
-    </template>
-
+      </template>
+      <template #right>
+        <UButton
+          v-if="canStore"
+          :label="createLabel"
+          icon="i-lucide-plus"
+          class="w-full sm:w-auto"
+          :disabled="isSaving"
+          @click="editor.create"
+        />
+      </template>
+    </UDashboardToolbar>
     <div class="space-y-4">
-      <UFormField label="Busca" class="max-w-md">
-        <UInput v-model="search" :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`" />
-      </UFormField>
-
       <UTable
         v-if="hasLoaded && rows.length"
         :data="rows"
         :columns="tableColumns"
         :loading="pending"
+        class="flex-1"
       />
 
       <ErpCatalogPagination
@@ -210,7 +366,7 @@ function labelFor(row: CatalogRow): string {
         @retry="retryResource"
       />
     </div>
-  </UCard>
+  </div>
 
   <div v-if="resourceAuthorityBlocked" role="alert" class="border-error/30 bg-error/5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
     <p class="text-error text-sm">
@@ -235,13 +391,16 @@ function labelFor(row: CatalogRow): string {
     @keydown.esc="handleEditorEscape"
   >
     <header class="flex items-start justify-between gap-3">
-      <div>
-        <h2 :id="editorTitleId" class="text-highlighted text-xl font-semibold">
-          {{ mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${title}` : `Novo cadastro · ${title}` }}
+      <div class="min-w-0 flex-1">
+        <h2 :id="editorTitleId" class="text-highlighted break-words text-xl font-semibold">
+          {{ mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}` }}
         </h2>
-        <p v-if="mode === 'detail'" class="text-muted mt-1 text-sm">
-          Consulta somente leitura.
-        </p>
+        <div v-if="mode === 'detail'" class="mt-2 flex items-center gap-2">
+          <UBadge label="Somente leitura" color="neutral" variant="subtle" />
+          <p class="text-muted text-sm">
+            Consulta do cadastro.
+          </p>
+        </div>
       </div>
       <UButton
         label="Fechar"

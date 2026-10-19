@@ -28,22 +28,34 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <div class="space-y-1">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Natureza da operação
+      </legend>
+      <div class="min-w-0">
         <ErpCatalogReferenceSelect
           v-model="form.erp_establishment_id"
           path="/erp/establishments"
           label="Estabelecimento"
           label-key="name"
+          name="erp_establishment_id"
           optional
           :disabled="disabled"
+          :error="fieldErrors?.erp_establishment_id?.[0]"
         />
-        <p v-if="fieldErrors?.erp_establishment_id?.[0]" role="alert" class="text-error text-xs">
-          {{ fieldErrors.erp_establishment_id[0] }}
-        </p>
       </div>
-      <ErpCatalogField label="CFOP" required :error="fieldErrors?.cfop?.[0]">
+      <ErpCatalogField
+        label="CFOP"
+        required
+        name="cfop"
+        :error="fieldErrors?.cfop?.[0]"
+      >
         <UInput
           v-model="form.cfop"
           name="cfop"
@@ -52,7 +64,12 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Descrição" required :error="fieldErrors?.description?.[0]">
+      <ErpCatalogField
+        label="Descrição"
+        required
+        name="description"
+        :error="fieldErrors?.description?.[0]"
+      >
         <UInput
           v-model="form.description"
           name="description"
@@ -61,20 +78,19 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Movimento" required :error="fieldErrors?.movement?.[0]">
-        <select
+      <ErpCatalogField
+        label="Movimento"
+        required
+        name="movement"
+        :error="fieldErrors?.movement?.[0]"
+      >
+        <USelect
           v-model="form.movement"
           name="movement"
+          :items="[{ label: 'Entrada', value: 'in' }, { label: 'Saída', value: 'out' }]"
           required
-          class="border-default bg-default w-full rounded-md border px-3 py-2 text-sm"
-        >
-          <option value="in">
-            Entrada
-          </option>
-          <option value="out">
-            Saída
-          </option>
-        </select>
+          class="w-full"
+        />
       </ErpCatalogField>
       <p class="text-muted text-xs sm:col-span-2">
         As demais informações fiscais permanecem preservadas ao editar estes campos.
@@ -88,5 +104,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

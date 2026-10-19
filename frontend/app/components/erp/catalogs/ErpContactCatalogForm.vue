@@ -57,63 +57,84 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Nome" required :error="fieldErrors?.name?.[0]">
-        <UInput
-          v-model="form.name"
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-5"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="min-w-0 space-y-4">
+      <legend class="text-highlighted font-medium">
+        Identificação
+      </legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <ErpCatalogField
+          label="Nome"
           name="name"
           required
-          autocomplete="organization-title"
-          class="w-full"
-        />
-      </ErpCatalogField>
-      <ErpCatalogField label="Nome fantasia" :error="fieldErrors?.trade_name?.[0]">
-        <UInput v-model="form.trade_name" name="trade_name" class="w-full" />
-      </ErpCatalogField>
-      <ErpCatalogField label="CPF/CNPJ" :error="fieldErrors?.tax_id?.[0]">
-        <UInput
-          v-model="form.tax_id"
-          name="tax_id"
-          autocomplete="off"
-          class="w-full"
-        />
-      </ErpCatalogField>
-      <ErpCatalogField label="E-mail" :error="fieldErrors?.email?.[0]">
-        <UInput
-          v-model="form.email"
-          name="email"
-          type="email"
-          autocomplete="email"
-          class="w-full"
-        />
-      </ErpCatalogField>
-      <ErpCatalogField label="Telefone" :error="fieldErrors?.phone?.[0]">
-        <UInput
-          v-model="form.phone"
-          name="phone"
-          type="tel"
-          autocomplete="tel"
-          class="w-full"
-        />
-      </ErpCatalogField>
-      <ErpCatalogField label="Observações do cadastro" :error="fieldErrors?.notes?.[0]">
-        <textarea
-          v-model="form.notes"
-          name="notes"
-          rows="3"
-          class="border-default bg-default w-full rounded-md border px-3 py-2 text-sm"
-        />
-      </ErpCatalogField>
-      <div class="flex flex-wrap gap-5 sm:col-span-2">
-        <label class="flex items-center gap-2 text-sm"><input v-model="form.is_customer" name="is_customer" type="checkbox"><span>Cliente</span></label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="form.is_supplier" name="is_supplier" type="checkbox"><span>Fornecedor</span></label>
+          :error="fieldErrors?.name?.[0]"
+        >
+          <UInput
+            v-model="form.name"
+            name="name"
+            required
+            autocomplete="organization-title"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Nome fantasia" name="trade_name" :error="fieldErrors?.trade_name?.[0]">
+          <UInput v-model="form.trade_name" name="trade_name" class="w-full" />
+        </ErpCatalogField>
+        <ErpCatalogField label="CPF/CNPJ" name="tax_id" :error="fieldErrors?.tax_id?.[0]">
+          <UInput
+            v-model="form.tax_id"
+            name="tax_id"
+            autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="E-mail" name="email" :error="fieldErrors?.email?.[0]">
+          <UInput
+            v-model="form.email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField label="Telefone" name="phone" :error="fieldErrors?.phone?.[0]">
+          <UInput
+            v-model="form.phone"
+            name="phone"
+            type="tel"
+            autocomplete="tel"
+            class="w-full"
+          />
+        </ErpCatalogField>
       </div>
-      <div class="grid gap-4 sm:col-span-2 sm:grid-cols-2">
-        <ErpCatalogField label="Tipo de logradouro" :error="fieldErrors?.address?.[0]">
+    </fieldset>
+    <fieldset :disabled="disabled" class="min-w-0 space-y-3">
+      <legend class="text-highlighted font-medium">
+        Relação com a empresa
+      </legend>
+      <div class="flex flex-wrap gap-x-6 gap-y-3">
+        <UFormField name="is_customer" :error="fieldErrors?.is_customer?.[0]">
+          <UCheckbox v-model="form.is_customer" name="is_customer" label="Cliente" />
+        </UFormField>
+        <UFormField name="is_supplier" :error="fieldErrors?.is_supplier?.[0]">
+          <UCheckbox v-model="form.is_supplier" name="is_supplier" label="Fornecedor" />
+        </UFormField>
+      </div>
+    </fieldset>
+    <fieldset :disabled="disabled" class="min-w-0 space-y-4">
+      <legend class="text-highlighted font-medium">
+        Endereço
+      </legend>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <ErpCatalogField label="Tipo de logradouro" name="street_type" :error="fieldErrors?.address?.[0]">
           <UInput v-model="form.street_type" name="street_type" class="w-full" />
         </ErpCatalogField>
-        <ErpCatalogField label="Logradouro">
+        <ErpCatalogField label="Logradouro" name="street">
           <UInput
             v-model="form.street"
             name="street"
@@ -121,10 +142,10 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="Número">
+        <ErpCatalogField label="Número" name="number">
           <UInput v-model="form.number" name="number" class="w-full" />
         </ErpCatalogField>
-        <ErpCatalogField label="Complemento">
+        <ErpCatalogField label="Complemento" name="complement">
           <UInput
             v-model="form.complement"
             name="complement"
@@ -132,10 +153,10 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="Bairro">
+        <ErpCatalogField label="Bairro" name="district">
           <UInput v-model="form.district" name="district" class="w-full" />
         </ErpCatalogField>
-        <ErpCatalogField label="CEP">
+        <ErpCatalogField label="CEP" name="postal_code">
           <UInput
             v-model="form.postal_code"
             name="postal_code"
@@ -144,7 +165,7 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="Cidade">
+        <ErpCatalogField label="Cidade" name="city">
           <UInput
             v-model="form.city"
             name="city"
@@ -152,7 +173,7 @@ function submit() {
             class="w-full"
           />
         </ErpCatalogField>
-        <ErpCatalogField label="UF">
+        <ErpCatalogField label="UF" name="state">
           <UInput
             v-model="form.state"
             name="state"
@@ -163,6 +184,19 @@ function submit() {
         </ErpCatalogField>
       </div>
     </fieldset>
+    <fieldset :disabled="disabled" class="min-w-0 space-y-4">
+      <legend class="text-highlighted font-medium">
+        Observações
+      </legend>
+      <ErpCatalogField label="Observações do cadastro" name="notes" :error="fieldErrors?.notes?.[0]">
+        <UTextarea
+          v-model="form.notes"
+          name="notes"
+          :rows="3"
+          class="w-full"
+        />
+      </ErpCatalogField>
+    </fieldset>
     <div v-if="mode !== 'detail'" class="flex justify-end">
       <UButton
         type="submit"
@@ -171,5 +205,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

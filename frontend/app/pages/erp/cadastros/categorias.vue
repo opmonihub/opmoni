@@ -20,6 +20,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
     <ErpCatalogResource
       :path="erpCatalogRoutes.categories"
       title="Categorias"
+      :show-heading="false"
       :form="ErpCategoryCatalogForm"
       :columns="columns"
       :record-label="recordLabel"

@@ -41,9 +41,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Razão social" required :error="fieldErrors?.legal_name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Identificação
+      </legend>
+      <ErpCatalogField
+        label="Razão social"
+        required
+        name="legal_name"
+        :error="fieldErrors?.legal_name?.[0]"
+      >
         <UInput
           v-model="form.legal_name"
           name="legal_name"
@@ -52,7 +65,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="CPF/CNPJ" :error="fieldErrors?.tax_id?.[0]">
+      <ErpCatalogField label="CPF/CNPJ" name="tax_id" :error="fieldErrors?.tax_id?.[0]">
         <UInput
           v-model="form.tax_id"
           name="tax_id"
@@ -61,7 +74,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Inscrição estadual" :error="fieldErrors?.ie?.[0]">
+      <ErpCatalogField label="Inscrição estadual" name="ie" :error="fieldErrors?.ie?.[0]">
         <UInput
           v-model="form.ie"
           name="ie"
@@ -69,59 +82,63 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <div class="grid gap-4 sm:col-span-2 sm:grid-cols-2">
-        <ErpCatalogField label="Tipo de logradouro" :error="fieldErrors?.address?.[0]">
-          <UInput v-model="form.street_type" name="street_type" class="w-full" />
-        </ErpCatalogField>
-        <ErpCatalogField label="Logradouro">
-          <UInput
-            v-model="form.street"
-            name="street"
-            autocomplete="address-line1"
-            class="w-full"
-          />
-        </ErpCatalogField>
-        <ErpCatalogField label="Número">
-          <UInput v-model="form.number" name="number" class="w-full" />
-        </ErpCatalogField>
-        <ErpCatalogField label="Complemento">
-          <UInput
-            v-model="form.complement"
-            name="complement"
-            autocomplete="address-line2"
-            class="w-full"
-          />
-        </ErpCatalogField>
-        <ErpCatalogField label="Bairro">
-          <UInput v-model="form.district" name="district" class="w-full" />
-        </ErpCatalogField>
-        <ErpCatalogField label="CEP">
-          <UInput
-            v-model="form.postal_code"
-            name="postal_code"
-            inputmode="numeric"
-            autocomplete="postal-code"
-            class="w-full"
-          />
-        </ErpCatalogField>
-        <ErpCatalogField label="Cidade">
-          <UInput
-            v-model="form.city"
-            name="city"
-            autocomplete="address-level2"
-            class="w-full"
-          />
-        </ErpCatalogField>
-        <ErpCatalogField label="UF">
-          <UInput
-            v-model="form.state"
-            name="state"
-            maxlength="2"
-            autocomplete="address-level1"
-            class="w-full"
-          />
-        </ErpCatalogField>
-      </div>
+    </fieldset>
+
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Endereço
+      </legend>
+      <ErpCatalogField label="Tipo de logradouro" name="street_type" :error="fieldErrors?.address?.[0]">
+        <UInput v-model="form.street_type" name="street_type" class="w-full" />
+      </ErpCatalogField>
+      <ErpCatalogField label="Logradouro" name="street">
+        <UInput
+          v-model="form.street"
+          name="street"
+          autocomplete="address-line1"
+          class="w-full"
+        />
+      </ErpCatalogField>
+      <ErpCatalogField label="Número" name="number">
+        <UInput v-model="form.number" name="number" class="w-full" />
+      </ErpCatalogField>
+      <ErpCatalogField label="Complemento" name="complement">
+        <UInput
+          v-model="form.complement"
+          name="complement"
+          autocomplete="address-line2"
+          class="w-full"
+        />
+      </ErpCatalogField>
+      <ErpCatalogField label="Bairro" name="district">
+        <UInput v-model="form.district" name="district" class="w-full" />
+      </ErpCatalogField>
+      <ErpCatalogField label="CEP" name="postal_code">
+        <UInput
+          v-model="form.postal_code"
+          name="postal_code"
+          inputmode="numeric"
+          autocomplete="postal-code"
+          class="w-full"
+        />
+      </ErpCatalogField>
+      <ErpCatalogField label="Cidade" name="city">
+        <UInput
+          v-model="form.city"
+          name="city"
+          autocomplete="address-level2"
+          class="w-full"
+        />
+      </ErpCatalogField>
+      <ErpCatalogField label="UF" name="state">
+        <UInput
+          v-model="form.state"
+          name="state"
+          maxlength="2"
+          autocomplete="address-level1"
+          class="w-full"
+        />
+      </ErpCatalogField>
     </fieldset>
     <div v-if="mode !== 'detail'" class="flex justify-end">
       <UButton
@@ -131,5 +148,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

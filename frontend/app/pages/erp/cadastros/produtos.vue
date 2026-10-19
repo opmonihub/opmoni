@@ -22,6 +22,7 @@ const columns = [
     <ErpCatalogResource
       :path="erpCatalogRoutes.products"
       title="Produtos"
+      :show-heading="false"
       search-placeholder="Nome, SKU ou código de barras"
       :form="ErpProductCatalogForm"
       :columns="columns"

@@ -49,22 +49,34 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <div class="space-y-1">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Veículo e vínculo
+      </legend>
+      <div class="min-w-0">
         <ErpCatalogReferenceSelect
           v-model="form.erp_carrier_id"
           :path="erpCatalogRoutes.carriers"
           label="Transportadora"
           label-key="legal_name"
+          name="erp_carrier_id"
           optional
           :disabled="disabled"
+          :error="fieldErrors?.erp_carrier_id?.[0]"
         />
-        <p v-if="fieldErrors?.erp_carrier_id?.[0]" role="alert" class="text-error text-xs">
-          {{ fieldErrors.erp_carrier_id[0] }}
-        </p>
       </div>
-      <ErpCatalogField label="Placa" required :error="fieldErrors?.plate?.[0]">
+      <ErpCatalogField
+        label="Placa"
+        required
+        name="plate"
+        :error="fieldErrors?.plate?.[0]"
+      >
         <UInput
           v-model="form.plate"
           name="plate"
@@ -74,7 +86,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de veículo" :error="fieldErrors?.vehicle_type?.[0]">
+      <ErpCatalogField label="Tipo de veículo" name="vehicle_type" :error="fieldErrors?.vehicle_type?.[0]">
         <UInput
           v-model="form.vehicle_type"
           name="vehicle_type"
@@ -82,7 +94,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="UF" :error="fieldErrors?.uf?.[0]">
+      <ErpCatalogField label="UF" name="uf" :error="fieldErrors?.uf?.[0]">
         <UInput
           v-model="form.uf"
           name="uf"
@@ -91,7 +103,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Modelo" :error="fieldErrors?.model?.[0]">
+      <ErpCatalogField label="Modelo" name="model" :error="fieldErrors?.model?.[0]">
         <UInput
           v-model="form.model"
           name="model"
@@ -99,7 +111,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Marca" :error="fieldErrors?.brand?.[0]">
+      <ErpCatalogField label="Marca" name="brand" :error="fieldErrors?.brand?.[0]">
         <UInput
           v-model="form.brand"
           name="brand"
@@ -107,7 +119,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Cor" :error="fieldErrors?.color?.[0]">
+      <ErpCatalogField label="Cor" name="color" :error="fieldErrors?.color?.[0]">
         <UInput
           v-model="form.color"
           name="color"
@@ -115,7 +127,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de roda" :error="fieldErrors?.wheel_type?.[0]">
+      <ErpCatalogField label="Tipo de roda" name="wheel_type" :error="fieldErrors?.wheel_type?.[0]">
         <UInput
           v-model="form.wheel_type"
           name="wheel_type"
@@ -123,7 +135,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de carroceria" :error="fieldErrors?.body_type?.[0]">
+      <ErpCatalogField label="Tipo de carroceria" name="body_type" :error="fieldErrors?.body_type?.[0]">
         <UInput
           v-model="form.body_type"
           name="body_type"
@@ -131,7 +143,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de proprietário" :error="fieldErrors?.owner_type?.[0]">
+      <ErpCatalogField label="Tipo de proprietário" name="owner_type" :error="fieldErrors?.owner_type?.[0]">
         <UInput
           v-model="form.owner_type"
           name="owner_type"
@@ -148,5 +160,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

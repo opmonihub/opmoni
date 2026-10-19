@@ -109,16 +109,20 @@ function mountForm(
   })
   const referenceSelect = Vue.defineComponent({
     inheritAttrs: false,
-    props: ['modelValue', 'label', 'disabled', 'optional'],
+    props: ['modelValue', 'label', 'name', 'error', 'disabled', 'optional'],
     emits: ['update:modelValue'],
     setup(props, { attrs, emit }) {
-      return () => Vue.h('select', {
-        ...attrs,
-        'aria-label': props.label,
-        'value': props.modelValue ?? '',
-        'disabled': props.disabled,
-        'onChange': (event: Event) => emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null)
-      }, [Vue.h('option', { value: '' }, 'Selecione')])
+      return () => Vue.h('div', { 'data-uform-field': props.name }, [
+        Vue.h('select', {
+          ...attrs,
+          'data-nuxt-ui-component': 'ReferenceSelect',
+          'aria-label': props.label,
+          'value': props.modelValue ?? '',
+          'disabled': props.disabled,
+          'onChange': (event: Event) => emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null)
+        }, [Vue.h('option', { value: '' }, 'Selecione')]),
+        props.error ? Vue.h('p', { role: 'alert' }, props.error) : null
+      ])
     }
   })
   const component = compileVueComponent(path, {}, {
@@ -134,6 +138,19 @@ function mountForm(
     }
   })
   const app = renderer.createApp(wrapper)
+  app.component('UForm', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['state', 'disabled'],
+    emits: ['submit'],
+    setup(props, { attrs, emit, slots }) {
+      return () => Vue.h('form', {
+        ...attrs,
+        'data-uform-state': props.state,
+        'data-uform-disabled': props.disabled,
+        'onSubmit': (event: Event) => emit('submit', event)
+      }, slots.default?.())
+    }
+  }))
   app.component('UInput', Vue.defineComponent({
     inheritAttrs: false,
     props: ['modelValue'],
@@ -155,13 +172,59 @@ function mountForm(
   }))
   app.component('UFormField', Vue.defineComponent({
     inheritAttrs: false,
-    props: ['label', 'error', 'required'],
+    props: ['label', 'name', 'description', 'error', 'required'],
     setup(props, { attrs, slots }) {
-      return () => Vue.h('label', { ...attrs }, [
+      return () => Vue.h('label', { ...attrs, 'data-uform-field': props.name }, [
         Vue.h('span', String(props.label ?? '')),
         ...(slots.default?.() ?? []),
+        props.description ? Vue.h('span', String(props.description)) : null,
         props.error ? Vue.h('span', { role: 'alert' }, String(props.error)) : null
       ])
+    }
+  }))
+  app.component('USelect', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'items', 'valueKey'],
+    emits: ['update:modelValue'],
+    setup(props, { attrs, emit }) {
+      return () => Vue.h('select', {
+        ...attrs,
+        'data-nuxt-ui-component': 'USelect',
+        'value': props.modelValue,
+        'onChange': (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value)
+      }, (props.items as Array<{ label: string, value: string }> | undefined)?.map(item => Vue.h('option', { value: item.value }, item.label)))
+    }
+  }))
+  app.component('UCheckbox', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'label', 'disabled'],
+    emits: ['update:modelValue'],
+    setup(props, { attrs, emit }) {
+      return () => Vue.h('label', { class: 'inline-flex items-center gap-2' }, [
+        Vue.h('input', {
+          ...attrs,
+          'type': 'checkbox',
+          'data-nuxt-ui-component': 'UCheckbox',
+          'checked': props.modelValue,
+          'disabled': props.disabled,
+          'onChange': (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).checked)
+        }),
+        Vue.h('span', String(props.label ?? ''))
+      ])
+    }
+  }))
+  app.component('UTextarea', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'disabled'],
+    emits: ['update:modelValue'],
+    setup(props, { attrs, emit }) {
+      return () => Vue.h('textarea', {
+        ...attrs,
+        'data-nuxt-ui-component': 'UTextarea',
+        'value': props.modelValue,
+        'disabled': props.disabled,
+        'onInput': (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
+      })
     }
   }))
   app.component('UModal', Vue.defineComponent({
@@ -184,6 +247,8 @@ function mountForm(
     emitted,
     inputs: () => descendants(root).filter(node => node.tag === 'input'),
     forms: () => descendants(root).filter(node => node.tag === 'form'),
+    formState: () => descendants(root).find(node => node.tag === 'form')?.props['data-uform-state'],
+    fieldNames: () => descendants(root).map(node => node.props['data-uform-field']).filter((name): name is string => typeof name === 'string'),
     input: async (name: string, value: string) => {
       const node = descendants(root).find(item => item.tag === 'input' && item.props.name === name)
       assert.ok(node, `Expected input ${name} in ${path}`)
@@ -425,6 +490,54 @@ describe('ERP catalog family forms', () => {
     assert.equal(form.buttons().some(button => button.props.type === 'submit'), false)
     await form.submit()
     assert.deepEqual(form.emitted, [])
+  })
+
+  it('uses a reactive Nuxt UI form state and registered field names for every catalog family', async (t) => {
+    for (const item of editCases) {
+      const form = mountForm(item.path, item.record, 'edit')
+      t.after(form.unmount)
+      assert.equal(form.forms().length, 1, item.path)
+      const state = form.formState() as Record<string, unknown> | undefined
+      assert.ok(state && typeof state === 'object', `Expected UForm state for ${item.path}`)
+      assert.ok(form.fieldNames().includes(item.field), `Expected a named UFormField for ${item.field}`)
+      await form.input(item.field, item.changed)
+      assert.equal((form.formState() as Record<string, unknown>)[item.field], item.changed, item.path)
+    }
+  })
+
+  it('uses Nuxt UI controls for enums, named booleans and shared notes', async (t) => {
+    const product = mountForm('components/erp/catalogs/ErpProductCatalogForm.vue', editCases[1]!.record, 'edit')
+    const discount = mountForm('components/erp/catalogs/ErpDiscountRuleCatalogForm.vue', editCases[6]!.record, 'edit')
+    const operation = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', editCases[8]!.record, 'edit')
+    const contact = mountForm('components/erp/catalogs/ErpContactCatalogForm.vue', editCases[0]!.record, 'edit')
+    const unit = mountForm('components/erp/catalogs/ErpUnitCatalogForm.vue', editCases[2]!.record, 'edit')
+    const priceGroup = mountForm('components/erp/catalogs/ErpPriceGroupCatalogForm.vue', editCases[5]!.record, 'edit')
+    for (const form of [product, discount, operation, contact, unit, priceGroup])
+      t.after(form.unmount)
+
+    for (const form of [product, discount, operation]) {
+      assert.equal(descendants(form.root).filter(node => node.props['data-nuxt-ui-component'] === 'USelect').length, 1)
+      assert.equal(descendants(form.root).filter(node => node.tag === 'select' && !node.props['data-nuxt-ui-component']).length, 0)
+    }
+    assert.equal(descendants(product.root).filter(node => node.props['data-nuxt-ui-component'] === 'UCheckbox').length, 1)
+    assert.equal(descendants(contact.root).filter(node => node.props['data-nuxt-ui-component'] === 'UCheckbox').length, 2)
+    assert.equal(descendants(unit.root).filter(node => node.props['data-nuxt-ui-component'] === 'UCheckbox').length, 1)
+    assert.equal(descendants(priceGroup.root).filter(node => node.props['data-nuxt-ui-component'] === 'UCheckbox').length, 1)
+    assert.equal(descendants(contact.root).filter(node => node.props['data-nuxt-ui-component'] === 'UTextarea').length, 1)
+
+    const booleanFields = [
+      [contact, 'is_customer'],
+      [contact, 'is_supplier'],
+      [product, 'track_stock'],
+      [unit, 'allow_decimal'],
+      [priceGroup, 'is_default']
+    ] as const
+    for (const [form, name] of booleanFields) {
+      assert.ok(form.fieldNames().includes(name), `Expected a named form field for ${name}`)
+      const message = `Revise ${name}.`
+      await form.setFieldErrors({ [name]: [message] })
+      assert.ok(form.text().includes(message), `Expected server error for ${name} to be visible`)
+    }
   })
 
   for (const item of editCases) {

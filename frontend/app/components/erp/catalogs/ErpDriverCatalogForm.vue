@@ -26,9 +26,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Nome" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Identificação
+      </legend>
+      <ErpCatalogField
+        label="Nome"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -37,7 +50,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="CPF" :error="fieldErrors?.tax_id?.[0]">
+      <ErpCatalogField label="CPF" name="tax_id" :error="fieldErrors?.tax_id?.[0]">
         <UInput
           v-model="form.tax_id"
           name="tax_id"
@@ -46,7 +59,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="CNH" :error="fieldErrors?.license_number?.[0]">
+      <ErpCatalogField label="CNH" name="license_number" :error="fieldErrors?.license_number?.[0]">
         <UInput
           v-model="form.license_number"
           name="license_number"
@@ -64,5 +77,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

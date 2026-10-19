@@ -22,6 +22,7 @@ const columns = [
     <ErpCatalogResource
       :path="erpCatalogRoutes.units"
       title="Unidades"
+      :show-heading="false"
       search-placeholder="Sigla ou nome da unidade"
       :form="ErpUnitCatalogForm"
       :columns="columns"

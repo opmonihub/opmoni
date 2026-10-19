@@ -22,6 +22,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
     <ErpCatalogResource
       :path="erpCatalogRoutes.contacts"
       title="Contatos comerciais"
+      :show-heading="false"
       search-placeholder="Nome, e-mail ou documento"
       :form="ErpContactCatalogForm"
       :columns="columns"

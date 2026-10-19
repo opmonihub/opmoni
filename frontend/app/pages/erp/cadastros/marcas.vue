@@ -19,6 +19,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
     <ErpCatalogResource
       :path="erpCatalogRoutes.brands"
       title="Marcas"
+      :show-heading="false"
       search-placeholder="Buscar marca"
       :form="ErpBrandCatalogForm"
       :columns="columns"

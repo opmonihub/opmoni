@@ -37,9 +37,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Sigla" required :error="fieldErrors?.short_name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Identificação
+      </legend>
+      <ErpCatalogField
+        label="Sigla"
+        name="short_name"
+        required
+        :error="fieldErrors?.short_name?.[0]"
+      >
         <UInput
           v-model="form.short_name"
           name="short_name"
@@ -48,7 +61,12 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Nome da unidade" required :error="fieldErrors?.actual_name?.[0]">
+      <ErpCatalogField
+        label="Nome da unidade"
+        name="actual_name"
+        required
+        :error="fieldErrors?.actual_name?.[0]"
+      >
         <UInput
           v-model="form.actual_name"
           name="actual_name"
@@ -57,15 +75,22 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
+    </fieldset>
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Conversão e quantidades
+      </legend>
       <ErpCatalogReferenceSelect
         v-model="form.base_unit_id"
         :path="erpCatalogRoutes.units"
         label="Unidade base"
         label-key="short_name"
+        name="base_unit_id"
         optional
         :disabled="disabled"
+        :error="fieldErrors?.base_unit_id?.[0]"
       />
-      <ErpCatalogField label="Fator de conversão" :error="fieldErrors?.conversion_factor?.[0]">
+      <ErpCatalogField label="Fator de conversão" name="conversion_factor" :error="fieldErrors?.conversion_factor?.[0]">
         <UInput
           v-model="form.conversion_factor"
           name="conversion_factor"
@@ -76,13 +101,9 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <label class="flex items-center gap-2 text-sm sm:col-span-2">
-        <input v-model="form.allow_decimal" name="allow_decimal" type="checkbox">
-        <span>Permite quantidades fracionárias nesta unidade</span>
-      </label>
-      <p v-if="fieldErrors?.base_unit_id?.[0]" role="alert" class="text-error text-xs sm:col-span-2">
-        {{ fieldErrors.base_unit_id[0] }}
-      </p>
+      <UFormField name="allow_decimal" :error="fieldErrors?.allow_decimal?.[0]" class="sm:col-span-2">
+        <UCheckbox v-model="form.allow_decimal" name="allow_decimal" label="Permite quantidades fracionárias nesta unidade" />
+      </UFormField>
     </fieldset>
     <div v-if="mode !== 'detail'" class="flex justify-end">
       <UButton
@@ -92,5 +113,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

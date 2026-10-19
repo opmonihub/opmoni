@@ -28,22 +28,34 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <div class="space-y-1">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Alíquota e aplicação
+      </legend>
+      <div class="min-w-0">
         <ErpCatalogReferenceSelect
           v-model="form.erp_establishment_id"
           path="/erp/establishments"
           label="Estabelecimento"
           label-key="name"
+          name="erp_establishment_id"
           optional
           :disabled="disabled"
+          :error="fieldErrors?.erp_establishment_id?.[0]"
         />
-        <p v-if="fieldErrors?.erp_establishment_id?.[0]" role="alert" class="text-error text-xs">
-          {{ fieldErrors.erp_establishment_id[0] }}
-        </p>
       </div>
-      <ErpCatalogField label="Nome da alíquota" required :error="fieldErrors?.name?.[0]">
+      <ErpCatalogField
+        label="Nome da alíquota"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -52,7 +64,12 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Alíquota" required :error="fieldErrors?.rate?.[0]">
+      <ErpCatalogField
+        label="Alíquota"
+        required
+        name="rate"
+        :error="fieldErrors?.rate?.[0]"
+      >
         <UInput
           v-model="form.rate"
           name="rate"
@@ -63,7 +80,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Tipo de tributo" :error="fieldErrors?.tax_kind?.[0]">
+      <ErpCatalogField label="Tipo de tributo" name="tax_kind" :error="fieldErrors?.tax_kind?.[0]">
         <UInput
           v-model="form.tax_kind"
           name="tax_kind"
@@ -83,5 +100,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>

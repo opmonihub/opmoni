@@ -26,9 +26,22 @@ function submit() {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="submit">
-    <fieldset :disabled="disabled" class="grid gap-4 sm:grid-cols-2">
-      <ErpCatalogField label="Grupo de preço" required :error="fieldErrors?.name?.[0]">
+  <UForm
+    :state="form"
+    :disabled="disabled"
+    class="space-y-4"
+    @submit="submit"
+  >
+    <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2">
+      <legend class="text-highlighted font-medium sm:col-span-2">
+        Grupo e ajuste
+      </legend>
+      <ErpCatalogField
+        label="Grupo de preço"
+        required
+        name="name"
+        :error="fieldErrors?.name?.[0]"
+      >
         <UInput
           v-model="form.name"
           name="name"
@@ -37,7 +50,7 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <ErpCatalogField label="Ajuste percentual" :error="fieldErrors?.percentage_adjustment?.[0]">
+      <ErpCatalogField label="Ajuste percentual" name="percentage_adjustment" :error="fieldErrors?.percentage_adjustment?.[0]">
         <UInput
           v-model="form.percentage_adjustment"
           name="percentage_adjustment"
@@ -47,10 +60,9 @@ function submit() {
           class="w-full"
         />
       </ErpCatalogField>
-      <label class="flex items-center gap-2 text-sm sm:col-span-2">
-        <input v-model="form.is_default" name="is_default" type="checkbox">
-        <span>Grupo padrão da empresa</span>
-      </label>
+      <UFormField name="is_default" :error="fieldErrors?.is_default?.[0]" class="sm:col-span-2">
+        <UCheckbox v-model="form.is_default" name="is_default" label="Grupo padrão da empresa" />
+      </UFormField>
     </fieldset>
     <div v-if="mode !== 'detail'" class="flex justify-end">
       <UButton
@@ -60,5 +72,5 @@ function submit() {
         :loading="busy"
       />
     </div>
-  </form>
+  </UForm>
 </template>
