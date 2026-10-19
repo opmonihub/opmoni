@@ -5,6 +5,7 @@ namespace App\Erp;
 use App\Models\Erp\ErpContactAttachment;
 use App\Models\Erp\ErpContactNote;
 use App\Models\User;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -374,15 +375,17 @@ final class ErpContactNoteService
                     ->exists();
             }
 
-            $disk = Storage::disk(self::DISK);
-            if ($disk->exists($storageKey)) {
-                $deleted = $disk->delete($storageKey);
-                if ($deleted !== true && $disk->exists($storageKey)) {
-                    return false;
-                }
+            if (preg_match('/\A[a-f0-9]{64}\z/', $storageKey) !== 1) {
+                return false;
             }
 
-            if ($disk->exists($storageKey)) {
+            $diskConfiguration = config('filesystems.disks.'.self::DISK);
+            if (! is_array($diskConfiguration) || ($diskConfiguration['driver'] ?? null) !== 'local') {
+                return false;
+            }
+
+            $disk = Storage::disk(self::DISK);
+            if (! $disk instanceof FilesystemAdapter || app(Filesystem::class)->delete($disk->path($storageKey)) !== true) {
                 return false;
             }
 

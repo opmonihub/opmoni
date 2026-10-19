@@ -642,19 +642,22 @@ class ErpContactNotesTest extends TestCase
             ->assertCreated()
             ->json('data');
         $attachment = ErpContactAttachment::query()->findOrFail($upload['id']);
-        $filesystem = app('filesystem');
-        $diskMock = \Mockery::mock($disk)->makePartial();
-        $diskMock->shouldReceive('delete')->once()->with($attachment->storage_key)->andReturn(false);
-        Storage::shouldReceive('disk')->with('erp-contact-attachments')->andReturn($diskMock);
+        $nativeFilesystem = app(Filesystem::class);
+        $nativeFilesystemMock = \Mockery::mock($nativeFilesystem)->makePartial();
+        $nativeFilesystemMock->shouldReceive('delete')->once()->with($disk->path($attachment->storage_key))->andReturn(false);
+        app()->instance(Filesystem::class, $nativeFilesystemMock);
 
-        $this->withHeaders($context['headers'])
-            ->deleteJson("/api/v1/erp/contacts/{$context['contact']->id}/notes/{$note['id']}/attachments/{$attachment->id}")
-            ->assertAccepted()
-            ->assertJsonPath('data.status', 'deletion_pending');
+        try {
+            $this->withHeaders($context['headers'])
+                ->deleteJson("/api/v1/erp/contacts/{$context['contact']->id}/notes/{$note['id']}/attachments/{$attachment->id}")
+                ->assertAccepted()
+                ->assertJsonPath('data.status', 'deletion_pending');
+        } finally {
+            app()->instance(Filesystem::class, $nativeFilesystem);
+        }
         $this->assertSame('deletion_pending', $attachment->fresh()->status);
         $this->assertTrue($disk->exists($attachment->storage_key));
 
-        Storage::swap($filesystem);
         $this->withHeaders($context['headers'])
             ->getJson("/api/v1/erp/contacts/{$context['contact']->id}/notes?state=deletion_pending")
             ->assertOk()
@@ -666,6 +669,67 @@ class ErpContactNotesTest extends TestCase
             ->assertAccepted();
         $this->assertNull($attachment->fresh());
         $this->assertFalse(Storage::disk('erp-contact-attachments')->exists($attachment->storage_key));
+    }
+
+    public function test_ambiguous_disk_absence_never_discards_pending_attachment_metadata(): void
+    {
+        $disk = $this->usePrivateAttachmentTestDisk();
+        $context = $this->ownerContext();
+        $note = $this->createNote($context, ['heading' => 'Ausência ambígua']);
+        $upload = $this->withHeaders($context['headers'])
+            ->post("/api/v1/erp/contacts/{$context['contact']->id}/notes/{$note['id']}/attachments", [
+                'file' => UploadedFile::fake()->createWithContent('ambiguous.pdf', "%PDF-1.4\nambiguous\n"),
+            ])
+            ->assertCreated()
+            ->json('data');
+        $attachment = ErpContactAttachment::query()->findOrFail($upload['id']);
+        $storageKey = $attachment->storage_key;
+        $storedBytes = $disk->get($storageKey);
+        $sentinelKey = str_repeat('b', 64);
+        $sentinelBytes = "%PDF-1.4\nunrelated sentinel\n";
+        $this->assertTrue($disk->put($sentinelKey, $sentinelBytes));
+
+        $storageManager = app('filesystem');
+        $nativeFilesystem = app(Filesystem::class);
+        $diskMock = \Mockery::mock($disk)->makePartial();
+        $diskMock->shouldReceive('exists')->with($storageKey)->zeroOrMoreTimes()->andReturn(false);
+        $nativeFilesystemMock = \Mockery::mock($nativeFilesystem)->makePartial();
+        $nativeFilesystemMock->shouldReceive('delete')->once()->with($disk->path($storageKey))->andReturn(false);
+        Storage::shouldReceive('disk')->with('erp-contact-attachments')->andReturn($diskMock);
+        app()->instance(Filesystem::class, $nativeFilesystemMock);
+
+        try {
+            $this->withHeaders($context['headers'])
+                ->deleteJson("/api/v1/erp/contacts/{$context['contact']->id}/notes/{$note['id']}/attachments/{$attachment->id}")
+                ->assertAccepted()
+                ->assertJsonPath('data.status', 'deletion_pending');
+        } finally {
+            Storage::swap($storageManager);
+            app()->instance(Filesystem::class, $nativeFilesystem);
+        }
+
+        $pending = ErpContactAttachment::query()->find($attachment->id);
+        $this->assertNotNull($pending, 'ambiguous adapter absence must retain retryable metadata');
+        $this->assertSame('deletion_pending', $pending->status);
+        $this->assertTrue($disk->exists($storageKey));
+        $this->assertSame($storedBytes, $disk->get($storageKey));
+        $this->assertTrue($disk->exists($sentinelKey));
+        $this->assertSame($sentinelBytes, $disk->get($sentinelKey));
+
+        $this->withHeaders($context['headers'])
+            ->getJson("/api/v1/erp/contacts/{$context['contact']->id}/notes?state=deletion_pending")
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $note['id'])
+            ->assertJsonPath('data.0.attachments_count', 1);
+
+        $this->withHeaders($context['headers'])
+            ->deleteJson("/api/v1/erp/contacts/{$context['contact']->id}/notes/{$note['id']}/attachments/{$attachment->id}")
+            ->assertAccepted();
+        $this->assertNull(ErpContactAttachment::query()->find($attachment->id));
+        $this->assertFalse($disk->exists($storageKey));
+        $this->assertTrue($disk->exists($sentinelKey));
+        $this->assertSame($sentinelBytes, $disk->get($sentinelKey));
     }
 
     public function test_archived_contact_keeps_note_and_download_history_but_rejects_new_content(): void
