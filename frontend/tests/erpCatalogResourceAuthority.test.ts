@@ -202,7 +202,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   app.component('UDropdownMenu', Vue.defineComponent({
     props: ['items', 'content'],
     setup(props, { attrs, slots }) {
-      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, [
+      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu', 'onMenuCloseAutoFocus': props.content?.onCloseAutoFocus }, [
         slots.default?.(),
         ...((props.items as Array<Array<{ label?: string, onSelect?: () => void }>> | undefined) ?? []).flatMap(group => group.map(item => Vue.h('button', {
           'type': 'button',
@@ -539,6 +539,39 @@ describe('ERP catalog shared resource authority', () => {
       assert.equal(descendants(resource.root).some(node => node.props['aria-label']?.toString().startsWith('Ações de ')), false, 'index-only users do not get empty row action menus')
     })
   }
+
+  it('hands focus from the closing row menu to the editor without changing ordinary menu focus', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    resource.requests.find(request => request.url === '/erp/units?page=1')!.resolve({
+      data: [{ id: 8, short_name: 'Quilograma', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await resource.settle()
+    const menu = descendants(resource.root).find(node => node.props['data-nuxt-ui-component'] === 'UDropdownMenu')!
+    const closeAutoFocus = menu.props.onMenuCloseAutoFocus as ((event: Event) => Promise<void>) | undefined
+    assert.ok(closeAutoFocus, 'The menu exposes its native close-auto-focus handler')
+    let prevented = 0
+    const event = {
+      preventDefault() {
+        prevented++
+      }
+    } as Event
+    await closeAutoFocus(event)
+    assert.equal(prevented, 0, 'Ordinary menu dismissal keeps native trigger focus')
+    const edit = descendants(menu).find(node => node.props['data-menu-action'] === 'Editar')!
+    ;(edit.props.onClick as () => void)()
+    await resource.settle()
+    const region = descendants(resource.root).find(node => node.tag === 'section' && node.props.tabindex === '-1')!
+    const focusBeforeClose = region.focusCalls
+    await closeAutoFocus(event)
+    assert.equal(prevented, 1, 'A closing row menu must not return focus to the hidden list')
+    assert.equal(region.focusCalls, focusBeforeClose + 1, 'Focus moves into the editor after native menu dismissal')
+    const pendingFocus = closeAutoFocus(event)
+    resource.currentCompany.value = { ...resource.currentCompany.value, id: 42 }
+    await pendingFocus
+    assert.equal(region.focusCalls, focusBeforeClose + 1, 'A stale menu close cannot refocus an old Company editor')
+  })
 
   it('uses record-specific edit headings and restores row-menu focus after cancel and save', async (t) => {
     const resource = setupResource()

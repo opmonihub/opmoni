@@ -74,7 +74,7 @@ function renderRowActions({ row }: { row: { original: CatalogRow } }) {
     return null
   return h(UDropdownMenu, {
     items,
-    'content': { align: 'end' },
+    'content': { align: 'end', onCloseAutoFocus: focusEditorAfterMenuClose },
     'aria-label': `Ações de ${labelFor(row.original)}`
   }, () => h(UButton, {
     'ref': (instance: Element | ComponentPublicInstance | null) => rememberRowActionTrigger(row.original.id, instance),
@@ -127,6 +127,17 @@ function rememberRowActionTrigger(id: number, instance: Element | ComponentPubli
 function prepareRowAction(row: CatalogRow) {
   const target = rowActionTriggers.get(row.id)
   restoreFocusTarget.value = target && target.isConnected !== false ? target : null
+}
+
+async function focusEditorAfterMenuClose(event: Event) {
+  if (!open.value || resourceDisposed)
+    return
+
+  event.preventDefault()
+  const contextGeneration = resourceContextGeneration
+  await nextTick()
+  if (!resourceDisposed && contextGeneration === resourceContextGeneration && open.value)
+    editorRegion.value?.focus()
 }
 
 function rowActionItems(row: CatalogRow): DropdownMenuItem[][] {
