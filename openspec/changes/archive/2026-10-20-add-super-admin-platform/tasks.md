@@ -325,7 +325,7 @@ Re-audit focado em admin de plataforma (escopo D009, sem ERP/fiscal). Código al
 | 5.1–5.5, 6.1–6.2, 6.4, 11.7 | Superseded by D009 | Anotações explícitas adicionadas nas seções 5–6; não marcar como concluídas. |
 | 4.3 | Superseded by D009 | Anotação na linha da task; comportamento importado (gate de subscription) permanece canônico. |
 | 1.1, 1.4, 4.2, 7.1, 8.5, 10.2, 11.3, 11.5, 12.3 | Verified | Reconfirmados pelos testes focados acima (sem alteração de critério). |
-| Demais 47 | Inalterado | Permanecem unchecked conforme auditoria 2026-10-13; targets pendentes ou entrega diferente documentada em [system-spec-reconciliation](../../../docs/architecture/system-spec-reconciliation.md). |
+| Demais 47 | Inalterado | Permanecem unchecked conforme auditoria 2026-10-13; targets pendentes ou entrega diferente documentada em [system-spec-reconciliation](../../../../docs/architecture/system-spec-reconciliation.md). |
 
 Progresso OpenSpec: **9/56** tasks marcadas `[x]` (sem novas marcações — nenhuma task atingiu critério completo adicional nesta sessão).
 
