@@ -198,20 +198,19 @@ final class ErpPurchaseDraftService
         $existingAmounts = $existingLine?->product_snapshot['amounts'] ?? [];
         $discount = Decimal::decimal($line['discount_amount'] ?? ($source !== null ? ($existingAmounts['discount_amount'] ?? '0') : '0'), $path.'.discount_amount');
         $tax = Decimal::decimal($line['tax_amount'] ?? ($source !== null ? ($existingAmounts['tax_amount'] ?? '0') : '0'), $path.'.tax_amount');
-        $preservesSourceAmounts = $source !== null && isset($existingAmounts['quantity'], $existingAmounts['unit_cost'], $existingAmounts['line_total'], $existingAmounts['gross_amount'], $existingAmounts['net_amount'])
+        $preservesSourceBasis = $source !== null && isset($existingAmounts['quantity'], $existingAmounts['unit_cost'], $existingAmounts['gross_amount'], $existingAmounts['net_amount'])
             && Decimal::decimal($existingAmounts['quantity'], $path.'.quantity') === $quantity
             && Decimal::decimal($existingAmounts['unit_cost'], $path.'.unit_cost') === $cost
-            && Decimal::decimal($existingAmounts['discount_amount'] ?? '0', $path.'.discount_amount') === $discount
-            && Decimal::decimal($existingAmounts['tax_amount'] ?? '0', $path.'.tax_amount') === $tax;
-        if ($preservesSourceAmounts) {
-            $acceptedGross = Decimal::decimal($existingAmounts['gross_amount'], $path.'.unit_cost');
-            if (bccomp($discount, $acceptedGross, 4) > 0) {
+            && Decimal::decimal($existingAmounts['discount_amount'] ?? '0', $path.'.discount_amount') === $discount;
+        if ($preservesSourceBasis) {
+            $gross = Decimal::decimal($existingAmounts['gross_amount'], $path.'.unit_cost');
+            if (bccomp($discount, $gross, 4) > 0) {
                 $this->error($path.'.discount_amount', 'Desconto excede o valor bruto da origem aceita.');
             }
         } elseif (bccomp($discount, $gross, 4) > 0) {
             $this->error($path.'.discount_amount', 'Desconto excede o valor bruto.');
         }
-        $net = $preservesSourceAmounts
+        $net = $preservesSourceBasis
             ? Decimal::decimal($existingAmounts['net_amount'], $path.'.discount_amount')
             : bcsub($gross, $discount, 4);
         $rate = $nature = null;
@@ -236,9 +235,7 @@ final class ErpPurchaseDraftService
             }
             $tax = $computed;
         }
-        $amounts = $initialImport ? $source['amounts'] : ($preservesSourceAmounts
-            ? array_intersect_key($existingAmounts, array_flip(['gross_amount', 'discount_amount', 'net_amount', 'tax_amount', 'line_total']))
-            : ['gross_amount' => $gross, 'discount_amount' => $discount, 'net_amount' => $net, 'tax_amount' => $tax, 'line_total' => Decimal::bounded(bcadd($net, $tax, 4), $path.'.line_total')]);
+        $amounts = $initialImport ? $source['amounts'] : ['gross_amount' => $gross, 'discount_amount' => $discount, 'net_amount' => $net, 'tax_amount' => $tax, 'line_total' => Decimal::bounded(bcadd($net, $tax, 4), $path.'.line_total')];
         $snapshot = ['version' => self::VERSION, 'description' => $description, 'product' => $product?->only(['id', 'name', 'kind', 'track_stock', 'erp_unit_id', 'ncm', 'cest']), 'variant' => $variant?->only(['id', 'name', 'sku', 'barcode']), 'physical_profile' => $product?->only(['kind', 'track_stock']) ?? ['kind' => 'service', 'track_stock' => false], 'unit' => $unit?->only(['id', 'actual_name', 'short_name', 'allow_decimal', 'conversion_factor', 'base_unit_id']), 'unit_chain' => $chain, 'tax_rate' => $rate?->only(['id', 'name', 'rate', 'erp_establishment_id']), 'operation_nature' => $nature?->only(['id', 'description', 'cfop', 'erp_establishment_id']), 'source_item' => $source, 'amounts' => $amounts + ['quantity' => $quantity, 'base_quantity' => $base, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor], 'valuation_policy' => 'accepted-payable-consideration-v1', 'legal_applicability' => null];
 
         return ['ordinal' => $index + 1, 'source_ordinal' => $source['line'] ?? null, 'erp_product_variant_id' => $variant?->id, 'erp_unit_id' => $unit?->id, 'description' => $description, 'quantity' => $quantity, 'base_quantity' => $base, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor, 'line_total' => $amounts['line_total'], 'product_snapshot' => $snapshot];

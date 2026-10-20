@@ -9,6 +9,7 @@ use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\ErpProductVariant;
+use App\Models\Erp\ErpTaxRate;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpPurchaseImport;
 use App\Models\Erp\Stock\ErpPurchaseReturn;
@@ -228,6 +229,42 @@ class ErpPurchaseImportWorkflowTest extends ErpCommercialTestCase
         $this->assertSame('1.0000', $line->product_snapshot['amounts']['discount_amount']);
         $this->assertSame('0.0000', $line->line_total);
         $this->assertSame('0.3333333333', $line->product_snapshot['source_item']['vUnCom']);
+    }
+
+    public function test_imported_line_recalculates_tax_and_total_when_tax_rate_changes_without_explicit_tax(): void
+    {
+        $supplier = $this->supplier();
+        $rate = ErpTaxRate::factory()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'name' => 'Ten percent', 'rate' => '10.0000']);
+        $preview = $this->preview($this->xml('3.3333333333', '10.00'));
+        $this->assertSame([], $preview['errors']);
+        $purchaseId = $this->send('purchases/xml-confirm', $this->choices($preview['token'], $supplier->id), 'tax-source-confirm')->assertCreated()->json('data.id');
+        $purchase = ErpPurchase::findOrFail($purchaseId)->load('lines');
+        $line = $purchase->lines->sole();
+
+        $patch = ['draft_revision' => 1, 'lines' => [['id' => $line->id, 'erp_product_variant_id' => $this->variant->id, 'description' => 'Tax metadata edit', 'quantity' => '3', 'unit_cost' => '3.3333', 'unit_conversion_factor' => '1.00000000', 'erp_tax_rate_id' => $rate->id]]];
+        $this->patchJson('/api/v1/erp/purchases/'.$purchaseId, $patch, ['Idempotency-Key' => 'tax-metadata-edit'])
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '11.0000');
+
+        $purchase->refresh()->load('lines');
+        $line = $purchase->lines->sole();
+        $this->assertSame('11.0000', $purchase->total_amount);
+        $this->assertSame('10.0000', $line->product_snapshot['amounts']['gross_amount']);
+        $this->assertSame('10.0000', $line->product_snapshot['amounts']['net_amount']);
+        $this->assertSame('1.0000', $line->product_snapshot['amounts']['tax_amount']);
+        $this->assertSame('11.0000', $line->product_snapshot['amounts']['line_total']);
+        $this->assertSame($rate->id, $line->product_snapshot['tax_rate']['id']);
+
+        $otherRate = ErpTaxRate::factory()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'name' => 'Twenty percent', 'rate' => '20.0000']);
+        $mismatchedTax = $patch;
+        $mismatchedTax['draft_revision'] = 2;
+        $mismatchedTax['lines'][0]['erp_tax_rate_id'] = $otherRate->id;
+        $mismatchedTax['lines'][0]['tax_amount'] = '1.0000';
+        $this->patchJson('/api/v1/erp/purchases/'.$purchaseId, $mismatchedTax, ['Idempotency-Key' => 'tax-explicit-mismatch'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('lines.0.tax_amount');
+        $this->assertSame('11.0000', $purchase->fresh()->total_amount);
+        $this->assertSame($rate->id, $line->fresh()->product_snapshot['tax_rate']['id']);
     }
 
     public function test_blocked_source_remains_inspectable_and_expiry_and_mapping_failures_are_atomic(): void
