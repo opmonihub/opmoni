@@ -24,17 +24,21 @@ type Pending = {
   resolve(value: unknown): void
   reject(reason: unknown): void
 }
-function mountImport() {
+function mountImport(realSelector = false) {
   const requests: Pending[] = []
   const user = Vue.ref<{
     id: number
   } | null>({ id: 5 })
   const company = Vue.ref({ id: 41, status: 'active', access_kind: 'direct', role: 'owner', permissions: ['*'] })
   const generation = Vue.ref(1)
+  let refreshHook = () => {}
   const bindings = {
     computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose,
     useState: () => generation,
-    useAuth: () => ({ user, currentCompany: company, currentAccount: Vue.ref(null), refresh: async () => user.value }),
+    useAuth: () => ({ user, currentCompany: company, currentAccount: Vue.ref(null), refresh: async () => {
+      refreshHook()
+      return user.value
+    } }),
     useAccessApi: () => ({ refreshCsrf: async () => undefined, api: (url: string, options = {}) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })) })
   }
   const module = loadAppComposable<{
@@ -78,10 +82,21 @@ function mountImport() {
     return workspace
   } } })
   const app = renderer.createApp(page)
-  for (const name of ['ErpCatalogPageShell', 'UCard', 'UAlert', 'UFormField', 'UFileUpload', 'USelect', 'UButton', 'UTable', 'ErpCatalogReferenceSelect']) {
-    app.component(name, Vue.defineComponent({ props: ['label', 'title', 'description', 'data', 'disabled', 'modelValue', 'error', 'name'], emits: ['update:modelValue'], setup(props, { attrs, slots, emit }) {
+  for (const name of ['ErpCatalogPageShell', 'UCard', 'UAlert', 'UFormField', 'UFileUpload', 'USelect', 'UButton', 'UTable', ...(!realSelector ? ['ErpCatalogReferenceSelect'] : []), 'USelectMenu', 'UBadge']) {
+    app.component(name, Vue.defineComponent({ props: ['label', 'title', 'description', 'data', 'disabled', 'modelValue', 'error', 'name'], emits: ['update:modelValue', 'selection-validity'], setup(props, { attrs, slots, emit }) {
+      if (name === 'ErpCatalogReferenceSelect') {
+        Vue.watch(() => props.modelValue, id => emit('selection-validity', { id, valid: id !== null }), { immediate: true, flush: 'sync' })
+      }
       return () => Vue.h(name === 'UButton' ? 'button' : 'section', { ...attrs, 'data-component': name, 'disabled': props.disabled, 'modelValue': props.modelValue, 'onChange': (value: unknown) => emit('update:modelValue', value) }, [props.label, props.title, props.description, props.error, ...(props.data ? props.data.map((row: object) => Vue.h('div', [JSON.stringify(row), slots['validation-cell']?.({ row: { original: row } })])) : []), slots.header?.(), slots.default?.()])
     } }))
+  }
+  if (realSelector) {
+    const listModule = loadAppComposable('composables/useErpCatalogList.ts', bindings)
+    const contextModule = loadAppComposable('composables/useErpAdministrationContext.ts', bindings)
+    app.component('ErpCatalogReferenceSelect', compileVueComponent('components/erp/catalogs/ErpCatalogReferenceSelect.vue', bindings, {
+      '~/composables/useErpCatalogList': listModule,
+      '~/composables/useErpAdministrationContext': contextModule
+    }))
   }
   const root = node('root')
   app.mount(root)
@@ -96,7 +111,9 @@ function mountImport() {
     return result
   }
   const text = (node: HostNode): string => node.textContent + node.children.map(text).join('')
-  return { workspace, requests, company, user, generation, find, root, text: () => text(root), unmount: () => app.unmount() }
+  return { workspace, requests, company, user, generation, setRefreshHook(hook: () => void) {
+    refreshHook = hook
+  }, find, root, text: () => text(root), unmount: () => app.unmount() }
 }
 it('mounts the actual import page with native file upload and explicit preview/cancel/confirm controls', (t) => {
   const storage = memoryStorage()
@@ -315,4 +332,178 @@ it('restores an unsent preview for review without an automatic confirm and ignor
   assert.equal(page.workspace.preview.value, null)
   assert.equal(page.workspace.busy.value, false)
   assert.equal(stale.options.signal?.aborted, true)
+})
+
+it('uses separate preview and confirm action grants for granular operators', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const page = mountImport()
+  t.after(page.unmount)
+  page.company.value = { ...page.company.value, role: 'operator', permissions: ['erp.catalog.import.products.preview'] }
+  page.workspace.file.value = new File(['name\nA'], 'a.csv')
+  const sent = page.workspace.createPreview()
+  await settle()
+  assert.equal(page.requests.length, 1)
+  page.requests[0]!.resolve({ data: preview() })
+  await sent
+  assert.equal(page.workspace.canConfirm.value, false)
+  page.company.value = { ...page.company.value, permissions: ['erp.catalog.import.products.confirm'] }
+  page.workspace.file.value = new File(['name\nA'], 'a.csv')
+  const count = page.requests.length
+  await page.workspace.createPreview()
+  assert.equal(page.requests.length, count)
+})
+it('keeps original submitted identity through expired/transient read and lookup404, allowing only original retry', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  for (const status of [422, 503]) {
+    const original = mountImport()
+    await prepare(original, 'contacts')
+    const sent = original.workspace.confirm()
+    await settle()
+    const firstRequest = original.requests.at(-1)!
+    firstRequest.reject({ statusCode: 503 })
+    await sent
+    original.unmount()
+    const page = mountImport()
+    await settle()
+    page.requests.at(-1)!.reject({ statusCode: status, data: { errors: { token: ['Pré-visualização expirada.'] } } })
+    await settle()
+    assert.match(page.requests.at(-1)!.url, /operations\/lookup/)
+    page.requests.at(-1)!.reject({ statusCode: 404, data: { code: 'operation_not_recorded' } })
+    await settle()
+    assert.equal(page.workspace.preview.value, null)
+    assert.equal(page.workspace.lockedChoices.value, true)
+    assert.equal(page.workspace.canConfirm.value, true)
+    assert.match(page.text(), /pré-visualização ainda não foi recuperada/)
+    if (status === 503) {
+      const readRetry = page.workspace.recover()
+      await settle()
+      assert.match(page.requests.at(-1)!.url, /contacts\/preview\/read$/)
+      page.requests.at(-1)!.resolve({ data: preview('contacts') })
+      await settle()
+      page.requests.at(-1)!.reject({ statusCode: 404, data: { code: 'operation_not_recorded' } })
+      await readRetry
+      assert.equal(page.workspace.preview.value?.totals.records, 2)
+    }
+    const retry = page.workspace.confirm()
+    await settle()
+    assert.deepEqual(page.requests.at(-1)!.options.headers, firstRequest.options.headers)
+    assert.deepEqual(page.requests.at(-1)!.options.body, firstRequest.options.body)
+    if (status === 422) {
+      page.requests.at(-1)!.reject({ statusCode: 422, data: { errors: { token: ['Pré-visualização expirada.'] } } })
+      await retry
+      assert.equal(page.workspace.lockedChoices.value, false)
+      page.workspace.cancel()
+    } else {
+      page.requests.at(-1)!.resolve({ data: { created: 2 } })
+      await retry
+      assert.equal(page.workspace.success.value, 2)
+    }
+    assert.equal(storage.values.size, 0)
+    page.unmount()
+  }
+})
+it('preserves a submitted identity when authority refresh actually changes session and grants', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const page = mountImport()
+  t.after(page.unmount)
+  await prepare(page, 'contacts')
+  const sent = page.workspace.confirm()
+  await settle()
+  page.requests.at(-1)!.reject({ statusCode: 401 })
+  await sent
+  assert.equal(page.workspace.file.value, null)
+  assert.equal(storage.values.size, 1)
+  const original = [...storage.values.values()][0]
+  page.setRefreshHook(() => {
+    page.company.value = { ...page.company.value, role: 'operator', permissions: ['erp.catalog.import.contacts.confirm'] }
+    page.generation.value++
+  })
+  const refreshed = page.workspace.refreshAuthority()
+  await settle()
+  assert.equal([...storage.values.values()][0], original)
+  assert.match(page.requests.at(-1)!.url, /contacts\/preview\/read$/)
+  page.requests.at(-1)!.resolve({ data: { ...preview('contacts'), state: 'completed', result: { created: 2 } } })
+  await refreshed
+  await settle()
+  assert.equal(page.workspace.success.value, 2)
+  assert.equal(storage.values.size, 0)
+})
+it('mounts the actual unit selector and blocks first confirmation during load, error and archived selection', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const page = mountImport(true)
+  t.after(page.unmount)
+  await prepare(page)
+  assert.equal(page.workspace.canConfirm.value, false)
+  const details = page.requests.filter(request => request.url === '/erp/units/7')
+  assert.ok(details.length)
+  page.requests.filter(request => request.url.startsWith('/erp/units?')).forEach(request => request.resolve({ data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }))
+  details.at(-1)!.reject({ statusCode: 503 })
+  await settle()
+  assert.equal(page.workspace.canConfirm.value, false)
+  page.workspace.unitId.value = 8
+  await settle()
+  page.requests.at(-1)!.resolve({ data: { id: 8, status: 'archived', short_name: 'CX' } })
+  await settle()
+  assert.equal(page.workspace.canConfirm.value, false)
+  page.workspace.unitId.value = 9
+  await settle()
+  page.requests.at(-1)!.resolve({ data: { id: 9, status: 'active', short_name: 'UN' } })
+  await settle()
+  assert.equal(page.workspace.canConfirm.value, true)
+})
+
+it('recovers an original completed product result while the real old unit is archived', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const original = mountImport()
+  await prepare(original)
+  const sent = original.workspace.confirm()
+  await settle()
+  original.requests.at(-1)!.reject({ statusCode: 503 })
+  await sent
+  original.unmount()
+  const page = mountImport(true)
+  t.after(page.unmount)
+  await settle()
+  page.requests.filter(request => request.url.startsWith('/erp/units?')).forEach(request => request.resolve({ data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }))
+  page.requests.find(request => request.url === '/erp/units/7')!.resolve({ data: { id: 7, status: 'archived', short_name: 'CX' } })
+  await settle()
+  assert.equal(page.workspace.unitReady.value, false)
+  page.requests.find(request => request.url.endsWith('/products/preview/read'))!.resolve({ data: { ...preview(), state: 'completed', result: { created: 2 } } })
+  await settle()
+  assert.equal(page.workspace.success.value, 2)
+  assert.equal(storage.values.size, 0)
+})
+it('does not overwrite submitted recovery when refreshed authority permits only a new preview', async (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const page = mountImport()
+  t.after(page.unmount)
+  await prepare(page, 'contacts')
+  const sent = page.workspace.confirm()
+  await settle()
+  page.requests.at(-1)!.reject({ statusCode: 401 })
+  await sent
+  const original = [...storage.values.values()][0]
+  page.setRefreshHook(() => {
+    page.company.value = { ...page.company.value, role: 'operator', permissions: ['erp.catalog.import.contacts.preview'] }
+    page.generation.value++
+  })
+  await page.workspace.refreshAuthority()
+  await settle()
+  assert.equal(page.workspace.canPreview.value, true)
+  assert.equal(page.workspace.canConfirmOrRecover.value, false)
+  page.workspace.file.value = new File(['name\nAnother'], 'another.csv')
+  const count = page.requests.length
+  const previewRequest = page.workspace.createPreview()
+  await settle()
+  assert.equal([...storage.values.values()][0], original)
+  assert.equal(page.requests.length, count)
+  await previewRequest
+  assert.equal(page.workspace.lockedChoices.value, true)
+  assert.match(page.text(), /confirmação anterior/)
 })

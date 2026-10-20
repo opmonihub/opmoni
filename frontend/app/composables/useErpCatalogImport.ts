@@ -13,8 +13,11 @@ export function useErpCatalogImport() {
   const unitId = ref<number | null>(null)
   const preview = ref<ErpImportPreview | null>(null)
   const operationKey = ref('')
+  const recoveryToken = ref('')
+  const unitValidity = ref<{ id: number | null, valid: boolean }>({ id: null, valid: false })
   const busy = ref(false)
   const unknownOutcome = ref(false)
+  const hasSubmittedRecovery = ref(false)
   const canRetryExact = ref(false)
   const authorityBlocked = ref(false)
   const error = ref('')
@@ -27,19 +30,27 @@ export function useErpCatalogImport() {
   let restoring = false
   const identity = computed(() => JSON.stringify([auth.user.value?.id ?? null, auth.currentCompany.value?.id ?? null, auth.currentCompany.value?.access_kind ?? null, auth.currentCompany.value?.delegated_office_id ?? null]))
   const storageKey = computed(() => `opmoni:erp-import:v1:${identity.value}`)
-  const canImport = computed(() => {
+  function hasAction(action: 'preview' | 'confirm'): boolean {
     const company = auth.currentCompany.value
     if (!auth.user.value || !company || company.status !== 'active' || authorityBlocked.value)
       return false
-    const permission = `erp.catalog.import.${kind.value}.confirm`
+    const permission = `erp.catalog.import.${kind.value}.${action}`
     if (company.access_kind === 'delegated') {
       const office = auth.currentAccount.value
       return office?.status === 'active' && office.id === company.delegated_office_id && ['admin', 'operador'].includes(office.role) && company.permissions.includes(permission)
     }
     return company.access_kind === 'direct' && ['owner', 'manager', 'operator'].includes(company.role) && erpCompanyHasPermission(company.permissions, permission)
+  }
+  const canPreview = computed(() => hasAction('preview'))
+  const canConfirmOrRecover = computed(() => hasAction('confirm'))
+  const canImport = computed(() => canPreview.value || canConfirmOrRecover.value)
+  const unitReady = computed(() => unitId.value !== null && unitValidity.value.id === unitId.value && unitValidity.value.valid)
+  const canConfirm = computed(() => {
+    if (!canConfirmOrRecover.value || busy.value) return false
+    if (unknownOutcome.value) return canRetryExact.value && !!recoveryToken.value && !!operationKey.value
+    return preview.value?.state === 'pending' && preview.value.errors.length === 0 && preview.value.totals.records > 0 && (kind.value === 'contacts' || unitReady.value)
   })
-  const canConfirm = computed(() => canImport.value && !busy.value && preview.value?.state === 'pending' && preview.value.errors.length === 0 && preview.value.totals.records > 0 && (kind.value === 'contacts' || unitId.value !== null) && (!unknownOutcome.value || canRetryExact.value))
-  const lockedChoices = computed(() => busy.value || unknownOutcome.value)
+  const lockedChoices = computed(() => busy.value || unknownOutcome.value || hasSubmittedRecovery.value)
   function invalidate() {
     sequence++
     controller?.abort()
@@ -51,6 +62,8 @@ export function useErpCatalogImport() {
     preview.value = null
     unitId.value = null
     operationKey.value = ''
+    recoveryToken.value = ''
+    unitValidity.value = { id: null, valid: false }
     unknownOutcome.value = false
     canRetryExact.value = false
     fieldErrors.value = {}
@@ -58,16 +71,19 @@ export function useErpCatalogImport() {
   function removeRecovery(key = storageKey.value) {
     try {
       globalThis.sessionStorage?.removeItem(key)
+      if (key === storageKey.value)
+        hasSubmittedRecovery.value = false
     } catch {
       // Server-side receipt identity remains authoritative if storage removal fails.
     }
   }
   function store(state: ErpImportRecovery['state']): boolean {
-    if (!preview.value || !operationKey.value)
+    if (!recoveryToken.value || !operationKey.value)
       return false
-    const recovery: ErpImportRecovery = { version: 1, identity: identity.value, kind: kind.value, token: preview.value.token, key: operationKey.value, unitId: unitId.value, state }
+    const recovery: ErpImportRecovery = { version: 1, identity: identity.value, kind: kind.value, token: recoveryToken.value, key: operationKey.value, unitId: unitId.value, state }
     try {
       globalThis.sessionStorage.setItem(storageKey.value, JSON.stringify(recovery))
+      hasSubmittedRecovery.value = state === 'submitted'
       return true
     } catch {
       error.value = 'Não foi possível guardar a identificação da operação nesta aba. Habilite o armazenamento e tente novamente.'
@@ -102,7 +118,7 @@ export function useErpCatalogImport() {
     success.value = created
   }
   async function createPreview() {
-    if (!canImport.value || !file.value || lockedChoices.value)
+    if (!canPreview.value || !file.value || lockedChoices.value)
       return
     const request = begin()
     success.value = null
@@ -118,6 +134,7 @@ export function useErpCatalogImport() {
       if (!current(request))
         return
       preview.value = result.data
+      recoveryToken.value = result.data.token
       operationKey.value = crypto.randomUUID()
       store('prepared')
     } catch (err) {
@@ -129,11 +146,11 @@ export function useErpCatalogImport() {
     }
   }
   async function confirm() {
-    if (!canConfirm.value || !preview.value)
+    if (!canConfirm.value || !recoveryToken.value)
       return
     if (!store('submitted'))
       return
-    const body = { token: preview.value.token, ...(kind.value === 'products' ? { erp_unit_id: unitId.value } : {}) }
+    const body = { token: recoveryToken.value, ...(kind.value === 'products' ? { erp_unit_id: unitId.value } : {}) }
     const key = operationKey.value
     const request = begin()
     unknownOutcome.value = true
@@ -163,7 +180,7 @@ export function useErpCatalogImport() {
     }
   }
   async function reconcile() {
-    if (!canImport.value || busy.value || !operationKey.value)
+    if (!canConfirmOrRecover.value || busy.value || !operationKey.value)
       return
     const request = begin()
     try {
@@ -200,6 +217,7 @@ export function useErpCatalogImport() {
       if (!text)
         return
       recovery = JSON.parse(text)
+      hasSubmittedRecovery.value = recovery.state === 'submitted'
       if (recovery.version !== 1 || recovery.identity !== identity.value || !['products', 'contacts'].includes(recovery.kind) || typeof recovery.token !== 'string' || typeof recovery.key !== 'string' || !['prepared', 'submitted'].includes(recovery.state) || (recovery.unitId !== null && (!Number.isSafeInteger(recovery.unitId) || recovery.unitId < 1))) {
         removeRecovery()
         return
@@ -210,8 +228,9 @@ export function useErpCatalogImport() {
     restoring = true
     kind.value = recovery.kind
     restoring = false
-    if (!canImport.value)
+    if (!canConfirmOrRecover.value)
       return
+    recoveryToken.value = recovery.token
     operationKey.value = recovery.key
     unitId.value = recovery.unitId
     unknownOutcome.value = recovery.state === 'submitted'
@@ -271,24 +290,39 @@ export function useErpCatalogImport() {
       await recover()
   }
   watch([kind, file], () => {
-    if (restoring || unknownOutcome.value)
+    if (restoring || unknownOutcome.value || hasSubmittedRecovery.value)
       return
     invalidate()
     removeRecovery()
     preview.value = null
     operationKey.value = ''
+    recoveryToken.value = ''
     error.value = ''
     success.value = null
   }, { flush: 'sync' })
+  function setUnitValidity(state: { id: number | null, valid: boolean }) {
+    if (state.id === unitId.value) unitValidity.value = state
+  }
   watch(unitId, () => {
+    unitValidity.value = { id: unitId.value, valid: false }
     if (preview.value && !unknownOutcome.value && !restoring)
       store('prepared')
   }, { flush: 'sync' })
+  function preserveSubmitted(key: string): boolean {
+    try {
+      const text = globalThis.sessionStorage?.getItem(key)
+      return !!text && JSON.parse(text).state === 'submitted'
+    } catch {
+      // An unreadable identity cannot be proven safe to discard.
+      return true
+    }
+  }
   let previousStorageKey = storageKey.value
   watch(context.key, () => {
-    if (!unknownOutcome.value)
+    if (!preserveSubmitted(previousStorageKey))
       removeRecovery(previousStorageKey)
     previousStorageKey = storageKey.value
+    hasSubmittedRecovery.value = preserveSubmitted(storageKey.value)
     invalidate()
     restoring = true
     clearPrivate()
@@ -310,5 +344,5 @@ export function useErpCatalogImport() {
     clearPrivate()
     restoring = false
   })
-  return { kind, file, unitId, preview, busy, error, fieldErrors, success, unknownOutcome, canRetryExact, canImport, canConfirm, lockedChoices, authorityBlocked, createPreview, confirm, reconcile, recover, cancel, refreshAuthority }
+  return { kind, file, unitId, preview, busy, error, fieldErrors, success, unknownOutcome, hasSubmittedRecovery, canRetryExact, canImport, canPreview, canConfirmOrRecover, canConfirm, unitReady, recoveryToken, lockedChoices, authorityBlocked, createPreview, confirm, reconcile, recover, cancel, refreshAuthority, setUnitValidity }
 }

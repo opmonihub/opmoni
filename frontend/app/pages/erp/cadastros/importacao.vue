@@ -6,7 +6,7 @@ import { useErpCatalogImport } from '~/composables/useErpCatalogImport'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 const workspace = useErpCatalogImport()
-const { kind, file, unitId, preview, busy, error, fieldErrors, success, unknownOutcome, canRetryExact, canImport, canConfirm, lockedChoices, authorityBlocked } = workspace
+const { kind, file, unitId, preview, busy, error, fieldErrors, success, unknownOutcome, hasSubmittedRecovery, canRetryExact, canImport, canPreview, canConfirmOrRecover, canConfirm, unitReady, recoveryToken, lockedChoices, authorityBlocked } = workspace
 const modes = [{ label: 'Produtos e serviços', value: 'products' }, { label: 'Clientes e fornecedores', value: 'contacts' }]
 const columns = computed<TableColumn<ErpImportRow>[]>(() => [
   { accessorKey: 'record', header: 'Registro' }, { accessorKey: 'line', header: 'Linha' }, { accessorKey: 'name', header: 'Nome' },
@@ -24,11 +24,17 @@ function rowErrors(record: number) {
     <UAlert v-if="!canImport" color="warning" title="Você não tem permissão para importar nesta empresa." />
     <UAlert v-if="error" color="error" :title="error" />
     <UButton
-      v-if="authorityBlocked"
+      v-if="authorityBlocked || (hasSubmittedRecovery && !unknownOutcome)"
       label="Verificar acesso"
       color="neutral"
       :loading="busy"
       @click="workspace.refreshAuthority"
+    />
+    <UAlert
+      v-if="hasSubmittedRecovery && !unknownOutcome"
+      color="warning"
+      title="Uma confirmação anterior precisa ser conciliada."
+      description="A identificação original foi preservada. Revalide o acesso para consultar o resultado antes de iniciar outra importação."
     />
     <UAlert v-if="success !== null" color="success" :title="`${success} cadastros importados.`" />
     <UCard>
@@ -52,7 +58,7 @@ function rowErrors(record: number) {
             accept=".csv,text/csv"
             label="Selecione ou solte o CSV"
             description="O arquivo permanece selecionado em caso de falha."
-            :disabled="!canImport || lockedChoices"
+            :disabled="!canPreview || lockedChoices"
             class="min-h-32"
           />
         </UFormField>
@@ -73,12 +79,16 @@ function rowErrors(record: number) {
           label-key="short_name"
           name="erp_unit_id"
           :error="fieldErrors.erp_unit_id?.[0]"
-          :disabled="!canImport || lockedChoices"
+          :disabled="!canConfirmOrRecover || lockedChoices"
+          @selection-validity="workspace.setUnitValidity"
         />
+        <p v-if="kind === 'products' && !unitReady && !unknownOutcome" role="status" class="text-muted text-sm">
+          Selecione uma unidade ativa e aguarde a validação para confirmar.
+        </p>
         <div class="flex flex-wrap gap-2">
           <UButton
             label="Pré-visualizar"
-            :disabled="!canImport || !file || lockedChoices"
+            :disabled="!canPreview || !file || lockedChoices"
             :loading="busy && !unknownOutcome"
             @click="workspace.createPreview"
           />
@@ -100,12 +110,25 @@ function rowErrors(record: number) {
             v-if="unknownOutcome"
             label="Consultar resultado"
             color="neutral"
-            :disabled="busy || !canImport"
+            :disabled="busy || !canConfirmOrRecover"
             @click="workspace.reconcile"
+          />
+          <UButton
+            v-if="recoveryToken && canConfirmOrRecover"
+            label="Recarregar pré-visualização"
+            color="neutral"
+            :disabled="busy"
+            @click="workspace.recover"
           />
         </div>
       </div>
     </UCard>
+    <UAlert
+      v-if="unknownOutcome && !preview"
+      color="warning"
+      title="A pré-visualização ainda não foi recuperada."
+      description="Consulte o resultado ou recarregue a pré-visualização. Se necessário, repita a mesma confirmação: a identificação e as escolhas originais serão mantidas."
+    />
     <UCard v-if="preview">
       <template #header>
         <p class="font-medium">

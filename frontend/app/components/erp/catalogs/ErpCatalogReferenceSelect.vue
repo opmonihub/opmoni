@@ -16,12 +16,14 @@ const props = defineProps<{
   disabled?: boolean
   optional?: boolean
 }>()
+const emit = defineEmits<{ 'selection-validity': [state: { id: number | null, valid: boolean }] }>()
 const model = defineModel<number | null>({ default: null })
 const list = useErpCatalogList<ReferenceRecord>(props.path)
 const { api } = useAccessApi()
 const context = useErpAdministrationContext()
 const selectedRecord = ref<ReferenceRecord | null>(null)
 const selectedError = ref('')
+const detailPending = ref(false)
 let detailSequence = 0
 let detailController: AbortController | null = null
 let disposed = false
@@ -43,6 +45,14 @@ const options = computed(() => {
     rows.unshift({ ...selected, label: String(selected[props.labelKey] ?? `Registro #${selected.id}`), disabled: true })
   return rows
 })
+const selectionValid = computed(() => model.value !== null
+  && displayedRecord.value?.id === model.value
+  && displayedRecord.value.status === 'active'
+  && list.canRead.value && !list.authorityBlocked.value
+  && !list.pending.value && !list.error.value && !selectedError.value && !detailPending.value)
+watch([model, selectionValid], () => {
+  emit('selection-validity', { id: model.value, valid: selectionValid.value })
+}, { immediate: true, flush: 'sync' })
 const selectedStatusLabel = computed(() => displayedRecord.value?.status === 'archived'
   ? 'Arquivado'
   : displayedRecord.value?.status && displayedRecord.value.status !== 'active'
@@ -74,6 +84,7 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
   const nextContextKey = context.key.value
   if (nextContextKey !== lastContextKey) {
     lastContextKey = nextContextKey
+    detailPending.value = false
     blockedSelectionId = model.value
     detailSequence++
     detailController?.abort()
@@ -91,6 +102,7 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
   detailController = null
   selectedError.value = ''
   selectedRecord.value = null
+  detailPending.value = false
   if (!id || selectedFromPage.value || id === blockedSelectionId || list.authorityBlocked.value || !list.canRead.value)
     return
 
@@ -98,6 +110,7 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
   const token = context.capture()
   const controller = new AbortController()
   detailController = controller
+  detailPending.value = true
   try {
     const response = await api<{ data: ReferenceRecord }>(`${props.path}/${id}`, { signal: controller.signal })
     if (!disposed && detailSequence === requestId && context.isCurrent(token) && model.value === id && !list.authorityBlocked.value && list.canRead.value)
@@ -112,8 +125,10 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
       selectedError.value = details.message
     }
   } finally {
-    if (detailSequence === requestId && detailController === controller)
+    if (detailSequence === requestId && detailController === controller) {
       detailController = null
+      detailPending.value = false
+    }
   }
 }, { immediate: true, flush: 'sync' })
 
