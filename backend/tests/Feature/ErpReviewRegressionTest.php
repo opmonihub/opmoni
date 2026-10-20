@@ -7,6 +7,7 @@ use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalProviderResult;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpPlanModule;
 use App\Models\Erp\ErpProduct;
@@ -31,6 +32,13 @@ use Tests\TestCase;
 class ErpReviewRegressionTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ?ErpContact $purchaseSupplier = null;
+
+    private function manualPurchaseSupplier(): ErpContact
+    {
+        return $this->purchaseSupplier ??= ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_supplier' => true]);
+    }
 
     private ErpCompany $company;
 
@@ -60,7 +68,7 @@ class ErpReviewRegressionTest extends TestCase
 
     private function purchase(array $line = []): int
     {
-        return $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [[...['erp_product_variant_id' => $this->variant->id, 'quantity' => '10', 'unit_cost' => '5'], ...$line]]])->assertCreated()->json('data.id');
+        return $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [[...['erp_product_variant_id' => $this->variant->id, 'quantity' => '10', 'unit_cost' => '5'], ...$line]]])->assertCreated()->json('data.id');
     }
 
     private function postedSale(): int
@@ -93,7 +101,7 @@ class ErpReviewRegressionTest extends TestCase
     public function test_foreign_variant_cannot_enter_purchase_or_adjustment(): void
     {
         $foreign = ErpProductVariant::factory()->create();
-        $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $foreign->id, 'quantity' => '1', 'unit_cost' => '5']]])->assertUnprocessable();
+        $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $foreign->id, 'quantity' => '1', 'unit_cost' => '5']]])->assertUnprocessable();
         $this->commercialPost('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $foreign->id, 'quantity_delta' => '1', 'reason' => 'Count'])->assertUnprocessable();
         $this->assertDatabaseCount('erp_stock_balances', 0);
     }

@@ -5,6 +5,7 @@ namespace Tests\Support;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
@@ -26,6 +27,8 @@ abstract class ErpCommercialTestCase extends TestCase
     protected ErpEstablishment $establishment;
 
     protected ErpProductVariant $variant;
+
+    private ?ErpContact $purchaseSupplier = null;
 
     protected function setUp(): void
     {
@@ -54,5 +57,13 @@ abstract class ErpCommercialTestCase extends TestCase
     protected function send(string $path, array $body, ?string $key = null): TestResponse
     {
         return $this->postJson('/api/v1/erp/'.$path, $body, ['Idempotency-Key' => $key ?? 'commercial-'.++$this->sequence]);
+    }
+
+    protected function manualPurchaseSupplier(): ErpContact
+    {
+        return $this->purchaseSupplier ??= ErpContact::factory()->create([
+            'erp_company_id' => $this->company->id,
+            'is_supplier' => true,
+        ]);
     }
 }

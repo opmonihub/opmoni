@@ -6,6 +6,7 @@ use App\Erp\ErpCommercialCatalog;
 use App\Erp\Stock\ErpStockLedger;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\ErpProduct;
@@ -30,6 +31,13 @@ use Tests\TestCase;
 class ErpStockLotLedgerTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ?ErpContact $purchaseSupplier = null;
+
+    private function manualPurchaseSupplier(): ErpContact
+    {
+        return $this->purchaseSupplier ??= ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_supplier' => true]);
+    }
 
     private ErpCompany $company;
 
@@ -60,7 +68,7 @@ class ErpStockLotLedgerTest extends TestCase
 
     private function receive(string $quantity, string $cost, string $factor = '1', string $currency = 'BRL'): ErpStockMovement
     {
-        $id = $this->commercialPost('/api/v1/erp/purchases', ['currency' => $currency, 'erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor]]])->assertCreated()->json('data.id');
+        $id = $this->commercialPost('/api/v1/erp/purchases', ['currency' => $currency, 'erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor]]])->assertCreated()->json('data.id');
         $this->commercialPost("/api/v1/erp/purchases/{$id}/post", [], ['Idempotency-Key' => 'receipt-'.$id])->assertOk();
 
         return ErpStockMovement::where('source_type', 'erp_purchase')->where('source_id', $id)->sole();
@@ -107,7 +115,7 @@ class ErpStockLotLedgerTest extends TestCase
         $this->assertSame('10000.0001', $movement->quantity);
         $line = DB::table('erp_purchase_lines')->sole();
         $this->assertSame('1.00000001', bcadd((string) $line->unit_conversion_factor, '0', 8));
-        $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '1', 'unit_conversion_factor' => '1.00000001']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
+        $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '1', 'unit_conversion_factor' => '1.00000001']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
         $this->assertDatabaseCount('erp_purchases', 1);
     }
 
@@ -470,7 +478,7 @@ class ErpStockLotLedgerTest extends TestCase
 
     public function test_failure_after_receipt_creation_rolls_back_every_purchase_participant_and_same_key_can_retry(): void
     {
-        $id = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '10']]])->assertCreated()->json('data.id');
+        $id = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '10']]])->assertCreated()->json('data.id');
         ErpOperationReceipt::created(function ($receipt): void {
             if ($receipt->operation === 'erp.purchases.post') {
                 abort(422, 'Injected failure after receipt persistence');
@@ -483,12 +491,16 @@ class ErpStockLotLedgerTest extends TestCase
         }
         $this->assertDatabaseHas('erp_purchases', ['id' => $id, 'status' => 'draft']);
         foreach (['erp_stock_balances', 'erp_stock_lots', 'erp_stock_movements', 'erp_obligations', 'erp_operation_receipts'] as $table) {
-            $this->assertDatabaseCount($table, 0);
+            if ($table === 'erp_operation_receipts') {
+                $this->assertSame(0, ErpOperationReceipt::where('operation', 'erp.purchases.post')->count());
+            } else {
+                $this->assertDatabaseCount($table, 0);
+            }
         }
         $this->commercialPost('/api/v1/erp/purchases/'.$id.'/post', [], ['Idempotency-Key' => 'after-receipt'])->assertOk();
         $this->assertDatabaseCount('erp_stock_lots', 1);
         $this->assertDatabaseCount('erp_obligations', 1);
-        $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $this->assertSame(1, ErpOperationReceipt::where('operation', 'erp.purchases.post')->count());
     }
 
     public function test_transfers_and_negative_adjustments_cannot_use_sale_overselling(): void

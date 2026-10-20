@@ -273,7 +273,7 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 
     public function test_stock_and_obligation_failures_rollback_real_lots_before_retry(): void
     {
-        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
+        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
         $this->send('purchases/'.$purchase.'/post', [])->assertOk();
         $sale = $this->send('sales', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1']]])->assertCreated()->json('data.id');
         $original = DB::table('erp_stock_lots')->get()->toJson();
@@ -332,7 +332,7 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 
     public function test_saved_stock_unit_and_price_semantics_survive_structural_catalog_changes_before_conversion_and_post(): void
     {
-        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '10', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
+        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '10', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
         $this->send('purchases/'.$purchase.'/post', [])->assertOk();
         $this->variant->update(['sale_price' => '4']);
         $unit = ErpUnit::factory()->create(['erp_company_id' => $this->company->id, 'base_unit_id' => $this->variant->product->erp_unit_id, 'conversion_factor' => '2.50000000', 'allow_decimal' => true]);

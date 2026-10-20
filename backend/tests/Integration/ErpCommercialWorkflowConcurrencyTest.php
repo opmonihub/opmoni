@@ -3,8 +3,10 @@
 namespace Tests\Integration;
 
 use App\Erp\ErpCommercialCatalog;
+use App\Erp\Fiscal\ErpFiscalPayloadBuilder;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
@@ -52,7 +54,7 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
         }
         $this->assertStringStartsWith('18.', DB::selectOne('show server_version')->server_version);
         $this->assertStringStartsWith('8.', Redis::connection('cache')->info('server')['redis_version']);
-        foreach (['accounts', 'account_memberships', 'erp_plans', 'erp_plan_modules', 'erp_subscriptions', 'erp_office_delegations', 'users', 'erp_companies', 'erp_company_memberships', 'erp_company_membership_establishments', 'erp_establishments', 'erp_contacts', 'erp_customer_groups', 'erp_price_groups', 'erp_units', 'erp_products', 'erp_product_variants', 'erp_tax_rates', 'erp_operation_natures', 'erp_discount_rules', 'erp_quotes', 'erp_quote_lines', 'erp_orders', 'erp_order_lines', 'erp_sales', 'erp_sale_lines', 'erp_sale_returns', 'erp_sale_return_lines', 'erp_purchases', 'erp_purchase_lines', 'erp_purchase_returns', 'erp_purchase_return_lines', 'erp_commercial_number_sequences', 'erp_catalog_imports', 'erp_stock_adjustments', 'erp_stock_transfers', 'erp_stock_balances', 'erp_stock_movements', 'erp_stock_lots', 'erp_stock_allocations', 'erp_stock_cost_settlements', 'erp_obligations', 'erp_payments', 'erp_payment_allocations', 'erp_financial_accounts', 'erp_cash_registers', 'erp_cash_sessions', 'erp_cash_movements', 'erp_operation_receipts'] as $table) {
+        foreach (['accounts', 'account_memberships', 'erp_plans', 'erp_plan_modules', 'erp_subscriptions', 'erp_office_delegations', 'users', 'erp_companies', 'erp_company_memberships', 'erp_company_membership_establishments', 'erp_establishments', 'erp_contacts', 'erp_customer_groups', 'erp_price_groups', 'erp_units', 'erp_products', 'erp_product_variants', 'erp_tax_rates', 'erp_operation_natures', 'erp_discount_rules', 'erp_quotes', 'erp_quote_lines', 'erp_orders', 'erp_order_lines', 'erp_sales', 'erp_sale_lines', 'erp_sale_returns', 'erp_sale_return_lines', 'erp_purchases', 'erp_purchase_lines', 'erp_purchase_imports', 'erp_purchase_returns', 'erp_purchase_return_lines', 'erp_commercial_number_sequences', 'erp_catalog_imports', 'erp_stock_adjustments', 'erp_stock_transfers', 'erp_stock_balances', 'erp_stock_movements', 'erp_stock_lots', 'erp_stock_allocations', 'erp_stock_cost_settlements', 'erp_obligations', 'erp_payments', 'erp_payment_allocations', 'erp_financial_accounts', 'erp_cash_registers', 'erp_cash_sessions', 'erp_cash_movements', 'erp_operation_receipts'] as $table) {
             $column = $table === 'erp_company_membership_establishments' ? 'erp_company_membership_id' : 'id';
             $ids = DB::table($table)->pluck($column)->all();
             $rows = DB::table($table)->whereIn($column, $ids)->orderBy($column);
@@ -203,7 +205,8 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
 
     public function test_sales_compete_for_the_final_stock_without_double_issue(): void
     {
-        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '7']]]);
+        $supplier = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_supplier' => true]);
+        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $supplier->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '7']]]);
         $this->send('purchases/'.$purchase['id'].'/post', [], 200);
         $body = ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1']]];
         $a = $this->send('sales', $body);
@@ -287,5 +290,33 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
         $this->assertSame('999999999999999900.0000', $saved->unit_price);
         $this->assertSame('0.0100', $saved->base_quantity);
         fwrite(STDERR, json_encode(['derived_width_invalid_status' => $result['status'], 'errors' => $result['body']['errors'], 'boundary_source_id' => $valid['id'], 'boundary_unit_price' => $saved->unit_price, 'boundary_total' => $valid['total_amount']], JSON_THROW_ON_ERROR)."\n");
+    }
+
+    public function test_independent_xml_confirm_race_creates_one_draft_for_a_company_access_key(): void
+    {
+        $this->establishment->update(['cnpj' => '30288513000100']);
+        $supplier = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'tax_id' => '11222333000181', 'is_supplier' => true]);
+        $key = app(ErpFiscalPayloadBuilder::class)->buildAccessKey(['uf' => 'SP', 'cnpj' => $supplier->tax_id, 'model' => '55', 'series' => 1, 'number' => 123, 'cnf' => '87654321', 'issued_at' => '2026-10-17T10:00:00-03:00']);
+        $identification = '<cUF>'.substr($key, 0, 2).'</cUF><mod>'.substr($key, 20, 2).'</mod><serie>'.(int) substr($key, 22, 3).'</serie><nNF>'.(int) substr($key, 25, 9).'</nNF><tpEmis>'.substr($key, 34, 1).'</tpEmis><cNF>'.substr($key, 35, 8).'</cNF><cDV>'.substr($key, 43, 1).'</cDV>';
+        $xml = '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe"><NFe><infNFe Id="NFe'.$key.'"><ide>'.$identification.'</ide><emit><CNPJ>'.$supplier->tax_id.'</CNPJ><xNome>Race supplier</xNome></emit><dest><CNPJ>30288513000100</CNPJ><xNome>Race destination</xNome></dest><det nItem="1"><prod><cProd>RACE-1</cProd><xProd>Race goods</xProd><uCom>UN</uCom><qCom>3</qCom><vUnCom>0.3333333333</vUnCom><vProd>1.00</vProd></prod></det><total><ICMSTot><vProd>1.00</vProd><vNF>1.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>';
+        $payload = ['erp_establishment_id' => $this->establishment->id, 'xml' => $xml];
+        $firstPreviewResponse = $this->response($this->worker($this->input('purchases/xml-preview', $payload, $this->first)));
+        $secondPreviewResponse = $this->response($this->worker($this->input('purchases/xml-preview', $payload, $this->second)));
+        $this->assertSame(200, $firstPreviewResponse['status'], json_encode($firstPreviewResponse['body'], JSON_THROW_ON_ERROR));
+        $this->assertSame(200, $secondPreviewResponse['status'], json_encode($secondPreviewResponse['body'], JSON_THROW_ON_ERROR));
+        $firstPreview = $firstPreviewResponse['body']['data'];
+        $secondPreview = $secondPreviewResponse['body']['data'];
+        $items = [['line' => 1, 'erp_product_variant_id' => $this->variant->id, 'unit_conversion_factor' => '1.00000000']];
+        $first = $this->input('purchases/xml-confirm', ['token' => $firstPreview['token'], 'erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $supplier->id, 'items' => $items], $this->first, 'purchase-xml-race-a');
+        $second = $this->input('purchases/xml-confirm', ['token' => $secondPreview['token'], 'erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $supplier->id, 'items' => $items], $this->second, 'purchase-xml-race-b');
+        $results = $this->race($first, $second);
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        $this->assertSame([201, 409], $statuses, json_encode($results, JSON_THROW_ON_ERROR));
+        $this->assertSame(1, DB::table('erp_purchases')->where('erp_company_id', $this->company->id)->where('source_access_key', $key)->count());
+        $this->assertSame(1, DB::table('erp_purchase_imports')->where('erp_company_id', $this->company->id)->whereNotNull('completed_at')->count());
+        $this->assertSame(1, DB::table('erp_purchase_lines')->join('erp_purchases', 'erp_purchases.id', '=', 'erp_purchase_lines.erp_purchase_id')->where('erp_purchases.erp_company_id', $this->company->id)->count());
+        $this->assertSame(0, DB::table('erp_stock_movements')->where('erp_company_id', $this->company->id)->count());
+        $this->assertSame(0, DB::table('erp_obligations')->where('erp_company_id', $this->company->id)->count());
     }
 }

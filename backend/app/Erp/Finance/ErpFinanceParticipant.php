@@ -74,7 +74,7 @@ final class ErpFinanceParticipant
             return $existing;
         }
 
-        return ErpObligation::create($identity + ['erp_establishment_id' => $establishmentId, 'erp_contact_id' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->erp_contact_id, 'party_snapshot' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->party_snapshot, 'direction' => 'payable', 'category' => 'purchase', 'amount' => ErpDecimal::parse($amount), 'open_amount' => ErpDecimal::parse($amount), 'currency' => $currency, 'status' => 'open', 'posted_by_user_id' => $postedByUserId, 'posted_at' => now()]);
+        return ErpObligation::create($identity + ['erp_establishment_id' => $establishmentId, 'erp_contact_id' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->erp_contact_id, 'party_snapshot' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->supplier_snapshot, 'direction' => 'payable', 'category' => 'purchase', 'amount' => ErpDecimal::parse($amount), 'open_amount' => ErpDecimal::parse($amount), 'currency' => $currency, 'status' => 'open', 'posted_by_user_id' => $postedByUserId, 'posted_at' => now()]);
     }
 
     /** Joins the sale posting transaction; lock the cash session before finance rows. */

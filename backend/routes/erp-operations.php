@@ -56,6 +56,9 @@ Route::post('/cash-sessions/{cashSession}/movements', [ErpCashSessionController:
 Route::get('/purchases', [ErpPurchaseController::class, 'index'])->name('erp.purchases.index');
 Route::post('/purchases', [ErpPurchaseController::class, 'store'])->name('erp.purchases.store');
 Route::post('/purchases/xml-preview', [ErpPurchaseXmlPreviewController::class, 'store'])->name('erp.purchases.xml-preview');
+Route::post('/purchases/xml-preview/read', [ErpPurchaseXmlPreviewController::class, 'read'])->name('erp.purchases.xml-preview.read');
+Route::post('/purchases/xml-confirm', [ErpPurchaseXmlPreviewController::class, 'confirm'])->name('erp.purchases.xml-confirm');
+Route::patch('/purchases/{purchase}', [ErpPurchaseController::class, 'update'])->whereNumber('purchase')->name('erp.purchases.update');
 Route::get('/purchases/{purchase}', [ErpPurchaseController::class, 'show'])->whereNumber('purchase')->name('erp.purchases.show');
 Route::post('/purchases/{purchase}/post', [ErpPurchaseController::class, 'post'])->whereNumber('purchase')->name('erp.purchases.post');
 

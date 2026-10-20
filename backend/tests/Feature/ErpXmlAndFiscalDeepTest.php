@@ -144,15 +144,15 @@ class ErpXmlAndFiscalDeepTest extends TestCase
 
     private function sampleNfeXml(string $chave, string $emitterCnpj, string $destCnpj): string
     {
+        $identification = '<cUF>'.substr($chave, 0, 2).'</cUF><natOp>Compra</natOp><mod>'.substr($chave, 20, 2).'</mod><serie>'.(int) substr($chave, 22, 3).'</serie><nNF>'.(int) substr($chave, 25, 9).'</nNF><tpEmis>'.substr($chave, 34, 1).'</tpEmis><cNF>'.substr($chave, 35, 8).'</cNF><cDV>'.substr($chave, 43, 1).'</cDV>';
+
         return <<<XML
         <?xml version="1.0" encoding="UTF-8"?>
         <nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
           <NFe>
             <infNFe versao="4.00" Id="NFe{$chave}">
               <ide>
-                <nNF>123</nNF>
-                <serie>1</serie>
-                <mod>55</mod>
+                {$identification}
               </ide>
               <emit>
                 <CNPJ>{$emitterCnpj}</CNPJ>
@@ -160,6 +160,7 @@ class ErpXmlAndFiscalDeepTest extends TestCase
               </emit>
               <dest>
                 <CNPJ>{$destCnpj}</CNPJ>
+                <xNome>Office destination</xNome>
               </dest>
               <det nItem="1">
                 <prod>

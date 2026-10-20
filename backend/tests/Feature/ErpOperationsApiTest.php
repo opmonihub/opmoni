@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
@@ -204,6 +205,7 @@ class ErpOperationsApiTest extends TestCase
         $purchaseResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->commercialPost('/api/v1/erp/purchases', [
                 'erp_establishment_id' => $ctx['establishment']->id,
+                'erp_contact_id' => ErpContact::factory()->create(['erp_company_id' => $ctx['company']->id, 'is_supplier' => true])->id,
                 'document_no' => 'NF-100',
                 'lines' => [
                     [
@@ -248,6 +250,7 @@ class ErpOperationsApiTest extends TestCase
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->commercialPost('/api/v1/erp/purchases', [
                 'erp_establishment_id' => $ctx['establishment']->id,
+                'erp_contact_id' => ErpContact::factory()->create(['erp_company_id' => $ctx['company']->id, 'is_supplier' => true])->id,
                 'lines' => [
                     [
                         'erp_product_variant_id' => $variant->id,

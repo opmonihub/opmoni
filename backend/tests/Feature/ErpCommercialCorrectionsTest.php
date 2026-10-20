@@ -177,7 +177,7 @@ class ErpCommercialCorrectionsTest extends ErpCommercialTestCase
 
     public function test_f1_supplier_legacy_projection_and_proved_partial_full_zero_controls(): void
     {
-        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
+        $purchase = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '7']]])->assertCreated()->json('data.id');
         $this->send('purchases/'.$purchase.'/post', [])->assertOk();
         $legacy = ErpPurchaseReturn::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'erp_purchase_id' => $purchase, 'status' => 'posted', 'total_amount' => '1']);
         $before = $legacy->fresh()->getAttributes();

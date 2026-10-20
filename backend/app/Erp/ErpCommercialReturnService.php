@@ -123,7 +123,8 @@ final class ErpCommercialReturnService
             }
         }
         $class = self::modelClass($kind);
-        $model = $class::create($totals + [$sourceField => $source->id, 'erp_company_id' => $source->erp_company_id, 'erp_establishment_id' => $source->erp_establishment_id, 'currency' => $source->currency, 'status' => 'draft', 'reason' => $data['reason'], 'commercial_snapshot' => ['version' => ErpCommercialDraftService::VERSION, 'party' => $source->party_snapshot, 'source_total' => $source->total_amount]]);
+        $partySnapshot = $source instanceof ErpPurchase ? $source->supplier_snapshot : $source->party_snapshot;
+        $model = $class::create($totals + [$sourceField => $source->id, 'erp_company_id' => $source->erp_company_id, 'erp_establishment_id' => $source->erp_establishment_id, 'currency' => $source->currency, 'status' => 'draft', 'reason' => $data['reason'], 'commercial_snapshot' => ['version' => ErpCommercialDraftService::VERSION, 'party' => $partySnapshot, 'source_total' => $source->total_amount]]);
         foreach ($lines as $line) {
             $model->lines()->create($line);
         }

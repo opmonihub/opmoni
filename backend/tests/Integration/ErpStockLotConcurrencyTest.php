@@ -5,6 +5,7 @@ namespace Tests\Integration;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
@@ -224,7 +225,8 @@ class ErpStockLotConcurrencyTest extends TestCase
 
     private function purchase(array $session, string $quantity, string $cost, ?int $establishment = null, bool $post = true): int
     {
-        $result = $this->request($this->postInput($session, 'purchases', ['erp_establishment_id' => $establishment ?? $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost]]], 'draft-'.bin2hex(random_bytes(6))));
+        $supplier = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_supplier' => true]);
+        $result = $this->request($this->postInput($session, 'purchases', ['erp_establishment_id' => $establishment ?? $this->establishment->id, 'erp_contact_id' => $supplier->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost]]], 'draft-'.bin2hex(random_bytes(6))));
         $this->assertSame(201, $result['status'], json_encode($result['body']));
         $id = $result['body']['data']['id'];
         if ($post) {

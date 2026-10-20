@@ -29,6 +29,13 @@ class ErpFinanceReversalTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?ErpContact $purchaseSupplier = null;
+
+    private function manualPurchaseSupplier(): ErpContact
+    {
+        return $this->purchaseSupplier ??= ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_supplier' => true]);
+    }
+
     private ErpCompany $company;
 
     private ErpEstablishment $establishment;
@@ -160,7 +167,7 @@ class ErpFinanceReversalTest extends TestCase
     public function test_paid_and_partly_paid_full_sale_return_consumes_positive_credit_preserving_original(): void
     {
         foreach (['20', '10'] as $paid) {
-            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
+            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
             $this->send("purchases/{$purchase}/post", [])->assertOk();
             $sale = $this->commercialPost('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'SALE-'.$paid, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
             $this->send("sales/{$sale}/post", [])->assertOk();
@@ -305,7 +312,7 @@ class ErpFinanceReversalTest extends TestCase
     public function test_paid_purchase_return_and_credit_failure_keep_original_money_and_rollback_stock(): void
     {
         foreach (['10', '5'] as $paid) {
-            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
+            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
             $this->send("purchases/{$purchase}/post", [])->assertOk();
             $obligation = ErpObligation::where('source_type', 'erp_purchase')->where('source_id', $purchase)->sole();
             $payment = $this->payment($paid, 'out');

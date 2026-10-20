@@ -28,7 +28,7 @@ foreach (['default' => '13', 'cache' => '14', 'sessions' => '15'] as $connection
 $input = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
 $path = $input['path'] ?? '';
 $method = $input['method'] ?? 'GET';
-if (! is_string($path) || ! preg_match('#^/api/v1/(csrf|login|erp/(sales|quotes|orders|sale-returns|purchase-returns|purchases|cash-registers|cash-sessions)(/[1-9][0-9]*)?(/(post|convert|close))?)$#D', $path)
+if (! is_string($path) || ! preg_match('#^/api/v1/(csrf|login|erp/(sales|quotes|orders|sale-returns|purchase-returns|purchases|cash-registers|cash-sessions)(/([1-9][0-9]*|xml-preview|xml-confirm))?(/(post|convert|close))?)$#D', $path)
     || ! in_array($method, ['GET', 'POST'], true)
     || ! is_array($input['body'] ?? []) || ! is_array($input['headers'] ?? []) || ! is_array($input['cookies'] ?? [])) {
     throw new RuntimeException('Unsupported commercial worker request.');

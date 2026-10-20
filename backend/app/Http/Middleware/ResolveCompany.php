@@ -139,6 +139,7 @@ class ResolveCompany
     {
         return match ((string) $request->route()?->getName()) {
             'erp.payments.allocation-candidates' => 'erp.payments.allocate',
+            'erp.purchases.xml-preview.read' => 'erp.purchases.xml-confirm',
             'erp.catalog.import.products.read' => 'erp.catalog.import.products.confirm',
             'erp.catalog.import.contacts.read' => 'erp.catalog.import.contacts.confirm',
             default => (string) $request->route()?->getName(),

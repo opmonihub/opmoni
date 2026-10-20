@@ -53,7 +53,7 @@ class ErpPartialReturnTest extends ErpCommercialTestCase
 
     private function purchase(string $quantity, string $cost): array
     {
-        $id = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost]]])->assertCreated()->json('data.id');
+        $id = $this->send('purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost]]])->assertCreated()->json('data.id');
         $this->send('purchases/'.$id.'/post', [])->assertOk();
 
         return [$id, ErpPurchase::findOrFail($id)->lines()->firstOrFail()->id];
