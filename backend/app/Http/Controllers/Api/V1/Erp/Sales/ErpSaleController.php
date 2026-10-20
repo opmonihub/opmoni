@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api\V1\Erp\Sales;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\ErpEstablishmentAccess;
+use App\Erp\ErpOperationJournal;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Sales\ErpCommercialDocumentStateMachine;
 use App\Erp\Sales\ErpSaleTotalsCalculator;
+use App\Erp\Stock\ErpStockDecimal;
+use App\Erp\Stock\ErpStockOperation;
 use App\Erp\Stock\ErpStockParticipant;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Sales\ErpSale;
@@ -57,6 +60,7 @@ class ErpSaleController extends ErpOperationsController
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.erp_product_variant_id' => ['sometimes', 'nullable', 'integer'],
             'lines.*.quantity' => ['required'],
+            'lines.*.unit_conversion_factor' => ['sometimes'],
             'lines.*.unit_price' => ['required'],
             'discount' => ['sometimes', 'nullable', 'array'],
             'tax_rate_percent' => ['sometimes', 'nullable'],
@@ -67,6 +71,8 @@ class ErpSaleController extends ErpOperationsController
         foreach ($data['lines'] as $index => $line) {
             $this->scope->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id'] ?? null, "lines.{$index}.erp_product_variant_id");
             abort_unless(ErpDecimal::isPositive(ErpDecimal::parse($line['quantity'])), 422, 'Quantidade deve ser positiva');
+            $factor = ErpStockDecimal::factor($line['unit_conversion_factor'] ?? '1', 'factor');
+            ErpStockDecimal::base(ErpDecimal::parse($line['quantity']), $factor, "lines.{$index}.unit_conversion_factor");
             $price = ErpDecimal::parse($line['unit_cost'] ?? $line['unit_price']);
             abort_if(ErpDecimal::compare($price, ErpDecimal::zero()) === -1, 422, 'Preço não pode ser negativo');
         }
@@ -101,6 +107,7 @@ class ErpSaleController extends ErpOperationsController
                     'erp_sale_id' => $sale->id,
                     'erp_product_variant_id' => $line['erp_product_variant_id'] ?? null,
                     'quantity' => $quantity,
+                    'unit_conversion_factor' => ErpStockDecimal::factor($line['unit_conversion_factor'] ?? '1', 'factor'),
                     'unit_price' => $unitPrice,
                     'discount_amount' => ErpDecimal::zero(),
                     'tax_amount' => ErpDecimal::zero(),
@@ -115,6 +122,11 @@ class ErpSaleController extends ErpOperationsController
     }
 
     public function post(Request $request, int $sale): JsonResponse
+    {
+        return app(ErpOperationJournal::class)->executeStock($request, ErpStockOperation::SALE, $sale, fn (string $participantKey): JsonResponse => $this->postEffect($request, $sale, $participantKey));
+    }
+
+    private function postEffect(Request $request, int $sale, string $participantKey): JsonResponse
     {
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
@@ -134,9 +146,7 @@ class ErpSaleController extends ErpOperationsController
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
 
-        $operationKey = $request->validate([
-            'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
-        ])['source_operation_key'] ?? ('sale-post-'.$model->id);
+        $operationKey = $participantKey;
 
         try {
             DB::transaction(function () use ($model, $companyId, $userId, $nextStatus, $operationKey): void {
@@ -151,8 +161,10 @@ class ErpSaleController extends ErpOperationsController
                         'line_id' => $line->id,
                         'erp_product_variant_id' => $line->erp_product_variant_id,
                         'quantity' => $this->decimalString($line->quantity),
+                        'unit_conversion_factor' => (string) $line->unit_conversion_factor,
                     ])->all(),
                     $userId,
+                    $model->currency,
                 );
 
                 $this->financeParticipant->postReceivableForSale(
@@ -199,6 +211,7 @@ class ErpSaleController extends ErpOperationsController
                     'id' => $line->id,
                     'erp_product_variant_id' => $line->erp_product_variant_id,
                     'quantity' => $this->decimalString($line->quantity),
+                    'unit_conversion_factor' => (string) $line->unit_conversion_factor,
                     'unit_price' => $this->decimalString($line->unit_price),
                     'line_total' => $this->decimalString($line->line_total),
                 ])->all()

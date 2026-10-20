@@ -39,7 +39,7 @@ class ErpPostingParticipantContractTest extends TestCase
         $this->assertSame('erp_sale', $fixture['source_type']);
         $this->assertSame('out', $fixture['movement_direction']);
         $this->assertSame(
-            ['erp_sale', 'erp_stock_balances_sorted', 'erp_finance_obligations'],
+            ['erp_company', 'erp_sale', 'erp_stock_balances_sorted', 'erp_stock_lots_sorted', 'erp_finance_obligations'],
             $fixture['lock_order'],
         );
     }

@@ -58,8 +58,14 @@ Route::post('/purchase-returns/{purchaseReturn}/post', [ErpPurchaseReturnControl
 
 Route::prefix('stock')->name('erp.stock.')->group(function (): void {
     Route::get('/balances', [ErpStockController::class, 'balances'])->name('balances.index');
+    Route::post('/movements/{movement}/reverse', [ErpStockController::class, 'reverseMovement'])->whereNumber('movement')->name('movements.reverse');
+    Route::get('/movements/{movement}', [ErpStockController::class, 'showMovement'])->whereNumber('movement')->name('movements.show');
     Route::get('/movements', [ErpStockController::class, 'movements'])->name('movements.index');
+    Route::get('/adjustments/{adjustment}', [ErpStockController::class, 'showAdjustment'])->whereNumber('adjustment')->name('adjustments.show');
     Route::get('/adjustments', [ErpStockController::class, 'adjustments'])->name('adjustments.index');
+    Route::get('/lots', [ErpStockController::class, 'lots'])->name('lots.index');
+    Route::get('/transfers/{transfer}', [ErpStockController::class, 'showTransfer'])->whereNumber('transfer')->name('transfers.show');
+    Route::post('/transfers/{transfer}/reverse', [ErpStockController::class, 'reverseTransfer'])->whereNumber('transfer')->name('transfers.reverse');
     Route::get('/transfers', [ErpStockController::class, 'transfers'])->name('transfers.index');
     Route::post('/adjustments', [ErpStockController::class, 'storeAdjustment'])->name('adjustments.store');
     Route::post('/transfers', [ErpStockController::class, 'storeTransfer'])->name('transfers.store');

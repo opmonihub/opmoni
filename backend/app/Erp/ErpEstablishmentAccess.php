@@ -208,6 +208,7 @@ class ErpEstablishmentAccess
             ErpEstablishmentResource::Establishment => 'erp_establishments.id',
             ErpEstablishmentResource::StockBalance => 'erp_stock_balances.erp_establishment_id',
             ErpEstablishmentResource::StockMovement => 'erp_stock_movements.erp_establishment_id',
+            ErpEstablishmentResource::StockLot => 'erp_stock_lots.erp_establishment_id',
             ErpEstablishmentResource::StockAdjustment => 'erp_stock_adjustments.erp_establishment_id',
             ErpEstablishmentResource::Purchase => 'erp_purchases.erp_establishment_id',
             ErpEstablishmentResource::PurchaseReturn => 'erp_purchase_returns.erp_establishment_id',

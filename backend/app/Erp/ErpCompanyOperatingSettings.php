@@ -13,7 +13,7 @@ final class ErpCompanyOperatingSettings
     public const SCALAR_KEYS = [
         'start_date', 'currency_id', 'tax_label_1', 'tax_number_1', 'tax_label_2', 'tax_number_2',
         'default_profit_percent', 'default_sales_tax', 'default_sales_discount', 'sell_price_tax', 'sku_prefix',
-        'time_zone', 'fy_start_month', 'accounting_method', 'transaction_edit_days', 'sales_cmsn_agnt',
+        'stock_overselling_enabled', 'time_zone', 'fy_start_month', 'accounting_method', 'transaction_edit_days', 'sales_cmsn_agnt',
         'item_addition_method', 'currency_symbol_placement', 'on_product_expiry', 'stop_selling_before',
         'default_unit', 'expiry_type', 'date_format', 'time_format', 'theme_color', 'rp_name', 'amount_for_unit_rp',
         'min_order_total_for_rp', 'max_rp_per_order', 'redeem_amount_per_unit_rp', 'min_order_total_for_redeem',
@@ -44,6 +44,7 @@ final class ErpCompanyOperatingSettings
                 'time_zone' => 'America/Sao_Paulo',
                 'fy_start_month' => 1,
                 'accounting_method' => 'fifo',
+                'stock_overselling_enabled' => false,
                 'transaction_edit_days' => 30,
                 'date_format' => 'd/m/Y',
                 'time_format' => 12,

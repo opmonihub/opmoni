@@ -109,11 +109,12 @@ class ResolveCompany
                 } else {
                     $context->assertPermission($operationLookup ? $request->input('operation') : $this->effectiveAction($request), $effectiveWrite);
                 }
+                $action = $operationLookup ? $request->input('operation') : (string) $request->route()?->getName();
                 $module = match (true) {
-                    $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
-                    $request->routeIs('erp.sales.*', 'erp.sale-returns.*', 'erp.quotes.*', 'erp.orders.*') => 'add_sale',
-                    $request->routeIs('erp.stock.transfers.*') => 'stock_transfers',
-                    $request->routeIs('erp.stock.adjustments.*') => 'stock_adjustment',
+                    str_starts_with($action, 'erp.purchases.') || str_starts_with($action, 'erp.purchase-returns.') => 'purchases',
+                    str_starts_with($action, 'erp.sales.') || str_starts_with($action, 'erp.sale-returns.') || str_starts_with($action, 'erp.quotes.') || str_starts_with($action, 'erp.orders.') => 'add_sale',
+                    str_starts_with($action, 'erp.stock.transfers.') => 'stock_transfers',
+                    str_starts_with($action, 'erp.stock.adjustments.') || $action === 'erp.stock.movements.reverse' => 'stock_adjustment',
                     default => null,
                 };
                 $module ??= $this->fiscalModule($request, $companyId);

@@ -4,11 +4,14 @@ namespace App\Erp;
 
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpPaymentAllocationOperation;
+use App\Erp\Stock\ErpStockOperation;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Support\AccessSession;
 use App\Support\CurrentCompany;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,7 +20,7 @@ use InvalidArgumentException;
 
 final class ErpOperationJournal
 {
-    public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports) {}
+    public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports, private ErpStockOperation $stock) {}
 
     public function key(Request $request, bool $required = false): ?string
     {
@@ -104,7 +107,7 @@ final class ErpOperationJournal
 
     public static function operations(): array
     {
-        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS];
+        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ...ErpStockOperation::names()];
     }
 
     public function executeImport(Request $request, string $operation): array
@@ -139,6 +142,41 @@ final class ErpOperationJournal
         });
     }
 
+    /** @param Closure(string):JsonResponse $post */
+    public function executeStock(Request $request, string $operation, ?int $sourceId, Closure $post): JsonResponse
+    {
+        abort_unless(DB::transactionLevel() > 0 && in_array($operation, ErpStockOperation::names(), true), 500);
+
+        return DB::transaction(function () use ($request, $operation, $sourceId, $post): JsonResponse {
+            $key = $this->key($request) ?? ($sourceId === null ? 'stock-'.Str::uuid() : 'source-'.$operation.'-'.$sourceId);
+            $payload = $this->stock->canonical($request, $operation, $sourceId);
+            $this->stock->assertAuthorized($request, $operation, $payload);
+            AccessSession::assertOwnership($request);
+            $hash = hash('sha256', 'v1:'.$this->canonicalJson($payload));
+            $receipt = $this->receipts($request, $key, $operation)->lockForUpdate()->first();
+            if ($receipt) {
+                $this->stock->assertAuthorized($request, $operation, $receipt->resource_refs);
+                abort_unless($receipt->canonical_version === 'v1' && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                AccessSession::assertOwnership($request);
+
+                return response()->json($receipt->response_body, $receipt->response_status);
+            }
+            $this->stock->assertNoLegacy($request, $operation, $payload, $key);
+            $participantKey = 'op1:'.hash('sha256', $this->canonicalJson([CurrentCompany::fromRequest($request)->company->id, $request->user()->id, $operation, hash('sha256', $key)]));
+            $response = $post($participantKey);
+            $body = $response->getData(true);
+            abort_if(strlen($this->canonicalJson($body)) > 16384, 422, 'Resultado de operação inválido');
+            ErpOperationReceipt::query()->create([
+                'erp_company_id' => CurrentCompany::fromRequest($request)->company->id, 'actor_user_id' => $request->user()->id,
+                'operation' => $operation, 'key_digest' => hash('sha256', $key), 'canonical_version' => 'v1', 'payload_hash' => $hash,
+                'response_status' => $response->getStatusCode(), 'response_body' => $body, 'resource_refs' => ['resource_id' => $body['data']['id']], 'recorded_at' => now(),
+            ]);
+            AccessSession::assertOwnership($request);
+
+            return $response;
+        });
+    }
+
     public function lookup(Request $request): array
     {
         $key = $this->key($request, true);
@@ -148,6 +186,8 @@ final class ErpOperationJournal
         if ($receipt) {
             if ($operation === ErpPaymentAllocationOperation::NAME) {
                 $this->allocation->assertAuthorized($request, $receipt->resource_refs);
+            } elseif (in_array($operation, ErpStockOperation::names(), true)) {
+                $this->stock->assertAuthorized($request, $operation, $receipt->resource_refs);
             } else {
                 $this->imports->assertAuthorized($request, $operation, $receipt->resource_refs);
             }

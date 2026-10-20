@@ -212,12 +212,12 @@ class ErpReviewRegressionTest extends TestCase
         $this->assertSame('10.0000', $balance->average_cost);
     }
 
-    public function test_unsupported_lifo_post_is_explicitly_refused(): void
+    public function test_lifo_company_posts_real_receipt_layers(): void
     {
         $this->company->update(['operating_settings' => ['accounting_method' => 'lifo']]);
         $purchase = $this->purchase();
-        $this->postJson("/api/v1/erp/purchases/{$purchase}/post")->assertUnprocessable();
-        $this->assertDatabaseCount('erp_stock_movements', 0);
+        $this->postJson("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
+        $this->assertDatabaseCount('erp_stock_lots', 1);
     }
 
     public function test_fiscal_report_counts_drafts_created_in_period(): void
@@ -257,15 +257,16 @@ class ErpReviewRegressionTest extends TestCase
         $this->getJson('/api/v1/erp/stock/transfers')->assertOk()->assertJsonPath('meta.total', 0);
     }
 
-    public function test_mixed_receipt_costs_fail_without_mutating_existing_balance(): void
+    public function test_mixed_receipt_costs_preserve_separate_layers(): void
     {
         $first = $this->purchase();
         $this->postJson("/api/v1/erp/purchases/{$first}/post")->assertOk();
         $second = $this->purchase(['unit_cost' => '10']);
-        $this->postJson("/api/v1/erp/purchases/{$second}/post")->assertUnprocessable();
-        $this->assertSame('10.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
-        $this->assertSame('5.0000', ErpStockBalance::query()->firstOrFail()->average_cost);
-        $this->assertDatabaseCount('erp_obligations', 1);
+        $this->postJson("/api/v1/erp/purchases/{$second}/post")->assertOk();
+        $this->assertSame('20.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
+        $this->assertSame('7.5000', ErpStockBalance::query()->firstOrFail()->average_cost);
+        $this->assertDatabaseCount('erp_stock_lots', 2);
+        $this->assertDatabaseCount('erp_obligations', 2);
     }
 
     public function test_failed_purchase_finance_rolls_back_stock_and_posted_state(): void
@@ -337,7 +338,7 @@ class ErpReviewRegressionTest extends TestCase
         $this->postJson("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
         $payload = ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '-1', 'reason' => 'Count', 'source_operation_key' => 'count-operation'];
         $id = $this->postJson('/api/v1/erp/stock/adjustments', $payload)->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/stock/adjustments', $payload)->assertOk()->assertJsonPath('data.id', $id);
+        $this->postJson('/api/v1/erp/stock/adjustments', $payload)->assertStatus(201)->assertJsonPath('data.id', $id);
         $this->assertSame('9.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
     }
 
@@ -364,11 +365,11 @@ class ErpReviewRegressionTest extends TestCase
         $this->postJson("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
         $adjustment = ['erp_establishment_id' => (string) $this->establishment->id, 'erp_product_variant_id' => (string) $this->variant->id, 'quantity_delta' => '-1', 'reason' => 'Count', 'source_operation_key' => 'string-adjustment'];
         $id = $this->postJson('/api/v1/erp/stock/adjustments', $adjustment)->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/stock/adjustments', $adjustment)->assertOk()->assertJsonPath('data.id', $id);
+        $this->postJson('/api/v1/erp/stock/adjustments', $adjustment)->assertStatus(201)->assertJsonPath('data.id', $id);
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $transfer = ['from_establishment_id' => (string) $this->establishment->id, 'to_establishment_id' => (string) $destination->id, 'erp_product_variant_id' => (string) $this->variant->id, 'quantity' => '1', 'source_operation_key' => 'string-transfer'];
         $id = $this->postJson('/api/v1/erp/stock/transfers', $transfer)->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/stock/transfers', $transfer)->assertOk()->assertJsonPath('data.id', $id);
+        $this->postJson('/api/v1/erp/stock/transfers', $transfer)->assertStatus(201)->assertJsonPath('data.id', $id);
     }
 
     public function test_purchase_return_cannot_remove_new_stock_with_a_different_cost(): void

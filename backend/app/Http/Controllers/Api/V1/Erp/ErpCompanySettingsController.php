@@ -37,6 +37,8 @@ class ErpCompanySettingsController extends Controller
         $context->assertCanMutate();
 
         $request->validate([
+            'accounting_method' => ['sometimes', 'in:fifo,lifo'],
+            'stock_overselling_enabled' => ['sometimes', 'boolean'],
             'name' => ['sometimes', 'string', 'max:255'],
             'cnpj' => ['sometimes', 'string', 'max:20'],
             'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:120'],
@@ -46,6 +48,9 @@ class ErpCompanySettingsController extends Controller
         ]);
 
         $persist = $this->settings->extractPersistable($request->all());
+        if ($request->exists('stock_overselling_enabled')) {
+            $persist['operating_settings']['stock_overselling_enabled'] = $request->boolean('stock_overselling_enabled');
+        }
 
         if (isset($persist['cnpj'])) {
             $cnpj = $this->taxId->normalize((string) $persist['cnpj']);

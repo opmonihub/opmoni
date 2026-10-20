@@ -24,6 +24,7 @@ use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpPurchaseReturn;
 use App\Models\Erp\Stock\ErpStockAdjustment;
 use App\Models\Erp\Stock\ErpStockBalance;
+use App\Models\Erp\Stock\ErpStockLot;
 use App\Models\Erp\Stock\ErpStockMovement;
 use App\Models\Erp\Stock\ErpStockTransfer;
 
@@ -34,6 +35,7 @@ enum ErpEstablishmentResource: string
     case OperationNature = 'operation_nature';
     case StockBalance = 'stock_balance';
     case StockMovement = 'stock_movement';
+    case StockLot = 'stock_lot';
     case StockAdjustment = 'stock_adjustment';
     case StockTransfer = 'stock_transfer';
     case Purchase = 'purchase';
@@ -63,6 +65,7 @@ enum ErpEstablishmentResource: string
             ErpOperationNature::class => self::OperationNature,
             ErpStockBalance::class => self::StockBalance,
             ErpStockMovement::class => self::StockMovement,
+            ErpStockLot::class => self::StockLot,
             ErpStockAdjustment::class => self::StockAdjustment,
             ErpStockTransfer::class => self::StockTransfer,
             ErpPurchase::class => self::Purchase,

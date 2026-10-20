@@ -10,7 +10,7 @@ class ErpSaleLine extends Model
     protected $fillable = [
         'erp_sale_id',
         'erp_product_variant_id',
-        'quantity',
+        'quantity', 'unit_conversion_factor',
         'unit_price',
         'discount_amount',
         'tax_amount',
@@ -22,7 +22,7 @@ class ErpSaleLine extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:4',
+            'quantity' => 'decimal:4', 'unit_conversion_factor' => 'decimal:8',
             'unit_price' => 'decimal:4',
             'discount_amount' => 'decimal:4',
             'tax_amount' => 'decimal:4',

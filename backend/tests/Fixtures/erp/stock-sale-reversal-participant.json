@@ -1,7 +1,14 @@
 {
   "participant": "App\\Erp\\Stock\\ErpStockParticipant::reverseSaleIssues",
   "consumer": "erp_sale_return_post",
-  "lock_order": ["erp_sale_return", "erp_stock_balances_sorted"],
+  "lock_order": [
+    "erp_company",
+    "erp_sale_return",
+    "erp_stock_movements_sorted",
+    "erp_stock_balances_sorted",
+    "erp_stock_lots_sorted",
+    "erp_finance_obligations"
+  ],
   "requires_caller_transaction": true,
   "acquires_source_document_lock": false,
   "source_type": "erp_sale_return",
@@ -14,5 +21,7 @@
     "sale_return_id": 3,
     "operation_key_prefix": "sale-return-post-3",
     "original_issue_source_type": "erp_sale"
-  }
+  },
+  "partial_reversal": "ErpStockLedger::reverse(originalMovement, quantity4, reason, operation, source)",
+  "allocation_order": "reverse_original_ordinal"
 }

@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\ErpEstablishmentAccess;
+use App\Erp\ErpOperationJournal;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceParticipant;
-use App\Erp\Stock\ErpStockValuation;
+use App\Erp\Stock\ErpStockLedger;
+use App\Erp\Stock\ErpStockOperation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpPurchaseReturn;
-use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
@@ -71,6 +72,11 @@ class ErpPurchaseReturnController extends ErpOperationsController
 
     public function post(Request $request, int $purchaseReturn): JsonResponse
     {
+        return app(ErpOperationJournal::class)->executeStock($request, ErpStockOperation::PURCHASE_RETURN, $purchaseReturn, fn (string $participantKey): JsonResponse => $this->postEffect($request, $purchaseReturn, $participantKey));
+    }
+
+    private function postEffect(Request $request, int $purchaseReturn, string $participantKey): JsonResponse
+    {
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $userId = $request->user()?->id;
@@ -85,25 +91,15 @@ class ErpPurchaseReturnController extends ErpOperationsController
         app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $source->erp_establishment_id);
         abort_unless(ErpDecimal::compare((string) $model->total_amount, (string) $source->total_amount) === 0 && ErpDecimal::isPositive((string) $model->total_amount), 422, 'Somente devolução integral é suportada');
 
-        DB::transaction(function () use ($model, $userId): void {
+        DB::transaction(function () use ($model, $userId, $participantKey): void {
             abort_if(ErpPurchaseReturn::query()->where('erp_purchase_id', $model->erp_purchase_id)->where('status', 'posted')->exists(), 422, 'Compra já devolvida');
-            app(ErpFinanceParticipant::class)->reverseSourceObligation($model->erp_company_id, 'erp_purchase', $model->erp_purchase_id, 'erp_purchase_return', $model->id, $userId);
             $movements = ErpStockMovement::query()->where('erp_company_id', $model->erp_company_id)->where('source_type', 'erp_purchase')->where('source_id', $model->erp_purchase_id)->where('direction', 'in')->get();
             foreach ($movements as $movement) {
-                $balance = ErpStockBalance::query()->where('erp_company_id', $model->erp_company_id)->where('erp_establishment_id', $model->erp_establishment_id)->where('erp_product_variant_id', $movement->erp_product_variant_id)->lockForUpdate()->firstOrFail();
-                abort_if(ErpDecimal::compare((string) $balance->quantity_on_hand, (string) $movement->quantity) === -1, 422, 'Estoque insuficiente para devolução integral');
-                app(ErpStockValuation::class)->assertCompatibleReceipt($balance, (string) $movement->unit_cost);
-                abort_if(ErpStockMovement::query()->where('reversal_of_id', $movement->id)->exists(), 422, 'Recebimento já devolvido');
-                $balance->update(['quantity_on_hand' => ErpDecimal::sub((string) $balance->quantity_on_hand, (string) $movement->quantity)]);
-                ErpStockMovement::query()->create([
-                    'erp_company_id' => $model->erp_company_id, 'erp_establishment_id' => $model->erp_establishment_id,
-                    'erp_product_variant_id' => $movement->erp_product_variant_id, 'direction' => 'out',
-                    'quantity' => (string) $movement->quantity, 'unit_cost' => $movement->unit_cost,
-                    'source_type' => 'erp_purchase_return', 'source_id' => $model->id,
-                    'source_operation_key' => 'purchase-return-'.$model->id.'-'.$movement->id,
-                    'reversal_of_id' => $movement->id, 'posted_by_user_id' => $userId, 'posted_at' => now(),
-                ]);
+                app(ErpStockLedger::class)->reverse($movement, (string) $movement->quantity, 'Devolução de compra', $participantKey.'-'.$movement->id,
+                    ['source_type' => 'erp_purchase_return', 'source_id' => $model->id, 'source_line_id' => $movement->source_line_id, 'posted_by_user_id' => $userId]);
             }
+            app(ErpFinanceParticipant::class)->reverseSourceObligation($model->erp_company_id, 'erp_purchase', $model->erp_purchase_id, 'erp_purchase_return', $model->id, $userId);
+
             $model->status = 'posted';
             $model->posted_by_user_id = $userId;
             $model->posted_at = now();
