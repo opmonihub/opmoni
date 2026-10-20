@@ -157,11 +157,11 @@ class ErpEstablishmentScopeTest extends TestCase
         ErpFinancialAccount::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'name' => 'Allowed bank']);
         ErpFinancialAccount::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'name' => 'Private bank']);
         ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '20.0000', 'open_amount' => '20.0000']);
-        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'amount' => '10.0000', 'method' => 'cash', 'status' => 'posted']);
+        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'amount' => '10.0000', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted']);
         ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '12.0000', 'open_amount' => '12.0000']);
         ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '99.0000', 'open_amount' => '99.0000']);
-        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'amount' => '8.0000', 'method' => 'cash', 'status' => 'posted']);
-        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'amount' => '99.0000', 'method' => 'cash', 'status' => 'posted']);
+        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'amount' => '8.0000', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted']);
+        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'amount' => '99.0000', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted']);
         $globalTax = ErpTaxRate::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'name' => 'Global ICMS', 'rate' => '17.0000']);
         ErpTaxRate::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'name' => 'Allowed ICMS', 'rate' => '18.0000']);
         $hiddenTax = ErpTaxRate::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'name' => 'Hidden ICMS', 'rate' => '19.0000']);
@@ -194,8 +194,8 @@ class ErpEstablishmentScopeTest extends TestCase
         $allowed = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $denied = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $member = $this->selectedMember([$allowed->id]);
-        $payment = ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'amount' => '100.0000', 'method' => 'cash', 'status' => 'posted']);
-        $hiddenPayment = ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'amount' => '100.0000', 'method' => 'cash', 'status' => 'posted']);
+        $payment = ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'amount' => '100.0000', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted']);
+        $hiddenPayment = ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'amount' => '100.0000', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted']);
         $obligation = ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $denied->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100.0000', 'open_amount' => '100.0000']);
         $allowedObligation = ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100.0000', 'open_amount' => '100.0000']);
 
@@ -424,11 +424,11 @@ class ErpEstablishmentScopeTest extends TestCase
             ErpPurchase::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'document_no' => 'report-purchase-'.$establishment->id, 'status' => 'posted', 'total_amount' => $amount, 'currency' => 'BRL', 'posted_at' => now()]);
             ErpStockBalance::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'erp_product_variant_id' => 910 + $establishment->id, 'quantity_on_hand' => $amount, 'average_cost' => '2.0000']);
             ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => $amount, 'open_amount' => $amount, 'currency' => 'BRL', 'status' => 'open', 'created_at' => now()]);
-            ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'amount' => $amount, 'currency' => 'BRL', 'method' => 'cash', 'status' => 'posted', 'posted_at' => now()]);
+            ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'amount' => $amount, 'currency' => 'BRL', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted', 'posted_at' => now()]);
             ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => 9200 + $establishment->id, 'status' => $establishment->id === $allowed->id ? 'draft' : 'authorized', 'idempotency_key' => 'report-fiscal-'.$establishment->id]);
         }
         ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '900.0000', 'open_amount' => '900.0000', 'currency' => 'BRL', 'status' => 'open', 'created_at' => now()]);
-        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'amount' => '800.0000', 'currency' => 'BRL', 'method' => 'cash', 'status' => 'posted', 'posted_at' => now()]);
+        ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'amount' => '800.0000', 'currency' => 'BRL', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted', 'posted_at' => now()]);
 
         $this->actingAs($member, 'web');
         $this->getJson('/api/v1/erp/reports/sales')->assertOk()->assertJsonPath('data.totals.document_count', 2)->assertJsonPath('data.totals.posted_total', '100.0000');
@@ -550,8 +550,8 @@ class ErpEstablishmentScopeTest extends TestCase
         $this->getJson('/api/v1/erp/cash-registers/'.$register->id)->assertNotFound();
         $this->getJson('/api/v1/erp/cash-sessions')->assertOk()->assertJsonPath('meta.total', 0);
         $this->getJson('/api/v1/erp/cash-sessions/'.$session->id)->assertNotFound();
-        $this->postJson('/api/v1/erp/cash-sessions', ['erp_cash_register_id' => $register->id])->assertUnprocessable();
-        $this->postJson('/api/v1/erp/cash-sessions/'.$session->id.'/close', ['declared_closing_amount' => '10'])->assertNotFound();
+        $this->postJson('/api/v1/erp/cash-sessions', ['erp_cash_register_id' => $register->id, 'opening_amount' => '0', 'currency' => 'BRL', 'source_operation_key' => 'denied-open'])->assertUnprocessable();
+        $this->postJson('/api/v1/erp/cash-sessions/'.$session->id.'/close', ['declared_closing_amount' => '10', 'source_operation_key' => 'denied-close'])->assertNotFound();
         $this->assertSame('open', $session->fresh()->status);
     }
 
@@ -672,7 +672,8 @@ class ErpEstablishmentScopeTest extends TestCase
             'erp_company_id' => $this->company->id,
             'erp_establishment_id' => $location->id,
             'amount' => '100.0000',
-            'method' => 'cash',
+            'method' => 'manual',
+            'direction' => 'in',
             'status' => 'posted',
         ]);
         $obligation = ErpObligation::query()->create([
@@ -743,7 +744,8 @@ class ErpEstablishmentScopeTest extends TestCase
             'erp_company_id' => $this->company->id,
             'erp_establishment_id' => null,
             'amount' => '800.0000',
-            'method' => 'cash',
+            'method' => 'manual',
+            'direction' => 'in',
             'status' => 'posted',
             'posted_at' => now(),
         ]);
@@ -751,7 +753,8 @@ class ErpEstablishmentScopeTest extends TestCase
             'erp_company_id' => $this->company->id,
             'erp_establishment_id' => $location->id,
             'amount' => '5.0000',
-            'method' => 'cash',
+            'method' => 'manual',
+            'direction' => 'in',
             'status' => 'posted',
             'posted_at' => now(),
         ]);

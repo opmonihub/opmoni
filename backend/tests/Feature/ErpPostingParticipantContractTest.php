@@ -123,7 +123,8 @@ class ErpPostingParticipantContractTest extends TestCase
         $payment = ErpPayment::query()->create([
             'erp_company_id' => $company->id,
             'amount' => '50.0000',
-            'method' => 'cash',
+            'method' => 'manual',
+            'direction' => 'in',
             'source_type' => 'manual',
             'source_id' => 0,
             'source_operation_key' => 'payment-1',

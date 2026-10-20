@@ -17,19 +17,24 @@ final class ErpPaymentAllocationOperation
     public const NAME = 'erp.payments.allocate';
 
     /** @return array{payment_id:int, erp_obligation_id:int, amount:string} */
-    public function canonical(Request $request, int|string $payment): array
+    public function canonical(Request $request, int|string $payment, bool $legacyReplay = false): array
     {
-        $identifiers = ['payment_id' => $payment, 'erp_obligation_id' => $request->input('erp_obligation_id')];
+        $input = ErpFinanceOperation::rawInput($request);
+        $identifiers = ['payment_id' => $payment, 'erp_obligation_id' => $input['erp_obligation_id'] ?? null];
         foreach ($identifiers as $field => $identifier) {
             if (! is_int($identifier) && ! is_string($identifier)) {
                 throw ValidationException::withMessages([$field => 'Identificador deve ser inteiro ou texto numérico']);
             }
         }
-        $data = Validator::make($identifiers + ['amount' => $request->input('amount')], [
+        $data = Validator::make($identifiers + ['amount' => $input['amount'] ?? null], [
             'payment_id' => ['required', 'integer', 'min:1', 'max:9007199254740991'],
             'erp_obligation_id' => ['required', 'integer', 'min:1', 'max:9007199254740991'],
             'amount' => ['required', 'string'],
         ])->validate();
+
+        if (! $legacyReplay && ! preg_match('/^\d{1,18}(?:\.\d{1,4})?$/D', $data['amount'])) {
+            throw ValidationException::withMessages(['amount' => 'Informe um decimal em texto com até quatro casas.']);
+        }
 
         return ['payment_id' => (int) $data['payment_id'], 'erp_obligation_id' => (int) $data['erp_obligation_id'], 'amount' => ErpDecimal::parse($data['amount'])];
     }
@@ -40,7 +45,7 @@ final class ErpPaymentAllocationOperation
         $context = CurrentCompany::fromRequest($request);
         $context->assertPermission(self::NAME, true);
         $companyId = $context->company->id;
-        $payment = ErpPayment::query()->where('erp_company_id', $companyId)->findOrFail($references['payment_id']);
+        $payment = app(ErpFinanceReadService::class)->resource($request, ErpPayment::class, $references['payment_id']);
         $obligation = ErpObligation::query()->where('erp_company_id', $companyId)->find($references['erp_obligation_id']);
         if (! $obligation) {
             throw ValidationException::withMessages(['erp_obligation_id' => 'Registro inválido para esta empresa']);

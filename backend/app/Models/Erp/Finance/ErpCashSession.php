@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ErpCashSession extends Model
 {
     protected $fillable = [
+        'currency',
+
         'erp_cash_register_id',
         'erp_company_id',
         'erp_establishment_id',

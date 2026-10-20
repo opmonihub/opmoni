@@ -2,101 +2,36 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Finance;
 
-use App\Erp\ErpCatalogScope;
+use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpEstablishmentAccess;
 use App\Erp\ErpOperationJournal;
-use App\Erp\Finance\ErpDecimal;
+use App\Erp\Finance\ErpFinanceOperation;
+use App\Erp\Finance\ErpFinanceReadService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
-use App\Models\Erp\Finance\ErpFinancialAccount;
+use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
+use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Support\CurrentCompany;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 
 class ErpPaymentController extends ErpOperationsController
 {
-    public function __construct(
-        private ErpCatalogScope $scope,
-    ) {}
-
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, ErpFinanceReadService $read): JsonResponse
     {
-        $query = ErpPayment::query()->where('erp_company_id', $this->companyId($request));
-
-        return $this->paginated($request, $query, fn (Model $model): array => $this->serialize($model));
+        return $read->index($request, ErpPayment::class);
     }
 
-    public function show(Request $request, int $payment): JsonResponse
+    public function show(Request $request, int $payment, ErpFinanceReadService $read): JsonResponse
     {
-        $model = $this->findForCompany($request, ErpPayment::class, $payment);
-
-        return response()->json(['data' => $this->serialize($model)]);
+        return response()->json(['data' => $read->serialize($read->resource($request, ErpPayment::class, $payment), $request)]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, ErpOperationJournal $journal): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
-        $data = $request->validate([
-            'amount' => ['required'],
-            'method' => ['required', 'string', 'max:32'],
-            'currency' => ['sometimes', 'string', 'size:3'],
-            'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
-            'erp_financial_account_id' => ['sometimes', 'nullable', 'integer'],
-            'source_operation_key' => ['sometimes', 'nullable', 'string', 'max:128'],
-        ]);
-        $data = $this->normalizeIdentifiers($data);
-        $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id'] ?? null);
-        app(ErpEstablishmentAccess::class)->assertNullableRelated($context, $data['erp_establishment_id'] ?? null);
-        $this->scope->assertBelongsToCompany(
-            ErpFinancialAccount::class,
-            $companyId,
-            $data['erp_financial_account_id'] ?? null,
-            'erp_financial_account_id',
-        );
-        if (isset($data['erp_financial_account_id'])) {
-            $account = ErpFinancialAccount::query()->where('erp_company_id', $companyId)->findOrFail($data['erp_financial_account_id']);
-            app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $account, 'erp_financial_account_id');
-        }
-
-        $amount = ErpDecimal::parse($data['amount']);
-        abort_unless(ErpDecimal::isPositive($amount), 422, 'Valor deve ser positivo');
-        $operationKey = $data['source_operation_key'] ?? null;
-        if ($operationKey !== null) {
-            $existing = ErpPayment::query()
-                ->where('erp_company_id', $companyId)
-                ->where('source_operation_key', $operationKey)
-                ->first();
-            if ($existing) {
-                abort_unless(ErpDecimal::compare((string) $existing->amount, $amount) === 0 && $existing->method === $data['method'] && $existing->currency === ($data['currency'] ?? 'BRL') && $existing->erp_establishment_id === ($data['erp_establishment_id'] ?? null) && $existing->erp_financial_account_id === ($data['erp_financial_account_id'] ?? null), 409, 'Chave de operação reutilizada com conteúdo diferente');
-                app(ErpEstablishmentAccess::class)->assertResource($context, $existing);
-
-                return response()->json(['data' => $this->serialize($existing)]);
-            }
-        }
-
-        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
-
-        $payment = ErpPayment::query()->create([
-            'erp_company_id' => $companyId,
-            'erp_establishment_id' => $data['erp_establishment_id'] ?? null,
-            'erp_financial_account_id' => $data['erp_financial_account_id'] ?? null,
-            'amount' => $amount,
-            'currency' => $data['currency'] ?? 'BRL',
-            'method' => $data['method'],
-            'status' => 'posted',
-            'source_type' => 'manual',
-            'source_id' => 0,
-            'source_operation_key' => $data['source_operation_key'] ?? null,
-            'posted_by_user_id' => $userId,
-            'posted_at' => now(),
-        ]);
-
-        return response()->json(['data' => $this->serialize($payment)], 201);
+        return $journal->executeFinance($request, ErpFinanceOperation::PAYMENT);
     }
 
     public function allocate(Request $request, int|string $payment): JsonResponse
@@ -110,19 +45,33 @@ class ErpPaymentController extends ErpOperationsController
         return response()->json($result['body'], $result['status']);
     }
 
-    /** @return array<string, mixed> */
-    private function serialize(Model $model): array
+    public function allocations(Request $request, int $payment, ErpFinanceReadService $read): JsonResponse
     {
-        /** @var ErpPayment $model */
-        return [
-            'id' => $model->id,
-            'amount' => $this->decimalString($model->amount),
-            'currency' => $model->currency,
-            'method' => $model->method,
-            'status' => $model->status,
-            'erp_establishment_id' => $model->erp_establishment_id,
-            'erp_financial_account_id' => $model->erp_financial_account_id,
-            'source_operation_key' => $model->source_operation_key,
-        ];
+        $read->resource($request, ErpPayment::class, $payment);
+        $query = ErpPaymentAllocation::where('erp_payment_id', $payment)->whereHas('obligation', function (Builder $query) use ($request): void {
+            $query->where('erp_company_id', $this->companyId($request));
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), ErpEstablishmentResource::Obligation);
+        });
+
+        return $read->page($request, $query);
+    }
+
+    public function candidates(Request $request, int $payment, ErpFinanceReadService $read): JsonResponse
+    {
+        CurrentCompany::fromRequest($request)->assertPermission('erp.payments.allocate', true);
+        $read->resource($request, ErpPayment::class, $payment);
+        $request->merge(['eligible_for_payment_id' => $payment]);
+
+        return $read->index($request, ErpObligation::class);
+    }
+
+    public function receipt(Request $request, int $payment, ErpFinanceReadService $read): JsonResponse
+    {
+        $model = $read->resource($request, ErpPayment::class, $payment);
+        $read->assertPaymentReferences($request, $model);
+        $facts = $read->serialize($model, $request);
+        unset($facts['source_operation_key']);
+
+        return response()->json(['data' => ['version' => 1, 'reference' => 'ERP-PAYMENT-'.$model->id, 'company' => ['id' => $model->erp_company_id, 'name' => CurrentCompany::fromRequest($request)->company->name], ...$facts]], 200, ['Cache-Control' => 'private, no-store', 'Content-Disposition' => 'attachment; filename="recibo-'.$model->id.'.json"']);
     }
 }

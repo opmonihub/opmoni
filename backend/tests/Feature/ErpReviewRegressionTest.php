@@ -78,7 +78,7 @@ class ErpReviewRegressionTest extends TestCase
 
     private function payment(string $amount): int
     {
-        return $this->postJson('/api/v1/erp/payments', ['amount' => $amount, 'method' => 'cash'])->assertCreated()->json('data.id');
+        return $this->postJson('/api/v1/erp/payments', ['amount' => $amount, 'method' => 'manual', 'direction' => 'in', 'source_operation_key' => 'payment-'.bin2hex(random_bytes(6))])->assertCreated()->json('data.id');
     }
 
     public function test_read_only_action_permissions_block_operator_write(): void
@@ -142,7 +142,7 @@ class ErpReviewRegressionTest extends TestCase
         $return = $this->postJson('/api/v1/erp/purchase-returns', ['erp_purchase_id' => $purchase, 'total_amount' => '50'])->assertCreated()->json('data.id');
         $this->postJson("/api/v1/erp/purchase-returns/{$return}/post")->assertOk();
         $this->assertSame('0.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
-        $this->assertDatabaseHas('erp_obligations', ['source_type' => 'erp_purchase', 'source_id' => $purchase, 'open_amount' => '0']);
+        $this->assertDatabaseHas('erp_obligations', ['source_type' => 'erp_purchase', 'source_id' => $purchase, 'open_amount' => '50']);
     }
 
     public function test_sale_return_cannot_restock_same_sale_twice_and_compensates_receivable(): void
@@ -150,7 +150,7 @@ class ErpReviewRegressionTest extends TestCase
         $sale = $this->postedSale();
         $return = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $sale, 'total_amount' => '20'])->assertCreated()->json('data.id');
         $this->postJson("/api/v1/erp/sale-returns/{$return}/post")->assertOk();
-        $this->assertDatabaseHas('erp_obligations', ['source_type' => 'erp_sale', 'source_id' => $sale, 'open_amount' => '0']);
+        $this->assertDatabaseHas('erp_obligations', ['source_type' => 'erp_sale', 'source_id' => $sale, 'open_amount' => '20']);
         $second = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $sale, 'total_amount' => '20']);
         if ($second->status() === 201) {
             $this->postJson('/api/v1/erp/sale-returns/'.$second->json('data.id').'/post')->assertUnprocessable();
@@ -170,9 +170,9 @@ class ErpReviewRegressionTest extends TestCase
     public function test_cash_close_uses_recorded_movements_instead_of_client_aggregate(): void
     {
         $register = ErpCashRegister::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'name' => 'Cash']);
-        $session = $this->postJson('/api/v1/erp/cash-sessions', ['erp_cash_register_id' => $register->id, 'opening_amount' => '100'])->assertCreated()->json('data.id');
-        $this->postJson("/api/v1/erp/cash-sessions/{$session}/close", ['declared_closing_amount' => '0', 'movements_net' => '-100'])->assertUnprocessable();
-        $this->postJson("/api/v1/erp/cash-sessions/{$session}/close", ['declared_closing_amount' => '0'])->assertOk()->assertJsonPath('data.expected_closing_amount', '100.0000')->assertJsonPath('data.closing_difference', '-100.0000');
+        $session = $this->postJson('/api/v1/erp/cash-sessions', ['erp_cash_register_id' => $register->id, 'opening_amount' => '100', 'currency' => 'BRL', 'source_operation_key' => 'open'])->assertCreated()->json('data.id');
+        $this->postJson("/api/v1/erp/cash-sessions/{$session}/close", ['declared_closing_amount' => '0', 'movements_net' => '-100', 'source_operation_key' => 'close'])->assertUnprocessable();
+        $this->postJson("/api/v1/erp/cash-sessions/{$session}/close", ['declared_closing_amount' => '0', 'source_operation_key' => 'close'])->assertOk()->assertJsonPath('data.expected_closing_amount', '100.0000')->assertJsonPath('data.closing_difference', '-100.0000');
     }
 
     public function test_disabled_purchasing_module_blocks_purchase(): void
@@ -228,7 +228,7 @@ class ErpReviewRegressionTest extends TestCase
 
     public function test_manual_operation_keys_are_scoped_to_company(): void
     {
-        $this->postJson('/api/v1/erp/payments', ['amount' => '5', 'method' => 'cash', 'source_operation_key' => 'shared-key'])->assertCreated();
+        $this->postJson('/api/v1/erp/payments', ['amount' => '5', 'method' => 'manual', 'direction' => 'in', 'source_operation_key' => 'shared-key'])->assertCreated();
         $other = ErpCompany::factory()->create();
         $payment = ErpPayment::query()->create(['erp_company_id' => $other->id, 'amount' => '10', 'currency' => 'BRL', 'method' => 'cash', 'source_type' => 'manual', 'source_id' => 0, 'source_operation_key' => 'shared-key']);
         $this->assertSame($other->id, $payment->erp_company_id);
@@ -284,16 +284,17 @@ class ErpReviewRegressionTest extends TestCase
         ErpObligation::flushEventListeners();
     }
 
-    public function test_paid_sale_return_is_refused_without_stock_or_money_effect(): void
+    public function test_paid_sale_return_creates_credit_without_reversing_original_payment(): void
     {
         $sale = $this->postedSale();
         $obligation = ErpObligation::query()->where('source_type', 'erp_sale')->firstOrFail();
         $payment = $this->payment('20');
         $this->postJson("/api/v1/erp/payments/{$payment}/allocate", ['erp_obligation_id' => $obligation->id, 'amount' => '20', 'source_operation_key' => 'paid'])->assertOk();
         $return = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $sale, 'total_amount' => '20'])->assertCreated()->json('data.id');
-        $this->postJson("/api/v1/erp/sale-returns/{$return}/post")->assertUnprocessable();
-        $this->assertSame('8.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
-        $this->assertDatabaseHas('erp_sale_returns', ['id' => $return, 'status' => 'draft']);
+        $this->postJson("/api/v1/erp/sale-returns/{$return}/post")->assertOk();
+        $this->assertSame('10.0000', ErpStockBalance::query()->firstOrFail()->quantity_on_hand);
+        $this->assertDatabaseHas('erp_sale_returns', ['id' => $return, 'status' => 'posted']);
+        $this->assertDatabaseHas('erp_obligations', ['return_of_id' => $obligation->id, 'direction' => 'payable', 'amount' => '20']);
         $this->assertSame('settled', $obligation->fresh()->status);
     }
 
@@ -309,7 +310,7 @@ class ErpReviewRegressionTest extends TestCase
 
     public function test_unequal_payment_key_reuse_conflicts(): void
     {
-        $payload = ['amount' => '10', 'method' => 'cash', 'source_operation_key' => 'payment'];
+        $payload = ['amount' => '10', 'method' => 'manual', 'direction' => 'in', 'source_operation_key' => 'payment'];
         $this->postJson('/api/v1/erp/payments', $payload)->assertCreated();
         $this->postJson('/api/v1/erp/payments', [...$payload, 'amount' => '20'])->assertConflict();
         $this->assertDatabaseCount('erp_payments', 1);
@@ -358,9 +359,9 @@ class ErpReviewRegressionTest extends TestCase
 
     public function test_numeric_string_identifiers_replay_as_the_same_payment_adjustment_and_transfer(): void
     {
-        $payment = ['amount' => '10', 'method' => 'cash', 'erp_establishment_id' => (string) $this->establishment->id, 'source_operation_key' => 'string-payment'];
+        $payment = ['amount' => '10', 'method' => 'manual', 'direction' => 'in', 'erp_establishment_id' => (string) $this->establishment->id, 'source_operation_key' => 'string-payment'];
         $id = $this->postJson('/api/v1/erp/payments', $payment)->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/payments', $payment)->assertOk()->assertJsonPath('data.id', $id);
+        $this->postJson('/api/v1/erp/payments', $payment)->assertCreated()->assertJsonPath('data.id', $id);
         $purchase = $this->purchase();
         $this->postJson("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
         $adjustment = ['erp_establishment_id' => (string) $this->establishment->id, 'erp_product_variant_id' => (string) $this->variant->id, 'quantity_delta' => '-1', 'reason' => 'Count', 'source_operation_key' => 'string-adjustment'];

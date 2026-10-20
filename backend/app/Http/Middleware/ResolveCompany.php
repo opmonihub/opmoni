@@ -45,7 +45,7 @@ class ResolveCompany
                 abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));
             }
 
-            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId, ! $request->isMethodSafe() || $request->routeIs('erp.operations.lookup'));
+            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId, ! $request->isMethodSafe() || $request->routeIs('erp.operations.lookup', 'erp.payments.allocation-candidates'));
             if ($access === null) {
                 abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
             }
@@ -81,7 +81,7 @@ class ResolveCompany
             if ($operationLookup) {
                 $request->validate(['operation' => ['required', 'string', Rule::in(ErpOperationJournal::operations())]]);
             }
-            $effectiveWrite = ! $request->isMethodSafe() || $operationLookup;
+            $effectiveWrite = ! $request->isMethodSafe() || $operationLookup || $request->routeIs('erp.payments.allocation-candidates');
             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
             if ($effectiveWrite && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
                 abort(response()->json(['code' => 'erp_subscription_inactive', 'message' => 'Contrato ERP inativo'], 403));
@@ -138,6 +138,7 @@ class ResolveCompany
     private function effectiveAction(Request $request): string
     {
         return match ((string) $request->route()?->getName()) {
+            'erp.payments.allocation-candidates' => 'erp.payments.allocate',
             'erp.catalog.import.products.read' => 'erp.catalog.import.products.confirm',
             'erp.catalog.import.contacts.read' => 'erp.catalog.import.contacts.confirm',
             default => (string) $request->route()?->getName(),

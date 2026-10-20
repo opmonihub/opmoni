@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\Erp\ErpOperationLookupController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpCashRegisterController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpCashSessionController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpFinancialAccountController;
+use App\Http\Controllers\Api\V1\Erp\Finance\ErpFinancialReversalController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpObligationController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpPaymentController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalCertificateController;
@@ -31,10 +32,15 @@ Route::get('/obligations', [ErpObligationController::class, 'index'])->name('erp
 Route::post('/obligations', [ErpObligationController::class, 'store'])->name('erp.obligations.store');
 Route::get('/obligations/{obligation}', [ErpObligationController::class, 'show'])->whereNumber('obligation')->name('erp.obligations.show');
 
+Route::post('/payment-allocations/{allocation}/reverse', [ErpFinancialReversalController::class, 'allocation'])->whereNumber('allocation')->name('erp.payment-allocations.reverse');
 Route::get('/payments', [ErpPaymentController::class, 'index'])->name('erp.payments.index');
 Route::post('/payments', [ErpPaymentController::class, 'store'])->name('erp.payments.store');
 Route::get('/payments/{payment}', [ErpPaymentController::class, 'show'])->whereNumber('payment')->name('erp.payments.show');
 Route::post('/payments/{payment}/allocate', [ErpPaymentController::class, 'allocate'])->whereNumber('payment')->name('erp.payments.allocate');
+Route::get('/payments/{payment}/allocation-candidates', [ErpPaymentController::class, 'candidates'])->whereNumber('payment')->name('erp.payments.allocation-candidates');
+Route::get('/payments/{payment}/allocations', [ErpPaymentController::class, 'allocations'])->whereNumber('payment')->name('erp.payments.allocations.index');
+Route::get('/payments/{payment}/receipt', [ErpPaymentController::class, 'receipt'])->whereNumber('payment')->name('erp.payments.receipt');
+Route::post('/payments/{payment}/reverse', [ErpFinancialReversalController::class, 'payment'])->whereNumber('payment')->name('erp.payments.reverse');
 
 Route::get('/cash-registers', [ErpCashRegisterController::class, 'index'])->name('erp.cash-registers.index');
 Route::post('/cash-registers', [ErpCashRegisterController::class, 'store'])->name('erp.cash-registers.store');
@@ -44,6 +50,8 @@ Route::get('/cash-sessions', [ErpCashSessionController::class, 'index'])->name('
 Route::post('/cash-sessions', [ErpCashSessionController::class, 'store'])->name('erp.cash-sessions.store');
 Route::get('/cash-sessions/{cashSession}', [ErpCashSessionController::class, 'show'])->whereNumber('cashSession')->name('erp.cash-sessions.show');
 Route::post('/cash-sessions/{cashSession}/close', [ErpCashSessionController::class, 'close'])->whereNumber('cashSession')->name('erp.cash-sessions.close');
+Route::get('/cash-sessions/{cashSession}/movements', [ErpCashSessionController::class, 'movements'])->whereNumber('cashSession')->name('erp.cash-sessions.movements.index');
+Route::post('/cash-sessions/{cashSession}/movements', [ErpCashSessionController::class, 'storeMovement'])->whereNumber('cashSession')->name('erp.cash-sessions.movements.store');
 
 Route::get('/purchases', [ErpPurchaseController::class, 'index'])->name('erp.purchases.index');
 Route::post('/purchases', [ErpPurchaseController::class, 'store'])->name('erp.purchases.store');
