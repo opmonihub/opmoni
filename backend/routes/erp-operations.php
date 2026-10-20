@@ -128,3 +128,10 @@ Route::prefix('fiscal')->name('erp.fiscal.')->group(function (): void {
     Route::get('/operator-canary/status', [ErpFiscalOperatorCanaryController::class, 'status'])->name('operator-canary.status');
     Route::post('/operator-canary/documents/{document}/transmit', [ErpFiscalOperatorCanaryController::class, 'transmit'])->whereNumber('document')->name('operator-canary.transmit');
 });
+
+Route::patch('/quotes/{quote}', [ErpQuoteController::class, 'update'])->whereNumber('quote')->name('erp.quotes.update');
+
+Route::patch('/orders/{order}', [ErpOrderController::class, 'update'])->whereNumber('order')->name('erp.orders.update');
+
+Route::patch('/sales/{sale}', [ErpSaleController::class, 'update'])->whereNumber('sale')->name('erp.sales.update');
+Route::post('/orders/{order}/convert', [ErpOrderController::class, 'convert'])->whereNumber('order')->name('erp.orders.convert');

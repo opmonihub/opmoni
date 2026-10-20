@@ -25,7 +25,10 @@ final class ErpStockParticipant
             }
             app(ErpCatalogScope::class)->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id']);
             $variant = ErpProductVariant::query()->findOrFail($line['erp_product_variant_id']);
-            if (! $variant->product->track_stock || $variant->product->kind === 'service') {
+            $profile = $line['product_snapshot']['product'] ?? ['kind' => $variant->product->kind, 'track_stock' => $variant->product->track_stock];
+            $physical = self::physicalProfile($profile);
+            abort_if($physical === null, response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
+            if (! $physical) {
                 continue;
             }
             $quantity = ErpStockDecimal::base($line['quantity'], $line['unit_conversion_factor'] ?? '1.00000000', 'quantity');
@@ -51,6 +54,19 @@ final class ErpStockParticipant
             abort_unless($movement->erp_company_id === $companyId && $movement->erp_establishment_id === $establishmentId, 422);
             app(ErpStockLedger::class)->reverse($movement, (string) $movement->quantity, 'Devolução de venda', $operationKeyPrefix.'-reverse-'.$movement->id, ['source_type' => 'erp_sale_return', 'source_id' => $saleReturnId, 'source_line_id' => $movement->source_line_id, 'posted_by_user_id' => $postedByUserId]);
         }
+    }
+
+    /** Null means that saved physical semantics are not proved. */
+    public static function physicalProfile(?array $profile): ?bool
+    {
+        if (($profile['kind'] ?? null) === 'service') {
+            return false;
+        }
+        if (($profile['kind'] ?? null) === 'goods' && is_bool($profile['track_stock'] ?? null)) {
+            return $profile['track_stock'];
+        }
+
+        return null;
     }
 
     private function assertInCallerTransaction(): void

@@ -12,6 +12,8 @@ final class ErpCommercialDocumentStateMachine
 
     public const ORDER_CONFIRMED = 'confirmed';
 
+    public const ORDER_CONVERTED = 'converted';
+
     public const SALE_DRAFT = 'draft';
 
     public const SALE_POSTED = 'posted';
@@ -23,6 +25,15 @@ final class ErpCommercialDocumentStateMachine
         }
 
         return self::QUOTE_CONVERTED;
+    }
+
+    public function convertOrder(string $status): string
+    {
+        if ($status !== self::ORDER_CONFIRMED) {
+            throw new InvalidArgumentException('Only confirmed orders can be converted.');
+        }
+
+        return self::ORDER_CONVERTED;
     }
 
     public function postSale(string $status): string

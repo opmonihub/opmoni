@@ -5,6 +5,7 @@ namespace App\Erp;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceOperation;
 use App\Erp\Finance\ErpPaymentAllocationOperation;
+use App\Erp\Sales\ErpCommercialOperation;
 use App\Erp\Stock\ErpStockOperation;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\Finance\ErpPaymentAllocation;
@@ -110,7 +111,7 @@ final class ErpOperationJournal
 
     public static function operations(): array
     {
-        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ...ErpStockOperation::names(), ...ErpFinanceOperation::names()];
+        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names()];
     }
 
     public function executeImport(Request $request, string $operation): array
@@ -223,6 +224,52 @@ final class ErpOperationJournal
         });
     }
 
+    public function executeCommercial(Request $request, string $operation, ?int $id = null): JsonResponse
+    {
+        abort_unless(DB::transactionLevel() > 0 && in_array($operation, ErpCommercialOperation::names(), true), 500);
+
+        return DB::transaction(function () use ($request, $operation, $id): JsonResponse {
+            $adapter = app(ErpCommercialOperation::class);
+            $adapter->assertAuthorized($request, $operation, ['source_id' => $id]);
+            $key = $this->key($request, true);
+            $receipt = $this->receipts($request, $key, $operation)->lockForUpdate()->first();
+            if ($receipt && $receipt->canonical_version === 'v1' && in_array($operation, ErpStockOperation::names(), true)) {
+                $payload = $this->stock->canonical($request, $operation, $id);
+                foreach (['draft_revision', 'commercial_snapshot', 'draft_input', 'erp_price_group_id', 'erp_operation_nature_id', 'conversion_source_id', ...($operation === 'erp.sales.post' ? [] : ['reason', 'currency', 'subtotal_amount', 'discount_amount', 'tax_amount'])] as $field) {
+                    unset($payload['snapshot'][$field]);
+                }
+                foreach ($payload['snapshot']['lines'] ?? [] as $index => $line) {
+                    foreach (['ordinal', 'erp_unit_id', 'gross_amount', 'base_quantity', 'erp_company_id', 'source_quote_line_id', 'source_quote_document_id', 'source_order_line_id', 'source_order_document_id'] as $field) {
+                        unset($line[$field]);
+                    }
+                    $payload['snapshot']['lines'][$index] = $line;
+                }
+                $this->stock->assertAuthorized($request, $operation, $receipt->resource_refs);
+                abort_unless(hash_equals($receipt->payload_hash, hash('sha256', 'v1:'.$this->canonicalJson($payload))), 409);
+                AccessSession::assertOwnership($request);
+
+                return response()->json($receipt->response_body, $receipt->response_status);
+            }
+            $payload = $adapter->canonical($request, $operation, $id);
+            $hash = hash('sha256', 'commercial-v1:'.$this->canonicalJson($adapter->identity($payload)));
+            if ($receipt) {
+                $adapter->assertAuthorized($request, $operation, $receipt->resource_refs + ['_original_response' => $receipt->response_body]);
+                abort_unless($receipt->canonical_version === 'commercial-v1' && (hash_equals($receipt->payload_hash, $hash) || hash_equals($receipt->payload_hash, hash('sha256', 'commercial-v1:'.$this->canonicalJson($payload)))), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                AccessSession::assertOwnership($request);
+
+                return response()->json($receipt->response_body, $receipt->response_status);
+            }
+            AccessSession::assertOwnership($request);
+            $participantKey = 'op1:'.hash('sha256', $this->canonicalJson([CurrentCompany::fromRequest($request)->company->id, $request->user()->id, $operation, hash('sha256', $key)]));
+            $result = $adapter->post($request, $operation, $payload, $participantKey);
+            abort_if(strlen($this->canonicalJson($result['body'])) > 16384, 422, 'Resultado de operação inválido');
+            ErpOperationReceipt::create(['erp_company_id' => CurrentCompany::fromRequest($request)->company->id, 'actor_user_id' => $request->user()->id, 'operation' => $operation, 'key_digest' => hash('sha256', $key), 'canonical_version' => 'commercial-v1', 'payload_hash' => $hash, 'response_status' => $result['status'], 'response_body' => $result['body'], 'resource_refs' => $result['resource_refs'], 'recorded_at' => now()]);
+            AccessSession::assertOwnership($request);
+
+            return response()->json($result['body'], $result['status']);
+        });
+    }
+
     public function lookup(Request $request): array
     {
         $key = $this->key($request, true);
@@ -232,6 +279,8 @@ final class ErpOperationJournal
         if ($receipt) {
             if ($operation === ErpPaymentAllocationOperation::NAME) {
                 $this->allocation->assertAuthorized($request, $receipt->resource_refs);
+            } elseif (in_array($operation, ErpCommercialOperation::names(), true) && $receipt->canonical_version === 'commercial-v1') {
+                app(ErpCommercialOperation::class)->assertAuthorized($request, $operation, $receipt->resource_refs + ['_original_response' => $receipt->response_body]);
             } elseif (in_array($operation, ErpFinanceOperation::names(), true)) {
                 $this->finance->assertAuthorized($request, $operation, $receipt->resource_refs);
             } elseif (in_array($operation, ErpStockOperation::names(), true)) {

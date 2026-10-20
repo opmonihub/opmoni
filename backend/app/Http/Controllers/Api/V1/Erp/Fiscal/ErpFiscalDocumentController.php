@@ -9,6 +9,7 @@ use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Erp\LegacyPort\LegacyFiscalEngine;
+use App\Erp\Sales\ErpCommercialDraftService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\Fiscal\ErpFiscalCertificate;
@@ -108,7 +109,8 @@ class ErpFiscalDocumentController extends ErpOperationsController
             $access->assertResource($context, $sale);
             $this->scope->assertActiveEstablishment($companyId, $sale->erp_establishment_id, 'erp_sale_id');
             abort_unless($sale->status === 'posted' && $sale->erp_establishment_id === $data['erp_establishment_id'], 422, 'Venda precisa estar lançada no estabelecimento emissor');
-            $snapshot = ['sale_id' => $sale->id, 'total_amount' => (string) $sale->total_amount, 'subtotal_amount' => (string) $sale->subtotal_amount, 'discount_amount' => (string) $sale->discount_amount, 'tax_amount' => (string) $sale->tax_amount, 'currency' => $sale->currency, 'lines' => $sale->lines->toArray()];
+            $frozen = app(ErpCommercialDraftService::class)->postedSnapshot($sale);
+            $snapshot = $frozen + ['sale_id' => $sale->id, ...$frozen['totals']];
         }
         $metadata = [];
         if (($data['document_kind'] ?? null) === 'return' && isset($data['source_document_id'])) {

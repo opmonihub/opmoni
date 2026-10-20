@@ -10,6 +10,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
+use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use App\Support\ErpCompanyContext;
@@ -150,14 +151,15 @@ class ErpDelegatedOrdinaryAccessTest extends TestCase
         $this->delegation->update(['permission_allowlist' => ['erp.read', 'erp.obligations.store', 'erp.payments.store', 'erp.payments.allocate']]);
         $this->loginAndSelect();
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $obligation = $this->postJson('/api/v1/erp/obligations', ['direction' => 'receivable', 'category' => 'manual', 'amount' => '100', 'erp_establishment_id' => $establishment->id])->assertCreated()->json('data.id');
-        $payment = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash', 'erp_establishment_id' => $establishment->id])->assertCreated()->json('data.id');
+        $obligation = $this->postJson('/api/v1/erp/obligations', ['direction' => 'receivable', 'category' => 'manual', 'amount' => '100', 'erp_establishment_id' => $establishment->id], ['Idempotency-Key' => 'delegated-obligation'])->assertCreated()->json('data.id');
+        $payment = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'direction' => 'in', 'method' => 'manual', 'erp_establishment_id' => $establishment->id], ['Idempotency-Key' => 'delegated-payment'])->assertCreated()->json('data.id');
         $original = $this->postJson('/api/v1/erp/payments/'.$payment.'/allocate', ['erp_obligation_id' => $obligation, 'amount' => '40'], ['Idempotency-Key' => 'delegated-allocation'])->assertOk()->json();
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.payments.allocate', ['Idempotency-Key' => 'delegated-allocation'])->assertOk()->assertJsonPath('data.result', $original['data']);
         $this->officeMembership->update(['role' => 'user']);
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.payments.allocate', ['Idempotency-Key' => 'delegated-allocation'])->assertForbidden();
         $this->assertDatabaseCount('erp_payment_allocations', 1);
-        $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $this->assertSame(1, ErpOperationReceipt::where('operation', 'erp.payments.allocate')->count());
+        $this->assertDatabaseCount('erp_operation_receipts', 3);
     }
 
     public function test_new_delegations_reject_unknown_reserved_and_wildcard_grants(): void

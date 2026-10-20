@@ -9,7 +9,10 @@ use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Sales\ErpSaleReturn;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpPurchaseReturn;
+use App\Support\CurrentCompany;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 final class ErpFinanceParticipant
@@ -44,6 +47,8 @@ final class ErpFinanceParticipant
             'erp_establishment_id' => $establishmentId,
             'direction' => 'receivable',
             'category' => 'sale',
+            'erp_contact_id' => ErpSale::where('erp_company_id', $companyId)->findOrFail($saleId)->erp_contact_id,
+            'party_snapshot' => ErpSale::where('erp_company_id', $companyId)->findOrFail($saleId)->party_snapshot,
             'amount' => ErpDecimal::parse($amount),
             'open_amount' => ErpDecimal::parse($amount),
             'currency' => $currency,
@@ -69,7 +74,39 @@ final class ErpFinanceParticipant
             return $existing;
         }
 
-        return ErpObligation::create($identity + ['erp_establishment_id' => $establishmentId, 'direction' => 'payable', 'category' => 'purchase', 'amount' => ErpDecimal::parse($amount), 'open_amount' => ErpDecimal::parse($amount), 'currency' => $currency, 'status' => 'open', 'posted_by_user_id' => $postedByUserId, 'posted_at' => now()]);
+        return ErpObligation::create($identity + ['erp_establishment_id' => $establishmentId, 'erp_contact_id' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->erp_contact_id, 'party_snapshot' => ErpPurchase::where('erp_company_id', $companyId)->findOrFail($purchaseId)->party_snapshot, 'direction' => 'payable', 'category' => 'purchase', 'amount' => ErpDecimal::parse($amount), 'open_amount' => ErpDecimal::parse($amount), 'currency' => $currency, 'status' => 'open', 'posted_by_user_id' => $postedByUserId, 'posted_at' => now()]);
+    }
+
+    /** Joins the sale posting transaction; lock the cash session before finance rows. */
+    public function postInlineSalePayment(Request $request, ErpSale $sale, ?array $paymentPayload, string $key): array
+    {
+        $this->assertInCallerTransaction();
+        $context = CurrentCompany::fromRequest($request);
+        abort_unless($sale->erp_company_id === $context->company->id && $sale->status === 'posted', 422);
+        if ($paymentPayload !== null) {
+            $context->assertPermission('erp.payments.store', true);
+            $context->assertPermission('erp.payments.allocate', true);
+            if ($paymentPayload['body']['method'] === 'cash') {
+                $context->assertPermission('erp.cash-sessions.movements.store', true);
+                if (empty($paymentPayload['body']['erp_cash_session_id'])) {
+                    throw ValidationException::withMessages(['payment.erp_cash_session_id' => 'Selecione um caixa aberto.']);
+                }
+                app(ErpCashLedger::class)->session($request, $paymentPayload['body']['erp_cash_session_id']);
+            }
+            app(ErpFinanceOperation::class)->assertAuthorized($request, ErpFinanceOperation::PAYMENT, $paymentPayload);
+        }
+        $obligation = $this->postReceivableForSale($sale->erp_company_id, $sale->erp_establishment_id, $sale->id, $sale->total_amount, $sale->currency, $key.'-obligation', $request->user()->id);
+        $refs = ['obligation_id' => $obligation->id];
+        if ($paymentPayload !== null) {
+            $paid = app(ErpFinanceOperation::class)->post($request, ErpFinanceOperation::PAYMENT, $paymentPayload, $key.'-payment');
+            $payment = ErpPayment::where('erp_company_id', $sale->erp_company_id)->findOrFail($paid['body']['data']['id']);
+            $payment->update(['source_type' => 'erp_sale', 'source_id' => $sale->id]);
+            $this->allocatePayment($sale->erp_company_id, $payment->id, $obligation->id, $payment->amount, $key.'-allocation', $request->user()->id, app(ErpPaymentAllocationService::class));
+            $refs['payment_refs'] = $paid['resource_refs'];
+            $refs['payment_id'] = $payment->id;
+        }
+
+        return $refs;
     }
 
     public function reverseSourceObligation(int $companyId, string $sourceType, int $sourceId, string $returnType, int $returnId, ?int $actorId): void

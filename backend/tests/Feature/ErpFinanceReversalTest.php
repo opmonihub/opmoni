@@ -17,6 +17,7 @@ use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Models\Erp\Sales\ErpSale;
+use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,7 +60,7 @@ class ErpFinanceReversalTest extends TestCase
 
     private function send(string $path, array $body, ?string $key = null): TestResponse
     {
-        return $this->postJson('/api/v1/erp/'.$path, $body, ['Idempotency-Key' => $key ?? 'finance-'.++$this->sequence]);
+        return $this->commercialPost('/api/v1/erp/'.$path, $body, ['Idempotency-Key' => $key ?? 'finance-'.++$this->sequence]);
     }
 
     private function obligation(string $amount = '100', string $direction = 'receivable'): int
@@ -159,16 +160,16 @@ class ErpFinanceReversalTest extends TestCase
     public function test_paid_and_partly_paid_full_sale_return_consumes_positive_credit_preserving_original(): void
     {
         foreach (['20', '10'] as $paid) {
-            $purchase = $this->postJson('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
+            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
             $this->send("purchases/{$purchase}/post", [])->assertOk();
-            $sale = $this->postJson('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'SALE-'.$paid, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
+            $sale = $this->commercialPost('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'SALE-'.$paid, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
             $this->send("sales/{$sale}/post", [])->assertOk();
             $obligation = ErpObligation::where('source_type', 'erp_sale')->where('source_id', $sale)->sole();
             $payment = $this->payment($paid);
             $this->send("payments/{$payment}/allocate", ['erp_obligation_id' => $obligation->id, 'amount' => $paid])->assertOk();
             $before = $obligation->fresh()->getAttributes();
             $allocations = ErpPaymentAllocation::orderBy('id')->get()->toArray();
-            $return = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $sale, 'total_amount' => '20'])->assertCreated()->json('data.id');
+            $return = $this->commercialPost('/api/v1/erp/sale-returns', $this->fullReturnBody('sale', $sale, '20'))->assertCreated()->json('data.id');
             $this->send("sale-returns/{$return}/post", [], 'return-'.$paid)->assertOk();
             $credit = ErpObligation::where('return_of_id', $obligation->id)->sole();
             $this->assertSame('payable', $credit->direction);
@@ -304,14 +305,14 @@ class ErpFinanceReversalTest extends TestCase
     public function test_paid_purchase_return_and_credit_failure_keep_original_money_and_rollback_stock(): void
     {
         foreach (['10', '5'] as $paid) {
-            $purchase = $this->postJson('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
+            $purchase = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_cost' => '5']]])->assertCreated()->json('data.id');
             $this->send("purchases/{$purchase}/post", [])->assertOk();
             $obligation = ErpObligation::where('source_type', 'erp_purchase')->where('source_id', $purchase)->sole();
             $payment = $this->payment($paid, 'out');
             $this->send("payments/{$payment}/allocate", ['erp_obligation_id' => $obligation->id, 'amount' => $paid])->assertOk();
             $original = $obligation->fresh()->getAttributes();
             $stock = ErpStockBalance::where('erp_product_variant_id', $this->variant->id)->sole()->quantity_on_hand;
-            $return = $this->postJson('/api/v1/erp/purchase-returns', ['erp_purchase_id' => $purchase, 'total_amount' => '10'])->assertCreated()->json('data.id');
+            $return = $this->commercialPost('/api/v1/erp/purchase-returns', $this->fullReturnBody('purchase', $purchase, '10'))->assertCreated()->json('data.id');
             ErpObligation::created(function ($row): void {
                 if ($row->return_of_id !== null) {
                     abort(422, 'After return credit');
@@ -410,5 +411,27 @@ class ErpFinanceReversalTest extends TestCase
             $this->getJson("/api/v1/erp/payments/{$payment->id}/receipt")->assertNotFound();
         }
         $this->getJson('/api/v1/erp/payments')->assertOk()->assertJsonPath('meta.total', 3);
+    }
+
+    private int $commercialSequence = 0;
+
+    private function commercialPost($uri, array $data = [], array $headers = [], $options = 0): TestResponse
+    {
+        if (! isset($headers['Idempotency-Key']) && ! isset($data['source_operation_key'])) {
+            $headers['Idempotency-Key'] = 'task9-regression-'.++$this->commercialSequence;
+        }
+        if (preg_match('#/erp/sales/([0-9]+)/post$#', $uri, $matches) && ! isset($data['draft_revision'])) {
+            $data['draft_revision'] = ErpSale::findOrFail($matches[1])->draft_revision;
+        }
+
+        return $this->postJson($uri, $data, $headers, $options);
+    }
+
+    private function fullReturnBody(string $kind, int $sourceId, string $expected): array
+    {
+        $class = $kind === 'sale' ? ErpSale::class : ErpPurchase::class;
+        $source = $class::findOrFail($sourceId);
+
+        return ['erp_'.$kind.'_id' => $sourceId, 'reason' => 'Regressão: devolver todas as linhas da origem', 'expected_total' => $expected, 'lines' => $source->lines()->orderBy('id')->get()->map(fn ($line): array => ['source_line_id' => $line->id, 'quantity' => $line->quantity])->all()];
     }
 }

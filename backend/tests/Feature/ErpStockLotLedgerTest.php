@@ -12,6 +12,8 @@ use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\ErpUnit;
+use App\Models\Erp\Sales\ErpSale;
+use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\Erp\Stock\ErpStockAllocation;
 use App\Models\Erp\Stock\ErpStockCostSettlement;
 use App\Models\Erp\Stock\ErpStockLot;
@@ -20,6 +22,7 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -57,16 +60,16 @@ class ErpStockLotLedgerTest extends TestCase
 
     private function receive(string $quantity, string $cost, string $factor = '1', string $currency = 'BRL'): ErpStockMovement
     {
-        $id = $this->postJson('/api/v1/erp/purchases', ['currency' => $currency, 'erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor]]])->assertCreated()->json('data.id');
-        $this->postJson("/api/v1/erp/purchases/{$id}/post", [], ['Idempotency-Key' => 'receipt-'.$id])->assertOk();
+        $id = $this->commercialPost('/api/v1/erp/purchases', ['currency' => $currency, 'erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_cost' => $cost, 'unit_conversion_factor' => $factor]]])->assertCreated()->json('data.id');
+        $this->commercialPost("/api/v1/erp/purchases/{$id}/post", [], ['Idempotency-Key' => 'receipt-'.$id])->assertOk();
 
         return ErpStockMovement::where('source_type', 'erp_purchase')->where('source_id', $id)->sole();
     }
 
     private function issue(string $quantity): ErpStockMovement
     {
-        $id = $this->postJson('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'S-'.bin2hex(random_bytes(6)), 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_price' => '40']]])->assertCreated()->json('data.id');
-        $this->postJson("/api/v1/erp/sales/{$id}/post", [], ['Idempotency-Key' => 'issue-'.$id])->assertOk();
+        $id = $this->commercialPost('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'S-'.bin2hex(random_bytes(6)), 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_price' => '40']]])->assertCreated()->json('data.id');
+        $this->commercialPost("/api/v1/erp/sales/{$id}/post", [], ['Idempotency-Key' => 'issue-'.$id])->assertOk();
 
         return ErpStockMovement::where('source_type', 'erp_sale')->where('source_id', $id)->sole();
     }
@@ -104,7 +107,7 @@ class ErpStockLotLedgerTest extends TestCase
         $this->assertSame('10000.0001', $movement->quantity);
         $line = DB::table('erp_purchase_lines')->sole();
         $this->assertSame('1.00000001', bcadd((string) $line->unit_conversion_factor, '0', 8));
-        $this->postJson('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '1', 'unit_conversion_factor' => '1.00000001']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
+        $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '1', 'unit_conversion_factor' => '1.00000001']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
         $this->assertDatabaseCount('erp_purchases', 1);
     }
 
@@ -115,8 +118,8 @@ class ErpStockLotLedgerTest extends TestCase
         $before = $issue->getRawOriginal();
         $this->receive('1', '20');
         $this->patchJson('/api/v1/erp/company/settings', ['accounting_method' => 'lifo'])->assertOk();
-        $id = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $issue->source_id, 'total_amount' => '40'])->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/sale-returns/'.$id.'/post', [], ['Idempotency-Key' => 'return-'.$id])->assertOk();
+        $id = $this->commercialPost('/api/v1/erp/sale-returns', $this->fullReturnBody('sale', $issue->source_id, '40'))->assertCreated()->json('data.id');
+        $this->commercialPost('/api/v1/erp/sale-returns/'.$id.'/post', [], ['Idempotency-Key' => 'return-'.$id])->assertOk();
         $return = ErpStockMovement::where('reversal_of_id', $issue->id)->sole();
         $this->assertSame('10.0000', $return->total_cost);
         $this->assertSame($before, $issue->fresh()->getRawOriginal());
@@ -172,8 +175,8 @@ class ErpStockLotLedgerTest extends TestCase
         $receipt = $this->receive('1', '10');
         $this->issue('1');
         $this->receive('1', '20');
-        $id = $this->postJson('/api/v1/erp/purchase-returns', ['erp_purchase_id' => $receipt->source_id, 'total_amount' => '10'])->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/purchase-returns/'.$id.'/post')->assertUnprocessable();
+        $id = $this->commercialPost('/api/v1/erp/purchase-returns', $this->fullReturnBody('purchase', $receipt->source_id, '10'))->assertCreated()->json('data.id');
+        $this->commercialPost('/api/v1/erp/purchase-returns/'.$id.'/post')->assertUnprocessable();
         $this->assertDatabaseCount('erp_stock_movements', 3);
         $this->assertDatabaseHas('erp_purchases', ['id' => $receipt->source_id, 'status' => 'posted']);
     }
@@ -184,20 +187,20 @@ class ErpStockLotLedgerTest extends TestCase
         $this->receive('1', '20');
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $payload = ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'source_operation_key' => 'transfer-1'];
-        $this->postJson('/api/v1/erp/stock/transfers', $payload)->assertCreated();
+        $this->commercialPost('/api/v1/erp/stock/transfers', $payload)->assertCreated();
         $movement = ErpStockMovement::where('source_type', 'erp_stock_transfer')->where('direction', 'out')->sole();
         $this->assertSame('30.0000', $movement->total_cost);
         $lots = DB::table('erp_stock_lots')->where('erp_establishment_id', $destination->id)->orderBy('id')->get();
         $this->assertSame(['10.0000', '20.0000'], $lots->map(fn ($lot) => bcadd((string) $lot->total_cost, '0', 4))->all());
-        $this->postJson('/api/v1/erp/stock/transfers', $payload)->assertStatus(201);
-        $this->postJson('/api/v1/erp/stock/transfers', [...$payload, 'quantity' => '1'])->assertConflict();
+        $this->commercialPost('/api/v1/erp/stock/transfers', $payload)->assertStatus(201);
+        $this->commercialPost('/api/v1/erp/stock/transfers', [...$payload, 'quantity' => '1'])->assertConflict();
         ErpStockLot::creating(function ($lot): void {
             if ($lot->root_lot_id !== null) {
                 throw new \RuntimeException('Injected transfer credit failure');
             }
         });
         try {
-            $this->postJson('/api/v1/erp/stock/transfers', [...$payload, 'from_establishment_id' => $destination->id, 'to_establishment_id' => $this->establishment->id, 'quantity' => '1', 'source_operation_key' => 'transfer-fail'])->assertStatus(503);
+            $this->commercialPost('/api/v1/erp/stock/transfers', [...$payload, 'from_establishment_id' => $destination->id, 'to_establishment_id' => $this->establishment->id, 'quantity' => '1', 'source_operation_key' => 'transfer-fail'])->assertStatus(503);
         } finally {
             ErpStockLot::flushEventListeners();
         }
@@ -208,16 +211,16 @@ class ErpStockLotLedgerTest extends TestCase
     public function test_adjustment_creates_unvalued_stock_and_journal_replay_keeps_original_result(): void
     {
         $payload = ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '2', 'reason' => 'Contagem inicial'];
-        $response = $this->postJson('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertCreated();
+        $response = $this->commercialPost('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertCreated();
         $this->assertNull(ErpStockMovement::sole()->total_cost);
         $this->assertSame('2.0000', ErpStockMovement::sole()->unvalued_quantity);
-        $this->postJson('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertStatus(201)->assertExactJson($response->json());
-        $this->postJson('/api/v1/erp/stock/adjustments', [...$payload, 'reason' => 'Different'], ['Idempotency-Key' => 'adjustment-ledger'])->assertConflict();
+        $this->commercialPost('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertStatus(201)->assertExactJson($response->json());
+        $this->commercialPost('/api/v1/erp/stock/adjustments', [...$payload, 'reason' => 'Different'], ['Idempotency-Key' => 'adjustment-ledger'])->assertConflict();
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.stock.adjustments.store', ['Idempotency-Key' => 'adjustment-ledger'])->assertOk()->assertJsonPath('data.result.id', $response->json('data.id'));
         $this->assertDatabaseCount('erp_operation_receipts', 1);
         $this->assertDatabaseCount('erp_stock_movements', 1);
         $this->variant->product->update(['status' => 'archived']);
-        $this->postJson('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertStatus(201)->assertExactJson($response->json());
+        $this->commercialPost('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'adjustment-ledger'])->assertStatus(201)->assertExactJson($response->json());
     }
 
     public function test_sale_shortage_requires_both_setting_and_explicit_effective_capability(): void
@@ -225,35 +228,35 @@ class ErpStockLotLedgerTest extends TestCase
         $this->receive('1', '10');
         $membership = ErpCompanyMembership::where('erp_company_id', $this->company->id)->sole();
         $membership->update(['role' => 'operator', 'action_permissions' => ['erp.sales.store', 'erp.sales.post', 'erp.stock.oversell']]);
-        $id = $this->postJson('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'SHORTAGE', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '1']]])->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertUnprocessable();
+        $id = $this->commercialPost('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'SHORTAGE', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2']]])->assertCreated()->json('data.id');
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertUnprocessable();
         $this->company->update(['operating_settings' => ['stock_overselling_enabled' => true]]);
         $membership->update(['action_permissions' => ['erp.sales.store', 'erp.sales.post']]);
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
         $membership->update(['action_permissions' => ['erp.write']]);
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
         $membership->update(['action_permissions' => ['erp.sales.store', 'erp.sales.post', 'erp.stock.oversell']]);
-        $original = $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertOk();
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', ['unexpected' => 'changed'], ['Idempotency-Key' => 'shortage'])->assertUnprocessable();
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertOk()->assertExactJson($original->json());
+        $original = $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertOk();
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', ['unexpected' => 'changed'], ['Idempotency-Key' => 'shortage'])->assertUnprocessable();
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertOk()->assertExactJson($original->json());
         $membership->update(['role' => 'viewer']);
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'shortage'])->assertForbidden();
     }
 
     public function test_standalone_adjustment_reversal_is_bounded_and_commercial_movements_require_owning_return(): void
     {
         $payload = ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '2', 'reason' => 'Contagem'];
-        $this->postJson('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'opening'])->assertCreated();
+        $this->commercialPost('/api/v1/erp/stock/adjustments', $payload, ['Idempotency-Key' => 'opening'])->assertCreated();
         $movement = ErpStockMovement::sole();
         $path = '/api/v1/erp/stock/movements/'.$movement->id.'/reverse';
-        $original = $this->postJson($path, ['quantity' => '0.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertCreated();
-        $this->postJson($path, ['quantity' => '0.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertStatus(201)->assertExactJson($original->json());
-        $this->postJson($path, ['quantity' => '0.6', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertConflict();
-        $this->postJson($path, ['quantity' => '1.6', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-over'])->assertUnprocessable();
-        $this->postJson($path, ['quantity' => '1.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-rest'])->assertCreated();
+        $original = $this->commercialPost($path, ['quantity' => '0.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertCreated();
+        $this->commercialPost($path, ['quantity' => '0.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertStatus(201)->assertExactJson($original->json());
+        $this->commercialPost($path, ['quantity' => '0.6', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-1'])->assertConflict();
+        $this->commercialPost($path, ['quantity' => '1.6', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-over'])->assertUnprocessable();
+        $this->commercialPost($path, ['quantity' => '1.5', 'reason' => 'Correção'], ['Idempotency-Key' => 'reverse-rest'])->assertCreated();
         $this->assertDatabaseHas('erp_stock_balances', ['quantity_on_hand' => '0.0000']);
         $purchase = $this->receive('1', '10');
-        $this->postJson('/api/v1/erp/stock/movements/'.$purchase->id.'/reverse', ['quantity' => '1', 'reason' => 'Use owning return'], ['Idempotency-Key' => 'unsafe'])->assertUnprocessable();
+        $this->commercialPost('/api/v1/erp/stock/movements/'.$purchase->id.'/reverse', ['quantity' => '1', 'reason' => 'Use owning return'], ['Idempotency-Key' => 'unsafe'])->assertUnprocessable();
     }
 
     public function test_linked_partial_transfer_reversal_is_atomic_and_preserves_source_entitlement(): void
@@ -261,10 +264,10 @@ class ErpStockLotLedgerTest extends TestCase
         $this->receive('1', '10');
         $this->receive('1', '20');
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $transfer = $this->postJson('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '2'], ['Idempotency-Key' => 'pair'])->assertCreated()->json('data.id');
+        $transfer = $this->commercialPost('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '2'], ['Idempotency-Key' => 'pair'])->assertCreated()->json('data.id');
         $path = '/api/v1/erp/stock/transfers/'.$transfer.'/reverse';
-        $first = $this->postJson($path, ['quantity' => '0.5', 'reason' => 'Correção parcial'], ['Idempotency-Key' => 'pair-return'])->assertCreated();
-        $this->postJson($path, ['quantity' => '0.5', 'reason' => 'Correção parcial'], ['Idempotency-Key' => 'pair-return'])->assertStatus(201)->assertExactJson($first->json());
+        $first = $this->commercialPost($path, ['quantity' => '0.5', 'reason' => 'Correção parcial'], ['Idempotency-Key' => 'pair-return'])->assertCreated();
+        $this->commercialPost($path, ['quantity' => '0.5', 'reason' => 'Correção parcial'], ['Idempotency-Key' => 'pair-return'])->assertStatus(201)->assertExactJson($first->json());
         $this->getJson('/api/v1/erp/stock/transfers/'.$transfer)->assertOk()->assertJsonPath('data.returned_quantity', '0.5000');
         $this->assertDatabaseHas('erp_stock_balances', ['erp_establishment_id' => $destination->id, 'quantity_on_hand' => '1.5000']);
         ErpStockLot::creating(function ($lot): void {
@@ -273,14 +276,14 @@ class ErpStockLotLedgerTest extends TestCase
             }
         });
         try {
-            $this->postJson($path, ['quantity' => '0.5', 'reason' => 'Falha'], ['Idempotency-Key' => 'pair-fail'])->assertStatus(503);
+            $this->commercialPost($path, ['quantity' => '0.5', 'reason' => 'Falha'], ['Idempotency-Key' => 'pair-fail'])->assertStatus(503);
         } finally {
             ErpStockLot::flushEventListeners();
         }
         $this->assertDatabaseCount('erp_stock_movements', 6);
         $this->assertDatabaseHas('erp_stock_balances', ['erp_establishment_id' => $destination->id, 'quantity_on_hand' => '1.5000']);
-        $this->postJson($path, ['quantity' => '1.5', 'reason' => 'Restante'], ['Idempotency-Key' => 'pair-rest'])->assertCreated();
-        $this->postJson($path, ['quantity' => '0.0001', 'reason' => 'Excesso'], ['Idempotency-Key' => 'pair-over'])->assertUnprocessable();
+        $this->commercialPost($path, ['quantity' => '1.5', 'reason' => 'Restante'], ['Idempotency-Key' => 'pair-rest'])->assertCreated();
+        $this->commercialPost($path, ['quantity' => '0.0001', 'reason' => 'Excesso'], ['Idempotency-Key' => 'pair-over'])->assertUnprocessable();
         $this->assertDatabaseHas('erp_stock_balances', ['erp_establishment_id' => $this->establishment->id, 'quantity_on_hand' => '2.0000']);
     }
 
@@ -289,15 +292,15 @@ class ErpStockLotLedgerTest extends TestCase
         $this->receive('1', '10');
         $this->receive('1', '20');
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $transfer = $this->postJson('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '2'], ['Idempotency-Key' => 'source-pair'])->assertCreated()->json('data.id');
+        $transfer = $this->commercialPost('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '2'], ['Idempotency-Key' => 'source-pair'])->assertCreated()->json('data.id');
         $origin = $this->establishment;
         $this->establishment = $destination;
         $this->patchJson('/api/v1/erp/company/settings', ['accounting_method' => 'lifo'])->assertOk();
         $this->assertSame('20.0000', $this->issue('1')->total_cost);
         $this->establishment = $origin;
         $path = '/api/v1/erp/stock/transfers/'.$transfer.'/reverse';
-        $this->postJson($path, ['quantity' => '2', 'reason' => 'Unavailable source quantity'], ['Idempotency-Key' => 'unavailable'])->assertUnprocessable();
-        $this->postJson($path, ['quantity' => '1', 'reason' => 'Surviving source'], ['Idempotency-Key' => 'surviving'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '10.0000')->assertJsonPath('data.movements.1.total_cost', '10.0000');
+        $this->commercialPost($path, ['quantity' => '2', 'reason' => 'Unavailable source quantity'], ['Idempotency-Key' => 'unavailable'])->assertUnprocessable();
+        $this->commercialPost($path, ['quantity' => '1', 'reason' => 'Surviving source'], ['Idempotency-Key' => 'surviving'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '10.0000')->assertJsonPath('data.movements.1.total_cost', '10.0000');
         $this->assertSame('10.0000', $this->issue('1')->total_cost);
     }
 
@@ -311,13 +314,13 @@ class ErpStockLotLedgerTest extends TestCase
         $this->assertSame('mixed_currency', $issue->cost_status);
         $this->assertSame('0.0000', $issue->unvalued_quantity);
         $this->assertSame([['currency' => 'BRL', 'known_cost' => '20.0000', 'unvalued_quantity' => '0.0000'], ['currency' => 'USD', 'known_cost' => '20.0000', 'unvalued_quantity' => '0.0000']], $issue->cost_breakdown);
-        $id = $this->postJson('/api/v1/erp/sale-returns', ['erp_sale_id' => $issue->source_id, 'total_amount' => '120'])->assertCreated()->json('data.id');
-        $this->postJson('/api/v1/erp/sale-returns/'.$id.'/post', [], ['Idempotency-Key' => 'mixed-return'])->assertOk();
+        $id = $this->commercialPost('/api/v1/erp/sale-returns', $this->fullReturnBody('sale', $issue->source_id, '120'))->assertCreated()->json('data.id');
+        $this->commercialPost('/api/v1/erp/sale-returns/'.$id.'/post', [], ['Idempotency-Key' => 'mixed-return'])->assertOk();
         $return = ErpStockMovement::where('reversal_of_id', $issue->id)->sole();
         $this->assertSame($issue->cost_breakdown, $return->cost_breakdown);
         $this->assertNull($return->total_cost);
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $this->postJson('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '4'], ['Idempotency-Key' => 'mixed-transfer'])->assertCreated();
+        $this->commercialPost('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '4'], ['Idempotency-Key' => 'mixed-transfer'])->assertCreated();
         $legs = ErpStockMovement::where('source_type', 'erp_stock_transfer')->orderBy('id')->get();
         $this->assertSame($legs[0]->cost_breakdown, $legs[1]->cost_breakdown);
         $this->assertSame('mixed_currency', $legs[1]->cost_status);
@@ -328,11 +331,13 @@ class ErpStockLotLedgerTest extends TestCase
     public function test_http_sale_uses_persisted_eight_place_factor_and_rejects_inexact_base(): void
     {
         $this->receive('20000', '1');
-        $payload = ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'FACTOR-SALE', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '10000', 'unit_price' => '1', 'unit_conversion_factor' => '1.00000001']]];
-        $id = $this->postJson('/api/v1/erp/sales', $payload)->assertCreated()->assertJsonPath('data.lines.0.unit_conversion_factor', '1.00000001')->json('data.id');
-        $this->postJson('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'factor-sale'])->assertOk();
+        $unit = ErpUnit::factory()->create(['erp_company_id' => $this->company->id, 'base_unit_id' => $this->variant->product->erp_unit_id, 'conversion_factor' => '1.00000001', 'allow_decimal' => true]);
+        $payload = ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'FACTOR-SALE', 'lines' => [['erp_unit_id' => $unit->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '10000', 'unit_price' => '1', 'unit_conversion_factor' => '1.00000001']]];
+        $id = $this->commercialPost('/api/v1/erp/sales', $payload)->assertCreated()->json('data.id');
+        $this->getJson('/api/v1/erp/sales/'.$id)->assertOk()->assertJsonPath('data.lines.0.unit_conversion_factor', '1.00000001');
+        $this->commercialPost('/api/v1/erp/sales/'.$id.'/post', [], ['Idempotency-Key' => 'factor-sale'])->assertOk();
         $this->assertSame('10000.0001', ErpStockMovement::where('source_type', 'erp_sale')->sole()->quantity);
-        $this->postJson('/api/v1/erp/sales', [...$payload, 'invoice_no' => 'INEXACT', 'lines' => [[...$payload['lines'][0], 'quantity' => '1']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
+        $this->commercialPost('/api/v1/erp/sales', [...$payload, 'invoice_no' => 'INEXACT', 'lines' => [[...$payload['lines'][0], 'quantity' => '1']]])->assertUnprocessable()->assertJsonValidationErrors('lines.0.quantity');
         $this->assertDatabaseCount('erp_sales', 1);
     }
 
@@ -386,14 +391,14 @@ class ErpStockLotLedgerTest extends TestCase
     {
         $this->receive('1', '10', '3');
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $transfer = $this->postJson('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '3'], ['Idempotency-Key' => 'residual-transfer'])->assertCreated()->json('data.id');
+        $transfer = $this->commercialPost('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '3'], ['Idempotency-Key' => 'residual-transfer'])->assertCreated()->json('data.id');
         $origin = $this->establishment;
         $this->establishment = $destination;
         $this->assertSame('3.3333', $this->issue('1')->total_cost);
         $this->establishment = $origin;
         $path = '/api/v1/erp/stock/transfers/'.$transfer.'/reverse';
-        $this->postJson($path, ['quantity' => '1', 'reason' => 'Primeira fração'], ['Idempotency-Key' => 'residual-return-a'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '3.3333')->assertJsonPath('data.movements.1.total_cost', '3.3333');
-        $this->postJson($path, ['quantity' => '1', 'reason' => 'Fração final'], ['Idempotency-Key' => 'residual-return-b'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '3.3334')->assertJsonPath('data.movements.1.total_cost', '3.3334');
+        $this->commercialPost($path, ['quantity' => '1', 'reason' => 'Primeira fração'], ['Idempotency-Key' => 'residual-return-a'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '3.3333')->assertJsonPath('data.movements.1.total_cost', '3.3333');
+        $this->commercialPost($path, ['quantity' => '1', 'reason' => 'Fração final'], ['Idempotency-Key' => 'residual-return-b'])->assertCreated()->assertJsonPath('data.movements.0.total_cost', '3.3334')->assertJsonPath('data.movements.1.total_cost', '3.3334');
         $this->assertSame('6.6667', $this->issue('2')->total_cost);
     }
 
@@ -402,7 +407,7 @@ class ErpStockLotLedgerTest extends TestCase
         $this->company->update(['operating_settings' => ['stock_overselling_enabled' => true]]);
         $issue = $this->issue('2');
         $this->receive('1', '20');
-        $this->postJson('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '1', 'reason' => 'Unknown settlement'], ['Idempotency-Key' => 'unknown-settlement'])->assertCreated();
+        $this->commercialPost('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '1', 'reason' => 'Unknown settlement'], ['Idempotency-Key' => 'unknown-settlement'])->assertCreated();
         $reverse = DB::transaction(fn () => app(ErpStockLedger::class)->reverse($issue, '2', 'Settled source return', 'settled-return', ['source_type' => 'test_return', 'source_id' => 1]));
         $this->assertSame('20.0000', $reverse->known_cost);
         $this->assertSame('1.0000', $reverse->unvalued_quantity);
@@ -430,7 +435,7 @@ class ErpStockLotLedgerTest extends TestCase
     {
         $receipt = $this->receive('1', '10');
         $other = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $this->postJson('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $other->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '1', 'reason' => 'Another establishment'], ['Idempotency-Key' => 'other-opening'])->assertCreated();
+        $this->commercialPost('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $other->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '1', 'reason' => 'Another establishment'], ['Idempotency-Key' => 'other-opening'])->assertCreated();
         $adjustment = DB::table('erp_stock_adjustments')->sole();
         $this->getJson('/api/v1/erp/stock/adjustments/'.$adjustment->id)->assertOk()->assertJsonCount(1, 'data.movement_ids')->assertJsonPath('data.posted_by_user_id', ErpCompanyMembership::sole()->user_id);
         $this->getJson('/api/v1/erp/stock/movements?erp_establishment_id='.$this->establishment->id.'&direction=in&source_type=erp_purchase&source_id='.$receipt->source_id)->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $receipt->id);
@@ -465,14 +470,14 @@ class ErpStockLotLedgerTest extends TestCase
 
     public function test_failure_after_receipt_creation_rolls_back_every_purchase_participant_and_same_key_can_retry(): void
     {
-        $id = $this->postJson('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '10']]])->assertCreated()->json('data.id');
+        $id = $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '10']]])->assertCreated()->json('data.id');
         ErpOperationReceipt::created(function ($receipt): void {
             if ($receipt->operation === 'erp.purchases.post') {
                 abort(422, 'Injected failure after receipt persistence');
             }
         });
         try {
-            $this->postJson('/api/v1/erp/purchases/'.$id.'/post', [], ['Idempotency-Key' => 'after-receipt'])->assertUnprocessable();
+            $this->commercialPost('/api/v1/erp/purchases/'.$id.'/post', [], ['Idempotency-Key' => 'after-receipt'])->assertUnprocessable();
         } finally {
             ErpOperationReceipt::flushEventListeners();
         }
@@ -480,7 +485,7 @@ class ErpStockLotLedgerTest extends TestCase
         foreach (['erp_stock_balances', 'erp_stock_lots', 'erp_stock_movements', 'erp_obligations', 'erp_operation_receipts'] as $table) {
             $this->assertDatabaseCount($table, 0);
         }
-        $this->postJson('/api/v1/erp/purchases/'.$id.'/post', [], ['Idempotency-Key' => 'after-receipt'])->assertOk();
+        $this->commercialPost('/api/v1/erp/purchases/'.$id.'/post', [], ['Idempotency-Key' => 'after-receipt'])->assertOk();
         $this->assertDatabaseCount('erp_stock_lots', 1);
         $this->assertDatabaseCount('erp_obligations', 1);
         $this->assertDatabaseCount('erp_operation_receipts', 1);
@@ -490,8 +495,8 @@ class ErpStockLotLedgerTest extends TestCase
     {
         $this->company->update(['operating_settings' => ['stock_overselling_enabled' => true]]);
         $destination = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $this->postJson('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '1'], ['Idempotency-Key' => 'forbidden-deficit-transfer'])->assertUnprocessable();
-        $this->postJson('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '-1', 'reason' => 'No stock'], ['Idempotency-Key' => 'forbidden-deficit-adjustment'])->assertUnprocessable();
+        $this->commercialPost('/api/v1/erp/stock/transfers', ['from_establishment_id' => $this->establishment->id, 'to_establishment_id' => $destination->id, 'erp_product_variant_id' => $this->variant->id, 'quantity' => '1'], ['Idempotency-Key' => 'forbidden-deficit-transfer'])->assertUnprocessable();
+        $this->commercialPost('/api/v1/erp/stock/adjustments', ['erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_delta' => '-1', 'reason' => 'No stock'], ['Idempotency-Key' => 'forbidden-deficit-adjustment'])->assertUnprocessable();
         $this->assertDatabaseCount('erp_stock_movements', 0);
         $this->assertDatabaseCount('erp_stock_transfers', 0);
         $this->assertDatabaseCount('erp_stock_adjustments', 0);
@@ -547,5 +552,27 @@ class ErpStockLotLedgerTest extends TestCase
         $id = DB::table('erp_stock_balances')->insertGetId(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'erp_product_variant_id' => $this->variant->id, 'quantity_on_hand' => '3.0000', 'average_cost' => '99.0000']);
         $migration->up();
         $this->getJson('/api/v1/erp/stock/balances?erp_establishment_id='.$this->establishment->id)->assertOk()->assertJsonPath('data.0.id', $id)->assertJsonPath('data.0.quantity_on_hand', '3.0000')->assertJsonPath('data.0.reconciliation.needs_reconciliation', true)->assertJsonPath('data.0.reconciliation.observed_quantity', '3.0000')->assertJsonPath('data.0.reconciliation.signed_history_quantity', '0.0000')->assertJsonPath('data.0.reconciliation.provenance', 'legacy_unknown')->assertJsonPath('data.0.reconciliation.watermark_movement_id', null)->assertJsonStructure(['data' => [['ledger_initialized_at']]]);
+    }
+
+    private int $commercialSequence = 0;
+
+    private function commercialPost($uri, array $data = [], array $headers = [], $options = 0): TestResponse
+    {
+        if (! isset($headers['Idempotency-Key']) && ! isset($data['source_operation_key'])) {
+            $headers['Idempotency-Key'] = 'task9-regression-'.++$this->commercialSequence;
+        }
+        if (preg_match('#/erp/sales/([0-9]+)/post$#', $uri, $matches) && ! isset($data['draft_revision'])) {
+            $data['draft_revision'] = ErpSale::findOrFail($matches[1])->draft_revision;
+        }
+
+        return $this->postJson($uri, $data, $headers, $options);
+    }
+
+    private function fullReturnBody(string $kind, int $sourceId, string $expected): array
+    {
+        $class = $kind === 'sale' ? ErpSale::class : ErpPurchase::class;
+        $source = $class::findOrFail($sourceId);
+
+        return ['erp_'.$kind.'_id' => $sourceId, 'reason' => 'Regressão: devolver todas as linhas da origem', 'expected_total' => $expected, 'lines' => $source->lines()->orderBy('id')->get()->map(fn ($line): array => ['source_line_id' => $line->id, 'quantity' => $line->quantity])->all()];
     }
 }

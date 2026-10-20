@@ -13,9 +13,11 @@ use App\Models\Erp\ErpUnit;
 use App\Models\Erp\Finance\ErpCashRegister;
 use App\Models\Erp\Finance\ErpFinancialAccount;
 use App\Models\Erp\Finance\ErpObligation;
+use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Stock\ErpPurchase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class ErpOperationsApiTest extends TestCase
@@ -78,7 +80,7 @@ class ErpOperationsApiTest extends TestCase
     private function login(User $user): void
     {
         $this->withHeader('X-CSRF-Token', $this->csrf())
-            ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
+            ->commercialPost('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
             ->assertOk();
     }
 
@@ -97,7 +99,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonStructure(['data', 'meta' => ['current_page', 'last_page', 'per_page', 'total']]);
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/financial-accounts', [
+            ->commercialPost('/api/v1/erp/financial-accounts', [
                 'name' => 'Conta principal',
                 'erp_establishment_id' => $ctx['establishment']->id,
             ])
@@ -107,7 +109,7 @@ class ErpOperationsApiTest extends TestCase
         $accountId = ErpFinancialAccount::query()->where('erp_company_id', $ctx['company']->id)->value('id');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/obligations', [
+            ->commercialPost('/api/v1/erp/obligations', [
                 'direction' => 'receivable',
                 'category' => 'manual',
                 'amount' => '100.00',
@@ -117,7 +119,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonValidationErrors('erp_financial_account_id');
 
         $obligationResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/obligations', [
+            ->commercialPost('/api/v1/erp/obligations', [
                 'direction' => 'receivable',
                 'category' => 'manual',
                 'amount' => '100.00',
@@ -131,7 +133,7 @@ class ErpOperationsApiTest extends TestCase
         $obligationId = $obligationResponse->json('data.id');
 
         $paymentResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/payments', [
+            ->commercialPost('/api/v1/erp/payments', [
                 'amount' => '40.00',
                 'method' => 'manual',
                 'direction' => 'in',
@@ -142,7 +144,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonPath('data.amount', '40.0000');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/payments/'.$paymentResponse->json('data.id').'/allocate', [
+            ->commercialPost('/api/v1/erp/payments/'.$paymentResponse->json('data.id').'/allocate', [
                 'erp_obligation_id' => $obligationId,
                 'amount' => '40.00',
             ])
@@ -150,14 +152,14 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonPath('data.obligation_open_amount', '60.0000');
 
         $registerResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/cash-registers', [
+            ->commercialPost('/api/v1/erp/cash-registers', [
                 'name' => 'PDV 1',
                 'erp_establishment_id' => $ctx['establishment']->id,
             ])
             ->assertCreated();
 
         $sessionResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/cash-sessions', [
+            ->commercialPost('/api/v1/erp/cash-sessions', [
                 'erp_cash_register_id' => $registerResponse->json('data.id'),
                 'opening_amount' => '100.00',
                 'currency' => 'BRL',
@@ -167,7 +169,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonPath('data.opening_amount', '100.0000');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'finance-basic'])
-            ->postJson('/api/v1/erp/cash-sessions/'.$sessionResponse->json('data.id').'/close', [
+            ->commercialPost('/api/v1/erp/cash-sessions/'.$sessionResponse->json('data.id').'/close', [
                 'declared_closing_amount' => '130.00',
             ])
             ->assertOk()
@@ -200,7 +202,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertNotFound();
 
         $purchaseResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases', [
+            ->commercialPost('/api/v1/erp/purchases', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'document_no' => 'NF-100',
                 'lines' => [
@@ -218,7 +220,7 @@ class ErpOperationsApiTest extends TestCase
         $purchaseId = $purchaseResponse->json('data.id');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases/'.$purchaseId.'/post')
+            ->commercialPost('/api/v1/erp/purchases/'.$purchaseId.'/post')
             ->assertOk()
             ->assertJsonPath('data.status', 'posted');
 
@@ -244,7 +246,7 @@ class ErpOperationsApiTest extends TestCase
         $variant = ErpProductVariant::factory()->create(['erp_product_id' => $product->id]);
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases', [
+            ->commercialPost('/api/v1/erp/purchases', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'lines' => [
                     [
@@ -258,37 +260,39 @@ class ErpOperationsApiTest extends TestCase
 
         $purchaseId = ErpPurchase::query()->value('id');
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/purchases/'.$purchaseId.'/post')
+            ->commercialPost('/api/v1/erp/purchases/'.$purchaseId.'/post')
             ->assertOk();
 
         $quoteResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/quotes', [
+            ->commercialPost('/api/v1/erp/quotes', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'quote_no' => 'Q-1',
-                'total_amount' => '50,00',
+                'expected_total' => '50',
+                'lines' => [['description' => 'Cotação', 'quantity' => '1', 'unit_price' => '50']],
             ])
             ->assertCreated();
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/quotes/'.$quoteResponse->json('data.id').'/convert', [
+            ->commercialPost('/api/v1/erp/quotes/'.$quoteResponse->json('data.id').'/convert', [
                 'order_no' => 'O-1',
+                'draft_revision' => 1,
             ])
             ->assertOk()
             ->assertJsonPath('data.quote.status', 'converted')
             ->assertJsonPath('data.order.order_no', 'O-1');
 
         $saleResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/sales', [
+            ->commercialPost('/api/v1/erp/sales', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'invoice_no' => 'V-1',
                 'lines' => [
                     [
                         'erp_product_variant_id' => $variant->id,
                         'quantity' => '2',
-                        'unit_price' => '10,50',
+                        'unit_price' => '10.50',
                     ],
                 ],
-                'discount' => ['discount_type' => 'fixed', 'discount_amount' => '2,00'],
+                'discount' => ['discount_type' => 'fixed', 'discount_amount' => '2.00'],
                 'tax_rate_percent' => '10',
             ])
             ->assertCreated()
@@ -298,14 +302,14 @@ class ErpOperationsApiTest extends TestCase
         $saleId = $saleResponse->json('data.id');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/sales/'.$saleId.'/post')
+            ->commercialPost('/api/v1/erp/sales/'.$saleId.'/post')
             ->assertOk()
             ->assertJsonPath('data.status', 'posted');
 
         $this->assertSame(1, ErpObligation::query()->where('source_type', 'erp_sale')->count());
 
         $certificateResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/certificates', [
+            ->commercialPost('/api/v1/erp/fiscal/certificates', [
                 'label' => 'Certificado A1',
                 'certificate_content' => base64_encode('fake-cert-bytes'),
                 'password' => 'secret',
@@ -315,7 +319,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonMissing(['encrypted_password', 'encrypted_certificate']);
 
         $documentResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents', [
+            ->commercialPost('/api/v1/erp/fiscal/documents', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'erp_fiscal_certificate_id' => $certificateResponse->json('data.id'),
                 'erp_sale_id' => $saleId,
@@ -327,12 +331,12 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonPath('data.status', 'draft');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$documentResponse->json('data.id').'/queue')
+            ->commercialPost('/api/v1/erp/fiscal/documents/'.$documentResponse->json('data.id').'/queue')
             ->assertOk()
             ->assertJsonPath('data.status', 'queued');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/events', [
+            ->commercialPost('/api/v1/erp/fiscal/events', [
                 'erp_fiscal_document_id' => $documentResponse->json('data.id'),
                 'event_type' => 'cancel',
                 'idempotency_key' => 'event-key-1',
@@ -342,7 +346,7 @@ class ErpOperationsApiTest extends TestCase
             ->assertJsonPath('data.status', 'queued');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/invalidations', [
+            ->commercialPost('/api/v1/erp/fiscal/invalidations', [
                 'erp_establishment_id' => $ctx['establishment']->id,
                 'model' => '55',
                 'series' => 1,
@@ -369,5 +373,19 @@ class ErpOperationsApiTest extends TestCase
         $this->withHeaders($ctx['headers'])
             ->getJson('/api/v1/erp/cash-registers/'.$foreignRegister->id)
             ->assertNotFound();
+    }
+
+    private int $commercialSequence = 0;
+
+    private function commercialPost($uri, array $data = [], array $headers = [], $options = 0): TestResponse
+    {
+        if (! isset($headers['Idempotency-Key']) && ! isset($data['source_operation_key'])) {
+            $headers['Idempotency-Key'] = 'task9-regression-'.++$this->commercialSequence;
+        }
+        if (preg_match('#/erp/sales/([0-9]+)/post$#', $uri, $matches) && ! isset($data['draft_revision'])) {
+            $data['draft_revision'] = ErpSale::findOrFail($matches[1])->draft_revision;
+        }
+
+        return $this->postJson($uri, $data, $headers, $options);
     }
 }
