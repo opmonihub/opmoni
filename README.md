@@ -101,6 +101,55 @@ composer run dev
 
 Laravel runs at `http://localhost:8000`, with a health check at `/up`. PostgreSQL is the default development database, with Redis for cache, sessions, and queues. The backend `.env` uses `127.0.0.1` for host commands; Compose overrides the hosts to `postgres` and `redis` inside containers. The frontend proxies `/api/v1/*` to Laravel. Set the same private key as `FRONTEND_INGRESS_KEY` in the backend and `NUXT_INGRESS_KEY` in the frontend for host execution; `FRONTEND_ORIGIN` must match the browser origin.
 
+### Paseo worktree setup
+
+The root `paseo.json` runs `bash scripts/setup-worktree.sh` after Paseo creates a
+worktree. The script copies missing root, backend, and frontend `.env` files from
+`PASEO_SOURCE_CHECKOUT_PATH` with mode `0600`, preserving existing files and the
+Laravel `APP_KEY`. Configure those three files in the source checkout first.
+
+Setup installs locked Composer and pnpm dependencies into the new worktree;
+pnpm's `postinstall` prepares Nuxt. It requires Node.js 24 and pnpm. If PHP and
+Composer are unavailable on the host, setup uses the local `opmoni-backend:dev`
+image in a temporary container. Build it once from the source checkout with
+`docker compose build setup` if necessary. The temporary container mounts only
+the new worktree and does not start Compose services, run migrations, rotate
+keys, or change fiscal/ERP gates.
+
+Paseo reads setup configuration from the **committed base ref** selected when
+creating a worktree. Both `paseo.json` and the setup script must be committed to
+that ref; choosing `origin/main` requires the commit to be available there.
+
+Keep worktrees under this repository's `.worktrees/` directory. Paseo 0.12
+configures the root globally in `~/.paseo/config.json`, rather than in project
+settings. Merge the following into that file, preserve its existing settings,
+and restart Paseo before creating a worktree:
+
+```json
+{
+  "worktrees": {
+    "root": "/home/obsidian/dev/opmoni/.worktrees"
+  }
+}
+```
+
+Paseo adds a project hash and workspace slug beneath that root. This setting
+applies to every project on that daemon; use a separate daemon configuration
+when other repositories need their own worktree locations. New Opmoni branches
+use the `codex/` prefix. Dependencies and environment files belong to each
+worktree, while copied environment values still reference the source checkout's
+databases and services. Start services and apply migrations separately when
+needed; the existing Compose file has a fixed project name and host ports, so
+running it unchanged in parallel worktrees would reuse the development stack.
+
+To repeat setup manually from a worktree:
+
+```bash
+PASEO_SOURCE_CHECKOUT_PATH=/home/obsidian/dev/opmoni bash scripts/setup-worktree.sh
+```
+
+Reference: [Paseo worktrees and setup hooks](https://github.com/getpaseo/paseo/blob/main/public-docs/worktrees.md).
+
 ## Frontend and backend communication
 
 The browser and Nuxt SSR use relative `/api/v1/*` requests. Nuxt forwards them to Laravel through a server-only proxy, preserving methods, query parameters, request bodies, cookies, and response status codes. The backend origin is private runtime configuration: `NUXT_BACKEND_URL=http://backend:8000` in Docker, or `http://127.0.0.1:8000` outside Docker. It is not placed in public runtime configuration.
