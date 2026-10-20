@@ -65,7 +65,7 @@ final class ErpPurchaseDraftService
         app(ErpCatalogScope::class)->assertActiveEstablishment($company, $establishment);
         $source = $import['source_snapshot'] ?? $model->source_snapshot;
         $supplierId = $body['erp_contact_id'] ?? $model->erp_contact_id;
-        $supplier = $this->supplier($request, $supplierId, $source['emit']['cpf_cnpj'] ?? null);
+        $supplier = $this->supplier($request, $supplierId, $this->verifiedIssuer($source));
         if ($model->source_access_key && ($establishment !== $model->erp_establishment_id || $supplier->id !== $model->erp_contact_id)) {
             $this->error('erp_establishment_id', 'Destino e fornecedor do XML são imutáveis.');
         }
@@ -167,6 +167,9 @@ final class ErpPurchaseDraftService
         }
         if (isset($line['unit_conversion_factor'])) {
             $selectedFactor = Decimal::decimal($line['unit_conversion_factor'], $path.'.unit_conversion_factor', 8);
+            if (bccomp($selectedFactor, '0', 8) <= 0) {
+                $this->error($path.'.unit_conversion_factor', 'Fator deve ser positivo.');
+            }
             if ($variant !== null && ! isset($line['erp_unit_id'])) {
                 // Preserve the established API's explicit base-unit conversion when no alternate unit is selected.
                 $factor = $selectedFactor;
@@ -195,6 +198,22 @@ final class ErpPurchaseDraftService
         $existingAmounts = $existingLine?->product_snapshot['amounts'] ?? [];
         $discount = Decimal::decimal($line['discount_amount'] ?? ($source !== null ? ($existingAmounts['discount_amount'] ?? '0') : '0'), $path.'.discount_amount');
         $tax = Decimal::decimal($line['tax_amount'] ?? ($source !== null ? ($existingAmounts['tax_amount'] ?? '0') : '0'), $path.'.tax_amount');
+        $preservesSourceAmounts = $source !== null && isset($existingAmounts['quantity'], $existingAmounts['unit_cost'], $existingAmounts['line_total'], $existingAmounts['gross_amount'], $existingAmounts['net_amount'])
+            && Decimal::decimal($existingAmounts['quantity'], $path.'.quantity') === $quantity
+            && Decimal::decimal($existingAmounts['unit_cost'], $path.'.unit_cost') === $cost
+            && Decimal::decimal($existingAmounts['discount_amount'] ?? '0', $path.'.discount_amount') === $discount
+            && Decimal::decimal($existingAmounts['tax_amount'] ?? '0', $path.'.tax_amount') === $tax;
+        if ($preservesSourceAmounts) {
+            $acceptedGross = Decimal::decimal($existingAmounts['gross_amount'], $path.'.unit_cost');
+            if (bccomp($discount, $acceptedGross, 4) > 0) {
+                $this->error($path.'.discount_amount', 'Desconto excede o valor bruto da origem aceita.');
+            }
+        } elseif (bccomp($discount, $gross, 4) > 0) {
+            $this->error($path.'.discount_amount', 'Desconto excede o valor bruto.');
+        }
+        $net = $preservesSourceAmounts
+            ? Decimal::decimal($existingAmounts['net_amount'], $path.'.discount_amount')
+            : bcsub($gross, $discount, 4);
         $rate = $nature = null;
         foreach (['erp_tax_rate_id' => ErpTaxRate::class, 'erp_operation_nature_id' => ErpOperationNature::class] as $field => $class) {
             if (isset($line[$field])) {
@@ -210,10 +229,6 @@ final class ErpPurchaseDraftService
                 }
             }
         }
-        if (bccomp($discount, $gross, 4) > 0) {
-            $this->error($path.'.discount_amount', 'Desconto excede o valor bruto.');
-        }
-        $net = bcsub($gross, $discount, 4);
         if ($rate !== null) {
             $computed = Decimal::bounded(bcdiv(bcmul($net, $rate->rate, 8), '100', 4), $path.'.tax_amount');
             if (isset($line['tax_amount']) && $tax !== $computed) {
@@ -221,11 +236,6 @@ final class ErpPurchaseDraftService
             }
             $tax = $computed;
         }
-        $preservesSourceAmounts = $source !== null && isset($existingAmounts['quantity'], $existingAmounts['unit_cost'], $existingAmounts['line_total'])
-            && Decimal::decimal($existingAmounts['quantity'], $path.'.quantity') === $quantity
-            && Decimal::decimal($existingAmounts['unit_cost'], $path.'.unit_cost') === $cost
-            && Decimal::decimal($existingAmounts['discount_amount'] ?? '0', $path.'.discount_amount') === $discount
-            && Decimal::decimal($existingAmounts['tax_amount'] ?? '0', $path.'.tax_amount') === $tax;
         $amounts = $initialImport ? $source['amounts'] : ($preservesSourceAmounts
             ? array_intersect_key($existingAmounts, array_flip(['gross_amount', 'discount_amount', 'net_amount', 'tax_amount', 'line_total']))
             : ['gross_amount' => $gross, 'discount_amount' => $discount, 'net_amount' => $net, 'tax_amount' => $tax, 'line_total' => Decimal::bounded(bcadd($net, $tax, 4), $path.'.line_total')]);
@@ -268,7 +278,7 @@ final class ErpPurchaseDraftService
     {
         $company = $model->erp_company_id;
         $establishment ??= $model->erp_establishment_id;
-        $this->supplier($request, $model->erp_contact_id, $model->source_snapshot['emit']['cpf_cnpj'] ?? null);
+        $this->supplier($request, $model->erp_contact_id, $this->verifiedIssuer($model->source_snapshot));
         foreach ($model->lines as $index => $line) {
             $path = 'lines.'.$index;
             $snapshot = $line->product_snapshot;
@@ -337,8 +347,8 @@ final class ErpPurchaseDraftService
             $data['source_snapshot'] = $this->publicSourceSnapshot($model->source_snapshot);
             $data['lines'] = $model->lines()->orderBy('ordinal')->orderBy('id')->get()->map(function (ErpPurchaseLine $line): array {
                 $serialized = $line->attributesToArray();
-                if (isset($serialized['product_snapshot']['source_item']['source_facts'])) {
-                    unset($serialized['product_snapshot']['source_item']['source_facts']);
+                if (isset($serialized['product_snapshot']['source_item']) && is_array($serialized['product_snapshot']['source_item'])) {
+                    $serialized['product_snapshot']['source_item'] = app(ErpPurchaseXmlPreviewService::class)->publicProjection($serialized['product_snapshot']['source_item']);
                 }
 
                 return $serialized;
@@ -359,15 +369,26 @@ final class ErpPurchaseDraftService
         if ($source === null) {
             return null;
         }
-        unset($source['source_facts']);
-        if (isset($source['det']) && is_array($source['det'])) {
-            foreach ($source['det'] as $index => $line) {
-                unset($line['source_facts']);
-                $source['det'][$index] = $line;
-            }
+
+        return app(ErpPurchaseXmlPreviewService::class)->publicProjection($source);
+    }
+
+    /** @param array<string, mixed>|null $source */
+    private function verifiedIssuer(?array $source): ?string
+    {
+        if ($source === null) {
+            return null;
         }
 
-        return $source;
+        $identifier = $source['verified_issuer_cnpj'] ?? $source['source_facts']['emit']['CNPJ'] ?? null;
+        if (! is_string($identifier) || preg_match('/^[0-9]{14}$/D', $identifier) !== 1) {
+            return null;
+        }
+        if (isset($source['chave']) && substr((string) $source['chave'], 6, 14) !== $identifier) {
+            return null;
+        }
+
+        return $identifier;
     }
 
     private function error(string $field, string $message): never

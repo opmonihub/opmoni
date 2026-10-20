@@ -74,11 +74,11 @@ final class ErpPurchaseOperation
     {
         foreach ($body as $field => &$value) {
             $path = $prefix.$field;
-            if (is_array($value)) {
-                $value = $this->normalize($value, $path.'.');
-            } elseif ($value !== null && (str_ends_with((string) $field, '_id') || in_array($field, ['id', 'draft_revision', 'line'], true))) {
+            $isIdentifier = str_ends_with((string) $field, '_id') || in_array($field, ['id', 'draft_revision', 'line'], true);
+            $isDecimal = in_array($field, ['quantity', 'unit_cost', 'discount_amount', 'tax_amount', 'expected_total', 'unit_conversion_factor'], true);
+            if ($isIdentifier && $value !== null) {
                 $value = Decimal::id($value, $path);
-            } elseif (in_array($field, ['quantity', 'unit_cost', 'discount_amount', 'tax_amount', 'expected_total', 'unit_conversion_factor'], true)) {
+            } elseif ($isDecimal) {
                 if ($field !== 'unit_conversion_factor' && is_string($value) && str_contains($value, ',')) {
                     try {
                         $value = ErpDecimal::parse($value);
@@ -87,6 +87,12 @@ final class ErpPurchaseOperation
                     }
                 }
                 $value = Decimal::decimal($value, $path, $field === 'unit_conversion_factor' ? 8 : 4);
+            } elseif (in_array($field, ['description', 'document_no', 'currency'], true)) {
+                if ($value !== null && ! is_string($value)) {
+                    throw ValidationException::withMessages([$path => 'Informe texto.']);
+                }
+            } elseif (is_array($value)) {
+                $value = $this->normalize($value, $path.'.');
             } elseif ($value !== null && ! is_string($value)) {
                 throw ValidationException::withMessages([$path => 'Informe texto.']);
             }

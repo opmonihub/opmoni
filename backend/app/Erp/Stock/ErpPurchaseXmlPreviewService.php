@@ -194,7 +194,20 @@ final class ErpPurchaseXmlPreviewService
         }
         unset($duplicate);
 
-        return ['policy_version' => self::VERSION, 'chave' => $key, 'numero' => $text('n:ide/n:nNF'), 'serie' => $text('n:ide/n:serie'), 'ide' => $this->tree($xpath->query('n:ide', $note)->item(0)), 'emit' => $emit, 'dest' => $dest, 'det' => $items, 'total' => $rawTotals, 'accepted_totals' => $totals, 'duplicatas' => $duplicates, 'source_facts' => $this->tree($note), 'errors' => $errors];
+        return ['policy_version' => self::VERSION, 'verified_issuer_cnpj' => $issuer, 'chave' => $key, 'numero' => $text('n:ide/n:nNF'), 'serie' => $text('n:ide/n:serie'), 'ide' => $this->tree($xpath->query('n:ide', $note)->item(0)), 'emit' => $emit, 'dest' => $dest, 'det' => $items, 'total' => $rawTotals, 'accepted_totals' => $totals, 'duplicatas' => $duplicates, 'source_facts' => $this->tree($note), 'errors' => $errors];
+    }
+
+    /** Remove private parser facts from every nested public source projection. */
+    public function publicProjection(array $source): array
+    {
+        unset($source['source_facts'], $source['verified_issuer_cnpj']);
+        foreach ($source as $key => $value) {
+            if (is_array($value)) {
+                $source[$key] = $this->publicProjection($value);
+            }
+        }
+
+        return $source;
     }
 
     /** @param array<string, mixed> $source */
@@ -202,7 +215,7 @@ final class ErpPurchaseXmlPreviewService
     {
         $address = $source[$issuer ? 'enderEmit' : 'enderDest'] ?? [];
 
-        return $source + [
+        return array_merge($source, [
             'cpf_cnpj' => $this->displayIdentifier($identifier),
             'name' => $source['xNome'] ?? '',
             'ie_rg' => $issuer ? ($source['IE'] ?? '') : ($source['IE'] ?? ''),
@@ -213,7 +226,7 @@ final class ErpPurchaseXmlPreviewService
             'cep' => $address['CEP'] ?? '',
             'cMun' => $address['cMun'] ?? '',
             'UF' => $address['UF'] ?? '',
-        ];
+        ]);
     }
 
     private function displayIdentifier(string $identifier): string

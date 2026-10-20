@@ -64,7 +64,7 @@ final class ErpPurchaseImportService
 
     public function serialize(Request $request, ErpPurchaseImport $preview, string $token): array
     {
-        $source = $preview->source_snapshot;
+        $source = app(ErpPurchaseXmlPreviewService::class)->publicProjection($preview->source_snapshot);
         $duplicate = app(ErpPurchaseXmlPreviewService::class)->duplicate($preview->erp_company_id, $preview->source_access_key);
         $allowed = app(ErpEstablishmentAccess::class)->allowedIds(CurrentCompany::fromRequest($request));
         $duplicateId = $duplicate && ($allowed === null || in_array($duplicate->erp_establishment_id, $allowed, true)) ? $duplicate->id : null;

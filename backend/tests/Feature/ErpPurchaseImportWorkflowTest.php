@@ -116,6 +116,120 @@ class ErpPurchaseImportWorkflowTest extends ErpCommercialTestCase
         $this->assertDatabaseCount('erp_stock_movements', 0);
     }
 
+    public function test_xml_display_alias_cannot_override_verified_issuer_identity(): void
+    {
+        $verifiedSupplier = $this->supplier();
+        $injectedSupplier = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'tax_id' => '99999999000191', 'is_supplier' => true]);
+        $xml = str_replace('<xNome>Supplier source</xNome>', '<xNome>Supplier source</xNome><cpf_cnpj>99999999000191</cpf_cnpj>', $this->xml());
+
+        $preview = $this->preview($xml);
+        $this->assertSame('11.222.333/0001-81', $preview['emit']['cpf_cnpj']);
+        $this->send('purchases/xml-confirm', $this->choices($preview['token'], $injectedSupplier->id), 'issuer-alias-injection')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('erp_contact_id');
+
+        $malformedAlias = str_replace('<xNome>Supplier source</xNome>', '<xNome>Supplier source</xNome><cpf_cnpj><nested>99999999000191</nested></cpf_cnpj>', $this->xml());
+        $malformedPreview = $this->preview($malformedAlias);
+        $this->assertSame('11.222.333/0001-81', $malformedPreview['emit']['cpf_cnpj']);
+        $this->send('purchases/xml-confirm', $this->choices($malformedPreview['token'], $injectedSupplier->id), 'issuer-alias-malformed')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('erp_contact_id');
+
+        $this->assertDatabaseCount('erp_purchases', 0);
+        $this->assertDatabaseHas('erp_purchase_imports', ['token_digest' => hash('sha256', $preview['token']), 'completed_at' => null]);
+        $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->send('purchases/xml-preview/read', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.state', 'pending');
+        $this->send('purchases/xml-preview/read', ['token' => $malformedPreview['token']])->assertOk()->assertJsonPath('data.state', 'pending');
+        $this->send('purchases/xml-confirm', $this->choices($preview['token'], $verifiedSupplier->id), 'issuer-alias-valid')
+            ->assertCreated()
+            ->assertJsonPath('data.supplier_snapshot.tax_id', '11222333000181');
+    }
+
+    public function test_mapping_line_array_and_object_values_are_validation_errors_and_leave_token_pending(): void
+    {
+        $supplier = $this->supplier();
+        $preview = $this->preview();
+        $responses = [];
+        foreach ([[], (object) ['unexpected' => 'value']] as $index => $lineId) {
+            $body = $this->choices($preview['token'], $supplier->id);
+            $body['items'][0]['line'] = $lineId;
+            $responses[] = $this->send('purchases/xml-confirm', $body, 'malformed-line-id-'.$index);
+        }
+        foreach ($responses as $response) {
+            $response->assertUnprocessable()->assertJsonValidationErrors('items.0.line');
+        }
+        $this->assertDatabaseCount('erp_purchases', 0);
+        $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->send('purchases/xml-preview/read', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.state', 'pending');
+
+        $this->send('purchases/xml-confirm', $this->choices($preview['token'], $supplier->id), 'valid-line-id')->assertCreated();
+    }
+
+    public function test_zero_explicit_conversion_factor_is_rejected_for_manual_purchase_and_xml_confirmation(): void
+    {
+        $supplier = $this->supplier();
+        $manual = ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $supplier->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '3', 'unit_cost' => '1', 'unit_conversion_factor' => '0']]];
+        $manualResponse = $this->send('purchases', $manual, 'zero-manual-factor');
+
+        $preview = $this->preview();
+        $choices = $this->choices($preview['token'], $supplier->id);
+        $choices['items'][0]['unit_conversion_factor'] = '0';
+        $importResponse = $this->send('purchases/xml-confirm', $choices, 'zero-import-factor');
+        $manualResponse->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
+        $importResponse->assertUnprocessable()->assertJsonValidationErrors('lines.0.unit_conversion_factor');
+
+        $this->assertDatabaseCount('erp_purchases', 0);
+        $this->assertDatabaseCount('erp_purchase_lines', 0);
+        $this->assertDatabaseCount('erp_stock_movements', 0);
+        $this->send('purchases/xml-preview/read', ['token' => $preview['token']])->assertOk()->assertJsonPath('data.state', 'pending');
+    }
+
+    public function test_preview_and_token_read_redact_source_facts_but_keep_private_source_durable(): void
+    {
+        $supplier = $this->supplier();
+        $this->establishment->update(['cnpj' => '30288513000100']);
+        $xml = str_replace('<xProd>Source goods</xProd>', '<xProd>Source goods</xProd><privateMarker>private-value</privateMarker>', $this->xml());
+        $response = $this->send('purchases/xml-preview', ['erp_establishment_id' => $this->establishment->id, 'xml' => $xml])->assertOk();
+        $preview = $response->json('data');
+        $response->assertJsonMissingPath('data.det.0.source_facts');
+        $response->assertJsonPath('data.det.0.xProd', 'Source goods');
+        $stored = ErpPurchaseImport::where('token_digest', hash('sha256', $preview['token']))->firstOrFail();
+        $this->assertSame('private-value', $stored->source_snapshot['det'][0]['source_facts']['prod']['privateMarker']);
+
+        $read = $this->send('purchases/xml-preview/read', ['token' => $preview['token']])->assertOk();
+        $read->assertJsonMissingPath('data.det.0.source_facts');
+        $read->assertJsonPath('data.det.0.xProd', 'Source goods');
+        $stored->refresh();
+        $this->assertSame('private-value', $stored->source_snapshot['det'][0]['source_facts']['prod']['privateMarker']);
+        $purchaseId = $this->send('purchases/xml-confirm', $this->choices($preview['token'], $supplier->id), 'private-source-confirm')->assertCreated()->json('data.id');
+        $purchase = ErpPurchase::findOrFail($purchaseId)->load('lines');
+        $this->assertSame('private-value', $purchase->source_snapshot['det'][0]['source_facts']['prod']['privateMarker']);
+        $this->assertSame('private-value', $purchase->lines->sole()->product_snapshot['source_item']['source_facts']['prod']['privateMarker']);
+    }
+
+    public function test_discounted_import_amount_is_preserved_during_metadata_only_line_edit(): void
+    {
+        $supplier = $this->supplier();
+        $xml = str_replace('<vProd>1.00</vProd>', '<vProd>1.00</vProd><vDesc>1.00</vDesc>', $this->xml('0.3333333333', '1.00'));
+        $xml = str_replace('<vNF>1.00</vNF>', '<vNF>0.00</vNF>', $xml);
+        $preview = $this->preview($xml);
+        $this->assertSame([], $preview['errors']);
+        $this->assertSame('1.0000', $preview['det'][0]['amounts']['gross_amount']);
+        $this->assertSame('1.0000', $preview['det'][0]['amounts']['discount_amount']);
+
+        $purchaseId = $this->send('purchases/xml-confirm', $this->choices($preview['token'], $supplier->id), 'discounted-source-confirm')->assertCreated()->json('data.id');
+        $purchase = ErpPurchase::findOrFail($purchaseId)->load('lines');
+        $line = $purchase->lines->sole();
+        $response = $this->patchJson('/api/v1/erp/purchases/'.$purchaseId, ['draft_revision' => 1, 'lines' => [['id' => $line->id, 'erp_product_variant_id' => $this->variant->id, 'description' => 'Metadata edit', 'quantity' => '3', 'unit_cost' => '0.3333', 'unit_conversion_factor' => '1.00000000']]], ['Idempotency-Key' => 'discounted-source-edit']);
+
+        $response->assertOk()->assertJsonPath('data.total_amount', '0.0000');
+        $line->refresh();
+        $this->assertSame('1.0000', $line->product_snapshot['amounts']['gross_amount']);
+        $this->assertSame('1.0000', $line->product_snapshot['amounts']['discount_amount']);
+        $this->assertSame('0.0000', $line->line_total);
+        $this->assertSame('0.3333333333', $line->product_snapshot['source_item']['vUnCom']);
+    }
+
     public function test_blocked_source_remains_inspectable_and_expiry_and_mapping_failures_are_atomic(): void
     {
         $supplier = $this->supplier();
