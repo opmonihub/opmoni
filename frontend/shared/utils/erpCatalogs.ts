@@ -20,7 +20,9 @@ export const erpCatalogRoutes = {
   importContactsPreview: '/erp/catalog/import/contacts/preview',
   importContactsConfirm: '/erp/catalog/import/contacts/confirm',
   printSettings: '/erp/catalog/print-settings',
-  productLabels: '/erp/catalog/product-labels'
+  productLabels: '/erp/catalog/product-labels',
+  labelLayouts: '/erp/catalog/label-layouts',
+  printerProfiles: '/erp/catalog/printer-profiles'
 } as const satisfies Record<string, string>
 
 export function erpCatalogListQuery(search: string, page = 1) {

@@ -29,6 +29,7 @@ export const sampleErpProductFixture = {
   warranty_months: 12,
   warranty_description: 'Garantia legal',
   barcode: '7891000100103',
+  barcode_type: 'EAN13',
   ncm: null,
   cest: null,
   origin_code: null,
@@ -51,6 +52,7 @@ export const sampleErpProductFixture = {
     name: 'P',
     sale_price: '10.5000',
     barcode: null,
+    barcode_type: null,
     status: 'active'
   }]
 } satisfies ErpProductRecord

@@ -1,6 +1,7 @@
 export type ErpCatalogStatus = 'active' | 'archived'
 
 export type ErpCatalogEditorMode = 'create' | 'detail' | 'edit'
+export type ErpBarcodeType = 'C128' | 'C39' | 'EAN13' | 'EAN8' | 'UPCA' | 'UPCE'
 
 export type ErpContactRecord = {
   id: number
@@ -37,6 +38,7 @@ export type ErpProductRecord = {
   warranty_months: number | null
   warranty_description: string | null
   barcode: string | null
+  barcode_type: ErpBarcodeType
   ncm: string | null
   cest: string | null
   origin_code: string | null
@@ -62,6 +64,7 @@ export type ErpProductVariantRecord = {
   name: string
   sale_price: string | null
   barcode: string | null
+  barcode_type: ErpBarcodeType | null
   status: ErpCatalogStatus
 }
 
@@ -179,4 +182,53 @@ export type ErpCatalogPrintSettings = {
   label_height_mm: number
   show_price: boolean
   show_barcode: boolean
+}
+
+export type ErpCatalogPrintLayout = {
+  id: number | null
+  name: string
+  description: string | null
+  label_width_mm: string
+  label_height_mm: string
+  paper_width_mm: string
+  paper_height_mm: string | null
+  top_margin_mm: string
+  left_margin_mm: string
+  row_spacing_mm: string
+  column_spacing_mm: string
+  columns_per_row: number
+  labels_per_sheet: number | null
+  is_continuous: boolean
+  is_default: boolean
+  status?: ErpCatalogStatus
+}
+
+export type ErpCatalogPrinterProfile = {
+  id: number
+  name: string
+  capability_profile: 'default' | 'simple' | 'SP2000' | 'TEP-200M' | 'P822D'
+  status: ErpCatalogStatus
+}
+
+export type ErpCatalogLabelItem = {
+  id: number
+  variant_id: number | null
+  product_name: string
+  variant_name: string | null
+  sku: string | null
+  barcode: string | null
+  barcode_type: ErpBarcodeType
+  sale_price: string | null
+  quantity: number
+}
+
+export type ErpCatalogLabelResponse = {
+  data: ErpCatalogLabelItem[]
+  meta: {
+    layout: ErpCatalogPrintLayout
+    toggles: { show_price: boolean, show_barcode: boolean }
+    compatibility_fallback: boolean
+    total_copies: number
+    output_page_height_mm: string | null
+  }
 }

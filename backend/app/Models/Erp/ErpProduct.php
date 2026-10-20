@@ -17,7 +17,7 @@ class ErpProduct extends Model
     protected $fillable = [
         'erp_company_id', 'sku', 'name', 'kind', 'track_stock', 'erp_unit_id',
         'erp_brand_id', 'erp_category_id', 'sale_price', 'warranty_months',
-        'warranty_description', 'barcode', 'ncm', 'cest', 'origin_code',
+        'warranty_description', 'barcode', 'barcode_type', 'ncm', 'cest', 'origin_code',
         'icms_cst', 'icms_csosn', 'pis_cst', 'cofins_cst', 'ipi_cst',
         'icms_rate', 'pis_rate', 'cofins_rate', 'ipi_rate',
         'simple_national_credit_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code',

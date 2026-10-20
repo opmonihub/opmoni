@@ -24,6 +24,12 @@ abstract class ErpCatalogController extends Controller
 
     abstract protected function serialize(Model $model): array;
 
+    /** @return list<string> */
+    protected function indexRelations(): array
+    {
+        return [];
+    }
+
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyId($request);
@@ -31,6 +37,7 @@ abstract class ErpCatalogController extends Controller
 
         /** @var Builder<Model> $query */
         $query = $this->modelClass()::query()
+            ->with($this->indexRelations())
             ->where('erp_company_id', $companyId)
             ->orderBy('id');
         $resource = ErpEstablishmentResource::forModel($this->modelClass());

@@ -328,20 +328,20 @@ const editCases: FormCase[] = [
     record: {
       id: 77, name: 'Mercadoria', sku: 'ABC', kind: 'goods', track_stock: true, erp_unit_id: 4, erp_brand_id: 5,
       erp_category_id: 6, sale_price: '19.2500', warranty_months: 12, warranty_description: '12 meses',
-      barcode: '7890001112223', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
+      barcode: '7890001112223', barcode_type: 'EAN13', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
       pis_cst: '01', cofins_cst: '02', ipi_cst: '03', icms_rate: '0.0001', pis_rate: '0.0000',
       cofins_rate: '1.2300', ipi_rate: '0.5000', simple_national_credit_rate: '0.0001',
       ibs_cbs_cst: '999', ibs_cbs_classification_code: '123456', status: 'active',
-      variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223', status: 'active' }]
+      variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223', barcode_type: null, status: 'active' }]
     },
     expected: {
       name: 'Mercadoria Atualizada', sku: 'ABC', kind: 'goods', track_stock: true, erp_unit_id: 4, erp_brand_id: 5,
       erp_category_id: 6, sale_price: '19.2500', warranty_months: 12, warranty_description: '12 meses',
-      barcode: '7890001112223', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
+      barcode: '7890001112223', barcode_type: 'EAN13', ncm: '00', cest: '1234567', origin_code: '0', icms_cst: '00', icms_csosn: '000',
       pis_cst: '01', cofins_cst: '02', ipi_cst: '03', icms_rate: '0.0001', pis_rate: '0.0000',
       cofins_rate: '1.2300', ipi_rate: '0.5000', simple_national_credit_rate: '0.0001',
       ibs_cbs_cst: '999', ibs_cbs_classification_code: '123456',
-      variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223' }]
+      variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: '19.2500', barcode: '7890001112223', barcode_type: null }]
     }
   },
   {
@@ -493,7 +493,7 @@ describe('ERP catalog family forms', () => {
       assert.equal(form.emitted.length, 1)
       assert.equal(form.emitted[0]?.[requiredField], `Novo ${requiredField}`)
       if (path.endsWith('ErpProductCatalogForm.vue')) {
-        assert.deepEqual(form.emitted[0]?.variants, [{ name: 'Padrão', sku: null, sale_price: null, barcode: null }])
+        assert.deepEqual(form.emitted[0]?.variants, [{ name: 'Padrão', sku: null, sale_price: null, barcode: null, barcode_type: null }])
       }
       if (path.endsWith('ErpCustomerGroupCatalogForm.vue'))
         assert.equal(form.emitted[0]?.percentage_adjustment, '0.0000')
@@ -563,8 +563,8 @@ describe('ERP catalog family forms', () => {
     for (const form of [product, discount, operation, contact, unit, priceGroup])
       t.after(form.unmount)
 
-    for (const form of [product, discount, operation]) {
-      assert.equal(descendants(form.root).filter(node => node.props['data-nuxt-ui-component'] === 'USelect').length, 1)
+    for (const [form, expectedSelectCount] of [[product, 3], [discount, 1], [operation, 1]] as const) {
+      assert.equal(descendants(form.root).filter(node => node.props['data-nuxt-ui-component'] === 'USelect').length, expectedSelectCount)
       assert.equal(descendants(form.root).filter(node => node.tag === 'select' && !node.props['data-nuxt-ui-component']).length, 0)
     }
     assert.equal(descendants(product.root).filter(node => node.props['data-nuxt-ui-component'] === 'UCheckbox').length, 1)

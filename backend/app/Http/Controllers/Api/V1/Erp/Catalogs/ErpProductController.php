@@ -25,6 +25,11 @@ class ErpProductController extends ErpCatalogController
         return ['name', 'sku', 'barcode'];
     }
 
+    protected function indexRelations(): array
+    {
+        return ['variants'];
+    }
+
     protected function serialize(Model $model): array
     {
         /** @var ErpProduct $model */
@@ -41,6 +46,7 @@ class ErpProductController extends ErpCatalogController
             'warranty_months' => $model->warranty_months,
             'warranty_description' => $model->warranty_description,
             'barcode' => $model->barcode,
+            'barcode_type' => $model->barcode_type,
             'ncm' => $model->ncm,
             'cest' => $model->cest,
             'origin_code' => $model->origin_code,
@@ -64,6 +70,7 @@ class ErpProductController extends ErpCatalogController
                     'name' => $v->name,
                     'sale_price' => $v->sale_price !== null ? $this->decimalString($v->sale_price) : null,
                     'barcode' => $v->barcode,
+                    'barcode_type' => $v->barcode_type,
                     'status' => $v->status,
                 ])->all()
                 : [],

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ErpCatalogEditorMode, ErpProductRecord } from '#shared/types/erpCatalogs'
+import type { ErpBarcodeType, ErpCatalogEditorMode, ErpProductRecord } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
@@ -10,6 +10,7 @@ type FormVariant = {
   sku: string
   sale_price: string
   barcode: string
+  barcode_type: ErpBarcodeType | null
   status?: 'archived'
   archiveRequested: boolean
 }
@@ -23,11 +24,23 @@ const props = defineProps<{
   fieldErrors?: Record<string, string[]>
 }>()
 const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
-const newVariant = (): FormVariant => ({ name: 'Padrão', sku: '', sale_price: '', barcode: '', archiveRequested: false })
+const barcodeTypeItems: Array<{ label: string, value: ErpBarcodeType }> = [
+  { label: 'Code 128', value: 'C128' },
+  { label: 'Code 39', value: 'C39' },
+  { label: 'EAN-13', value: 'EAN13' },
+  { label: 'EAN-8', value: 'EAN8' },
+  { label: 'UPC-A', value: 'UPCA' },
+  { label: 'UPC-E', value: 'UPCE' }
+]
+const variantBarcodeTypeItems: Array<{ label: string, value: ErpBarcodeType | null }> = [
+  { label: 'Herdar formato do produto', value: null },
+  ...barcodeTypeItems
+]
+const newVariant = (): FormVariant => ({ name: 'Padrão', sku: '', sale_price: '', barcode: '', barcode_type: null, archiveRequested: false })
 const form = reactive({
   name: '', sku: '', kind: 'goods' as 'goods' | 'service', track_stock: true,
   erp_unit_id: null as number | null, erp_brand_id: null as number | null, erp_category_id: null as number | null,
-  sale_price: '0.0000', warranty_months: '', warranty_description: '', barcode: '',
+  sale_price: '0.0000', warranty_months: '', warranty_description: '', barcode: '', barcode_type: 'C128' as ErpBarcodeType,
   ncm: '', cest: '', origin_code: '', icms_cst: '', icms_csosn: '', icms_rate: '', simple_national_credit_rate: '',
   pis_cst: '', pis_rate: '', cofins_cst: '', cofins_rate: '', ipi_cst: '', ipi_rate: '',
   ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[]
@@ -60,6 +73,7 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.warranty_months = record?.warranty_months === null || record?.warranty_months === undefined ? '' : String(record.warranty_months)
   form.warranty_description = record?.warranty_description ?? ''
   form.barcode = record?.barcode ?? ''
+  form.barcode_type = record?.barcode_type ?? 'C128'
   form.ncm = record?.ncm ?? ''
   form.cest = record?.cest ?? ''
   form.origin_code = record?.origin_code ?? ''
@@ -82,6 +96,7 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
         sku: variant.sku ?? '',
         sale_price: variant.sale_price ?? '',
         barcode: variant.barcode ?? '',
+        barcode_type: variant.barcode_type ?? null,
         ...(variant.status === 'archived' ? { status: 'archived' as const } : {}),
         archiveRequested: variant.status === 'archived'
       }))
@@ -132,7 +147,8 @@ function submit() {
       name: variant.name,
       sku: variant.sku || null,
       sale_price: variant.sale_price || null,
-      barcode: variant.barcode || null
+      barcode: variant.barcode || null,
+      barcode_type: variant.barcode_type
     }
     if (variant.archiveRequested && props.canArchive)
       row.status = 'archived'
@@ -150,6 +166,7 @@ function submit() {
     warranty_months: form.warranty_months === '' ? null : Number(form.warranty_months),
     warranty_description: form.warranty_description || null,
     barcode: form.barcode || null,
+    barcode_type: form.barcode_type,
     ncm: nullableFiscalValue(form.ncm),
     cest: nullableFiscalValue(form.cest),
     origin_code: nullableFiscalValue(form.origin_code),
@@ -295,6 +312,16 @@ function submit() {
           name="barcode"
           maxlength="64"
           autocomplete="off"
+          class="w-full"
+        />
+      </ErpCatalogField>
+      <ErpCatalogField label="Simbologia do código de barras" name="barcode_type" :error="fieldErrors?.barcode_type?.[0]">
+        <USelect
+          v-model="form.barcode_type"
+          name="barcode_type"
+          :items="barcodeTypeItems"
+          value-key="value"
+          :disabled="disabled"
           class="w-full"
         />
       </ErpCatalogField>
@@ -566,6 +593,21 @@ function submit() {
             :disabled="disabled"
             maxlength="64"
             autocomplete="off"
+            class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField
+          label="Simbologia da variante"
+          :name="`variants.${index}.barcode_type`"
+          :error="fieldErrors?.[`variants.${index}.barcode_type`]?.[0]"
+          description="Herdar usa a simbologia definida no produto."
+        >
+          <USelect
+            v-model="variant.barcode_type"
+            :name="`variants.${index}.barcode_type`"
+            :items="variantBarcodeTypeItems"
+            value-key="value"
+            :disabled="disabled"
             class="w-full"
           />
         </ErpCatalogField>

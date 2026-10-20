@@ -19,6 +19,7 @@ class ErpProductVariantFactory extends Factory
             'name' => fake()->word(),
             'sale_price' => '12.5000',
             'barcode' => null,
+            'barcode_type' => null,
             'status' => 'active',
         ];
     }

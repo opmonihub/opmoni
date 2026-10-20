@@ -48,6 +48,7 @@ final class ErpCatalogWriteService
     public function createProduct(int $companyId, array $payload): ErpProduct
     {
         $data = $this->productData($payload, $companyId);
+        $data['barcode_type'] ??= 'C128';
         $variants = $data['variants'] ?? [];
         unset($data['variants']);
         if (($data['kind'] ?? 'goods') === 'service') {
@@ -140,12 +141,14 @@ final class ErpCatalogWriteService
             'warranty_months' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:600'],
             'warranty_description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'barcode_type' => ['sometimes', 'string', 'in:C128,C39,EAN13,EAN8,UPCA,UPCE'],
             'variants' => ['sometimes', 'array'],
             'variants.*.id' => ['sometimes', 'integer', 'min:1'],
             'variants.*.sku' => ['sometimes', 'nullable', 'string', 'max:64'],
             'variants.*.name' => ['required_with:variants', 'string', 'max:255'],
             'variants.*.sale_price' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(16, 4)],
             'variants.*.barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'variants.*.barcode_type' => ['sometimes', 'nullable', 'string', 'in:C128,C39,EAN13,EAN8,UPCA,UPCE'],
             'variants.*.status' => ['sometimes', 'in:archived'],
             ...$this->productFiscalRules(),
         ], $this->productFiscalMessages())->validate();
