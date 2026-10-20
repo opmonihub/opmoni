@@ -185,6 +185,7 @@ class ErpCoreCatalogsTest extends TestCase
             ->json('data');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->withHeader('Idempotency-Key', 'core-catalog-csv-import')
             ->postJson('/api/v1/erp/catalog/import/products/confirm', [
                 'token' => $preview['token'],
                 'erp_unit_id' => $unit->id,

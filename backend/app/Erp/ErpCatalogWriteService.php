@@ -127,14 +127,30 @@ final class ErpCatalogWriteService
     /** @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
-    private function productData(array $payload, int $companyId, bool $partial = false, ?ErpProduct $current = null): array
+    public function validateImportProduct(int $companyId, array $payload): array
+    {
+        return $this->productData($payload, $companyId, deferUnit: true);
+    }
+
+    /** @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function validateImportContact(int $companyId, array $payload): array
+    {
+        return $this->contactData($payload, $companyId);
+    }
+
+    /** @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function productData(array $payload, int $companyId, bool $partial = false, ?ErpProduct $current = null, bool $deferUnit = false): array
     {
         $data = Validator::make($payload, [
             'sku' => ['sometimes', 'nullable', 'string', 'max:64'],
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
             'kind' => ['sometimes', 'in:goods,service'],
             'track_stock' => ['sometimes', 'boolean'],
-            'erp_unit_id' => [$partial ? 'sometimes' : 'required', 'integer', 'min:1'],
+            'erp_unit_id' => [$partial || $deferUnit ? 'sometimes' : 'required', 'integer', 'min:1'],
             'erp_brand_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'erp_category_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'sale_price' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(16, 4)],

@@ -108,8 +108,10 @@ Route::patch('/drivers/{driver}', [ErpDriverController::class, 'update'])->where
 Route::delete('/drivers/{driver}', [ErpDriverController::class, 'archive'])->whereNumber('driver')->name('erp.drivers.archive');
 
 Route::post('/catalog/import/products/preview', [ErpCatalogImportController::class, 'previewProducts'])->name('erp.catalog.import.products.preview');
+Route::post('/catalog/import/products/preview/read', [ErpCatalogImportController::class, 'readProducts'])->name('erp.catalog.import.products.read');
 Route::post('/catalog/import/products/confirm', [ErpCatalogImportController::class, 'confirmProducts'])->name('erp.catalog.import.products.confirm');
 Route::post('/catalog/import/contacts/preview', [ErpCatalogImportController::class, 'previewContacts'])->name('erp.catalog.import.contacts.preview');
+Route::post('/catalog/import/contacts/preview/read', [ErpCatalogImportController::class, 'readContacts'])->name('erp.catalog.import.contacts.read');
 Route::post('/catalog/import/contacts/confirm', [ErpCatalogImportController::class, 'confirmContacts'])->name('erp.catalog.import.contacts.confirm');
 
 Route::get('/catalog/print-settings', [ErpCatalogPrintController::class, 'showSettings'])->name('erp.catalog.print-settings.show');

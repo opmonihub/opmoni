@@ -17,7 +17,7 @@ use InvalidArgumentException;
 
 final class ErpOperationJournal
 {
-    public function __construct(private ErpPaymentAllocationOperation $allocation) {}
+    public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports) {}
 
     public function key(Request $request, bool $required = false): ?string
     {
@@ -102,15 +102,61 @@ final class ErpOperationJournal
         });
     }
 
+    public static function operations(): array
+    {
+        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS];
+    }
+
+    public function executeImport(Request $request, string $operation): array
+    {
+        abort_unless(DB::transactionLevel() > 0 && in_array($operation, [ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS], true), 500);
+
+        return DB::transaction(function () use ($request, $operation): array {
+            $key = $this->key($request, true);
+            $payload = $this->imports->canonical($request, $operation);
+            $receipt = $this->receipts($request, $key, $operation)->lockForUpdate()->first();
+            $this->imports->assertAuthorized($request, $operation, $payload);
+            AccessSession::assertOwnership($request);
+            $hash = hash('sha256', 'v1:'.$this->canonicalJson($payload));
+            if ($receipt) {
+                $this->imports->assertAuthorized($request, $operation, $receipt->resource_refs);
+                abort_unless($receipt->canonical_version === 'v1' && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                AccessSession::assertOwnership($request);
+
+                return ['status' => $receipt->response_status, 'body' => $receipt->response_body];
+            }
+            $result = $this->imports->post($request, $operation, $payload, hash('sha256', $key), $hash);
+            abort_if(strlen($this->canonicalJson($result['body'])) > 16384, 422, 'Resultado de operação inválido');
+            ErpOperationReceipt::query()->create([
+                'erp_company_id' => CurrentCompany::fromRequest($request)->company->id,
+                'actor_user_id' => $request->user()->id, 'operation' => $operation,
+                'key_digest' => hash('sha256', $key), 'canonical_version' => 'v1', 'payload_hash' => $hash,
+                'response_status' => $result['status'], 'response_body' => $result['body'], 'resource_refs' => $result['resource_refs'], 'recorded_at' => now(),
+            ]);
+            AccessSession::assertOwnership($request);
+
+            return $result;
+        });
+    }
+
     public function lookup(Request $request): array
     {
         $key = $this->key($request, true);
-        $receipt = $this->receipts($request, $key)->first();
+        $operation = $request->input('operation');
+        abort_unless(in_array($operation, self::operations(), true), 422);
+        $receipt = $this->receipts($request, $key, $operation)->first();
         if ($receipt) {
-            $this->allocation->assertAuthorized($request, $receipt->resource_refs);
+            if ($operation === ErpPaymentAllocationOperation::NAME) {
+                $this->allocation->assertAuthorized($request, $receipt->resource_refs);
+            } else {
+                $this->imports->assertAuthorized($request, $operation, $receipt->resource_refs);
+            }
             AccessSession::assertOwnership($request);
 
-            return ['operation' => ErpPaymentAllocationOperation::NAME, 'state' => 'completed', 'recorded_at' => $receipt->recorded_at->toISOString(), 'result' => $receipt->response_body['data']];
+            return ['operation' => $operation, 'state' => 'completed', 'recorded_at' => $receipt->recorded_at->toISOString(), 'result' => $receipt->response_body['data']];
+        }
+        if ($operation !== ErpPaymentAllocationOperation::NAME) {
+            abort(response()->json(['code' => 'operation_not_recorded', 'message' => 'Operação não registrada'], 404));
         }
         $legacy = $this->legacy($request, $key)->limit(2)->get();
         if ($legacy->count() === 1 && $legacy[0]->posted_by_user_id === $request->user()->id) {
@@ -123,10 +169,10 @@ final class ErpOperationJournal
         abort(response()->json(['code' => 'operation_not_recorded', 'message' => 'Operação não registrada'], 404));
     }
 
-    private function receipts(Request $request, string $key): Builder
+    private function receipts(Request $request, string $key, string $operation = ErpPaymentAllocationOperation::NAME): Builder
     {
         return ErpOperationReceipt::query()->where('erp_company_id', CurrentCompany::fromRequest($request)->company->id)
-            ->where('actor_user_id', $request->user()->id)->where('operation', ErpPaymentAllocationOperation::NAME)->where('key_digest', hash('sha256', $key));
+            ->where('actor_user_id', $request->user()->id)->where('operation', $operation)->where('key_digest', hash('sha256', $key));
     }
 
     private function legacy(Request $request, string $key): Builder

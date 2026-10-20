@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use App\Erp\ErpCommercialGate;
 use App\Erp\ErpCompanyAdministration;
 use App\Erp\ErpCompanyAuthorization;
-use App\Erp\Finance\ErpPaymentAllocationOperation;
+use App\Erp\ErpOperationJournal;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
@@ -79,7 +79,7 @@ class ResolveCompany
 
             $operationLookup = $request->routeIs('erp.operations.lookup');
             if ($operationLookup) {
-                $request->validate(['operation' => ['required', 'string', Rule::in([ErpPaymentAllocationOperation::NAME])]]);
+                $request->validate(['operation' => ['required', 'string', Rule::in(ErpOperationJournal::operations())]]);
             }
             $effectiveWrite = ! $request->isMethodSafe() || $operationLookup;
             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
@@ -107,7 +107,7 @@ class ResolveCompany
                 if ($request->routeIs('erp.members.index', 'erp.members.show', 'erp.members.permissions', 'erp.members.identity-lookup', 'erp.members.store', 'erp.members.update', 'erp.members.destroy')) {
                     app(ErpCompanyAdministration::class)->assertOwner($request);
                 } else {
-                    $context->assertPermission($operationLookup ? ErpPaymentAllocationOperation::NAME : (string) $request->route()?->getName(), $effectiveWrite);
+                    $context->assertPermission($operationLookup ? $request->input('operation') : $this->effectiveAction($request), $effectiveWrite);
                 }
                 $module = match (true) {
                     $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
@@ -132,6 +132,15 @@ class ResolveCompany
                 $request->attributes->remove(CurrentCompany::class);
             }
         });
+    }
+
+    private function effectiveAction(Request $request): string
+    {
+        return match ((string) $request->route()?->getName()) {
+            'erp.catalog.import.products.read' => 'erp.catalog.import.products.confirm',
+            'erp.catalog.import.contacts.read' => 'erp.catalog.import.contacts.confirm',
+            default => (string) $request->route()?->getName(),
+        };
     }
 
     private function fiscalModule(Request $request, int $companyId): ?string
