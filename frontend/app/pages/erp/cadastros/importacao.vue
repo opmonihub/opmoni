@@ -3,6 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { ErpImportRow } from '#shared/types/erpCatalogImport'
 import { erpImportHeaders } from '#shared/types/erpCatalogImport'
 import { useErpCatalogImport } from '~/composables/useErpCatalogImport'
+import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 const workspace = useErpCatalogImport()

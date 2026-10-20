@@ -76,27 +76,32 @@ function mountImport(realSelector = false) {
       return [child, child]
     }
   })
-  const page = compileVueComponent('pages/erp/cadastros/importacao.vue', { definePageMeta() {
-  } }, { '~/composables/useErpCatalogImport': { useErpCatalogImport: () => {
-    workspace = module.useErpCatalogImport()
-    return workspace
-  } } })
-  const app = renderer.createApp(page)
-  for (const name of ['ErpCatalogPageShell', 'UCard', 'UAlert', 'UFormField', 'UFileUpload', 'USelect', 'UButton', 'UTable', ...(!realSelector ? ['ErpCatalogReferenceSelect'] : []), 'USelectMenu', 'UBadge']) {
-    app.component(name, Vue.defineComponent({ props: ['label', 'title', 'description', 'data', 'disabled', 'modelValue', 'error', 'name'], emits: ['update:modelValue', 'selection-validity'], setup(props, { attrs, slots, emit }) {
-      if (name === 'ErpCatalogReferenceSelect') {
+  const listModule = loadAppComposable('composables/useErpCatalogList.ts', bindings)
+  const contextModule = loadAppComposable('composables/useErpAdministrationContext.ts', bindings)
+  const moduleMocks: Record<string, unknown> = {
+    '~/composables/useErpCatalogImport': { useErpCatalogImport: () => {
+      workspace = module.useErpCatalogImport()
+      return workspace
+    } },
+    '~/composables/useErpCatalogList': listModule,
+    '~/composables/useErpAdministrationContext': contextModule
+  }
+  if (!realSelector) {
+    moduleMocks['~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'] = Vue.defineComponent({
+      props: ['modelValue', 'disabled', 'error'],
+      emits: ['selection-validity'],
+      setup(props, { emit }) {
         Vue.watch(() => props.modelValue, id => emit('selection-validity', { id, valid: id !== null }), { immediate: true, flush: 'sync' })
+        return () => Vue.h('section', { 'data-component': 'ErpCatalogReferenceSelect', 'disabled': props.disabled }, props.error)
       }
+    })
+  }
+  const page = compileVueComponent('pages/erp/cadastros/importacao.vue', { ...bindings, definePageMeta() {} }, moduleMocks)
+  const app = renderer.createApp(page)
+  for (const name of ['ErpCatalogPageShell', 'UCard', 'UAlert', 'UFormField', 'UFileUpload', 'USelect', 'UButton', 'UTable', 'USelectMenu', 'UBadge']) {
+    app.component(name, Vue.defineComponent({ props: ['label', 'title', 'description', 'data', 'disabled', 'modelValue', 'error', 'name'], emits: ['update:modelValue'], setup(props, { attrs, slots, emit }) {
       return () => Vue.h(name === 'UButton' ? 'button' : 'section', { ...attrs, 'data-component': name, 'disabled': props.disabled, 'modelValue': props.modelValue, 'onChange': (value: unknown) => emit('update:modelValue', value) }, [props.label, props.title, props.description, props.error, ...(props.data ? props.data.map((row: object) => Vue.h('div', [JSON.stringify(row), slots['validation-cell']?.({ row: { original: row } })])) : []), slots.header?.(), slots.default?.()])
     } }))
-  }
-  if (realSelector) {
-    const listModule = loadAppComposable('composables/useErpCatalogList.ts', bindings)
-    const contextModule = loadAppComposable('composables/useErpAdministrationContext.ts', bindings)
-    app.component('ErpCatalogReferenceSelect', compileVueComponent('components/erp/catalogs/ErpCatalogReferenceSelect.vue', bindings, {
-      '~/composables/useErpCatalogList': listModule,
-      '~/composables/useErpAdministrationContext': contextModule
-    }))
   }
   const root = node('root')
   app.mount(root)
@@ -506,4 +511,14 @@ it('does not overwrite submitted recovery when refreshed authority permits only 
   await previewRequest
   assert.equal(page.workspace.lockedChoices.value, true)
   assert.match(page.text(), /confirmação anterior/)
+})
+
+it('resolves the nested unit selector through the page import without a global component alias', (t) => {
+  const storage = memoryStorage()
+  t.after(storage.restore)
+  const page = mountImport(true)
+  t.after(page.unmount)
+  assert.equal(page.find('USelectMenu').length, 1)
+  assert.match(page.text(), /Unidade dos produtos/)
+  assert.ok(page.requests.some(request => request.url.startsWith('/erp/units?')))
 })
