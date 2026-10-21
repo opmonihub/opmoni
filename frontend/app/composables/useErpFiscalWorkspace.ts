@@ -14,10 +14,11 @@ import { apiErrorMessage, apiStatus } from './useApiError'
 import { useAccessApi } from './useAccessApi'
 import { useErpAdministrationContext } from './useErpAdministrationContext'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
-import { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey, fiscalApiFieldErrors, parseErpFiscalRecoveryRecord } from '../../shared/utils/erpFiscal'
+import { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey, fiscalApiFieldErrors, parseErpFiscalRecoveryRecord } from '#shared/utils/erpFiscal'
 
 type ApiEnvelope<T> = { data: T, meta?: Record<string, unknown> }
-type CertificateRecovery = { version: 1, actorId: number, companyId: number, establishmentId: number, mode: 'upload' | 'rotate', certificateId: number | null, previousRevision: number | null, baseline: Array<{ id: number, revision: number }>, label: string, savedAt: string }
+type CertificateRecovery = { version: 1, actorId: number, companyId: number, establishmentId: number, mode: 'upload' | 'rotate', certificateId: number | null, previousRevision: number | null, baseline: Array<{ id: number, revision: number }>, label: string, savedAt: string, operationId?: string }
+type CertificateOperationOwner = { operationId: string, authorityKey: string, actorId: number, companyId: number }
 
 const actionGrants = {
   documentRead: 'erp.fiscal.documents.index',
@@ -36,9 +37,11 @@ const actionGrants = {
   certificateUpload: 'erp.fiscal.certificates.store',
   certificateRotate: 'erp.fiscal.certificates.rotate',
   eventRead: 'erp.fiscal.events.index',
+  eventShow: 'erp.fiscal.events.show',
   eventCreate: 'erp.fiscal.events.store',
   eventSubmit: 'erp.fiscal.events.submit',
   invalidationRead: 'erp.fiscal.invalidations.index',
+  invalidationShow: 'erp.fiscal.invalidations.show',
   invalidationCreate: 'erp.fiscal.invalidations.store',
   invalidationSubmit: 'erp.fiscal.invalidations.submit'
 } as const
@@ -84,7 +87,8 @@ export function useErpFiscalWorkspace() {
   const artifactError = ref('')
   const pendingRecovery = ref<ErpFiscalRecoveryRecord | null>(null)
   const pendingCertificateRecovery = ref<CertificateRecovery | null>(null)
-  const certificateRecoveryReview = ref<{ savedAt: string, establishmentId: number, rows: ErpFiscalCertificate[] } | null>(null)
+  const certificateRecoveryReview = ref<{ savedAt: string, operationId?: string, establishmentId: number, rows: ErpFiscalCertificate[] } | null>(null)
+  const certificateOperationOwner = ref<CertificateOperationOwner | null>(null)
   const recoverableEventDraft = ref<ErpFiscalEvent | null>(null)
   const operationEpoch = ref(0)
   const listEpoch = ref(0)
@@ -115,6 +119,7 @@ export function useErpFiscalWorkspace() {
   const canCreateDocuments = computed(() => can(actionGrants.documentCreate))
   const productionBlocked = computed(() => configuration.value?.release_gates.production_transmission_enabled !== true)
   const productionBlocker = computed(() => configuration.value?.release_gates.production_blocker ?? (configuration.value?.release_gates.provider === 'unavailable' ? 'provider_unavailable' : null))
+  const certificateMutationInFlight = computed(() => certificateOperationOwner.value?.authorityKey === authority.key.value)
 
   function isCurrent(token: ReturnType<typeof authority.capture>, epoch: number): boolean {
     return authority.isCurrent(token) && operationEpoch.value === epoch && !noCompany.value
@@ -206,6 +211,11 @@ export function useErpFiscalWorkspace() {
     }
   }
 
+  function sameCertificateOperation(left: CertificateRecovery, right: CertificateRecovery): boolean {
+    if (left.operationId || right.operationId) return Boolean(left.operationId && right.operationId && left.operationId === right.operationId)
+    return left.savedAt === right.savedAt && left.actorId === right.actorId && left.companyId === right.companyId
+  }
+
   function clearCertificateRecovery(record: CertificateRecovery) {
     const key = certificateRecoveryKey()
     const target = storage()
@@ -215,7 +225,7 @@ export function useErpFiscalWorkspace() {
     }
     try {
       const current = JSON.parse(target.getItem(key) ?? 'null') as CertificateRecovery | null
-      if (current?.savedAt !== record.savedAt) return
+      if (!current || !sameCertificateOperation(current, record)) return
       target.removeItem(key)
       pendingCertificateRecovery.value = null
     } catch {
@@ -224,16 +234,18 @@ export function useErpFiscalWorkspace() {
   }
 
   async function recoverCertificateMutation() {
+    if (certificateMutationInFlight.value) return
     const record = readCertificateRecovery()
     if (!record || record.actorId !== actorId.value || record.companyId !== companyId.value || noCompany.value || !can(actionGrants.certificateRead)) return
     const token = authority.capture()
     const epoch = operationEpoch.value
     try {
       const result = await api<ApiEnvelope<ErpFiscalCertificate[]>>('/erp/fiscal/certificates?per_page=100')
-      if (!isCurrent(token, epoch) || readCertificateRecovery()?.savedAt !== record.savedAt) return
+      const currentRecord = readCertificateRecovery()
+      if (!isCurrent(token, epoch) || certificateMutationInFlight.value || !currentRecord || !sameCertificateOperation(currentRecord, record)) return
       const rows = result.data.filter(row => row.erp_establishment_id === record.establishmentId)
       certificates.value = [...certificates.value.filter(row => row.erp_establishment_id !== record.establishmentId), ...rows]
-      certificateRecoveryReview.value = { savedAt: record.savedAt, establishmentId: record.establishmentId, rows }
+      certificateRecoveryReview.value = { savedAt: record.savedAt, operationId: record.operationId, establishmentId: record.establishmentId, rows }
       recoveryMessage.value = 'Metadados atuais carregados. Eles não provam qual arquivo foi enviado; confira o certificado e confirme manualmente antes de liberar novas alterações.'
     } catch {
       if (isCurrent(token, epoch)) recoveryMessage.value = 'Não foi possível consultar os metadados do certificado. A alteração permanece bloqueada até uma verificação bem-sucedida.'
@@ -241,9 +253,10 @@ export function useErpFiscalWorkspace() {
   }
 
   function confirmCertificateRecoveryReview() {
+    if (certificateMutationInFlight.value) return
     const record = readCertificateRecovery()
     const review = certificateRecoveryReview.value
-    if (!record || !review || record.savedAt !== review.savedAt || record.establishmentId !== review.establishmentId) return
+    if (!record || !review || record.savedAt !== review.savedAt || record.operationId !== review.operationId || record.establishmentId !== review.establishmentId) return
     if (record.actorId !== actorId.value || record.companyId !== companyId.value || noCompany.value) return
     const grant = record.mode === 'rotate' ? actionGrants.certificateRotate : actionGrants.certificateUpload
     if (!can(grant)) throw new Error('Seu acesso não permite liberar esta alteração de certificado.')
@@ -465,17 +478,28 @@ export function useErpFiscalWorkspace() {
   async function uploadCertificate(input: { label: string, establishmentId: number, certificate: File, password: string, certificateId?: number }) {
     const permission = input.certificateId ? actionGrants.certificateRotate : actionGrants.certificateUpload
     if (!can(permission) || input.certificate.size > 2 * 1024 * 1024) return
+    const token = authority.capture()
+    if (certificateOperationOwner.value?.authorityKey === token.key) throw new Error('Outra alteração de certificado já está em andamento para este contexto.')
     const existingRecovery = readCertificateRecovery()
     if (existingRecovery) throw new Error('Há uma alteração de certificado sem resultado confirmado. Consulte os metadados antes de iniciar outra alteração.')
     if (!can(actionGrants.certificateRead)) throw new Error('Consulte os metadados de certificados antes de enviar ou substituir um arquivo.')
-    const token = authority.capture()
+    const owner: CertificateOperationOwner = {
+      operationId: crypto.randomUUID(),
+      authorityKey: token.key,
+      actorId: actorId.value,
+      companyId: companyId.value
+    }
+    certificateOperationOwner.value = owner
     const epoch = operationEpoch.value
     saving.value = true
     fieldErrors.value = {}
     let certificateRecovery: CertificateRecovery | null = null
     try {
       const baseline = await api<ApiEnvelope<ErpFiscalCertificate[]>>('/erp/fiscal/certificates?per_page=100')
-      if (!isCurrent(token, epoch)) return
+      if (!isCurrent(token, epoch) || certificateOperationOwner.value?.operationId !== owner.operationId) return
+      if (readCertificateRecovery()) {
+        throw new Error('Outra alteração de certificado foi iniciada neste contexto. Consulte os metadados antes de tentar novamente.')
+      }
       certificates.value = baseline.data
       const previous = input.certificateId ? baseline.data.find(row => row.id === input.certificateId) : null
       if (input.certificateId && !previous) throw new Error('O certificado selecionado não foi encontrado nos metadados atuais.')
@@ -489,7 +513,8 @@ export function useErpFiscalWorkspace() {
         previousRevision: previous?.revision ?? null,
         baseline: baseline.data.filter(row => row.erp_establishment_id === input.establishmentId).map(row => ({ id: row.id, revision: row.revision })),
         label: input.label.trim(),
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
+        operationId: owner.operationId
       }
       if (!persistCertificateRecovery(certificateRecovery)) throw new Error(recoveryMessage.value)
       const body = buildErpFiscalCertificateUpload(input)
@@ -509,6 +534,7 @@ export function useErpFiscalWorkspace() {
       if (Object.keys(fieldErrors.value).length === 0) errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível salvar o certificado fiscal.'
     } finally {
       if (isCurrent(token, epoch)) saving.value = false
+      if (certificateOperationOwner.value?.operationId === owner.operationId) certificateOperationOwner.value = null
     }
   }
 
@@ -680,9 +706,10 @@ export function useErpFiscalWorkspace() {
     const readPermission = record.action.startsWith('document:')
       ? actionGrants.documentShow
       : record.action.startsWith('event:')
-        ? actionGrants.eventRead
-        : record.action.startsWith('invalidation:') ? actionGrants.invalidationRead : actionGrants.certificateRead
+        ? actionGrants.eventShow
+        : record.action.startsWith('invalidation:') ? actionGrants.invalidationShow : actionGrants.certificateRead
     if (!can(readPermission)) return
+    let replayRequest = record.recoveryMode === 'replay'
     if (record.recoveryMode === 'replay') {
       const permissionByAction: Record<string, string> = {
         'document:draft': actionGrants.documentCreate,
@@ -695,14 +722,15 @@ export function useErpFiscalWorkspace() {
         'invalidation:draft': actionGrants.invalidationCreate
       }
       const mutationPermission = permissionByAction[record.action]
-      if (!mutationPermission || !can(mutationPermission)) return
+      replayRequest = Boolean(mutationPermission && can(mutationPermission))
+      if (!replayRequest && record.resourceId === null) return
     }
     const token = authority.capture()
     const epoch = operationEpoch.value
     recoveryMessage.value = ''
     try {
       let resourceId = record.resourceId
-      if (record.recoveryMode === 'replay') {
+      if (replayRequest) {
         const replay = await api<ApiEnvelope<{ id?: number }>>(record.path, { method: 'POST', body: record.body })
         if (!isCurrent(token, epoch)) return
         resourceId = resourceId ?? replay.data?.id ?? null
@@ -772,13 +800,21 @@ export function useErpFiscalWorkspace() {
     saving.value = true
     fieldErrors.value = {}
     let submitAccepted = false
+    let resumableDraftRecord: ErpFiscalRecoveryRecord | null = null
+    let createdEvent: ErpFiscalEvent | null = null
     try {
       const created = await api<ApiEnvelope<ErpFiscalEvent>>(draftPath, { method: 'POST', body: draftBody })
       if (!isCurrent(token, epoch)) return
       const eventId = created.data.id
+      createdEvent = created.data
       events.value.unshift(created.data)
       draftRecord = { ...draftRecord, resourceId: eventId, recoveryMode: 'read' }
-      persistRecovery(draftRecord)
+      if (!persistRecovery(draftRecord)) {
+        recoveryMessage.value = 'O evento foi criado, mas sua identidade recuperável não pôde ser atualizada. Nenhum envio foi iniciado; recupere a solicitação original pela mesma chave.'
+        throw new Error(recoveryMessage.value)
+      }
+      resumableDraftRecord = draftRecord
+      recoverableEventDraft.value = created.data
       if (selection !== detailSelectionEpoch || selectedDocument.value?.id !== document.id) return
       const submitPath = `/erp/fiscal/events/${eventId}/submit`
       const submitBody = { idempotency_key: idempotencyKey }
@@ -788,6 +824,7 @@ export function useErpFiscalWorkspace() {
         return
       }
       draftRecord = submitRecord
+      recoverableEventDraft.value = null
       const submitted = await api<ApiEnvelope<ErpFiscalEvent>>(submitPath, { method: 'POST', body: submitBody })
       submitAccepted = true
       if (!isCurrent(token, epoch)) return
@@ -803,8 +840,19 @@ export function useErpFiscalWorkspace() {
       if (!isCurrent(token, epoch)) return
       if (selection !== detailSelectionEpoch || selectedDocument.value?.id !== document.id) return
       fieldErrors.value = fiscalApiFieldErrors(error)
-      if (!submitAccepted && definitiveBeforeDispatch(apiStatus(error))) clearRecovery(draftRecord)
-      else recoveryMessage.value = 'O resultado do evento não foi confirmado. A tentativa original foi mantida para consulta.'
+      if (!submitAccepted && definitiveBeforeDispatch(apiStatus(error))) {
+        if (resumableDraftRecord && createdEvent) {
+          if (persistRecovery(resumableDraftRecord)) {
+            recoverableEventDraft.value = createdEvent
+            recoveryMessage.value = 'O envio foi recusado antes do registro da tentativa. Revise a condição e confirme novamente o mesmo rascunho e a mesma chave.'
+          } else {
+            recoverableEventDraft.value = null
+            recoveryMessage.value = 'A recusa foi confirmada, mas não foi possível restaurar a identidade do rascunho. Consulte o mesmo evento antes de agir novamente.'
+          }
+        } else {
+          clearRecovery(draftRecord)
+        }
+      } else recoveryMessage.value = 'O resultado do evento não foi confirmado. A tentativa original foi mantida para consulta.'
       errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível enviar o evento fiscal.'
       throw error
     } finally {
@@ -838,8 +886,10 @@ export function useErpFiscalWorkspace() {
     if (!persistRecovery(submitRecord)) throw new Error(recoveryMessage.value)
     recoverableEventDraft.value = null
     saving.value = true
+    let submitAccepted = false
     try {
       const submitted = await api<ApiEnvelope<ErpFiscalEvent>>(submitPath, { method: 'POST', body: submitBody })
+      submitAccepted = true
       if (!isCurrent(token, epoch) || selection !== detailSelectionEpoch) return
       const detail = await api<ApiEnvelope<ErpFiscalEvent>>(`/erp/fiscal/events/${event.id}`)
       if (!isCurrent(token, epoch) || selection !== detailSelectionEpoch) return
@@ -850,7 +900,17 @@ export function useErpFiscalWorkspace() {
     } catch (error) {
       if (!isCurrent(token, epoch) || selection !== detailSelectionEpoch) return
       errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível enviar o evento recuperado.'
-      recoveryMessage.value = 'O envio do evento não foi confirmado. Consulte esta mesma tentativa; não envie outra chave.'
+      if (!submitAccepted && definitiveBeforeDispatch(apiStatus(error))) {
+        if (persistRecovery(record)) {
+          recoverableEventDraft.value = event
+          recoveryMessage.value = 'O envio foi recusado antes do registro da tentativa. Revise a condição e confirme novamente o mesmo evento e a mesma chave.'
+        } else {
+          recoverableEventDraft.value = null
+          recoveryMessage.value = 'A recusa foi confirmada, mas o rascunho não pôde ser restaurado. Consulte o mesmo evento antes de agir novamente.'
+        }
+      } else {
+        recoveryMessage.value = 'O envio do evento não foi confirmado. Consulte esta mesma tentativa; não envie outra chave.'
+      }
       throw error
     } finally {
       if (isCurrent(token, epoch) && selection === detailSelectionEpoch) saving.value = false
@@ -1000,7 +1060,7 @@ export function useErpFiscalWorkspace() {
   return {
     establishments, selectedEstablishmentId, configuration, configurationForm, documents, sales, returns, certificates, events, invalidations, operationNatures,
     selectedDocument, selectedSale, selectedReturn, documentForm, fieldErrors, loading, saving, errorMessage, releaseMessage,
-    recoveryMessage, artifactError, pendingRecovery, pendingCertificateRecovery, certificateRecoveryReview, recoverableEventDraft, noCompany, canRead, readOnly, canWriteConfiguration,
+    recoveryMessage, artifactError, pendingRecovery, pendingCertificateRecovery, certificateRecoveryReview, certificateMutationInFlight, recoverableEventDraft, noCompany, canRead, readOnly, canWriteConfiguration,
     canUploadCertificates, canRotateCertificates,
     canCreateDocuments, productionBlocked, actionGrants,
     canQueue: computed(() => can(actionGrants.queue)), canTransmit: computed(() => can(actionGrants.transmit)),

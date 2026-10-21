@@ -94,6 +94,12 @@ function selectReturn(id: number) {
   void workspace.loadReturnSnapshot(id)
 }
 
+function selectCertificateForRotation(certificate: ErpFiscalCertificate) {
+  if (workspace.certificateMutationInFlight || workspace.pendingCertificateRecovery) return
+  selectedCertificate.value = certificate
+  certificateMode.value = 'rotate'
+}
+
 function requestAction(kind: NonNullable<typeof pendingAction.value>['kind'], document: ErpFiscalDocument) {
   pendingAction.value = { kind, document }
   actionConfirmationOpen.value = true
@@ -429,7 +435,12 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
           description="A consulta mostra metadados atuais, mas não prova qual arquivo foi enviado. Confira o estabelecimento e o certificado antes de liberar outra alteração; arquivo e senha não foram guardados."
         >
           <template #actions>
-            <UButton size="sm" variant="outline" @click="workspace.recoverCertificateMutation">
+            <UButton
+              size="sm"
+              variant="outline"
+              :disabled="workspace.certificateMutationInFlight"
+              @click="workspace.recoverCertificateMutation"
+            >
               Consultar metadados
             </UButton>
             <UButton
@@ -437,6 +448,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
               size="sm"
               color="warning"
               variant="outline"
+              :disabled="workspace.certificateMutationInFlight"
               @click="workspace.confirmCertificateRecoveryReview"
             >
               Confirmar conferência manual
@@ -455,7 +467,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
               :establishments="workspace.establishments"
               :establishment-id="workspace.selectedEstablishmentId"
               :certificate="selectedCertificate"
-              :can-write="(certificateMode === 'rotate' ? workspace.canRotateCertificates : workspace.canUploadCertificates) && !workspace.pendingCertificateRecovery"
+              :can-write="(certificateMode === 'rotate' ? workspace.canRotateCertificates : workspace.canUploadCertificates) && !workspace.pendingCertificateRecovery && !workspace.certificateMutationInFlight"
               :busy="workspace.saving"
               :field-errors="workspace.fieldErrors"
               @submit="workspace.uploadCertificate"
@@ -476,8 +488,8 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
               </div><UButton
                 size="sm"
                 variant="outline"
-                :disabled="!workspace.canRotateCertificates || !!workspace.pendingCertificateRecovery"
-                @click="selectedCertificate = certificate; certificateMode = 'rotate'"
+                :disabled="!workspace.canRotateCertificates || !!workspace.pendingCertificateRecovery || workspace.certificateMutationInFlight"
+                @click="selectCertificateForRotation(certificate)"
               >
                 Substituir arquivo
               </UButton>

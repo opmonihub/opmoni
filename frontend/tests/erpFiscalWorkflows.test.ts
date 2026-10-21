@@ -458,7 +458,7 @@ function loadWorkspaceComposable(api: (path: string, options?: Record<string, un
       if (name === './useAccessApi') return { useAccessApi: () => ({ api }) }
       if (name === './useErpAdministrationContext') return { useErpAdministrationContext: useContext }
       if (name === './useApiError') return { apiErrorMessage, apiFieldErrors, apiStatus }
-      if (name === '../../shared/utils/erpFiscal') return { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey: (actorId: number, companyId: number) => `opmoni:erp-fiscal:recovery:v1:${actorId}:${companyId}`, fiscalApiFieldErrors: (error: unknown) => {
+      if (name === '../../shared/utils/erpFiscal' || name === '#shared/utils/erpFiscal') return { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey: (actorId: number, companyId: number) => `opmoni:erp-fiscal:recovery:v1:${actorId}:${companyId}`, fiscalApiFieldErrors: (error: unknown) => {
         const details = error as { data?: { errors?: Record<string, string[]> } }
         return Object.fromEntries(Object.entries(details.data?.errors ?? {}).map(([key, value]) => [key, value[0]]))
       }, parseErpFiscalRecoveryRecord: (raw: string | null, actorId: number, companyId: number) => {
@@ -1258,6 +1258,255 @@ describe('ERP fiscal durable workspace operations', () => {
     assert.equal(memory.size, 0)
   })
 
+  it('restores a recovered event draft after a definitive submit refusal and continues the same event explicitly', async (t) => {
+    const memory = installSessionStorage(t)
+    const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'event:draft', path: '/erp/fiscal/events', idempotencyKey: 'event-retry-key', body: { erp_fiscal_document_id: 91, event_type: 'cancel', idempotency_key: 'event-retry-key' }, resourceId: 31, recoveryMode: 'read' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const event = { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-retry-key' }
+    let refuseSubmit = true
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      calls.push({ path, options })
+      if (path === '/erp/fiscal/events/31') return { data: refuseSubmit ? event : { ...event, status: 'accepted', attempt: { id: 39, action: 'event:submit', status: 'accepted', idempotency_key: 'event-retry-key', safe_result: null } } }
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] } }
+      if (path === '/erp/fiscal/events/31/submit' && refuseSubmit) throw { statusCode: 403, data: { message: 'Operação bloqueada antes do envio.' } }
+      if (path === '/erp/fiscal/events/31/submit') return { data: { ...event, status: 'queued' } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
+
+    await mounted.workspace.recoverPendingOperations()
+    await assert.rejects(mounted.workspace.continueRecoveredEventDraft())
+    const restoredRaw = [...memory.values()][0] ?? ''
+    const restored = JSON.parse(restoredRaw) as { action: string, resourceId: number | null, idempotencyKey: string } | null
+    const restoredDraftId = mounted.workspace.recoverableEventDraft?.id
+    refuseSubmit = false
+    await mounted.workspace.continueRecoveredEventDraft()
+
+    const submitCalls = calls.filter(call => call.path === '/erp/fiscal/events/31/submit')
+    assert.equal(restored?.action, 'event:draft')
+    assert.equal(restored?.resourceId, 31)
+    assert.equal(restored?.idempotencyKey, 'event-retry-key')
+    assert.equal(restoredDraftId, 31, 'the same created event is available for a fresh explicit confirmation')
+    assert.equal(submitCalls.length, 2, 'one definitive refusal is followed by one explicit retry of the same submit path')
+    assert.deepEqual(submitCalls.map(call => call.options?.body), [{ idempotency_key: 'event-retry-key' }, { idempotency_key: 'event-retry-key' }])
+    assert.equal(calls.filter(call => call.path === '/erp/fiscal/events' && call.options?.method === 'POST').length, 0, 'continuation never creates a second event row')
+  })
+
+  it('keeps an uncertain recovered-event submission inspection-only after a timeout', async (t) => {
+    const memory = installSessionStorage(t)
+    const draft = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'event:draft', path: '/erp/fiscal/events', idempotencyKey: 'event-timeout-key', body: { erp_fiscal_document_id: 91, event_type: 'cancel', idempotency_key: 'event-timeout-key' }, resourceId: 31, recoveryMode: 'read' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(draft))
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const event = { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-timeout-key' }
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      calls.push({ path, options })
+      if (path === '/erp/fiscal/events/31') return { data: { ...event, attempt: { id: 40, action: 'event:submit', status: 'pending', idempotency_key: 'event-timeout-key', safe_result: null } } }
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] } }
+      if (path === '/erp/fiscal/events/31/submit') throw new TypeError('connection lost after event submission')
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
+
+    await mounted.workspace.recoverPendingOperations()
+    await assert.rejects(mounted.workspace.continueRecoveredEventDraft())
+    await mounted.workspace.recoverPendingOperations()
+
+    const submitCalls = calls.filter(call => call.path === '/erp/fiscal/events/31/submit')
+    const stored = JSON.parse([...memory.values()][0] ?? 'null') as { action: string, recoveryMode: string, idempotencyKey: string }
+    assert.equal(submitCalls.length, 1, 'reload inspection does not automatically repeat an uncertain external submit')
+    assert.equal(stored.action, 'event:submit')
+    assert.equal(stored.recoveryMode, 'read')
+    assert.equal(stored.idempotencyKey, 'event-timeout-key')
+    assert.ok(mounted.workspace.pendingRecovery, 'the exact identity stays locked until a definitive event attempt is visible')
+  })
+
+  it('keeps the submit inspection lock when the submit succeeded but its detail read is refused', async (t) => {
+    const memory = installSessionStorage(t)
+    const draft = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'event:draft', path: '/erp/fiscal/events', idempotencyKey: 'event-detail-refused', body: { erp_fiscal_document_id: 91, event_type: 'cancel', idempotency_key: 'event-detail-refused' }, resourceId: 31, recoveryMode: 'read' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(draft))
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const event = { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-detail-refused' }
+    let eventReads = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      calls.push({ path, options })
+      if (path === '/erp/fiscal/events/31') {
+        eventReads++
+        if (eventReads > 1) throw { statusCode: 403, data: { message: 'Consulta do evento não permitida.' } }
+        return { data: event }
+      }
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] } }
+      if (path === '/erp/fiscal/events/31/submit') return { data: { ...event, status: 'accepted' } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
+
+    await mounted.workspace.recoverPendingOperations()
+    await assert.rejects(mounted.workspace.continueRecoveredEventDraft())
+
+    const stored = JSON.parse([...memory.values()][0] ?? 'null') as { action: string, recoveryMode: string, idempotencyKey: string } | null
+    assert.equal(calls.filter(call => call.path === '/erp/fiscal/events/31/submit').length, 1, 'the submit was dispatched exactly once')
+    assert.equal(stored?.action, 'event:submit', 'a failed post-submit detail read retains the inspection identity')
+    assert.equal(stored?.recoveryMode, 'read')
+    assert.equal(stored?.idempotencyKey, 'event-detail-refused')
+    assert.equal(mounted.workspace.recoverableEventDraft, null, 'a successful submit is never restored as a resumable draft')
+  })
+
+  it('retains an event draft after its initial submit is definitively refused', async (t) => {
+    const memory = installSessionStorage(t)
+    const calls: string[] = []
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      calls.push(`${options?.method ?? 'GET'} ${path}`)
+      if (path === '/erp/fiscal/events' && options?.method === 'POST') return { data: { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-created-key' } }
+      if (path === '/erp/fiscal/events/31/submit') throw { statusCode: 422, data: { errors: { justification: ['Justificativa recusada antes do envio.'] } } }
+      if (path === '/erp/fiscal/events/31') return { data: { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-created-key' } }
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
+    const document = { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] }
+    mounted.workspace.selectedDocument = document
+
+    await assert.rejects(mounted.workspace.createAndSubmitEvent(document, 'cancel', { justification: 'Solicitação válida do emitente' }, 'event-created-key'))
+    const stored = JSON.parse([...memory.values()][0] ?? 'null') as { action: string, resourceId: number | null, idempotencyKey: string } | null
+    await mounted.workspace.recoverPendingOperations()
+
+    assert.equal(stored?.action, 'event:draft')
+    assert.equal(stored?.resourceId, 31)
+    assert.equal(stored?.idempotencyKey, 'event-created-key')
+    assert.equal(mounted.workspace.recoverableEventDraft?.id, 31)
+    assert.equal(calls.filter(call => call === 'POST /erp/fiscal/events').length, 1)
+  })
+
+  it('does not submit a newly created event when persisting its resumable identity fails', async (t) => {
+    const memory = installSessionStorage(t)
+    const storage = globalThis.sessionStorage
+    const originalSetItem = storage.setItem.bind(storage)
+    let writes = 0
+    storage.setItem = (key, value) => {
+      writes++
+      if (writes === 2) throw new Error('storage quota exceeded')
+      originalSetItem(key, value)
+    }
+    let submits = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/events' && options?.method === 'POST') return { data: { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-storage-key' } }
+      if (path === '/erp/fiscal/events/31/submit') submits++
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
+    const document = { id: 91, model: '55', environment: 'homologation', status: 'authorized', supported_events: ['cancel'] }
+    mounted.workspace.selectedDocument = document
+
+    await assert.rejects(mounted.workspace.createAndSubmitEvent(document, 'cancel', { justification: 'Solicitação válida do emitente' }, 'event-storage-key'))
+
+    const stored = JSON.parse([...memory.values()][0] ?? 'null') as { action: string, idempotencyKey: string } | null
+    assert.equal(submits, 0, 'the provider receives no submit when the resumable identity cannot be persisted')
+    assert.equal(stored?.action, 'event:draft')
+    assert.equal(stored?.idempotencyKey, 'event-storage-key')
+  })
+
+  it('reconciles a known document identity with show permission after its mutation permission is revoked', async (t) => {
+    const memory = installSessionStorage(t)
+    const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'document:transmit', path: '/erp/fiscal/documents/91/transmit', idempotencyKey: 'tx-read-only', body: { idempotency_key: 'tx-read-only' }, resourceId: 91, recoveryMode: 'replay' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      calls.push({ path, options })
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, idempotency_key: 'tx-read-only', model: '55', environment: 'homologation', status: 'authorized', attempts: [{ id: 19, action: 'document:transmit', status: 'pending', idempotency_key: 'tx-read-only', safe_result: null }] } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.show'] })
+    t.after(mounted.close)
+
+    await mounted.workspace.recoverPendingOperations()
+
+    assert.deepEqual(calls.map(call => call.path), ['/erp/fiscal/documents/91'], 'read-only recovery performs the exact authorized show request')
+    assert.equal(calls.some(call => call.options?.method === 'POST'), false, 'read-only recovery never replays a mutation')
+    assert.ok(mounted.workspace.pendingRecovery, 'the still-pending attempt remains locked to its original identity')
+    assert.ok(memory.size > 0)
+  })
+
+  it('uses event and invalidation show grants for detail recovery, not index grants', async (t) => {
+    const cases = [
+      { action: 'event:submit', path: '/erp/fiscal/events/31/submit', detail: '/erp/fiscal/events/31', resourceId: 31, key: 'event-show-key', show: 'erp.fiscal.events.show', index: 'erp.fiscal.events.index', payload: { id: 31, idempotency_key: 'event-show-key', status: 'queued', attempt: { id: 1, action: 'event:submit', status: 'pending', idempotency_key: 'event-show-key', safe_result: null } } },
+      { action: 'invalidation:submit', path: '/erp/fiscal/invalidations/41/submit', detail: '/erp/fiscal/invalidations/41', resourceId: 41, key: 'invalidation-show-key', show: 'erp.fiscal.invalidations.show', index: 'erp.fiscal.invalidations.index', payload: { id: 41, idempotency_key: 'invalidation-show-key', status: 'queued', attempt: { id: 2, action: 'invalidation:submit', status: 'pending', idempotency_key: 'invalidation-show-key', safe_result: null } } }
+    ]
+    for (const fixture of cases) {
+      const showMemory = installSessionStorage(t)
+      const showRecord = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: fixture.action, path: fixture.path, idempotencyKey: fixture.key, body: { idempotency_key: fixture.key }, resourceId: fixture.resourceId, recoveryMode: 'read' })
+      showMemory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(showRecord))
+      const showCalls: string[] = []
+      const showWorkspace = loadWorkspaceComposable(async (path) => {
+        showCalls.push(path)
+        if (path === fixture.detail) return { data: fixture.payload }
+        if (path === '/erp/fiscal/events?per_page=100') throw new Error('event index unavailable')
+        return { data: [] }
+      }, { actorId: 7, companyId: 22, grants: [fixture.show] })
+      t.after(showWorkspace.close)
+      await showWorkspace.workspace.recoverPendingOperations()
+      assert.ok(showCalls.includes(fixture.detail), `${fixture.show} permits its exact detail recovery`)
+      assert.ok(showWorkspace.workspace.pendingRecovery)
+
+      const indexMemory = installSessionStorage(t)
+      indexMemory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(showRecord))
+      const indexCalls: string[] = []
+      const indexWorkspace = loadWorkspaceComposable(async (path) => {
+        indexCalls.push(path)
+        return { data: fixture.payload }
+      }, { actorId: 7, companyId: 22, grants: [fixture.index] })
+      t.after(indexWorkspace.close)
+      await indexWorkspace.workspace.recoverPendingOperations()
+      assert.equal(indexCalls.includes(fixture.detail), false, `${fixture.index} alone does not authorize a detail endpoint`)
+    }
+  })
+
+  it('keeps known-resource detail recovery independent of list failures and rejects malformed recovery scope quietly', async (t) => {
+    const memory = installSessionStorage(t)
+    const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'document:transmit', path: '/erp/fiscal/documents/91/transmit', idempotencyKey: 'tx-list-failure', body: { idempotency_key: 'tx-list-failure' }, resourceId: 91, recoveryMode: 'read' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+    const calls: string[] = []
+    const mounted = loadWorkspaceComposable(async (path) => {
+      calls.push(path)
+      if (path === '/erp/establishments?per_page=100') return { data: [{ id: 6, name: 'Matriz', cnpj: '11222333000181', status: 'active' }] }
+      if (path === '/erp/fiscal/documents?per_page=100') throw new Error('document index unavailable')
+      if (path === '/erp/fiscal/documents/91') return { data: { id: 91, idempotency_key: 'tx-list-failure', model: '55', environment: 'homologation', status: 'authorized', attempts: [{ id: 21, action: 'document:transmit', status: 'pending', idempotency_key: 'tx-list-failure', safe_result: null }] } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index', 'erp.fiscal.documents.show'] })
+    t.after(mounted.close)
+    await mounted.workspace.load(6)
+    await mounted.workspace.recoverPendingOperations()
+    assert.ok(calls.includes('/erp/fiscal/documents/91'), 'authorized page-level detail reconciliation still runs after the list fails')
+    mounted.close()
+
+    const malformedMemory = installSessionStorage(t)
+    const malformed = { ...record, path: '/erp/fiscal/documents/92/transmit' }
+    malformedMemory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(malformed))
+    const malformedCalls: string[] = []
+    const malformedWorkspace = loadWorkspaceComposable(async (path) => {
+      malformedCalls.push(path)
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(malformedWorkspace.close)
+    await malformedWorkspace.workspace.recoverPendingOperations()
+    assert.deepEqual(malformedCalls, [], 'a path/resource mismatch stays quiet and issues no request')
+
+    const noCompanyMemory = installSessionStorage(t)
+    noCompanyMemory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+    const noCompanyCalls: string[] = []
+    const noCompanyWorkspace = loadWorkspaceComposable(async (path) => {
+      noCompanyCalls.push(path)
+      return { data: [] }
+    }, { actorId: 7, companyId: null, grants: ['*'] })
+    t.after(noCompanyWorkspace.close)
+    await noCompanyWorkspace.workspace.recoverPendingOperations()
+    assert.deepEqual(noCompanyCalls, [], 'recovery remains quiet when no active company is selected')
+  })
+
   it('locks certificate writes after an ambiguous response until the operator acknowledges current metadata', async (t) => {
     const memory = installSessionStorage(t)
     let writes = 0
@@ -1294,6 +1543,219 @@ describe('ERP fiscal durable workspace operations', () => {
     mounted.workspace.confirmCertificateRecoveryReview()
     assert.equal(mounted.workspace.pendingCertificateRecovery, null)
     assert.equal(mounted.workspace.certificates.some((row: { id: number }) => row.id === 5), true)
+  })
+
+  it('admits only one certificate mutation across deferred baseline reads with a frozen clock', async (t) => {
+    installSessionStorage(t)
+    const originalDate = Object.getOwnPropertyDescriptor(globalThis, 'Date')
+    const NativeDate = globalThis.Date
+    const FrozenDate = class extends NativeDate {
+      constructor(value?: string | number) {
+        super(value ?? '2026-10-21T00:00:00.000Z')
+      }
+    }
+    Object.defineProperty(globalThis, 'Date', { configurable: true, value: FrozenDate })
+    t.after(() => {
+      if (originalDate) Object.defineProperty(globalThis, 'Date', originalDate)
+    })
+    const baselineResolvers: Array<(value: unknown) => void> = []
+    let writes = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) {
+        return await new Promise(resolve => baselineResolvers.push(resolve))
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') {
+        writes++
+        return { data: { id: 5, label: 'Certificado matriz', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } }
+      }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    const input = { label: 'Certificado matriz', establishmentId: 6, certificate, password: '' }
+
+    const first = mounted.workspace.uploadCertificate(input)
+    const second = mounted.workspace.uploadCertificate({ ...input, certificate: new File(['second'], 'second.p12') })
+    for (const resolve of baselineResolvers) resolve({ data: [] })
+    await Promise.allSettled([first, second])
+
+    assert.equal(baselineResolvers.length, 1, 'a second upload is refused before its baseline metadata request')
+    assert.equal(writes, 1, 'at most one non-idempotent multipart mutation is dispatched')
+  })
+
+  it('rechecks the persisted certificate owner after baselines race across workspace instances', async (t) => {
+    const memory = installSessionStorage(t)
+    const baselineResolvers: Array<(value: unknown) => void> = []
+    let releaseFirstPost: ((value: unknown) => void) | null = null
+    let writes = 0
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) {
+        return await new Promise(resolve => baselineResolvers.push(resolve))
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') {
+        writes++
+        if (writes === 1) {
+          return await new Promise((resolve) => {
+            releaseFirstPost = resolve
+          })
+        }
+        return { data: { id: 5, label: 'Certificado matriz', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } }
+      }
+      return { data: [] }
+    }
+    const first = loadWorkspaceComposable(api, { actorId: 7, companyId: 22, grants: ['*'] })
+    const second = loadWorkspaceComposable(api, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(first.close)
+    t.after(second.close)
+    const input = { label: 'Certificado matriz', establishmentId: 6, certificate, password: '' }
+    const firstUpload = first.workspace.uploadCertificate(input)
+    const secondUpload = second.workspace.uploadCertificate({ ...input, certificate: new File(['second'], 'second.p12') })
+    assert.equal(baselineResolvers.length, 2, 'separate workspace instances can both reach their baseline read')
+
+    baselineResolvers[0]!({ data: [] })
+    let secondBaselineResolved = false
+    try {
+      for (let attempt = 0; attempt < 10 && !releaseFirstPost; attempt++) await Vue.nextTick()
+      assert.ok(releaseFirstPost, 'the first baseline persists its owner and reaches the deferred mutation')
+      const firstOwner = [...memory.values()].join('\n')
+      baselineResolvers[1]!({ data: [] })
+      secondBaselineResolved = true
+      await secondUpload
+
+      assert.equal(writes, 1, 'the second baseline observes the persisted owner while the first mutation is active')
+      assert.equal([...memory.values()].join('\n'), firstOwner, 'the second instance cannot overwrite the active operation identity')
+      assert.match(second.workspace.errorMessage, /Outra alteração de certificado foi iniciada/i, 'the refused second upload reports the active operation to the operator')
+    } finally {
+      if (!secondBaselineResolved) baselineResolvers[1]!({ data: [] })
+      releaseFirstPost?.({ data: { id: 5, label: 'Certificado matriz', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } })
+      await Promise.allSettled([firstUpload, secondUpload])
+    }
+  })
+
+  it('keeps an unknown certificate mutation locked after reload without replaying its secret-bearing request', async (t) => {
+    const memory = installSessionStorage(t)
+    let writes = 0
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) return { data: [] }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') {
+        writes++
+        throw new TypeError('connection lost after certificate request')
+      }
+      return { data: [] }
+    }
+    const first = loadWorkspaceComposable(api, { actorId: 7, companyId: 22, grants: ['*'] })
+    await first.workspace.uploadCertificate({ label: 'Certificado novo', establishmentId: 6, certificate, password: 'never-persist-this' })
+    first.close()
+    const stored = [...memory.values()].join('\n')
+    const reloaded = loadWorkspaceComposable(api, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(reloaded.close)
+
+    await reloaded.workspace.recoverPendingOperations()
+
+    assert.equal(writes, 1, 'reload recovery performs metadata inspection only and does not replay the multipart POST')
+    assert.ok(reloaded.workspace.pendingCertificateRecovery)
+    assert.equal(stored.includes('never-persist-this'), false)
+    assert.equal(stored.includes('pkcs12-private-bytes'), false)
+  })
+
+  it('does not let metadata inspection or acknowledgment release a certificate lock during its active POST', async (t) => {
+    const memory = installSessionStorage(t)
+    let releasePost!: (value: unknown) => void
+    let certificateReads = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) {
+        certificateReads++
+        return { data: [{ id: 4, label: 'Anterior', cnpj: '12345678000199', erp_establishment_id: 6, revision: 1, revision_id: 10, status: 'active', certificate_fingerprint: 'old', valid_from: null, valid_until: null }] }
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') {
+        return await new Promise((resolve) => {
+          releasePost = resolve
+        })
+      }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    const upload = mounted.workspace.uploadCertificate({ label: 'Certificado novo', establishmentId: 6, certificate, password: 'do-not-save' })
+    try {
+      for (let attempt = 0; attempt < 10 && !releasePost; attempt++) await Vue.nextTick()
+      assert.ok(releasePost, 'the test reaches the deferred multipart POST before checking its active lock')
+      const recordBeforeReview = [...memory.values()].join('\n')
+      await mounted.workspace.recoverCertificateMutation()
+      try {
+        mounted.workspace.confirmCertificateRecoveryReview()
+      } catch {
+        // An active owner may reject manual acknowledgment outright.
+      }
+
+      assert.ok(mounted.workspace.pendingCertificateRecovery, 'manual acknowledgment cannot clear an actively dispatched operation')
+      assert.equal([...memory.values()].join('\n'), recordBeforeReview, 'active operation identity is unchanged while resolution is denied')
+      assert.equal(certificateReads, 1, 'the active owner blocks a competing metadata inspection')
+    } finally {
+      releasePost?.({ data: { id: 5, label: 'Certificado novo', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } })
+      await upload
+    }
+    assert.equal(memory.size, 0, 'the original active upload clears its own identity after its response is confirmed')
+  })
+
+  it('does not dispatch a certificate POST when authority changes during the baseline read', async (t) => {
+    installSessionStorage(t)
+    let releaseBaseline!: (value: unknown) => void
+    let writes = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/certificates?per_page=100') {
+        return await new Promise((resolve) => {
+          releaseBaseline = resolve
+        })
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') writes++
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(mounted.close)
+    const pending = mounted.workspace.uploadCertificate({ label: 'Certificado matriz', establishmentId: 6, certificate, password: '' })
+    mounted.identity.value.current_company!.id = 23
+    releaseBaseline({ data: [] })
+    await pending
+
+    assert.equal(writes, 0, 'the baseline response from company 22 cannot dispatch a certificate mutation in company 23')
+  })
+
+  it('disables certificate selection in the mounted workspace while the baseline operation is active', async (t) => {
+    installSessionStorage(t)
+    let releaseBaseline!: (value: unknown) => void
+    const fiscal = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) {
+        return await new Promise((resolve) => {
+          releaseBaseline = resolve
+        })
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') return { data: { id: 5, label: 'Certificado novo', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.certificates.index', 'erp.fiscal.certificates.rotate'] })
+    fiscal.workspace.selectedEstablishmentId = 6
+    fiscal.workspace.establishments = [{ id: 6, name: 'Matriz', cnpj: '11222333000181', status: 'active' }]
+    fiscal.workspace.certificates = [{ id: 4, label: 'Certificado anterior', cnpj: '11222333000181', erp_establishment_id: 6, revision: 1, status: 'active', valid_from: null, valid_until: null }]
+    fiscal.workspace.load = async () => undefined
+    fiscal.workspace.recoverPendingOperations = async () => undefined
+    t.after(fiscal.close)
+    const identity = Vue.ref({ id: 7, current_company: { id: 22, permissions: ['*'] } })
+    const mounted = mountWorkspaceSfc(fiscal.workspace, identity)
+    await Vue.nextTick()
+    const certificatesTab = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Certificados')
+    assert.ok(certificatesTab)
+    ;(certificatesTab.props.onClick as () => void)()
+    await Vue.nextTick()
+    const selection = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Substituir arquivo')
+    assert.ok(selection)
+    assert.equal(selection.props.disabled, false)
+    const pendingUpload = fiscal.workspace.uploadCertificate({ label: 'Certificado novo', establishmentId: 6, certificate, password: '', certificateId: 4 })
+    for (let attempt = 0; attempt < 10 && !releaseBaseline; attempt++) await Vue.nextTick()
+    assert.ok(releaseBaseline, 'the authorized rotation reaches its deferred baseline request')
+    await Vue.nextTick()
+
+    assert.equal(selection.props.disabled, true, 'the operator cannot change the certificate selection while its baseline request is pending')
+    releaseBaseline({ data: [{ id: 4, label: 'Certificado anterior', cnpj: '11222333000181', erp_establishment_id: 6, revision: 1, revision_id: 10, status: 'active', certificate_fingerprint: 'old', valid_from: null, valid_until: null }] })
+    await pendingUpload
+    mounted.app.unmount()
+    fiscal.close()
   })
 
   it('reports an unavailable PDF response without creating or returning a downloaded Blob', async (t) => {
