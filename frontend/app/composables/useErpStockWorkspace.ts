@@ -457,9 +457,10 @@ export function useErpStockWorkspace() {
       return result.data
     } catch (error) {
       if (!current(token, generation) || opSequence !== operationSequence) return null
+      if (await handleDenial(action, error, token, true)) return null
+      if (!current(token, generation) || opSequence !== operationSequence) return null
       fieldErrors.value = apiFieldErrors(error)
       const status = apiStatus(error)
-      if (await handleDenial(action, error, token, true)) return null
       if (isKnownLegacyTransferRejection(action, error)) {
         const transferId = pending.path.match(/^\/erp\/stock\/transfers\/(\d+)\/reverse$/)?.[1]
         const cleared = storePending(null)

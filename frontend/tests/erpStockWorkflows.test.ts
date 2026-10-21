@@ -375,6 +375,44 @@ describe('stock workspace request lifecycle', () => {
     }
   })
 
+  it('does not let a stale legacy rejection clear the new authority pending operation', async () => {
+    const storage = installSessionStorage()
+    const adjustment = { erp_establishment_id: 8, erp_product_variant_id: 21, quantity_delta: '1.0000', reason: 'Ajuste da empresa B' }
+    const companyBPending = operationRecovery.createPendingOperation('91:8:erp.stock.adjustments.store', 'erp.stock.adjustments.store', '/erp/stock/adjustments', adjustment, '00000000-0000-0000-0000-000000000208')
+    operationRecovery.writePendingOperation(sessionStorage, 'erp-stock:v1:91:8', companyBPending)
+    let workspace: ReturnType<typeof createStockWorkspace> | null = null
+    let switched = false
+    const legacyError = {
+      get statusCode() {
+        if (!switched) {
+          switched = true
+          queueMicrotask(() => {
+            workspace!.currentCompany.value = { ...workspace!.currentCompany.value, id: 8 }
+          })
+        }
+        return 409
+      },
+      data: { message: 'Transferência antiga exige conciliação.' }
+    }
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      if (path === '/erp/stock/transfers/41/reverse' && options?.method === 'POST') throw legacyError
+      return emptyPage
+    }
+    workspace = createStockWorkspace(api, ['erp.stock.transfers.reverse', 'erp.stock.adjustments.store'])
+    try {
+      await workspace.state.reverseTransfer(41, { quantity: '1.0000', remaining_quantity: '1.0000', reason: 'Conciliação necessária' })
+      await Vue.nextTick()
+      assert.equal(workspace.currentCompany.value.id, 8)
+      assert.equal(workspace.state.selectedOperation.value?.key, companyBPending.key)
+      assert.equal(JSON.parse(storage.values.get('erp-stock:v1:91:8')!).key, companyBPending.key)
+      assert.ok(storage.values.has('erp-stock:v1:91:7'), 'the original company A idempotency key remains scoped to company A')
+      assert.equal(workspace.state.mutationError.value.includes('transferência #41 antiga precisa de conciliação'), false)
+    } finally {
+      workspace.stop()
+      storage.restore()
+    }
+  })
+
   it('does not reopen an exhausted movement detail after a watcher dismisses the nested refresh', async () => {
     const storage = installSessionStorage()
     const detail = {
