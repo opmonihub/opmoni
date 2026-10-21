@@ -252,6 +252,62 @@ describe('sales authority and mounted draft form', () => {
     }
   })
 
+  it('renders actual API unit names for a saved line and submits the selected unit ID', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const units = [
+      { id: 1, short_name: 'UN', actual_name: 'Unidade', allow_decimal: true, base_unit_id: null, conversion_factor: null, status: 'active' },
+      { id: 2, short_name: 'CX', actual_name: 'Caixa', allow_decimal: false, base_unit_id: 1, conversion_factor: '12.00000000', status: 'active' },
+      { id: 3, short_name: 'ANT', actual_name: 'Unidade arquivada', allow_decimal: true, base_unit_id: null, conversion_factor: null, status: 'archived' }
+    ]
+    const document = { id: 66, erp_establishment_id: 3, erp_contact_id: null, erp_price_group_id: null, quote_no: 'ORC-66', status: 'draft', currency: 'BRL', draft_revision: 3,
+      subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000', stock_reserved: false, needs_reconciliation: false,
+      lines: [{ id: 88, erp_product_variant_id: 18, erp_unit_id: 1, quantity: '1.0000', unit_price: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', line_total: '10.0000', product_snapshot: { description: 'Produto congelado' } }] }
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path.startsWith('/erp/quotes?')) return { data: [document], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      if (path.startsWith('/erp/units?')) return { data: units, meta: { current_page: 1, last_page: 1, per_page: 100, total: 3 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 3, name: 'Matriz', status: 'active' }], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+      if (path.startsWith('/erp/contacts?') || path.startsWith('/erp/products?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      if (path === '/erp/quotes/66') return { data: document }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const mounted = mountSalesWorkspace(api)
+    try {
+      await mounted.click('Orçamentos')
+      const row = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes('ORC-66'))
+      assert.ok(row)
+      ;(row.props.onClick as () => void)()
+      await Vue.nextTick()
+      await new Promise(resolve => setImmediate(resolve))
+      await mounted.click('Editar rascunho')
+      function unitSelect() {
+        const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'lines.0.erp_unit_id')
+        assert.ok(field)
+        const select = mounted.walk(field).find(node => node.tag === 'select')
+        assert.ok(select)
+        return select
+      }
+      const options = mounted.walk(unitSelect()).filter(node => node.tag === 'option')
+      assert.deepEqual(options.map(option => ({ value: option.props.value, label: mounted.textContent(option) })), [
+        { value: 0, label: 'Unidade do catálogo' }, { value: 1, label: 'Unidade (UN)' }, { value: 2, label: 'Caixa (CX)' }
+      ])
+      assert.equal(unitSelect().props.value, 1)
+      ;(unitSelect().props.onChange as (event: unknown) => void)({ target: { value: '2' } })
+      await Vue.nextTick()
+      assert.equal(unitSelect().props.value, 2)
+      mounted.submitDraft()
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+      const saved = calls.find(call => call.path === '/erp/quotes/66' && call.options?.method === 'PATCH')
+      assert.ok(saved)
+      assert.equal((saved.options?.body as { lines: Array<{ erp_unit_id: number }> }).lines[0]?.erp_unit_id, 2)
+    } finally {
+      mounted.dispose()
+      storage.restore()
+    }
+  })
+
   it('requires the exact sales action and blocks viewer writes', () => {
     assert.equal(erpSalesActionAllowed(['erp.quotes.index'], 'manager', 'erp.quotes.index'), true)
     assert.equal(erpSalesActionAllowed(['erp.sales.*'], 'manager', 'erp.sales.post'), true)

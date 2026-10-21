@@ -256,7 +256,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     }
     if (results[0]?.status === 'fulfilled') references.establishments = results[0].value.map(row => ({ id: Number(row.id), name: String(row.name ?? ''), status: String(row.status ?? '') })).filter(row => row.status === 'active')
     if (results[1]?.status === 'fulfilled') references.contacts = results[1].value.map(row => ({ id: Number(row.id), name: String(row.name ?? ''), trade_name: typeof row.trade_name === 'string' ? row.trade_name : null, is_customer: row.is_customer === true, status: String(row.status ?? '') })).filter(row => row.status === 'active' && row.is_customer === true)
-    if (results[2]?.status === 'fulfilled') references.units = results[2].value.map(row => ({ id: Number(row.id), name: String(row.name ?? ''), symbol: typeof row.symbol === 'string' ? row.symbol : null, status: String(row.status ?? '') })).filter(row => row.status === 'active')
+    if (results[2]?.status === 'fulfilled') references.units = results[2].value.map(row => ({ id: Number(row.id), name: String(row.actual_name ?? ''), symbol: typeof row.short_name === 'string' ? row.short_name : null, status: String(row.status ?? '') })).filter(row => row.status === 'active')
     if (results[3]?.status === 'fulfilled') references.variants = results[3].value.flatMap((product) => {
       if (product.status !== 'active' || !Array.isArray(product.variants)) return []
       return product.variants.filter((variant: Record<string, unknown>) => variant.status === 'active' && Number.isSafeInteger(Number(variant.id))).map((variant: Record<string, unknown>) => ({
