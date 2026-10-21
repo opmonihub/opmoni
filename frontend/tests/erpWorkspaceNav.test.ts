@@ -140,7 +140,7 @@ describe('ERP workspace navigation registry', () => {
 
   it('keeps narrow import and XML preview grants reachable without broad aggregate module grants', () => {
     const importItem = item(erpWorkspaceSidebarItems('/erp/cadastros/importacao', company({
-      role: 'viewer',
+      role: 'operator',
       permissions: ['erp.catalog.import.products.preview']
     })), 'Cadastros')
     assert.ok(children(importItem).some(child => child.to === '/erp/cadastros/importacao'))

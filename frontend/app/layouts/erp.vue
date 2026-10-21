@@ -5,6 +5,7 @@ import { erpWorkspaceSidebarItems } from '~/utils/erpWorkspaceNav'
 const route = useRoute()
 const { currentCompany, currentAccount } = useAuth()
 const open = ref(false)
+const expandedModules = ref<string[]>([])
 const { closeForNavigation } = useErpSidebarNavigation(open)
 const workspaceKey = computed(() => `${currentAccount.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${currentCompany.value?.access_kind ?? ''}`)
 // Operational modules, catalogs and settings provide their own native panel and header.
@@ -13,6 +14,17 @@ const pageOwnsPanel = computed(() => erpNavModules.some(module =>
 ))
 
 const links = computed(() => erpWorkspaceSidebarItems(route.path, currentCompany.value, closeForNavigation, route.hash))
+
+watch(
+  () => [route.path, route.hash, workspaceKey.value],
+  () => {
+    const activeModule = links.value[0]?.find(item => item.type === 'trigger' && item.active)
+    const value = activeModule?.value
+    if (typeof value === 'string' && !expandedModules.value.includes(value))
+      expandedModules.value = [...expandedModules.value, value]
+  },
+  { immediate: true }
+)
 
 const navbarTitle = computed(() => {
   if (currentCompany.value?.name)
@@ -45,6 +57,7 @@ const navbarTitle = computed(() => {
 
       <template #default="{ collapsed }">
         <UNavigationMenu
+          v-model="expandedModules"
           :collapsed="collapsed"
           :items="links[0]"
           orientation="vertical"

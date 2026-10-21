@@ -11,7 +11,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const output = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const exports = {} as { default: { setup: (props: object, context: object) => { statusLabel: Vue.Ref<string>, subscription: Vue.Ref<{ company: { name: string } } | null>, error: Vue.Ref<unknown>, load: () => Promise<void> } }, render: (...args: unknown[]) => Vue.VNode }
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
-    if (name === 'vue') return { ...Vue, resolveComponent: (name: string) => ({ name }), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
+    if (name === 'vue') return { ...Vue, resolveComponent: globals.resolveComponent ?? ((name: string) => ({ name })), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
     if (name === '~/utils/erpModulesNav') return nav
     assert.equal(name, '~/utils/erpWorkspaceNav')
     return workspaceNav
@@ -34,7 +34,7 @@ function surface(path: string, bindings: Record<string, unknown> = {}, props = {
     ...bindings
   }).default
   const state = scope.run(() => component.setup(props, { expose() {} }))
-  const render = evaluate(template.code).render
+  const render = evaluate(template.code, { resolveComponent: bindings.resolveComponent }).render
   return { state, metadata, mounted, render: (slots = {}) => render({ $slots: slots }, [], props, Vue.proxyRefs(state), {}, {}), close: () => scope.stop() }
 }
 function nodes(node: Vue.VNode): Vue.VNode[] {
@@ -120,6 +120,46 @@ describe('ERP mobile shell and contract', () => {
       assert.equal(named(layout, 'UDashboardPanel').length, 0, `The ${path} page supplies the panel without nesting it in the layout panel`)
       assert.ok(nodes(layout).some(node => node.type === 'main'), `The ${path} page content remains in the layout slot`)
     }
+  })
+  it('controls active sidebar expansion after mounted route and history changes while preserving manual collapse', async (t) => {
+    const route = Vue.reactive({ path: '/erp', hash: '' })
+    let menuProps: { modelValue: string[] } | undefined
+    let updateMenu: ((value: string[]) => void) | undefined
+    const menu = Vue.defineComponent({
+      name: 'UNavigationMenu',
+      props: { modelValue: { type: Array as Vue.PropType<string[]>, default: () => [] } },
+      emits: ['update:modelValue'],
+      setup(props, { emit }) {
+        menuProps = props
+        updateMenu = value => emit('update:modelValue', value)
+        return () => Vue.h('nav', { 'data-open': props.modelValue.join(',') })
+      }
+    })
+    const view = surface('layouts/erp.vue', {
+      useRoute: () => route,
+      useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) }),
+      resolveComponent: (name: string) => name === 'UNavigationMenu' ? menu : ({ name })
+    })
+    t.after(view.close)
+    const unmount = mount(() => Vue.h({ render: () => named(view.render(), 'UNavigationMenu')[0]! }))
+    t.after(unmount)
+
+    assert.deepEqual(menuProps?.modelValue, [])
+    route.path = '/erp/financeiro'
+    route.hash = '#payments'
+    await Vue.nextTick()
+    assert.ok(menuProps?.modelValue.includes('erp-financeiro'), 'SPA route navigation expands the active module')
+
+    updateMenu!([])
+    await Vue.nextTick()
+    assert.deepEqual(menuProps?.modelValue, [], 'manual collapse is reflected by the controlled native menu')
+    route.hash = '#obligations'
+    await Vue.nextTick()
+    assert.ok(menuProps?.modelValue.includes('erp-financeiro'), 'history/hash navigation reopens the now-active module')
+
+    updateMenu!([])
+    await Vue.nextTick()
+    assert.deepEqual(menuProps?.modelValue, [], 'a user can collapse the active module without an immediate watcher reopening it')
   })
   it('changes the catalog content key when company or Account context changes', (t) => {
     const currentCompany = Vue.ref(company())
