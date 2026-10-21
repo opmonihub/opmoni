@@ -6,6 +6,7 @@ import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as financeUtils from '../shared/utils/erpFinance.ts'
+import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
 import type { ErpFinancePage, ErpObligation, ErpPayment, ErpFinanceTotals } from '../shared/types/erpBusiness.ts'
 
 type Api = (path: string, options?: { method?: string, body?: Record<string, unknown>, headers?: Record<string, string> }) => Promise<unknown>
@@ -328,7 +329,8 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
   const moduleExports = compileModule(readFileSync(new URL('../app/composables/useErpFinanceWorkspace.ts', import.meta.url), 'utf8'), {
     '#shared/types/erpBusiness': {},
     '~/composables/useApiError': apiErrors,
-    '#shared/utils/erpFinance': financeUtils
+    '#shared/utils/erpFinance': financeUtils,
+    '#shared/utils/erpOperationRecovery': operationRecovery
   }, bindings)
   const scope = Vue.effectScope()
   const useFinance = (initialTab?: unknown) => scope.run(() => (moduleExports.useErpFinanceWorkspace as (initialTab?: unknown) => Record<string, unknown>)(initialTab))!

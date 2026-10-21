@@ -105,3 +105,61 @@ export interface ErpFinanceReceipt {
   posted_at: string | null
   actor: { id: number, name: string } | null
 }
+
+export interface ErpCashRegister {
+  id: number
+  name: string
+  erp_establishment_id: number
+  status: 'active' | 'archived'
+}
+
+export interface ErpCashLedgerTotals {
+  movements_in: ErpMoney | null
+  movements_out: ErpMoney | null
+  movements_net: ErpMoney | null
+  expected_balance: ErpMoney | null
+  needs_reconciliation: boolean
+}
+
+export interface ErpCashSession extends ErpCashLedgerTotals {
+  id: number
+  erp_cash_register_id: number
+  erp_establishment_id: number
+  operator_user_id: number
+  operator: { id: number, name: string } | null
+  currency: string | null
+  status: 'open' | 'closed'
+  opening_amount: ErpMoney | null
+  expected_closing_amount: ErpMoney | null
+  declared_closing_amount: ErpMoney | null
+  closing_difference: ErpMoney | null
+  opened_at: string | null
+  closed_at: string | null
+  closed_by_user_id: number | null
+  can_operate: boolean
+}
+
+export interface ErpCashMovement {
+  id: number
+  erp_cash_session_id: number
+  erp_payment_id: number | null
+  direction: 'in' | 'out'
+  kind: string
+  amount: ErpMoney
+  reason: string | null
+  posted_by_user_id: number | null
+  actor: { id: number, name: string } | null
+  posted_at: string | null
+}
+
+export interface ErpCashPage<T> {
+  data: T[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    totals: ErpFinanceTotals[]
+  }
+  totals?: ErpCashLedgerTotals
+}

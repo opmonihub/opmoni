@@ -1,13 +1,14 @@
 import type { ErpFinancePage, ErpFinancialAccount, ErpObligation, ErpPayment, ErpPaymentAllocation, ErpFinanceReceipt } from '#shared/types/erpBusiness'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import { erpFinanceAllowed, type ErpFinanceAction } from '#shared/utils/erpFinance'
+import { createPendingOperation, parsePendingOperation, pendingOperationLookup, writePendingOperation, type ErpPendingOperation } from '#shared/utils/erpOperationRecovery'
 
 type Tab = 'accounts' | 'obligations' | 'payments'
 type Row = ErpFinancialAccount | ErpObligation | ErpPayment
 type FinanceMeta = ErpFinancePage<Row>['meta']
 type ReferenceMeta = ErpFinancePage<unknown>['meta'] | null
 type FinanceFilter = { page: number, per_page: number, erp_establishment_id: string, erp_financial_account_id: string, direction: string, status: string, currency: string, date_from: string, date_to: string }
-type PendingOperation = { identity: string, operation: string, path: string, payload: Record<string, unknown>, key: string }
+type PendingOperation = ErpPendingOperation
 type ReferenceKind = 'establishments' | 'accounts' | 'cashSessions'
 type ReferenceRow<K extends ReferenceKind> = K extends 'establishments'
   ? { id: number, name: string }
@@ -85,8 +86,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
       return false
     }
     try {
-      if (operation) sessionStorage.setItem(storageKey.value, JSON.stringify(operation))
-      else sessionStorage.removeItem(storageKey.value)
+      writePendingOperation(sessionStorage, storageKey.value, operation)
       selectedOperation.value = operation
       return true
     } catch {
@@ -100,20 +100,21 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   function readPending(): PendingOperation | null {
     if (typeof sessionStorage === 'undefined') return null
     try {
-      const value = JSON.parse(sessionStorage.getItem(storageKey.value) ?? 'null') as PendingOperation | null
-      if (!value || typeof value.operation !== 'string' || value.identity !== operationIdentity(value.operation) || typeof value.path !== 'string' || typeof value.key !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.key) || !value.payload || typeof value.payload !== 'object') return null
-      const expectedPath: string | RegExp | undefined = {
+      const raw = sessionStorage.getItem(storageKey.value)
+      const record = raw ? JSON.parse(raw) as { operation?: unknown } : null
+      if (typeof record?.operation !== 'string') return null
+      const routes: Record<string, string | RegExp> = {
         'erp.financial-accounts.store': '/erp/financial-accounts',
         'erp.obligations.store': '/erp/obligations',
         'erp.payments.store': '/erp/payments',
         'erp.payments.allocate': /^\/erp\/payments\/\d+\/allocate$/,
         'erp.payments.reverse': /^\/erp\/payments\/\d+\/reverse$/,
         'erp.payment-allocations.reverse': /^\/erp\/payment-allocations\/\d+\/reverse$/
-      }[value.operation]
-      const validRoute = typeof expectedPath === 'string' ? value.path === expectedPath : expectedPath?.test(value.path)
-      if (!validRoute) return null
-      return value
-    } catch { return null }
+      }
+      return parsePendingOperation(record, operationIdentity(record.operation), routes)
+    } catch {
+      return null
+    }
   }
   function isAuthorityCurrent(token: ReturnType<typeof context.capture>) {
     return context.isCurrent(token)
@@ -552,7 +553,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
       return null
     }
     if (!existing) operationOutcome.value = null
-    const frozen: PendingOperation = existing ?? { identity: operationIdentity(action), operation: action, path, payload: structuredClone(body), key: crypto.randomUUID() }
+    const frozen: PendingOperation = existing ?? createPendingOperation(operationIdentity(action), action, path, body, crypto.randomUUID())
     if (frozen.identity !== operationIdentity(action)) return null
     if (!storePending(frozen)) return null
     const token = context.capture()
@@ -613,7 +614,8 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
     const selectionAtStart = detailSequence
     mutating.value = true
     try {
-      const result = await api<{ data: { state: string, result?: unknown, resource?: unknown } }>(`/erp/operations/lookup?operation=${encodeURIComponent(pending.operation)}`, { headers: { 'Idempotency-Key': pending.key } })
+      const lookup = pendingOperationLookup(pending)
+      const result = await api<{ data: { state: string, result?: unknown, resource?: unknown } }>(lookup.path, { headers: lookup.headers })
       if (!isCurrent(token, generation)) return
       if (result.data.state !== 'completed') {
         canRetryExact.value = false
