@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V1\Erp\Accounting;
 use App\Enums\Erp\ErpCompanyRole;
 use App\Erp\Accounting\AccountingMappingFence;
 use App\Erp\Accounting\ErpAccountingHandoffService;
+use App\Erp\ErpOperationJournal;
 use App\Erp\ErpReleaseGate;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Account;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
+use App\Models\Erp\Accounting\ErpAccountingDeliveryDispatch;
 use App\Models\Erp\Accounting\ErpAccountingMapping;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
@@ -16,6 +18,7 @@ use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ErpAccountingDeliveryController extends ErpOperationsController
 {
@@ -27,9 +30,15 @@ class ErpAccountingDeliveryController extends ErpOperationsController
     public function index(Request $request): JsonResponse
     {
         $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
+        $request->validate(['status' => ['sometimes', 'nullable', 'string', Rule::in(['pending', 'delivered', 'failed', 'blocked'])]]);
         $query = ErpAccountingDelivery::query()
             ->where('erp_company_id', $this->companyId($request))
-            ->with(['erpFiscalDocument']);
+            ->with(['erpFiscalDocument'])
+            ->addSelect(['latest_dispatch_status' => ErpAccountingDeliveryDispatch::query()
+                ->select('status')
+                ->whereColumn('erp_accounting_delivery_id', 'erp_accounting_deliveries.id')
+                ->orderByDesc('generation')
+                ->limit(1)]);
 
         return $this->paginated($request, $query, fn (ErpAccountingDelivery $row): array => $this->serialize($row));
     }
@@ -38,10 +47,37 @@ class ErpAccountingDeliveryController extends ErpOperationsController
     {
         $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         CurrentCompany::fromRequest($request)->assertCanMutate();
+        $journal = app(ErpOperationJournal::class);
         $model = $this->findForCompany($request, ErpAccountingDelivery::class, $delivery);
-        $result = $this->handoff->retry($model);
 
-        return response()->json(['data' => $this->serialize($result)]);
+        return $journal->executeAccountingRetry($request, $delivery, function () use ($model): JsonResponse {
+            $result = $this->handoff->retry($model);
+
+            return response()->json(['data' => $this->serialize($this->withLatestDispatchStatus($result))]);
+        });
+    }
+
+    public function show(Request $request, int $delivery): JsonResponse
+    {
+        $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
+        $model = $this->findForCompany($request, ErpAccountingDelivery::class, $delivery);
+        $this->withLatestDispatchStatus($model);
+        $model->loadMissing('erpFiscalDocument');
+        $mapping = $model->mapping_id === null ? null : ErpAccountingMapping::query()
+            ->whereKey($model->mapping_id)
+            ->where('erp_company_id', $model->erp_company_id)
+            ->where('account_id', $model->account_id)
+            ->where('delegation_id', $model->delegation_id)
+            ->first();
+
+        return response()->json(['data' => $this->serialize($model) + [
+            'approved_mapping' => $mapping === null ? null : [
+                'id' => $mapping->id,
+                'revision' => $mapping->revision,
+                'erp_establishment_id' => $mapping->erp_establishment_id,
+                'status' => $mapping->status,
+            ],
+        ]]);
     }
 
     public function store(Request $request): JsonResponse
@@ -59,11 +95,23 @@ class ErpAccountingDeliveryController extends ErpOperationsController
             resolve(AccountingMappingFence::class)->acquire(Account::query()->whereKey($delegation->account_id));
             $intent = $this->handoff->ensureDeliveryIntent($document, (int) $request->user()->id);
             $created = $intent->wasRecentlyCreated;
-            $result = $this->handoff->retry($intent);
+            $result = $created ? $this->handoff->retry($intent) : $intent->fresh(['erpFiscalDocument']);
             abort_if($created && ! in_array($result->status, ['pending', 'delivered'], true), 422);
 
-            return response()->json(['data' => $this->serialize($result)], $created ? 201 : 200);
+            return response()->json(['data' => $this->serialize($this->withLatestDispatchStatus($result))], $created ? 201 : 200);
         });
+    }
+
+    private function withLatestDispatchStatus(ErpAccountingDelivery $delivery): ErpAccountingDelivery
+    {
+        if (! array_key_exists('latest_dispatch_status', $delivery->getAttributes())) {
+            $delivery->setAttribute('latest_dispatch_status', ErpAccountingDeliveryDispatch::query()
+                ->where('erp_accounting_delivery_id', $delivery->id)
+                ->orderByDesc('generation')
+                ->value('status'));
+        }
+
+        return $delivery;
     }
 
     /** @return array<string, mixed> */
@@ -78,7 +126,11 @@ class ErpAccountingDeliveryController extends ErpOperationsController
             'delegation_id' => $delivery->delegation_id,
             'mapping_id' => $delivery->mapping_id,
             'mapping_revision' => $delivery->mapping_revision,
-            'can_retry' => $delivery->attempts < ErpAccountingHandoffService::MAX_ATTEMPTS && $delivery->status !== 'delivered' && ($delivery->status !== 'blocked' || in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized'], true)),
+            'can_retry' => $delivery->attempts < ErpAccountingHandoffService::MAX_ATTEMPTS
+                && $delivery->status !== 'delivered'
+                && in_array($delivery->getAttribute('latest_dispatch_status'), [null, 'completed'], true)
+                && (in_array($delivery->status, ['pending', 'failed'], true)
+                    || ($delivery->status === 'blocked' && in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized'], true))),
             'status' => $delivery->status,
             'reason_code' => $delivery->reason_code,
             'attempts' => $delivery->attempts,
@@ -86,6 +138,8 @@ class ErpAccountingDeliveryController extends ErpOperationsController
             'erp_fiscal_document' => $delivery->relationLoaded('erpFiscalDocument') && $delivery->erpFiscalDocument
                 ? [
                     'id' => $delivery->erpFiscalDocument->id,
+                    'model' => $delivery->erpFiscalDocument->model,
+                    'erp_establishment_id' => $delivery->erpFiscalDocument->erp_establishment_id,
                     'access_key' => $delivery->erpFiscalDocument->access_key,
                     'status' => $delivery->erpFiscalDocument->status,
                 ]

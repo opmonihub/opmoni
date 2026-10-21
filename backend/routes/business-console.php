@@ -87,6 +87,10 @@ Schedule::command('fiscal:dispatch-processing-due')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+Schedule::command('app:dispatch-erp-accounting-delivery-outbox')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 /*
  * A renovação do termo de autorização, uma vez por dia, à uma da manhã no
  * fuso de Brasília.

@@ -196,7 +196,7 @@ class ErpAccountingAndReportsTest extends TestCase
 
         Storage::disk('local')->put('erp/fiscal/missing.xml', '<nfeProc/>');
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
+        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'accounting-retry-storage-1'])
             ->postJson('/api/v1/erp/accounting-deliveries/'.$failed->id.'/retry')
             ->assertOk()
             ->assertJsonPath('data.status', 'pending')

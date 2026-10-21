@@ -2,6 +2,7 @@
 
 namespace App\Erp;
 
+use App\Erp\Accounting\ErpAccountingRetryOperation;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceOperation;
 use App\Erp\Finance\ErpPaymentAllocationOperation;
@@ -23,7 +24,7 @@ use InvalidArgumentException;
 
 final class ErpOperationJournal
 {
-    public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports, private ErpStockOperation $stock, private ErpFinanceOperation $finance) {}
+    public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports, private ErpStockOperation $stock, private ErpFinanceOperation $finance, private ErpAccountingRetryOperation $accountingRetry) {}
 
     public function key(Request $request, bool $required = false): ?string
     {
@@ -112,7 +113,49 @@ final class ErpOperationJournal
 
     public static function operations(): array
     {
-        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
+        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ErpAccountingRetryOperation::NAME, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
+    }
+
+    /** @param Closure():JsonResponse $post */
+    public function executeAccountingRetry(Request $request, int $deliveryId, Closure $post): JsonResponse
+    {
+        abort_unless(DB::transactionLevel() > 0, 500);
+
+        return DB::transaction(function () use ($request, $deliveryId, $post): JsonResponse {
+            $key = $this->key($request, true);
+            $payload = $this->accountingRetry->canonical($request, $deliveryId);
+            $this->accountingRetry->assertAuthorized($request, $payload);
+            AccessSession::assertOwnership($request);
+            $hash = hash('sha256', 'accounting-retry-v1:'.$this->canonicalJson($payload));
+            $receipt = $this->receipts($request, $key, ErpAccountingRetryOperation::NAME)->lockForUpdate()->first();
+            if ($receipt !== null) {
+                $this->accountingRetry->assertAuthorized($request, $receipt->resource_refs);
+                abort_unless($receipt->canonical_version === 'accounting-retry-v1' && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                AccessSession::assertOwnership($request);
+
+                return response()->json($receipt->response_body, $receipt->response_status);
+            }
+
+            $response = $post();
+            $body = $response->getData(true);
+            abort_if(strlen($this->canonicalJson($body)) > 16384, 422, 'Resultado de operação inválido');
+            $references = $payload + ['erp_company_id' => CurrentCompany::fromRequest($request)->company->id];
+            ErpOperationReceipt::query()->create([
+                'erp_company_id' => CurrentCompany::fromRequest($request)->company->id,
+                'actor_user_id' => $request->user()->id,
+                'operation' => ErpAccountingRetryOperation::NAME,
+                'key_digest' => hash('sha256', $key),
+                'canonical_version' => 'accounting-retry-v1',
+                'payload_hash' => $hash,
+                'response_status' => $response->getStatusCode(),
+                'response_body' => $body,
+                'resource_refs' => $references,
+                'recorded_at' => now(),
+            ]);
+            AccessSession::assertOwnership($request);
+
+            return $response;
+        });
     }
 
     public function executeImport(Request $request, string $operation): array
@@ -329,6 +372,8 @@ final class ErpOperationJournal
                 app(ErpPurchaseOperation::class)->authorize($request, $operation, $receipt->resource_refs);
             } elseif ($operation === ErpPaymentAllocationOperation::NAME) {
                 $this->allocation->assertAuthorized($request, $receipt->resource_refs);
+            } elseif ($operation === ErpAccountingRetryOperation::NAME && $receipt->canonical_version === 'accounting-retry-v1') {
+                $this->accountingRetry->assertAuthorized($request, $receipt->resource_refs);
             } elseif (in_array($operation, ErpCommercialOperation::names(), true) && $receipt->canonical_version === 'commercial-v1') {
                 app(ErpCommercialOperation::class)->assertAuthorized($request, $operation, $receipt->resource_refs + ['_original_response' => $receipt->response_body]);
             } elseif (in_array($operation, ErpFinanceOperation::names(), true)) {

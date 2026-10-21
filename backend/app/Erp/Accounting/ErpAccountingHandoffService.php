@@ -13,10 +13,10 @@ use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Exceptions\AccountingPublicationFailed;
-use App\Jobs\DeliverErpAccountingDocument;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
+use App\Models\Erp\Accounting\ErpAccountingDeliveryDispatch;
 use App\Models\Erp\Accounting\ErpAccountingMapping;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpEstablishment;
@@ -80,7 +80,7 @@ class ErpAccountingHandoffService
         });
     }
 
-    public function queueAfterCommit(ErpAccountingDelivery $delivery): ErpAccountingDelivery
+    public function queueAfterCommit(ErpAccountingDelivery $delivery, bool $allowNextGeneration = false): ErpAccountingDelivery
     {
         if ($delivery->status !== ErpAccountingDelivery::STATUS_PENDING) {
             return $delivery;
@@ -88,20 +88,70 @@ class ErpAccountingHandoffService
         $connection = (string) config('queue.default');
         if (! in_array(config('queue.connections.'.$connection.'.driver'), ['database', 'redis', 'sqs', 'beanstalkd'], true)) {
             $delivery->update(['reason_code' => 'accounting_worker_not_configured']);
-
-            return $delivery;
         }
-        DeliverErpAccountingDocument::dispatch((int) $delivery->id)->onConnection($connection)->afterCommit();
+
+        $dispatch = DB::transaction(function () use ($delivery, $allowNextGeneration): ?ErpAccountingDeliveryDispatch {
+            $locked = ErpAccountingDelivery::query()->whereKey($delivery->id)->lockForUpdate()->firstOrFail();
+            $latest = ErpAccountingDeliveryDispatch::query()
+                ->where('erp_accounting_delivery_id', $locked->id)
+                ->orderByDesc('generation')
+                ->lockForUpdate()
+                ->first();
+            if ($latest !== null && ! $allowNextGeneration) {
+                return null;
+            }
+
+            return ErpAccountingDeliveryDispatch::query()->create([
+                'erp_accounting_delivery_id' => $locked->id,
+                'generation' => ($latest?->generation ?? 0) + 1,
+                'status' => 'pending',
+                'available_at' => now(),
+                'attempt_sequence' => 1,
+            ]);
+        });
+        if ($dispatch !== null) {
+            resolve(ErpAccountingDispatchOutbox::class)->scheduleWake($dispatch);
+        }
 
         return $delivery;
     }
 
-    public function deliver(ErpAccountingDelivery $delivery): ErpAccountingDelivery
-    {
-        return $this->withFences($delivery, function (ErpAccountingDelivery $locked, ErpCompany $company, ?Account $account): ErpAccountingDelivery {
+    public function deliver(
+        ErpAccountingDelivery $delivery,
+        ?int $dispatchId = null,
+        ?int $attemptSequence = null,
+        ?int $dispatchGeneration = null,
+        ?string $dispatchLeaseToken = null,
+    ): ErpAccountingDelivery {
+        return $this->withFences($delivery, function (ErpAccountingDelivery $locked, ErpCompany $company, ?Account $account) use ($dispatchId, $attemptSequence, $dispatchGeneration, $dispatchLeaseToken): ErpAccountingDelivery {
+            $dispatch = $dispatchId === null ? null : ErpAccountingDeliveryDispatch::query()
+                ->whereKey($dispatchId)
+                ->where('erp_accounting_delivery_id', $locked->id)
+                ->lockForUpdate()
+                ->first();
+            if ($dispatchId !== null && ($dispatch === null || $dispatch->generation !== $dispatchGeneration
+                || $dispatch->status === 'completed'
+                || $dispatch->attempt_sequence !== $attemptSequence
+                || $dispatch->lease_token === null
+                || ! hash_equals($dispatch->lease_token, (string) $dispatchLeaseToken)
+                || ($dispatch->status === 'pending' && $dispatch->available_at?->isFuture()))) {
+                return $locked;
+            }
+            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
+                if ($dispatch === null) {
+                    $dispatch = ErpAccountingDeliveryDispatch::query()
+                        ->where('erp_accounting_delivery_id', $locked->id)
+                        ->whereIn('status', ['pending', 'leased'])
+                        ->orderByDesc('generation')
+                        ->lockForUpdate()
+                        ->first();
+                }
+
+                return $this->recordDispatchResult($dispatch, $locked);
+            }
             $ready = $this->revalidate($locked, $company, $account);
             if ($ready === null) {
-                return $locked->fresh();
+                return $this->recordDispatchResult($dispatch, $locked->fresh());
             }
             [$document, $client, $bytes] = $ready;
             $locked->increment('attempts');
@@ -110,12 +160,12 @@ class ErpAccountingHandoffService
                     fn () => $this->publishToOffice($locked, $document, $client, $company, $bytes));
             } catch (AccountingPublicationFailed $error) {
                 if ($error->reason === 'artifact_conflict') {
-                    return $this->markBlocked($locked, 'artifact_conflict');
+                    return $this->recordDispatchResult($dispatch, $this->markBlocked($locked, 'artifact_conflict'));
                 }
 
-                return $this->markFailed($locked, 'publication_failed', retryable: true);
+                return $this->recordDispatchResult($dispatch, $this->markFailed($locked, 'publication_failed', retryable: true));
             } catch (FilesystemException) {
-                return $this->markFailed($locked, 'publication_failed', retryable: true);
+                return $this->recordDispatchResult($dispatch, $this->markFailed($locked, 'publication_failed', retryable: true));
             }
             $locked->update([
                 'client_id' => $client->id,
@@ -125,20 +175,40 @@ class ErpAccountingHandoffService
                 'delivered_at' => now(),
             ]);
 
-            return $locked->fresh(['erpFiscalDocument']);
+            return $this->recordDispatchResult($dispatch, $locked->fresh(['erpFiscalDocument']));
         });
     }
 
     public function retry(ErpAccountingDelivery $delivery): ErpAccountingDelivery
     {
         return $this->withFences($delivery, function (ErpAccountingDelivery $locked, ErpCompany $company, ?Account $account): ErpAccountingDelivery {
+            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
+                return $locked;
+            }
             if ($this->revalidate($locked, $company, $account) === null) {
                 return $locked->fresh();
             }
+            $latest = ErpAccountingDeliveryDispatch::query()
+                ->where('erp_accounting_delivery_id', $locked->id)
+                ->orderByDesc('generation')
+                ->lockForUpdate()
+                ->first();
+            if ($latest !== null && (! in_array($locked->status, [ErpAccountingDelivery::STATUS_FAILED, ErpAccountingDelivery::STATUS_BLOCKED], true) || $latest->status !== 'completed')) {
+                return $locked;
+            }
             $locked->update(['status' => ErpAccountingDelivery::STATUS_PENDING, 'reason_code' => null]);
 
-            return $this->queueAfterCommit($locked);
+            return $this->queueAfterCommit($locked, $latest !== null);
         });
+    }
+
+    private function recordDispatchResult(?ErpAccountingDeliveryDispatch $dispatch, ErpAccountingDelivery $delivery): ErpAccountingDelivery
+    {
+        if ($dispatch !== null) {
+            resolve(ErpAccountingDispatchOutbox::class)->recordDeliveryResult($dispatch, $delivery->status, $delivery->attempts);
+        }
+
+        return $delivery;
     }
 
     private function withFences(ErpAccountingDelivery $delivery, callable $callback): ErpAccountingDelivery
@@ -152,9 +222,6 @@ class ErpAccountingHandoffService
             ErpFiscalDocument::query()->whereKey($identity->erp_fiscal_document_id)->where('erp_company_id', $company->id)->lockForUpdate()->firstOrFail();
             $locked = ErpAccountingDelivery::query()->whereKey($identity->id)->lockForUpdate()->firstOrFail();
             abort_unless((int) $locked->erp_company_id === (int) $company->id && (int) $locked->account_id === (int) $identity->account_id && (int) $locked->erp_fiscal_document_id === (int) $identity->erp_fiscal_document_id, 409);
-            if ($locked->status === ErpAccountingDelivery::STATUS_DELIVERED) {
-                return $locked;
-            }
 
             return resolve(ErpCompanyContext::class)->run((int) $company->id, fn () => $callback($locked, $company, $account));
         });

@@ -196,6 +196,7 @@ final class ErpCompanyPermissions
         'erp.accounting-mappings.index' => false,
         'erp.accounting-deliveries.store' => true,
         'erp.accounting-deliveries.index' => false,
+        'erp.accounting-deliveries.show' => false,
         'erp.accounting-deliveries.retry' => true,
         'erp.reports.exports.show' => false,
         'erp.reports.show' => false,
