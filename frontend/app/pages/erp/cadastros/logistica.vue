@@ -5,6 +5,7 @@ import ErpDriverCatalogForm from '~/components/erp/catalogs/ErpDriverCatalogForm
 import ErpVehicleCatalogForm from '~/components/erp/catalogs/ErpVehicleCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import type { ComponentPublicInstance } from 'vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Logística · Cadastros ERP' })
@@ -36,16 +37,32 @@ type CatalogCreateAction = CatalogResourceHandle['createAction']
 const carrierResource = ref<CatalogResourceHandle | null>(null)
 const vehicleResource = ref<CatalogResourceHandle | null>(null)
 const driverResource = ref<CatalogResourceHandle | null>(null)
+const createMenuTrigger = ref<ComponentPublicInstance | null>(null)
+let pendingCreateFocusAction: CatalogCreateAction | null = null
 const createActions = computed(() => [carrierResource.value?.createAction, vehicleResource.value?.createAction, driverResource.value?.createAction]
   .filter((action): action is CatalogCreateAction => !!action && action.allowed))
-const createMenuItems = computed(() => [createActions.value.map(action => ({ label: action.label, disabled: action.busy, onSelect: action.trigger }))])
+function handoffCreateMenuFocus(event: Event) {
+  const action = pendingCreateFocusAction
+  if (!action)
+    return
+  pendingCreateFocusAction = null
+  event.preventDefault()
+}
+const createMenuItems = computed(() => [createActions.value.map(action => ({
+  label: action.label,
+  disabled: action.busy,
+  onSelect: () => {
+    if (action.trigger(createMenuTrigger.value?.$el as HTMLElement | undefined))
+      pendingCreateFocusAction = action
+  }
+}))])
 </script>
 
 <template>
   <ErpCatalogPageShell title="Logística" description="Transportadoras, veículos e motoristas para operações de transporte.">
     <template #actions>
-      <UDropdownMenu v-if="createActions.length" :items="createMenuItems">
-        <UButton aria-label="Adicionar cadastro de logística" icon="i-lucide-plus">
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
+        <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro de logística" icon="i-lucide-plus">
           <span class="hidden sm:inline">Adicionar</span>
         </UButton>
       </UDropdownMenu>

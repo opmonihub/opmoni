@@ -4,6 +4,7 @@ import ErpDiscountRuleCatalogForm from '~/components/erp/catalogs/ErpDiscountRul
 import ErpPriceGroupCatalogForm from '~/components/erp/catalogs/ErpPriceGroupCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import type { ComponentPublicInstance } from 'vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Preços · Cadastros ERP' })
@@ -27,16 +28,32 @@ type CatalogResourceHandle = InstanceType<typeof ErpCatalogResource>
 type CatalogCreateAction = CatalogResourceHandle['createAction']
 const groupResource = ref<CatalogResourceHandle | null>(null)
 const discountResource = ref<CatalogResourceHandle | null>(null)
+const createMenuTrigger = ref<ComponentPublicInstance | null>(null)
+let pendingCreateFocusAction: CatalogCreateAction | null = null
 const createActions = computed(() => [groupResource.value?.createAction, discountResource.value?.createAction]
   .filter((action): action is CatalogCreateAction => !!action && action.allowed))
-const createMenuItems = computed(() => [createActions.value.map(action => ({ label: action.label, disabled: action.busy, onSelect: action.trigger }))])
+function handoffCreateMenuFocus(event: Event) {
+  const action = pendingCreateFocusAction
+  if (!action)
+    return
+  pendingCreateFocusAction = null
+  event.preventDefault()
+}
+const createMenuItems = computed(() => [createActions.value.map(action => ({
+  label: action.label,
+  disabled: action.busy,
+  onSelect: () => {
+    if (action.trigger(createMenuTrigger.value?.$el as HTMLElement | undefined))
+      pendingCreateFocusAction = action
+  }
+}))])
 </script>
 
 <template>
   <ErpCatalogPageShell title="Preços e descontos" description="Grupos de preço e regras comerciais com valores decimais exatos.">
     <template #actions>
-      <UDropdownMenu v-if="createActions.length" :items="createMenuItems">
-        <UButton aria-label="Adicionar cadastro de preços" icon="i-lucide-plus">
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
+        <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro de preços" icon="i-lucide-plus">
           <span class="hidden sm:inline">Adicionar</span>
         </UButton>
       </UDropdownMenu>

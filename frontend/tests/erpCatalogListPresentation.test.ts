@@ -11,6 +11,8 @@ type HostNode = {
   children: HostNode[]
   parent: HostNode | null
   textContent: string
+  focusCalls: number
+  focus(): void
 }
 
 interface CatalogRequest {
@@ -69,7 +71,15 @@ function catalogRuntime() {
 }
 
 function createHostRenderer() {
-  const createNode = (tag: string, textContent = ''): HostNode => ({ tag, props: {}, children: [], parent: null, textContent })
+  const createNode = (tag: string, textContent = ''): HostNode => ({
+    tag,
+    props: {},
+    children: [],
+    parent: null,
+    textContent,
+    focusCalls: 0,
+    focus() { this.focusCalls++ }
+  })
   const renderer = Vue.createRenderer<HostNode, HostNode>({
     patchProp(node, key, _old, value) { node.props[key] = value },
     insert(node, parent, anchor = null) {
@@ -119,6 +129,15 @@ function findHostNodes(root: HostNode, predicate: (node: HostNode) => boolean): 
   }
   visit(root)
   return found
+}
+
+function detachHostNode(node: HostNode) {
+  if (!node.parent)
+    return
+  const index = node.parent.children.indexOf(node)
+  if (index >= 0)
+    node.parent.children.splice(index, 1)
+  node.parent = null
 }
 
 function slotBoundary(name: string, tag: string, slotNames: string[]) {
@@ -174,15 +193,24 @@ function mountCatalogPage(path: string) {
   }))
   app.component('UDropdownMenu', Vue.defineComponent({
     name: 'UDropdownMenu',
-    props: ['items'],
+    props: ['items', 'content'],
     setup(props, { attrs, slots }) {
       return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, [
         ...(slots.default?.() ?? []),
-        ...((props.items as Array<Array<{ label: string, disabled?: boolean, onSelect?: () => void }>> | undefined) ?? []).flat().map(item => Vue.h('button', {
-          'data-menu-action': item.label,
-          'disabled': item.disabled,
-          'onClick': item.onSelect
-        }, item.label))
+        ...((props.items as Array<Array<{ label: string, disabled?: boolean, onSelect?: () => void }>> | undefined) ?? []).flat().map((item) => {
+          let menuItem: HostNode | null = null
+          return Vue.h('button', {
+            'data-menu-action': item.label,
+            'disabled': item.disabled,
+            'ref': (instance: unknown) => { menuItem = instance as HostNode | null },
+            'onClick': () => {
+              item.onSelect?.()
+              props.content?.onCloseAutoFocus?.({ preventDefault() {} } as Event)
+              if (menuItem)
+                detachHostNode(menuItem)
+            }
+          }, item.label)
+        })
       ])
     }
   }))
@@ -203,6 +231,19 @@ function mountCatalogPage(path: string) {
         ...(slots.default?.() ?? []),
         props.error ? Vue.h('span', { role: 'alert' }, String(props.error)) : null
       ])
+    }
+  }))
+  app.component('UForm', Vue.defineComponent({
+    name: 'UForm',
+    props: ['state'],
+    emits: ['submit'],
+    setup(props, { emit, slots }) {
+      return () => Vue.h('form', {
+        onSubmit: (event: { preventDefault(): void }) => {
+          event.preventDefault()
+          emit('submit', { data: props.state })
+        }
+      }, slots.default?.())
     }
   }))
   app.component('UModal', Vue.defineComponent({
@@ -229,6 +270,13 @@ function mountCatalogPage(path: string) {
     name: 'UInput',
     props: ['modelValue', 'placeholder'],
     setup(props) { return () => Vue.h('input', { value: props.modelValue, placeholder: props.placeholder }) }
+  }))
+  app.component('UCheckbox', Vue.defineComponent({
+    name: 'UCheckbox',
+    props: ['modelValue', 'name', 'label'],
+    setup(props) {
+      return () => Vue.h('label', [Vue.h('input', { type: 'checkbox', name: props.name, checked: props.modelValue }), String(props.label ?? '')])
+    }
   }))
   app.component('UTable', Vue.defineComponent({
     name: 'UTable',
@@ -370,6 +418,27 @@ describe('ERP catalog list SFC states', () => {
     assert.equal(page.buttons().filter(button => button.props['data-menu-action']).length, 1, page.text())
     assert.equal(page.buttons().some(button => button.props['data-menu-action'] === 'Adicionar grupo de preço'), true)
     assert.equal(page.buttons().some(button => button.props['data-menu-action'] === 'Adicionar regra de desconto'), false)
+
+    const navbarTrigger = page.buttons().find(button => button.props['aria-label'] === 'Adicionar cadastro de preços')
+    assert.ok(navbarTrigger)
+    const focusBeforeCreate = navbarTrigger.focusCalls
+    const createGroup = page.buttons().find(button => button.props['data-menu-action'] === 'Adicionar grupo de preço')
+    assert.ok(createGroup)
+    createGroup.focus()
+    page.click(createGroup)
+    await settle()
+    assert.equal(findHostNodes(page.root, node => node.props['data-menu-action'] === 'Adicionar grupo de preço').includes(createGroup), false, 'selecting the focused menu item disconnects it as a native menu would')
+    const openEditor = findHostNodes(page.root, node => node.props['data-slideover-open'] === 'true').find(node => node.tag === 'aside')
+    assert.ok(openEditor, 'selecting a granted resource opens its editor')
+    const editorRegion = findHostNodes(openEditor, node => node.tag === 'section' && node.props.tabindex === '-1')[0]
+    assert.ok(editorRegion)
+    assert.equal(editorRegion.focusCalls, 1, 'menu close autofocus hands off into the opened editor')
+    const closeEditor = findHostNodes(openEditor, node => node.tag === 'button' && hostText(node) === 'Fechar')[0]
+    assert.ok(closeEditor)
+    page.click(closeEditor)
+    await settle()
+    assert.equal(navbarTrigger.focusCalls, focusBeforeCreate + 1, 'cancel restores focus to the persistent navbar trigger')
+
     currentCompany.value = { ...currentCompany.value, permissions: ['erp.read'] }
     await settle()
     assert.equal(page.buttons().filter(button => button.props['data-menu-action']).length, 0, 'the create menu disappears when its resource grant is removed')

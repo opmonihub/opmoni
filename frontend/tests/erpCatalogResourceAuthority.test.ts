@@ -233,11 +233,14 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     props: ['open', 'title', 'description', 'unmountOnHide', 'content'],
     emits: ['update:open'],
     setup(props, { slots }) {
-      return () => Vue.h('div', { 'data-slideover-open': String(props.open), 'data-slideover-unmount-on-hide': String(props.unmountOnHide) }, [
-        Vue.h('h2', String(props.title ?? '')),
-        Vue.h('p', String(props.description ?? '')),
-        ...(props.open ? [slots.body?.(), slots.footer?.()] : [])
-      ])
+      return () => {
+        const mountBody = props.open || props.unmountOnHide !== true
+        return Vue.h('div', { 'data-slideover-open': String(props.open), 'data-slideover-unmount-on-hide': String(props.unmountOnHide) }, [
+          Vue.h('h2', String(props.title ?? '')),
+          Vue.h('p', String(props.description ?? '')),
+          ...(mountBody ? [slots.body?.(), slots.footer?.()] : [])
+        ])
+      }
     }
   })
   for (const name of ['UButton', 'UCard', ...(options.detailPanel || options.realUnitForm ? [] : ['UFormField', 'UInput'])])
@@ -426,6 +429,7 @@ describe('ERP catalog shared resource authority', () => {
     resource.instance.createAction.trigger()
     await resource.settle()
     assert.equal(resource.editor.open.value, true, 'the explicit navbar action opens create mode')
+    assert.equal(descendants(resource.root).some(node => node.props['data-slideover-unmount-on-hide'] === 'true'), true, 'the resource opts into native closed-body unmounting')
     assert.equal(resource.editor.mode.value, 'create')
     assert.equal(resource.referenceMountCount, 1, 'opening creates one editor-session reference selector')
     assert.equal(isAttachedTo(resource.root, list), true, 'the list remains mounted while the editor is open')
@@ -467,6 +471,7 @@ describe('ERP catalog shared resource authority', () => {
     await resource.settle()
     const authorityDraft = descendants(resource.root).find(node => node.tag === 'input' && node.props.name === 'short_name')
     assert.ok(authorityDraft)
+    assert.equal(authorityDraft.props.value, '', 'canceling a nonempty rejected create draft starts the next session blank')
     authorityDraft.props.onInput?.({ target: { value: 'Rascunho protegido' } })
     await resource.settle()
     assert.equal(authorityDraft.props.value, 'Rascunho protegido')

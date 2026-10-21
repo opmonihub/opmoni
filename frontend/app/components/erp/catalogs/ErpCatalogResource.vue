@@ -9,7 +9,12 @@ import { useErpCatalogList } from '~/composables/useErpCatalogList'
 
 type CatalogRow = Record<string, unknown> & { id: number, status?: string }
 type FocusTarget = { focus(): void, isConnected?: boolean }
-type CatalogCreateAction = { label: string, allowed: boolean, busy: boolean, trigger: () => void }
+type CatalogCreateAction = {
+  label: string
+  allowed: boolean
+  busy: boolean
+  trigger: (opener?: HTMLElement | Event) => boolean
+}
 
 const props = withDefaults(defineProps<{
   path: string
@@ -71,9 +76,15 @@ const createAction = computed<CatalogCreateAction>(() => ({
   label: createLabel.value,
   allowed: canStore.value,
   busy: isSaving.value,
-  trigger: () => {
-    if (canStore.value && !isSaving.value)
-      editor.create()
+  trigger: (opener?: HTMLElement | Event) => {
+    if (!canStore.value || isSaving.value)
+      return false
+    const focusableOpener = opener && 'focus' in opener && typeof opener.focus === 'function'
+      ? opener as HTMLElement
+      : null
+    restoreFocusTarget.value = focusableOpener && focusableOpener.isConnected !== false ? focusableOpener : null
+    editor.create()
+    return true
   }
 }))
 const editorOpen = computed({
