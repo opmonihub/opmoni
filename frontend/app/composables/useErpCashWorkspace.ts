@@ -317,7 +317,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
       || (expectedSelection?.selectIfEmpty && expectedSelection.selectedId === null && selectedSession.value === null))
     const token = context.capture()
     const generation = requestGeneration
-    const canSelectAtStart = canApplySelection() && (explicitSelection || expectedSelection?.selectedId === id || expectedSelection?.selectIfEmpty)
+    const canSelectAtStart = canApplySelection() && (explicitSelection || expectedSelection?.selectedId === id || (expectedSelection?.selectIfEmpty && expectedSelection.selectedId === null))
     const sequence = canSelectAtStart ? ++detailSequence : detailSequence
     const previousSession = selectedSession.value
     const previousMovements = movements.value
@@ -340,16 +340,15 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
       if (allowed('erp.cash-sessions.movements.index')) await loadMovementPage(id, 1, token, generation, sequence)
     } catch (error) {
       if (!current(token, generation)) return
+      if (await handleDenial(action, error, token)) return
       if (!canSelectAtStart || !canApplySelection() || sequence !== detailSequence) return
-      if (!await handleDenial(action, error, token)) {
-        if (previousSession?.id === id) {
-          selectedSession.value = previousSession
-          movements.value = previousMovements
-          movementMeta.value = previousMeta
-          ledgerTotals.value = previousTotals
-        }
-        mutationError.value = apiErrorMessage(error) ?? 'Não foi possível carregar os detalhes da sessão.'
+      if (previousSession?.id === id) {
+        selectedSession.value = previousSession
+        movements.value = previousMovements
+        movementMeta.value = previousMeta
+        ledgerTotals.value = previousTotals
       }
+      mutationError.value = apiErrorMessage(error) ?? 'Não foi possível carregar os detalhes da sessão.'
     }
   }
   function activeCashSession(id: unknown) {

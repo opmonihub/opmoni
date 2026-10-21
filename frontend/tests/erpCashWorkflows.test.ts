@@ -383,6 +383,53 @@ describe('cash workspace API workflow', () => {
     assert.deepEqual(request?.options?.body, { erp_cash_register_id: 99, opening_amount: '0.0000', currency: 'BRL' })
   })
 
+  it('keeps an already selected session while a direct opening loads its new session in the background', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const openedSession = { ...openSession, id: 31 }
+    const calls: string[] = []
+    const api: Api = async (path, options) => {
+      calls.push(path)
+      if (path === '/erp/cash-sessions/21') return { data: openSession }
+      if (path === '/erp/cash-sessions/31') return { data: openedSession }
+      if (path.startsWith('/erp/cash-sessions/21/movements')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] }, totals: openSession }
+      if (path.startsWith('/erp/cash-sessions/31/movements')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] }, totals: openedSession }
+      if (path === '/erp/cash-sessions' && options?.method === 'POST') return { data: { id: 31 } }
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] } }
+    }
+    const app = createCashWorkspace(api)
+    t.after(app.stop)
+    await (app.state.inspectSession as (id: number) => Promise<void>)(21)
+    ;(app.state.registerOptions as Vue.Ref<typeof activeRegister[]>).value = [activeRegister]
+    const result = await (app.state.openCashSession as (body: { erp_cash_register_id: number, opening_amount: string, currency: string }) => Promise<unknown>)({ erp_cash_register_id: 11, opening_amount: '0.0000', currency: 'BRL' })
+    assert.deepEqual(result, { id: 31 })
+    assert.equal(calls.includes('/erp/cash-sessions/31'), true)
+    assert.equal(Vue.unref(app.state.selectedSession as Vue.Ref<{ id: number }>)?.id, 21)
+  })
+
+  it('keeps the selected session while reconciling a completed opening for another session', async (t) => {
+    const sessionB = { ...openSession, id: 22, erp_cash_register_id: 12 }
+    const openedSession = { ...openSession, id: 31 }
+    const calls: string[] = []
+    const api: Api = async (path) => {
+      calls.push(path)
+      if (path === '/erp/cash-sessions/22') return { data: sessionB }
+      if (path === '/erp/cash-sessions/31') return { data: openedSession }
+      if (path.startsWith('/erp/cash-sessions/22/movements')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] }, totals: sessionB }
+      if (path.startsWith('/erp/cash-sessions/31/movements')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] }, totals: openedSession }
+      if (path.includes('/operations/lookup')) return { data: { state: 'completed', result: { id: 31, status: 'open' } } }
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] } }
+    }
+    const app = createCashWorkspace(api)
+    t.after(app.stop)
+    await (app.state.inspectSession as (id: number) => Promise<void>)(22)
+    const pending = operationRecovery.createPendingOperation('42:7:erp.cash-sessions.store', 'erp.cash-sessions.store', '/erp/cash-sessions', { erp_cash_register_id: 11, opening_amount: '0.0000', currency: 'BRL' }, '92345678-1234-1234-1234-123456789abc')
+    ;(app.state.selectedOperation as Vue.Ref<typeof pending | null>).value = pending
+    await (app.state.reconcile as () => Promise<void>)()
+    assert.equal(calls.includes('/erp/cash-sessions/31'), true)
+    assert.equal(Vue.unref(app.state.selectedSession as Vue.Ref<{ id: number }>)?.id, 22)
+  })
+
   it('recovers a close after reload with the same key and does not require an open session', async (t) => {
     const storage = sessionStorageFixture()
     t.after(storage.restore)
@@ -718,6 +765,38 @@ describe('cash workspace API workflow', () => {
     assert.equal(Vue.unref(app.state.selectedSession as Vue.Ref<unknown>), null)
     assert.equal(Vue.unref(app.state.sessions as Vue.Ref<unknown[]>).length, 0)
     assert.equal(Vue.unref(app.state.mutationError as Vue.Ref<string>), '')
+  })
+
+  it('handles a definitive denial from a background recovery detail read before checking the selected session', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const sessionB = { ...openSession, id: 22, erp_cash_register_id: 12 }
+    const calls: string[] = []
+    const api: Api = async (path) => {
+      calls.push(path)
+      if (path === '/erp/cash-sessions/22') return { data: sessionB }
+      if (path.startsWith('/erp/cash-sessions/22/movements')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] }, totals: sessionB }
+      if (path.includes('/operations/lookup')) return { data: { state: 'completed', result: { id: 300, erp_cash_session_id: 21 } } }
+      if (path === '/erp/cash-sessions/21') throw Object.assign(new Error('A sessão não está mais autorizada'), { statusCode: 403 })
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 0, total: 0, totals: [] } }
+    }
+    const app = createCashWorkspace(api)
+    t.after(app.stop)
+    await (app.state.inspectSession as (id: number) => Promise<void>)(22)
+    ;(app.state.sessions as Vue.Ref<typeof sessionB[]>).value = [sessionB]
+    ;(app.state.registers as Vue.Ref<typeof activeRegister[]>).value = [activeRegister]
+    const pending = operationRecovery.createPendingOperation('42:7:erp.payments.store', 'erp.payments.store', '/erp/payments', { erp_cash_session_id: 21, amount: '15.0000' }, 'a2345678-1234-1234-1234-123456789abc')
+    ;(app.state.selectedOperation as Vue.Ref<typeof pending | null>).value = pending
+    const callsBeforeReconcile = calls.length
+    const authorityGeneration = Vue.unref(app.state.authorityGeneration as Vue.Ref<number>)
+    await (app.state.reconcile as () => Promise<void>)()
+    assert.equal(Vue.unref(app.state.authorityGeneration as Vue.Ref<number>), authorityGeneration + 1)
+    assert.equal(Vue.unref(app.state.selectedSession as Vue.Ref<unknown>), null)
+    assert.deepEqual(Vue.unref(app.state.sessions as Vue.Ref<unknown[]>), [])
+    assert.deepEqual(Vue.unref(app.state.registers as Vue.Ref<unknown[]>), [])
+    assert.equal(calls.filter(path => path.startsWith('/erp/cash-registers?per_page=15&page=1')).length, 0)
+    assert.equal(calls.length, callsBeforeReconcile + 2)
+    assert.equal(Vue.unref(app.state.mutationError as Vue.Ref<string>), 'A sessão não está mais autorizada')
   })
 
   it('keeps a newer lookup denial authoritative over an older auth refresh success or rejection', async (t) => {
