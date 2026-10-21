@@ -106,6 +106,119 @@ export interface ErpFinanceReceipt {
   actor: { id: number, name: string } | null
 }
 
+export type ErpCommercialKind = 'quote' | 'order' | 'sale'
+export type ErpCommercialStatus = 'draft' | 'confirmed' | 'posted'
+
+export interface ErpCommercialLine {
+  id?: number
+  erp_product_variant_id: number | null
+  erp_unit_id: number | null
+  description?: string
+  quantity: ErpMoney
+  unit_price?: ErpMoney
+  discount_amount?: ErpMoney
+  tax_amount?: ErpMoney
+  unit_conversion_factor?: string
+  erp_tax_rate_id?: number | null
+  erp_discount_rule_id?: number | null
+  line_total?: ErpMoney
+  product_snapshot?: Record<string, unknown> | null
+  [key: string]: unknown
+}
+
+export interface ErpCommercialDraftPayload {
+  erp_establishment_id: number | null
+  erp_contact_id?: number | null
+  erp_price_group_id?: number | null
+  erp_operation_nature_id?: number | null
+  currency: 'BRL'
+  quote_no?: string
+  order_no?: string
+  invoice_no?: string
+  sale_no?: string
+  discount?: { discount_type: 'fixed' | 'percentage', discount_amount: ErpMoney }
+  erp_discount_rule_id?: number
+  tax_rate_percent?: ErpMoney
+  draft_revision?: number
+  lines: ErpCommercialLine[]
+}
+
+export interface ErpSaleFinanceProjection {
+  currency: string
+  original_obligation_id: number | null
+  gross_original_due: ErpMoney | null
+  original_principal?: ErpMoney | null
+  opposite_return_credit: ErpMoney | null
+  open_return_credit: ErpMoney | null
+  net_exposure: ErpMoney | null
+  needs_reconciliation: boolean
+  reconciliation_reason?: string | null
+  automatic_setoff: false
+  automatic_refund: false
+  payment_ids?: number[]
+  return_credits?: Array<{ id: number, source_type: string, source_id: number, amount: ErpMoney, open_amount: ErpMoney, due_on: string | null }>
+  original_due_on?: string | null
+}
+
+export interface ErpCommercialDocument {
+  id: number
+  erp_establishment_id: number
+  erp_contact_id: number | null
+  erp_price_group_id: number | null
+  erp_quote_id?: number | null
+  erp_order_id?: number | null
+  quote_no?: string | null
+  order_no?: string | null
+  invoice_no?: string | null
+  status: ErpCommercialStatus
+  fiscal_status?: string | null
+  currency: 'BRL'
+  draft_revision: number | null
+  subtotal_amount: ErpMoney
+  discount_amount: ErpMoney
+  tax_amount: ErpMoney
+  total_amount: ErpMoney
+  lines: ErpCommercialLine[]
+  stock_reserved: false
+  needs_reconciliation: boolean
+  returnability?: { needs_reconciliation: boolean, reconciliation_reason?: string | null }
+  returnable_lines?: Array<{
+    source_line_id: number
+    quantity: ErpMoney
+    returned_quantity: ErpMoney | null
+    remaining_quantity: ErpMoney | null
+    unit_conversion_factor: string
+    line_total: ErpMoney
+    physical_eligibility: string
+  }>
+  finance?: ErpSaleFinanceProjection
+  [key: string]: unknown
+}
+
+export interface ErpSaleReturn {
+  id: number
+  erp_sale_id: number
+  erp_establishment_id: number
+  status: 'draft' | 'posted'
+  currency: 'BRL'
+  reason: string
+  total_amount: ErpMoney
+  lines: Array<{ source_line_id: number, quantity: ErpMoney, [key: string]: unknown }>
+  credit_id?: number | null
+  financial_disposition?: string | null
+  [key: string]: unknown
+}
+
+export interface ErpSalesPage<T> {
+  data: T[]
+  meta: { current_page: number, last_page: number, per_page: number, total: number }
+}
+
+export interface ErpSalesEstablishment { id: number, name: string, status: string }
+export interface ErpSalesContact { id: number, name: string, trade_name?: string | null, is_customer?: boolean, status: string }
+export interface ErpSalesUnit { id: number, name: string, symbol?: string | null, status: string }
+export interface ErpSalesVariant { id: number, name: string, sku?: string | null, status: string, product?: { id: number, name: string, kind?: string, track_stock?: boolean } }
+
 export interface ErpCashRegister {
   id: number
   name: string
