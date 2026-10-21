@@ -63,9 +63,10 @@ export function useErpFinanceWorkspace() {
   const canRetryExact = ref(false)
   const needsReconciliation = ref(false)
   const deniedActions = ref(new Set<string>())
+  const authorityNeedsRefresh = ref(false)
   const permissions = computed(() => currentCompany.value?.permissions ?? [])
   const role = computed(() => currentCompany.value?.role)
-  const allowed = (action: ErpFinanceAction) => !deniedActions.value.has(action) && erpFinanceAllowed(permissions.value, role.value, action)
+  const allowed = (action: ErpFinanceAction) => !authorityNeedsRefresh.value && !deniedActions.value.has(action) && erpFinanceAllowed(permissions.value, role.value, action)
   const canRead = computed(() => allowed(indexActions[tab.value]))
   const canWrite = computed(() => allowed('erp.financial-accounts.store') || allowed('erp.obligations.store') || allowed('erp.payments.store'))
   let requestGeneration = 0
@@ -73,6 +74,7 @@ export function useErpFinanceWorkspace() {
   let allocationSequence = 0
   let candidateSequence = 0
   let receiptSequence = 0
+  let authorityRefreshEpoch = 0
   const referenceSequences: Record<ReferenceKind, number> = { establishments: 0, accounts: 0, cashSessions: 0 }
   let candidatePaymentId: number | null = null
 
@@ -189,10 +191,14 @@ export function useErpFinanceWorkspace() {
     loadReferences()
   }, { flush: 'sync' })
 
-  async function refreshAuthForDenial(token: ReturnType<typeof context.capture>) {
+  async function refreshAuthForDenial(token: ReturnType<typeof context.capture>, refreshEpoch?: number) {
     if (!isAuthorityCurrent(token)) return
     try {
-      await refreshIdentity()
+      const identity = await refreshIdentity()
+      if (identity && refreshEpoch !== undefined && authorityRefreshEpoch === refreshEpoch) {
+        authorityNeedsRefresh.value = false
+        if (isAuthorityCurrent(token)) deniedActions.value = new Set()
+      }
     } catch {
       if (isAuthorityCurrent(token)) mutationError.value = 'A autorização mudou. Atualize sua sessão para continuar.'
     }
@@ -204,7 +210,10 @@ export function useErpFinanceWorkspace() {
     if (!isAuthorityCurrent(token) || !isDefinitiveReadStatus(error)) return false
     deniedActions.value = new Set([...deniedActions.value, action])
     const status = apiStatus(error)
+    let refreshEpoch: number | undefined
     if (status === 401 || status === 409) {
+      refreshEpoch = ++authorityRefreshEpoch
+      authorityNeedsRefresh.value = true
       clearPrivateState()
       restorePending()
     } else if (action.endsWith('.index') && action.startsWith('erp.financial-accounts')) {
@@ -214,6 +223,7 @@ export function useErpFinanceWorkspace() {
       referenceLoading.accounts = false
       accountOptions.value = []
       referenceMeta.accounts = null
+      referenceErrors.accounts = apiErrorMessage(error) ?? 'Esta lista de referências não está autorizada.'
       rows.value = tab.value === 'accounts' ? [] : rows.value
       meta.value = tab.value === 'accounts' ? null : meta.value
       if (tab.value === 'accounts') detailSequence++
@@ -223,11 +233,13 @@ export function useErpFinanceWorkspace() {
       referenceLoading.establishments = false
       establishments.value = []
       referenceMeta.establishments = null
+      referenceErrors.establishments = apiErrorMessage(error) ?? 'Esta lista de referências não está autorizada.'
     } else if (action === 'erp.cash-sessions.index') {
       referenceSequences.cashSessions++
       referenceLoading.cashSessions = false
       cashSessions.value = []
       referenceMeta.cashSessions = null
+      referenceErrors.cashSessions = apiErrorMessage(error) ?? 'Esta lista de referências não está autorizada.'
     } else if (action === 'erp.payments.allocations.index') {
       allocationSequence++
       allocations.value = []
@@ -244,7 +256,7 @@ export function useErpFinanceWorkspace() {
       clearFinanceViews()
     }
     mutationError.value = apiErrorMessage(error) ?? 'Sua autorização mudou. Os dados privados desta área foram removidos.'
-    await refreshAuthForDenial(token)
+    await refreshAuthForDenial(token, refreshEpoch)
     return true
   }
   function errorMessage(error: unknown, fallback: string) {
@@ -273,6 +285,7 @@ export function useErpFinanceWorkspace() {
     } catch (error) {
       if (!isCurrent(token, generation)) return
       const handled = await handleReadDenial(indexActions[currentTab], error, token)
+      if (!isCurrent(token, generation)) return
       if (!handled) {
         rows.value = previousRows
         meta.value = previousMeta
@@ -307,11 +320,9 @@ export function useErpFinanceWorkspace() {
       referenceMeta[kind] = result.meta
     } catch (error) {
       if (!isAuthorityCurrent(token) || referenceSequences[kind] !== sequence) return
-      if (await handleReadDenial(config.action, error, token)) {
-        referenceErrors[kind] = 'Esta lista de referências não está autorizada.'
-      } else {
-        referenceErrors[kind] = errorMessage(error, 'Não foi possível carregar esta lista de referências.')
-      }
+      const handled = await handleReadDenial(config.action, error, token)
+      if (!isAuthorityCurrent(token) || referenceSequences[kind] !== sequence) return
+      if (!handled) referenceErrors[kind] = errorMessage(error, 'Não foi possível carregar esta lista de referências.')
     } finally {
       if (isAuthorityCurrent(token) && referenceSequences[kind] === sequence) referenceLoading[kind] = false
     }

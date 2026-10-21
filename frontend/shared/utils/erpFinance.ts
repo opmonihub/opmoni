@@ -7,13 +7,11 @@ export function erpFinanceAllowed(grants: readonly string[] | undefined, role: s
   if (write && role === 'viewer')
     return false
   const family = action.slice(0, action.lastIndexOf('.'))
-  const familyRoot = family.split('.').slice(0, 2).join('.')
   const scope = write ? 'write' : 'read'
   return grants.some(grant => grant === '*'
     || grant === action
     || grant === `${family}.*`
-    || grant === `${familyRoot}.*`
-    || grant === `${familyRoot}.${scope}`
+    || grant === `${family}.${scope}`
     || grant === (write ? 'erp.write' : 'erp.read'))
 }
 

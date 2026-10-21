@@ -305,6 +305,19 @@ describe('finance forms use actual form submissions and exact decimal strings', 
   })
 })
 
+describe('finance permission family matching', () => {
+  it('matches CurrentCompany last-dot family grants for nested allocation history', () => {
+    const action = 'erp.payments.allocations.index' as const
+    assert.equal(financeUtils.erpFinanceAllowed([action], 'owner', action), true)
+    assert.equal(financeUtils.erpFinanceAllowed(['erp.payments.allocations.read'], 'owner', action), true)
+    assert.equal(financeUtils.erpFinanceAllowed(['erp.payments.allocations.*'], 'owner', action), true)
+    assert.equal(financeUtils.erpFinanceAllowed(['erp.payments.*'], 'owner', action), false)
+    assert.equal(financeUtils.erpFinanceAllowed(['erp.payments.read'], 'owner', action), false)
+    assert.equal(financeUtils.erpFinanceAllowed(['erp.read'], 'owner', action), true)
+    assert.equal(financeUtils.erpFinanceAllowed(['*'], 'owner', action), true)
+  })
+})
+
 describe('finance workspace', { concurrency: 1 }, () => {
   it('retains mounted form drafts across tabs and resets them on authority changes', async (t) => {
     const app = createWorkspace(async () => page([]))
@@ -500,6 +513,114 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.equal(state.canRead.value, false)
     assert.equal(refreshed, 1)
     assert.equal(state.accountOptions.value[0]?.id, 5)
+  })
+
+  it('keeps all finance actions blocked after a 401 when identity refresh fails and preserves pending identity', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 503, data: { message: 'Resultado desconhecido' } }
+      throw { statusCode: 401, data: { message: 'Sessão não autenticada' } }
+    }, async () => {}, async () => { throw new Error('identity refresh unavailable') })
+    t.after(app.stop)
+    const state = app.state as {
+      post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+      load: () => Promise<void>
+      canRead: Vue.Ref<boolean>
+      allowed: (action: string) => boolean
+      selectedOperation: Vue.Ref<{ key: string } | null>
+      needsReconciliation: Vue.Ref<boolean>
+    }
+    await state.post('/erp/payments', { direction: 'in', amount: '25.0000', method: 'bank_transfer', currency: 'BRL' })
+    const key = state.selectedOperation.value?.key
+    assert.ok(key)
+    await state.load()
+    assert.equal(state.canRead.value, false)
+    assert.equal(state.allowed('erp.obligations.store'), false)
+    assert.equal(state.selectedOperation.value?.key, key)
+    assert.equal(state.needsReconciliation.value, true)
+    assert.ok(storage.saved.has('erp-finance:v1:42:7'))
+  })
+
+  it('keeps all finance actions blocked after a 409 when identity refresh fails and preserves pending identity', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 503, data: { message: 'Resultado desconhecido' } }
+      throw { statusCode: 409, data: { message: 'Contexto da empresa mudou' } }
+    }, async () => {}, async () => { throw new Error('identity refresh unavailable') })
+    t.after(app.stop)
+    const state = app.state as {
+      post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+      load: () => Promise<void>
+      canRead: Vue.Ref<boolean>
+      allowed: (action: string) => boolean
+      selectedOperation: Vue.Ref<{ key: string } | null>
+      needsReconciliation: Vue.Ref<boolean>
+    }
+    await state.post('/erp/payments', { direction: 'in', amount: '25.0000', method: 'bank_transfer', currency: 'BRL' })
+    const key = state.selectedOperation.value?.key
+    assert.ok(key)
+    await state.load()
+    assert.equal(state.canRead.value, false)
+    assert.equal(state.allowed('erp.obligations.store'), false)
+    assert.equal(state.selectedOperation.value?.key, key)
+    assert.equal(state.needsReconciliation.value, true)
+    assert.ok(storage.saved.has('erp-finance:v1:42:7'))
+  })
+
+  it('does not let a delayed Company A list denial erase Company B rows after identity refresh', async (t) => {
+    const refresh = deferred<unknown>()
+    let refreshStarted = false
+    const app = createWorkspace(async (path) => {
+      if (path.startsWith('/erp/obligations?') && app.company.value.id === 7)
+        throw { statusCode: 403, data: { message: 'Company A list denied' } }
+      if (path.startsWith('/erp/obligations?')) return page([{ ...obligation, id: 800 }])
+      return page([])
+    }, async () => {}, async () => {
+      refreshStarted = true
+      return refresh.promise
+    })
+    t.after(app.stop)
+    const state = app.state as { load: () => Promise<void>, rows: Vue.Ref<unknown[]>, mutationError: Vue.Ref<string> }
+    const oldRead = state.load()
+    await settleUntil(() => refreshStarted)
+    app.company.value = { ...app.company.value, id: 8 }
+    await state.load()
+    assert.equal(state.rows.value[0] && 'id' in state.rows.value[0] ? state.rows.value[0].id : null, 800)
+    refresh.resolve({ id: 42 })
+    await oldRead
+    assert.equal(state.rows.value[0] && 'id' in state.rows.value[0] ? state.rows.value[0].id : null, 800)
+    assert.doesNotMatch(state.mutationError.value, /Company A list denied/)
+  })
+
+  it('does not let a delayed Company A reference denial overwrite Company B references', async (t) => {
+    const refresh = deferred<unknown>()
+    let refreshStarted = false
+    const app = createWorkspace(async (path) => {
+      if (path.startsWith('/erp/establishments') && app.company.value.id === 7)
+        throw { statusCode: 403, data: { message: 'Company A references denied' } }
+      if (path.startsWith('/erp/establishments')) return page([{ id: 800, name: 'Company B establishment' }])
+      return page([])
+    }, async () => {}, async () => {
+      refreshStarted = true
+      return refresh.promise
+    })
+    t.after(app.stop)
+    const state = app.state as {
+      loadReferences: () => Promise<void>
+      establishments: Vue.Ref<{ id: number, name: string }[]>
+      referenceErrors: Record<string, string>
+    }
+    const oldRead = state.loadReferences()
+    await settleUntil(() => refreshStarted)
+    app.company.value = { ...app.company.value, id: 8 }
+    await state.loadReferences()
+    assert.equal(state.establishments.value[0]?.name, 'Company B establishment')
+    refresh.resolve({ id: 42 })
+    await oldRead
+    assert.equal(state.establishments.value[0]?.name, 'Company B establishment')
+    assert.doesNotMatch(state.referenceErrors.establishments, /Company A references denied/)
   })
 
   it('reloads typed current payment detail and linked allocations after allocation mutation', async (t) => {
