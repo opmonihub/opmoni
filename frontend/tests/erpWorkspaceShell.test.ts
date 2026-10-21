@@ -7,7 +7,7 @@ describe('ERP workspace shell', () => {
     const layout = await readFile(new URL('../app/layouts/erp.vue', import.meta.url), 'utf8')
     const nav = await readFile(new URL('../app/utils/erpModulesNav.ts', import.meta.url), 'utf8')
     assert.match(layout, /WorkspaceContextMenu/)
-    assert.match(layout, /erpVisibleNavModules/)
+    assert.match(layout, /erpWorkspaceSidebarItems/)
     assert.match(layout, /currentCompany/)
     assert.match(nav, /\/erp\/configuracoes/)
   })

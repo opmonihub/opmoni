@@ -1,6 +1,6 @@
 # ERP Template Standardization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Coordinator owns Git, runtime and browser; one source writer at a time, independent preparation may run concurrently.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Coordinator owns Git, runtime and browser; one writer per exclusive file set. Shared interfaces must be fixed before dependent implementation starts.
 
 **Goal:** Restore the actual dashboard template's hierarchy and expandable navigation throughout existing ERP screens.
 
@@ -17,7 +17,7 @@
 - Preserve current routes, API/CSRF/Account/Company boundaries, backend permissions, exact monetary strings, financial operation recovery, private receipt/file handling and all accepted Task 11 behavior.
 - Preserve Public Sans, semantic green/zinc tokens and the scoped light ERP contrast correction. User-facing copy is Brazilian Portuguese; code and reports are English.
 - No backend, transport/auth, dependency/lockfile, env, schema, production gate, fixture, service or shared runtime mutation by workers. No subdelegation, Git/index writes, installs, full builds or browser work by workers.
-- Use a sole source writer; preparation and review are read-only. Root owns commits and final validation. Do not implement missing ERP operations or unrelated office fixes.
+- Use exclusive file-set source leases; preparation and review are read-only. Serialize shared files and generation commands. Root owns commits and final validation. Do not implement missing ERP operations or unrelated office fixes.
 - Run focused actual behavior tests, changed-path ESLint and final Nuxt/contracts typecheck; avoid source-text-only tests that merely mirror markup.
 
 ## Review Focus

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { erpModuleActive, erpModuleNavbarTitle, erpNavModules, erpVisibleNavModules } from '~/utils/erpModulesNav'
+import { erpModuleActive, erpModuleNavbarTitle, erpNavModules } from '~/utils/erpModulesNav'
+import { erpWorkspaceSidebarItems } from '~/utils/erpWorkspaceNav'
 
 const route = useRoute()
 const { currentCompany, currentAccount } = useAuth()
@@ -11,17 +12,7 @@ const pageOwnsPanel = computed(() => erpNavModules.some(module =>
   module.id !== 'overview' && erpModuleActive(route.path, module)
 ))
 
-const companyGrants = computed(() => currentCompany.value?.permissions)
-
-const links = computed(() => [[
-  ...erpVisibleNavModules(companyGrants.value).map(module => ({
-    label: module.label,
-    icon: module.icon,
-    to: module.to,
-    active: erpModuleActive(route.path, module),
-    onSelect: closeForNavigation
-  }))
-]])
+const links = computed(() => erpWorkspaceSidebarItems(route.path, currentCompany.value, closeForNavigation, route.hash))
 
 const navbarTitle = computed(() => {
   if (currentCompany.value?.name)
@@ -76,6 +67,9 @@ const navbarTitle = computed(() => {
         >
           <template #toggle>
             <UDashboardSidebarToggle aria-label="Abrir menu ERP" data-erp-sidebar-trigger />
+          </template>
+          <template #leading>
+            <UDashboardSidebarCollapse aria-label="Recolher menu ERP" />
           </template>
           <template #right>
             <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />

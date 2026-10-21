@@ -14,13 +14,18 @@ defineProps<{
         :ui="{ left: 'min-w-0', title: 'truncate', right: 'min-w-0 gap-1' }"
       >
         <template #leading>
+          <UDashboardSidebarCollapse aria-label="Recolher menu ERP" />
           <UDashboardSidebarToggle aria-label="Abrir menu ERP" data-erp-sidebar-trigger />
         </template>
         <template #right>
+          <slot name="actions" />
           <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />
           <UserMenu collapsed class="lg:hidden" />
         </template>
       </UDashboardNavbar>
+      <UDashboardToolbar v-if="$slots.toolbar">
+        <slot name="toolbar" />
+      </UDashboardToolbar>
     </template>
     <template #body>
       <div class="space-y-5 p-4 sm:p-6">

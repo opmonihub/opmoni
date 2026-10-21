@@ -5,14 +5,16 @@ import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
+import * as workspaceNav from '../app/utils/erpWorkspaceNav.ts'
 
 function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const output = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const exports = {} as { default: { setup: (props: object, context: object) => { statusLabel: Vue.Ref<string>, subscription: Vue.Ref<{ company: { name: string } } | null>, error: Vue.Ref<unknown>, load: () => Promise<void> } }, render: (...args: unknown[]) => Vue.VNode }
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
     if (name === 'vue') return { ...Vue, resolveComponent: (name: string) => ({ name }), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
-    assert.equal(name, '~/utils/erpModulesNav')
-    return nav
+    if (name === '~/utils/erpModulesNav') return nav
+    assert.equal(name, '~/utils/erpWorkspaceNav')
+    return workspaceNav
   }, exports, ...Object.values(globals))
   return exports
 }
@@ -106,7 +108,7 @@ describe('ERP mobile shell and contract', () => {
     currentCompany.value = { ...company(), name: 'Empresa B' }
     assert.equal(named(view.render(), 'UDashboardNavbar')[0]!.props!.title, 'Empresa B')
     const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items
-    assert.ok(links.some((link: { to: string }) => link.to === '/erp/relatorios'))
+    assert.ok(links.some((link: { label: string, children?: Array<{ to?: string }> }) => link.label === 'Relatórios' && link.children?.some(child => child.to === '/erp/relatorios#sales')))
   })
   it('lets every catalog route provide its own single native panel', (t) => {
     const route = Vue.reactive({ path: '/erp/cadastros/contatos' })
