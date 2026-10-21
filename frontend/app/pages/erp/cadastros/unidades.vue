@@ -4,6 +4,8 @@ import ErpUnitCatalogForm from '~/components/erp/catalogs/ErpUnitCatalogForm.vue
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
 
+const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
+
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Unidades · Cadastros ERP' })
 
@@ -19,7 +21,19 @@ const columns = [
 
 <template>
   <ErpCatalogPageShell title="Unidades" description="Unidades de medida e fatores de conversão decimal.">
+    <template #actions>
+      <UButton
+        v-if="catalogResource?.createAction.allowed"
+        :aria-label="catalogResource.createAction.label"
+        icon="i-lucide-plus"
+        :disabled="catalogResource.createAction.busy"
+        @click="catalogResource.createAction.trigger"
+      >
+        <span class="hidden sm:inline">{{ catalogResource.createAction.label }}</span>
+      </UButton>
+    </template>
     <ErpCatalogResource
+      ref="catalogResource"
       :path="erpCatalogRoutes.units"
       title="Unidades"
       :show-heading="false"

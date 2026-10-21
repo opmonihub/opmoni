@@ -23,11 +23,26 @@ const discountColumns = [
 ]
 const groupLabel = (record: Record<string, unknown>) => String(record.name ?? '')
 const discountLabel = (record: Record<string, unknown>) => String(record.name ?? '')
+type CatalogResourceHandle = InstanceType<typeof ErpCatalogResource>
+type CatalogCreateAction = CatalogResourceHandle['createAction']
+const groupResource = ref<CatalogResourceHandle | null>(null)
+const discountResource = ref<CatalogResourceHandle | null>(null)
+const createActions = computed(() => [groupResource.value?.createAction, discountResource.value?.createAction]
+  .filter((action): action is CatalogCreateAction => !!action && action.allowed))
+const createMenuItems = computed(() => [createActions.value.map(action => ({ label: action.label, disabled: action.busy, onSelect: action.trigger }))])
 </script>
 
 <template>
   <ErpCatalogPageShell title="Preços e descontos" description="Grupos de preço e regras comerciais com valores decimais exatos.">
+    <template #actions>
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems">
+        <UButton aria-label="Adicionar cadastro de preços" icon="i-lucide-plus">
+          <span class="hidden sm:inline">Adicionar</span>
+        </UButton>
+      </UDropdownMenu>
+    </template>
     <ErpCatalogResource
+      ref="groupResource"
       :path="erpCatalogRoutes.priceGroups"
       title="Grupos de preço"
       :form="ErpPriceGroupCatalogForm"
@@ -35,6 +50,7 @@ const discountLabel = (record: Record<string, unknown>) => String(record.name ??
       :record-label="groupLabel"
     />
     <ErpCatalogResource
+      ref="discountResource"
       :path="erpCatalogRoutes.discountRules"
       title="Descontos e cupons"
       :form="ErpDiscountRuleCatalogForm"

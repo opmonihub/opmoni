@@ -156,6 +156,7 @@ function mountCatalogPage(path: string) {
     }
   }))
   app.component('UDashboardSidebarToggle', slotBoundary('UDashboardSidebarToggle', 'button', []))
+  app.component('UDashboardSidebarCollapse', slotBoundary('UDashboardSidebarCollapse', 'button', []))
   app.component('CompanyMenu', slotBoundary('CompanyMenu', 'button', []))
   app.component('UserMenu', slotBoundary('UserMenu', 'button', []))
   app.component('UDashboardToolbar', Vue.defineComponent({
@@ -173,8 +174,16 @@ function mountCatalogPage(path: string) {
   }))
   app.component('UDropdownMenu', Vue.defineComponent({
     name: 'UDropdownMenu',
-    setup(_, { attrs, slots }) {
-      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, slots.default?.())
+    props: ['items'],
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'UDropdownMenu' }, [
+        ...(slots.default?.() ?? []),
+        ...((props.items as Array<Array<{ label: string, disabled?: boolean, onSelect?: () => void }>> | undefined) ?? []).flat().map(item => Vue.h('button', {
+          'data-menu-action': item.label,
+          'disabled': item.disabled,
+          'onClick': item.onSelect
+        }, item.label))
+      ])
     }
   }))
   app.component('UBadge', Vue.defineComponent({
@@ -201,6 +210,20 @@ function mountCatalogPage(path: string) {
     setup(props, { slots }) {
       return () => props.open ? Vue.h('dialog', {}, [slots.body?.(), slots.footer?.()]) : null
     }
+  }))
+  app.component('USlideover', Vue.defineComponent({
+    props: ['open', 'title', 'description', 'unmountOnHide'],
+    setup(props, { slots }) {
+      return () => Vue.h('aside', { 'data-slideover-open': String(props.open) }, [
+        Vue.h('h2', String(props.title ?? '')),
+        Vue.h('p', String(props.description ?? '')),
+        ...(props.open ? [slots.body?.(), slots.footer?.()] : [])
+      ])
+    }
+  }))
+  app.component('UTabs', Vue.defineComponent({
+    props: ['items', 'modelValue', 'unmountOnHide'],
+    setup() { return () => Vue.h('div') }
   }))
   app.component('UInput', Vue.defineComponent({
     name: 'UInput',
@@ -231,8 +254,8 @@ function mountCatalogPage(path: string) {
     name: 'UButton',
     inheritAttrs: false,
     props: ['label', 'loading', 'color', 'variant', 'type'],
-    setup(props, { attrs }) {
-      return () => Vue.h('button', { ...attrs, type: props.type ?? 'button' }, String(props.label ?? ''))
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('button', { ...attrs, type: props.type ?? 'button' }, slots.default?.() ?? String(props.label ?? ''))
     }
   }))
   app.component('UPagination', Vue.defineComponent({
@@ -341,5 +364,14 @@ describe('ERP catalog list SFC states', () => {
     assert.equal(page.tables().length, 1)
     assert.match(page.text(), /nenhum registro encontrado/i)
     assert.match(page.text(), /Grupo normal/)
+
+    currentCompany.value = { ...currentCompany.value, permissions: ['erp.read', 'erp.price-groups.store'] }
+    await settle()
+    assert.equal(page.buttons().filter(button => button.props['data-menu-action']).length, 1, page.text())
+    assert.equal(page.buttons().some(button => button.props['data-menu-action'] === 'Adicionar grupo de preço'), true)
+    assert.equal(page.buttons().some(button => button.props['data-menu-action'] === 'Adicionar regra de desconto'), false)
+    currentCompany.value = { ...currentCompany.value, permissions: ['erp.read'] }
+    await settle()
+    assert.equal(page.buttons().filter(button => button.props['data-menu-action']).length, 0, 'the create menu disappears when its resource grant is removed')
   })
 })

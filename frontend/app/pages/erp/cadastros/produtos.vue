@@ -4,6 +4,8 @@ import ErpProductCatalogForm from '~/components/erp/catalogs/ErpProductCatalogFo
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
 
+const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
+
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Produtos · Cadastros ERP' })
 
@@ -19,7 +21,19 @@ const columns = [
 
 <template>
   <ErpCatalogPageShell title="Produtos" description="Mercadorias, serviços e suas variações.">
+    <template #actions>
+      <UButton
+        v-if="catalogResource?.createAction.allowed"
+        :aria-label="catalogResource.createAction.label"
+        icon="i-lucide-plus"
+        :disabled="catalogResource.createAction.busy"
+        @click="catalogResource.createAction.trigger"
+      >
+        <span class="hidden sm:inline">{{ catalogResource.createAction.label }}</span>
+      </UButton>
+    </template>
     <ErpCatalogResource
+      ref="catalogResource"
       :path="erpCatalogRoutes.products"
       title="Produtos"
       :show-heading="false"

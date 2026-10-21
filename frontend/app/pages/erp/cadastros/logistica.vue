@@ -31,11 +31,27 @@ const driverColumns = [
 const carrierLabel = (record: Record<string, unknown>) => String(record.legal_name ?? '')
 const vehicleLabel = (record: Record<string, unknown>) => String(record.plate ?? '')
 const driverLabel = (record: Record<string, unknown>) => String(record.name ?? '')
+type CatalogResourceHandle = InstanceType<typeof ErpCatalogResource>
+type CatalogCreateAction = CatalogResourceHandle['createAction']
+const carrierResource = ref<CatalogResourceHandle | null>(null)
+const vehicleResource = ref<CatalogResourceHandle | null>(null)
+const driverResource = ref<CatalogResourceHandle | null>(null)
+const createActions = computed(() => [carrierResource.value?.createAction, vehicleResource.value?.createAction, driverResource.value?.createAction]
+  .filter((action): action is CatalogCreateAction => !!action && action.allowed))
+const createMenuItems = computed(() => [createActions.value.map(action => ({ label: action.label, disabled: action.busy, onSelect: action.trigger }))])
 </script>
 
 <template>
   <ErpCatalogPageShell title="Logística" description="Transportadoras, veículos e motoristas para operações de transporte.">
+    <template #actions>
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems">
+        <UButton aria-label="Adicionar cadastro de logística" icon="i-lucide-plus">
+          <span class="hidden sm:inline">Adicionar</span>
+        </UButton>
+      </UDropdownMenu>
+    </template>
     <ErpCatalogResource
+      ref="carrierResource"
       :path="erpCatalogRoutes.carriers"
       title="Transportadoras"
       :form="ErpCarrierCatalogForm"
@@ -43,6 +59,7 @@ const driverLabel = (record: Record<string, unknown>) => String(record.name ?? '
       :record-label="carrierLabel"
     />
     <ErpCatalogResource
+      ref="vehicleResource"
       :path="erpCatalogRoutes.vehicles"
       title="Veículos"
       :form="ErpVehicleCatalogForm"
@@ -50,6 +67,7 @@ const driverLabel = (record: Record<string, unknown>) => String(record.name ?? '
       :record-label="vehicleLabel"
     />
     <ErpCatalogResource
+      ref="driverResource"
       :path="erpCatalogRoutes.drivers"
       title="Motoristas"
       :form="ErpDriverCatalogForm"

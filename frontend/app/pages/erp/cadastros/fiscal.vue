@@ -24,11 +24,26 @@ const natureColumns = [
 ]
 const taxRateLabel = (record: Record<string, unknown>) => String(record.name ?? '')
 const natureLabel = (record: Record<string, unknown>) => String(record.cfop ?? '')
+type CatalogResourceHandle = InstanceType<typeof ErpCatalogResource>
+type CatalogCreateAction = CatalogResourceHandle['createAction']
+const taxRateResource = ref<CatalogResourceHandle | null>(null)
+const natureResource = ref<CatalogResourceHandle | null>(null)
+const createActions = computed(() => [taxRateResource.value?.createAction, natureResource.value?.createAction]
+  .filter((action): action is CatalogCreateAction => !!action && action.allowed))
+const createMenuItems = computed(() => [createActions.value.map(action => ({ label: action.label, disabled: action.busy, onSelect: action.trigger }))])
 </script>
 
 <template>
   <ErpCatalogPageShell title="Referências fiscais" description="Alíquotas e naturezas de operação por empresa e estabelecimento.">
+    <template #actions>
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems">
+        <UButton aria-label="Adicionar cadastro fiscal" icon="i-lucide-plus">
+          <span class="hidden sm:inline">Adicionar</span>
+        </UButton>
+      </UDropdownMenu>
+    </template>
     <ErpCatalogResource
+      ref="taxRateResource"
       :path="erpCatalogRoutes.taxRates"
       title="Alíquotas"
       :form="ErpTaxRateCatalogForm"
@@ -36,6 +51,7 @@ const natureLabel = (record: Record<string, unknown>) => String(record.cfop ?? '
       :record-label="taxRateLabel"
     />
     <ErpCatalogResource
+      ref="natureResource"
       :path="erpCatalogRoutes.operationNatures"
       title="Naturezas de operação"
       :form="ErpOperationNatureCatalogForm"

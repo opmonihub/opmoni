@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, nextTick, onScopeDispose, resolveComponent, useId, useSlots } from 'vue'
+import { h, nextTick, onScopeDispose, resolveComponent, useSlots } from 'vue'
 import type { Component, ComponentPublicInstance } from 'vue'
 import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
 import ErpCatalogPagination from '~/components/erp/ErpCatalogPagination.vue'
@@ -9,6 +9,7 @@ import { useErpCatalogList } from '~/composables/useErpCatalogList'
 
 type CatalogRow = Record<string, unknown> & { id: number, status?: string }
 type FocusTarget = { focus(): void, isConnected?: boolean }
+type CatalogCreateAction = { label: string, allowed: boolean, busy: boolean, trigger: () => void }
 
 const props = withDefaults(defineProps<{
   path: string
@@ -51,7 +52,6 @@ const resourceBlocked = ref(false)
 const resourceError = ref('')
 const resourceRefreshing = ref(false)
 const resourceAuthorityBlocked = computed(() => resourceBlocked.value || authorityBlocked.value || editor.authorityBlocked.value)
-const editorTitleId = useId()
 const detailTab = ref('record')
 const detailTabs = computed(() => [
   { label: props.detailFormLabel, value: 'record', slot: 'record' },
@@ -67,6 +67,22 @@ const canShow = computed(() => editor.permissions.show.value && !resourceAuthori
 const canEdit = computed(() => editor.permissions.edit.value && !resourceAuthorityBlocked.value)
 const canArchive = computed(() => editor.permissions.archive.value && !resourceAuthorityBlocked.value)
 const isSaving = computed(() => editor.saving.value || editor.archiving.value)
+const createAction = computed<CatalogCreateAction>(() => ({
+  label: createLabel.value,
+  allowed: canStore.value,
+  busy: isSaving.value,
+  trigger: () => {
+    if (canStore.value && !isSaving.value)
+      editor.create()
+  }
+}))
+const editorOpen = computed({
+  get: () => open.value,
+  set: (value: boolean) => {
+    if (!value && !isSaving.value)
+      editor.cancel()
+  }
+})
 const archiveOpen = computed({
   get: () => archiveTarget.value !== null,
   set: (value: boolean) => {
@@ -334,10 +350,12 @@ async function confirmArchive() {
 function labelFor(row: CatalogRow): string {
   return props.recordLabel(row)
 }
+
+defineExpose({ createAction })
 </script>
 
 <template>
-  <div :class="['space-y-4', { hidden: open }]">
+  <div class="space-y-4">
     <h2 v-if="showHeading" class="text-highlighted text-lg font-semibold">
       {{ title }}
     </h2>
@@ -356,16 +374,6 @@ function labelFor(row: CatalogRow): string {
             {{ state.meta.total }} {{ state.meta.total === 1 ? 'registro' : 'registros' }}
           </p>
         </div>
-      </template>
-      <template #right>
-        <UButton
-          v-if="canStore"
-          :label="createLabel"
-          icon="i-lucide-plus"
-          class="w-full sm:w-auto"
-          :disabled="isSaving"
-          @click="editor.create"
-        />
       </template>
     </UDashboardToolbar>
     <div class="space-y-4">
@@ -407,50 +415,59 @@ function labelFor(row: CatalogRow): string {
     />
   </div>
 
-  <section
-    v-if="open"
-    ref="editorRegion"
-    tabindex="-1"
-    :aria-labelledby="editorTitleId"
-    class="border-default bg-default mt-4 space-y-4 rounded-xl border p-4 shadow-sm sm:p-6"
-    @keydown.esc="handleEditorEscape"
+  <USlideover
+    v-model:open="editorOpen"
+    :title="mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}`"
+    :description="mode === 'detail' ? 'Consulta do cadastro.' : 'Preencha os dados e salve para atualizar o cadastro.'"
+    :dismissible="!isSaving"
+    :unmount-on-hide="false"
+    :ui="{ content: 'w-full sm:max-w-3xl' }"
   >
-    <header class="flex items-start justify-between gap-3">
-      <div class="min-w-0 flex-1">
-        <h2 :id="editorTitleId" class="text-highlighted break-words text-xl font-semibold">
-          {{ mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}` }}
-        </h2>
-        <div v-if="mode === 'detail'" class="mt-2 flex items-center gap-2">
+    <template #body>
+      <section
+        ref="editorRegion"
+        tabindex="-1"
+        class="space-y-4"
+        @keydown.esc="handleEditorEscape"
+      >
+        <div v-if="mode === 'detail'" class="flex items-center gap-2">
           <UBadge label="Somente leitura" color="neutral" variant="subtle" />
           <p class="text-muted text-sm">
             Consulta do cadastro.
           </p>
         </div>
-      </div>
-      <UButton
-        label="Fechar"
-        color="neutral"
-        variant="ghost"
-        :disabled="isSaving"
-        @click="editor.cancel"
-      />
-    </header>
-    <p v-if="editorError" role="alert" class="text-error border-error/30 bg-error/5 rounded-md border p-3 text-sm">
-      {{ editorError }}
-    </p>
-    <p v-if="loadingDetail" role="status" class="text-muted text-sm">
-      Carregando registro…
-    </p>
-    <UTabs
-      v-if="!loadingDetail && mode === 'detail' && record && hasDetailPanel"
-      v-model="detailTab"
-      :items="detailTabs"
-      :unmount-on-hide="false"
-      class="min-w-0"
-    >
-      <template #record>
+        <p v-if="editorError" role="alert" class="text-error border-error/30 bg-error/5 rounded-md border p-3 text-sm">
+          {{ editorError }}
+        </p>
+        <p v-if="loadingDetail" role="status" class="text-muted text-sm">
+          Carregando registro…
+        </p>
+        <UTabs
+          v-if="!loadingDetail && mode === 'detail' && record && hasDetailPanel"
+          v-model="detailTab"
+          :items="detailTabs"
+          :unmount-on-hide="false"
+          class="min-w-0"
+        >
+          <template #record>
+            <component
+              :is="form"
+              :record="record"
+              :mode="mode"
+              :can-save="editor.canSave.value"
+              :can-archive="editor.permissions.archive.value"
+              :busy="editor.mutationPending.value"
+              :field-errors="fieldErrors"
+              @save="editor.save"
+            />
+          </template>
+          <template #panel>
+            <slot name="detail-panel" :record="record" />
+          </template>
+        </UTabs>
         <component
           :is="form"
+          v-else-if="!loadingDetail && (mode === 'create' || record)"
           :record="record"
           :mode="mode"
           :can-save="editor.canSave.value"
@@ -459,23 +476,20 @@ function labelFor(row: CatalogRow): string {
           :field-errors="fieldErrors"
           @save="editor.save"
         />
-      </template>
-      <template #panel>
-        <slot name="detail-panel" :record="record" />
-      </template>
-    </UTabs>
-    <component
-      :is="form"
-      v-else-if="!loadingDetail && (mode === 'create' || record)"
-      :record="record"
-      :mode="mode"
-      :can-save="editor.canSave.value"
-      :can-archive="editor.permissions.archive.value"
-      :busy="editor.mutationPending.value"
-      :field-errors="fieldErrors"
-      @save="editor.save"
-    />
-  </section>
+      </section>
+    </template>
+    <template #footer>
+      <div class="flex w-full justify-end">
+        <UButton
+          label="Fechar"
+          color="neutral"
+          variant="ghost"
+          :disabled="isSaving"
+          @click="editorOpen = false"
+        />
+      </div>
+    </template>
+  </USlideover>
 
   <UModal v-model:open="archiveOpen" title="Arquivar cadastro" :description="archiveTarget ? `Arquivar ${labelFor(archiveTarget)}? Os registros e referências históricas serão mantidos.` : 'Confirme o arquivamento do cadastro.'">
     <template #body>

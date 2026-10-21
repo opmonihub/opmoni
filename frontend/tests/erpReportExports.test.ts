@@ -69,7 +69,7 @@ const settle = async () => {
 }
 
 describe('authoritative report workspace', () => {
-  it('renders its own report panel, heading and accessible mobile navigation', async () => {
+  it('uses the shared ERP shell once and places report navigation in its toolbar', async () => {
     const { descriptor } = parse(readFileSync(new URL('../app/components/erp/ErpReportsWorkspace.vue', import.meta.url), 'utf8'))
     const script = compileScript(descriptor, { id: 'report-layout', inlineTemplate: true })
     const output = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -78,6 +78,17 @@ describe('authoritative report workspace', () => {
     const imports: Record<string, unknown> = { 'vue': Vue, '~/utils/erpModulesNav': nav, '~/composables/useApiError': errors }
     new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], exports, ...Object.values(bindings))
     const app = Vue.createSSRApp(exports.default!)
+    app.component('ErpCatalogPageShell', Vue.defineComponent({
+      props: ['title', 'description'],
+      setup(props, { slots }) {
+        return () => Vue.h('section', { id: 'erp-relatorios' }, [
+          Vue.h('header', [Vue.h('button', { 'aria-label': 'Abrir navegação e empresa' }, 'Navegação'), Vue.h('h1', String(props.title)), ...(slots.actions?.() ?? [])]),
+          Vue.h('nav', slots.toolbar?.()),
+          Vue.h('p', String(props.description)),
+          ...(slots.default?.() ?? [])
+        ])
+      }
+    }))
     app.component('UDashboardPanel', { setup: (_, { slots, attrs }) => () => Vue.h('section', attrs, [slots.header?.(), slots.body?.()]) })
     app.component('UDashboardNavbar', { props: ['title'], setup: (props, { slots }) => () => Vue.h('header', [slots.toggle?.(), slots.leading?.(), Vue.h('h1', String(props.title))]) })
     app.component('UDashboardSidebarToggle', { setup: (_, { attrs }) => () => Vue.h('button', attrs, 'Navegação') })
@@ -87,13 +98,21 @@ describe('authoritative report workspace', () => {
       assert.ok(items.some(item => item.value === props.modelValue), 'the all-records selection must match a valid item')
       return () => Vue.h('select')
     } })
-    for (const name of ['UDashboardToolbar', 'UNavigationMenu', 'UAlert', 'UFormField', 'UInput', 'UButton', 'ErrorRetryAlert', 'UEmpty', 'ErpReportMetrics', 'ErpReportExportPanel']) {
+    app.component('UNavigationMenu', Vue.defineComponent({
+      props: ['items'],
+      setup(props) {
+        return () => Vue.h('div', (props.items as Array<Array<{ label: string, to: string }>>).flat().map(item => Vue.h('a', { href: item.to }, item.label)))
+      }
+    }))
+    for (const name of ['UDashboardToolbar', 'UAlert', 'UFormField', 'UInput', 'UButton', 'ErrorRetryAlert', 'UEmpty', 'ErpReportMetrics', 'ErpReportExportPanel']) {
       app.component(name, { setup: (_, { slots }) => () => Vue.h('div', slots.default?.()) })
     }
     const markup = await renderToString(app)
     assert.match(markup, /<section id="erp-relatorios"/)
     assert.match(markup, /<h1>Relatórios<\/h1>/)
     assert.match(markup, /<button aria-label="Abrir navegação e empresa"/)
+    assert.equal((markup.match(/<section id="erp-relatorios"/g) ?? []).length, 1)
+    assert.match(markup, /<nav><div[^>]*>.*Vendas/s)
   })
   it('submits all report filters and preserves exact server totals on a refresh rejection', async (t) => {
     let fail = false

@@ -5,6 +5,8 @@ import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
 import ErpContactNotesPanel from '~/components/erp/catalogs/ErpContactNotesPanel.vue'
 import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
 
+const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
+
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Contatos · Cadastros ERP' })
 
@@ -20,7 +22,19 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
 
 <template>
   <ErpCatalogPageShell title="Contatos" description="Clientes e fornecedores comerciais da empresa, separados do portfólio do escritório.">
+    <template #actions>
+      <UButton
+        v-if="catalogResource?.createAction.allowed"
+        :aria-label="catalogResource.createAction.label"
+        icon="i-lucide-plus"
+        :disabled="catalogResource.createAction.busy"
+        @click="catalogResource.createAction.trigger"
+      >
+        <span class="hidden sm:inline">{{ catalogResource.createAction.label }}</span>
+      </UButton>
+    </template>
     <ErpCatalogResource
+      ref="catalogResource"
       :path="erpCatalogRoutes.contacts"
       title="Contatos comerciais"
       :show-heading="false"

@@ -171,7 +171,22 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     title: 'Unidades',
     detailFormLabel: options.detailFormLabel,
     detailPanelLabel: options.detailPanelLabel,
-    form: Vue.defineComponent({ setup: () => () => Vue.h('form') }),
+    form: Vue.defineComponent({
+      props: ['fieldErrors'],
+      setup(props) {
+        const draft = Vue.ref('')
+        return () => Vue.h('form', [
+          Vue.h('input', {
+            'data-draft': 'short_name',
+            'value': draft.value,
+            'onInput': (event: { target: { value: string } }) => { draft.value = event.target.value }
+          }),
+          props.fieldErrors?.short_name?.[0]
+            ? Vue.h('p', { 'role': 'alert', 'data-field-error': 'short_name' }, props.fieldErrors.short_name[0])
+            : null
+        ])
+      }
+    }),
     columns: [{ accessorKey: 'status', header: 'Status' }],
     recordLabel: (record: { short_name?: string, id: number }) => record.short_name ?? `Unidade ${record.id}`
   }
@@ -196,6 +211,22 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     props: ['open'],
     setup(props, { slots }) {
       return () => Vue.h('div', { 'data-modal-open': String(props.open) }, props.open ? [slots.body?.(), slots.footer?.()] : [])
+    }
+  })
+  const slideover = Vue.defineComponent({
+    props: ['open', 'title', 'description', 'unmountOnHide'],
+    emits: ['update:open'],
+    setup(props, { slots }) {
+      const previouslyOpened = Vue.ref(Boolean(props.open))
+      Vue.watch(() => props.open, (open) => {
+        if (open)
+          previouslyOpened.value = true
+      })
+      return () => Vue.h('div', { 'data-slideover-open': String(props.open), 'data-slideover-unmount-on-hide': String(props.unmountOnHide) }, [
+        Vue.h('h2', String(props.title ?? '')),
+        Vue.h('p', String(props.description ?? '')),
+        ...(previouslyOpened.value ? [slots.body?.(), slots.footer?.()] : [])
+      ])
     }
   })
   for (const name of ['UButton', 'UCard', ...(options.detailPanel ? [] : ['UFormField', 'UInput'])])
@@ -231,6 +262,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   }))
   app.component('UModal', modal)
+  app.component('USlideover', slideover)
   app.component('UTabs', Vue.defineComponent({
     props: ['items', 'modelValue', 'unmountOnHide'],
     emits: ['update:modelValue'],
@@ -335,9 +367,10 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
   app.component('UPagination', Vue.defineComponent({ setup: () => () => Vue.h('div') }))
   app.component('UTable', table)
   const root = makeNode('root')
-  app.mount(root)
+  const instance = app.mount(root) as Vue.ComponentPublicInstance & { createAction: { label: string, allowed: boolean, busy: boolean, trigger: () => void } }
   return {
     root,
+    instance,
     allNodes,
     list,
     editor,
@@ -359,6 +392,63 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
 }
 
 describe('ERP catalog shared resource authority', () => {
+  it('exposes its permission-gated create action and keeps the list mounted through the focused editor lifecycle', async (t) => {
+    const resource = setupResource()
+    t.after(resource.stop)
+    const listRequest = resource.requests.find(request => request.url === '/erp/units?page=1')!
+    listRequest.resolve({
+      data: [{ id: 8, short_name: 'Quilograma', status: 'active' }],
+      meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 }
+    })
+    await resource.settle()
+
+    assert.equal(resource.instance.createAction.allowed, true)
+    assert.equal(resource.instance.createAction.label, 'Adicionar unidade')
+    assert.equal(resource.editor.open.value, false, 'the editor starts closed')
+    const list = descendants(resource.root).find(node => node.props['data-row-count'] === '1')
+    assert.ok(list, 'the list is rendered before an editor action')
+
+    resource.instance.createAction.trigger()
+    await resource.settle()
+    assert.equal(resource.editor.open.value, true, 'the explicit navbar action opens create mode')
+    assert.equal(resource.editor.mode.value, 'create')
+    assert.equal(isAttachedTo(resource.root, list), true, 'the list remains mounted while the editor is open')
+    const listRegion = descendants(resource.root).find(node => node.props.class === 'space-y-4' && descendants(node).includes(list))
+    assert.ok(listRegion)
+    assert.equal(String(listRegion.props.class).includes('hidden'), false, 'the list stays visible behind the native overlay')
+    assert.equal(descendants(resource.root).some(node => node.props['data-slideover-open'] === 'true'), true)
+
+    const close = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Fechar')
+    assert.ok(close)
+    ;(close.props.onClick as (() => void) | undefined)?.()
+    await resource.settle()
+    assert.equal(resource.editor.open.value, false)
+    assert.equal(resource.editor.record.value, null)
+    assert.equal(isAttachedTo(resource.root, list), true)
+
+    resource.instance.createAction.trigger()
+    await resource.settle()
+    const draft = descendants(resource.root).find(node => node.props['data-draft'] === 'short_name')
+    assert.ok(draft)
+    draft.props.onInput?.({ target: { value: 'Rascunho' } })
+    const saving = resource.editor.save({ short_name: 'Rascunho', actual_name: 'Rascunho' })
+    await resource.settle()
+    const post = resource.requests.find(request => request.options.method === 'POST')
+    assert.ok(post)
+    post.reject({ statusCode: 422, data: { errors: { short_name: ['A sigla já está em uso.'] } } })
+    await saving
+    await resource.settle()
+    assert.equal(resource.editor.open.value, true, 'validation failures keep the native editor open')
+    assert.equal(draft.props.value, 'Rascunho', 'the form draft remains mounted after a rejected save')
+    assert.equal(descendants(resource.root).some(node => node.props['data-field-error'] === 'short_name' && node.text === 'A sigla já está em uso.'), true)
+    resource.editor.cancel()
+    await resource.settle()
+
+    resource.currentCompany.value = { ...resource.currentCompany.value, permissions: ['erp.units.index'] }
+    await resource.settle()
+    assert.equal(resource.instance.createAction.allowed, false, 'the exposed action follows the current store grant')
+  })
+
   it('keeps the real Contact notes panel draft and selected File across native-style detail tab switches', async (t) => {
     const noteRow = {
       id: 7,
@@ -816,19 +906,15 @@ describe('ERP catalog shared resource authority', () => {
     await resource.settle()
     const triggerBeforeSave = rowActionTrigger(resource.root, 'Ações de Quilograma')
     assert.ok(triggerBeforeSave)
-    const createTriggerBeforeSave = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Adicionar unidade')
-    assert.ok(createTriggerBeforeSave)
     const focusCallsBeforeSave = triggerBeforeSave.focusCalls
     assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true)
-    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true)
     const saving = resource.editor.save({ short_name: 'kg', actual_name: 'Quilograma' })
     await resource.settle()
     assert.equal(resource.editor.open.value, true, 'the editor stays open while the PATCH is pending')
     assert.equal(resource.editor.mutationPending.value, true, 'the PATCH is pending')
     assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true, 'the same row action button remains mounted during the PATCH')
     assert.equal(triggerBeforeSave.props.disabled, true, 'the row action button is disabled during the PATCH')
-    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true, 'the create button remains mounted during the PATCH')
-    assert.equal(createTriggerBeforeSave.props.disabled, true, 'the create button is disabled during the PATCH')
+    assert.equal(resource.instance.createAction.busy, true, 'the exposed create action is busy during the PATCH')
     assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave, 'focus stays in the editor while the PATCH is pending')
     const mutation = resource.requests.filter(request => request.options.method === 'PATCH').at(-1)!
     mutation.resolve({ data: { id: 8, short_name: 'Quilograma', status: 'active' } })
@@ -839,8 +925,7 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.editor.mutationPending.value, true, 'the save stays pending while the refreshed list is held')
     assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true, 'the same row action button remains mounted during list refresh')
     assert.equal(triggerBeforeSave.props.disabled, true, 'the row action button remains disabled during list refresh')
-    assert.equal(isAttachedTo(resource.root, createTriggerBeforeSave), true, 'the create button remains mounted during list refresh')
-    assert.equal(createTriggerBeforeSave.props.disabled, true, 'the create button remains disabled during list refresh')
+    assert.equal(resource.instance.createAction.busy, true, 'the create action remains disabled during list refresh')
     assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave, 'focus is not restored before list refresh completes')
     refreshedList.resolve({
       data: [{ id: 8, short_name: 'Quilograma', status: 'active' }],
@@ -852,8 +937,7 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(triggerAfterSave, triggerBeforeSave, 'the mounted list keeps the same row action trigger while editing')
     assert.equal(resource.editor.mutationPending.value, false, 'the save and list refresh have settled')
     assert.equal(triggerBeforeSave.props.disabled, false, 'the row action button is enabled after the save settles')
-    assert.equal(createTriggerBeforeSave.props.disabled, false, 'the create button is enabled after the save settles')
-    assert.equal(descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Adicionar unidade'), createTriggerBeforeSave)
+    assert.equal(resource.instance.createAction.busy, false, 'the create action is enabled after the save settles')
     assert.equal(triggerBeforeSave.focusCalls, focusCallsBeforeSave + 1, 'saving returns focus to the connected row action trigger')
     assert.equal(isAttachedTo(resource.root, triggerBeforeSave), true)
   })
