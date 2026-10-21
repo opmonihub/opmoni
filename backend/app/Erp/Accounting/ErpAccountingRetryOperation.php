@@ -4,6 +4,7 @@ namespace App\Erp\Accounting;
 
 use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpEstablishmentAccess;
+use App\Erp\ErpReleaseGate;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
 use App\Support\CurrentCompany;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class ErpAccountingRetryOperation
         abort_unless(($references['operation'] ?? null) === self::NAME
             && ($references['resource_type'] ?? null) === 'erp_accounting_delivery'
             && (int) ($references['erp_company_id'] ?? $context->company->id) === (int) $context->company->id, 404);
+        app(ErpReleaseGate::class)->assertReleased((int) $context->company->id, $request->user()?->id);
         $query = ErpAccountingDelivery::query()
             ->where('erp_company_id', $context->company->id)
             ->whereKey((int) ($references['delivery_id'] ?? 0));

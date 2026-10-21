@@ -147,11 +147,11 @@ function clearPrivateState() {
   actionGeneration++
 }
 
-async function load(pageNumber = page.value) {
+async function load(pageNumber = page.value): Promise<boolean> {
   if (!canRead.value || !currentCompany.value) {
     clearPrivateState()
     loading.value = false
-    return
+    return false
   }
   const token = currentToken()
   const generation = ++listGeneration
@@ -161,7 +161,7 @@ async function load(pageNumber = page.value) {
   errorMessage.value = ''
   try {
     const response = await api<Page<AccountingDelivery>>(`/erp/accounting-deliveries?${query}`)
-    if (!isCurrent(token, generation, listGeneration)) return
+    if (!isCurrent(token, generation, listGeneration)) return false
     if (!Array.isArray(response.data) || !response.meta) throw new Error('Resposta de entregas inválida.')
     rows.value = response.data
     total.value = response.meta.total
@@ -173,8 +173,9 @@ async function load(pageNumber = page.value) {
       selectedId.value = null
       selectedDetail.value = null
     }
+    return true
   } catch (error) {
-    if (!isCurrent(token, generation, listGeneration)) return
+    if (!isCurrent(token, generation, listGeneration)) return false
     const status = apiStatus(error)
     if ([401, 403, 404, 409].includes(status ?? 0)) {
       clearPrivateState()
@@ -185,6 +186,7 @@ async function load(pageNumber = page.value) {
       loadState.value = rows.value.length > 0 ? 'ready' : 'failed'
       errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível carregar as entregas.'
     }
+    return false
   } finally {
     if (isCurrent(token, generation, listGeneration)) loading.value = false
   }
@@ -248,6 +250,14 @@ async function refreshDetail(id: number, token: ReturnType<typeof currentToken>,
   return true
 }
 
+async function refreshAuthorizedState(id: number, token: ReturnType<typeof currentToken>, generation: number): Promise<boolean> {
+  if (!context.isCurrent(token) || generation !== actionGeneration || !canRead.value) return false
+  if (!canShowDetail.value) return load(page.value)
+  if (selectedId.value !== id) selectedId.value = id
+
+  return refreshDetail(id, token, generation)
+}
+
 async function retryDelivery(id: number, replayOriginal = false) {
   if (!canRetry.value || retrying.value || recovering.value || (pendingRetry.value && pendingRetry.value.deliveryId !== id)) return
   const row = rows.value.find(item => item.id === id)
@@ -255,6 +265,8 @@ async function retryDelivery(id: number, replayOriginal = false) {
   if (!row?.can_retry && !persistedReplay) return
   const token = currentToken()
   const generation = ++actionGeneration
+  detailGeneration++
+  detailLoading.value = false
   const pending = pendingRetry.value?.deliveryId === id
     ? pendingRetry.value
     : {
@@ -271,12 +283,15 @@ async function retryDelivery(id: number, replayOriginal = false) {
   try {
     await api(pending.path, { method: 'POST', headers: { 'Idempotency-Key': pending.key, 'Content-Type': 'application/json' }, body: pending.body })
     if (!context.isCurrent(token) || generation !== actionGeneration) return
-    if (selectedId.value !== id) selectedId.value = id
-    await refreshDetail(id, token, generation)
+    const refreshed = await refreshAuthorizedState(id, token, generation)
     if (!context.isCurrent(token) || generation !== actionGeneration) return
+    if (!refreshed) {
+      operationMessage.value = 'A solicitação foi confirmada, mas não foi possível atualizar a consulta. Verifique o resultado original antes de repetir.'
+      return
+    }
     persistPendingRetry(null)
     operationMessage.value = 'A solicitação original foi confirmada. O status atual foi atualizado.'
-    await load(page.value)
+    if (canShowDetail.value) await load(page.value)
   } catch (error) {
     if (!context.isCurrent(token) || generation !== actionGeneration) return
     if ([401, 403, 404, 409].includes(apiStatus(error) ?? 0)) clearPrivateState()
@@ -291,7 +306,9 @@ async function recoverRetry() {
   if (!pending || recovering.value || retrying.value || pending.actorId !== user.value?.id || pending.companyId !== currentCompany.value?.id) return
   const token = currentToken()
   const generation = ++actionGeneration
-  selectedId.value = pending.deliveryId
+  detailGeneration++
+  detailLoading.value = false
+  if (canShowDetail.value) selectedId.value = pending.deliveryId
   recovering.value = true
   operationMessage.value = ''
   try {
@@ -301,12 +318,17 @@ async function recoverRetry() {
     })
     if (!context.isCurrent(token) || generation !== actionGeneration) return
     if (response.data.state !== 'completed') throw new Error('A solicitação original ainda não tem confirmação registrada.')
-    if (selectedId.value !== pending.deliveryId) selectedId.value = pending.deliveryId
-    await refreshDetail(pending.deliveryId, token, generation)
+    const refreshed = await refreshAuthorizedState(pending.deliveryId, token, generation)
     if (!context.isCurrent(token) || generation !== actionGeneration) return
+    if (!refreshed) {
+      operationMessage.value = 'O resultado original foi localizado, mas não foi possível atualizar a consulta. A chave foi preservada para nova verificação.'
+      return
+    }
     persistPendingRetry(null)
-    operationMessage.value = 'Resultado original localizado. Os detalhes foram consultados novamente.'
-    await load(page.value)
+    operationMessage.value = canShowDetail.value
+      ? 'Resultado original localizado. Os detalhes foram consultados novamente.'
+      : 'Resultado original localizado. O histórico foi atualizado.'
+    if (canShowDetail.value) await load(page.value)
   } catch (error) {
     if (!context.isCurrent(token) || generation !== actionGeneration) return
     if (apiStatus(error) === 404) {

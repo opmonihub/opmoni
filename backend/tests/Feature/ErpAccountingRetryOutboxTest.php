@@ -221,6 +221,46 @@ class ErpAccountingRetryOutboxTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_receipt_lookup_rechecks_release_and_preview_allowlist(): void
+    {
+        $scenario = $this->scenario();
+        $delivery = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($scenario['document']);
+        $key = 'accounting-retry-release-gate-0001';
+        config(['erp.release_mode' => 'production', 'erp.release_enabled' => true]);
+        $this->withHeaders([...$scenario['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $key])
+            ->postJson('/api/v1/erp/accounting-deliveries/'.$delivery->id.'/retry')
+            ->assertOk();
+        $queueCount = count(Queue::pushed(DeliverErpAccountingDocument::class));
+
+        config(['erp.release_mode' => 'disabled', 'erp.release_enabled' => false]);
+        $lookupHeaders = [...$scenario['headers'], 'Idempotency-Key' => $key];
+        $this->withHeaders($lookupHeaders)
+            ->getJson('/api/v1/erp/operations/lookup?operation=erp.accounting-deliveries.retry')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'erp_release_disabled');
+
+        config([
+            'erp.release_mode' => 'preview',
+            'erp.preview_allowlist' => [[
+                'company_id' => $scenario['company']->id,
+                'user_id' => $scenario['user']->id,
+            ]],
+        ]);
+        $this->withHeaders($lookupHeaders)
+            ->getJson('/api/v1/erp/operations/lookup?operation=erp.accounting-deliveries.retry')
+            ->assertOk()
+            ->assertJsonPath('data.result.id', $delivery->id);
+
+        config(['erp.preview_allowlist' => []]);
+        $this->withHeaders($lookupHeaders)
+            ->getJson('/api/v1/erp/operations/lookup?operation=erp.accounting-deliveries.retry')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'erp_release_disabled');
+        $this->assertSame(1, ErpOperationReceipt::query()->count());
+        $this->assertSame(1, ErpAccountingDeliveryDispatch::query()->count());
+        $this->assertSame($queueCount, count(Queue::pushed(DeliverErpAccountingDocument::class)));
+    }
+
     public function test_receipt_lookup_cannot_cross_actor_or_company_scope(): void
     {
         $scenario = $this->scenario();

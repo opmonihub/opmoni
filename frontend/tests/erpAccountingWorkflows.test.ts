@@ -267,6 +267,103 @@ describe('ERP accounting delivery workspace', () => {
     mounted.app.unmount()
   })
 
+  it('confirms a retry with the authorized index when the actor has no show grant', async () => {
+    let indexReads = 0
+    let detailReads = 0
+    const pending = { ...delivery, status: 'pending', reason_code: null, can_retry: false }
+    const mounted = mount(async (path, options) => {
+      if (path.startsWith('/erp/accounting-deliveries?')) {
+        indexReads++
+        return { data: [indexReads === 1 ? delivery : pending], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      }
+      if (path === '/erp/accounting-deliveries/31/retry' && options?.method === 'POST') return { data: pending }
+      if (path === '/erp/accounting-deliveries/31') {
+        detailReads++
+        throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      }
+      throw new Error(`Unexpected API call: ${path}`)
+    }, ['erp.accounting-deliveries.index', 'erp.accounting-deliveries.retry'], 'owner')
+    await flush()
+    findNodes(mounted.root, node => node.props.label === 'Tentar novamente')[0]?.listeners.onClick?.[0]?.()
+    await flush()
+    assert.equal(indexReads, 2)
+    assert.equal(detailReads, 0)
+    assert.match(textOf(mounted.root), /Aguardando/)
+    assert.doesNotMatch(textOf(mounted.root), /Detalhes da entrega 31/)
+    assert.equal(mounted.sessionStorage.get('erp-accounting-retry:7:21'), undefined)
+    mounted.app.unmount()
+  })
+
+  it('finishes completed receipt recovery with the authorized index when the actor has no show grant', async () => {
+    let posts = 0
+    let indexReads = 0
+    let detailReads = 0
+    const pending = { ...delivery, status: 'pending', reason_code: null, can_retry: false }
+    const mounted = mount(async (path, options) => {
+      if (path.startsWith('/erp/accounting-deliveries?')) {
+        indexReads++
+        return { data: [indexReads === 1 ? delivery : pending], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      }
+      if (path === '/erp/accounting-deliveries/31/retry' && options?.method === 'POST') {
+        posts++
+        throw new Error('Response interrupted')
+      }
+      if (path.startsWith('/erp/operations/lookup?')) return { data: { state: 'completed', result: pending } }
+      if (path === '/erp/accounting-deliveries/31') {
+        detailReads++
+        throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      }
+      throw new Error(`Unexpected API call: ${path}`)
+    }, ['erp.accounting-deliveries.index', 'erp.accounting-deliveries.retry'], 'owner')
+    await flush()
+    findNodes(mounted.root, node => node.props.label === 'Tentar novamente')[0]?.listeners.onClick?.[0]?.()
+    await flush()
+    findNodes(mounted.root, node => node.props.label === 'Consultar resultado original')[0]?.listeners.onClick?.[0]?.()
+    await flush()
+    assert.equal(posts, 1)
+    assert.equal(indexReads, 2)
+    assert.equal(detailReads, 0)
+    assert.match(textOf(mounted.root), /Aguardando/)
+    assert.match(textOf(mounted.root), /O histórico foi atualizado/)
+    assert.doesNotMatch(textOf(mounted.root), /Detalhes da entrega 31/)
+    assert.equal(mounted.sessionStorage.get('erp-accounting-retry:7:21'), undefined)
+    mounted.app.unmount()
+  })
+
+  it('preserves the original key and last confirmed rows when no-show recovery cannot refresh the index', async () => {
+    let posts = 0
+    let indexReads = 0
+    const mounted = mount(async (path, options) => {
+      if (path.startsWith('/erp/accounting-deliveries?')) {
+        indexReads++
+        if (indexReads > 1) throw new Error('Falha transitória ao atualizar o histórico')
+        return { data: [delivery], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      }
+      if (path === '/erp/accounting-deliveries/31/retry' && options?.method === 'POST') {
+        posts++
+        throw new Error('Resposta interrompida')
+      }
+      if (path.startsWith('/erp/operations/lookup?')) return { data: { state: 'completed', result: delivery } }
+      if (path === '/erp/accounting-deliveries/31') throw Object.assign(new Error('Forbidden'), { statusCode: 403 })
+      throw new Error(`Unexpected API call: ${path}`)
+    }, ['erp.accounting-deliveries.index', 'erp.accounting-deliveries.retry'], 'owner')
+    await flush()
+    findNodes(mounted.root, node => node.props.label === 'Tentar novamente')[0]?.listeners.onClick?.[0]?.()
+    await flush()
+    const saved = mounted.sessionStorage.get('erp-accounting-retry:7:21')
+    assert.ok(saved?.includes('retry-key-0001'))
+    findNodes(mounted.root, node => node.props.label === 'Consultar resultado original')[0]?.listeners.onClick?.[0]?.()
+    await flush()
+    assert.equal(posts, 1)
+    assert.equal(indexReads, 2)
+    assert.equal(mounted.sessionStorage.get('erp-accounting-retry:7:21'), saved)
+    assert.match(textOf(mounted.root), /documento 44/)
+    assert.match(textOf(mounted.root), /último resultado confirmado/)
+    assert.match(textOf(mounted.root), /A chave foi preservada para nova verificação/)
+    assert.equal(mounted.calls.filter(call => call.path === '/erp/accounting-deliveries/31').length, 0)
+    mounted.app.unmount()
+  })
+
   it('does not expose detail or retry controls to an index-only read-only actor', async () => {
     const mounted = mount(async (path) => {
       if (path.startsWith('/erp/accounting-deliveries?')) return { data: [delivery], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
@@ -344,6 +441,54 @@ describe('ERP accounting delivery workspace', () => {
     assert.match(textOf(mounted.root), /Detalhes da entrega 32/)
     assert.doesNotMatch(textOf(mounted.root), /Detalhes da entrega 31/)
     mounted.app.unmount()
+  })
+
+  it('ignores same-delivery detail success and error responses started before retry confirmation', async () => {
+    for (const lateOutcome of ['success', 'error'] as const) {
+      let settleOldDetail: ((value?: unknown) => void) | null = null
+      let rejectOldDetail: ((error: Error) => void) | null = null
+      let detailReads = 0
+      let indexReads = 0
+      const pending = { ...delivery, status: 'pending', reason_code: null, attempts: 1, can_retry: false }
+      const mounted = mount(async (path, options) => {
+        if (path.startsWith('/erp/accounting-deliveries?')) {
+          indexReads++
+          return { data: [indexReads === 1 ? delivery : pending], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+        }
+        if (path === '/erp/accounting-deliveries/31' && options?.method !== 'POST') {
+          detailReads++
+          if (detailReads === 1) {
+            return await new Promise((_resolve, reject) => {
+              settleOldDetail = value => _resolve(value)
+              rejectOldDetail = reject
+            })
+          }
+          return { data: pending }
+        }
+        if (path === '/erp/accounting-deliveries/31/retry' && options?.method === 'POST') return { data: pending }
+        throw new Error(`Unexpected API call: ${path}`)
+      })
+      await flush()
+      const rowButton = findNodes(mounted.root, node => node.tag === 'button' && textOf(node).includes('documento 44'))[0]
+      assert.ok(rowButton)
+      rowButton.listeners.onClick?.[0]?.()
+      await flush()
+      assert.equal(detailReads, 1)
+
+      findNodes(mounted.root, node => node.props.label === 'Tentar novamente')[0]?.listeners.onClick?.[0]?.()
+      await flush()
+      assert.equal(detailReads, 2)
+      assert.equal(indexReads, 2)
+      assert.match(textOf(mounted.root), /Aguardando/)
+
+      if (lateOutcome === 'success') settleOldDetail?.({ data: delivery })
+      else rejectOldDetail?.(new Error('Delayed pre-retry detail failed'))
+      await flush()
+      assert.match(textOf(mounted.root), /Detalhes da entrega 31/)
+      assert.match(textOf(mounted.root), /Aguardando/)
+      assert.doesNotMatch(textOf(mounted.root), /Com falha|Delayed pre-retry detail failed|Não foi possível atualizar os detalhes/)
+      mounted.app.unmount()
+    }
   })
 
   it('clears Company A state and ignores its delayed retry after switching to Company B', async () => {
