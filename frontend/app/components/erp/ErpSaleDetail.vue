@@ -36,7 +36,13 @@ function lineDescription(line: ErpCommercialLine & { source_line_id?: number }) 
 }
 const numberLabel = computed(() => props.area === 'quotes' ? commercial.value.quote_no : props.area === 'orders' ? commercial.value.order_no : commercial.value.invoice_no)
 const paid = computed(() => props.area === 'sales' && props.obligation?.status === 'settled' && props.obligation.open_amount === '0.0000')
-const statusLabel = computed(() => isReturn.value ? returned.value.status === 'posted' ? 'Devolução lançada' : 'Rascunho de devolução' : commercial.value.status === 'posted' ? 'Venda lançada' : commercial.value.status === 'confirmed' ? 'Pedido confirmado' : 'Rascunho')
+const statusLabel = computed(() => isReturn.value
+  ? returned.value.status === 'posted' ? 'Devolução lançada' : 'Rascunho de devolução'
+  : commercial.value.status === 'posted'
+    ? 'Venda lançada'
+    : commercial.value.status === 'converted'
+      ? props.area === 'quotes' ? 'Orçamento convertido' : 'Pedido convertido'
+      : commercial.value.status === 'confirmed' ? 'Pedido confirmado' : 'Rascunho')
 </script>
 
 <template>

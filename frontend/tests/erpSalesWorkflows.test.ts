@@ -107,8 +107,10 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
         ...(context.slots.body?.() ?? [])
       ])
     : null })
-  const detail = Vue.defineComponent({ props: { canPostSale: Boolean, canReturn: Boolean, document: Object }, emits: ['edit', 'postSale', 'returnSale'], setup: (props, context) => () => Vue.h('section', [
-    Vue.h('button', { onClick: () => context.emit('edit') }, 'Editar rascunho'),
+  const detail = Vue.defineComponent({ props: { area: String, canEdit: Boolean, canConvert: Boolean, canPostSale: Boolean, canReturn: Boolean, document: Object }, emits: ['edit', 'convert', 'postSale', 'returnSale'], setup: (props, context) => () => Vue.h('section', [
+    Vue.h('span', null, (props.document as { status?: string } | undefined)?.status === 'converted' ? props.area === 'quotes' ? 'Orçamento convertido' : 'Pedido convertido' : ''),
+    ...(props.canEdit ? [Vue.h('button', { onClick: () => context.emit('edit') }, 'Editar rascunho')] : []),
+    ...(props.canConvert ? [Vue.h('button', { onClick: () => context.emit('convert') }, 'Converter')] : []),
     ...(props.canPostSale ? [Vue.h('button', { onClick: () => context.emit('postSale') }, 'Lançar venda')] : []),
     ...(props.canReturn ? [Vue.h('button', { onClick: () => context.emit('returnSale') }, 'Devolver item')] : []),
     Vue.h('span', null, (props.document as { status?: string } | undefined)?.status ?? '')
@@ -146,7 +148,9 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
       })
     }
   })
-  for (const name of ['USelect', 'UCheckbox', 'UBadge', 'UIcon', 'CompanyMenu', 'UserMenu', 'UDropdownMenu']) app.component(name, passthrough)
+  const select = Vue.defineComponent({ inheritAttrs: false, props: { items: Array }, setup: props => () => Vue.h('div', (props.items ?? []).map((item: unknown) => Vue.h('span', null, (item as { label?: string }).label ?? ''))) })
+  for (const name of ['UCheckbox', 'UBadge', 'UIcon', 'CompanyMenu', 'UserMenu', 'UDropdownMenu']) app.component(name, passthrough)
+  app.component('USelect', select)
   app.component('UAlert', alert)
   app.component('UFormField', field)
   app.component('UButton', button)
@@ -397,6 +401,124 @@ describe('sales authority and mounted draft form', () => {
       assert.equal(updates.length, 2)
       assert.equal((updates[0]?.options?.body as { lines: Array<{ quantity: string }> }).lines[0]?.quantity, '0.5000')
       assert.equal((updates[1]?.options?.body as { lines: Array<{ quantity: string }> }).lines[0]?.quantity, '0.5000')
+    } finally {
+      mounted.dispose()
+      storage.restore()
+    }
+  })
+
+  it('labels converted quotes and orders and hides their edit and convert actions', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    let quote6Reads = 0
+    const document = (id: number, status: string, area: 'quotes' | 'orders') => ({
+      data: { id, erp_establishment_id: 3, erp_contact_id: null, erp_price_group_id: null, status, currency: 'BRL', draft_revision: 2,
+        subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000', stock_reserved: false, needs_reconciliation: false,
+        ...(area === 'quotes' ? { quote_no: `ORC-${id}` } : { order_no: `PED-${id}` }), lines: [] }
+    })
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path.startsWith('/erp/quotes?')) return { data: [
+        { id: 5, erp_establishment_id: 3, quote_no: 'ORC-5', status: 'converted', currency: 'BRL', total_amount: '10.0000' },
+        { id: 6, erp_establishment_id: 3, quote_no: 'ORC-6', status: 'draft', currency: 'BRL', total_amount: '10.0000' }
+      ], meta: { current_page: 1, last_page: 1, per_page: 15, total: 2 } }
+      if (path.startsWith('/erp/orders?')) return { data: [
+        { id: 8, erp_establishment_id: 3, order_no: 'PED-8', status: 'converted', currency: 'BRL', total_amount: '10.0000' },
+        { id: 9, erp_establishment_id: 3, order_no: 'PED-9', status: 'confirmed', currency: 'BRL', total_amount: '10.0000' }
+      ], meta: { current_page: 1, last_page: 1, per_page: 15, total: 2 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 3, name: 'Matriz', status: 'active' }], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+      if (path.startsWith('/erp/contacts?') || path.startsWith('/erp/units?') || path.startsWith('/erp/products?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      if (path === '/erp/quotes/5') return document(5, 'converted', 'quotes')
+      if (path === '/erp/quotes/6') return document(6, quote6Reads++ === 0 ? 'draft' : 'converted', 'quotes')
+      if (path === '/erp/orders/8') return document(8, 'converted', 'orders')
+      if (path === '/erp/orders/9') return document(9, 'confirmed', 'orders')
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const mounted = mountSalesWorkspace(api)
+    const openRow = async (number: string) => {
+      const row = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes(number))
+      assert.ok(row, `Expected row ${number}`)
+      ;(row.props.onClick as () => void)()
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+    }
+    try {
+      await new Promise(resolve => setImmediate(resolve))
+      assert.match(mounted.textContent(mounted.root), /Convertidos/)
+      assert.match(mounted.textContent(mounted.root), /Convertido/)
+      await openRow('ORC-5')
+      assert.match(mounted.textContent(mounted.root), /Orçamento convertido/)
+      assert.equal(mounted.findButton('Editar rascunho'), undefined)
+      assert.equal(mounted.findButton('Converter'), undefined)
+      await mounted.click('Fechar modal')
+
+      await openRow('ORC-6')
+      assert.ok(mounted.findButton('Editar rascunho'))
+      assert.ok(mounted.findButton('Converter'))
+      await mounted.click('Editar rascunho')
+      assert.match(mounted.textContent(mounted.root), /Orçamento convertido/)
+      assert.equal(mounted.findButton('Editar rascunho'), undefined)
+      assert.equal(mounted.findButton('Converter'), undefined)
+      await mounted.click('Fechar modal')
+
+      await mounted.click('Pedidos')
+      await new Promise(resolve => setImmediate(resolve))
+      assert.match(mounted.textContent(mounted.root), /Convertidos/)
+      await openRow('PED-8')
+      assert.match(mounted.textContent(mounted.root), /Pedido convertido/)
+      assert.equal(mounted.findButton('Editar rascunho'), undefined)
+      assert.equal(mounted.findButton('Converter'), undefined)
+      await mounted.click('Fechar modal')
+
+      await openRow('PED-9')
+      assert.ok(mounted.findButton('Editar rascunho'))
+      assert.ok(mounted.findButton('Converter'))
+      await mounted.click('Editar rascunho')
+      assert.ok(mounted.findButton('Salvar pedido'))
+      await mounted.click('Fechar modal')
+      assert.equal(calls.some(call => call.options?.method === 'PATCH'), false)
+    } finally {
+      mounted.dispose()
+      storage.restore()
+    }
+  })
+
+  it('closes an edit after an exact consumed-document conflict is proven by an authorized detail GET', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    let detailReads = 0
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path.startsWith('/erp/quotes?')) return { data: [{ id: 66, erp_establishment_id: 3, quote_no: 'ORC-66', status: 'draft', currency: 'BRL', total_amount: '10.0000' }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 3, name: 'Matriz', status: 'active' }], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+      if (path.startsWith('/erp/contacts?') || path.startsWith('/erp/units?') || path.startsWith('/erp/products?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      if (path === '/erp/quotes/66' && options?.method === 'PATCH') throw { statusCode: 409, message: 'Documento já consumido ou lançado.' }
+      if (path === '/erp/quotes/66') {
+        detailReads++
+        return { data: { id: 66, erp_establishment_id: 3, erp_contact_id: null, erp_price_group_id: null, status: detailReads >= 3 ? 'converted' : 'draft', currency: 'BRL', draft_revision: 3,
+          subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000', stock_reserved: false, needs_reconciliation: false, lines: [] } }
+      }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const mounted = mountSalesWorkspace(api)
+    try {
+      await new Promise(resolve => setImmediate(resolve))
+      const row = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes('ORC-66'))
+      assert.ok(row)
+      ;(row.props.onClick as () => void)()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.ok(mounted.findButton('Editar rascunho'))
+      await mounted.click('Editar rascunho')
+      mounted.submitDraft()
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+      assert.equal((mounted.state.selectedOperation as Vue.Ref<unknown>).value, null)
+      assert.equal((mounted.state.needsReconciliation as Vue.Ref<boolean>).value, false)
+      assert.equal((mounted.state.selected as Vue.Ref<{ status: string } | null>).value?.status, 'converted')
+      assert.equal(mounted.findButton('Editar rascunho'), undefined)
+      assert.equal(mounted.findButton('Converter'), undefined)
+      assert.match((mounted.state.mutationError as Vue.Ref<string>).value, /Outro operador converteu ou lançou/)
+      assert.equal(calls.filter(call => call.options?.method === 'PATCH').length, 1)
     } finally {
       mounted.dispose()
       storage.restore()
@@ -753,18 +875,141 @@ describe('commercial API lifecycle', () => {
     }
   })
 
-  it('converts quote to order and order to sale using HTTP 200 acknowledgements followed by authorized details', async () => {
+  it('keeps an unrecognized update conflict attached to its original operation', async () => {
     const storage = installSessionStorage()
     const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
     const api = async (path: string, options?: Record<string, unknown>) => {
       calls.push({ path, options })
-      if (path === '/erp/quotes/5/convert') return { data: { quote: { id: 5 }, order: { id: 8 } } }
-      if (path === '/erp/orders/8/convert') return { data: { order: { id: 8 }, sale: { id: 13 } } }
+      if (options?.method === 'PATCH') throw { statusCode: 409, message: 'Conflict.' }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const { state, stop } = createSalesWorkspace(api)
+    const payload = { erp_establishment_id: 3, currency: 'BRL' as const, draft_revision: 2, lines: [] }
+    try {
+      await (state.saveDraft as (kind: string, value: typeof payload, id: number) => Promise<unknown>)('quote', payload, 66)
+      const pending = (state.selectedOperation as Vue.Ref<{ key: string, path: string, payload: Record<string, unknown> } | null>).value
+      assert.ok(pending)
+      assert.equal(pending.path, '/erp/quotes/66')
+      assert.deepEqual(pending.payload, payload)
+      assert.equal((state.needsReconciliation as Vue.Ref<boolean>).value, true)
+      assert.equal((state.consumedOperationConflict as Vue.Ref<unknown>).value, null)
+      assert.equal(calls.some(call => call.path === '/erp/quotes/66' && call.options?.method === undefined), false)
+    } finally {
+      stop()
+      storage.restore()
+    }
+  })
+
+  it('releases only exact pre-effect conversion and post conflicts proven by fresh terminal details', async () => {
+    const cases = [
+      { operation: 'erp.quotes.convert', path: '/erp/quotes/5/convert', detail: '/erp/quotes/5', area: 'quotes', id: 5, message: 'Documento já convertido.', status: 'converted', run: (state: Record<string, unknown>) => (state.convertQuote as (row: { id: number, draft_revision: number }) => Promise<unknown>)({ id: 5, draft_revision: 2 }) },
+      { operation: 'erp.orders.convert', path: '/erp/orders/8/convert', detail: '/erp/orders/8', area: 'orders', id: 8, message: 'Documento já convertido.', status: 'converted', run: (state: Record<string, unknown>) => (state.convertOrder as (row: { id: number, draft_revision: number }) => Promise<unknown>)({ id: 8, draft_revision: 2 }) },
+      { operation: 'erp.sales.post', path: '/erp/sales/23/post', detail: '/erp/sales/23', area: 'sales', id: 23, message: 'Venda já lançada.', status: 'posted', run: (state: Record<string, unknown>) => (state.postSale as (row: { id: number, erp_establishment_id: number, status: string, draft_revision: number, currency: string, total_amount: string }) => Promise<unknown>)({ id: 23, erp_establishment_id: 3, status: 'draft', draft_revision: 2, currency: 'BRL', total_amount: '10.0000' }) },
+      { operation: 'erp.sale-returns.post', path: '/erp/sale-returns/37/post', detail: '/erp/sale-returns/37', area: 'returns', id: 37, message: 'Devolução já lançada.', status: 'posted', run: (state: Record<string, unknown>) => (state.postReturn as (row: { id: number, erp_sale_id: number, erp_establishment_id: number, status: string, currency: string, reason: string, total_amount: string }) => Promise<unknown>)({ id: 37, erp_sale_id: 23, erp_establishment_id: 3, status: 'draft', currency: 'BRL', reason: 'Parcial', total_amount: '2.5000' }) }
+    ]
+    for (const scenario of cases) {
+      const storage = installSessionStorage()
+      const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+      const api = async (path: string, options?: Record<string, unknown>) => {
+        calls.push({ path, options })
+        if (path === scenario.path) throw { statusCode: 409, message: scenario.message }
+        if (path === scenario.detail) return { data: { id: scenario.id, status: scenario.status, erp_sale_id: scenario.area === 'returns' ? 23 : undefined } }
+        throw new Error(`Unexpected API path ${path}`)
+      }
+      const { state, stop } = createSalesWorkspace(api)
+      try {
+        await scenario.run(state)
+        assert.equal((state.selectedOperation as Vue.Ref<unknown>).value, null, scenario.operation)
+        assert.equal((state.needsReconciliation as Vue.Ref<boolean>).value, false, scenario.operation)
+        assert.deepEqual((state.consumedOperationConflict as Vue.Ref<unknown>).value, { operation: scenario.operation, area: scenario.area, id: scenario.id, status: scenario.status })
+        assert.equal((state.resolvedOperation as Vue.Ref<unknown>).value, null, scenario.operation)
+        assert.ok(calls.some(call => call.path === scenario.detail && call.options?.method === undefined), scenario.operation)
+      } finally {
+        stop()
+        storage.restore()
+      }
+    }
+
+    const storage = installSessionStorage()
+    const api = async (path: string) => {
+      if (path === '/erp/quotes/5/convert') throw { statusCode: 409, message: 'Documento já convertido.' }
+      if (path === '/erp/quotes/5') return { data: { id: 5, status: 'draft' } }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const { state, stop } = createSalesWorkspace(api)
+    try {
+      await (state.convertQuote as (row: { id: number, draft_revision: number }) => Promise<unknown>)({ id: 5, draft_revision: 2 })
+      assert.ok((state.selectedOperation as Vue.Ref<unknown>).value)
+      assert.equal((state.needsReconciliation as Vue.Ref<boolean>).value, true)
+      assert.equal((state.consumedOperationConflict as Vue.Ref<unknown>).value, null)
+    } finally {
+      stop()
+      storage.restore()
+    }
+
+    const failedReadStorage = installSessionStorage()
+    const failedReadApi = async (path: string) => {
+      if (path === '/erp/quotes/5/convert') throw { statusCode: 409, message: 'Documento já convertido.' }
+      if (path === '/erp/quotes/5') throw { statusCode: 503, message: 'Unavailable.' }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const failedRead = createSalesWorkspace(failedReadApi)
+    try {
+      await (failedRead.state.convertQuote as (row: { id: number, draft_revision: number }) => Promise<unknown>)({ id: 5, draft_revision: 2 })
+      assert.ok((failedRead.state.selectedOperation as Vue.Ref<unknown>).value)
+      assert.equal((failedRead.state.needsReconciliation as Vue.Ref<boolean>).value, true)
+      assert.equal((failedRead.state.consumedOperationConflict as Vue.Ref<unknown>).value, null)
+    } finally {
+      failedRead.stop()
+      failedReadStorage.restore()
+    }
+
+    const intentStorage = installSessionStorage()
+    let resolveDetail: ((value: unknown) => void) | undefined
+    let detailRequested = false
+    const intentApi = async (path: string) => {
+      if (path === '/erp/quotes/5/convert') throw { statusCode: 409, message: 'Documento já convertido.' }
+      if (path === '/erp/quotes/5') {
+        detailRequested = true
+        return await new Promise((resolve) => { resolveDetail = resolve })
+      }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const intentRead = createSalesWorkspace(intentApi)
+    try {
+      const operation = (intentRead.state.convertQuote as (row: { id: number, draft_revision: number }) => Promise<unknown>)({ id: 5, draft_revision: 2 })
+      for (let attempt = 0; attempt < 10 && !detailRequested; attempt++) await new Promise(resolve => setImmediate(resolve))
+      assert.equal(detailRequested, true)
+      const originalPending = (intentRead.state.selectedOperation as Vue.Ref<unknown>).value
+      ;(intentRead.state.claimIntent as () => number)()
+      resolveDetail?.({ data: { id: 5, status: 'converted' } })
+      await operation
+      assert.deepEqual((intentRead.state.selectedOperation as Vue.Ref<unknown>).value, originalPending)
+      assert.equal((intentRead.state.needsReconciliation as Vue.Ref<boolean>).value, true)
+      assert.equal((intentRead.state.consumedOperationConflict as Vue.Ref<unknown>).value, null)
+      assert.match((intentRead.state.mutationError as Vue.Ref<string>).value, /perdeu a seleção atual/)
+    } finally {
+      intentRead.stop()
+      intentStorage.restore()
+    }
+  })
+
+  it('converts quote to order and order to sale using HTTP 200 acknowledgements followed by authorized details', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    let quoteConverted = false
+    let orderConverted = false
+    let orderReads = 0
+    const sourceStatuses: string[] = []
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path === '/erp/quotes/5/convert') { quoteConverted = true; return { data: { quote: { id: 5 }, order: { id: 8 } } } }
+      if (path === '/erp/orders/8/convert') { orderConverted = true; return { data: { order: { id: 8 }, sale: { id: 13 } } } }
       if (path.startsWith('/erp/quotes?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
       if (path.startsWith('/erp/orders?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
       if (path.startsWith('/erp/sales?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
-      if (path === '/erp/quotes/5') return { data: { id: 5, status: 'draft', draft_revision: 3, currency: 'BRL', total_amount: '10.0000', lines: [] } }
-      if (path === '/erp/orders/8') return { data: { id: 8, status: 'confirmed', draft_revision: 4, currency: 'BRL', total_amount: '10.0000', lines: [] } }
+      if (path === '/erp/quotes/5') { sourceStatuses.push(quoteConverted ? 'converted' : 'draft'); return { data: { id: 5, status: quoteConverted ? 'converted' : 'draft', draft_revision: 3, currency: 'BRL', total_amount: '10.0000', lines: [] } } }
+      if (path === '/erp/orders/8') { orderReads++; sourceStatuses.push(orderConverted ? 'converted' : 'confirmed'); return { data: { id: 8, status: orderConverted ? 'converted' : 'confirmed', draft_revision: 4, currency: 'BRL', total_amount: '10.0000', lines: [] } } }
       if (path === '/erp/sales/13') return { data: { id: 13, status: 'draft', fiscal_status: 'none', draft_revision: 1, currency: 'BRL', total_amount: '10.0000', lines: [] } }
       throw new Error(`Unexpected API path ${path}`)
     }
@@ -773,6 +1018,7 @@ describe('commercial API lifecycle', () => {
     try {
       await (state.convertQuote as (value: typeof quote, orderNo?: string) => Promise<unknown>)(quote)
       assert.equal((state.selected as Vue.Ref<{ id: number } | null>).value?.id, 8)
+      assert.equal((state.selected as Vue.Ref<{ status: string } | null>).value?.status, 'confirmed')
       await (state.convertOrder as (value: { id: number, draft_revision: number }, invoiceNo?: string) => Promise<unknown>)({ id: 8, draft_revision: 4 })
       assert.equal((state.selected as Vue.Ref<{ id: number, status: string, fiscal_status: string } | null>).value?.id, 13)
       assert.equal((state.selected as Vue.Ref<{ status: string, fiscal_status: string } | null>).value?.status, 'draft')
@@ -781,6 +1027,8 @@ describe('commercial API lifecycle', () => {
       assert.deepEqual(calls.find(call => call.path === '/erp/orders/8/convert')?.options?.body, { draft_revision: 4 })
       assert.equal(calls.some(call => call.path === '/erp/orders/8'), true)
       assert.equal(calls.some(call => call.path === '/erp/quotes/5'), true)
+      assert.deepEqual(sourceStatuses, ['converted', 'confirmed', 'converted'])
+      assert.equal(orderReads, 2)
       assert.equal((state.requiresFreshDetail as (area: string, id: number) => boolean)('quotes', 5), false)
       assert.equal(calls.some(call => call.path === '/erp/sales/13'), true)
     } finally {

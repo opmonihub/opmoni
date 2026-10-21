@@ -52,8 +52,8 @@ const modalTitle = computed(() => {
   return 'Detalhes do documento'
 })
 const statusItems = computed(() => {
-  if (sales.area.value === 'quotes') return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }]
-  if (sales.area.value === 'orders') return [{ label: 'Todas', value: '' }, { label: 'Confirmados', value: 'confirmed' }]
+  if (sales.area.value === 'quotes') return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Convertidos', value: 'converted' }]
+  if (sales.area.value === 'orders') return [{ label: 'Todas', value: '' }, { label: 'Confirmados', value: 'confirmed' }, { label: 'Convertidos', value: 'converted' }]
   if (sales.area.value === 'returns') return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
   return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
 })
@@ -156,7 +156,7 @@ function replaceDraftWithCurrentServerVersion() {
 }
 function statusForRow(row: Record<string, unknown>) {
   const status = String(row.status ?? '')
-  return status === 'draft' ? 'Rascunho' : status === 'confirmed' ? 'Confirmado' : status === 'posted' ? 'Lançado' : status || 'Indisponível'
+  return status === 'draft' ? 'Rascunho' : status === 'confirmed' ? 'Confirmado' : status === 'converted' ? 'Convertido' : status === 'posted' ? 'Lançado' : status || 'Indisponível'
 }
 function totalForRow(row: Record<string, unknown>) {
   const currency = typeof row.currency === 'string' ? row.currency : 'BRL'
@@ -204,6 +204,11 @@ function startCreateMenu(kind: ErpCommercialKind) {
 }
 function currentModal(generation: number, identity: number) {
   return generation === modalGeneration.value && identity === createIdentity && draftAuthority.value === sales.authorityGeneration.value
+}
+function matchesConsumedConflict(operation: string, areaName: ErpSalesArea, id: number) {
+  const conflict = sales.consumedOperationConflict.value
+  return conflict?.operation === operation && conflict.area === areaName && conflict.id === id
+    && Number((sales.selected.value as { id?: unknown } | null)?.id) === id
 }
 function pendingBefore() {
   return typeof sales.selectedOperation.value?.key === 'string' ? sales.selectedOperation.value.key : null
@@ -287,6 +292,13 @@ async function saveDraft(payload: ErpCommercialDraftPayload) {
   const ownerKey = captureRecoveryOwner(previousKey, action, payload, modalKind.value, identity, id, fingerprint)
   const result = await request
   if (ownerKey && (result !== null || sales.currentOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
+  if (result === null && editId.value !== null && matchesConsumedConflict(action, detailArea.value, editId.value) && currentModal(generation, identity)) {
+    editIdentity.value = ''
+    editId.value = null
+    editDraft.value = emptyDraft()
+    modalKind.value = 'detail'
+    return
+  }
   if (result === null && sales.revisionConflict.value && currentModal(generation, identity)) {
     closeModal()
     return
@@ -321,12 +333,13 @@ async function openEdit() {
   const kind = documentKind(detailArea.value)!
   const action = `erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`
   const document = sales.selected.value as ErpCommercialDocument
-  if (!sales.allowed(action) || document.status === 'posted') return
+  if (!sales.allowed(action) || !isEditableDocument(kind, document.status)) return
   const sourceId = document.id
   const intent = sales.operationIntentSequence.value
   const detail = await sales.inspect(detailArea.value, sourceId, intent)
   if (!detail || sales.operationIntentSequence.value !== intent || detail.id !== sourceId) return
   const accepted = detail as ErpCommercialDocument
+  if (!isEditableDocument(kind, accepted.status)) return
   const nextIdentity = `${sales.authorityGeneration.value}:${kind}:${sourceId}:${accepted.draft_revision ?? 'none'}`
   if (editIdentity.value === nextIdentity) {
     modalGeneration.value++
@@ -341,6 +354,7 @@ async function openEdit() {
   modalKind.value = 'edit'
 }
 async function convertDocument() {
+  if (!canConvertDetail()) return
   const document = sales.selected.value as ErpCommercialDocument | null
   if (!document || (detailArea.value !== 'quotes' && detailArea.value !== 'orders')) return
   const generation = modalGeneration.value
@@ -352,6 +366,11 @@ async function convertDocument() {
   const ownerKey = captureRecoveryOwner(previousKey, action, payload, modal, createIdentity, document.id, JSON.stringify(document))
   const result = await request
   if (ownerKey && (result !== null || sales.currentOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
+  if (result === null && matchesConsumedConflict(action, detailArea.value, document.id) && generation === modalGeneration.value && modalKind.value === modal) {
+    modalKind.value = 'detail'
+    convertNumber.value = ''
+    return
+  }
   if (result !== null && generation === modalGeneration.value && modalKind.value === modal) {
     detailArea.value = detailArea.value === 'quotes' ? 'orders' : 'sales'
     const targetId = detailArea.value === 'orders' ? resultDocumentId(result, 'order') : resultDocumentId(result, 'sale')
@@ -361,7 +380,7 @@ async function convertDocument() {
   }
 }
 function startConvert() {
-  if (!sales.selected.value || selectedNeedsRefresh.value || sales.selectedOperation.value || sales.mutating.value) return
+  if (!canConvertDetail()) return
   convertNumber.value = ''
   modalGeneration.value++
   modalKind.value = 'convert'
@@ -392,6 +411,12 @@ async function confirmPostSale() {
   const ownerKey = captureRecoveryOwner(previousKey, 'erp.sales.post', payload, modal, createIdentity, sourceId, JSON.stringify(row))
   const result = await request
   if (ownerKey && (result !== null || sales.currentOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
+  if (result === null && matchesConsumedConflict('erp.sales.post', 'sales', sourceId) && generation === modalGeneration.value && modalKind.value === modal) {
+    includeInlinePayment.value = false
+    inlinePaymentAmount.value = ''
+    modalKind.value = 'detail'
+    return
+  }
   if (result !== null && generation === modalGeneration.value && modalKind.value === modal && (sales.selected.value as ErpCommercialDocument | null)?.id === sourceId) modalKind.value = 'detail'
 }
 function startReturn() {
@@ -435,6 +460,10 @@ async function postReturn() {
   const ownerKey = captureRecoveryOwner(previousKey, 'erp.sale-returns.post', payload, modal, createIdentity, sourceId, JSON.stringify(row))
   const result = await request
   if (ownerKey && (result !== null || sales.currentOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
+  if (result === null && matchesConsumedConflict('erp.sale-returns.post', 'returns', sourceId) && generation === modalGeneration.value && modalKind.value === modal) {
+    modalKind.value = 'detail'
+    return
+  }
   if (result !== null && generation === modalGeneration.value && modalKind.value === modal && (sales.selected.value as ErpSaleReturn | null)?.id === sourceId) modalKind.value = 'detail'
 }
 function startPostReturn() {
@@ -456,7 +485,11 @@ function financeAuthority() {
 }
 function canEditDetail() {
   const kind = documentKind(detailArea.value)
-  return !!kind && !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && sales.selected.value && (sales.selected.value as ErpCommercialDocument).status !== 'posted' && sales.allowed(`erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`)
+  const document = sales.selected.value as ErpCommercialDocument | null
+  return !!kind && !!document && !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && isEditableDocument(kind, document.status) && sales.allowed(`erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`)
+}
+function isEditableDocument(kind: ErpCommercialKind, status: ErpCommercialDocument['status']) {
+  return kind === 'quote' ? status === 'draft' : kind === 'order' ? status === 'confirmed' : status === 'draft'
 }
 function canConvertDetail() {
   if (selectedNeedsRefresh.value || sales.selectedOperation.value || sales.mutating.value) return false

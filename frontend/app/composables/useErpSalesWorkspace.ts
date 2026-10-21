@@ -38,6 +38,15 @@ const operationRoutes: Record<string, string | RegExp> = {
   'erp.sales.store': '/erp/sales', 'erp.sales.update': /^\/erp\/sales\/\d+$/, 'erp.sales.post': /^\/erp\/sales\/\d+\/post$/,
   'erp.sale-returns.store': '/erp/sale-returns', 'erp.sale-returns.post': /^\/erp\/sale-returns\/\d+\/post$/
 }
+const consumedOperationConflicts: Record<string, { message: string, statuses: readonly string[], notice: string }> = {
+  'erp.quotes.update': { message: 'Documento já consumido ou lançado.', statuses: ['converted', 'posted'], notice: 'Outro operador converteu ou lançou este documento antes de salvar. Suas alterações não foram aplicadas; o detalhe autorizado foi atualizado.' },
+  'erp.orders.update': { message: 'Documento já consumido ou lançado.', statuses: ['converted', 'posted'], notice: 'Outro operador converteu ou lançou este documento antes de salvar. Suas alterações não foram aplicadas; o detalhe autorizado foi atualizado.' },
+  'erp.sales.update': { message: 'Documento já consumido ou lançado.', statuses: ['converted', 'posted'], notice: 'Outro operador lançou este documento antes de salvar. Suas alterações não foram aplicadas; o detalhe autorizado foi atualizado.' },
+  'erp.quotes.convert': { message: 'Documento já convertido.', statuses: ['converted'], notice: 'Outro operador converteu este orçamento antes da ação. O detalhe autorizado foi atualizado.' },
+  'erp.orders.convert': { message: 'Documento já convertido.', statuses: ['converted'], notice: 'Outro operador converteu este pedido antes da ação. O detalhe autorizado foi atualizado.' },
+  'erp.sales.post': { message: 'Venda já lançada.', statuses: ['posted'], notice: 'Outro operador lançou esta venda antes da ação. O detalhe autorizado foi atualizado.' },
+  'erp.sale-returns.post': { message: 'Devolução já lançada.', statuses: ['posted'], notice: 'Outra operação lançou esta devolução antes da ação. O detalhe autorizado foi atualizado.' }
+}
 function operationMethod(operation: string): PendingSalesOperation['method'] {
   return operation.endsWith('.update') ? 'PATCH' : 'POST'
 }
@@ -68,6 +77,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   const selectedOperation = ref<PendingSalesOperation | null>(null)
   const needsReconciliation = ref(false)
   const revisionConflict = ref<{ area: ErpSalesArea, id: number, latestRevision: number } | null>(null)
+  const consumedOperationConflict = ref<{ operation: string, area: ErpSalesArea, id: number, status: 'converted' | 'posted' } | null>(null)
   const canRetryExact = ref(false)
   const resolvedOperation = ref<{ key: string, operation: string, outcome: unknown } | null>(null)
   const completedDetailRefresh = ref<Array<{ area: ErpSalesArea, id: number }>>([])
@@ -161,6 +171,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     selectedOperation.value = null
     needsReconciliation.value = false
     revisionConflict.value = null
+    consumedOperationConflict.value = null
     canRetryExact.value = false
     resolvedOperation.value = null
     authorityGeneration.value++
@@ -437,6 +448,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     fieldErrors.value = {}
     canRetryExact.value = false
     resolvedOperation.value = null
+    consumedOperationConflict.value = null
     if (mutating.value) return null
     if (!allowed(action)) {
       mutationError.value = 'Seu acesso não permite esta operação.'
@@ -503,6 +515,40 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
         } else {
           needsReconciliation.value = true
           mutationError.value = 'A revisão mudou. Consulte a versão atual autorizada antes de continuar.'
+        }
+      } else if (status === 409 && consumedOperationConflicts[action] && message(error, '') === consumedOperationConflicts[action]!.message) {
+        const conflict = consumedOperationConflicts[action]!
+        const sourceArea = areaOf(path)
+        const id = Number(path.match(/\/(\d+)(?:\/|$)/)?.[1])
+        const showAction = showActions[sourceArea]
+        if (Number.isSafeInteger(id) && id > 0 && allowed(showAction) && intent === operationIntentSequence.value) {
+          needsReconciliation.value = true
+          mutationError.value = 'A resposta recusou a operação; confirme o estado atual autorizado antes de continuar.'
+          const latest = await inspect(sourceArea, id, intent)
+          if (!operationCurrent(token, generation, sequence)) return null
+          if (intent !== operationIntentSequence.value) {
+            mutationError.value = 'O detalhe consultado perdeu a seleção atual. A operação original continua pendente para conferência.'
+            return null
+          }
+          const confirmedStatus = latest?.status === 'converted' || latest?.status === 'posted' ? latest.status : null
+          if (confirmedStatus && conflict.statuses.some(status => status === confirmedStatus)) {
+            if (storePending(null)) {
+              needsReconciliation.value = false
+              canRetryExact.value = false
+              revisionConflict.value = null
+              consumedOperationConflict.value = { operation: action, area: sourceArea, id, status: confirmedStatus }
+              mutationError.value = conflict.notice
+            } else {
+              needsReconciliation.value = true
+              mutationError.value = 'O servidor confirmou que o documento foi consumido, mas não foi possível limpar a operação local. Consulte a operação original antes de continuar.'
+            }
+          } else {
+            needsReconciliation.value = true
+            mutationError.value = 'O documento pode ter sido consumido, mas o detalhe autorizado não confirmou o estado esperado. Consulte a operação original antes de continuar.'
+          }
+        } else {
+          needsReconciliation.value = true
+          mutationError.value = 'O documento pode ter sido consumido. Consulte a operação original antes de continuar.'
         }
       } else if (status === 401 || status === 403) {
         await handleDenial(action, error, token)
@@ -624,7 +670,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   return {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
     references, referenceLoading, referenceError, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
-    mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, canRetryExact, resolvedOperation, authorityGeneration, operationIntentSequence,
+    mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, operationIntentSequence,
     completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,
     allowed, canRead, load, loadReferences, selectArea, setPage, setStatus, refreshArea, inspect, closeSelected, saveDraft, convertQuote,
     convertOrder, postSale, storeReturn, postReturn, reconcile, retryExact, loadReceipt, claimIntent

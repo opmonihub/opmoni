@@ -107,7 +107,7 @@ export interface ErpFinanceReceipt {
 }
 
 export type ErpCommercialKind = 'quote' | 'order' | 'sale'
-export type ErpCommercialStatus = 'draft' | 'confirmed' | 'posted'
+export type ErpCommercialStatus = 'draft' | 'confirmed' | 'converted' | 'posted'
 
 export interface ErpCommercialLine {
   id?: number
