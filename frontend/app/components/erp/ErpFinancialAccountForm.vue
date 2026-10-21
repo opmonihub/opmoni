@@ -19,14 +19,7 @@ defineExpose({ state, submit })
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-muted bg-elevated p-4" data-finance-form="account">
-    <div>
-      <h2 class="font-semibold text-highlighted">
-        Nova conta financeira
-      </h2><p class="text-sm text-muted">
-        A conta pertence à empresa ERP selecionada.
-      </p>
-    </div>
+  <section class="space-y-4" data-finance-form="account">
     <UAlert
       v-if="localError"
       color="error"

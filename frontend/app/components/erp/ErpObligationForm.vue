@@ -33,14 +33,10 @@ defineExpose({ state, submit })
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-muted bg-elevated p-4" data-finance-form="obligation">
-    <div>
-      <h2 class="font-semibold text-highlighted">
-        Nova obrigação
-      </h2><p class="text-sm text-muted">
-        Lançamento manual sem cobrança automática ou movimento bancário.
-      </p>
-    </div>
+  <section class="space-y-4" data-finance-form="obligation">
+    <p class="text-sm text-muted">
+      Lançamento manual sem cobrança automática ou movimento bancário.
+    </p>
     <UAlert
       v-if="localError"
       color="error"

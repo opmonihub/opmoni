@@ -31,11 +31,11 @@ const referenceConfig: Record<ReferenceKind, { path: string, action: ErpFinanceA
   cashSessions: { path: '/erp/cash-sessions', action: 'erp.cash-sessions.index', suffix: '&status=open' }
 }
 
-export function useErpFinanceWorkspace() {
+export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
-  const tab = ref<Tab>('obligations')
+  const tab = ref<Tab>(initialTab)
   const rows = ref<Row[]>([])
   const meta = ref<FinanceMeta | null>(null)
   const filters = reactive<FinanceFilter>({ page: 1, per_page: 15, erp_establishment_id: '', erp_financial_account_id: '', direction: '', status: '', currency: '', date_from: '', date_to: '' })
@@ -545,7 +545,17 @@ export function useErpFinanceWorkspace() {
       if (existing && (status === 403 || status === 404)) {
         needsReconciliation.value = true
         mutationError.value = 'A repetição foi recusada pela autorização ou pelo recurso atual. A operação original continua sem resultado confirmado; consulte-a antes de qualquer nova ação.'
-      } else if (status === 422 || status === 403 || status === 404) {
+      } else if (status === 403 || status === 404) {
+        const cleared = storePending(null)
+        needsReconciliation.value = !cleared
+        clearFinanceViews()
+        mutationError.value = errorMessage(error, 'A operação foi recusada. Revise os dados e tente novamente.')
+        if (!cleared) mutationError.value += ' A identificação local permanece guardada até o navegador permitir sua remoção.'
+      } else if (status === 401 || status === 409) {
+        clearFinanceViews()
+        mutationError.value = 'A autorização ou o contexto da empresa mudou. O resultado da operação ainda não foi confirmado; consulte a operação antes de tentar novamente.'
+        needsReconciliation.value = true
+      } else if (status === 422) {
         const cleared = storePending(null)
         needsReconciliation.value = !cleared
         mutationError.value = errorMessage(error, 'A operação foi recusada. Revise os dados e tente novamente.')

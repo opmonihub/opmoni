@@ -34,14 +34,10 @@ defineExpose({ state, submit, localError })
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-muted bg-elevated p-4" data-finance-form="payment">
-    <div>
-      <h2 class="font-semibold text-highlighted">
-        Novo pagamento
-      </h2><p class="text-sm text-muted">
-        Este registro não envia cobrança nem inicia transação bancária.
-      </p>
-    </div>
+  <section class="space-y-4" data-finance-form="payment">
+    <p class="text-sm text-muted">
+      Este registro não envia cobrança nem inicia transação bancária.
+    </p>
     <UAlert
       v-if="localError"
       color="error"

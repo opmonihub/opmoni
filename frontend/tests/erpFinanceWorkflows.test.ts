@@ -43,38 +43,86 @@ function setupForm(name: string) {
   return { emitted, exposed, stop: () => scope.stop() }
 }
 
-function compileSfc(name: string, imports: Record<string, unknown>) {
+function compileSfc(name: string, imports: Record<string, unknown>, bindings: Bindings = {}) {
   const file = new URL(`../app/components/erp/${name}.vue`, import.meta.url)
   const source = readFileSync(file, 'utf8')
   const { descriptor } = parse(source)
   const script = compileScript(descriptor, { id: name, inlineTemplate: true })
   return (compileModule(script.content, { 'vue': Vue, '#shared/utils/erpFinance': financeUtils, ...imports }, {
-    ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch
+    ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, ...bindings
   }).default as Vue.Component)
 }
 
-function mountFinanceWorkspace(finance: Record<string, unknown>) {
+function createFinanceRoute(hash = '') {
+  const route = Vue.reactive({ path: '/erp/financeiro', query: { filtro: 'preservado' }, hash })
+  const pushes: Record<string, unknown>[] = []
+  const replaces: Record<string, unknown>[] = []
+  function apply(location: Record<string, unknown>) {
+    if (typeof location.hash === 'string') route.hash = location.hash
+  }
+  const router = {
+    push(location: Record<string, unknown>) {
+      pushes.push(location)
+      apply(location)
+      return Promise.resolve()
+    },
+    replace(location: Record<string, unknown>) {
+      replaces.push(location)
+      apply(location)
+      return Promise.resolve()
+    }
+  }
+  const focusedSelectors: string[] = []
+  const document = {
+    querySelector(selector: string) {
+      focusedSelectors.push(selector)
+      return { focus() {} }
+    }
+  }
+  return { route, router, pushes, replaces, focusedSelectors, document }
+}
+
+function mountFinanceWorkspace(finance: Record<string, unknown>, navigation = createFinanceRoute()) {
   const components: Record<string, Vue.Component> = {}
   const modalOpenStates: boolean[] = []
+  const overlayProps = new Map<string, { props: Record<string, unknown>, attrs: Record<string, unknown> }>()
   for (const name of ['ErpFinancialAccountForm', 'ErpObligationForm', 'ErpPaymentForm'])
     components[name] = compileSfc(name, {})
-  components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: () => finance } })
-  components.ErpCatalogPageShell = { setup: (_props, context) => () => Vue.h('main', context.slots.default?.()) }
-  components.UButton = { inheritAttrs: false, props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'data-test-label': props.label }, props.label) }
+  const financeWithRouteTab = finance as { tab?: Vue.Ref<string> }
+  if (financeWithRouteTab.tab) {
+    const initialArea = navigation.route.hash.replace(/^#/, '')
+    financeWithRouteTab.tab.value = ['accounts', 'obligations', 'payments'].includes(initialArea) ? initialArea : 'obligations'
+  }
+  components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: () => finance } }, {
+    useRoute: () => navigation.route,
+    useRouter: () => navigation.router,
+    onMounted: Vue.onMounted,
+    document: navigation.document
+  })
+  components.ErpCatalogPageShell = { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) }
+  components.UButton = { inheritAttrs: false, props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'data-test-label': props.label ?? context.attrs['aria-label'] }, [props.label, context.slots.default?.()]) }
   components.UTable = { props: ['data'], setup: (props, context) => () => Vue.h('div', {}, [
     ...(props.data as ErpPayment[]).map(original => Vue.h('div', {}, [
       ...(context.slots['id-cell']?.({ row: { original } }) ?? []),
+      ...(context.slots['account_type-cell']?.({ row: { original } }) ?? []),
+      ...(context.slots['status-cell']?.({ row: { original } }) ?? []),
+      ...(context.slots['effective_status-cell']?.({ row: { original } }) ?? []),
       ...(context.slots['actions-cell']?.({ row: { original } }) ?? [])
     ])),
     ...(context.slots.empty?.() ?? [])
   ]) }
-  components.UModal = { props: ['open'], setup: (props, context) => {
+  components.UModal = { props: ['open', 'title', 'unmountOnHide'], setup: (props, context) => {
     const index = modalOpenStates.length
     modalOpenStates.push(Boolean(props.open))
+    overlayProps.set(String(props.title ?? ''), { props: props as unknown as Record<string, unknown>, attrs: context.attrs })
     Vue.watch(() => props.open, (value) => {
       modalOpenStates[index] = Boolean(value)
     })
-    return () => props.open ? Vue.h('div', {}, [context.slots.body?.(), context.slots.footer?.({ close: () => context.emit('update:open', false) })]) : null
+    return () => {
+      const visible = Boolean(props.open)
+      if (!visible && props.unmountOnHide !== false) return null
+      return Vue.h('div', { 'data-test-overlay': props.title, 'style': { display: visible ? '' : 'none' } }, [context.slots.body?.(), context.slots.footer?.({ close: () => context.emit('update:open', false) })])
+    }
   } }
   for (const name of ['UAlert', 'UForm', 'UFormField', 'UInput', 'USelect', 'UTextarea', 'UBadge', 'USkeleton', 'UEmpty', 'UPagination'])
     components[name] = { inheritAttrs: false, setup: (_props, context) => () => Vue.h('div', context.attrs, context.slots.default?.()) }
@@ -129,11 +177,13 @@ function mountFinanceWorkspace(finance: Record<string, unknown>) {
     return found
   }
   function button(label: string) {
-    const visit = (node: { tag?: string, props?: Record<string, unknown>, children?: unknown[] }): { props: Record<string, unknown> } | null => {
+    const visit = (node: { tag?: string, props?: Record<string, unknown>, children?: unknown[] }, hidden = false): { props: Record<string, unknown> } | null => {
+      const style = node.props?.style as { display?: string } | undefined
+      if (hidden || style?.display === 'none') return null
       if (node.props?.['data-test-label'] === label) return { props: node.props }
       for (const child of node.children ?? []) {
         if (child && typeof child === 'object') {
-          const result = visit(child as { tag?: string, props?: Record<string, unknown>, children?: unknown[] })
+          const result = visit(child as { tag?: string, props?: Record<string, unknown>, children?: unknown[] }, hidden)
           if (result) return result
         }
       }
@@ -145,14 +195,16 @@ function mountFinanceWorkspace(finance: Record<string, unknown>) {
   }
   function control(predicate: (props: Record<string, unknown>) => boolean, last = false) {
     let matched: Record<string, unknown> | null = null
-    const visit = (node: { tag?: string, props?: Record<string, unknown>, children?: unknown[] }): Record<string, unknown> | null => {
+    const visit = (node: { tag?: string, props?: Record<string, unknown>, children?: unknown[] }, hidden = false): Record<string, unknown> | null => {
+      const style = node.props?.style as { display?: string } | undefined
+      if (hidden || style?.display === 'none') return null
       if (node.props && predicate(node.props)) {
         matched = node.props
         if (!last) return matched
       }
       for (const child of node.children ?? []) {
         if (child && typeof child === 'object') {
-          const result = visit(child as { tag?: string, props?: Record<string, unknown>, children?: unknown[] })
+          const result = visit(child as { tag?: string, props?: Record<string, unknown>, children?: unknown[] }, hidden)
           if (result && !last) return result
         }
       }
@@ -166,7 +218,17 @@ function mountFinanceWorkspace(finance: Record<string, unknown>) {
     const visit = (node: { text?: string, children?: unknown[] }): boolean => Boolean(node.text?.includes(value)) || (node.children ?? []).some(child => child && typeof child === 'object' && visit(child as { text?: string, children?: unknown[] }))
     return root.children.some(child => child && typeof child === 'object' && visit(child as { text?: string, children?: unknown[] }))
   }
-  return { exposed, button, control, hasText, modalOpenStates, unmount: () => app.unmount() }
+  function overlay(title: string) {
+    const overlay = overlayProps.get(title)
+    assert.ok(overlay, `overlay ${title} should be mounted`)
+    const props = new Proxy(overlay.props, {
+      get(target, key) {
+        return key in overlay.attrs ? overlay.attrs[key as string] : target[key as string]
+      }
+    })
+    return { props }
+  }
+  return { exposed, button, control, hasText, overlay, modalOpenStates, navigation, unmount: () => app.unmount() }
 }
 
 const emptyMeta = { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] as ErpFinanceTotals[] }
@@ -348,6 +410,208 @@ describe('finance permission family matching', () => {
 })
 
 describe('finance workspace', { concurrency: 1 }, () => {
+  it('offers an explicit list-first create action for the selected finance area', async (t) => {
+    const app = createWorkspace(async () => page([]))
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    assert.equal(mounted.hasText('0 registros no resultado filtrado'), false)
+    app.mount()
+    await settle()
+
+    assert.ok(mounted.button('Nova obrigação'))
+    assert.equal(mounted.hasText('Ir para nova obrigação'), false)
+    assert.equal(mounted.overlay('Nova obrigação').props.open, false)
+  })
+
+  it('retains create drafts across close and area changes while focusing the editor and returning to its opener', async (t) => {
+    const app = createWorkspace(async () => page([]))
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+
+    let restoredFocus = 0
+    const opener = {
+      isConnected: true,
+      focus() {
+        restoredFocus++
+      }
+    }
+    mounted.button('Nova obrigação').onClick?.({ currentTarget: opener })
+    await settle()
+    const overlay = mounted.overlay('Nova obrigação')
+    assert.equal(overlay.props.open, true)
+    assert.equal(overlay.props.unmountOnHide, false)
+    const onEnter = overlay.props['onAfter:enter'] as (() => void) | undefined
+    onEnter?.()
+    assert.ok(mounted.navigation.focusedSelectors.some(selector => selector.includes('data-finance-form="obligation"')))
+
+    const draft = mounted.exposed('ErpObligationForm').state as Record<string, string>
+    Object.assign(draft, { category: 'frete', amount: '51.2300' })
+    mounted.button('Cancelar').onClick?.()
+    await settle()
+    const onLeave = overlay.props['onAfter:leave'] as (() => void) | undefined
+    onLeave?.()
+    assert.equal(overlay.props.open, false)
+    assert.equal(restoredFocus, 1)
+    assert.equal(draft.amount, '51.2300')
+
+    mounted.button('Pagamentos').onClick?.()
+    await settle()
+    mounted.button('Obrigações').onClick?.()
+    await settle()
+    mounted.button('Nova obrigação').onClick?.({ currentTarget: opener })
+    await settle()
+    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '51.2300')
+
+    app.company.value = { ...app.company.value, id: 8 }
+    await settle()
+    assert.equal(mounted.overlay('Nova obrigação').props.open, false)
+    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '')
+  })
+
+  it('uses the validated Finance hash for initial load and browser history without duplicate requests', async (t) => {
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      return page([])
+    })
+    t.after(app.stop)
+    const navigation = createFinanceRoute('#payments')
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>, navigation)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'payments')
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 1)
+    assert.equal(navigation.replaces.length, 0)
+
+    mounted.button('Obrigações').onClick?.()
+    await settle()
+    assert.equal(navigation.route.hash, '#obligations')
+    assert.equal(navigation.pushes.length, 1)
+    assert.equal(calls.filter(path => path.startsWith('/erp/obligations?')).length, 1)
+    navigation.route.hash = '#payments'
+    await settle()
+    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'payments')
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 2)
+    mounted.button('Pagamentos').onClick?.()
+    await settle()
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 2)
+  })
+
+  it('normalizes an invalid initial Finance hash without issuing a duplicate list read', async (t) => {
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      return page([])
+    })
+    t.after(app.stop)
+    const navigation = createFinanceRoute('#not-a-finance-area')
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>, navigation)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'obligations')
+    assert.equal(navigation.route.hash, '#obligations')
+    assert.equal(navigation.replaces.length, 1)
+    assert.equal(calls.filter(path => path.startsWith('/erp/obligations?')).length, 1)
+  })
+
+  it('translates known Finance enum values and labels unknown values safely', async (t) => {
+    const account = { id: 7, name: 'Banco', account_type: 'saving_current', status: 'active', currency: 'BRL', erp_establishment_id: null }
+    const unknown = { ...account, id: 8, account_type: 'wallet_type_x', status: 'pending_review' }
+    const app = createWorkspace(async () => page([account, unknown]))
+    t.after(app.stop)
+    const navigation = createFinanceRoute('#accounts')
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>, navigation)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    assert.equal(mounted.hasText('Conta corrente ou poupança'), true)
+    assert.equal(mounted.hasText('Ativa'), true)
+    assert.equal(mounted.hasText('Desconhecido (wallet_type_x)'), true)
+    assert.equal(mounted.hasText('Desconhecido (pending_review)'), true)
+  })
+
+  it('keeps a create editor open after 422 with its exact draft and errors', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 422, data: { message: 'Confira o valor.', errors: { amount: ['Valor incompatível.'] } } }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Nova obrigação').onClick?.()
+    await settle()
+    const form = mounted.exposed('ErpObligationForm')
+    const draft = form.state as Record<string, string>
+    Object.assign(draft, { category: 'servico', amount: '9007199254740993.1200' })
+    ;(form.submit as () => void)()
+    const state = app.state as { fieldErrors: Vue.Ref<Record<string, string>>, mutating: Vue.Ref<boolean> }
+    await settleUntil(() => !state.mutating.value)
+    assert.equal(mounted.overlay('Nova obrigação').props.open, true)
+    assert.equal(draft.amount, '9007199254740993.1200')
+    assert.equal(state.fieldErrors.value.amount, 'Valor incompatível.')
+  })
+
+  it('closes a create editor only after the server confirms the write', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') return { data: { id: 91 } }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Nova obrigação').onClick?.()
+    await settle()
+    const overlay = mounted.overlay('Nova obrigação')
+    assert.equal(overlay.props.open, true)
+    const form = mounted.exposed('ErpObligationForm')
+    Object.assign(form.state as Record<string, string>, { category: 'servico', amount: '90.0000' })
+    ;(form.submit as () => void)()
+    const state = app.state as { mutating: Vue.Ref<boolean> }
+    await settleUntil(() => !state.mutating.value)
+    assert.equal(overlay.props.open, false)
+  })
+
+  it('clears the private create draft after definitive permission invalidation', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 403, data: { message: 'A operação não está autorizada.' } }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Nova obrigação').onClick?.()
+    await settle()
+    const form = mounted.exposed('ErpObligationForm')
+    const draft = form.state as Record<string, string>
+    Object.assign(draft, { category: 'servico', amount: '90.0000' })
+    const before = (app.state as { authorityGeneration: Vue.Ref<number> }).authorityGeneration.value
+    ;(form.submit as () => void)()
+    const state = app.state as { mutating: Vue.Ref<boolean>, mutationError: Vue.Ref<string> }
+    await settleUntil(() => !state.mutating.value)
+    assert.equal((app.state as { authorityGeneration: Vue.Ref<number> }).authorityGeneration.value, before + 1)
+    assert.equal(mounted.overlay('Nova obrigação').props.open, false)
+    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '')
+    assert.match(state.mutationError.value, /não está autorizada/)
+  })
+
   it('keeps finance blocked when a superseded committed identity refresh returns stale grants after a newer refresh fails', async (t) => {
     const olderMe = deferred<unknown>()
     let meCalls = 0

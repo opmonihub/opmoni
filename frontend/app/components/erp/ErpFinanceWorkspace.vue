@@ -5,7 +5,33 @@ import { formatErpMoney, decimalTextIsValid } from '#shared/utils/erpFinance'
 import { useErpFinanceWorkspace } from '~/composables/useErpFinanceWorkspace'
 
 type FinanceRow = ErpFinancialAccount | ErpObligation | ErpPayment
-const finance = useErpFinanceWorkspace()
+type FinanceTab = 'accounts' | 'obligations' | 'payments'
+type CreateEditor = FinanceTab
+const financeTabs: { id: FinanceTab, label: string }[] = [
+  { id: 'accounts', label: 'Contas' },
+  { id: 'obligations', label: 'Obrigações' },
+  { id: 'payments', label: 'Pagamentos' }
+]
+const createActions: Record<CreateEditor, string> = {
+  accounts: 'erp.financial-accounts.store',
+  obligations: 'erp.obligations.store',
+  payments: 'erp.payments.store'
+}
+const createPaths: Record<CreateEditor, string> = {
+  accounts: '/erp/financial-accounts',
+  obligations: '/erp/obligations',
+  payments: '/erp/payments'
+}
+const createAreas: Record<CreateEditor, FinanceTab> = { accounts: 'accounts', obligations: 'obligations', payments: 'payments' }
+const route = useRoute()
+const router = useRouter()
+function areaFromHash(hash: string): FinanceTab {
+  const candidate = hash.replace(/^#/, '')
+  return financeTabs.some(tab => tab.id === candidate) ? candidate as FinanceTab : 'obligations'
+}
+const finance = useErpFinanceWorkspace(areaFromHash(route.hash))
+const createEditor = ref<CreateEditor | null>(null)
+const createEditorOpener = ref<HTMLElement | null>(null)
 const dialogOpen = ref(false)
 const dialogAuthority = ref('')
 const dialogOpenModel = computed({
@@ -32,6 +58,11 @@ const selectedPayment = computed(() => finance.selected.value && 'effective_stat
 const selectedObligation = computed(() => finance.selected.value && 'open_amount' in finance.selected.value ? finance.selected.value : null)
 const selectedAccount = computed(() => finance.selected.value && 'account_type' in finance.selected.value ? finance.selected.value : null)
 const titles = { accounts: 'Contas financeiras', obligations: 'Obrigações', payments: 'Pagamentos' }
+const createTitles: Record<CreateEditor, string> = { accounts: 'Nova conta financeira', obligations: 'Nova obrigação', payments: 'Novo pagamento' }
+const createButtonLabels: Record<CreateEditor, string> = { accounts: 'Nova conta', obligations: 'Nova obrigação', payments: 'Novo pagamento' }
+const accountTypeLabels: Record<string, string> = { saving_current: 'Conta corrente ou poupança', cash: 'Caixa', investment: 'Investimento', other: 'Outro' }
+const financeStatusLabels: Record<string, string> = { active: 'Ativa', archived: 'Arquivada', open: 'Em aberto', settled: 'Liquidada', reversed: 'Estornada', posted: 'Postado', compensation: 'Compensação' }
+const paymentMethodLabels: Record<string, string> = { bank_transfer: 'Transferência', card: 'Cartão', cash: 'Dinheiro', other: 'Outro' }
 const directionFilter = computed({ get: () => finance.filters.direction || 'all', set: (value: string) => finance.filters.direction = value === 'all' ? '' : value })
 const statusFilter = computed({ get: () => finance.filters.status || 'all', set: (value: string) => finance.filters.status = value === 'all' ? '' : value })
 const establishmentFilter = computed({ get: () => finance.filters.erp_establishment_id || 'all', set: (value: string) => finance.filters.erp_establishment_id = value === 'all' ? '' : value })
@@ -50,6 +81,70 @@ const columns = computed<TableColumn<FinanceRow>[]>(() => finance.tab.value === 
     ? [{ accessorKey: 'id', header: 'Registro' }, { accessorKey: 'direction', header: 'Natureza' }, { accessorKey: 'category', header: 'Categoria' }, { accessorKey: 'amount', header: 'Valor original' }, { accessorKey: 'open_amount', header: 'Em aberto' }, { accessorKey: 'due_on', header: 'Vencimento' }, { accessorKey: 'status', header: 'Situação' }, { id: 'actions' }]
     : [{ accessorKey: 'id', header: 'Registro' }, { accessorKey: 'direction', header: 'Direção' }, { accessorKey: 'amount', header: 'Valor' }, { accessorKey: 'allocated_amount', header: 'Alocado' }, { accessorKey: 'available_amount', header: 'Disponível' }, { accessorKey: 'effective_status', header: 'Situação efetiva' }, { id: 'actions' }])
 const pageTitle = computed(() => titles[finance.tab.value])
+const newActionLabel = computed(() => createButtonLabels[finance.tab.value])
+function labelFor(value: string, labels: Record<string, string>) {
+  return labels[value] ?? `Desconhecido (${value || 'não informado'})`
+}
+function selectArea(next: FinanceTab) {
+  if (finance.tab.value === next) return
+  void router.push({ path: route.path, query: route.query, hash: `#${next}` })
+}
+watch(() => route.hash, (hash) => {
+  const next = areaFromHash(hash)
+  const canonicalHash = `#${next}`
+  if (hash !== canonicalHash) {
+    void router.replace({ path: route.path, query: route.query, hash: canonicalHash })
+    return
+  }
+  if (finance.tab.value !== next)
+    void finance.selectTab(next)
+}, { flush: 'sync' })
+onMounted(() => {
+  const canonicalHash = `#${finance.tab.value}`
+  if (route.hash !== canonicalHash)
+    void router.replace({ path: route.path, query: route.query, hash: canonicalHash })
+})
+function openCreateEditor(kind: CreateEditor, event?: MouseEvent) {
+  if (!finance.allowed(createActions[kind])) return
+  createEditorOpener.value = (event?.currentTarget as HTMLElement | null) ?? null
+  createEditor.value = kind
+}
+function closeCreateEditor(kind?: CreateEditor) {
+  if (kind && createEditor.value !== kind) return
+  createEditor.value = null
+}
+function setCreateEditorOpen(kind: CreateEditor, open: boolean) {
+  if (open) openCreateEditor(kind)
+  else closeCreateEditor(kind)
+}
+function focusCreateEditor() {
+  const kind = createEditor.value
+  if (!kind) return
+  document.querySelector<HTMLElement>(`[data-finance-form="${kind === 'accounts' ? 'account' : kind === 'obligations' ? 'obligation' : 'payment'}"] input`)?.focus()
+}
+function restoreCreateEditorFocus() {
+  const opener = createEditorOpener.value
+  if (opener?.isConnected) opener.focus()
+  createEditorOpener.value = null
+}
+async function submitCreate(kind: CreateEditor, payload: Record<string, unknown>) {
+  const result = await finance.post(createPaths[kind], payload)
+  if (result !== null) closeCreateEditor(kind)
+}
+watch(finance.tab, (tab) => {
+  if (createEditor.value && createAreas[createEditor.value] !== tab)
+    closeCreateEditor()
+})
+watch(finance.authorityGeneration, () => {
+  closeCreateEditor()
+  createEditorOpener.value = null
+})
+watch(() => createEditor.value && finance.allowed(createActions[createEditor.value]), (allowed) => {
+  if (createEditor.value && !allowed) {
+    closeCreateEditor()
+    createEditorOpener.value = null
+  }
+}, { flush: 'sync' })
 function money(value: string | undefined, currency: string | undefined) {
   return value && currency ? formatErpMoney(value, currency) : '—'
 }
@@ -72,9 +167,6 @@ function rowAllocatedAmount(row: FinanceRow) {
 }
 function rowAvailableAmount(row: FinanceRow) {
   return 'available_amount' in row ? row.available_amount : undefined
-}
-function scrollToForm(kind: string) {
-  document.querySelector(`[data-finance-form="${kind}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
 }
 function clearActionTarget() {
   if (action.value === 'allocate') finance.closeCandidates()
@@ -220,47 +312,49 @@ function downloadReceipt() {
 
 <template>
   <ErpCatalogPageShell title="Financeiro" description="Obrigações, pagamentos e contas da empresa, com histórico e saldos conciliáveis.">
-    <div class="space-y-5" data-erp-finance-workspace>
-      <nav class="flex flex-wrap gap-2 border-b border-muted pb-3" aria-label="Áreas financeiras" role="tablist">
+    <template #actions>
+      <UButton
+        v-if="finance.allowed(createActions[finance.tab.value])"
+        icon="i-lucide-plus"
+        :aria-label="newActionLabel"
+        class="shrink-0"
+        @click="openCreateEditor(finance.tab.value, $event)"
+      >
+        <span class="hidden sm:inline">{{ newActionLabel }}</span>
+      </UButton>
+    </template>
+    <template #toolbar>
+      <nav class="flex flex-wrap gap-2" aria-label="Áreas financeiras" role="tablist">
         <UButton
-          v-for="item in [{ id: 'accounts', label: 'Contas' }, { id: 'obligations', label: 'Obrigações' }, { id: 'payments', label: 'Pagamentos' }]"
+          v-for="item in financeTabs"
           :key="item.id"
           :label="item.label"
           :color="finance.tab.value === item.id ? 'primary' : 'neutral'"
           :variant="finance.tab.value === item.id ? 'soft' : 'ghost'"
           role="tab"
           :aria-selected="finance.tab.value === item.id"
-          @click="finance.selectTab(item.id as 'accounts' | 'obligations' | 'payments')"
+          @click="selectArea(item.id)"
         />
       </nav>
-
+    </template>
+    <div class="space-y-5" data-erp-finance-workspace>
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold text-highlighted">
             {{ pageTitle }}
           </h2><p class="text-sm text-muted">
-            {{ finance.meta.value?.total ?? 0 }} registros no resultado filtrado
+            <template v-if="finance.meta.value">
+              {{ finance.meta.value.total }} registros no resultado filtrado
+            </template>
+            <template v-else-if="finance.loading.value">
+              Carregando registros…
+            </template>
+            <template v-else-if="finance.pageError.value">
+              Resultado indisponível
+            </template>
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <UButton
-            v-if="finance.tab.value === 'accounts' && finance.allowed('erp.financial-accounts.store')"
-            label="Ir para nova conta"
-            icon="i-lucide-plus"
-            @click="scrollToForm('account')"
-          />
-          <UButton
-            v-else-if="finance.tab.value === 'obligations' && finance.allowed('erp.obligations.store')"
-            label="Ir para nova obrigação"
-            icon="i-lucide-plus"
-            @click="scrollToForm('obligation')"
-          />
-          <UButton
-            v-else-if="finance.tab.value === 'payments' && finance.allowed('erp.payments.store')"
-            label="Ir para novo pagamento"
-            icon="i-lucide-plus"
-            @click="scrollToForm('payment')"
-          />
           <UButton
             color="neutral"
             variant="outline"
@@ -271,37 +365,6 @@ function downloadReceipt() {
           />
         </div>
       </div>
-
-      <ErpFinancialAccountForm
-        v-if="finance.allowed('erp.financial-accounts.store')"
-        :key="`account-${finance.authorityGeneration.value}`"
-        :style="{ display: finance.tab.value === 'accounts' ? '' : 'none' }"
-        :busy="finance.mutating.value"
-        :errors="finance.fieldErrors.value"
-        :establishments="finance.establishments.value"
-        @submit="payload => finance.post('/erp/financial-accounts', payload)"
-      />
-      <ErpObligationForm
-        v-if="finance.allowed('erp.obligations.store')"
-        :key="`obligation-${finance.authorityGeneration.value}`"
-        :style="{ display: finance.tab.value === 'obligations' ? '' : 'none' }"
-        :busy="finance.mutating.value"
-        :errors="finance.fieldErrors.value"
-        :establishments="finance.establishments.value"
-        :accounts="finance.accountOptions.value"
-        @submit="payload => finance.post('/erp/obligations', payload)"
-      />
-      <ErpPaymentForm
-        v-if="finance.allowed('erp.payments.store')"
-        :key="`payment-${finance.authorityGeneration.value}`"
-        :style="{ display: finance.tab.value === 'payments' ? '' : 'none' }"
-        :busy="finance.mutating.value"
-        :errors="finance.fieldErrors.value"
-        :establishments="finance.establishments.value"
-        :accounts="finance.accountOptions.value"
-        :sessions="finance.cashSessions.value"
-        @submit="payload => finance.post('/erp/payments', payload)"
-      />
 
       <section class="flex flex-wrap items-end gap-3" aria-label="Filtros dos lançamentos">
         <UFormField label="Situação" name="status">
@@ -440,6 +503,15 @@ function downloadReceipt() {
           <template #direction-cell="{ row }">
             <span>{{ rowDirection(row.original) }}</span>
           </template>
+          <template #account_type-cell="{ row }">
+            <span>{{ labelFor(row.original.account_type, accountTypeLabels) }}</span>
+          </template>
+          <template #status-cell="{ row }">
+            <span>{{ labelFor(row.original.status, financeStatusLabels) }}</span>
+          </template>
+          <template #effective_status-cell="{ row }">
+            <span>{{ labelFor(row.original.effective_status, financeStatusLabels) }}</span>
+          </template>
           <template #amount-cell="{ row }">
             {{ money(rowAmount(row.original), row.original.currency) }}
           </template>
@@ -489,7 +561,7 @@ function downloadReceipt() {
             </div>
           </template>
           <template #empty>
-            <div class="p-8 text-center text-sm text-muted">
+            <div v-if="finance.meta.value" class="p-8 text-center text-sm text-muted">
               Nenhum registro corresponde aos filtros. Ajuste a busca ou crie um lançamento.
             </div>
           </template>
@@ -511,7 +583,7 @@ function downloadReceipt() {
             <h2 class="text-lg font-semibold text-highlighted">
               Pagamento #{{ selectedPayment.id }}
             </h2><p class="text-sm text-muted">
-              {{ selectedPayment.direction ? (selectedPayment.direction === 'in' ? 'Entrada' : 'Saída') : 'Direção desconhecida · exige conciliação' }} · {{ selectedPayment.effective_status }} · {{ money(selectedPayment.amount, selectedPayment.currency) }}
+              {{ selectedPayment.direction ? (selectedPayment.direction === 'in' ? 'Entrada' : 'Saída') : 'Direção desconhecida · exige conciliação' }} · {{ labelFor(selectedPayment.effective_status, financeStatusLabels) }} · {{ money(selectedPayment.amount, selectedPayment.currency) }}
             </p>
           </div><UButton
             color="neutral"
@@ -560,7 +632,7 @@ function downloadReceipt() {
             <h2 class="text-lg font-semibold text-highlighted">
               Obrigação #{{ selectedObligation.id }}
             </h2><p class="text-sm text-muted">
-              {{ selectedObligation.direction === 'receivable' ? 'A receber' : 'A pagar' }} · {{ selectedObligation.status }} · {{ money(selectedObligation.amount, selectedObligation.currency) }}
+              {{ selectedObligation.direction === 'receivable' ? 'A receber' : 'A pagar' }} · {{ labelFor(selectedObligation.status, financeStatusLabels) }} · {{ money(selectedObligation.amount, selectedObligation.currency) }}
             </p>
           </div><UButton
             color="neutral"
@@ -596,7 +668,7 @@ function downloadReceipt() {
               {{ selectedAccount.name }}
             </h2>
             <p class="text-sm text-muted">
-              Conta financeira #{{ selectedAccount.id }} · {{ selectedAccount.account_type }} · {{ selectedAccount.status }}
+              Conta financeira #{{ selectedAccount.id }} · {{ labelFor(selectedAccount.account_type, accountTypeLabels) }} · {{ labelFor(selectedAccount.status, financeStatusLabels) }}
             </p>
           </div>
           <UButton
@@ -728,7 +800,7 @@ function downloadReceipt() {
               Valor
             </dt><dd>{{ money(finance.receipt.value.amount, finance.receipt.value.currency) }}</dd><dt class="text-muted">
               Método
-            </dt><dd>{{ finance.receipt.value.method }}</dd><dt class="text-muted">
+            </dt><dd>{{ labelFor(finance.receipt.value.method, paymentMethodLabels) }}</dd><dt class="text-muted">
               Postado em
             </dt><dd>{{ finance.receipt.value.posted_at ?? '—' }}</dd>
           </dl>
@@ -740,6 +812,102 @@ function downloadReceipt() {
             label="Fechar"
             @click="receiptOpen = false"
           /><UButton icon="i-lucide-download" label="Baixar JSON privado" @click="downloadReceipt" />
+        </template>
+      </UModal>
+
+      <UModal
+        :open="createEditor === 'accounts'"
+        :title="createTitles.accounts"
+        description="A conta pertence à empresa ERP selecionada."
+        :unmount-on-hide="false"
+        :ui="{ footer: 'justify-end' }"
+        @update:open="open => setCreateEditorOpen('accounts', open)"
+        @after:enter="focusCreateEditor"
+        @after:leave="restoreCreateEditorFocus"
+      >
+        <template #body>
+          <ErpFinancialAccountForm
+            v-if="finance.allowed('erp.financial-accounts.store')"
+            :key="`account-${finance.authorityGeneration.value}`"
+            :busy="finance.mutating.value"
+            :errors="finance.fieldErrors.value"
+            :establishments="finance.establishments.value"
+            @submit="payload => submitCreate('accounts', payload)"
+          />
+        </template>
+        <template #footer="{ close }">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Cancelar"
+            :disabled="finance.mutating.value"
+            @click="close"
+          />
+        </template>
+      </UModal>
+
+      <UModal
+        :open="createEditor === 'obligations'"
+        :title="createTitles.obligations"
+        description="Lançamento manual sem cobrança automática ou movimento bancário."
+        :unmount-on-hide="false"
+        :ui="{ footer: 'justify-end' }"
+        @update:open="open => setCreateEditorOpen('obligations', open)"
+        @after:enter="focusCreateEditor"
+        @after:leave="restoreCreateEditorFocus"
+      >
+        <template #body>
+          <ErpObligationForm
+            v-if="finance.allowed('erp.obligations.store')"
+            :key="`obligation-${finance.authorityGeneration.value}`"
+            :busy="finance.mutating.value"
+            :errors="finance.fieldErrors.value"
+            :establishments="finance.establishments.value"
+            :accounts="finance.accountOptions.value"
+            @submit="payload => submitCreate('obligations', payload)"
+          />
+        </template>
+        <template #footer="{ close }">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Cancelar"
+            :disabled="finance.mutating.value"
+            @click="close"
+          />
+        </template>
+      </UModal>
+
+      <UModal
+        :open="createEditor === 'payments'"
+        :title="createTitles.payments"
+        description="Este registro não envia cobrança nem inicia transação bancária."
+        :unmount-on-hide="false"
+        :ui="{ footer: 'justify-end' }"
+        @update:open="open => setCreateEditorOpen('payments', open)"
+        @after:enter="focusCreateEditor"
+        @after:leave="restoreCreateEditorFocus"
+      >
+        <template #body>
+          <ErpPaymentForm
+            v-if="finance.allowed('erp.payments.store')"
+            :key="`payment-${finance.authorityGeneration.value}`"
+            :busy="finance.mutating.value"
+            :errors="finance.fieldErrors.value"
+            :establishments="finance.establishments.value"
+            :accounts="finance.accountOptions.value"
+            :sessions="finance.cashSessions.value"
+            @submit="payload => submitCreate('payments', payload)"
+          />
+        </template>
+        <template #footer="{ close }">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Cancelar"
+            :disabled="finance.mutating.value"
+            @click="close"
+          />
         </template>
       </UModal>
     </div>
