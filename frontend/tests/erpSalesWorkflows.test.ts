@@ -148,7 +148,11 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
       })
     }
   })
-  const select = Vue.defineComponent({ inheritAttrs: false, props: { items: Array }, setup: props => () => Vue.h('div', (props.items ?? []).map((item: unknown) => Vue.h('span', null, (item as { label?: string }).label ?? ''))) })
+  const select = Vue.defineComponent({ inheritAttrs: false, props: { items: Array, modelValue: [String, Number] }, emits: ['update:modelValue'], setup: (props, context) => () => Vue.h('select', {
+    ...context.attrs,
+    value: props.modelValue,
+    onChange: (event: { target: { value: string } }) => context.emit('update:modelValue', event.target.value)
+  }, (props.items ?? []).map((item: unknown) => Vue.h('option', { value: (item as { value: unknown }).value }, (item as { label?: string }).label ?? ''))) })
   for (const name of ['UCheckbox', 'UBadge', 'UIcon', 'CompanyMenu', 'UserMenu', 'UDropdownMenu']) app.component(name, passthrough)
   app.component('USelect', select)
   app.component('UAlert', alert)
@@ -190,6 +194,64 @@ function installSessionStorage() {
 }
 
 describe('sales authority and mounted draft form', () => {
+  it('uses nonempty status options in every mounted area and clears API filters without sending the UI sentinel', async () => {
+    const storage = installSessionStorage()
+    const calls: string[] = []
+    const api = async (path: string) => {
+      calls.push(path)
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
+    }
+    const mounted = mountSalesWorkspace(api)
+    const scenarios = [
+      { label: 'Orçamentos', path: '/erp/quotes', statuses: ['draft', 'converted'] },
+      { label: 'Pedidos', path: '/erp/orders', statuses: ['confirmed', 'converted'] },
+      { label: 'Vendas / balcão', path: '/erp/sales', statuses: ['draft', 'posted'] },
+      { label: 'Devoluções', path: '/erp/sale-returns', statuses: ['draft', 'posted'] }
+    ]
+    function statusSelect() {
+      const node = mounted.walk(mounted.root).find(node => node.tag === 'select')
+      assert.ok(node, 'Expected the mounted status USelect')
+      return node
+    }
+    async function chooseStatus(value: string) {
+      const change = statusSelect().props.onChange as (event: { target: { value: string } }) => void
+      change({ target: { value } })
+      await Vue.nextTick()
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+    }
+    function latestListQuery(path: string) {
+      const request = calls.filter(call => call.startsWith(`${path}?`)).at(-1)
+      assert.ok(request, `Expected list request for ${path}`)
+      return new URL(request, 'http://localhost').searchParams
+    }
+    try {
+      for (const scenario of scenarios) {
+        await mounted.click(scenario.label)
+        const options = mounted.walk(statusSelect()).filter(node => node.tag === 'option')
+        assert.ok(options.every(option => typeof option.props.value === 'string' && option.props.value.length > 0), `${scenario.label} must never pass an empty item value to USelect`)
+        assert.deepEqual(options.map(option => option.props.value), ['all', ...scenario.statuses])
+        assert.equal(statusSelect().props.value, 'all')
+        assert.equal(latestListQuery(scenario.path).has('status'), false)
+        for (const status of scenario.statuses) {
+          const beforeChange = calls.length
+          await chooseStatus(status)
+          assert.ok(calls.length > beforeChange, 'Changing the mounted select must load the list')
+          assert.equal(statusSelect().props.value, status)
+          assert.equal(latestListQuery(scenario.path).get('status'), status)
+          await chooseStatus('all')
+          assert.equal(statusSelect().props.value, 'all')
+          assert.equal((mounted.state.filters as { status: string }).status, '')
+          assert.equal(latestListQuery(scenario.path).has('status'), false)
+        }
+      }
+      assert.equal(calls.some(path => new URL(path, 'http://localhost').searchParams.get('status') === 'all'), false)
+    } finally {
+      mounted.dispose()
+      storage.restore()
+    }
+  })
+
   it('requires the exact sales action and blocks viewer writes', () => {
     assert.equal(erpSalesActionAllowed(['erp.quotes.index'], 'manager', 'erp.quotes.index'), true)
     assert.equal(erpSalesActionAllowed(['erp.sales.*'], 'manager', 'erp.sales.post'), true)

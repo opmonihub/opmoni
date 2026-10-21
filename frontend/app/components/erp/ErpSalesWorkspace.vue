@@ -52,10 +52,10 @@ const modalTitle = computed(() => {
   return 'Detalhes do documento'
 })
 const statusItems = computed(() => {
-  if (sales.area.value === 'quotes') return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Convertidos', value: 'converted' }]
-  if (sales.area.value === 'orders') return [{ label: 'Todas', value: '' }, { label: 'Confirmados', value: 'confirmed' }, { label: 'Convertidos', value: 'converted' }]
-  if (sales.area.value === 'returns') return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
-  return [{ label: 'Todas', value: '' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
+  if (sales.area.value === 'quotes') return [{ label: 'Todas', value: 'all' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Convertidos', value: 'converted' }]
+  if (sales.area.value === 'orders') return [{ label: 'Todas', value: 'all' }, { label: 'Confirmados', value: 'confirmed' }, { label: 'Convertidos', value: 'converted' }]
+  if (sales.area.value === 'returns') return [{ label: 'Todas', value: 'all' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
+  return [{ label: 'Todas', value: 'all' }, { label: 'Rascunhos', value: 'draft' }, { label: 'Lançadas', value: 'posted' }]
 })
 const newAllowed = computed(() => {
   const actions: Record<ErpSalesArea, string> = { quotes: 'erp.quotes.store', orders: 'erp.orders.store', sales: 'erp.sales.store', returns: 'erp.sale-returns.store' }
@@ -580,10 +580,10 @@ onMounted(() => {
         <div class="flex w-full min-w-0 flex-wrap items-end gap-3">
           <UFormField label="Situação" class="w-full min-w-0 sm:w-52">
             <USelect
-              :model-value="sales.filters.status"
+              :model-value="sales.filters.status || 'all'"
               :items="statusItems"
               class="w-full"
-              @update:model-value="sales.setStatus(String($event ?? ''))"
+              @update:model-value="sales.setStatus($event === 'all' ? '' : String($event ?? ''))"
             />
           </UFormField>
           <UButton
