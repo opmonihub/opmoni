@@ -608,6 +608,117 @@ describe('purchase decimal and source helpers', () => {
     workspace.stop()
   })
 
+  for (const operation of ['create', 'post', 'lookup', 'retryExact'] as const) {
+    for (const phase of ['operation', 'list', 'source', 'return', 'newer-return', 'normal'] as const) {
+      it(`preserves selection ownership through ${operation} return continuation at ${phase}`, async (t) => {
+        const session = installSessionStorage()
+        t.after(() => session.restore())
+        const original = {
+          id: 41, erp_establishment_id: 3, erp_contact_id: 8, status: 'posted', currency: 'BRL', total_amount: '30.0000', draft_revision: null,
+          supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [],
+          returnability: { needs_reconciliation: false, reconciliation_reason: null },
+          returnable_lines: [{ source_line_id: 51, quantity: '3.0000', returned_quantity: '0.0000', remaining_quantity: '3.0000', unit_conversion_factor: '1.00000000', line_total: '30.0000', physical_eligibility: 'validated_at_post' }]
+        }
+        const refreshed = { ...original, returnable_lines: [{ ...original.returnable_lines[0], returned_quantity: '1.0000', remaining_quantity: '2.0000' }] }
+        const other = { ...original, id: 42 }
+        const returnDraft = {
+          id: 90, erp_purchase_id: 41, erp_establishment_id: 3, status: 'draft', currency: 'BRL', reason: 'Item excedente',
+          subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000',
+          credit_id: null, financial_disposition: null, lines: [{ id: 91, source_line_id: 51, quantity: '1.0000', total_amount: '10.0000' }]
+        }
+        const outcome = operation === 'post' ? { ...returnDraft, status: 'posted' } : returnDraft
+        const otherReturn = { ...returnDraft, id: 92, erp_purchase_id: 42 }
+        const reached = deferred<boolean>()
+        const release = deferred<boolean>()
+        const newerPurchase = deferred<{ data: typeof other }>()
+        const newerReturn = deferred<{ data: typeof otherReturn }>()
+        const paths: string[] = []
+        const writes: Array<{ path: string, options?: Record<string, unknown> }> = []
+        let recovering = operation === 'lookup' || operation === 'retryExact'
+        const gate = async (stage: string) => {
+          if (phase === stage || (phase === 'newer-return' && stage === 'operation')) {
+            reached.resolve(true)
+            await release.promise
+          }
+        }
+        const workspace = createWorkspace(async (path, options) => {
+          paths.push(path)
+          if (path === '/erp/purchases/42') return newerPurchase.promise
+          if (path === '/erp/purchase-returns/92') return newerReturn.promise
+          if (path === '/erp/purchase-returns' || path === '/erp/purchase-returns/90/post') {
+            writes.push({ path, options })
+            if (recovering) throw new Error('response lost after commit')
+            await gate('operation')
+            return { data: outcome }
+          }
+          if (path.startsWith('/erp/operations/lookup?')) {
+            if (recovering) throw { statusCode: 404, data: { code: 'operation_not_recorded' } }
+            await gate('operation')
+            return { data: { state: 'completed', result: outcome } }
+          }
+          if (path.startsWith('/erp/purchases?')) { await gate('list'); return { data: [refreshed] } }
+          if (path === '/erp/purchases/41') { await gate('source'); return { data: refreshed } }
+          if (path === '/erp/purchase-returns/90') { await gate('return'); return { data: outcome } }
+          if (path.startsWith('/erp/purchase-returns?')) return { data: [outcome] }
+          throw new Error(`Unexpected request ${path}`)
+        })
+        t.after(() => workspace.stop())
+        workspace.state.selected.value = original
+        if (operation === 'post') workspace.state.selectedReturn.value = returnDraft
+        let pending: operationRecovery.ErpPendingOperation | null = null
+        if (recovering) {
+          assert.equal(await workspace.state.createReturn(original, { 51: '1.0000' }, 'Item excedente'), null)
+          pending = workspace.state.selectedOperation.value
+          assert.ok(pending)
+          if (operation === 'retryExact') await workspace.state.reconcile()
+          recovering = false
+        }
+        const completion = operation === 'create'
+          ? workspace.state.createReturn(original, { 51: '1.0000' }, 'Item excedente')
+          : operation === 'post'
+            ? workspace.state.postReturn(returnDraft)
+            : operation === 'lookup' ? workspace.state.reconcile() : workspace.state.retryExact()
+        let newerSelection: Promise<{ id: number } | null> | null = null
+        if (phase !== 'normal') {
+          await reached.promise
+          newerSelection = phase === 'newer-return' ? workspace.state.inspectReturn(92, 41) : workspace.state.inspect(42)
+          release.resolve(true)
+        }
+        const result = await completion
+        assert.equal(workspace.state.selectedOperation.value, null, 'the old operation remains honestly confirmed despite a later selection')
+        assert.equal(workspace.state.needsReconciliation.value, false)
+        if (operation !== 'lookup') assert.equal(result.id, 90)
+        if (pending) {
+          assert.equal(workspace.state.resolvedOperation.value.key, pending.key)
+          assert.equal(workspace.state.resolvedOperation.value.outcome.id, 90)
+          if (operation === 'retryExact') {
+            assert.equal(writes[1]!.path, pending.path)
+            assert.deepEqual(writes[1]!.options?.body, pending.payload)
+            assert.equal((writes[1]!.options?.headers as Record<string, string>)['Idempotency-Key'], pending.key)
+          }
+        }
+        if (phase === 'normal') {
+          assert.equal(workspace.state.selected.value.id, 41)
+          assert.equal(workspace.state.selected.value.returnable_lines[0].remaining_quantity, '2.0000')
+          assert.equal(workspace.state.selectedReturn.value.id, 90, 'the operation keeps ownership through its own authorized source refresh')
+          assert.equal(workspace.state.selectedReturn.value.status, outcome.status)
+          assert.ok(paths.includes('/erp/purchases/41'))
+          assert.ok(paths.includes('/erp/purchase-returns/90'))
+        } else {
+          assert.equal(workspace.state.selectedReturn.value?.id ?? null, operation === 'post' ? 90 : null, 'an obsolete continuation cannot install return detail')
+          if (phase !== 'return') assert.ok(!paths.includes('/erp/purchase-returns/90'), 'an obsolete operation cannot start an automatic return GET')
+          if (phase !== 'newer-return') assert.equal(workspace.state.loadingDetail.value, true, 'the newer manual read retains loading ownership')
+          newerPurchase.resolve({ data: other })
+          newerReturn.resolve({ data: otherReturn })
+          assert.equal((await newerSelection)?.id, phase === 'newer-return' ? 92 : 42)
+          assert.equal(workspace.state.selected.value.id, 42)
+          if (phase === 'newer-return') assert.equal(workspace.state.selectedReturn.value.id, 92)
+          assert.equal(workspace.state.loadingDetail.value, false)
+        }
+      })
+    }
+  }
+
   it('shows an authorized return detail without requiring unrelated purchase-show access', async (t) => {
     const session = installSessionStorage()
     t.after(() => session.restore())

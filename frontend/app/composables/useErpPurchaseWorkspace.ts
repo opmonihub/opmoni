@@ -397,9 +397,13 @@ export function useErpPurchaseWorkspace() {
   }
   async function inspect(id: number, showError = true) {
     if (!Number.isSafeInteger(id) || !allowed('erp.purchases.show')) return null
+    return readPurchaseForIntent(id, showError, ++selectionIntentSequence)
+  }
+  // Automatic continuations inherit their initiating intent; only manual reads claim a new one.
+  async function readPurchaseForIntent(id: number, showError: boolean, selectionIntent: number) {
+    if (selectionIntent !== selectionIntentSequence || !allowed('erp.purchases.show')) return null
     const token = context.capture()
     const generation = requestGeneration
-    const selectionIntent = ++selectionIntentSequence
     const sequence = ++detailSequence
     loadingDetail.value = true
     detailError.value = ''
@@ -432,7 +436,7 @@ export function useErpPurchaseWorkspace() {
     if (detailSequence !== expectedDetailSequence || selectionIntentSequence !== expectedSelectionIntent
       || (selected.value?.id ?? null) !== expectedSelectionId) return
     const id = sourceId ?? expectedSelectionId
-    if (id && allowed('erp.purchases.show')) await inspect(id, false)
+    if (id && allowed('erp.purchases.show')) await readPurchaseForIntent(id, false, expectedSelectionIntent)
   }
   function outcomePurchaseId(operation: PurchaseOperation, outcome: unknown): number | null {
     const payload = operation.payload
@@ -641,6 +645,7 @@ export function useErpPurchaseWorkspace() {
   async function createReturn(source: ErpPurchase, selectedQuantities: Record<string, string>, reason: string) {
     const token = context.capture()
     const generation = requestGeneration
+    const selectionIntent = selectionIntentSequence
     try {
       const payload = buildPurchaseReturnPayload({
         erp_purchase_id: source.id,
@@ -649,7 +654,8 @@ export function useErpPurchaseWorkspace() {
         returnable_lines: source.returnable_lines ?? []
       } as ErpPurchaseReturnSource, selectedQuantities, reason)
       const result = await executeOperation('erp.purchase-returns.store', '/erp/purchase-returns', payload)
-      if (result && current(token, generation) && selected.value?.id === source.id) await inspectReturn(Number((result as ErpPurchaseReturn).id), source.id)
+      if (result && current(token, generation) && selected.value?.id === source.id)
+        await readReturnForIntent(Number((result as ErpPurchaseReturn).id), source.id, selectionIntent)
       return result
     } catch (error) {
       mutationError.value = error instanceof Error ? error.message : 'Revise as quantidades e o motivo da devolução.'
@@ -658,9 +664,12 @@ export function useErpPurchaseWorkspace() {
   }
   async function inspectReturn(id: number, expectedSourceId = selected.value?.id ?? null) {
     if (!allowed('erp.purchase-returns.show')) return null
+    return readReturnForIntent(id, expectedSourceId, ++selectionIntentSequence)
+  }
+  async function readReturnForIntent(id: number, expectedSourceId: number | null, selectionIntent: number) {
+    if (selectionIntent !== selectionIntentSequence || !allowed('erp.purchase-returns.show')) return null
     const token = context.capture()
     const generation = requestGeneration
-    const selectionIntent = ++selectionIntentSequence
     const sequence = ++returnSequence
     const currentReturn = () => current(token, generation) && returnSequence === sequence && selectionIntentSequence === selectionIntent
     try {
@@ -709,9 +718,10 @@ export function useErpPurchaseWorkspace() {
     const sourceId = selected.value?.id ?? null
     const token = context.capture()
     const generation = requestGeneration
+    const selectionIntent = selectionIntentSequence
     const result = await executeOperation('erp.purchase-returns.post', `/erp/purchase-returns/${returnDraft.id}/post`, { expected_total: returnDraft.total_amount })
     if (result !== null && current(token, generation) && (selected.value?.id ?? null) === sourceId) {
-      await inspectReturn(returnDraft.id, sourceId)
+      await readReturnForIntent(returnDraft.id, sourceId, selectionIntent)
       await loadReturns()
     }
     return result
@@ -753,7 +763,7 @@ export function useErpPurchaseWorkspace() {
         cancelXmlPreview()
       if ((pending.operation === 'erp.purchase-returns.store' || pending.operation === 'erp.purchase-returns.post')
         && outcomeId !== null && sourceId !== null && selected.value?.id === sourceId) {
-        await inspectReturn(outcomeId, sourceId)
+        await readReturnForIntent(outcomeId, sourceId, selectionIntentAtStart)
         if (current(token, generation)) await loadReturns()
       }
       if (current(token, generation)) resolvedOperation.value = { key: pending.key, operation: pending.operation, outcome }
@@ -815,6 +825,7 @@ export function useErpPurchaseWorkspace() {
     resolvedOperation.value = null
     const token = context.capture()
     const generation = requestGeneration
+    const selectionIntent = selectionIntentSequence
     const result = await executeOperation(pending.operation as PurchaseAction, pending.path, pending.payload, pending)
     if (result === null || !current(token, generation)) return result
     const outcomeId = typeof result === 'object' && result !== null && Number.isSafeInteger((result as { id?: unknown }).id)
@@ -825,7 +836,7 @@ export function useErpPurchaseWorkspace() {
       cancelXmlPreview()
     if ((pending.operation === 'erp.purchase-returns.store' || pending.operation === 'erp.purchase-returns.post')
       && outcomeId !== null && sourceId !== null && selected.value?.id === sourceId) {
-      await inspectReturn(outcomeId, sourceId)
+      await readReturnForIntent(outcomeId, sourceId, selectionIntent)
       if (current(token, generation)) await loadReturns()
     }
     if (current(token, generation)) resolvedOperation.value = { key: pending.key, operation: pending.operation, outcome: result }
