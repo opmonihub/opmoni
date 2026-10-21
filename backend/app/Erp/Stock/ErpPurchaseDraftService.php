@@ -3,6 +3,7 @@
 namespace App\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpCommercialReturnService;
 use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Finance\ErpFinanceParticipant;
 use App\Erp\Sales\ErpCommercialDraftService as Decimal;
@@ -353,6 +354,14 @@ final class ErpPurchaseDraftService
         } else {
             $lines = $model->relationLoaded('lines') ? $model->lines : $model->lines()->orderBy('ordinal')->orderBy('id')->get();
             $data['lines'] = $lines->map(fn (ErpPurchaseLine $line): array => $line->only(['id', 'erp_product_variant_id', 'quantity', 'unit_cost', 'line_total', 'unit_conversion_factor']))->all();
+        }
+        if ($full && $model->status === 'posted') {
+            $projection = app(ErpCommercialReturnService::class)->sourceProjection($model, 'purchase');
+            $data += $projection;
+            $data['needs_reconciliation'] = $data['needs_reconciliation']
+                || $projection['needs_reconciliation']
+                || $projection['returnability']['needs_reconciliation']
+                || $projection['finance']['needs_reconciliation'];
         }
 
         return $data;

@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Sales\ErpSaleReturn;
 use App\Models\Erp\Sales\ErpSaleReturnLine;
 use App\Models\Erp\Stock\ErpPurchase;
+use App\Models\Erp\Stock\ErpPurchaseReturn;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
 use Illuminate\Database\QueryException;
@@ -83,7 +87,22 @@ class ErpPartialReturnTest extends ErpCommercialTestCase
         [$source, $line] = $this->purchase('3', '10');
         $original = ErpPurchase::findOrFail($source)->getAttributes();
         $obligation = ErpObligation::where('source_type', 'erp_purchase')->where('source_id', $source)->firstOrFail();
-        $before = $obligation->getAttributes();
+        $payment = $this->send('payments', ['amount' => '10', 'direction' => 'out', 'method' => 'manual', 'erp_establishment_id' => $this->establishment->id])->assertCreated()->json('data.id');
+        $this->send('payments/'.$payment.'/allocate', ['erp_obligation_id' => $obligation->id, 'amount' => '10'])->assertOk();
+        $before = $obligation->fresh()->getAttributes();
+        $this->getJson('/api/v1/erp/purchases/'.$source)->assertOk()
+            ->assertJsonPath('data.returnability.needs_reconciliation', false)
+            ->assertJsonPath('data.returnable_lines.0.source_line_id', $line)
+            ->assertJsonPath('data.returnable_lines.0.quantity', '3.0000')
+            ->assertJsonPath('data.returnable_lines.0.returned_quantity', '0.0000')
+            ->assertJsonPath('data.returnable_lines.0.remaining_quantity', '3.0000')
+            ->assertJsonPath('data.returnable_lines.0.unit_conversion_factor', '1.00000000')
+            ->assertJsonPath('data.returnable_lines.0.line_total', '30.0000')
+            ->assertJsonPath('data.finance.gross_original_due', '20.0000')
+            ->assertJsonPath('data.finance.opposite_return_credit', '0.0000')
+            ->assertJsonPath('data.finance.net_exposure', '-20.0000')
+            ->assertJsonPath('data.finance.automatic_setoff', false)
+            ->assertJsonPath('data.finance.automatic_refund', false);
         foreach (['1', '2'] as $quantity) {
             $id = $this->draftReturn($source, $line, $quantity, 'purchase');
             $this->send('purchase-returns/'.$id.'/post', [])->assertOk()->assertJsonPath('data.total_amount', bcmul($quantity, '10', 4));
@@ -94,6 +113,95 @@ class ErpPartialReturnTest extends ErpCommercialTestCase
         $credits = ErpObligation::where('return_of_id', $obligation->id)->get();
         $this->assertSame(['receivable'], $credits->pluck('direction')->unique()->values()->all());
         $this->assertSame('30.0000', $credits->reduce(fn ($sum, $row) => bcadd($sum, $row->amount, 4), '0.0000'));
+        $this->getJson('/api/v1/erp/purchases/'.$source)->assertOk()
+            ->assertJsonPath('data.returnable_lines.0.returned_quantity', '3.0000')
+            ->assertJsonPath('data.returnable_lines.0.remaining_quantity', '0.0000')
+            ->assertJsonPath('data.finance.gross_original_due', '20.0000')
+            ->assertJsonPath('data.finance.opposite_return_credit', '30.0000')
+            ->assertJsonPath('data.finance.open_return_credit', '30.0000')
+            ->assertJsonPath('data.finance.net_exposure', '10.0000')
+            ->assertJsonPath('data.finance.return_credits.0.source_type', 'erp_purchase_return')
+            ->assertJsonPath('data.finance.return_credits.0.amount', '10.0000')
+            ->assertJsonPath('data.finance.automatic_setoff', false)
+            ->assertJsonPath('data.finance.automatic_refund', false);
+        $this->assertDatabaseCount('erp_payments', 1);
+        $this->assertDatabaseCount('erp_payment_allocations', 1);
+    }
+
+    public function test_posted_purchase_projection_marks_unproved_legacy_return_history_for_reconciliation(): void
+    {
+        [$source, $line] = $this->purchase('2', '7');
+        ErpPurchaseReturn::create([
+            'erp_company_id' => $this->company->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'erp_purchase_id' => $source,
+            'status' => 'posted',
+            'total_amount' => '7.0000',
+        ]);
+
+        $this->getJson('/api/v1/erp/purchases/'.$source)->assertOk()
+            ->assertJsonPath('data.needs_reconciliation', true)
+            ->assertJsonPath('data.returnability.needs_reconciliation', true)
+            ->assertJsonPath('data.returnability.reconciliation_reason', 'legacy_return_lines_missing')
+            ->assertJsonPath('data.returnable_lines.0.source_line_id', $line)
+            ->assertJsonPath('data.returnable_lines.0.returned_quantity', null)
+            ->assertJsonPath('data.returnable_lines.0.remaining_quantity', null)
+            ->assertJsonPath('data.finance.needs_reconciliation', true);
+    }
+
+    public function test_purchase_projection_is_omitted_from_list_and_draft_detail(): void
+    {
+        $draft = $this->send('purchases', [
+            'erp_establishment_id' => $this->establishment->id,
+            'erp_contact_id' => $this->manualPurchaseSupplier()->id,
+            'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '4']],
+        ])->assertCreated()->json('data.id');
+        [$posted] = $this->purchase('1', '5');
+
+        $response = $this->getJson('/api/v1/erp/purchases')->assertOk();
+        foreach ($response->json('data') as $row) {
+            $this->assertArrayNotHasKey('returnable_lines', $row);
+            $this->assertArrayNotHasKey('finance', $row);
+        }
+        $this->getJson('/api/v1/erp/purchases/'.$draft)->assertOk()
+            ->assertJsonMissingPath('data.returnable_lines')
+            ->assertJsonMissingPath('data.finance');
+        $this->getJson('/api/v1/erp/purchases/'.$posted)->assertOk()
+            ->assertJsonPath('data.returnable_lines.0.remaining_quantity', '1.0000');
+    }
+
+    public function test_posted_purchase_projection_keeps_foreign_and_disallowed_establishments_hidden_for_purchase_reader(): void
+    {
+        [$source] = $this->purchase('1', '10');
+        $deniedEstablishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $foreignEstablishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $foreign = $this->send('purchases', [
+            'erp_establishment_id' => $foreignEstablishment->id,
+            'erp_contact_id' => $this->manualPurchaseSupplier()->id,
+            'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1', 'unit_cost' => '12']],
+        ])->assertCreated()->json('data.id');
+        $this->send('purchases/'.$foreign.'/post', [])->assertOk();
+        $otherCompany = ErpCompany::factory()->create();
+        $otherEstablishment = ErpEstablishment::factory()->create(['erp_company_id' => $otherCompany->id]);
+        $outside = ErpPurchase::create([
+            'erp_company_id' => $otherCompany->id,
+            'erp_establishment_id' => $otherEstablishment->id,
+            'status' => 'posted',
+            'total_amount' => '1.0000',
+            'currency' => 'BRL',
+        ]);
+
+        $membership = ErpCompanyMembership::where('erp_company_id', $this->company->id)->where('user_id', $this->user->id)->firstOrFail();
+        $membership->update(['role' => 'manager', 'access_all_establishments' => false, 'action_permissions' => ['erp.purchases.show']]);
+        $membership->establishments()->attach($this->establishment->id, ['erp_company_id' => $this->company->id]);
+        $this->getJson('/api/v1/erp/purchases/'.$outside->id)->assertNotFound();
+        $this->getJson('/api/v1/erp/purchases/'.$foreign)->assertNotFound();
+        $this->getJson('/api/v1/erp/purchases/'.$source)->assertOk()
+            ->assertJsonPath('data.finance.gross_original_due', '10.0000');
+
+        $membership->establishments()->attach($deniedEstablishment->id, ['erp_company_id' => $this->company->id]);
+        $membership->establishments()->detach($this->establishment->id);
+        $this->getJson('/api/v1/erp/purchases/'.$source)->assertNotFound();
     }
 
     public function test_consumed_purchase_cannot_borrow_return_entitlement_from_a_new_receipt(): void

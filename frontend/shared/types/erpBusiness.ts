@@ -163,3 +163,183 @@ export interface ErpCashPage<T> {
   }
   totals?: ErpCashLedgerTotals
 }
+
+export interface ErpPurchaseLine {
+  id: number
+  erp_product_variant_id: number | null
+  erp_unit_id: number | null
+  description: string
+  quantity: string
+  unit_cost: string
+  unit_conversion_factor: string
+  line_total: string
+  discount_amount?: string | null
+  tax_amount?: string | null
+  product_snapshot?: Record<string, unknown> | null
+}
+
+export interface ErpPurchaseDraftLine {
+  id?: number
+  erp_product_variant_id: number | null
+  erp_unit_id: number | null
+  description: string
+  quantity: string
+  unit_cost: string
+  unit_conversion_factor: string
+  discount_amount: string
+  tax_amount: string
+}
+
+export interface ErpPurchaseDraftPayload {
+  erp_establishment_id: number | null
+  erp_contact_id: number | null
+  currency: string
+  document_no: string
+  draft_revision?: number
+  expected_total?: ErpMoney
+  lines: ErpPurchaseDraftLine[]
+}
+
+export interface ErpPurchaseReturnableLine {
+  source_line_id: number
+  quantity: string
+  returned_quantity: string | null
+  remaining_quantity: string | null
+  unit_conversion_factor: string
+  line_total: string
+  physical_eligibility: string
+}
+
+export interface ErpPurchaseReturnCredit {
+  id: number
+  source_type: string
+  source_id: number
+  amount: ErpMoney
+  open_amount: ErpMoney
+  due_on: string | null
+}
+
+export interface ErpPurchaseFinanceProjection {
+  currency: string
+  original_obligation_id: number | null
+  gross_original_due: ErpMoney | null
+  original_principal?: ErpMoney
+  opposite_return_credit: ErpMoney | null
+  open_return_credit: ErpMoney | null
+  net_exposure: ErpMoney | null
+  return_credits?: ErpPurchaseReturnCredit[]
+  needs_reconciliation: boolean
+  reconciliation_reason: string | null
+  automatic_setoff: false
+  automatic_refund: false
+}
+
+export interface ErpPurchase {
+  id: number
+  erp_establishment_id: number
+  erp_contact_id: number
+  document_no: string | null
+  status: 'draft' | 'posted'
+  total_amount: ErpMoney
+  currency: string
+  draft_revision: number | null
+  supplier_snapshot: Record<string, unknown> | null
+  source_access_key: string | null
+  source_sha256: string | null
+  source_byte_length: number | null
+  source_operation_key: string | null
+  source_snapshot?: Record<string, unknown> | null
+  needs_reconciliation: boolean
+  finance?: ErpPurchaseFinanceProjection
+  returnability?: { needs_reconciliation: boolean, reconciliation_reason: string | null }
+  returnable_lines?: ErpPurchaseReturnableLine[]
+  lines: ErpPurchaseLine[]
+}
+
+export interface ErpPurchasePage {
+  data: ErpPurchase[]
+  meta: { current_page: number, last_page: number, per_page: number, total: number }
+}
+
+export interface ErpPurchaseSupplier {
+  id: number
+  name: string
+  trade_name: string | null
+  tax_id: string | null
+  is_supplier: boolean
+  status: 'active' | 'archived'
+}
+
+export interface ErpPurchaseEstablishment {
+  id: number
+  name: string
+  status: 'active' | 'archived'
+}
+
+export interface ErpPurchaseVariant {
+  id: number
+  name: string
+  sku: string | null
+  status: 'active' | 'archived'
+  product: { id: number, name: string, kind: string, track_stock: boolean, erp_unit_id: number }
+}
+
+export interface ErpPurchaseUnit {
+  id: number
+  actual_name: string
+  short_name: string
+  allow_decimal: boolean
+  conversion_factor: string
+  base_unit_id: number | null
+  status: 'active' | 'archived'
+}
+
+export interface ErpPurchaseXmlLine {
+  line: number
+  codigo: string
+  xProd: string
+  qCom: string
+  uCom: string
+  vUnCom: string
+  amounts?: { gross_amount: ErpMoney, discount_amount: ErpMoney, net_amount: ErpMoney, tax_amount: ErpMoney, line_total: ErpMoney }
+}
+
+export interface ErpPurchaseXmlMapping {
+  line: number
+  erp_product_variant_id: number
+  erp_unit_id?: number
+  unit_conversion_factor: string
+}
+
+export interface ErpPurchaseXmlPreview {
+  token: string
+  chave: string
+  emit: { name: string, cpf_cnpj: string }
+  dest: { name: string, cpf_cnpj: string }
+  det: ErpPurchaseXmlLine[]
+  total: Record<string, string | null>
+  duplicatas: Array<Record<string, unknown>>
+  errors: Array<{ code?: string, message?: string, line?: number }>
+  duplicate: boolean
+  duplicate_purchase_id: number | null
+  expires_at: string
+  state: 'pending' | 'blocked' | 'expired' | 'completed'
+  result?: ErpPurchase | null
+}
+
+export interface ErpPurchaseReturn {
+  id: number
+  erp_purchase_id: number
+  status: 'draft' | 'posted'
+  currency: string
+  reason: string
+  subtotal_amount: ErpMoney
+  discount_amount: ErpMoney
+  tax_amount: ErpMoney
+  total_amount: ErpMoney
+  credit_id: number | null
+  financial_disposition: 'receivable' | 'zero_consideration' | null
+  erp_establishment_id?: number
+  commercial_snapshot?: Record<string, unknown> | null
+  lines?: Array<{ id: number, source_line_id: number, quantity: string, total_amount: ErpMoney }>
+}

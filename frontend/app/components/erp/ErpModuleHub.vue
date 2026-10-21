@@ -167,7 +167,18 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
       />
 
       <template v-else>
-        <ErpPurchaseXmlPreview v-if="activeTab?.mode === 'xml-preview'" />
+        <section v-if="activeTab?.mode === 'xml-preview'" class="rounded-lg border border-default p-4">
+          <p class="text-sm text-muted">
+            A prévia XML de compras e o mapeamento explícito de itens estão disponíveis na área nativa de compras.
+          </p>
+          <UButton
+            class="mt-3"
+            color="neutral"
+            variant="outline"
+            label="Abrir prévia XML de compras"
+            to="/erp/compras#xml-preview"
+          />
+        </section>
 
         <form v-else-if="activeTab?.mode === 'report'" class="flex flex-wrap items-end gap-3" @submit.prevent="load">
           <UFormField label="De" name="date_from">
