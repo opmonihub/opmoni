@@ -101,8 +101,8 @@ function mountPurchaseWorkspace(initialHash = '#purchases') {
     purchases: Vue.ref([]), returns: Vue.ref([]), meta: Vue.ref({ current_page: 1, last_page: 1, per_page: 15, total: 0 }), returnMeta: Vue.ref({ current_page: 1, last_page: 1, per_page: 15, total: 0 }),
     suppliers: Vue.ref([]), establishments: Vue.ref([]), variants: Vue.ref([]), units: Vue.ref([]), selected: Vue.ref(null), selectedReturn: Vue.ref(null), previewState: Vue.ref(null),
     listLoading: Vue.ref(false), returnsLoading: Vue.ref(false), referencesLoading: Vue.ref(false), mutating: Vue.ref(false), loadingDetail: Vue.ref(false), pageError: Vue.ref(''), referenceError: Vue.ref(''), mutationError, detailError: Vue.ref(''), fieldErrors: Vue.ref({}),
-    selectedOperation: Vue.ref(null), needsReconciliation: Vue.ref(false), canRetryExact: Vue.ref(false), staleRevisionRefreshed: Vue.ref(null), authorityGeneration, filters: Vue.reactive({ status: '', search: '', page: 1, per_page: 15 }), returnFilters: Vue.reactive({ status: '', page: 1, per_page: 15 }),
-    allowed: () => true,
+    selectedOperation: Vue.ref(null), needsReconciliation: Vue.ref(false), canRetryExact: Vue.ref(false), staleRevisionRefreshed: Vue.ref(null), resolvedOperation: Vue.ref(null), authorityGeneration, filters: Vue.reactive({ status: '', search: '', page: 1, per_page: 15 }), returnFilters: Vue.reactive({ status: '', page: 1, per_page: 15 }),
+    allowed: () => true, isPurchaseConfirmedPosted: () => false,
     load: async () => { loads.push('purchases') }, loadReturns: async () => { loads.push('returns') }, loadReferences: async () => {}, inspect: async () => null, closeDetail: () => {}, saveDraft: async () => { const result = draftSaveResults.shift() ?? null; if (!result) mutationError.value = 'A conexão caiu; confira a operação.'; return result },
     postReceipt: async () => null, inspectXml: async () => null, refreshXmlPreview: async () => null, cancelXmlPreview: () => {}, confirmXml: async () => null, createReturn: async () => null, inspectReturn: async () => null, postReturn: async () => null, reconcile: async () => {}, retryExact: async () => null, clearOperationNotice: () => { mutationError.value = '' }
   }
@@ -493,6 +493,60 @@ describe('purchase decimal and source helpers', () => {
     workspace.stop()
   })
 
+  it('resolves a first-attempt stale rejection when the authorized current GET proves the purchase was posted', async (t) => {
+    const session = installSessionStorage()
+    t.after(() => session.restore())
+    const posted = { id: 48, erp_establishment_id: 3, erp_contact_id: 8, status: 'posted', currency: 'BRL', total_amount: '8.0000', draft_revision: null, supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [] }
+    const writes: string[] = []
+    const workspace = createWorkspace(async (path, _options) => {
+      if (path === '/erp/purchases/48/post') {
+        writes.push(path)
+        throw { statusCode: 409, data: { message: 'Rascunho alterado.' } }
+      }
+      if (path.startsWith('/erp/operations/lookup?')) throw { statusCode: 404, data: { code: 'operation_not_recorded' } }
+      if (path === '/erp/purchases/48') return { data: posted }
+      throw new Error(`Unexpected request ${path}`)
+    })
+    workspace.state.selected.value = { ...posted, status: 'draft', draft_revision: 1 }
+    await workspace.state.postReceipt(workspace.state.selected.value)
+    assert.ok(workspace.state.selectedOperation.value)
+    await workspace.state.reconcile()
+    assert.equal(workspace.state.selectedOperation.value, null)
+    assert.equal(workspace.state.selected.value.status, 'posted')
+    assert.equal(workspace.state.staleRevisionRefreshed.value.status, 'posted')
+    assert.equal(workspace.state.canRetryExact.value, false)
+    assert.equal(await workspace.state.postReceipt(workspace.state.selected.value), null)
+    assert.deepEqual(writes, ['/erp/purchases/48/post'], 'a posted resource cannot be submitted again as a receipt')
+    workspace.stop()
+  })
+
+  it('keeps a completed receipt from being posted again when its confirming detail GET fails', async (t) => {
+    const session = installSessionStorage()
+    t.after(() => session.restore())
+    const draft = { id: 49, erp_establishment_id: 3, erp_contact_id: 8, status: 'draft', currency: 'BRL', total_amount: '9.0000', draft_revision: 3, supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [] }
+    let posts = 0
+    const workspace = createWorkspace(async (path, _options) => {
+      if (path === '/erp/purchases/49/post') {
+        posts++
+        throw new Error('response lost after commit')
+      }
+      if (path.startsWith('/erp/operations/lookup?')) return { data: { state: 'completed', result: { id: 49, status: 'posted' } } }
+      if (path === '/erp/purchases?page=1&per_page=15') return { data: [draft], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+      if (path === '/erp/purchases/49') throw { statusCode: 503, data: { message: 'Leitura indisponível' } }
+      throw new Error(`Unexpected request ${path}`)
+    })
+    workspace.state.selected.value = draft
+    assert.equal(await workspace.state.postReceipt(draft), null)
+    await workspace.state.reconcile()
+    assert.equal(workspace.state.selectedOperation.value, null)
+    assert.equal(workspace.state.selected.value.status, 'draft', 'the failed GET does not fabricate a posted purchase')
+    assert.match(workspace.state.detailError.value, /leitura indisponível/i)
+    assert.equal(workspace.state.isPurchaseConfirmedPosted(49), true)
+    assert.equal(await workspace.state.postReceipt(workspace.state.selected.value), null)
+    assert.equal(posts, 1, 'the known completed receipt cannot be posted again from stale draft detail')
+    workspace.stop()
+  })
+
   it('keeps an uncertain write pending when a lookup is not recorded even if the draft revision changed', async (t) => {
     const session = installSessionStorage()
     t.after(() => session.restore())
@@ -594,6 +648,40 @@ describe('purchase decimal and source helpers', () => {
     assert.equal(await oldRead, null)
     assert.equal(workspace.state.selectedReturn.value.id, 91)
     workspace.stop()
+  })
+
+  it('does not let an obsolete return intent commit its nested source GET for same or different purchase', async () => {
+    for (const currentSourceId of [41, 42]) {
+      const firstReturn = deferred<{ data: { id: number, erp_purchase_id: number, status: string, currency: string, reason: string, total_amount: string, lines: unknown[] } }>()
+      const secondReturn = deferred<{ data: { id: number, erp_purchase_id: number, status: string, currency: string, reason: string, total_amount: string, lines: unknown[] } }>()
+      const sourceReads: Array<{ resolve(value: { data: { id: number, status: string, currency: string, lines: unknown[] } }): void }> = []
+      const workspace = createWorkspace(async (path) => {
+        if (path === '/erp/purchase-returns/90') return firstReturn.promise
+        if (path === '/erp/purchase-returns/91') return secondReturn.promise
+        if (path.startsWith('/erp/purchases/')) {
+          const read = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+          sourceReads.push(read)
+          return read.promise
+        }
+        throw new Error(`Unexpected request ${path}`)
+      })
+      const oldIntent = workspace.state.inspectReturn(90, null)
+      firstReturn.resolve({ data: { id: 90, erp_purchase_id: 41, status: 'draft', currency: 'BRL', reason: 'Antiga', total_amount: '1.0000', lines: [] } })
+      for (let turn = 0; turn < 8 && sourceReads.length < 1; turn++) await Promise.resolve()
+      assert.equal(sourceReads.length, 1, 'the old return has entered its nested source GET')
+      const latestIntent = workspace.state.inspectReturn(91, null)
+      sourceReads[0]!.resolve({ data: { id: 41, status: 'posted', currency: 'BRL', lines: [] } })
+      assert.equal(await oldIntent, null)
+      assert.equal(workspace.state.selected.value, null, 'an obsolete source GET cannot alter shared purchase selection')
+      secondReturn.resolve({ data: { id: 91, erp_purchase_id: currentSourceId, status: 'draft', currency: 'BRL', reason: 'Atual', total_amount: '2.0000', lines: [] } })
+      for (let turn = 0; turn < 8 && sourceReads.length < 2; turn++) await Promise.resolve()
+      assert.equal(sourceReads.length, 2, 'the latest return proceeds to its own authorized source GET')
+      sourceReads[1]!.resolve({ data: { id: currentSourceId, status: 'posted', currency: 'BRL', lines: [] } })
+      assert.equal((await latestIntent)?.id, 91)
+      assert.equal(workspace.state.selected.value?.id, currentSourceId)
+      assert.equal(workspace.state.selectedReturn.value.id, 91)
+      workspace.stop()
+    }
   })
 
   it('keeps a last-good reference family and XML token/mappings when refreshes fail transiently', async (t) => {
@@ -748,23 +836,216 @@ describe('purchase decimal and source helpers', () => {
     assert.equal(input?.props?.value, '')
   })
 
-  it('keeps pending-operation recovery actions visible and usable inside the active create modal', async (t) => {
+  it('closes and resets the original create draft after the mounted recovery action confirms it', async (t) => {
+    for (const action of ['reconcile', 'retryExact'] as const) {
+      const app = mountPurchaseWorkspace()
+      t.after(() => app.app.unmount())
+      await Vue.nextTick()
+      ;(app.state.establishments as Vue.Ref<unknown[]>).value = [{ id: 3, name: 'Unidade teste', status: 'active' }]
+      ;(app.state.suppliers as Vue.Ref<unknown[]>).value = [{ id: 8, name: 'Fornecedor teste', trade_name: 'Fornecedor teste', status: 'active' }]
+      ;(app.state.variants as Vue.Ref<unknown[]>).value = [{ id: 71, name: 'Produto teste', sku: 'TEST', status: 'active', product: { id: 7, name: 'Produto teste', kind: 'goods', track_stock: true, erp_unit_id: 2 } }]
+      ;(app.state.units as Vue.Ref<unknown[]>).value = [{ id: 2, actual_name: 'Unidade', short_name: 'UN', allow_decimal: true, conversion_factor: '1.00000000', base_unit_id: null, status: 'active' }]
+      await Vue.nextTick()
+      let writes = 0
+      app.state.saveDraft = async (payload: Record<string, unknown>) => {
+        writes++
+        ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'pending-key', operation: 'erp.purchases.store', payload }
+        app.mutationError.value = 'A conexão caiu; confira a operação.'
+        return null
+      }
+      app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')?.props?.onClick?.()
+      await Vue.nextTick()
+      const field = () => app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Número do documento')
+      ;(field()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'CREATE-RECOVERED' } })
+      app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
+      app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
+      app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+      await Vue.nextTick()
+      app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
+      await Vue.nextTick()
+      assert.ok((app.state.selectedOperation as Vue.Ref<unknown>).value, 'the simulated write leaves its exact operation pending')
+      if (action === 'retryExact') (app.state.canRetryExact as Vue.Ref<boolean>).value = true
+      await Vue.nextTick()
+      const buttonLabel = action === 'reconcile' ? 'Consultar operação' : 'Repetir conteúdo original'
+      const recover = () => app.findInModal('Nova compra', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes(buttonLabel))
+      assert.ok(recover(), 'the recovery control is rendered in the active overlay')
+      app.findInModal('Nova compra', node => node.tag === 'button' && node.props?.['aria-label'] === 'Fechar formulário')?.props?.onClick?.()
+      await Vue.nextTick()
+      app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')?.props?.onClick?.()
+      await Vue.nextTick()
+      const retainedRecovery = recover()
+      assert.ok(retainedRecovery, 'an unchanged retained draft remains associated with the pending operation after reopen')
+      app.state[action] = async () => {
+        ;(app.state.selectedOperation as Vue.Ref<unknown>).value = null
+        ;(app.state.resolvedOperation as Vue.Ref<unknown>).value = { key: 'pending-key' }
+        return { id: 61 }
+      }
+      await (retainedRecovery.props?.onClick as () => Promise<void>)()
+      await Vue.nextTick()
+      assert.equal(app.findInModal('Nova compra', () => true), null, 'the confirmed create overlay closes')
+      assert.equal(writes, 1, 'recovery does not submit a second create POST')
+      app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')?.props?.onClick?.()
+      await Vue.nextTick()
+      assert.equal(app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Número do documento')?.props?.value, '', 'the resolved draft cannot be resubmitted with a new key')
+    }
+  })
+
+  it('preserves a newer create draft when recovery completes an older closed submission', async (t) => {
     const app = mountPurchaseWorkspace()
     t.after(() => app.app.unmount())
     await Vue.nextTick()
-    let reconciles = 0
-    app.state.reconcile = async () => { reconciles++ }
-    ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'pending-key' }
+    ;(app.state.establishments as Vue.Ref<unknown[]>).value = [{ id: 3, name: 'Unidade teste', status: 'active' }]
+    ;(app.state.suppliers as Vue.Ref<unknown[]>).value = [{ id: 8, name: 'Fornecedor teste', trade_name: 'Fornecedor teste', status: 'active' }]
+    ;(app.state.variants as Vue.Ref<unknown[]>).value = [{ id: 71, name: 'Produto teste', sku: 'TEST', status: 'active', product: { id: 7, name: 'Produto teste', kind: 'goods', track_stock: true, erp_unit_id: 2 } }]
+    ;(app.state.units as Vue.Ref<unknown[]>).value = [{ id: 2, actual_name: 'Unidade', short_name: 'UN', allow_decimal: true, conversion_factor: '1.00000000', base_unit_id: null, status: 'active' }]
+    await Vue.nextTick()
+    let writes = 0
+    let attempts = 0
+    app.state.saveDraft = async (payload: Record<string, unknown>) => {
+      attempts++
+      if ((app.state.selectedOperation as Vue.Ref<unknown>).value) return null
+      writes++
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'older-key', operation: 'erp.purchases.store', payload }
+      app.mutationError.value = 'A conexão caiu; confira a operação.'
+      return null
+    }
+    const open = () => app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')
+    open()?.props?.onClick?.()
+    await Vue.nextTick()
+    const doc = () => app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Número do documento')
+    ;(doc()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'OLDER-A' } })
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+    await Vue.nextTick()
+    app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
+    await Vue.nextTick()
+    assert.ok((app.state.selectedOperation as Vue.Ref<unknown>).value, 'the simulated write leaves its exact operation pending')
+    app.findInModal('Nova compra', node => node.tag === 'button' && node.props?.['aria-label'] === 'Fechar formulário')?.props?.onClick?.()
+    await Vue.nextTick()
+    open()?.props?.onClick?.()
+    await Vue.nextTick()
+    ;(doc()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'NEWER-B' } })
+    await Vue.nextTick()
+    app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
+    await Vue.nextTick()
+    assert.equal(attempts, 2, 'the newer submit is attempted while the old operation is pending')
+    assert.equal(writes, 1, 'the pending-operation gate starts no second POST')
+    assert.equal((app.state.selectedOperation as Vue.Ref<{ key: string }>).value?.key, 'older-key', 'the blocked B submit does not adopt A operation ownership')
+    app.state.reconcile = async () => {
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = null
+      ;(app.state.resolvedOperation as Vue.Ref<unknown>).value = { key: 'older-key' }
+    }
+    const recover = app.findInModal('Nova compra', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Consultar operação'))
+    assert.ok(recover)
+    await (recover.props?.onClick as () => Promise<void>)()
+    await Vue.nextTick()
+    assert.equal(writes, 1)
+    assert.equal(doc()?.props?.value, 'NEWER-B')
+    assert.ok(app.find(app.root, node => node.props?.['data-modal'] === 'Nova compra'), 'recovery does not close the newer draft overlay')
+  })
+
+  it('does not assign a restored pending operation to a create draft submitted after reload', async (t) => {
+    const app = mountPurchaseWorkspace()
+    t.after(() => app.app.unmount())
+    ;(app.state.establishments as Vue.Ref<unknown[]>).value = [{ id: 3, name: 'Unidade teste', status: 'active' }]
+    ;(app.state.suppliers as Vue.Ref<unknown[]>).value = [{ id: 8, name: 'Fornecedor teste', trade_name: 'Fornecedor teste', status: 'active' }]
+    ;(app.state.variants as Vue.Ref<unknown[]>).value = [{ id: 71, name: 'Produto teste', sku: 'TEST', status: 'active', product: { id: 7, name: 'Produto teste', kind: 'goods', track_stock: true, erp_unit_id: 2 } }]
+    ;(app.state.units as Vue.Ref<unknown[]>).value = [{ id: 2, actual_name: 'Unidade', short_name: 'UN', allow_decimal: true, conversion_factor: '1.00000000', base_unit_id: null, status: 'active' }]
+    ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'restored-key', operation: 'erp.purchases.store', payload: { document_no: 'OLD' } }
+    app.state.saveDraft = async () => null
+    await Vue.nextTick()
     app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')?.props?.onClick?.()
     await Vue.nextTick()
-    app.mutationError.value = 'A conexão caiu; confira a operação.'
+    const doc = () => app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Número do documento')
+    ;(doc()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'NEW-AFTER-RELOAD' } })
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
+    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
     await Vue.nextTick()
+    app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
+    await Vue.nextTick()
+    app.state.reconcile = async () => {
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = null
+      ;(app.state.resolvedOperation as Vue.Ref<unknown>).value = { key: 'restored-key' }
+    }
     const recover = app.findInModal('Nova compra', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Consultar operação'))
-    assert.ok(recover, 'the recovery control is rendered in the active overlay')
-    assert.match(app.textContent(app.find(app.root, node => node.props?.['data-modal'] === 'Nova compra') as { text?: string, children?: unknown[] }), /A conexão caiu; confira a operação/)
-    ;(recover.props?.onClick as () => Promise<void>)()
+    assert.ok(recover)
+    await (recover.props?.onClick as () => Promise<void>)()
     await Vue.nextTick()
-    assert.equal(reconciles, 1)
+    assert.equal(doc()?.props?.value, 'NEW-AFTER-RELOAD')
+    assert.ok(app.find(app.root, node => node.props?.['data-modal'] === 'Nova compra'))
+  })
+
+  it('closes only the matching edited purchase after mounted recovery confirms its update', async (t) => {
+    const app = mountPurchaseWorkspace()
+    t.after(() => app.app.unmount())
+    const draft = { id: 52, erp_establishment_id: 3, erp_contact_id: 8, document_no: 'EDIT-52', status: 'draft', currency: 'BRL', total_amount: '5.0000', draft_revision: 4, supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [{ id: 9, erp_product_variant_id: 71, erp_unit_id: 2, description: 'Item', quantity: '1.0000', unit_cost: '5.0000', unit_conversion_factor: '1.00000000', discount_amount: '0.0000', tax_amount: '0.0000', line_total: '5.0000' }] }
+    ;(app.state.purchases as Vue.Ref<unknown[]>).value = [draft]
+    ;(app.state.variants as Vue.Ref<unknown[]>).value = [{ id: 71, name: 'Produto teste', sku: 'TEST', status: 'active', product: { id: 7, name: 'Produto teste', kind: 'goods', track_stock: true, erp_unit_id: 2 } }]
+    ;(app.state.units as Vue.Ref<unknown[]>).value = [{ id: 2, actual_name: 'Unidade', short_name: 'UN', allow_decimal: true, conversion_factor: '1.00000000', base_unit_id: null, status: 'active' }]
+    app.state.inspect = async () => { (app.state.selected as Vue.Ref<unknown>).value = draft; return draft }
+    await Vue.nextTick()
+    let writes = 0
+    app.state.saveDraft = async (payload: Record<string, unknown>, _id: number) => {
+      writes++
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'edit-key', operation: 'erp.purchases.update', payload }
+      app.mutationError.value = 'A conexão caiu; confira a operação.'
+      return null
+    }
+    await (app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Editar compra EDIT-52')?.props?.onClick as () => Promise<void>)()
+    await Vue.nextTick()
+    app.findInModal('Editar rascunho', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
+    await Vue.nextTick()
+    assert.equal(writes, 1)
+    app.state.reconcile = async () => {
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = null
+      ;(app.state.resolvedOperation as Vue.Ref<unknown>).value = { key: 'edit-key' }
+    }
+    const recover = app.findInModal('Editar rascunho', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Consultar operação'))
+    assert.ok(recover)
+    await (recover.props?.onClick as () => Promise<void>)()
+    await Vue.nextTick()
+    assert.equal(app.findInModal('Editar rascunho', () => true), null)
+    assert.equal(writes, 1, 'recovered edit does not issue another PATCH')
+  })
+
+  it('closes the receipt overlay after mounted recovery confirms the original post', async (t) => {
+    const app = mountPurchaseWorkspace()
+    t.after(() => app.app.unmount())
+    const draft = { id: 53, erp_establishment_id: 3, erp_contact_id: 8, document_no: 'POST-53', status: 'draft', currency: 'BRL', total_amount: '5.0000', draft_revision: 2, supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [{ id: 10, erp_product_variant_id: 71, erp_unit_id: 2, description: 'Item', quantity: '1.0000', unit_cost: '5.0000', unit_conversion_factor: '1.00000000', line_total: '5.0000' }] }
+    ;(app.state.purchases as Vue.Ref<unknown[]>).value = [draft]
+    app.state.inspect = async () => { (app.state.selected as Vue.Ref<unknown>).value = draft; return draft }
+    await Vue.nextTick()
+    let posts = 0
+    app.state.postReceipt = async () => {
+      posts++
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = { key: 'post-key', operation: 'erp.purchases.post', payload: { draft_revision: 2, expected_total: '5.0000' } }
+      app.mutationError.value = 'A conexão caiu; confira a operação.'
+      return null
+    }
+    await (app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Abrir compra POST-53')?.props?.onClick as () => Promise<void>)()
+    await Vue.nextTick()
+    app.findInModal('Compra #53', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Lançar recebimento'))?.props?.onClick?.()
+    await Vue.nextTick()
+    app.findInModal('Lançar recebimento', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Confirmar recebimento'))?.props?.onClick?.()
+    await Vue.nextTick()
+    assert.equal(posts, 1)
+    app.state.reconcile = async () => {
+      ;(app.state.selectedOperation as Vue.Ref<unknown>).value = null
+      ;(app.state.resolvedOperation as Vue.Ref<unknown>).value = { key: 'post-key' }
+      app.state.isPurchaseConfirmedPosted = (id: number) => id === 53
+      ;(app.state.detailError as Vue.Ref<string>).value = 'A leitura atual falhou.'
+    }
+    const recover = app.findInModal('Lançar recebimento', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Consultar operação'))
+    assert.ok(recover)
+    await (recover.props?.onClick as () => Promise<void>)()
+    await Vue.nextTick()
+    assert.equal(app.findInModal('Lançar recebimento', () => true), null)
+    assert.equal((app.state.selected as Vue.Ref<Record<string, unknown>>).value?.status, 'draft', 'a missing current GET does not fabricate the posted detail')
+    assert.match(app.textContent(app.findInModal('Compra #53', () => true) as { text?: string, children?: unknown[] }), /Lançamento confirmado|leitura atual falhou/i)
+    assert.equal(app.findInModal('Compra #53', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Lançar recebimento')), null)
+    assert.equal(posts, 1, 'recovery never posts the receipt twice')
   })
 
   it('keeps a new draft identity separate when editing another purchase between create attempts', async (t) => {

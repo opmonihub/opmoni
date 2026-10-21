@@ -15,9 +15,12 @@ const detailOpen = ref(false)
 const returnOpen = ref(false)
 const postOpen = ref(false)
 const modalAttempt = reactive({ create: 0, edit: 0, detail: 0, return: 0, xml: 0, post: 0 })
+type RecoveryOwner = { kind: 'create' | 'edit' | 'post', authority: number, identity: string, fingerprint: string, sourceId: number | null }
+const recoveryOwners = new Map<string, RecoveryOwner>()
 const createDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
 const editDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
 const draftAuthority = ref(purchase.authorityGeneration.value)
+let createDraftIdentity = 1
 const returnEntry = ref({ quantities: {} as Record<string, string>, reason: '' })
 const returnEntryIdentity = ref('')
 let pendingReturnSourceId: number | null = null
@@ -97,18 +100,73 @@ function currentModal(token: ReturnType<typeof begin>) {
     && token.authority === purchase.authorityGeneration.value
     && (token.sourceId === null || token.sourceId === purchase.selected.value?.id || (token.allowMissingSource && purchase.selected.value === null))
 }
+function pendingOperationKey() {
+  const pending = purchase.selectedOperation.value as { key?: unknown } | null
+  return typeof pending?.key === 'string' ? pending.key : null
+}
+function trackRecoveryOwner(owner: RecoveryOwner, previousKey: string | null, expectedOperation: string, expectedPayload: unknown) {
+  const pending = purchase.selectedOperation.value as { key?: unknown } | null
+  const operation = pending as { key?: unknown, operation?: unknown, payload?: unknown } | null
+  if (typeof operation?.key === 'string' && operation.key !== previousKey
+    && operation.operation === expectedOperation && JSON.stringify(operation.payload) === JSON.stringify(expectedPayload)) {
+    recoveryOwners.set(operation.key, owner)
+    return operation.key
+  }
+  return null
+}
+function completeRecoveredOperation(key: string | undefined) {
+  if (!key) return
+  const owner = recoveryOwners.get(key)
+  recoveryOwners.delete(key)
+  if (!owner || owner.authority !== purchase.authorityGeneration.value) return
+  if (owner.kind === 'create' && owner.identity === String(createDraftIdentity) && JSON.stringify(createDraft.value) === owner.fingerprint) {
+    if (createOpen.value) {
+      begin('create')
+      createOpen.value = false
+    }
+    createDraft.value = emptyDraft()
+    createDraftIdentity++
+  } else if (owner.kind === 'edit' && editDraftIdentity.value === owner.identity && editPurchaseId.value === owner.sourceId
+    && purchase.selected.value?.id === owner.sourceId && JSON.stringify(editDraft.value) === owner.fingerprint) {
+    if (editOpen.value) {
+      begin('edit')
+      editOpen.value = false
+    }
+    editAuthority.value = null
+    editDraftIdentity.value = ''
+  } else if (owner.kind === 'post' && postOpen.value && purchase.selected.value?.id === owner.sourceId
+    && (purchase.selected.value?.status === 'posted' || purchase.isPurchaseConfirmedPosted(owner.sourceId!))) {
+    begin('post')
+    postOpen.value = false
+  }
+}
+async function reconcileOperation() {
+  const pending = purchase.selectedOperation.value as { key?: unknown } | null
+  const key = typeof pending?.key === 'string' ? pending.key : undefined
+  await purchase.reconcile()
+  const resolved = purchase.resolvedOperation.value as { key?: unknown } | null
+  if (resolved?.key === key) completeRecoveredOperation(key)
+}
+async function retryOperation() {
+  const pending = purchase.selectedOperation.value as { key?: unknown } | null
+  const key = typeof pending?.key === 'string' ? pending.key : undefined
+  await purchase.retryExact()
+  const resolved = purchase.resolvedOperation.value as { key?: unknown } | null
+  if (resolved?.key === key) completeRecoveredOperation(key)
+}
 function startCreate() {
   if (!allowed('erp.purchases.store')) return
   begin('create')
   purchase.clearOperationNotice()
   if (draftAuthority.value !== purchase.authorityGeneration.value) {
     createDraft.value = emptyDraft()
+    createDraftIdentity++
     draftAuthority.value = purchase.authorityGeneration.value
   }
   createOpen.value = true
 }
 function startEdit(row: ErpPurchase) {
-  if (!allowed('erp.purchases.update') || row.status !== 'draft') return
+  if (!allowed('erp.purchases.update') || row.status !== 'draft' || purchase.isPurchaseConfirmedPosted(row.id)) return
   begin('edit')
   editPurchaseId.value = row.id
   editAuthority.value = purchase.authorityGeneration.value
@@ -150,15 +208,27 @@ function startEdit(row: ErpPurchase) {
 }
 async function saveDraft(payload: ErpPurchaseDraftPayload, editing: boolean) {
   const token = begin(editing ? 'edit' : 'create')
-  const result = await purchase.saveDraft(payload as unknown as Record<string, unknown>, editing ? editPurchaseId.value : null)
+  const draft = editing ? editDraft.value : createDraft.value
+  const previousKey = pendingOperationKey()
+  const request = purchase.saveDraft(payload as unknown as Record<string, unknown>, editing ? editPurchaseId.value : null)
+  const ownerKey = trackRecoveryOwner({
+    kind: editing ? 'edit' : 'create', authority: token.authority, identity: editing ? editDraftIdentity.value : String(createDraftIdentity),
+    fingerprint: JSON.stringify(draft), sourceId: editing ? editPurchaseId.value : null
+  }, previousKey, editing ? 'erp.purchases.update' : 'erp.purchases.store', payload)
+  const result = await request
+  if (ownerKey && (result !== null || pendingOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
   if (result !== null && currentModal(token)) {
     createOpen.value = false
     editOpen.value = false
-    if (!editing) createDraft.value = emptyDraft()
+    if (!editing) {
+      createDraft.value = emptyDraft()
+      createDraftIdentity++
+    }
     if (editing) editDraftIdentity.value = ''
   }
 }
 async function openEdit(row: ErpPurchase) {
+  if (purchase.isPurchaseConfirmedPosted(row.id)) return
   pendingEditSourceId = row.id
   try {
     const detail = await purchase.inspect(row.id)
@@ -183,15 +253,20 @@ function closeDetail() {
 }
 function startReceipt() {
   const selected = purchase.selected.value
-  if (!selected || selected.status !== 'draft' || !allowed('erp.purchases.post')) return
+  if (!selected || selected.status !== 'draft' || purchase.isPurchaseConfirmedPosted(selected.id) || !allowed('erp.purchases.post')) return
   begin('post')
   postOpen.value = true
 }
 async function confirmReceipt() {
   const token = begin('post')
   const selected = purchase.selected.value
-  if (!selected) return
-  const result = await purchase.postReceipt(selected)
+  if (!selected || selected.status !== 'draft') return
+  const payload = { draft_revision: selected.draft_revision, expected_total: selected.total_amount }
+  const previousKey = pendingOperationKey()
+  const request = purchase.postReceipt(selected)
+  const ownerKey = trackRecoveryOwner({ kind: 'post', authority: token.authority, identity: `${selected.id}:${selected.draft_revision ?? ''}`, fingerprint: '', sourceId: selected.id }, previousKey, 'erp.purchases.post', payload)
+  const result = await request
+  if (ownerKey && (result !== null || pendingOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
   if (result !== null && currentModal(token)) postOpen.value = false
 }
 function startReturn() {
@@ -288,6 +363,7 @@ watch([createOpen, editOpen, returnOpen, postOpen], ([create, edit, returns, pos
   })
 })
 watch(purchase.authorityGeneration, () => {
+  recoveryOwners.clear()
   for (const key of Object.keys(modalAttempt) as Array<keyof typeof modalAttempt>) begin(key)
   createOpen.value = false
   editOpen.value = false
@@ -296,6 +372,7 @@ watch(purchase.authorityGeneration, () => {
   postOpen.value = false
   xmlEstablishmentId.value = null
   createDraft.value = emptyDraft()
+  createDraftIdentity++
   editDraft.value = emptyDraft()
   draftAuthority.value = purchase.authorityGeneration.value
   editPurchaseId.value = null
@@ -325,13 +402,18 @@ watch(() => purchase.selected.value?.id, (id, previous) => {
   }
 })
 watch(purchase.staleRevisionRefreshed, (result) => {
-  if (!result || !editOpen.value || editPurchaseId.value !== result.id || purchase.selected.value?.id !== result.id
-    || editAuthority.value !== purchase.authorityGeneration.value) return
-  editOpen.value = false
-  editAuthority.value = null
-  editDraftIdentity.value = ''
-  purchase.mutationError.value = 'A revisão desatualizada foi rejeitada. Reabra o rascunho para conferir a versão atual antes de editar novamente.'
-  begin('edit')
+  if (!result || purchase.selected.value?.id !== result.id) return
+  if (editOpen.value && editPurchaseId.value === result.id && editAuthority.value === purchase.authorityGeneration.value) {
+    editOpen.value = false
+    editAuthority.value = null
+    editDraftIdentity.value = ''
+    purchase.mutationError.value = 'A revisão desatualizada foi rejeitada. Reabra o rascunho para conferir a versão atual antes de editar novamente.'
+    begin('edit')
+  }
+  if (result.status === 'posted' && postOpen.value && purchase.selected.value.id === result.id) {
+    postOpen.value = false
+    begin('post')
+  }
 })
 watch(() => route.hash, (hash) => {
   const area = areaFromHash(hash)
@@ -438,14 +520,14 @@ onMounted(() => {
             variant="outline"
             label="Consultar operação"
             :loading="purchase.mutating.value"
-            @click="purchase.reconcile"
+            @click="reconcileOperation"
           />
           <UButton
             v-if="purchase.canRetryExact.value"
             size="xs"
             label="Repetir conteúdo original"
             :loading="purchase.mutating.value"
-            @click="purchase.retryExact"
+            @click="retryOperation"
           />
         </div>
         <UButton
@@ -488,7 +570,7 @@ onMounted(() => {
               @click="openDetail(row.original)"
             />
             <UButton
-              v-if="row.original.status === 'draft' && allowed('erp.purchases.update')"
+              v-if="row.original.status === 'draft' && !purchase.isPurchaseConfirmedPosted(row.original.id) && allowed('erp.purchases.update')"
               size="xs"
               color="neutral"
               variant="outline"
@@ -617,8 +699,8 @@ onMounted(() => {
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
-          @reconcile="purchase.reconcile"
-          @retry="purchase.retryExact"
+          @reconcile="reconcileOperation"
+          @retry="retryOperation"
           @dismiss="purchase.clearOperationNotice"
         />
       </template>
@@ -645,8 +727,8 @@ onMounted(() => {
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
-          @reconcile="purchase.reconcile"
-          @retry="purchase.retryExact"
+          @reconcile="reconcileOperation"
+          @retry="retryOperation"
           @dismiss="purchase.clearOperationNotice"
         />
       </template>
@@ -670,7 +752,7 @@ onMounted(() => {
             </div>
             <div class="flex flex-wrap gap-2">
               <UButton
-                v-if="purchase.selected.value.status === 'draft' && allowed('erp.purchases.update')"
+                v-if="purchase.selected.value.status === 'draft' && !purchase.isPurchaseConfirmedPosted(purchase.selected.value.id) && allowed('erp.purchases.update')"
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-pencil"
@@ -678,7 +760,7 @@ onMounted(() => {
                 @click="startEdit(purchase.selected.value)"
               />
               <UButton
-                v-if="purchase.selected.value.status === 'draft' && allowed('erp.purchases.post')"
+                v-if="purchase.selected.value.status === 'draft' && !purchase.isPurchaseConfirmedPosted(purchase.selected.value.id) && allowed('erp.purchases.post')"
                 icon="i-lucide-package-check"
                 label="Lançar recebimento"
                 @click="startReceipt"
@@ -706,6 +788,9 @@ onMounted(() => {
           </UAlert>
           <UAlert v-if="purchase.selected.value.needs_reconciliation || purchase.selected.value.returnability?.needs_reconciliation" color="warning" title="Conferência necessária">
             {{ purchase.selected.value.returnability?.reconciliation_reason || purchase.selected.value.finance?.reconciliation_reason || 'Alguns saldos não podem ser calculados com segurança.' }}
+          </UAlert>
+          <UAlert v-if="purchase.isPurchaseConfirmedPosted(purchase.selected.value.id) && purchase.selected.value.status === 'draft'" color="warning" title="Lançamento confirmado">
+            A compra foi lançada, mas a leitura atual não confirmou a situação. Atualize o detalhe antes de continuar.
           </UAlert>
           <section class="space-y-2">
             <h3 class="font-semibold text-highlighted">
@@ -798,8 +883,8 @@ onMounted(() => {
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
-          @reconcile="purchase.reconcile"
-          @retry="purchase.retryExact"
+          @reconcile="reconcileOperation"
+          @retry="retryOperation"
           @dismiss="purchase.clearOperationNotice"
         />
         <section v-if="purchase.selectedReturn.value && (!purchase.selected.value || purchase.selected.value.id !== purchase.selectedReturn.value.erp_purchase_id)" class="space-y-4 rounded-lg border border-default p-4" aria-label="Detalhes da devolução">
@@ -808,8 +893,8 @@ onMounted(() => {
             :pending="Boolean(purchase.selectedOperation.value)"
             :can-retry="purchase.canRetryExact.value"
             :busy="purchase.mutating.value"
-            @reconcile="purchase.reconcile"
-            @retry="purchase.retryExact"
+            @reconcile="reconcileOperation"
+            @retry="retryOperation"
             @dismiss="purchase.clearOperationNotice"
           />
           <p class="text-sm text-muted">
@@ -846,8 +931,8 @@ onMounted(() => {
             :pending="Boolean(purchase.selectedOperation.value)"
             :can-retry="purchase.canRetryExact.value"
             :busy="purchase.mutating.value"
-            @reconcile="purchase.reconcile"
-            @retry="purchase.retryExact"
+            @reconcile="reconcileOperation"
+            @retry="retryOperation"
             @dismiss="purchase.clearOperationNotice"
           />
           <p class="text-sm">
@@ -862,7 +947,7 @@ onMounted(() => {
             /><UButton
               label="Confirmar recebimento"
               :loading="purchase.mutating.value"
-              :disabled="purchase.mutating.value"
+              :disabled="purchase.mutating.value || purchase.selected.value.status !== 'draft' || purchase.isPurchaseConfirmedPosted(purchase.selected.value.id)"
               @click="confirmReceipt"
             />
           </div>

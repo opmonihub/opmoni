@@ -75,7 +75,9 @@ export function useErpPurchaseWorkspace() {
   const selectedOperation = ref<PurchaseOperation | null>(null)
   const needsReconciliation = ref(false)
   const canRetryExact = ref(false)
-  const staleRevisionRefreshed = ref<{ id: number, revision: number } | null>(null)
+  const staleRevisionRefreshed = ref<{ id: number, revision: number | null, status: ErpPurchase['status'] } | null>(null)
+  const resolvedOperation = ref<{ key: string, operation: string, outcome: unknown } | null>(null)
+  const confirmedPostedPurchases = ref(new Set<number>())
   const authorityGeneration = ref(0)
   const deniedActions = ref(new Set<string>())
   const authorityNeedsRefresh = ref(false)
@@ -146,6 +148,8 @@ export function useErpPurchaseWorkspace() {
     needsReconciliation.value = false
     canRetryExact.value = false
     staleRevisionRefreshed.value = null
+    resolvedOperation.value = null
+    confirmedPostedPurchases.value = new Set()
   }
   function readPending() {
     if (typeof sessionStorage === 'undefined') return null
@@ -436,6 +440,15 @@ export function useErpPurchaseWorkspace() {
     }
     return selected.value?.id ?? null
   }
+  function rememberConfirmedPost(action: string, path: string) {
+    if (action !== 'erp.purchases.post') return
+    const purchaseId = Number(path.match(/^\/erp\/purchases\/(\d+)\/post$/)?.[1])
+    if (Number.isSafeInteger(purchaseId) && purchaseId > 0)
+      confirmedPostedPurchases.value = new Set([...confirmedPostedPurchases.value, purchaseId])
+  }
+  function isPurchaseConfirmedPosted(purchaseId: number) {
+    return confirmedPostedPurchases.value.has(purchaseId)
+  }
   async function executeOperation(action: PurchaseAction, path: string, payload: Record<string, unknown>, existing?: PurchaseOperation) {
     mutationError.value = ''
     fieldErrors.value = {}
@@ -465,6 +478,7 @@ export function useErpPurchaseWorkspace() {
       const result = await api<{ data: unknown }>(frozen.path, { method: action === 'erp.purchases.update' ? 'PATCH' : 'POST', body: frozen.payload, headers: { 'Idempotency-Key': frozen.key } })
       if (!current(token, generation)) return null
       const outcome = result.data
+      rememberConfirmedPost(action, frozen.path)
       const cleared = storePending(null)
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada.' : 'Operação confirmada. A identificação local ainda não pôde ser removida; consulte-a antes de iniciar outra.'
@@ -527,6 +541,10 @@ export function useErpPurchaseWorkspace() {
     return executeOperation(id ? 'erp.purchases.update' : 'erp.purchases.store', id ? `/erp/purchases/${id}` : '/erp/purchases', payload)
   }
   async function postReceipt(purchase: ErpPurchase) {
+    if (purchase.status !== 'draft' || isPurchaseConfirmedPosted(purchase.id)) {
+      mutationError.value = 'Somente um rascunho pode ser lançado como recebimento.'
+      return null
+    }
     return executeOperation('erp.purchases.post', `/erp/purchases/${purchase.id}/post`, { draft_revision: purchase.draft_revision, expected_total: purchase.total_amount })
   }
   async function inspectXml(file: File, establishmentId: number) {
@@ -643,8 +661,21 @@ export function useErpPurchaseWorkspace() {
       const sourceId = result.data.erp_purchase_id
       if (selected.value?.id !== sourceId) {
         if (allowed('erp.purchases.show')) {
-          const source = await inspect(sourceId)
-          if (!currentReturn() || !source || source.id !== sourceId) return null
+          const sourceDetailSequence = detailSequence
+          let source: { data: ErpPurchase }
+          try {
+            source = await api<{ data: ErpPurchase }>(`/erp/purchases/${sourceId}`)
+          } catch (error) {
+            if (!currentReturn() || detailSequence !== sourceDetailSequence
+              || (selected.value?.id ?? null) !== expectedSourceId) return null
+            detailError.value = errorMessage(error, 'Não foi possível carregar a compra de origem da devolução.')
+            mutationError.value = detailError.value
+            await handleDenial('erp.purchases.show', error, token)
+            return null
+          }
+          if (!currentReturn() || detailSequence !== sourceDetailSequence
+            || (selected.value?.id ?? null) !== expectedSourceId || source.data.id !== sourceId) return null
+          selected.value = source.data
         } else if (!currentReturn()) {
           return null
         }
@@ -674,6 +705,7 @@ export function useErpPurchaseWorkspace() {
     const pending = (selectedOperation.value ?? readPending()) as PurchaseOperation | null
     if (!pending || pending.identity !== operationIdentity(pending.operation) || mutating.value) return
     selectedOperation.value = pending
+    resolvedOperation.value = null
     const token = context.capture()
     const generation = requestGeneration
     const detailAtStart = detailSequence
@@ -691,6 +723,7 @@ export function useErpPurchaseWorkspace() {
       }
       const outcome = result.data.result ?? null
       const sourceId = outcomePurchaseId(pending, outcome)
+      rememberConfirmedPost(pending.operation, pending.path)
       const cleared = storePending(null)
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada pelo registro do servidor.' : 'Operação confirmada; a cópia local continua guardada.'
@@ -707,6 +740,7 @@ export function useErpPurchaseWorkspace() {
         await inspectReturn(outcomeId, sourceId)
         if (current(token, generation)) await loadReturns()
       }
+      if (current(token, generation)) resolvedOperation.value = { key: pending.key, operation: pending.operation, outcome }
     } catch (error) {
       if (!current(token, generation)) return
       if (apiStatus(error) === 404) {
@@ -720,9 +754,12 @@ export function useErpPurchaseWorkspace() {
             try {
               const latest = await api<{ data: ErpPurchase }>('/erp/purchases/' + purchaseId)
               if (!current(token, generation) || selectedOperation.value?.key !== pending.key) return
-              if (latest.data.id === purchaseId && latest.data.status === 'draft'
-                && Number.isSafeInteger(latest.data.draft_revision)
-                && latest.data.draft_revision !== pending.stale_revision_rejection) {
+              const rejectedWithoutEffect = latest.data.id === purchaseId && (
+                latest.data.status === 'posted'
+                || (latest.data.status === 'draft' && Number.isSafeInteger(latest.data.draft_revision)
+                  && latest.data.draft_revision !== pending.stale_revision_rejection)
+              )
+              if (rejectedWithoutEffect) {
                 const cleared = storePending(null)
                 needsReconciliation.value = !cleared
                 canRetryExact.value = false
@@ -731,7 +768,7 @@ export function useErpPurchaseWorkspace() {
                   : 'A revisão desatualizada foi rejeitada e a compra atual foi recarregada, mas a identificação local não pôde ser removida.'
                 if (detailSequence === detailAtStart && (selected.value?.id ?? null) === selectionAtStart && selected.value?.id === purchaseId)
                   selected.value = latest.data
-                staleRevisionRefreshed.value = { id: purchaseId, revision: latest.data.draft_revision! }
+                staleRevisionRefreshed.value = { id: purchaseId, revision: latest.data.draft_revision ?? null, status: latest.data.status }
                 return
               }
               mutationError.value = 'A compra atual não confirmou uma nova revisão. Mantenha a operação guardada e consulte novamente.'
@@ -759,6 +796,7 @@ export function useErpPurchaseWorkspace() {
   async function retryExact() {
     const pending = selectedOperation.value ?? readPending()
     if (!pending || !canRetryExact.value) return null
+    resolvedOperation.value = null
     const token = context.capture()
     const generation = requestGeneration
     const result = await executeOperation(pending.operation as PurchaseAction, pending.path, pending.payload, pending)
@@ -774,6 +812,7 @@ export function useErpPurchaseWorkspace() {
       await inspectReturn(outcomeId, sourceId)
       if (current(token, generation)) await loadReturns()
     }
+    if (current(token, generation)) resolvedOperation.value = { key: pending.key, operation: pending.operation, outcome: result }
     return result
   }
   function clearOperationNotice() {
@@ -811,7 +850,8 @@ export function useErpPurchaseWorkspace() {
   return {
     purchases, returns, meta, returnMeta, returnFilters, suppliers, establishments, variants, units, selected, selectedReturn, previewState,
     listLoading, returnsLoading, referencesLoading, mutating, loadingDetail, pageError, referenceError, mutationError, detailError, fieldErrors,
-    selectedOperation, needsReconciliation, canRetryExact, staleRevisionRefreshed, authorityGeneration, filters, allowed,
+    selectedOperation, needsReconciliation, canRetryExact, staleRevisionRefreshed, resolvedOperation, isPurchaseConfirmedPosted,
+    authorityGeneration, filters, allowed,
     load, loadReturns, loadReferences, inspect, closeDetail, saveDraft, postReceipt, inspectXml, refreshXmlPreview, cancelXmlPreview, confirmXml,
     createReturn, inspectReturn, postReturn, reconcile, retryExact, clearOperationNotice, restorePreview
   }
