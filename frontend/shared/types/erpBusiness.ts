@@ -164,6 +164,158 @@ export interface ErpCashPage<T> {
   totals?: ErpCashLedgerTotals
 }
 
+export interface ErpStockPage<T> {
+  data: T[]
+  meta: { current_page: number, last_page: number, per_page: number, total: number }
+}
+
+export interface ErpStockReconciliation {
+  observed_quantity?: string
+  signed_history_quantity?: string
+  watermark_movement_id?: number
+  provenance?: string
+  needs_reconciliation?: boolean
+}
+
+export interface ErpStockBalance {
+  id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  quantity_on_hand: string
+  ledger_initialized_at: string | null
+  reconciliation: ErpStockReconciliation | null
+  average_cost: string | null
+}
+
+export interface ErpStockCostBreakdown {
+  currency: string | null
+  total_cost?: ErpMoney | null
+  known_cost: ErpMoney | null
+  unvalued_quantity: string
+  cost_status?: string
+}
+
+export interface ErpStockMovement {
+  id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  direction: 'in' | 'out'
+  quantity: string
+  unit_cost: ErpMoney | null
+  source_type: string
+  source_id: number
+  source_operation_key: string | null
+  posted_by_user_id: number | null
+  posted_at: string | null
+  source_line_id: number | null
+  reversal_of_id: number | null
+  valuation_method: 'fifo' | 'lifo' | null
+  currency: string | null
+  source_currency: string | null
+  cost_breakdown: ErpStockCostBreakdown[] | null
+  total_cost: ErpMoney | null
+  known_cost: ErpMoney | null
+  unvalued_quantity: string | null
+  cost_status: string | null
+  reason: string | null
+}
+
+export interface ErpStockAllocation {
+  id: number
+  erp_stock_movement_id: number
+  erp_stock_lot_id: number | null
+  ordinal: number
+  quantity: string
+  unit_cost: ErpMoney | null
+  total_cost: ErpMoney | null
+  currency: string | null
+  kind: string
+  cost_status: string
+  erp_stock_allocation_id: number | null
+}
+
+export interface ErpStockLot {
+  id: number
+  erp_company_id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  erp_stock_movement_id: number
+  root_lot_id: number | null
+  parent_lot_id: number | null
+  parent_allocation_id: number | null
+  parent_settlement_id: number | null
+  quantity: string
+  available_quantity: string
+  total_cost: ErpMoney | null
+  currency: string | null
+  consumed_quantity: string
+  consumed_cost: ErpMoney | null
+  cost_status: string
+  received_at: string | null
+}
+
+export interface ErpStockReversalPolicy {
+  workflow: 'standalone' | 'transfer' | 'sale_return' | 'purchase_return' | 'reconciliation' | string
+  remaining_quantity: string
+  reason_required: boolean
+  source_id: number
+  permission: string | null
+}
+
+export interface ErpStockMovementDetail extends ErpStockMovement {
+  allocations: ErpStockAllocation[]
+  reversal: ErpStockReversalPolicy
+  reversals: ErpStockMovement[]
+  lots: ErpStockLot[]
+  settlements: Array<Record<string, unknown>>
+}
+
+export interface ErpStockAdjustment {
+  id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  quantity_delta: string
+  movement_ids: number[]
+  reason: string
+  status: string
+  source_operation_key: string | null
+  posted_by_user_id: number | null
+  posted_at: string | null
+}
+
+export interface ErpStockTransfer {
+  id: number
+  movement_ids: number[]
+  from_establishment_id: number
+  to_establishment_id: number
+  erp_product_variant_id: number
+  quantity: string
+  status: string
+  source_operation_key: string | null
+  posted_by_user_id: number | null
+  posted_at: string | null
+}
+
+export interface ErpStockTransferDetail extends ErpStockTransfer {
+  returned_quantity: string
+  movements: ErpStockMovement[]
+  reversals: ErpStockMovement[]
+}
+
+export interface ErpStockEstablishment {
+  id: number
+  name: string
+  status: 'active' | 'archived'
+}
+
+export interface ErpStockVariant {
+  id: number
+  name: string
+  sku: string | null
+  status: 'active' | 'archived'
+  product: { id: number, name: string, kind: string, track_stock: boolean }
+}
+
 export interface ErpPurchaseLine {
   id: number
   erp_product_variant_id: number | null
