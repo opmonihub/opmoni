@@ -2,23 +2,25 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
-use App\Erp\ErpCatalogScope;
 use App\Erp\ErpEstablishmentAccess;
-use App\Erp\Fiscal\ErpFiscalCertificateValidator;
+use App\Erp\Fiscal\ErpFiscalCertificateRevisionService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
+use App\Http\Requests\Erp\Fiscal\RotateErpFiscalCertificateRequest;
+use App\Http\Requests\Erp\Fiscal\StoreErpFiscalCertificateRequest;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\Fiscal\ErpFiscalCertificate;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 class ErpFiscalCertificateController extends ErpOperationsController
 {
     public function __construct(
-        private ErpCatalogScope $scope,
-        private ErpFiscalCertificateValidator $validator,
+        private ErpFiscalCertificateRevisionService $revisions,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -35,93 +37,74 @@ class ErpFiscalCertificateController extends ErpOperationsController
         return response()->json(['data' => $this->serialize($model)]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreErpFiscalCertificateRequest $request): JsonResponse
     {
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
-        $data = $request->validate([
-            'label' => ['required', 'string', 'max:255'],
-            'cnpj' => ['sometimes', 'nullable', 'string', 'size:14'],
-            'erp_establishment_id' => ['sometimes', 'nullable', 'integer'],
-            'certificate_content' => ['required', 'string'],
-            'password' => ['required', 'string', 'max:255'],
-        ]);
-        $access = app(ErpEstablishmentAccess::class);
-        $access->assertNullableRelated($context, $data['erp_establishment_id'] ?? null);
-        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id'] ?? null);
-
-        $rawCertificate = base64_decode($data['certificate_content'], true);
-        abort_if($rawCertificate === false, 422, 'Certificado inválido');
-
         try {
-            $parsed = $this->validator->validatePkcs12(
-                $rawCertificate,
-                $data['password'],
-                $data['cnpj'] ?? $context->company->cnpj,
-            );
+            $data = $request->validated();
+            $issuer = $this->issuerEstablishment($request, (int) $data['erp_establishment_id']);
+            $rawCertificate = $this->certificateBytes($request, $data);
+            $certificate = $this->revisions->store($issuer, $data['label'], $rawCertificate, $data['password'], $request->user()?->id);
         } catch (InvalidArgumentException $exception) {
-            abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
+            throw ValidationException::withMessages(['certificate' => $exception->getMessage()]);
         }
-
-        $certificate = ErpFiscalCertificate::query()->create([
-            'erp_company_id' => $companyId,
-            'erp_establishment_id' => $data['erp_establishment_id'] ?? null,
-            'label' => $data['label'],
-            'cnpj' => $parsed['cnpj'] ?? ($data['cnpj'] ?? null),
-            'encrypted_certificate' => Crypt::encryptString($rawCertificate),
-            'encrypted_password' => Crypt::encryptString($data['password']),
-            'certificate_fingerprint' => hash('sha256', $rawCertificate),
-            'revision' => 1,
-            'status' => 'active',
-            'valid_from' => $parsed['valid_from'],
-            'valid_until' => $parsed['valid_until'],
-            'uploaded_by_user_id' => $userId,
-        ]);
 
         return response()->json(['data' => $this->serialize($certificate)], 201);
     }
 
-    public function rotate(Request $request, int $certificate): JsonResponse
+    public function rotate(RotateErpFiscalCertificateRequest $request, int $certificate): JsonResponse
     {
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
         $existing = $this->findForCompany($request, ErpFiscalCertificate::class, $certificate);
-        app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $existing->erp_establishment_id);
         /** @var ErpFiscalCertificate $existing */
-        $data = $request->validate([
-            'certificate_content' => ['required', 'string'],
-            'password' => ['required', 'string', 'max:255'],
-        ]);
-
-        $rawCertificate = base64_decode($data['certificate_content'], true);
-        abort_if($rawCertificate === false, 422, 'Certificado inválido');
-
+        $issuer = $this->issuerEstablishment($request, (int) $existing->erp_establishment_id);
         try {
-            $parsed = $this->validator->validatePkcs12(
-                $rawCertificate,
-                $data['password'],
-                $existing->cnpj ?? $context->company->cnpj,
-            );
+            $data = $request->validated();
+            $rawCertificate = $this->certificateBytes($request, $data);
+            $certificateModel = $this->revisions->rotate($existing, $rawCertificate, $data['password'], $request->user()?->id);
         } catch (InvalidArgumentException $exception) {
-            abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
+            throw ValidationException::withMessages(['certificate' => $exception->getMessage()]);
         }
 
-        $existing->update([
-            'encrypted_certificate' => Crypt::encryptString($rawCertificate),
-            'encrypted_password' => Crypt::encryptString($data['password']),
-            'certificate_fingerprint' => hash('sha256', $rawCertificate),
-            'revision' => (int) $existing->revision + 1,
-            'valid_from' => $parsed['valid_from'],
-            'valid_until' => $parsed['valid_until'],
-            'uploaded_by_user_id' => $userId,
-            'status' => 'active',
-        ]);
+        return response()->json(['data' => $this->serialize($certificateModel)]);
+    }
 
-        return response()->json(['data' => $this->serialize($existing->fresh())]);
+    /** @param array<string, mixed> $data */
+    private function certificateBytes(Request $request, array $data): string
+    {
+        if ($request->file('certificate') instanceof UploadedFile && array_key_exists('certificate_content', $data)) {
+            throw new InvalidArgumentException('Envie o certificado em arquivo ou em base64, sem preencher os dois campos.');
+        }
+
+        if ($request->file('certificate') instanceof UploadedFile) {
+            $bytes = file_get_contents($request->file('certificate')->getRealPath());
+            if ($bytes === false) {
+                throw new InvalidArgumentException('Não foi possível ler o arquivo PKCS#12 enviado.');
+            }
+
+            return $bytes;
+        }
+
+        $bytes = base64_decode((string) ($data['certificate_content'] ?? ''), true);
+        if ($bytes === false) {
+            throw new InvalidArgumentException('O certificado em base64 está inválido.');
+        }
+
+        return $bytes;
+    }
+
+    private function issuerEstablishment(Request $request, int $establishmentId): ErpEstablishment
+    {
+        $establishment = ErpEstablishment::query()
+            ->where('erp_company_id', $this->companyId($request))
+            ->where('status', 'active')
+            ->whereKey($establishmentId)
+            ->firstOrFail();
+        app(ErpEstablishmentAccess::class)->assertResource(CurrentCompany::fromRequest($request), $establishment);
+
+        return $establishment;
     }
 
     /** @return array<string, mixed> */
@@ -135,6 +118,7 @@ class ErpFiscalCertificateController extends ErpOperationsController
             'erp_establishment_id' => $model->erp_establishment_id,
             'certificate_fingerprint' => $model->certificate_fingerprint,
             'revision' => $model->revision,
+            'revision_id' => $model->current_revision_id,
             'status' => $model->status,
             'valid_from' => $model->valid_from?->toIso8601String(),
             'valid_until' => $model->valid_until?->toIso8601String(),

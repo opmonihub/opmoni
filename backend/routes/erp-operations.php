@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Erp\Finance\ErpFinancialReversalController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpObligationController;
 use App\Http\Controllers\Api\V1\Erp\Finance\ErpPaymentController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalCertificateController;
+use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalConfigurationController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalDocumentController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalEventController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalInvalidationController;
@@ -102,6 +103,8 @@ Route::get('/sale-returns/{saleReturn}', [ErpSaleReturnController::class, 'show'
 Route::post('/sale-returns/{saleReturn}/post', [ErpSaleReturnController::class, 'post'])->whereNumber('saleReturn')->name('erp.sale-returns.post');
 
 Route::prefix('fiscal')->name('erp.fiscal.')->group(function (): void {
+    Route::get('/configuration/{establishment}', [ErpFiscalConfigurationController::class, 'show'])->whereNumber('establishment')->name('configuration.show');
+    Route::patch('/configuration/{establishment}', [ErpFiscalConfigurationController::class, 'update'])->whereNumber('establishment')->name('configuration.update');
     Route::get('/documents', [ErpFiscalDocumentController::class, 'index'])->name('documents.index');
     Route::post('/documents', [ErpFiscalDocumentController::class, 'store'])->name('documents.store');
     Route::get('/documents/{document}', [ErpFiscalDocumentController::class, 'show'])->whereNumber('document')->name('documents.show');

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1\Erp\Fiscal;
 
 use App\Erp\ErpCatalogScope;
-use App\Erp\ErpEstablishmentAccess;
+use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Erp\Fiscal\ErpFiscalPayloadBuilder;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
+use App\Http\Requests\Erp\Fiscal\StoreErpFiscalInvalidationRequest;
+use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalInvalidation;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
@@ -36,56 +38,12 @@ class ErpFiscalInvalidationController extends ErpOperationsController
         return response()->json(['data' => $this->serialize($model)]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreErpFiscalInvalidationRequest $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
-        $data = $request->validate([
-            'erp_establishment_id' => ['required', 'integer'],
-            'model' => ['required', 'in:55,65,57,58'],
-            'environment' => ['sometimes', 'in:homologation,production'],
-            'series' => ['required', 'integer', 'min:1'],
-            'number_from' => ['required', 'integer', 'min:1'],
-            'number_to' => ['required', 'integer', 'gte:number_from'],
-            'justification' => ['required', 'string'],
-            'idempotency_key' => ['required', 'string', 'max:128'],
-        ]);
-        $access = app(ErpEstablishmentAccess::class);
-        $access->assertRelated($context, $data['erp_establishment_id']);
-        $validationErrors = $this->payloadBuilder->validateInvalidation([
-            'model' => $data['model'],
-            'series' => $data['series'],
-            'number_from' => $data['number_from'],
-            'number_to' => $data['number_to'],
-            'justification' => $data['justification'],
-        ]);
-        if ($validationErrors !== []) {
-            abort(response()->json(['code' => 'validation_error', 'errors' => $validationErrors], 422));
-        }
+        CurrentCompany::fromRequest($request)->assertCanMutate();
+        [$model, $created] = $this->issuance->invalidationDraft($request, $request->validated());
 
-        $existing = ErpFiscalInvalidation::query()
-            ->where('erp_company_id', $companyId)
-            ->where('idempotency_key', $data['idempotency_key'])
-            ->first();
-        if ($existing) {
-            $access->assertResource($context, $existing);
-
-            return response()->json(['data' => $this->serialize($existing)]);
-        }
-
-        $this->scope->assertActiveEstablishment($companyId, $data['erp_establishment_id']);
-
-        $invalidation = ErpFiscalInvalidation::query()->create([
-            ...$data,
-            'erp_company_id' => $companyId,
-            'status' => 'queued',
-            'environment' => $data['environment'] ?? 'homologation',
-            'requested_by_user_id' => $userId,
-        ]);
-
-        return response()->json(['data' => $this->serialize($invalidation)], 201);
+        return response()->json(['data' => $this->serialize($model)], $created ? 201 : 200);
     }
 
     public function submit(Request $request, int $invalidation): JsonResponse
@@ -98,7 +56,7 @@ class ErpFiscalInvalidationController extends ErpOperationsController
         }
 
         try {
-            $result = $this->issuance->submitInvalidation($model, $request->user()?->id);
+            $result = $this->issuance->submitInvalidation($model, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -110,10 +68,14 @@ class ErpFiscalInvalidationController extends ErpOperationsController
     private function serialize(Model $model): array
     {
         /** @var ErpFiscalInvalidation $model */
+        $attempt = ErpFiscalAttempt::query()->where('erp_fiscal_invalidation_id', $model->id)->latest('id')->first();
+
         return [
             'id' => $model->id,
+            'attempt' => $attempt?->only(['id', 'action', 'status', 'safe_result']),
             'erp_establishment_id' => $model->erp_establishment_id,
             'model' => $model->model,
+            'year' => $attempt ? (app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($attempt)['request']['source']['year'] ?? null) : null,
             'environment' => $model->environment,
             'series' => $model->series,
             'number_from' => $model->number_from,

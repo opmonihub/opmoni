@@ -26,7 +26,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(EncryptCookies::class, TrustedIngress::class);
         $middleware->prependToPriorityList(SubstituteBindings::class, ResolveAccount::class);
         $middleware->redirectGuestsTo(fn (Request $request): ?string => $request->is('api/*') ? null : '/');
-        $middleware->convertEmptyStringsToNull(except: [fn (Request $request): bool => $request->is('api/v1/serpro/connection', 'api/v1/admin/accounts/*/contracting-certificate')]);
+        $middleware->convertEmptyStringsToNull(except: [
+            fn (Request $request): bool => $request->is('api/v1/serpro/connection', 'api/v1/admin/accounts/*/contracting-certificate'),
+            fn (Request $request): bool => $request->is('api/v1/erp/fiscal/certificates', 'api/v1/erp/fiscal/certificates/*'),
+        ]);
         $middleware->trimStrings(except: ['password', 'password_confirmation', 'token', 'barcode', 'variants.*.barcode']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -6,6 +6,8 @@ use App\Erp\ErpCatalogScope;
 use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
+use App\Http\Requests\Erp\Fiscal\StoreErpFiscalEventRequest;
+use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Support\CurrentCompany;
@@ -39,45 +41,12 @@ class ErpFiscalEventController extends ErpOperationsController
         return response()->json(['data' => $this->serialize($model)]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreErpFiscalEventRequest $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $userId = $request->user()?->id;
-        $data = $request->validate([
-            'erp_fiscal_document_id' => ['required', 'integer'],
-            'event_type' => ['required', 'string', 'max:32'],
-            'idempotency_key' => ['required', 'string', 'max:128'],
-            'justification' => ['sometimes', 'nullable', 'string'],
-        ]);
+        CurrentCompany::fromRequest($request)->assertCanMutate();
+        [$model, $created] = $this->issuance->eventDraft($request, $request->validated());
 
-        app(ErpCatalogScope::class)->assertBelongsToCompany(ErpFiscalDocument::class, $companyId, $data['erp_fiscal_document_id'], 'erp_fiscal_document_id');
-        $document = ErpFiscalDocument::query()->where('erp_company_id', $companyId)->whereKey($data['erp_fiscal_document_id'])->firstOrFail();
-        app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $document, 'erp_fiscal_document_id');
-
-        $existing = ErpFiscalEvent::query()
-            ->where('erp_fiscal_document_id', $data['erp_fiscal_document_id'])
-            ->where('idempotency_key', $data['idempotency_key'])
-            ->first();
-        if ($existing) {
-            app(ErpEstablishmentAccess::class)->assertResource($context, $existing);
-
-            return response()->json(['data' => $this->serialize($existing)]);
-        }
-
-        app(ErpCatalogScope::class)->assertActiveEstablishment($companyId, $document->erp_establishment_id, 'erp_fiscal_document_id');
-
-        $event = ErpFiscalEvent::query()->create([
-            'erp_fiscal_document_id' => $data['erp_fiscal_document_id'],
-            'event_type' => $data['event_type'],
-            'status' => 'queued',
-            'idempotency_key' => $data['idempotency_key'],
-            'justification' => $data['justification'] ?? null,
-            'requested_by_user_id' => $userId,
-        ]);
-
-        return response()->json(['data' => $this->serialize($event)], 201);
+        return response()->json(['data' => $this->serialize($model)], $created ? 201 : 200);
     }
 
     public function submit(Request $request, int $event): JsonResponse
@@ -96,7 +65,7 @@ class ErpFiscalEventController extends ErpOperationsController
         }
 
         try {
-            $result = $this->issuance->submitEvent($model, $document, $request->user()?->id);
+            $result = $this->issuance->submitEvent($model, $document, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -108,8 +77,11 @@ class ErpFiscalEventController extends ErpOperationsController
     private function serialize(Model $model): array
     {
         /** @var ErpFiscalEvent $model */
+        $attempt = ErpFiscalAttempt::query()->where('erp_fiscal_event_id', $model->id)->latest('id')->first();
+
         return [
             'id' => $model->id,
+            'attempt' => $attempt?->only(['id', 'action', 'status', 'safe_result']),
             'erp_fiscal_document_id' => $model->erp_fiscal_document_id,
             'event_type' => $model->event_type,
             'status' => $model->status,

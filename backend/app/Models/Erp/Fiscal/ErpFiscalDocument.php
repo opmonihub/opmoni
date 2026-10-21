@@ -62,6 +62,11 @@ class ErpFiscalDocument extends Model
         return $this->belongsTo(ErpSale::class, 'erp_sale_id');
     }
 
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(ErpFiscalAttempt::class, 'erp_fiscal_document_id');
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(ErpFiscalEvent::class, 'erp_fiscal_document_id');

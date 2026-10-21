@@ -311,55 +311,32 @@ class ErpOperationsApiTest extends TestCase
 
         $this->assertSame(1, ErpObligation::query()->where('source_type', 'erp_sale')->count());
 
-        $certificateResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->commercialPost('/api/v1/erp/fiscal/certificates', [
-                'label' => 'Certificado A1',
-                'certificate_content' => base64_encode('fake-cert-bytes'),
-                'password' => 'secret',
-            ])
-            ->assertCreated()
-            ->assertJsonPath('data.label', 'Certificado A1')
-            ->assertJsonMissing(['encrypted_password', 'encrypted_certificate']);
-
-        $documentResponse = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->commercialPost('/api/v1/erp/fiscal/documents', [
-                'erp_establishment_id' => $ctx['establishment']->id,
-                'erp_fiscal_certificate_id' => $certificateResponse->json('data.id'),
-                'erp_sale_id' => $saleId,
-                'model' => '55',
-                'number' => 1001,
-                'idempotency_key' => 'doc-key-1',
-            ])
-            ->assertCreated()
-            ->assertJsonPath('data.status', 'draft');
-
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->commercialPost('/api/v1/erp/fiscal/documents/'.$documentResponse->json('data.id').'/queue')
-            ->assertOk()
-            ->assertJsonPath('data.status', 'queued');
-
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->commercialPost('/api/v1/erp/fiscal/events', [
-                'erp_fiscal_document_id' => $documentResponse->json('data.id'),
-                'event_type' => 'cancel',
-                'idempotency_key' => 'event-key-1',
-                'justification' => 'Erro de digitação',
-            ])
-            ->assertCreated()
-            ->assertJsonPath('data.status', 'queued');
-
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->commercialPost('/api/v1/erp/fiscal/invalidations', [
-                'erp_establishment_id' => $ctx['establishment']->id,
-                'model' => '55',
-                'series' => 1,
-                'number_from' => 1001,
-                'number_to' => 1001,
-                'justification' => 'Numeração não utilizada na homologação',
-                'idempotency_key' => 'inut-key-1',
-            ])
-            ->assertCreated()
-            ->assertJsonPath('data.status', 'queued');
+        $ctx['establishment']->update(['cnpj' => '30288513000100']);
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $this->withHeaders($headers)->patchJson('/api/v1/erp/fiscal/configuration/'.$ctx['establishment']->id, [
+            'environment' => 'homologation', 'issuer' => ['tax_regime' => 3, 'state_registration' => '110042490114', 'uf' => 'SP', 'address' => ['street' => 'Rua Um', 'number' => '10', 'district' => 'Centro', 'city_code' => '3550308', 'city_name' => 'Sao Paulo', 'zip_code' => '01001000']],
+            'models' => ['55' => ['series' => 1, 'next_number' => 1001]],
+        ])->assertOk();
+        config(['erp.fiscal_certificate_relaxed_validation' => false]);
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+        $csr = openssl_csr_new(['commonName' => '30288513000100'], $key, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($csr, null, $key, 2, ['digest_alg' => 'sha256']);
+        $pkcs12 = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $pkcs12, $key, ''));
+        $certificateResponse = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/certificates', ['erp_establishment_id' => $ctx['establishment']->id, 'label' => 'Certificado A1', 'certificate_content' => base64_encode($pkcs12), 'password' => ''])
+            ->assertCreated()->assertJsonPath('data.label', 'Certificado A1')->assertJsonMissing(['encrypted_password', 'encrypted_certificate']);
+        $source = ErpFiscalModelBuilderSchemaTest::builderProvider()['NF-e 55 posted sale'][2];
+        $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents', [
+            'erp_establishment_id' => $ctx['establishment']->id, 'erp_fiscal_certificate_id' => $certificateResponse->json('data.id'),
+            'erp_sale_id' => $saleId, 'model' => '55', 'number' => 1001, 'idempotency_key' => 'doc-key-1', 'source' => $source,
+        ])->assertUnprocessable()->assertJsonValidationErrors('source');
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $this->assertSame(1, ErpObligation::query()->where('source_type', 'erp_sale')->count());
+        $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/invalidations', [
+            'erp_establishment_id' => $ctx['establishment']->id, 'model' => '55', 'series' => 1, 'year' => (int) date('Y'),
+            'number_from' => 1001, 'number_to' => 1001, 'justification' => 'Numeracao nao utilizada na homologacao', 'idempotency_key' => 'inut-key-1',
+        ])->assertCreated()->assertJsonPath('data.status', 'queued')->assertJsonPath('data.attempt.status', 'accepted');
     }
 
     public function test_foreign_cash_register_returns_404(): void

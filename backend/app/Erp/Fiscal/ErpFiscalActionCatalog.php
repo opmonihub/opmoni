@@ -15,6 +15,12 @@ final class ErpFiscalActionCatalog
         $document = '/api/v1/erp/fiscal/documents/{document}';
 
         return [
+            ['model' => '*', 'action' => 'configuration_show', 'route' => 'GET /api/v1/erp/fiscal/configuration/{establishment}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'configuration_update', 'route' => 'PATCH /api/v1/erp/fiscal/configuration/{establishment}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_index', 'route' => 'GET /api/v1/erp/fiscal/certificates', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_show', 'route' => 'GET /api/v1/erp/fiscal/certificates/{certificate}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_store', 'route' => 'POST /api/v1/erp/fiscal/certificates', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_rotate', 'route' => 'POST /api/v1/erp/fiscal/certificates/{certificate}/rotate', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
             ['model' => '55', 'action' => 'create', 'route' => 'POST /api/v1/erp/fiscal/documents', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '55', 'action' => 'queue', 'route' => 'POST '.$document.'/queue', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '55', 'action' => 'transmit', 'route' => 'POST '.$document.'/transmit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],

@@ -6,7 +6,8 @@ use App\Erp\ErpCommercialCatalog;
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalActionCatalog;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
-use App\Erp\Fiscal\FakeErpFiscalProvider;
+use App\Erp\Fiscal\ErpFiscalProviderResult;
+use App\Jobs\ProcessErpFiscalAttempt;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
@@ -14,11 +15,16 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
+use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\Erp\Sales\ErpSale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\ApprovesErpAccountingMappings;
 use Tests\TestCase;
@@ -28,18 +34,35 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
     use ApprovesErpAccountingMappings;
     use RefreshDatabase;
 
+    private array $pendingSigned = [];
+
     private const VALID_CNPJ = '30288513000100';
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->app->bind(ErpFiscalProvider::class, FakeErpFiscalProvider::class);
+        Queue::fake();
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldReceive('transmit')->andReturnUsing(function ($document, $payload) {
+            $this->pendingSigned[$document->id] = $payload['signed_xml'];
+            if (str_contains($document->idempotency_key, 'force-reject')) {
+                return ErpFiscalProviderResult::rejected('synthetic rejection');
+            }
+            if (str_contains($document->idempotency_key, 'force-indeterminate')) {
+                return ErpFiscalProviderResult::indeterminate('synthetic-receipt');
+            }
+
+            return ErpFiscalProviderResult::authorized('135260000000001', $this->processedXml($document, $payload['signed_xml']));
+        });
+        $provider->shouldReceive('consult')->andReturnUsing(fn ($document) => ErpFiscalProviderResult::authorized('135260000000001', $this->processedXml($document, $this->pendingSigned[$document->id])));
+        $provider->shouldReceive('submitEvent')->andReturn(ErpFiscalProviderResult::eventRejected('synthetic cancellation rejection'));
+        $this->app->instance(ErpFiscalProvider::class, $provider);
         Storage::fake('local');
         config([
             'access.ingress_key' => 'test-key',
             'erp.operating_writes_enabled' => true,
             'erp.release_enabled' => true,
-            'erp.fiscal_certificate_relaxed_validation' => true,
+            'erp.fiscal_certificate_relaxed_validation' => false,
             'erp.fiscal_production_enabled' => false,
             'cache.default' => 'array',
             'session.driver' => 'array',
@@ -72,7 +95,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
             'erp_plan_id' => $plan->id,
             'status' => 'active',
         ]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => self::VALID_CNPJ]);
         $this->login($user);
 
         return [
@@ -109,8 +132,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $ctx = $this->ownerContext();
         $document = $this->createQueuedDocument($ctx, $model, $idempotencyKey);
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
+        $this->executeDocumentAction($ctx, $document['id'], 'transmit')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::AUTHORIZED)
             ->assertJsonPath('data.artifact_ready', true)
@@ -119,6 +141,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $stored = ErpFiscalDocument::query()->findOrFail($document['id']);
         $this->assertNotNull($stored->storage_path);
         Storage::disk('local')->assertExists($stored->storage_path);
+        $this->withHeaders($ctx['headers'])->get('/api/v1/erp/fiscal/documents/'.$stored->id.'/xml')->assertOk()->assertContent(Storage::disk('local')->get($stored->storage_path));
     }
 
     /** @return list<array{0: string, 1: string}> */
@@ -137,13 +160,11 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $ctx = $this->ownerContext();
         $document = $this->createQueuedDocument($ctx, '55', 'force-indeterminate-key');
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
+        $this->executeDocumentAction($ctx, $document['id'], 'transmit')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::INDETERMINATE);
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/consult')
+        $this->executeDocumentAction($ctx, $document['id'], 'consult')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::AUTHORIZED);
 
@@ -155,13 +176,12 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $ctx = $this->ownerContext();
         $document = $this->createQueuedDocument($ctx, '55', 'force-reject-key');
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
+        $this->executeDocumentAction($ctx, $document['id'], 'transmit')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::REJECTED);
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/queue')
+            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/queue', ['idempotency_key' => 'queue-after-rejection'])
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::QUEUED);
     }
@@ -171,8 +191,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $ctx = $this->ownerContext();
         $document = $this->createDraftDocument($ctx, '65', 'nfce-contingency-1');
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/contingency')
+        $this->executeDocumentAction($ctx, $document['id'], 'contingency')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::CONTINGENCY_LOCAL)
             ->assertJsonPath('data.claims_provider_authorization', false);
@@ -186,8 +205,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
     {
         $ctx = $this->ownerContext();
         $document = $this->createQueuedDocument($ctx, '55', 'cancel-base-1');
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
+        $this->executeDocumentAction($ctx, $document['id'], 'transmit')
             ->assertOk();
 
         $event = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
@@ -200,8 +218,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
             ->assertCreated()
             ->json('data.id');
 
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/events/'.$event.'/submit')
+        $this->executeEventAction($ctx, $event)
             ->assertOk()
             ->assertJsonPath('data.status', 'rejected');
 
@@ -224,8 +241,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
 
         $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
         $document = $this->createQueuedDocument($ctx, '55', 'handoff-on-auth-1');
-        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
+        $this->executeDocumentAction($ctx, $document['id'], 'transmit')
             ->assertOk()
             ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::AUTHORIZED);
 
@@ -326,18 +342,79 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
      */
     private function createDraftDocument(array $ctx, string $model, string $idempotencyKey, string $environment = 'homologation'): array
     {
-        $number = random_int(10000, 99999);
-        $response = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
-            ->postJson('/api/v1/erp/fiscal/documents', [
-                'erp_establishment_id' => $ctx['establishment']->id,
-                'model' => $model,
-                'environment' => $environment,
-                'series' => 1,
-                'number' => $number,
-                'idempotency_key' => $idempotencyKey,
-            ])
-            ->assertCreated();
+        $source = match ($model) {
+            '55' => ErpFiscalModelBuilderSchemaTest::builderProvider()['NF-e 55 posted sale'][2],
+            '65' => ErpFiscalModelBuilderSchemaTest::builderProvider()['NFC-e 65 posted sale'][2],
+            '57' => ErpFiscalModelBuilderSchemaTest::builderProvider()['CT-e 57 typed transport service'][2],
+            '58' => ErpFiscalModelBuilderSchemaTest::builderProvider()['MDF-e 58 typed manifest'][2],
+        };
+        $nature = ErpOperationNature::factory()->create(['erp_company_id' => $ctx['company']->id]);
+        $settings = ['series' => 1, 'next_number' => 1, 'operation_nature_id' => $nature->id];
+        if (in_array($model, ['57', '58'], true)) {
+            $settings['transport'] = $source[$model === '57' ? 'transport_service' : 'transport_manifest'];
+        }
+        if ($model === '65') {
+            $settings['nfce_qr'] = ['version' => 3, 'mode' => str_contains($idempotencyKey, 'contingency') ? 'offline' : 'online', 'consultation_url' => 'https://test.invalid/consulta'];
+            if ($settings['nfce_qr']['mode'] === 'offline') {
+                $source['identity']['contingency_started_at'] = now()->toIso8601String();
+                $source['identity']['contingency_justification'] = 'Falha real de comunicacao com autorizador';
+            }
+        }
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $this->withHeaders($headers)->patchJson('/api/v1/erp/fiscal/configuration/'.$ctx['establishment']->id, [
+            'environment' => $environment, 'issuer' => ['tax_regime' => 3, 'state_registration' => '110042490114', 'uf' => 'SP',
+                'address' => ['street' => 'Rua Um', 'number' => '10', 'district' => 'Centro', 'city_code' => '3550308', 'city_name' => 'Sao Paulo', 'zip_code' => '01001000']], 'models' => [$model => $settings],
+        ])->assertOk();
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+        $csr = openssl_csr_new(['commonName' => self::VALID_CNPJ], $key, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($csr, null, $key, 2, ['digest_alg' => 'sha256']);
+        $pkcs12 = '';
+        $this->assertTrue(openssl_pkcs12_export($certificate, $pkcs12, $key, ''));
+        $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/certificates', ['erp_establishment_id' => $ctx['establishment']->id, 'label' => 'Real isolated test issuer', 'certificate_content' => base64_encode($pkcs12), 'password' => ''])->assertCreated();
+        $saleId = null;
+        if (in_array($model, ['55', '65'], true)) {
+            $sale = ErpSale::query()->create(['erp_company_id' => $ctx['company']->id, 'erp_establishment_id' => $ctx['establishment']->id, 'invoice_no' => 'source-'.Str::uuid(), 'status' => 'posted', 'total_amount' => '100.00']);
+            $line = $sale->lines()->create(['erp_company_id' => $ctx['company']->id, 'ordinal' => 1, 'quantity' => '1.0000', 'unit_price' => '100.0000', 'gross_amount' => '100.00', 'line_total' => '100.00',
+                'product_snapshot' => ['product' => ['sku' => 'SKU-1', 'ncm' => '12345678', 'origin_code' => '0', 'icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07'], 'unit' => ['short_name' => 'UN'], 'operation_nature' => ['cfop' => '5102']]]);
+            $source['items'][0]['source_line_id'] = $line->id;
+            $sale->update(['commercial_snapshot' => ['accepted' => ['actor_id' => $ctx['user']->id], 'party' => ['tax_id' => $source['recipient']['cnpj']], 'totals' => ['total_amount' => '100.00'], 'lines' => [$line->attributesToArray()]]]);
+            $saleId = $sale->id;
+        }
+        $response = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $ctx['establishment']->id, 'model' => $model, 'environment' => $environment, 'erp_sale_id' => $saleId, 'idempotency_key' => $idempotencyKey, 'source' => $source])->assertCreated();
 
-        return ['id' => (int) $response->json('data.id'), 'number' => $number];
+        return ['id' => (int) $response->json('data.id'), 'number' => (int) $response->json('data.number')];
+    }
+
+    private function executeDocumentAction(array $ctx, int $documentId, string $action): TestResponse
+    {
+        $receipt = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents/'.$documentId.'/'.$action)->assertOk();
+        $this->assertSame('pending', $receipt->json('data.attempt.status'));
+        app()->call([new ProcessErpFiscalAttempt($receipt->json('data.attempt.id')), 'handle']);
+
+        return $this->withHeaders($ctx['headers'])->getJson('/api/v1/erp/fiscal/documents/'.$documentId);
+    }
+
+    private function executeEventAction(array $ctx, int $eventId): TestResponse
+    {
+        $receipt = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/events/'.$eventId.'/submit')->assertOk();
+        $this->assertSame('pending', $receipt->json('data.attempt.status'));
+        app()->call([new ProcessErpFiscalAttempt($receipt->json('data.attempt.id')), 'handle']);
+
+        return $this->withHeaders($ctx['headers'])->getJson('/api/v1/erp/fiscal/events/'.$eventId);
+    }
+
+    private function processedXml(ErpFiscalDocument $document, string $signed): string
+    {
+        $model = $document->model;
+        $version = $model === '58' ? '3.00' : '4.00';
+        [$root, $protocol, $keyName, $namespace] = match ($model) {
+            '55', '65' => ['nfeProc', 'protNFe', 'chNFe', 'http://www.portalfiscal.inf.br/nfe'],
+            '57' => ['cteProc', 'protCTe', 'chCTe', 'http://www.portalfiscal.inf.br/cte'],
+            '58' => ['mdfeProc', 'protMDFe', 'chMDFe', 'http://www.portalfiscal.inf.br/mdfe'],
+        };
+        $unsignedDeclaration = preg_replace('/^<\?xml[^>]*>\s*/', '', $signed);
+        $amb = $document->environment === 'production' ? 1 : 2;
+
+        return '<'.$root.' xmlns="'.$namespace.'" versao="'.$version.'">'.$unsignedDeclaration.'<'.$protocol.' versao="'.$version.'"><infProt><tpAmb>'.$amb.'</tpAmb><verAplic>TESTE</verAplic><'.$keyName.'>'.$document->access_key.'</'.$keyName.'><dhRecbto>2026-10-21T10:00:01-03:00</dhRecbto><nProt>135260000000001</nProt><digVal>YWJjZA==</digVal><cStat>100</cStat><xMotivo>Autorizado o uso</xMotivo></infProt></'.$protocol.'></'.$root.'>';
     }
 }

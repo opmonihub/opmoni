@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+Schedule::command('erp:fiscal-scan-new-attempts')->everyMinute()->withoutOverlapping();
+
 Schedule::command('work:generate-recurrences')->daily();
 
 // `withoutOverlapping` protege a entrada; a trava por cliente e fonte no
