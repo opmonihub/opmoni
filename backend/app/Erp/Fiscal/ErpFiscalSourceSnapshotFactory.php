@@ -79,6 +79,9 @@ final class ErpFiscalSourceSnapshotFactory
             $errors[] = 'identity.numbering_bounds';
         }
         $this->requireAddress($issuer['address'] ?? null, 'issuer.address', $errors);
+        $this->requireText($issuer, 'legal_name', 2, 60, 'issuer', $errors);
+        $this->requirePattern($issuer, 'state_registration', '/^[0-9]{2,14}$/', 'issuer', $errors);
+        $this->requireEnum($issuer, 'tax_regime', [1, 2, 3, 4], 'issuer', $errors);
         $key = (string) ($identity['access_key'] ?? '');
         if (! app(ErpFiscalPayloadBuilder::class)->validatesAccessKey($key)
             || substr($key, 6, 14) !== $cnpj || substr($key, 20, 2) !== $model
@@ -105,9 +108,24 @@ final class ErpFiscalSourceSnapshotFactory
                 $errors[] = 'recipient.cnpj';
             }
             $this->requireAddress($recipient['address'] ?? null, 'recipient.address', $errors);
+            $this->requireText($recipient, 'legal_name', 2, 60, 'recipient', $errors);
+            $this->requireEnum($recipient, 'state_registration_indicator', [1, 2, 9], 'recipient', $errors);
+            $this->requireText($identity, 'operation_nature', 1, 60, 'identity', $errors);
+            foreach (['operation_type' => [0, 1], 'destination_type' => [1, 2, 3], 'purpose' => [1, 2, 4], 'final_consumer' => [0, 1], 'presence_indicator' => [0, 1, 2, 3, 4, 5, 9], 'print_type' => [0, 1, 2, 3, 4, 5]] as $field => $allowed) {
+                $this->requireEnum($identity, $field, $allowed, 'identity', $errors);
+            }
+            $this->requireEnum($source['freight'], 'modality', [0, 1, 2, 3, 4, 9], 'freight', $errors);
             foreach ($source['items'] ?? [] as $index => $item) {
                 $this->assertScalars($item, array_diff(array_keys($item), ['tax']));
                 $this->assertScalars($item['tax'] ?? [], array_keys($item['tax'] ?? []));
+                foreach (['code' => 60, 'description' => 120, 'unit' => 6] as $field => $maximum) {
+                    $this->requireText($item, $field, 1, $maximum, 'items.'.$index, $errors);
+                }
+                $this->requireEnum($item['tax'] ?? [], 'origin', [0, 1, 2, 3, 4, 5, 6, 7, 8, '0', '1', '2', '3', '4', '5', '6', '7', '8'], 'items.'.$index.'.tax', $errors);
+                foreach (['icms_base', 'icms_value', 'pis_value', 'cofins_value'] as $field) {
+                    $this->requireDecimal($item['tax'] ?? [], $field, 13, 2, 'items.'.$index.'.tax', $errors);
+                }
+                $this->requireDecimal($item['tax'] ?? [], 'icms_rate', 3, 4, 'items.'.$index.'.tax', $errors);
                 if (! preg_match('/^(?:\d{2}|\d{8})$/', (string) ($item['ncm'] ?? '')) || ! preg_match('/^[123567]\d{3}$/', (string) ($item['cfop'] ?? ''))
                     || ! preg_match('/^\d{1,11}(?:\.\d{1,4})?$/', (string) ($item['quantity'] ?? '')) || bccomp((string) ($item['quantity'] ?? '0'), '0', 4) <= 0
                     || ! preg_match('/^\d{1,11}(?:\.\d{1,10})?$/', (string) ($item['unit_price'] ?? '')) || ! in_array($item['ind_total'] ?? null, [0, 1], true)
@@ -129,6 +147,7 @@ final class ErpFiscalSourceSnapshotFactory
                 if (! array_key_exists($field, $source['totals'] ?? [])) {
                     $errors[] = 'totals.'.$field;
                 }
+                $this->requireDecimal($source['totals'], $field, 13, 2, 'totals', $errors);
             }
             if (empty($source['payment']) || ! is_array($source['payment'])) {
                 $errors[] = 'payment';
@@ -157,6 +176,7 @@ final class ErpFiscalSourceSnapshotFactory
             $paidCents = 0;
             foreach ($source['payment'] ?? [] as $payment) {
                 $this->assertScalars($payment, array_keys($payment));
+                $this->requireEnum($payment, 'method', ['01', '02', '03', '04', '05', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '90'], 'payment', $errors);
                 $amount = $this->cents((string) ($payment['amount'] ?? ''));
                 if ($amount < 0) {
                     $errors[] = 'payment.amount';
@@ -235,6 +255,47 @@ final class ErpFiscalSourceSnapshotFactory
             foreach (['sender', 'receiver', 'taker', 'route', 'cargo'] as $field) {
                 $this->assertScalars($service[$field], array_diff(array_keys($service[$field]), ['address']));
             }
+            foreach (['sender', 'receiver'] as $role) {
+                $this->requireParty($service[$role], 'transport_service.'.$role, $errors);
+            }
+            $this->requireEnum($service['taker'], 'role', [0, 1, 2, 3, 4], 'transport_service.taker', $errors);
+            if ((int) ($service['taker']['role'] ?? -1) === 4) {
+                $this->requireParty($service['taker'], 'transport_service.taker', $errors);
+            }
+            if (array_key_exists('state_registration_indicator', $service['taker'])) {
+                $this->requireEnum($service['taker'], 'state_registration_indicator', [1, 2, 9], 'transport_service.taker', $errors);
+            }
+            $this->requireEnum($service, 'service_type', [0, 1, 2, 3, 4], 'transport_service', $errors);
+            $this->requireText($service, 'operation_nature', 1, 60, 'transport_service', $errors);
+            $this->requirePattern($service, 'cfop', '/^[567]\d{3}$/', 'transport_service', $errors);
+            foreach (['origin_city_code', 'destination_city_code'] as $field) {
+                $this->requirePattern($service['route'], $field, '/^\d{7}$/', 'transport_service.route', $errors);
+            }
+            foreach (['origin_city', 'destination_city'] as $field) {
+                $this->requireText($service['route'], $field, 2, 60, 'transport_service.route', $errors);
+            }
+            foreach (['origin_uf', 'destination_uf'] as $field) {
+                if (BrazilianStateCode::ibgeFromUf((string) ($service['route'][$field] ?? '')) === null) {
+                    $errors[] = 'transport_service.route.'.$field;
+                }
+            }
+            $this->requireEnum($service['route'], 'pickup', [0, 1], 'transport_service.route', $errors);
+            $this->requireText($service['cargo'], 'description', 1, 60, 'transport_service.cargo', $errors);
+            if (isset($service['cargo']['measure_type'])) {
+                $this->requireText($service['cargo'], 'measure_type', 1, 20, 'transport_service.cargo', $errors);
+            } elseif (mb_strlen((string) ($service['cargo']['description'] ?? '')) > 20) {
+                $errors[] = 'transport_service.cargo.measure_type';
+            }
+            $this->requireEnum($service['cargo'], 'unit', ['00', '01', '02', '03', '04', '05'], 'transport_service.cargo', $errors);
+            $this->requireDecimal($service['cargo'], 'quantity', 11, 4, 'transport_service.cargo', $errors);
+            $this->requireDecimal($service['cargo'], 'value', 13, 2, 'transport_service.cargo', $errors);
+            foreach (['service_value', 'received_value'] as $field) {
+                $this->requireDecimal($service, $field, 13, 2, 'transport_service', $errors);
+            }
+            $this->requireDecimal($service['tax'], 'rate', 3, 2, 'transport_service.tax', $errors);
+            if (is_scalar($service['tax']['rate'] ?? null) && is_numeric($service['tax']['rate']) && (float) $service['tax']['rate'] > 100) {
+                $errors[] = 'transport_service.tax.rate';
+            }
             foreach (['base', 'rate', 'value'] as $field) {
                 if ($this->cents((string) ($service['tax'][$field] ?? '')) < 0) {
                     $errors[] = 'transport_service.tax.'.$field;
@@ -252,6 +313,12 @@ final class ErpFiscalSourceSnapshotFactory
                         throw new InvalidArgumentException('Item de transporte inválido.');
                     }
                     $this->assertScalars($row, array_keys($row));
+                    if ($field === 'components') {
+                        $this->requireText($row, 'name', 1, 15, 'transport_service.components', $errors);
+                        $this->requireDecimal($row, 'value', 13, 2, 'transport_service.components', $errors);
+                    } elseif (($row['type'] ?? null) !== 'nfe' || ! app(ErpFiscalPayloadBuilder::class)->validatesAccessKey((string) ($row['access_key'] ?? '')) || substr((string) ($row['access_key'] ?? ''), 20, 2) !== '55') {
+                        $errors[] = 'transport_service.documents';
+                    }
                 }
             }
             foreach (['service_type', 'cte_type', 'emission_type', 'operation_nature', 'cfop', 'service_value', 'received_value'] as $field) {
@@ -297,6 +364,41 @@ final class ErpFiscalSourceSnapshotFactory
             $this->assertScalars($manifest, ['emission_type', 'modal', 'issuer_type', 'rntrc', 'total_cte', 'total_nfe', 'total_mdfe']);
             foreach (['vehicle', 'driver', 'cargo'] as $field) {
                 $this->assertScalars($manifest[$field], array_diff(array_keys($manifest[$field]), ['owner']));
+            }
+            $this->requirePattern($manifest, 'rntrc', '/^\d{8}$/', 'transport_manifest', $errors);
+            $this->requirePattern($manifest['vehicle'], 'plate', '/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/', 'transport_manifest.vehicle', $errors);
+            $this->requirePattern($manifest['vehicle'], 'renavam', '/^\d{9,11}$/', 'transport_manifest.vehicle', $errors);
+            $this->requireText($manifest['vehicle'], 'registry', 1, 10, 'transport_manifest.vehicle', $errors);
+            foreach (['tare', 'capacity_kg'] as $field) {
+                $this->requirePattern($manifest['vehicle'], $field, '/^(?:0|[1-9]\d{0,5})$/', 'transport_manifest.vehicle', $errors);
+            }
+            $this->requireEnum($manifest['vehicle'], 'road_type', ['01', '02', '03', '04', '05', '06'], 'transport_manifest.vehicle', $errors);
+            $this->requireEnum($manifest['vehicle'], 'trailer_type', ['00', '01', '02', '03', '04', '05'], 'transport_manifest.vehicle', $errors);
+            $this->requireText($manifest['driver'], 'name', 2, 60, 'transport_manifest.driver', $errors);
+            $this->requirePattern($manifest['driver'], 'cpf', '/^\d{11}$/', 'transport_manifest.driver', $errors);
+            $this->requireText($manifest['cargo'], 'product_description', 1, 120, 'transport_manifest.cargo', $errors);
+            $this->requireEnum($manifest['cargo'], 'product_type', ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'], 'transport_manifest.cargo', $errors);
+            $this->requirePattern($manifest['cargo'], 'ncm', '/^(?:\d{2}|\d{8})$/', 'transport_manifest.cargo', $errors);
+            $this->requireDecimal($manifest['cargo'], 'total_value', 13, 2, 'transport_manifest.cargo', $errors);
+            $this->requireDecimal($manifest['cargo'], 'quantity', 11, 4, 'transport_manifest.cargo', $errors);
+            foreach ([...$manifest['route_ufs'], $manifest['vehicle']['uf'] ?? null] as $uf) {
+                if (! is_string($uf) || BrazilianStateCode::ibgeFromUf($uf) === null) {
+                    $errors[] = 'transport_manifest.uf';
+                }
+            }
+            foreach ($manifest['municipalities'] as $municipality) {
+                $this->requireText($municipality, 'name', 2, 60, 'transport_manifest.municipalities', $errors);
+                $this->requirePattern($municipality, 'code', '/^\d{7}$/', 'transport_manifest.municipalities', $errors);
+            }
+            if (isset($manifest['trip_starts_at']) && (! is_string($manifest['trip_starts_at']) || strtotime($manifest['trip_starts_at']) === false)) {
+                $errors[] = 'transport_manifest.trip_starts_at';
+            }
+            foreach ($manifest['documents'] as $document) {
+                $this->requirePattern($document, 'municipality_code', '/^\d{7}$/', 'transport_manifest.documents', $errors);
+                $this->requireEnum($document, 'model', ['55', '65', '57'], 'transport_manifest.documents', $errors);
+                if (! in_array($document['municipality_code'] ?? null, array_column($manifest['municipalities'], 'code'), true) || substr((string) ($document['access_key'] ?? ''), 20, 2) !== ($document['model'] ?? null)) {
+                    $errors[] = 'transport_manifest.documents.identity';
+                }
             }
             foreach (['total_cte', 'total_nfe', 'total_mdfe'] as $field) {
                 if (! isset($manifest[$field]) || ! is_int($manifest[$field]) || $manifest[$field] < 0) {
@@ -351,6 +453,11 @@ final class ErpFiscalSourceSnapshotFactory
                 $errors[] = $prefix.'.'.$field;
             }
         }
+        foreach (['street' => 60, 'number' => 60, 'district' => 60, 'city' => 60] as $field => $maximum) {
+            $this->requireText($address, $field, 1, $maximum, $prefix, $errors);
+        }
+        $this->requirePattern($address, 'city_code', '/^\d{7}$/', $prefix, $errors);
+        $this->requirePattern($address, 'postal_code', '/^\d{8}$/', $prefix, $errors);
         if (isset($address['uf']) && is_scalar($address['uf']) && BrazilianStateCode::ibgeFromUf((string) $address['uf']) === null) {
             $errors[] = $prefix.'.uf';
         }
@@ -371,10 +478,45 @@ final class ErpFiscalSourceSnapshotFactory
         return $value;
     }
 
+    private function requireParty(array $party, string $prefix, array &$errors): void
+    {
+        $this->requirePattern($party, 'cnpj', '/^(?:\d{11}|\d{14})$/', $prefix, $errors);
+        $this->requireText($party, 'legal_name', 2, 60, $prefix, $errors);
+        $this->requireAddress($party['address'] ?? null, $prefix.'.address', $errors);
+    }
+
+    private function requireText(array $values, string $field, int $minimum, int $maximum, string $prefix, array &$errors): void
+    {
+        $value = $values[$field] ?? null;
+        if (! is_string($value) || mb_strlen(trim($value)) < $minimum || mb_strlen($value) > $maximum) {
+            $errors[] = $prefix.'.'.$field;
+        }
+    }
+
+    private function requirePattern(array $values, string $field, string $pattern, string $prefix, array &$errors): void
+    {
+        $value = $values[$field] ?? null;
+        if (! is_string($value) && ! is_int($value) || ! preg_match($pattern, (string) $value)) {
+            $errors[] = $prefix.'.'.$field;
+        }
+    }
+
+    private function requireEnum(array $values, string $field, array $allowed, string $prefix, array &$errors): void
+    {
+        if (! in_array($values[$field] ?? null, $allowed, true)) {
+            $errors[] = $prefix.'.'.$field;
+        }
+    }
+
+    private function requireDecimal(array $values, string $field, int $wholeDigits, int $fractionDigits, string $prefix, array &$errors): void
+    {
+        $this->requirePattern($values, $field, '/^\d{1,'.$wholeDigits.'}(?:\.\d{1,'.$fractionDigits.'})?$/', $prefix, $errors);
+    }
+
     private function assertScalars(array $values, array $fields): void
     {
         foreach ($fields as $field) {
-            if (isset($values[$field]) && ! is_scalar($values[$field])) {
+            if (array_key_exists($field, $values) && (! is_scalar($values[$field]) || is_string($values[$field]) && trim($values[$field]) === '')) {
                 throw new InvalidArgumentException('Campo fiscal escalar inválido: '.$field.'.');
             }
         }

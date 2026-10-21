@@ -96,6 +96,9 @@ class ErpFiscalIssuanceService
             if ((int) $original->erp_establishment_id !== (int) $issuer->id || $original->environment !== $revision->environment) {
                 throw ValidationException::withMessages(['source_document_id' => 'Documento original deve pertencer ao mesmo emissor e ambiente.']);
             }
+            if ($data['model'] === '57' && $kind === 'substitution') {
+                $source['external_prerequisites'] = ['service_disagreement' => 'unverified'];
+            }
             if ($kind === 'return') {
                 $commercial = $this->freezeReturn($context, $original, $data, $source);
             }
@@ -112,6 +115,9 @@ class ErpFiscalIssuanceService
         $source['identity']['numeric_code'] = (string) random_int(10_000_000, 99_999_999);
         $source['identity']['access_key'] = $this->accessKey($source, $data['model']);
         $this->validateTypedSource($data['model'], $source);
+        if ($data['model'] === '57' && $kind === 'substitution') {
+            $this->validateCteSubstitution($original, $source);
+        }
         $number = isset($data['number'])
             ? $allocator->reserveExplicitNumber((int) $issuer->erp_company_id, $data['model'], $revision->environment, (int) $settings['series'], (int) $data['number'])
             : $allocator->allocate((int) $issuer->erp_company_id, $data['model'], $revision->environment, (int) $settings['series'], (int) $settings['next_number']);
@@ -184,6 +190,9 @@ class ErpFiscalIssuanceService
         }
         if ($document->model !== '65' || ! in_array($document->status, ['draft', 'queued'], true)) {
             throw new InvalidArgumentException('Documento não elegível para contingência NFC-e.');
+        }
+        if ($document->attempts()->whereIn('action', ['document:transmit', 'document:reconcile', 'document:consult'])->whereIn('status', ['pending', 'submitting', 'indeterminate', 'attention_required', 'artifact_pending', 'accepted'])->exists()) {
+            throw ValidationException::withMessages(['document' => 'Transmissão externa existente exige conciliação antes de contingência.']);
         }
         $draft = $this->draftAttempt($document);
         $snapshot = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($draft);
@@ -526,6 +535,44 @@ class ErpFiscalIssuanceService
         $source['commercial_source'] = $snapshot;
 
         return $snapshot;
+    }
+
+    private function validateCteSubstitution(ErpFiscalDocument $original, array $source): void
+    {
+        $snapshot = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($this->draftAttempt($original));
+        $frozen = $snapshot['request']['source'] ?? [];
+        $oldService = $frozen['transport_service'] ?? [];
+        $newService = $source['transport_service'] ?? [];
+        $invalid = ! $original->authorized_at || $original->authorized_at->isFuture() || now()->greaterThan($original->authorized_at->copy()->addDays(60))
+            || ! in_array($oldService['cte_type'] ?? null, [0, 3], true);
+        foreach (['cnpj', 'state_registration'] as $field) {
+            $invalid = $invalid || ($frozen['issuer'][$field] ?? null) !== ($source['issuer'][$field] ?? null);
+        }
+        foreach (['sender', 'receiver', 'expedidor', 'recebedor'] as $role) {
+            $invalid = $invalid || ($oldService[$role]['cnpj'] ?? null) !== ($newService[$role]['cnpj'] ?? null);
+        }
+        foreach (['origin_uf', 'destination_uf'] as $field) {
+            $invalid = $invalid || ($oldService['route'][$field] ?? null) !== ($newService['route'][$field] ?? null);
+        }
+        $invalid = $invalid || ($oldService['service_type'] ?? null) !== ($newService['service_type'] ?? null)
+            || ($oldService['taker']['role'] ?? null) !== ($newService['taker']['role'] ?? null)
+            || (int) ($oldService['taker']['role'] ?? -1) === 4 && ($oldService['taker']['cnpj'] ?? null) !== ($newService['taker']['cnpj'] ?? null)
+            || ! empty($newService['ind_altera_toma']);
+        $oldDocuments = array_column($oldService['documents'] ?? [], 'access_key');
+        $newDocuments = array_column($newService['documents'] ?? [], 'access_key');
+        sort($oldDocuments);
+        sort($newDocuments);
+        $invalid = $invalid || $oldDocuments !== $newDocuments;
+        foreach (ErpFiscalAttempt::query()->where('erp_company_id', $original->erp_company_id)->where('action', 'document:draft')->where('model', '57')->whereHas('document', fn ($query) => $query->where('status', 'authorized')->whereIn('metadata->document_kind', ['complement', 'substitution']))->get() as $candidate) {
+            $other = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($candidate)['request']['source'] ?? [];
+            if (($other['original_document']['id'] ?? null) === $original->id && in_array($other['document_kind'] ?? null, ['complement', 'substitution'], true)
+                && $candidate->document()->where('status', 'authorized')->exists()) {
+                $invalid = true;
+            }
+        }
+        if ($invalid) {
+            throw ValidationException::withMessages(['source_document_id' => 'Substituição exige CT-e original compatível, sem complemento/substituição autorizado, mesmas partes/serviço/documentos e prazo nacional de 60 dias da autorização; exceções de UF não suportadas.']);
+        }
     }
 
     private function validateTypedSource(string $model, array $source): void

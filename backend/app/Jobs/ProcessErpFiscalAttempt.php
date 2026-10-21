@@ -113,12 +113,22 @@ class ProcessErpFiscalAttempt implements ShouldQueue
                     return;
                 }
             }
-            $attempts->finalize($attempt->id, $token, 'accepted', ['code' => 'local_preparation_complete', 'artifact_ready' => false, 'provider_outcome' => 'not_dispatched', ...($artifact === null ? [] : ['artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']])], null, null, static function () use ($document, $artifact): void {
+            $attempts->finalize($attempt->id, $token, 'accepted', ['code' => 'local_preparation_complete', 'artifact_ready' => false, 'provider_outcome' => 'not_dispatched', ...($artifact === null ? [] : ['artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']])], null, null, static function () use ($document, $artifact): bool {
                 $document->refresh();
+                if (! in_array($document->status, ['draft', 'queued', 'contingency_local'], true) || $document->authorized_at !== null || isset($document->metadata['closed_at'])) {
+                    return false;
+                }
                 if ($artifact !== null) {
                     $document->fill([...$artifact, 'status' => 'contingency_local', 'metadata' => [...($document->metadata ?? []), 'contingency' => ['active' => true, 'claims_provider_authorization' => false]]])->save();
                 }
+
+                return true;
             });
+
+            return;
+        }
+        if ($isDocument && $attempt->model === '57' && ($source['document_kind'] ?? null) === 'substitution') {
+            $attempts->complete($attempt->id, $token, 'attention_required', ['code' => 'cte_substitution_disagreement_evidence_unavailable', 'provider_outcome' => 'not_dispatched', 'artifact_ready' => false]);
 
             return;
         }
@@ -143,12 +153,17 @@ class ProcessErpFiscalAttempt implements ShouldQueue
                 $result = $provider->submitInvalidation($invalidation);
             }
         } catch (Throwable) {
-            $attempts->finalize($attempt->id, $token, 'indeterminate', ['code' => 'provider_outcome_unknown'], null, null, static function () use ($document, $isDocument): void {
+            $attempts->finalize($attempt->id, $token, 'indeterminate', ['code' => 'provider_outcome_unknown'], null, null, static function () use ($document, $isDocument): bool {
                 $document?->refresh();
-                if ($isDocument && $document->status !== 'authorized') {
+                if ($isDocument && (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local'], true) || $document->authorized_at !== null)) {
+                    return false;
+                }
+                if ($isDocument) {
                     $document->status = 'indeterminate';
                     $document->save();
                 }
+
+                return true;
             });
 
             return;
@@ -191,12 +206,19 @@ class ProcessErpFiscalAttempt implements ShouldQueue
         }
         if ($result->outcome !== 'authorized') {
             $status = $result->outcome === 'rejected' ? 'rejected' : 'indeterminate';
-            $attempts->finalize($attempt->id, $token, $status, ['provider_outcome' => $result->outcome], $result->receipt, $result->protocol, static function () use ($document, $status): void {
+            $attempts->finalize($attempt->id, $token, $status, ['provider_outcome' => $result->outcome], $result->receipt, $result->protocol, static function () use ($document, $status): bool {
                 $document->refresh();
-                if ($document->status !== 'authorized') {
+                if (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local'], true)) {
+                    return false;
+                }
+                if ($document->authorized_at === null) {
                     $document->status = $status;
                     $document->save();
+
+                    return true;
                 }
+
+                return false;
             });
 
             return;
@@ -213,25 +235,35 @@ class ProcessErpFiscalAttempt implements ShouldQueue
             }
             $artifact = $artifacts->persistAuthorizedXml($document, $processed);
         } catch (Throwable) {
-            $attempts->finalize($attempt->id, $token, 'artifact_pending', ['code' => 'authorized_artifact_not_ready', 'provider_outcome' => 'authorized', 'artifact_ready' => false], $result->receipt, $result->protocol, static function () use ($document, $result): void {
+            $attempts->finalize($attempt->id, $token, 'artifact_pending', ['code' => 'authorized_artifact_not_ready', 'provider_outcome' => 'authorized', 'artifact_ready' => false], $result->receipt, $result->protocol, static function () use ($document, $result): bool {
                 $document->refresh();
+                if (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local'], true) || $document->authorized_at !== null) {
+                    return false;
+                }
                 $document->fill(['status' => 'authorized', 'authorized_at' => $document->authorized_at ?? now(), 'metadata' => [...($document->metadata ?? []), 'provider_outcome' => 'authorized', 'provider_protocol' => $result->protocol]])->save();
+
+                return true;
             });
 
             return;
         }
-        $attempts->finalize($attempt->id, $token, 'accepted', ['document_status' => 'authorized', 'artifact_ready' => true, 'artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']], $result->receipt, $result->protocol, static function () use ($document, $artifact, $result): void {
+        $attempts->finalize($attempt->id, $token, 'accepted', ['document_status' => 'authorized', 'artifact_ready' => true, 'artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']], $result->receipt, $result->protocol, static function () use ($document, $artifact, $result): bool {
             $document->refresh();
+            if (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local', 'authorized'], true) || isset($document->metadata['closed_at']) || $document->status === 'authorized' && $document->storage_path !== null) {
+                return false;
+            }
             $wasReady = $document->status === 'authorized' && $document->storage_path !== null;
             $document->fill([...$artifact, 'status' => 'authorized', 'authorized_at' => $document->authorized_at ?? now(), 'metadata' => [...($document->metadata ?? []), 'provider_protocol' => $result->protocol]])->save();
             if ($wasReady) {
-                return;
+                return true;
             }
             $handoff = app(ErpAccountingHandoffService::class);
             $delivery = $handoff->ensureDeliveryIntent($document);
             if ($delivery !== null) {
                 $handoff->queueAfterCommit($delivery);
             }
+
+            return true;
         });
     }
 }

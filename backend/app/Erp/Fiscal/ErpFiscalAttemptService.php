@@ -180,12 +180,14 @@ final class ErpFiscalAttemptService
             }
             if ($attempt->erp_fiscal_document_id !== null) {
                 $attempt->document()->lockForUpdate()->first();
-                if (str_starts_with($attempt->action, 'document:') && ErpFiscalAttempt::query()->where('erp_fiscal_document_id', $attempt->erp_fiscal_document_id)->where('id', '>', $attempt->id)->whereIn('action', ['document:transmit', 'document:consult', 'document:reconcile'])->whereIn('status', ['accepted', 'artifact_pending'])->exists()) {
-                    return false;
-                }
             }
-            $applyCorrelatedOutcome($attempt);
+            $transition = $applyCorrelatedOutcome($attempt);
             $attempt->status = $status;
+            if ($transition === false) {
+                $result['document_transition'] = 'superseded';
+                $result['document_status'] = $attempt->document()->first()?->status;
+                $result['artifact_ready'] = false;
+            }
             $safeResult = $this->sanitizeResult($result);
             $attempt->safe_result = $safeResult;
             $attempt->provider_receipt = $this->safeIdentifier($receipt, 128);
@@ -224,11 +226,12 @@ final class ErpFiscalAttemptService
     private function sanitizeResult(array $result): array
     {
         $safe = [];
-        foreach (['code', 'document_status', 'artifact_ready', 'artifact_sha256', 'artifact_byte_length', 'provider_outcome', 'blocker'] as $key) {
+        foreach (['code', 'document_status', 'document_transition', 'artifact_ready', 'artifact_sha256', 'artifact_byte_length', 'provider_outcome', 'blocker'] as $key) {
             if (! array_key_exists($key, $result) || ! is_scalar($result[$key]) || is_string($result[$key]) && strlen($result[$key]) > 512) {
                 continue;
             }
-            if ($key === 'provider_outcome' && ! in_array($result[$key], ['authorized', 'rejected', 'indeterminate', 'event_accepted', 'event_rejected', 'unknown', 'not_dispatched'], true)
+            if ($key === 'document_transition' && ! in_array($result[$key], ['superseded'], true)
+                || $key === 'provider_outcome' && ! in_array($result[$key], ['authorized', 'rejected', 'indeterminate', 'event_accepted', 'event_rejected', 'unknown', 'not_dispatched'], true)
                 || in_array($key, ['code', 'blocker'], true) && ! preg_match('/^[a-z0-9_]{1,64}$/', (string) $result[$key])
                 || $key === 'artifact_ready' && ! is_bool($result[$key])
                 || $key === 'artifact_sha256' && ! preg_match('/^[a-f0-9]{64}$/', (string) $result[$key])) {

@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Erp\ErpCommercialCatalog;
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalActionCatalog;
+use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
+use App\Erp\Fiscal\ErpFiscalAttemptService;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
+use App\Erp\Fiscal\ErpFiscalNumberAllocator;
 use App\Erp\Fiscal\ErpFiscalProviderResult;
 use App\Jobs\ProcessErpFiscalAttempt;
 use App\Models\Account;
@@ -17,9 +20,11 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpSubscription;
+use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\User;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -326,6 +331,211 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
      * @param  array{company: ErpCompany, establishment: ErpEstablishment, headers: array<string, string>}  $ctx
      * @return array{id: int, number: int}
      */
+    public function test_review_contingency_intent_is_blocked_while_transmission_is_unresolved(): void
+    {
+        $ctx = $this->ownerContext();
+        $document = $this->createQueuedDocument($ctx, '65', 'review-contingency-unresolved');
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $attempt = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')->assertOk()->json('data.attempt.id');
+        $count = ErpFiscalAttempt::query()->count();
+        $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/contingency')->assertUnprocessable();
+        $this->assertSame($count, ErpFiscalAttempt::query()->count());
+        $this->assertSame('pending', ErpFiscalAttempt::findOrFail($attempt)->status);
+    }
+
+    public function test_review_local_worker_finishing_after_authorization_preserves_processed_artifact_and_both_outcomes(): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createQueuedDocument($ctx, '65', 'review-contingency-interleaving');
+        $document = ErpFiscalDocument::findOrFail($draft['id']);
+        $transmitId = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents/'.$document->id.'/transmit')->assertOk()->json('data.attempt.id');
+        $transmit = ErpFiscalAttempt::findOrFail($transmitId);
+        $snapshot = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($transmit);
+        // Reproduce an already committed concurrent local intent independently of the new HTTP admission fence.
+        $local = app(ErpFiscalAttemptService::class)->createIntent([
+            ...$transmit->only(['erp_company_id', 'erp_establishment_id', 'erp_fiscal_document_id', 'erp_fiscal_configuration_revision_id', 'erp_fiscal_certificate_revision_id', 'model', 'environment', 'series', 'number', 'actor_user_id', 'schema_release']),
+            'action' => 'document:contingency', 'idempotency_key' => 'review-existing-local', 'request' => $snapshot['request'],
+        ]);
+        $disk = Storage::disk('local');
+        $proxy = \Mockery::mock(FilesystemAdapter::class);
+        $proxy->shouldReceive('exists')->andReturnUsing(fn ($path) => $disk->exists($path));
+        $proxy->shouldReceive('get')->andReturnUsing(fn ($path) => $disk->get($path));
+        $published = null;
+        $proxy->shouldReceive('put')->andReturnUsing(function ($path, $bytes) use ($disk, $transmitId, $document, &$published) {
+            $written = $disk->put($path, $bytes);
+            if (str_contains($path, 'contingency-local-')) {
+                app()->call([new ProcessErpFiscalAttempt($transmitId), 'handle']);
+                $published = $document->fresh()->only(['status', 'storage_path', 'artifact_sha256', 'artifact_byte_length', 'authorized_at', 'metadata']);
+                $this->assertSame('authorized', $published['status']);
+            }
+
+            return $written;
+        });
+        Storage::shouldReceive('disk')->with('local')->andReturn($proxy);
+        app()->call([new ProcessErpFiscalAttempt($local->id), 'handle']);
+        $this->assertNotNull($published);
+        $this->assertEquals($published, $document->fresh()->only(array_keys($published)));
+        $this->assertSame('accepted', $transmit->fresh()->status);
+        $this->assertSame('accepted', $local->fresh()->status);
+        $this->assertSame('completed', $local->fresh()->outbox_state);
+        $this->assertSame('not_dispatched', $local->fresh()->safe_result['provider_outcome']);
+        $this->assertSame('superseded', $local->fresh()->safe_result['document_transition']);
+    }
+
+    #[DataProvider('reviewConsultOutcomes')]
+    public function test_review_consult_finishing_after_accepted_cancellation_never_undoes_it(string $model, string $outcome): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createQueuedDocument($ctx, $model, 'review-consult-cancel');
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertOk();
+        $document = ErpFiscalDocument::findOrFail($draft['id']);
+        $published = $document->only(['storage_path', 'artifact_sha256', 'artifact_byte_length', 'authorized_at']);
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldReceive('consult')->once()->andReturnUsing(function ($actual) use ($ctx, $outcome, $model) {
+            $body = ['erp_fiscal_document_id' => $actual->id, 'event_type' => $model === '58' ? 'close' : 'cancel', 'justification' => 'Cancelamento aceito enquanto consulta esta em andamento', 'idempotency_key' => 'review-cancel-race', 'closed_on' => now()->toDateString(), 'closing_uf' => 'SP', 'closing_city_code' => '3550308'];
+            $event = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/events', $body)->assertCreated()->json('data.id');
+            $this->executeEventAction($ctx, $event)->assertJsonPath('data.status', 'accepted');
+            $this->assertSame($model === '58' ? 'authorized' : 'canceled', $actual->fresh()->status);
+            if ($model === '58') {
+                $this->assertNotNull($actual->fresh()->metadata['closed_at']);
+            }
+
+            return match ($outcome) {
+                'authorized' => ErpFiscalProviderResult::authorized('135260000000001', $this->processedXml($actual, $this->pendingSigned[$actual->id])),
+                'artifact_pending' => ErpFiscalProviderResult::authorized('135260000000001', '<invalid/>'),
+                'rejected' => ErpFiscalProviderResult::rejected('synthetic rejected consultation'),
+                'unknown' => ErpFiscalProviderResult::indeterminate(),
+                default => throw new \RuntimeException('synthetic consultation timeout'),
+            };
+        });
+        $provider->shouldReceive('submitEvent')->once()->andReturnUsing(function ($actual, $event) {
+            $request = new \DOMDocument;
+            $request->loadXML($event->payload_snapshot['signed_xml']);
+            $mdfe = $actual->model === '58';
+            $node = $mdfe ? $request->documentElement : (new \DOMXPath($request))->query('//*[local-name()="evento"]')->item(0);
+            $root = $mdfe ? 'procEventoMDFe' : 'procEventoNFe';
+            $ret = $mdfe ? 'retEventoMDFe' : 'retEvento';
+            $key = $mdfe ? 'chMDFe' : 'chNFe';
+            $version = $mdfe ? '3.00' : '1.00';
+            $namespace = $mdfe ? 'http://www.portalfiscal.inf.br/mdfe' : 'http://www.portalfiscal.inf.br/nfe';
+            $xml = '<'.$root.' xmlns="'.$namespace.'" versao="'.$version.'">'.$request->saveXML($node).'<'.$ret.' versao="'.$version.'"><infEvento><tpAmb>2</tpAmb><verAplic>TESTE</verAplic><cOrgao>35</cOrgao><cStat>135</cStat><xMotivo>Evento registrado e vinculado</xMotivo><'.$key.'>'.$actual->access_key.'</'.$key.'><tpEvento>'.($mdfe ? '110112' : '110111').'</tpEvento><nSeqEvento>1</nSeqEvento><dhRegEvento>2026-10-21T10:00:01-03:00</dhRegEvento><nProt>135260000000002</nProt></infEvento></'.$ret.'></'.$root.'>';
+
+            return new ErpFiscalProviderResult('event_accepted', '135260000000002', xml: $xml);
+        });
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+        $this->executeDocumentAction($ctx, $document->id, 'consult')->assertOk()->assertJsonPath('data.status', $model === '58' ? 'authorized' : 'canceled');
+        if ($model === '58') {
+            $this->assertNotNull($document->fresh()->metadata['closed_at']);
+        }
+        $this->assertEquals($published, $document->fresh()->only(array_keys($published)));
+        $ledger = ErpFiscalAttempt::query()->where('action', 'document:consult')->firstOrFail();
+        $this->assertSame(match ($outcome) {
+            'authorized' => 'accepted', 'artifact_pending' => 'artifact_pending', 'rejected' => 'rejected', default => 'indeterminate'
+        }, $ledger->status);
+        $this->assertNull($ledger->lease_token);
+    }
+
+    public static function reviewConsultOutcomes(): array
+    {
+        return array_merge(...array_map(static fn ($model) => array_map(static fn ($outcome) => [$model, $outcome], ['authorized', 'artifact_pending', 'rejected', 'unknown', 'timeout']), ['55', '58']));
+    }
+
+    public function test_review_artifact_pending_repair_creates_the_first_accounting_handoff_exactly_once(): void
+    {
+        $ctx = $this->ownerContext();
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $ctx['company']->id, 'account_id' => $office->id, 'authorized_by_user_id' => $ctx['user']->id]);
+        $client = Client::factory()->company()->create(['account_id' => $office->id, 'tax_id' => self::VALID_CNPJ]);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
+        $draft = $this->createQueuedDocument($ctx, '55', 'review-repair-handoff');
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldReceive('transmit')->once()->andReturnUsing(function ($actual, $payload) {
+            $this->pendingSigned[$actual->id] = $payload['signed_xml'];
+
+            return ErpFiscalProviderResult::authorized('135260000000001', '<invalid/>');
+        });
+        $provider->shouldReceive('consult')->twice()->andReturnUsing(fn ($actual) => ErpFiscalProviderResult::authorized('135260000000001', $this->processedXml($actual, $this->pendingSigned[$actual->id])));
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.attempt.status', 'artifact_pending');
+        $this->assertSame(0, ErpAccountingDelivery::query()->count());
+        $this->executeDocumentAction($ctx, $draft['id'], 'consult')->assertJsonPath('data.artifact_ready', true);
+        $delivery = ErpAccountingDelivery::query()->sole();
+        $attempt = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents/'.$draft['id'].'/consult', ['idempotency_key' => 'review-repair-again'])->assertOk()->json('data.attempt.id');
+        app()->call([new ProcessErpFiscalAttempt($attempt), 'handle']);
+        $this->assertSame($delivery->id, ErpAccountingDelivery::query()->sole()->id);
+        $this->assertSame('accepted', ErpFiscalAttempt::findOrFail($attempt)->status);
+    }
+
+    public function test_review_cte_substitution_checks_frozen_relationship_and_authorization_window_before_allocation(): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createQueuedDocument($ctx, '57', 'review-original-cte');
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertOk();
+        $original = ErpFiscalDocument::findOrFail($draft['id']);
+        $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
+        $body = ['erp_establishment_id' => $ctx['establishment']->id, 'model' => '57', 'document_kind' => 'substitution', 'source_document_id' => $original->id, 'source' => [...$source, 'external_prerequisites' => ['service_disagreement' => 'accepted']], 'idempotency_key' => 'review-valid-substitution'];
+        foreach (['transport_service.sender.cnpj' => '30288513000100', 'transport_service.receiver.cnpj' => '30288513000100', 'transport_service.service_type' => 1, 'transport_service.route.destination_uf' => 'SP', 'transport_service.taker.role' => 3] as $path => $value) {
+            $invalid = $body;
+            data_set($invalid['source'], $path, $value);
+            $before = [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()];
+            $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', $invalid)->assertUnprocessable()->assertJsonValidationErrors('source_document_id');
+            $this->assertSame($before, [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()]);
+            $this->assertSame(2, app(ErpFiscalNumberAllocator::class)->nextNumber($ctx['company']->id, '57', 'homologation', 1));
+        }
+        $original->update(['authorized_at' => now()->subDays(61)]);
+        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', $body)->assertUnprocessable()->assertJsonValidationErrors('source_document_id');
+        $this->assertSame(2, app(ErpFiscalNumberAllocator::class)->nextNumber($ctx['company']->id, '57', 'homologation', 1));
+        $original->update(['authorized_at' => now()->subDays(59)]);
+        $created = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', $body)->assertCreated();
+        $substitute = ErpFiscalDocument::findOrFail($created->json('data.id'));
+        $frozen = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot(ErpFiscalAttempt::findOrFail($created->json('data.attempt.id')))['request']['source'];
+        $this->assertSame('unverified', $frozen['external_prerequisites']['service_disagreement']);
+        $this->executeDocumentAction($ctx, $substitute->id, 'queue')->assertOk();
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldNotReceive('transmit');
+        $provider->shouldNotReceive('consult');
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+        $this->executeDocumentAction($ctx, $substitute->id, 'transmit')->assertOk()->assertJsonPath('data.attempt.status', 'attention_required')->assertJsonPath('data.attempt.safe_result.code', 'cte_substitution_disagreement_evidence_unavailable');
+    }
+
+    #[DataProvider('reviewMandatoryLeafCases')]
+    public function test_review_mandatory_leaf_failure_has_no_number_document_or_outbox_effect(string $model, string $path, mixed $value, bool $remove = false): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createDraftDocument($ctx, $model, 'review-leaf-base');
+        $original = ErpFiscalDocument::findOrFail($draft['id']);
+        $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
+        if ($remove) {
+            data_forget($source, $path);
+        } else {
+            data_set($source, $path, $value);
+        }
+        $before = [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()];
+        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $ctx['establishment']->id, 'model' => $model, 'erp_sale_id' => $original->erp_sale_id, 'source' => $source, 'idempotency_key' => 'review-invalid-leaf'])->assertUnprocessable()->assertJsonValidationErrors('source');
+        $this->assertSame($before, [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()]);
+        $this->assertSame(2, app(ErpFiscalNumberAllocator::class)->nextNumber($ctx['company']->id, $model, 'homologation', 1));
+    }
+
+    public static function reviewMandatoryLeafCases(): array
+    {
+        return [
+            ['57', 'transport_service.sender.legal_name', null],
+            ['57', 'transport_service.receiver.legal_name', ''],
+            ['57', 'transport_service.cargo.description', null],
+            ['57', 'transport_service.cargo.quantity', ''],
+            ['57', 'transport_service.route.pickup', null],
+            ['57', 'transport_service.components', [['name' => null, 'value' => '10.00']]],
+            ['58', 'transport_manifest.driver.name', null],
+            ['58', 'transport_manifest.vehicle.registry', ''],
+            ['58', 'transport_manifest.vehicle.tare', null],
+            ['58', 'transport_manifest.vehicle.road_type', '99'],
+            ['58', 'transport_manifest.cargo.product_description', null],
+            ['58', 'transport_manifest.cargo.quantity', ''],
+            ['58', 'transport_manifest.municipalities.0.name', null],
+            ['55', 'payment.0.method', null, true],
+        ];
+    }
+
     private function createQueuedDocument(array $ctx, string $model, string $idempotencyKey, string $environment = 'homologation'): array
     {
         $draft = $this->createDraftDocument($ctx, $model, $idempotencyKey, $environment);
