@@ -612,6 +612,15 @@ function cteSfcFacts(): Record<string, string> {
   return facts
 }
 
+function assertCtePartyLocations(service: Record<string, unknown>) {
+  for (const [role, cityCode, uf] of [['sender', '3550308', 'SP'], ['receiver', '3304557', 'RJ']] as const) {
+    const party = service[role] as Record<string, unknown>
+    const address = party.address as Record<string, unknown>
+    assert.deepEqual({ city_code: party.city_code, uf: party.uf }, { city_code: cityCode, uf }, `${role} exposes the entered municipality and UF required by the CT-e builder`)
+    assert.deepEqual({ city_code: address.city_code, uf: address.uf }, { city_code: cityCode, uf }, `${role} address keeps those same entered string facts`)
+  }
+}
+
 function mdfeSfcFacts(externalReference = true): Record<string, string> {
   return {
     'transport_manifest.manifest_emission_type': '1', 'transport_manifest.manifest_modal': '1',
@@ -704,6 +713,7 @@ describe('ERP fiscal typed request helpers', () => {
     assert.equal(cte.emitted.length, 1)
     assert.equal(cte.emitted[0]?.document_kind, 'transport_service')
     assert.equal((cte.emitted[0]?.source as Record<string, Record<string, unknown>>).transport_service.rntrc, '12345678')
+    assertCtePartyLocations((cte.emitted[0]?.source as Record<string, Record<string, unknown>>).transport_service)
     const cargoDescription = findNode(cte.root, node => node.tag === 'input' && node.props['data-field'] === 'transport_service.cargo_description')
     assert.equal(cargoDescription?.value, 'Mercadorias diversas', 'free-text CT-e facts remain visible after the form update tick')
     const serviceType = findNode(cte.root, node => node.tag === 'select' && node.props['data-field'] === 'transport_service.service_type')
@@ -730,6 +740,7 @@ describe('ERP fiscal typed request helpers', () => {
       assert.equal(body.document_kind, kind)
       assert.equal(service.cte_type, cteType)
       assert.equal(service.original_cte_access_key, originalKey)
+      assertCtePartyLocations(service)
       mounted.app.unmount()
     }
   })
@@ -794,6 +805,44 @@ describe('ERP fiscal typed request helpers', () => {
     const field = findNode(mounted.root, node => node.props['data-field'] === 'recipient.address.city_code')
     assert.equal(textContent(field!), 'Código IBGE do municípioCódigo municipal inválido.')
     mounted.app.unmount()
+  })
+
+  it('saves CT-e configuration with both participant locations matching their entered addresses', async () => {
+    const emitted: Array<Record<string, unknown>> = []
+    const configuration = {
+      establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+      environment: 'homologation', revision: 2, revision_id: 8,
+      issuer: { tax_regime: 3, state_registration: '110042490114', uf: 'SP', address: { street: 'Rua Um', number: '10', district: 'Centro', city_code: '3550308', city_name: 'Sao Paulo', zip_code: '01001000' } },
+      models: {},
+      release_gates: { provider: 'unavailable', production_transmission_enabled: false, production_blocker: 'provider_unavailable' }
+    }
+    const mounted = mountConfigurationForm({ configuration, canWrite: true, operationNatures: [], onSave: (body: Record<string, unknown>) => emitted.push(body) })
+    try {
+      const modelCheckboxes = findNodes(mounted.root, node => node.tag === 'input' && node.props.type === 'checkbox')
+      assert.equal(modelCheckboxes.length, 4)
+      ;(modelCheckboxes[2]!.props.onChange as (event: { target: { checked: boolean } }) => void)({ target: { checked: true } })
+      await Vue.nextTick()
+      const fields = {
+        'models.57.series': '1', 'models.57.next_number': '123', 'models.57.transport.cte_type': '0',
+        ...Object.fromEntries(Object.entries(cteSfcFacts()).map(([field, value]) => [`models.57.transport.${field.replace('transport_service.', '')}`, value]))
+      }
+      for (const [field, value] of Object.entries(fields)) setFiscalField(mounted.root, field, value)
+      await Vue.nextTick()
+      const form = findNode(mounted.root, node => node.tag === 'form')
+      assert.ok(form)
+      ;(form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} })
+
+      assert.equal(emitted.length, 1)
+      const bodyModels = emitted[0]!.models as Record<string, Record<string, unknown>>
+      assert.deepEqual(Object.keys(bodyModels), ['57'])
+      const service = bodyModels['57']!.transport as Record<string, unknown>
+      assert.equal(service.service_type, 0)
+      assert.equal((service.taker as Record<string, unknown>).role, 0)
+      assert.equal((service.cargo as Record<string, unknown>).unit, '01')
+      assertCtePartyLocations(service)
+    } finally {
+      mounted.app.unmount()
+    }
   })
 
   it('saves the complete typed MDF-e configuration with the selected supported issuer type', async () => {

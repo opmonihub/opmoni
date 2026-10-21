@@ -162,7 +162,7 @@ function createSaleBody() {
 function transportSource() {
   if (selectedModel.value === '57') {
     const cteType = kind.value === 'complement' ? 1 : kind.value === 'substitution' ? 3 : 0
-    const party = (prefix: 'sender' | 'receiver') => ({ cnpj: facts[`${prefix}_cnpj`], legal_name: facts[`${prefix}_name`], state_registration: facts[`${prefix}_state_registration`], state_registration_indicator: Number(facts[`${prefix}_state_registration_indicator`]), address: { street: facts[`${prefix}_street`], number: facts[`${prefix}_number`], district: facts[`${prefix}_district`], city_code: facts[`${prefix}_city_code`], city: facts[`${prefix}_city`], postal_code: facts[`${prefix}_postal_code`], uf: facts[`${prefix}_uf`] } })
+    const party = (prefix: 'sender' | 'receiver') => ({ cnpj: facts[`${prefix}_cnpj`], legal_name: facts[`${prefix}_name`], state_registration: facts[`${prefix}_state_registration`], state_registration_indicator: Number(facts[`${prefix}_state_registration_indicator`]), city_code: facts[`${prefix}_city_code`], uf: facts[`${prefix}_uf`], address: { street: facts[`${prefix}_street`], number: facts[`${prefix}_number`], district: facts[`${prefix}_district`], city_code: facts[`${prefix}_city_code`], city: facts[`${prefix}_city`], postal_code: facts[`${prefix}_postal_code`], uf: facts[`${prefix}_uf`] } })
     return { transport_service: {
       cte_type: cteType, service_type: Number(facts.service_type), emission_type: Number(facts.emission_type), modal: '01', operation_nature: facts.operation_nature,
       cfop: facts.cfop, service_value: facts.service_value, received_value: facts.received_value, rntrc: facts.rntrc,
