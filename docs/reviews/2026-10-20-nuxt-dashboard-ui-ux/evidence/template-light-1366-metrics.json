@@ -1,0 +1,437 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "dark": false,
+  "documentWidth": 1366,
+  "firstTableRow": {
+    "height": 73,
+    "width": 1078,
+    "x": 264,
+    "y": 194
+  },
+  "fontFaces": [
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: BlinkMacSystemFont",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Segoe UI",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Helvetica Neue",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Arial",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Noto Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    }
+  ],
+  "forms": [],
+  "headings": [
+    {
+      "rect": {
+        "height": 24,
+        "width": 82.15625,
+        "x": 302,
+        "y": 19.5
+      },
+      "text": "Customers"
+    }
+  ],
+  "nestedForms": 0,
+  "primary": {
+    "background": "rgb(0, 193, 106)",
+    "color": "rgb(255, 255, 255)",
+    "label": "New customer",
+    "rect": {
+      "height": 32,
+      "width": 140.3125,
+      "x": 1201.6875,
+      "y": 15.5
+    }
+  },
+  "title": "Nuxt Dashboard Template",
+  "tokens": {
+    "--font-sans": "'Public Sans', \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+    "--ui-primary": "#00C16A",
+    "--ui-success": "#00C16A",
+    "--ui-text-muted": "oklch(55.2% 0.016 285.938)"
+  },
+  "url": "/customers",
+  "viewport": [
+    1366,
+    768
+  ],
+  "visibleButtons": [
+    {
+      "label": "Nuxt",
+      "rect": {
+        "height": 36,
+        "width": 207,
+        "x": 16,
+        "y": 14
+      }
+    },
+    {
+      "label": "Search\u2026Ctrlk",
+      "rect": {
+        "height": 32,
+        "width": 207,
+        "x": 16,
+        "y": 72
+      }
+    },
+    {
+      "label": "Settings",
+      "rect": {
+        "height": 32,
+        "width": 207,
+        "x": 16,
+        "y": 216
+      }
+    },
+    {
+      "label": "Benjamin Canac",
+      "rect": {
+        "height": 32,
+        "width": 207,
+        "x": 16,
+        "y": 728
+      }
+    },
+    {
+      "label": "Collapse sidebar",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 264,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "New customer",
+      "rect": {
+        "height": 32,
+        "width": 140.3125,
+        "x": 1201.6875,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "Delete1",
+      "rect": {
+        "height": 32,
+        "width": 114.75,
+        "x": 1008.9375,
+        "y": 88
+      }
+    },
+    {
+      "label": "All",
+      "rect": {
+        "height": 32,
+        "width": 112,
+        "x": 1129.6875,
+        "y": 88
+      }
+    },
+    {
+      "label": "Display",
+      "rect": {
+        "height": 32,
+        "width": 94.3125,
+        "x": 1247.6875,
+        "y": 88
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 281,
+        "y": 161
+      }
+    },
+    {
+      "label": "Email",
+      "rect": {
+        "height": 32,
+        "width": 82.53125,
+        "x": 617.578125,
+        "y": 153
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 222
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 214
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 295
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 287
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 368
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 360
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 441
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 433
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 514
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 506
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 587
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 579
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 660
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 652
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 733
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 725
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 806
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 1294,
+        "y": 798
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 280,
+        "y": 879
+      }
+    }
+  ]
+}
