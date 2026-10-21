@@ -33,6 +33,7 @@ const openSessionOpen = ref(false)
 const movementOpen = ref(false)
 const paymentOpen = ref(false)
 const closeOpen = ref(false)
+const modalAttempts = reactive({ register: 0, open: 0, movement: 0, payment: 0, close: 0 })
 const registerErrors = computed(() => cash.fieldErrors.value)
 const sessionErrors = computed(() => cash.fieldErrors.value)
 const movementErrors = computed(() => cash.fieldErrors.value)
@@ -74,11 +75,44 @@ function sessionBalance(session: ErpCashSession) {
 function openEditor(action: ErpFinanceAction) {
   return allowed(action)
 }
+function operationSummary(operation: NonNullable<typeof cash.selectedOperation.value>) {
+  const sessionId = operation.path.match(/^\/erp\/cash-sessions\/(\d+)/)?.[1]
+  if (operation.operation === 'erp.cash-sessions.close')
+    return `Sessão #${sessionId ?? 'indisponível'} · contagem declarada ${String(operation.payload.declared_closing_amount ?? 'indisponível')}`
+  if (operation.operation === 'erp.cash-sessions.movements.store')
+    return `Sessão #${sessionId ?? 'indisponível'} · ${String(operation.payload.direction ?? '')} ${String(operation.payload.amount ?? 'indisponível')}`
+  if (operation.operation === 'erp.payments.store')
+    return `Sessão #${String(operation.payload.erp_cash_session_id ?? 'indisponível')} · pagamento ${String(operation.payload.amount ?? 'indisponível')} ${String(operation.payload.currency ?? '')}`
+  if (operation.operation === 'erp.cash-sessions.store')
+    return `Caixa #${String(operation.payload.erp_cash_register_id ?? 'indisponível')} · abertura ${String(operation.payload.opening_amount ?? 'indisponível')} ${String(operation.payload.currency ?? '')}`
+  return `Caixa · ${String(operation.payload.name ?? 'operação original')}`
+}
+type ModalKind = keyof typeof modalAttempts
+type ModalToken = { kind: ModalKind, attempt: number, authority: number, sessionId: number | null }
+function beginModal(kind: ModalKind) {
+  modalAttempts[kind]++
+}
+function modalToken(kind: ModalKind, sessionId: number | null = cash.selectedSession.value?.id ?? null): ModalToken {
+  return { kind, attempt: modalAttempts[kind], authority: cash.authorityGeneration.value, sessionId }
+}
+function canCompleteModal(token: ModalToken) {
+  return token.attempt === modalAttempts[token.kind]
+    && token.authority === cash.authorityGeneration.value
+    && (token.sessionId === null || token.sessionId === cash.selectedSession.value?.id)
+}
+function sessionIdFromPayload(value: unknown) {
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+}
 function startRegister() {
-  if (openEditor('erp.cash-registers.store')) registerOpen.value = true
+  if (openEditor('erp.cash-registers.store')) {
+    beginModal('register')
+    registerOpen.value = true
+  }
 }
 function startOpening() {
   if (!openEditor('erp.cash-sessions.store')) return
+  beginModal('open')
   openSessionOpen.value = true
   void cash.loadRegisterOptions()
 }
@@ -97,40 +131,64 @@ function selectRegister(register: ErpCashRegister) {
 function selectSession(session: ErpCashSession) {
   void cash.inspectSession(session.id)
 }
+function startMovement() {
+  if (!cash.selectedSession.value || !openEditor('erp.cash-sessions.movements.store')) return
+  beginModal('movement')
+  movementOpen.value = true
+}
+function startPayment() {
+  if (!cash.selectedSession.value || !openEditor('erp.payments.store')) return
+  beginModal('payment')
+  paymentOpen.value = true
+}
+function startClose() {
+  if (!cash.selectedSession.value || !openEditor('erp.cash-sessions.close')) return
+  beginModal('close')
+  closeOpen.value = true
+}
 async function submitRegister(payload: Record<string, unknown>) {
+  const token = modalToken('register')
   const result = await cash.registerCashDrawer(payload as { name: string, erp_establishment_id: number })
-  if (result !== null) registerOpen.value = false
+  if (result !== null && canCompleteModal(token)) registerOpen.value = false
 }
 async function submitOpenSession(payload: Record<string, unknown>) {
+  const token = modalToken('open', null)
   const result = await cash.openCashSession(payload as { erp_cash_register_id: number, opening_amount: string, currency: string })
-  if (result !== null) openSessionOpen.value = false
+  if (result !== null && canCompleteModal(token)) openSessionOpen.value = false
 }
 async function submitMovement(payload: Record<string, unknown>) {
+  const token = modalToken('movement')
   const result = await cash.postMovement(payload as { direction: 'in' | 'out', kind: 'deposit' | 'withdrawal', amount: string, reason: string })
-  if (result !== null) movementOpen.value = false
+  if (result !== null && canCompleteModal(token)) movementOpen.value = false
 }
 async function submitPayment(payload: Record<string, unknown>) {
+  const token = modalToken('payment', sessionIdFromPayload(payload.erp_cash_session_id))
   const result = await cash.payCashPayment(payload)
-  if (result !== null) paymentOpen.value = false
+  if (result !== null && canCompleteModal(token)) paymentOpen.value = false
 }
 async function submitClose(payload: Record<string, unknown>) {
+  const token = modalToken('close')
   const result = await cash.closeSession(payload as { declared_closing_amount: string })
-  if (result !== null) closeOpen.value = false
+  if (result !== null && canCompleteModal(token)) closeOpen.value = false
 }
 watch(cash.authorityGeneration, () => {
+  for (const kind of ['register', 'open', 'movement', 'payment', 'close'] as const) beginModal(kind)
   registerOpen.value = false
   openSessionOpen.value = false
   movementOpen.value = false
   paymentOpen.value = false
   closeOpen.value = false
-})
+}, { flush: 'sync' })
 watch(() => cash.selectedSession.value?.id, (id, previousId) => {
   if (previousId !== undefined && id !== previousId) {
+    beginModal('movement')
+    beginModal('payment')
+    beginModal('close')
     movementOpen.value = false
     paymentOpen.value = false
     closeOpen.value = false
   }
-})
+}, { flush: 'sync' })
 </script>
 
 <template>
@@ -200,7 +258,11 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
       >
         <template v-if="cash.selectedOperation.value" #description>
           <div class="flex flex-wrap items-center gap-2">
+            <p v-if="cash.recoveryContentAllowed.value" class="basis-full text-sm text-muted">
+              Conteúdo original: {{ operationSummary(cash.selectedOperation.value) }}
+            </p>
             <UButton
+              v-if="cash.recoveryContentAllowed.value"
               color="neutral"
               variant="outline"
               size="sm"
@@ -209,7 +271,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
               @click="cash.reconcile"
             />
             <UButton
-              v-if="cash.canRetryExact.value"
+              v-if="cash.canRetryExact.value && cash.recoveryContentAllowed.value"
               color="neutral"
               variant="outline"
               size="sm"
@@ -286,6 +348,15 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           <UFormField label="Caixa" name="erp_cash_register_id">
             <USelect :model-value="cash.filters.erp_cash_register_id || 'all'" :items="[{ label: 'Todos', value: 'all' }, ...cash.registerOptions.value.map(register => ({ label: register.name, value: String(register.id) }))]" @update:model-value="setSessionFilter('erp_cash_register_id', $event === 'all' ? '' : $event)" />
           </UFormField>
+          <UButton
+            v-if="cash.registerOptionsMeta.value && cash.registerOptionsMeta.value.current_page < cash.registerOptionsMeta.value.last_page"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            label="Mais caixas para filtrar"
+            :loading="cash.registerOptionsLoading.value"
+            @click="cash.loadMoreRegisterOptions"
+          />
           <UFormField label="Estabelecimento" name="erp_establishment_id">
             <USelect :model-value="cash.filters.erp_establishment_id || 'all'" :items="[{ label: 'Todos', value: 'all' }, ...cash.establishments.value.map(item => ({ label: item.name, value: String(item.id) }))]" @update:model-value="setSessionFilter('erp_establishment_id', $event === 'all' ? '' : $event)" />
           </UFormField>
@@ -364,7 +435,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
               variant="outline"
               icon="i-lucide-arrow-left-right"
               label="Registrar movimento"
-              @click="movementOpen = true"
+              @click="startMovement"
             />
             <UButton
               v-if="cash.selectedSession.value.can_operate && cash.selectedSession.value.status === 'open' && !cash.selectedSession.value.needs_reconciliation && allowed('erp.payments.store')"
@@ -372,13 +443,13 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
               variant="outline"
               icon="i-lucide-hand-coins"
               label="Pagamento em dinheiro"
-              @click="paymentOpen = true"
+              @click="startPayment"
             />
             <UButton
               v-if="cash.selectedSession.value.can_operate && cash.selectedSession.value.status === 'open' && !cash.selectedSession.value.needs_reconciliation && allowed('erp.cash-sessions.close')"
               icon="i-lucide-lock-keyhole"
               label="Fechar sessão"
-              @click="closeOpen = true"
+              @click="startClose"
             />
           </div>
         </header>

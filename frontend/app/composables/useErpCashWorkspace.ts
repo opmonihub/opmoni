@@ -6,6 +6,7 @@ import { createPendingOperation, pendingOperationLookup, readPendingOperation, w
 type Establishment = { id: number, name: string, status?: string }
 type CashOperation = ErpPendingOperation
 type CashListKind = 'registers' | 'sessions' | 'establishments'
+type SelectionSnapshot = { generation: number, selectedId: number | null }
 
 const paths: Record<CashListKind, string> = {
   registers: '/erp/cash-registers',
@@ -57,12 +58,18 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   const authorityNeedsRefresh = ref(false)
   const deniedActions = ref(new Set<string>())
   const allowed = (action: ErpFinanceAction) => !authorityNeedsRefresh.value && !deniedActions.value.has(action) && erpFinanceAllowed(permissions.value, role.value, action)
+  const recoveryContentAllowed = computed(() => {
+    const pending = selectedOperation.value
+    return pending !== null && !authorityNeedsRefresh.value && deniedActions.value.size === 0
+      && erpFinanceAllowed(permissions.value, role.value, pending.operation as ErpFinanceAction)
+  })
   const storageKey = computed(() => `erp-cash:v1:${user.value?.id ?? 'anonymous'}:${currentCompany.value?.id ?? 'none'}`)
   let requestGeneration = 0
   let detailSequence = 0
   let movementSequence = 0
   let registerOptionsSequence = 0
   let authorityRefreshEpoch = 0
+  let sessionSelectionGeneration = 0
   const listSequences: Record<CashListKind, number> = { registers: 0, sessions: 0, establishments: 0 }
 
   function operationIdentity(operation: string) {
@@ -70,6 +77,31 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   }
   function current(token: ReturnType<typeof context.capture>, generation: number) {
     return requestGeneration === generation && context.isCurrent(token)
+  }
+  function captureSelection(): SelectionSnapshot {
+    return { generation: sessionSelectionGeneration, selectedId: selectedSession.value?.id ?? null }
+  }
+  function selectionStillCurrent(snapshot: SelectionSnapshot, targetId?: number | null) {
+    if (sessionSelectionGeneration !== snapshot.generation) return false
+    const selectedId = selectedSession.value?.id ?? null
+    return snapshot.selectedId !== null
+      ? selectedId === snapshot.selectedId
+      : selectedId === null || selectedId === targetId
+  }
+  function operationSessionId(operation: CashOperation, result?: unknown) {
+    if (operation.operation === 'erp.cash-sessions.close' || operation.operation === 'erp.cash-sessions.movements.store') {
+      const match = operation.path.match(/^\/erp\/cash-sessions\/(\d+)/)
+      return match ? Number(match[1]) : null
+    }
+    if (operation.operation === 'erp.payments.store') {
+      const id = Number(operation.payload.erp_cash_session_id)
+      return Number.isSafeInteger(id) && id > 0 ? id : null
+    }
+    if (operation.operation === 'erp.cash-sessions.store' && typeof result === 'object' && result !== null) {
+      const id = Number((result as { id?: unknown }).id)
+      return Number.isSafeInteger(id) && id > 0 ? id : null
+    }
+    return null
   }
   function storePending(operation: CashOperation | null) {
     if (typeof sessionStorage === 'undefined') {
@@ -148,7 +180,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
         deniedActions.value = new Set()
       }
     } catch {
-      if (context.isCurrent(token)) mutationError.value = 'A autorização mudou. Atualize sua sessão para continuar.'
+      if (context.isCurrent(token) && authorityRefreshEpoch === epoch) mutationError.value = 'A autorização mudou. Atualize sua sessão para continuar.'
     }
   }
   function isAuthorityDenial(error: unknown) {
@@ -165,15 +197,14 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     if (!context.isCurrent(token) || !isAuthorityDenial(error)) return false
     deniedActions.value = new Set([...deniedActions.value, action])
     const status = apiStatus(error)
-    let epoch: number | null = null
+    const epoch = ++authorityRefreshEpoch
     if (status === 401 || status === 409 || (status === 403 && refreshForbiddenWrite)) {
-      epoch = ++authorityRefreshEpoch
       authorityNeedsRefresh.value = true
     }
     clearPrivateState()
     restorePending()
     mutationError.value = apiErrorMessage(error) ?? 'Sua autorização mudou. Os dados privados do caixa foram removidos.'
-    if (epoch !== null) await refreshAuth(token, epoch)
+    if (status === 401 || status === 409 || (status === 403 && refreshForbiddenWrite)) await refreshAuth(token, epoch)
     return true
   }
   function query(kind: CashListKind, page: number, perPage: number) {
@@ -226,7 +257,10 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     }
   }
   async function load() {
-    await Promise.all((['registers', 'sessions', 'establishments'] as const).map(kind => loadList(kind)))
+    await Promise.all([
+      ...(['registers', 'sessions', 'establishments'] as const).map(kind => loadList(kind)),
+      loadRegisterOptions()
+    ])
   }
   async function loadRegisterOptions(page = 1, append = false) {
     const action: ErpFinanceAction = 'erp.cash-registers.index'
@@ -272,17 +306,24 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
       }
     }
   }
-  async function inspectSession(id: number) {
+  async function inspectSession(id: number, expectedSelection?: SelectionSnapshot & { selectIfEmpty?: boolean }) {
     const action: ErpFinanceAction = 'erp.cash-sessions.show'
     if (!allowed(action)) return
+    const explicitSelection = expectedSelection === undefined
+    if (explicitSelection) sessionSelectionGeneration++
+    const selectionGeneration = expectedSelection?.generation ?? sessionSelectionGeneration
+    const canApplySelection = () => sessionSelectionGeneration === selectionGeneration && (explicitSelection
+      || (selectedSession.value?.id ?? null) === expectedSelection?.selectedId
+      || (expectedSelection?.selectIfEmpty && expectedSelection.selectedId === null && selectedSession.value === null))
     const token = context.capture()
     const generation = requestGeneration
-    const sequence = ++detailSequence
+    const canSelectAtStart = canApplySelection() && (explicitSelection || expectedSelection?.selectedId === id || expectedSelection?.selectIfEmpty)
+    const sequence = canSelectAtStart ? ++detailSequence : detailSequence
     const previousSession = selectedSession.value
     const previousMovements = movements.value
     const previousMeta = movementMeta.value
     const previousTotals = ledgerTotals.value
-    if (selectedSession.value?.id !== id) {
+    if (canSelectAtStart && selectedSession.value?.id !== id) {
       selectedSession.value = null
       movements.value = []
       movementMeta.value = null
@@ -292,12 +333,14 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     }
     try {
       const result = await api<{ data: ErpCashSession }>(`/erp/cash-sessions/${id}`)
-      if (!current(token, generation) || sequence !== detailSequence) return
+      if (!current(token, generation)) return
+      if (!canSelectAtStart || !canApplySelection() || sequence !== detailSequence) return
       selectedSession.value = result.data
       ledgerTotals.value = result.data
       if (allowed('erp.cash-sessions.movements.index')) await loadMovementPage(id, 1, token, generation, sequence)
     } catch (error) {
-      if (!current(token, generation) || sequence !== detailSequence) return
+      if (!current(token, generation)) return
+      if (!canSelectAtStart || !canApplySelection() || sequence !== detailSequence) return
       if (!await handleDenial(action, error, token)) {
         if (previousSession?.id === id) {
           selectedSession.value = previousSession
@@ -334,38 +377,50 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     if (pending.identity !== operationIdentity(action) || !storePending(pending)) return null
     const token = context.capture()
     const generation = requestGeneration
+    const authorityToken = authorityGeneration.value
+    const selectionToken = captureSelection()
+    const selectionIsCurrent = (targetId?: number | null) => current(token, generation)
+      && authorityGeneration.value === authorityToken
+      && selectionStillCurrent(selectionToken, targetId)
     mutating.value = true
     needsReconciliation.value = false
     try {
       await refreshCsrf()
-      if (!current(token, generation)) return null
+      if (!selectionIsCurrent()) {
+        if (current(token, generation) && authorityGeneration.value === authorityToken) {
+          needsReconciliation.value = true
+          mutationError.value = 'A sessão selecionada mudou antes do envio. Consulte a operação antes de repetir.'
+        }
+        return null
+      }
       const response = await api<{ data: unknown }>(pending.path, { method: 'POST', body: pending.payload, headers: { 'Idempotency-Key': pending.key } })
-      if (!current(token, generation)) return null
+      if (!selectionIsCurrent()) {
+        if (current(token, generation) && authorityGeneration.value === authorityToken) {
+          needsReconciliation.value = true
+          mutationError.value = 'A operação pode ter sido concluída na sessão anterior. Consulte o resultado antes de continuar.'
+        }
+        return null
+      }
       const cleared = storePending(null)
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada.' : 'Operação confirmada. A cópia local ainda não pôde ser removida; consulte a operação antes de iniciar outra.'
-      const sessionId = Number(pending.path.match(/^\/erp\/cash-sessions\/(\d+)/)?.[1])
-      if (sessionId) await inspectSession(sessionId)
-      const paymentSessionId = pending.path === '/erp/payments' ? Number(pending.payload.erp_cash_session_id) : null
-      const createdSessionId = pending.operation === 'erp.cash-sessions.store' && typeof response.data === 'object' && response.data !== null
-        ? Number((response.data as { id?: unknown }).id)
-        : null
-      const paymentSession = paymentSessionId && Number.isFinite(paymentSessionId) ? paymentSessionId : null
-      const createdSession = createdSessionId && Number.isFinite(createdSessionId) ? createdSessionId : null
-      if (paymentSession || createdSession) {
-        const sessionId = paymentSession ?? createdSession!
-        if (createdSessionId) selectedPage.value = 'sessions'
-        await inspectSession(sessionId)
-        if (!current(token, generation)) return response.data
+      const sessionId = operationSessionId(pending, response.data)
+      if (sessionId) {
+        const selectIfEmpty = pending.operation === 'erp.cash-sessions.store'
+        if (selectIfEmpty && selectionToken.selectedId === null && selectionStillCurrent(selectionToken, sessionId)) selectedPage.value = 'sessions'
+        await inspectSession(sessionId, { ...selectionToken, selectIfEmpty })
+        if (!selectionIsCurrent(sessionId)) return null
       }
       await Promise.all((['registers', 'sessions'] as const).map(kind => loadList(kind)))
-      if (!current(token, generation)) return response.data
+      if (!selectionIsCurrent(sessionId)) return null
       return response.data
     } catch (error) {
-      if (!current(token, generation)) return null
-      fieldErrors.value = apiFieldErrors(error)
+      if (!current(token, generation) || authorityGeneration.value !== authorityToken) return null
+      if (selectionStillCurrent(selectionToken)) fieldErrors.value = apiFieldErrors(error)
       const status = apiStatus(error)
-      if (await handleDenial(action, error, token, true)) return null
+      const denied = await handleDenial(action, error, token, true)
+      if (!current(token, generation)) return null
+      if (denied) return null
       if (existing && status === 404) {
         needsReconciliation.value = true
         mutationError.value = 'O recurso não está disponível para a repetição. Consulte a operação antes de qualquer nova ação.'
@@ -380,9 +435,9 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
         needsReconciliation.value = true
         mutationError.value = 'Não foi possível confirmar o resultado. Consulte a operação antes de repetir.'
       }
-      const sessionId = Number(pending.path.match(/^\/erp\/cash-sessions\/(\d+)/)?.[1]) || (pending.path === '/erp/payments' ? Number(pending.payload.erp_cash_session_id) : 0)
-      if (sessionId) await inspectSession(sessionId)
-      if (!current(token, generation)) return null
+      const sessionId = operationSessionId(pending)
+      if (sessionId) await inspectSession(sessionId, { ...selectionToken })
+      if (!selectionIsCurrent(sessionId)) return null
       return null
     } finally {
       if (context.isCurrent(token) && requestGeneration === generation) mutating.value = false
@@ -432,11 +487,14 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     selectedOperation.value = pending
     const token = context.capture()
     const generation = requestGeneration
+    const authorityToken = authorityGeneration.value
+    const selectionToken = captureSelection()
+    const recoveryCurrent = () => current(token, generation) && authorityGeneration.value === authorityToken
     mutating.value = true
     try {
       const lookup = pendingOperationLookup(pending)
       const response = await api<{ data: { state: string, result?: unknown } }>(lookup.path, { headers: lookup.headers })
-      if (!current(token, generation)) return
+      if (!recoveryCurrent()) return
       if (response.data.state !== 'completed') {
         needsReconciliation.value = true
         canRetryExact.value = false
@@ -446,18 +504,25 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
       const cleared = storePending(null)
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada pelo registro do servidor.' : 'Operação confirmada. A cópia local ainda não pôde ser removida; consulte-a antes de iniciar outra.'
-      const id = Number(pending.path.match(/^\/erp\/cash-sessions\/(\d+)/)?.[1])
-      if (id) await inspectSession(id)
-      if (!current(token, generation)) return
+      const id = operationSessionId(pending, response.data.result)
+      if (id) {
+        const selectIfEmpty = pending.operation === 'erp.cash-sessions.store'
+        if (selectIfEmpty && selectionToken.selectedId === null && selectionStillCurrent(selectionToken, id)) selectedPage.value = 'sessions'
+        await inspectSession(id, { ...selectionToken, selectIfEmpty })
+        if (!recoveryCurrent()) return
+      }
       await Promise.all((['registers', 'sessions'] as const).map(kind => loadList(kind)))
+      if (!recoveryCurrent()) return
     } catch (error) {
-      if (!current(token, generation)) return
+      if (!recoveryCurrent()) return
       if (apiStatus(error) === 404) {
         canRetryExact.value = true
         needsReconciliation.value = true
         mutationError.value = 'Ainda sem registro no servidor. Você pode repetir o mesmo conteúdo com a mesma identificação.'
-      } else if (!await handleDenial(pending.operation, error, token)) {
-        mutationError.value = apiErrorMessage(error) ?? 'Não foi possível consultar a operação.'
+      } else {
+        const denied = await handleDenial(pending.operation, error, token)
+        if (!recoveryCurrent()) return
+        if (!denied) mutationError.value = apiErrorMessage(error) ?? 'Não foi possível consultar a operação.'
       }
     } finally {
       if (context.isCurrent(token) && requestGeneration === generation) mutating.value = false
@@ -501,7 +566,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
 
   return {
     registers, registerOptions, registerOptionsMeta, registerOptionsLoading, sessions, establishments, listMeta, loading, pageErrors, selectedSession, movements, movementMeta, ledgerTotals, movementError,
-    selectedPage, filters, mutationError, fieldErrors, mutating, selectedOperation, needsReconciliation, canRetryExact,
+    selectedPage, filters, mutationError, fieldErrors, mutating, selectedOperation, recoveryContentAllowed, needsReconciliation, canRetryExact,
     authorityGeneration, allowed, load, loadList, inspectSession, setPage, registerCashDrawer, openCashSession, postMovement,
     closeSession, payCashPayment, reconcile, retryExact, activeCashSession, loadMovementPage, loadRegisterOptions, loadMoreRegisterOptions
   }
