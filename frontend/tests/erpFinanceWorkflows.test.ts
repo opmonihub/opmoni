@@ -82,18 +82,23 @@ function createFinanceRoute(hash = '') {
   return { route, router, pushes, replaces, focusedSelectors, document }
 }
 
-function mountFinanceWorkspace(finance: Record<string, unknown>, navigation = createFinanceRoute()) {
+function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute()) {
   const components: Record<string, Vue.Component> = {}
   const modalOpenStates: boolean[] = []
   const overlayProps = new Map<string, { props: Record<string, unknown>, attrs: Record<string, unknown> }>()
+  let mountedFinance: Record<string, unknown> = {}
+  let navigationItems: Record<string, unknown>[] = []
+  let firstNavigationItems: Record<string, unknown>[] | null = null
+  const initialTabArguments: unknown[] = []
   for (const name of ['ErpFinancialAccountForm', 'ErpObligationForm', 'ErpPaymentForm'])
     components[name] = compileSfc(name, {})
-  const financeWithRouteTab = finance as { tab?: Vue.Ref<string> }
-  if (financeWithRouteTab.tab) {
-    const initialArea = navigation.route.hash.replace(/^#/, '')
-    financeWithRouteTab.tab.value = ['accounts', 'obligations', 'payments'].includes(initialArea) ? initialArea : 'obligations'
-  }
-  components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: () => finance } }, {
+  const useFinance = typeof financeOrFactory === 'function'
+    ? (initialTab?: unknown) => {
+        initialTabArguments.push(initialTab)
+        return mountedFinance = financeOrFactory(initialTab)
+      }
+    : () => mountedFinance = financeOrFactory
+  components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: useFinance } }, {
     useRoute: () => navigation.route,
     useRouter: () => navigation.router,
     onMounted: Vue.onMounted,
@@ -101,6 +106,15 @@ function mountFinanceWorkspace(finance: Record<string, unknown>, navigation = cr
   })
   components.ErpCatalogPageShell = { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) }
   components.UButton = { inheritAttrs: false, props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'data-test-label': props.label ?? context.attrs['aria-label'] }, [props.label, context.slots.default?.()]) }
+  components.UNavigationMenu = { props: ['items'], setup: props => () => {
+    navigationItems = (props.items as Record<string, unknown>[][]).flat()
+    firstNavigationItems ??= navigationItems
+    return Vue.h('nav', {}, navigationItems.map(item => Vue.h('button', {
+      'data-test-label': item.label,
+      'aria-current': item.active ? 'page' : undefined,
+      'onClick': () => navigation.router.push(item.to as Record<string, unknown>)
+    }, String(item.label))))
+  } }
   components.UTable = { props: ['data'], setup: (props, context) => () => Vue.h('div', {}, [
     ...(props.data as ErpPayment[]).map(original => Vue.h('div', {}, [
       ...(context.slots['id-cell']?.({ row: { original } }) ?? []),
@@ -228,7 +242,7 @@ function mountFinanceWorkspace(finance: Record<string, unknown>, navigation = cr
     })
     return { props }
   }
-  return { exposed, button, control, hasText, overlay, modalOpenStates, navigation, unmount: () => app.unmount() }
+  return { exposed, button, control, hasText, overlay, modalOpenStates, navigation, navigationItems: () => navigationItems, firstNavigationItems: () => firstNavigationItems, initialTabArguments, finance: () => mountedFinance, unmount: () => app.unmount() }
 }
 
 const emptyMeta = { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] as ErpFinanceTotals[] }
@@ -281,7 +295,7 @@ async function settleUntil(ready: () => boolean) {
   assert.ok(ready(), 'asynchronous workspace action should settle')
 }
 
-function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}, refreshIdentity: () => Promise<unknown> = async () => null, authOverride?: Record<string, unknown>) {
+function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}, refreshIdentity: () => Promise<unknown> = async () => null, authOverride?: Record<string, unknown>, realLifecycle = false) {
   const user = (authOverride?.user as Vue.Ref<{ id: number }> | undefined) ?? Vue.ref({ id: 42 })
   const company = (authOverride?.currentCompany as Vue.Ref<{ id: number, permissions: string[], role: string }> | undefined) ?? Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' })
   const key = Vue.computed(() => JSON.stringify([user.value.id, company.value.id, company.value.permissions.join(',')]))
@@ -300,7 +314,15 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
   }
   let mounted: () => void = () => {}
   const bindings = {
-    ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted(callback: () => void) { mounted = callback }, onScopeDispose: Vue.onScopeDispose,
+    ref: Vue.ref,
+    reactive: Vue.reactive,
+    computed: Vue.computed,
+    watch: Vue.watch,
+    onMounted(callback: () => void) {
+      if (realLifecycle) Vue.onMounted(callback)
+      else mounted = callback
+    },
+    onScopeDispose: Vue.onScopeDispose,
     useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => authBindings, useErpAdministrationContext: () => context
   }
   const moduleExports = compileModule(readFileSync(new URL('../app/composables/useErpFinanceWorkspace.ts', import.meta.url), 'utf8'), {
@@ -309,9 +331,11 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
     '#shared/utils/erpFinance': financeUtils
   }, bindings)
   const scope = Vue.effectScope()
-  const state = scope.run(() => (moduleExports.useErpFinanceWorkspace as () => Record<string, unknown>)())!
+  const useFinance = (initialTab?: unknown) => scope.run(() => (moduleExports.useErpFinanceWorkspace as (initialTab?: unknown) => Record<string, unknown>)(initialTab))!
+  const state = realLifecycle ? {} : useFinance()
   return {
     state,
+    useFinance,
     user,
     company,
     mount: () => mounted(),
@@ -477,15 +501,18 @@ describe('finance workspace', { concurrency: 1 }, () => {
     const app = createWorkspace(async (path) => {
       calls.push(path)
       return page([])
-    })
+    }, async () => {}, async () => null, undefined, true)
     t.after(app.stop)
     const navigation = createFinanceRoute('#payments')
-    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>, navigation)
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation)
     t.after(mounted.unmount)
-    app.mount()
+    assert.equal(mounted.initialTabArguments.length, 1)
+    assert.equal((mounted.initialTabArguments[0] as () => string)(), 'payments')
+    assert.equal(mounted.firstNavigationItems()?.find(item => item.active)?.label, 'Obrigações')
     await settle()
-    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'payments')
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'payments')
     assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 1)
+    assert.equal(calls.some(path => path.startsWith('/erp/obligations?')), false)
     assert.equal(navigation.replaces.length, 0)
 
     mounted.button('Obrigações').onClick?.()
@@ -495,7 +522,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.equal(calls.filter(path => path.startsWith('/erp/obligations?')).length, 1)
     navigation.route.hash = '#payments'
     await settle()
-    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'payments')
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'payments')
     assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 2)
     mounted.button('Pagamentos').onClick?.()
     await settle()
@@ -510,14 +537,36 @@ describe('finance workspace', { concurrency: 1 }, () => {
     })
     t.after(app.stop)
     const navigation = createFinanceRoute('#not-a-finance-area')
-    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>, navigation)
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation)
     t.after(mounted.unmount)
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'obligations')
     app.mount()
     await settle()
-    assert.equal((app.state as { tab: Vue.Ref<string> }).tab.value, 'obligations')
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'obligations')
     assert.equal(navigation.route.hash, '#obligations')
     assert.equal(navigation.replaces.length, 1)
     assert.equal(calls.filter(path => path.startsWith('/erp/obligations?')).length, 1)
+  })
+
+  it('hydrates a direct accounts hash from the stable obligations presentation with one accounts read', async (t) => {
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      return page([])
+    }, async () => {}, async () => null, undefined, true)
+    t.after(app.stop)
+    const navigation = createFinanceRoute('#accounts')
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation)
+    t.after(mounted.unmount)
+    assert.equal(mounted.initialTabArguments.length, 1)
+    assert.equal((mounted.initialTabArguments[0] as () => string)(), 'accounts')
+    assert.equal(mounted.firstNavigationItems()?.find(item => item.active)?.label, 'Obrigações')
+    await settle()
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'accounts')
+    assert.equal(mounted.navigationItems().find(item => item.active)?.label, 'Contas')
+    assert.equal(calls.filter(path => path.startsWith('/erp/financial-accounts?') && !path.includes('per_page=100')).length, 1)
+    assert.equal(calls.some(path => path.startsWith('/erp/obligations?')), false)
+    assert.equal(navigation.replaces.length, 0)
   })
 
   it('translates known Finance enum values and labels unknown values safely', async (t) => {
@@ -559,6 +608,35 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.equal(mounted.overlay('Nova obrigação').props.open, true)
     assert.equal(draft.amount, '9007199254740993.1200')
     assert.equal(state.fieldErrors.value.amount, 'Valor incompatível.')
+  })
+
+  it('retains a create draft and unresolved identity after an ordinary reconciliation 409', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = createWorkspace(async (_path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 409, data: { code: 'legacy_operation_requires_reconciliation', message: 'Operação anterior exige conciliação.' } }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Nova obrigação').onClick?.()
+    await settle()
+    const form = mounted.exposed('ErpObligationForm')
+    const draft = form.state as Record<string, string>
+    Object.assign(draft, { category: 'servico', amount: '9007199254740993.1200' })
+    const state = app.state as { authorityGeneration: Vue.Ref<number>, mutating: Vue.Ref<boolean>, selectedOperation: Vue.Ref<{ key: string, payload: Record<string, unknown> } | null>, needsReconciliation: Vue.Ref<boolean> }
+    const generation = state.authorityGeneration.value
+    ;(form.submit as () => void)()
+    await settleUntil(() => !state.mutating.value)
+    assert.equal(mounted.overlay('Nova obrigação').props.open, true)
+    assert.equal(draft.amount, '9007199254740993.1200')
+    assert.equal(state.authorityGeneration.value, generation)
+    assert.equal(state.needsReconciliation.value, true)
+    assert.equal(state.selectedOperation.value?.payload.amount, '9007199254740993.1200')
+    assert.match((mounted.finance() as { mutationError: Vue.Ref<string> }).mutationError.value, /exige conciliação/)
   })
 
   it('closes a create editor only after the server confirms the write', async (t) => {
@@ -608,8 +686,9 @@ describe('finance workspace', { concurrency: 1 }, () => {
     await settleUntil(() => !state.mutating.value)
     assert.equal((app.state as { authorityGeneration: Vue.Ref<number> }).authorityGeneration.value, before + 1)
     assert.equal(mounted.overlay('Nova obrigação').props.open, false)
-    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '')
+    assert.throws(() => mounted.exposed('ErpObligationForm'))
     assert.match(state.mutationError.value, /não está autorizada/)
+    assert.ok(storage.saved.has('erp-finance:v1:42:7'))
   })
 
   it('keeps finance blocked when a superseded committed identity refresh returns stale grants after a newer refresh fails', async (t) => {
@@ -621,7 +700,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
         if (meCalls === 1) return olderMe.promise
         throw { statusCode: 503, data: { message: 'Identity service unavailable' } }
       }
-      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Company context changed' } }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { code: 'company_context_changed', message: 'Company context changed' } }
       return page([])
     }
     const auth = createActualAuth(api)
@@ -641,7 +720,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
   it('keeps finance blocked after the actual shared auth refresh fails', async (t) => {
     const api: Api = async (path) => {
       if (path === '/me') throw { statusCode: 503, data: { message: 'Identity service unavailable' } }
-      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Context changed' } }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { code: 'company_context_changed', message: 'Context changed' } }
       return page([])
     }
     const auth = createActualAuth(api)
@@ -655,7 +734,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
   it('unlocks finance only after the actual shared auth refresh commits the current identity', async (t) => {
     const api: Api = async (path) => {
       if (path === '/me') return { id: 42, current_company: { id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' } }
-      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Company context changed' } }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { code: 'company_context_changed', message: 'Company context changed' } }
       return page([])
     }
     const auth = createActualAuth(api)
@@ -889,12 +968,91 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.ok(storage.saved.has('erp-finance:v1:42:7'))
   })
 
+  it('blocks authority and clears private references after direct POST authorization and context denials', async (t) => {
+    const denials = [
+      { statusCode: 401, data: { message: 'Sessão expirada' } },
+      { statusCode: 403, data: { message: 'Permissão revogada' } },
+      { statusCode: 409, data: { code: 'company_context_changed', message: 'A empresa mudou' } }
+    ]
+    for (const denial of denials) {
+      const storage = sessionStorageFixture()
+      t.after(storage.restore)
+      const api: Api = async (path, options) => {
+        if (path === '/me') throw { statusCode: 503, data: { message: 'Identity service unavailable' } }
+        if (options?.method === 'POST') throw denial
+        if (path.startsWith('/erp/establishments?')) return page([{ id: 3, name: 'Unidade privada' }])
+        if (path.startsWith('/erp/financial-accounts?')) return page([{ id: 4, name: 'Conta privada', account_type: 'saving_current', currency: 'BRL', status: 'active', erp_establishment_id: null }])
+        if (path.startsWith('/erp/cash-sessions?')) return page([{ id: 5, currency: 'BRL', erp_establishment_id: 3, status: 'open' }])
+        return page([])
+      }
+      const auth = createActualAuth(api)
+      const app = createWorkspace(api, async () => {}, async () => null, auth)
+      t.after(app.stop)
+      const state = app.state as {
+        post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+        loadReferences: () => Promise<void>
+        authorityGeneration: Vue.Ref<number>
+        establishments: Vue.Ref<{ id: number }[]>
+        accountOptions: Vue.Ref<{ id: number }[]>
+        cashSessions: Vue.Ref<{ id: number }[]>
+        allowed: (action: string) => boolean
+        selectedOperation: Vue.Ref<{ key: string, payload: Record<string, unknown> } | null>
+        needsReconciliation: Vue.Ref<boolean>
+      }
+      await state.loadReferences()
+      assert.equal(state.establishments.value.length, 1)
+      assert.equal(state.accountOptions.value.length, 1)
+      assert.equal(state.cashSessions.value.length, 1)
+      const generation = state.authorityGeneration.value
+      const body = { direction: 'in', amount: '25.0000', method: 'bank_transfer', currency: 'BRL' }
+      await state.post('/erp/payments', body)
+      assert.equal(state.authorityGeneration.value, generation + 1)
+      assert.equal(state.establishments.value.length, 0)
+      assert.equal(state.accountOptions.value.length, 0)
+      assert.equal(state.cashSessions.value.length, 0)
+      assert.equal(state.allowed('erp.payments.store'), false)
+      assert.ok(state.selectedOperation.value?.key)
+      assert.deepEqual(state.selectedOperation.value?.payload, body)
+      assert.equal(state.needsReconciliation.value, true)
+      assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).payload.amount, '25.0000')
+    }
+  })
+
+  it('commits refreshed grants after a direct POST denial before deciding which Finance actions remain available', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const api: Api = async (path, options) => {
+      if (path === '/me') return { id: 42, current_company: { id: 7, permissions: ['erp.read'], role: 'viewer', access_kind: 'direct', status: 'active' } }
+      if (options?.method === 'POST') throw { statusCode: 403, data: { message: 'Permissão revogada' } }
+      if (path.startsWith('/erp/establishments?')) return page([{ id: 3, name: 'Unidade privada' }])
+      return page([])
+    }
+    const auth = createActualAuth(api)
+    const app = createWorkspace(api, async () => {}, async () => null, auth)
+    t.after(app.stop)
+    const state = app.state as {
+      post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+      loadReferences: () => Promise<void>
+      establishments: Vue.Ref<{ id: number }[]>
+      allowed: (action: string) => boolean
+      selectedOperation: Vue.Ref<{ key: string, payload: Record<string, unknown> } | null>
+    }
+    await state.loadReferences()
+    assert.equal(state.establishments.value.length, 1)
+    await state.post('/erp/payments', { direction: 'in', amount: '25.0000', method: 'bank_transfer', currency: 'BRL' })
+    assert.deepEqual((auth.currentCompany as Vue.ComputedRef<{ permissions: string[] }>).value.permissions, ['erp.read'])
+    assert.equal(state.allowed('erp.payments.store'), false)
+    assert.equal(state.establishments.value.length, 0)
+    assert.ok(state.selectedOperation.value?.key)
+    assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).key, state.selectedOperation.value?.key)
+  })
+
   it('keeps all finance actions blocked after a 409 when identity refresh fails and preserves pending identity', async (t) => {
     const storage = sessionStorageFixture()
     t.after(storage.restore)
     const app = createWorkspace(async (_path, options) => {
       if (options?.method === 'POST') throw { statusCode: 503, data: { message: 'Resultado desconhecido' } }
-      throw { statusCode: 409, data: { message: 'Contexto da empresa mudou' } }
+      throw { statusCode: 409, data: { code: 'company_context_changed', message: 'Contexto da empresa mudou' } }
     }, async () => {}, async () => { throw new Error('identity refresh unavailable') })
     t.after(app.stop)
     const state = app.state as {
@@ -1090,6 +1248,46 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.match(state.mutationError.value, /observada/)
     await state.post('/erp/payments/17/allocate', { erp_obligation_id: 10, amount: '5.0000' }, 'erp.payments.allocate')
     assert.deepEqual(posts, [])
+  })
+
+  it('preserves the original idempotency key and payload when an exact retry receives a business 409', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const posts: Array<{ options?: { headers?: Record<string, string>, body?: Record<string, unknown> } }> = []
+    const app = createWorkspace(async (path, options) => {
+      if (path.startsWith('/erp/operations/lookup')) throw { statusCode: 404, data: { message: 'No journal entry' } }
+      if (options?.method === 'POST') {
+        posts.push({ options })
+        if (posts.length === 1) throw { statusCode: 503, data: { message: 'Timeout' } }
+        throw { statusCode: 409, data: { code: 'legacy_operation_requires_reconciliation', message: 'Operação anterior exige conciliação.' } }
+      }
+      return page([])
+    })
+    t.after(app.stop)
+    const state = app.state as {
+      post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+      reconcile: () => Promise<void>
+      retryExact: () => Promise<unknown>
+      selectedOperation: Vue.Ref<{ key: string, payload: Record<string, unknown> } | null>
+      canRetryExact: Vue.Ref<boolean>
+      needsReconciliation: Vue.Ref<boolean>
+      authorityGeneration: Vue.Ref<number>
+    }
+    const body = { direction: 'in', amount: '9007199254740993.1200', method: 'bank_transfer', currency: 'BRL' }
+    await state.post('/erp/payments', body)
+    const currentPending = state.selectedOperation.value!
+    const pending = { key: currentPending.key, payload: { ...currentPending.payload } }
+    await state.reconcile()
+    assert.equal(state.canRetryExact.value, true)
+    const generation = state.authorityGeneration.value
+    await state.retryExact()
+    assert.equal(state.selectedOperation.value?.key, pending.key)
+    assert.deepEqual(state.selectedOperation.value?.payload, pending.payload)
+    assert.equal(state.authorityGeneration.value, generation)
+    assert.equal(state.needsReconciliation.value, true)
+    assert.equal(posts[1]?.options?.headers?.['Idempotency-Key'], pending.key)
+    assert.deepEqual(posts[1]?.options?.body, body)
+    assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).key, pending.key)
   })
 
   it('mounts the real workspace and child form, emits its submission, and retains decimal input after 422', async (t) => {
@@ -1335,7 +1533,8 @@ describe('finance workspace', { concurrency: 1 }, () => {
     await state.retryExact()
     assert.equal(state.selectedOperation.value?.key, firstKey)
     assert.deepEqual(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).payload, body)
-    assert.match(state.mutationError.value, /operação original continua sem resultado confirmado/)
+    assert.match(state.mutationError.value, /Sem acesso atual/)
+    assert.equal(state.needsReconciliation.value, true)
     await state.post('/erp/obligations', { amount: '10.0000' })
     assert.equal(calls.filter(call => call.options?.method === 'POST').length, 2)
     assert.equal(calls.filter(call => call.options?.method === 'POST')[1]?.options?.headers?.['Idempotency-Key'], firstKey)

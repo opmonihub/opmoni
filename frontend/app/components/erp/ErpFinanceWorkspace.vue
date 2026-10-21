@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpFinancialAccount, ErpObligation, ErpPayment, ErpPaymentAllocation } from '#shared/types/erpBusiness'
-import { formatErpMoney, decimalTextIsValid } from '#shared/utils/erpFinance'
+import { formatErpMoney, decimalTextIsValid, type ErpFinanceAction } from '#shared/utils/erpFinance'
 import { useErpFinanceWorkspace } from '~/composables/useErpFinanceWorkspace'
 
 type FinanceRow = ErpFinancialAccount | ErpObligation | ErpPayment
@@ -12,7 +12,7 @@ const financeTabs: { id: FinanceTab, label: string }[] = [
   { id: 'obligations', label: 'Obrigações' },
   { id: 'payments', label: 'Pagamentos' }
 ]
-const createActions: Record<CreateEditor, string> = {
+const createActions: Record<CreateEditor, ErpFinanceAction> = {
   accounts: 'erp.financial-accounts.store',
   obligations: 'erp.obligations.store',
   payments: 'erp.payments.store'
@@ -29,7 +29,7 @@ function areaFromHash(hash: string): FinanceTab {
   const candidate = hash.replace(/^#/, '')
   return financeTabs.some(tab => tab.id === candidate) ? candidate as FinanceTab : 'obligations'
 }
-const finance = useErpFinanceWorkspace(areaFromHash(route.hash))
+const finance = useErpFinanceWorkspace(() => areaFromHash(route.hash))
 const createEditor = ref<CreateEditor | null>(null)
 const createEditorOpener = ref<HTMLElement | null>(null)
 const dialogOpen = ref(false)
@@ -85,10 +85,11 @@ const newActionLabel = computed(() => createButtonLabels[finance.tab.value])
 function labelFor(value: string, labels: Record<string, string>) {
   return labels[value] ?? `Desconhecido (${value || 'não informado'})`
 }
-function selectArea(next: FinanceTab) {
-  if (finance.tab.value === next) return
-  void router.push({ path: route.path, query: route.query, hash: `#${next}` })
-}
+const areaLinks = computed<NavigationMenuItem[][]>(() => [financeTabs.map(item => ({
+  label: item.label,
+  to: { path: route.path, query: route.query, hash: `#${item.id}` },
+  active: finance.tab.value === item.id
+}))])
 watch(() => route.hash, (hash) => {
   const next = areaFromHash(hash)
   const canonicalHash = `#${next}`
@@ -324,18 +325,12 @@ function downloadReceipt() {
       </UButton>
     </template>
     <template #toolbar>
-      <nav class="flex flex-wrap gap-2" aria-label="Áreas financeiras" role="tablist">
-        <UButton
-          v-for="item in financeTabs"
-          :key="item.id"
-          :label="item.label"
-          :color="finance.tab.value === item.id ? 'primary' : 'neutral'"
-          :variant="finance.tab.value === item.id ? 'soft' : 'ghost'"
-          role="tab"
-          :aria-selected="finance.tab.value === item.id"
-          @click="selectArea(item.id)"
-        />
-      </nav>
+      <UNavigationMenu
+        :items="areaLinks"
+        highlight
+        aria-label="Áreas financeiras"
+        class="-mx-1 flex-1 overflow-x-auto"
+      />
     </template>
     <div class="space-y-5" data-erp-finance-workspace>
       <div class="flex flex-wrap items-end justify-between gap-3">
@@ -504,13 +499,13 @@ function downloadReceipt() {
             <span>{{ rowDirection(row.original) }}</span>
           </template>
           <template #account_type-cell="{ row }">
-            <span>{{ labelFor(row.original.account_type, accountTypeLabels) }}</span>
+            <span>{{ 'account_type' in row.original ? labelFor(row.original.account_type, accountTypeLabels) : '—' }}</span>
           </template>
           <template #status-cell="{ row }">
             <span>{{ labelFor(row.original.status, financeStatusLabels) }}</span>
           </template>
           <template #effective_status-cell="{ row }">
-            <span>{{ labelFor(row.original.effective_status, financeStatusLabels) }}</span>
+            <span>{{ 'effective_status' in row.original ? labelFor(row.original.effective_status, financeStatusLabels) : '—' }}</span>
           </template>
           <template #amount-cell="{ row }">
             {{ money(rowAmount(row.original), row.original.currency) }}

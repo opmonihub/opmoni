@@ -31,11 +31,11 @@ const referenceConfig: Record<ReferenceKind, { path: string, action: ErpFinanceA
   cashSessions: { path: '/erp/cash-sessions', action: 'erp.cash-sessions.index', suffix: '&status=open' }
 }
 
-export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
+export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligations') {
   const { api, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
-  const tab = ref<Tab>(initialTab)
+  const tab = ref<Tab>(typeof initialTab === 'function' ? 'obligations' : initialTab)
   const rows = ref<Row[]>([])
   const meta = ref<FinanceMeta | null>(null)
   const filters = reactive<FinanceFilter>({ page: 1, per_page: 15, erp_establishment_id: '', erp_financial_account_id: '', direction: '', status: '', currency: '', date_from: '', date_to: '' })
@@ -203,15 +203,31 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
       if (isAuthorityCurrent(token)) mutationError.value = 'A autorização mudou. Atualize sua sessão para continuar.'
     }
   }
+  function apiCode(error: unknown): string | null {
+    if (typeof error !== 'object' || error === null) return null
+    const record = error as { data?: unknown, response?: unknown }
+    const response = typeof record.response === 'object' && record.response !== null ? record.response as { _data?: unknown, data?: unknown } : null
+    const responseData = typeof record.data === 'object' && record.data !== null ? record.data : response?._data ?? response?.data
+    const data = typeof responseData === 'object' && responseData !== null && '_data' in responseData
+      ? (responseData as { _data?: unknown })._data
+      : responseData
+    if (typeof data !== 'object' || data === null) return null
+    const code = (data as { code?: unknown }).code
+    return typeof code === 'string' ? code : null
+  }
+  function isAuthorityDenial(error: unknown) {
+    const status = apiStatus(error)
+    return status === 401 || status === 403 || (status === 409 && apiCode(error) === 'company_context_changed')
+  }
   function isDefinitiveReadStatus(error: unknown) {
-    return [401, 403, 409].includes(apiStatus(error) ?? 0)
+    return isAuthorityDenial(error)
   }
   async function handleReadDenial(action: ErpFinanceAction, error: unknown, token: ReturnType<typeof context.capture>) {
     if (!isAuthorityCurrent(token) || !isDefinitiveReadStatus(error)) return false
     deniedActions.value = new Set([...deniedActions.value, action])
     const status = apiStatus(error)
     let refreshEpoch: number | undefined
-    if (status === 401 || status === 409) {
+    if (status === 401 || (status === 409 && apiCode(error) === 'company_context_changed')) {
       refreshEpoch = ++authorityRefreshEpoch
       authorityNeedsRefresh.value = true
       clearPrivateState()
@@ -257,6 +273,19 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
     }
     mutationError.value = apiErrorMessage(error) ?? 'Sua autorização mudou. Os dados privados desta área foram removidos.'
     await refreshAuthForDenial(token, refreshEpoch)
+    return true
+  }
+  async function handleWriteDenial(action: ErpFinanceAction, error: unknown, token: ReturnType<typeof context.capture>) {
+    if (!isAuthorityCurrent(token) || !isAuthorityDenial(error)) return false
+    const refreshEpoch = ++authorityRefreshEpoch
+    const deniedIdentity = operationIdentity(action)
+    authorityNeedsRefresh.value = true
+    clearPrivateState()
+    restorePending()
+    mutationError.value = apiErrorMessage(error) ?? 'Sua autorização ou o contexto da empresa mudou. Os dados privados foram removidos.'
+    await refreshAuthForDenial(token, refreshEpoch)
+    if (operationIdentity(action) === deniedIdentity)
+      deniedActions.value = new Set([...deniedActions.value, action])
     return true
   }
   function errorMessage(error: unknown, fallback: string) {
@@ -347,7 +376,7 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
     allocations.value = []
     allocationMeta.value = null
   }
-  async function selectTab(next: Tab) {
+  function resetTabState(next: Tab) {
     tab.value = next
     filters.page = 1
     filters.status = ''
@@ -358,6 +387,10 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
     invalidateDetailSelection()
     candidates.value = []
     candidateMeta.value = null
+  }
+  async function selectTab(next: Tab) {
+    if (tab.value === next) return
+    resetTabState(next)
     await load()
   }
   async function inspect(row: Row) {
@@ -542,18 +575,19 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
       if (!isCurrent(token, generation)) return null
       fieldErrors.value = apiFieldErrors(error)
       const status = apiStatus(error)
-      if (existing && (status === 403 || status === 404)) {
+      if (await handleWriteDenial(writeAction, error, token)) {
+        return null
+      } else if (existing && status === 404) {
         needsReconciliation.value = true
-        mutationError.value = 'A repetição foi recusada pela autorização ou pelo recurso atual. A operação original continua sem resultado confirmado; consulte-a antes de qualquer nova ação.'
-      } else if (status === 403 || status === 404) {
+        mutationError.value = 'O recurso não está disponível para a repetição. A operação original continua sem resultado confirmado; consulte-a antes de qualquer nova ação.'
+      } else if (status === 404) {
         const cleared = storePending(null)
         needsReconciliation.value = !cleared
         clearFinanceViews()
         mutationError.value = errorMessage(error, 'A operação foi recusada. Revise os dados e tente novamente.')
         if (!cleared) mutationError.value += ' A identificação local permanece guardada até o navegador permitir sua remoção.'
-      } else if (status === 401 || status === 409) {
-        clearFinanceViews()
-        mutationError.value = 'A autorização ou o contexto da empresa mudou. O resultado da operação ainda não foi confirmado; consulte a operação antes de tentar novamente.'
+      } else if (status === 409) {
+        mutationError.value = errorMessage(error, 'O sistema exige conciliação antes de continuar.')
         needsReconciliation.value = true
       } else if (status === 422) {
         const cleared = storePending(null)
@@ -616,6 +650,8 @@ export function useErpFinanceWorkspace(initialTab: Tab = 'obligations') {
     return post(pending.path, pending.payload, pending.operation, pending)
   }
   onMounted(() => {
+    if (typeof initialTab === 'function')
+      resetTabState(initialTab())
     restorePending()
     load()
     loadReferences()
