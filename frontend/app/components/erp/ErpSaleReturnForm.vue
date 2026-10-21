@@ -2,25 +2,37 @@
 import type { ErpCommercialDocument } from '#shared/types/erpBusiness'
 import { erpReturnLineError } from '#shared/utils/erpSales'
 
-const props = defineProps<{ sale: ErpCommercialDocument, saving: boolean, errors: Record<string, string>, disabled?: boolean }>()
-const emit = defineEmits<{ submit: [reason: string, lines: Array<{ source_line_id: number, quantity: string }>], cancel: [] }>()
-const reason = ref('')
-const quantities = reactive<Record<number, string>>({})
+type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
+const props = defineProps<{ sale: ErpCommercialDocument, draft: ErpSaleReturnDraft, saving: boolean, errors: Record<string, string>, disabled?: boolean }>()
+const emit = defineEmits<{ 'update:draft': [draft: ErpSaleReturnDraft], 'submit': [reason: string, lines: Array<{ source_line_id: number, quantity: string }>], 'cancel': [] }>()
+const draft = ref({ reason: props.draft.reason, quantities: { ...props.draft.quantities } })
+watch(() => props.draft, (value) => {
+  draft.value = { reason: value.reason, quantities: { ...value.quantities } }
+})
+const reason = computed({
+  get: () => draft.value.reason,
+  set: (value: string) => {
+    draft.value = { ...draft.value, reason: value }
+    emit('update:draft', { ...draft.value, quantities: { ...draft.value.quantities } })
+  }
+})
+const quantities = computed(() => draft.value.quantities)
 const submittedSourceLineIds = ref<number[]>([])
 const editedSourceLineIds = ref(new Set<number>())
 const returnableLines = computed(() => props.sale.returnable_lines ?? [])
-const ready = computed(() => reason.value.trim().length > 0 && returnableLines.value.some(line => Boolean(quantities[line.source_line_id]?.trim())))
+const ready = computed(() => reason.value.trim().length > 0 && returnableLines.value.some(line => Boolean(quantities.value[line.source_line_id]?.trim())))
 function lineError(lineId: number) {
   return editedSourceLineIds.value.has(lineId) ? '' : erpReturnLineError(lineId, submittedSourceLineIds.value, props.errors)
 }
 function changeQuantity(lineId: number, value: unknown) {
-  quantities[lineId] = typeof value === 'string' ? value : ''
+  draft.value = { ...draft.value, quantities: { ...draft.value.quantities, [lineId]: typeof value === 'string' ? value : '' } }
+  emit('update:draft', { ...draft.value, quantities: { ...draft.value.quantities } })
   editedSourceLineIds.value = new Set(editedSourceLineIds.value).add(lineId)
 }
 
 function submit() {
   const lines = returnableLines.value.flatMap((line) => {
-    const quantity = quantities[line.source_line_id]?.trim()
+    const quantity = quantities.value[line.source_line_id]?.trim()
     return quantity ? [{ source_line_id: line.source_line_id, quantity }] : []
   })
   if (ready.value) {

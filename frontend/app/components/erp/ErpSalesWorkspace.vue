@@ -5,7 +5,8 @@ import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
 import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
 
 type ModalKind = 'create' | 'edit' | 'detail' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
-type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string }
+type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
+type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string, returnDraftKey?: string, returnDraftFingerprint?: string }
 const sales = useErpSalesWorkspace()
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +20,7 @@ const editKind = ref<ErpCommercialKind>('quote')
 const editId = ref<number | null>(null)
 const draftAuthority = ref(sales.authorityGeneration.value)
 const editIdentity = ref('')
+const returnDrafts = reactive<Record<string, ErpSaleReturnDraft>>({})
 let createIdentity = 1
 const recoveryOwners = new Map<string, RecoveryOwner>()
 const includeInlinePayment = ref(false)
@@ -65,6 +67,14 @@ const detailPaymentIds = computed(() => {
   const selected = sales.selected.value as ErpCommercialDocument | null
   return detailArea.value === 'sales' && selected ? selected.finance?.payment_ids ?? [] : []
 })
+const activeReturnDraft = computed(() => {
+  const source = sales.selected.value as ErpCommercialDocument | null
+  return source ? returnDrafts[returnDraftKey(source.id)] ?? emptyReturnDraft() : emptyReturnDraft()
+})
+const activeReturnDraftKey = computed(() => {
+  const source = sales.selected.value as ErpCommercialDocument | null
+  return source ? returnDraftKey(source.id) : ''
+})
 const selectedNeedsRefresh = computed(() => {
   const selected = sales.selected.value
   return Boolean(selected && sales.requiresFreshDetail(detailArea.value, selected.id))
@@ -77,6 +87,23 @@ function emptyDraft(establishmentId: number | null = null): ErpCommercialDraftPa
     currency: 'BRL',
     lines: [{ erp_product_variant_id: null, erp_unit_id: null, description: '', quantity: '1.0000', discount_amount: '0.0000', tax_amount: '0.0000' }]
   }
+}
+function emptyReturnDraft(): ErpSaleReturnDraft {
+  return { reason: '', quantities: {} }
+}
+function returnDraftKey(sourceId: number) {
+  return `${sales.authorityGeneration.value}:${sourceId}`
+}
+function getReturnDraft(sourceId: number) {
+  const key = returnDraftKey(sourceId)
+  return returnDrafts[key] ??= emptyReturnDraft()
+}
+function updateReturnDraft(sourceId: number, draft: ErpSaleReturnDraft) {
+  returnDrafts[returnDraftKey(sourceId)] = { reason: draft.reason, quantities: { ...draft.quantities } }
+}
+function clearReturnDraft(key: string, fingerprint: string) {
+  const current = returnDrafts[key]
+  if (current && JSON.stringify(current) === fingerprint) returnDrafts[key] = emptyReturnDraft()
 }
 function updateCreateDraft(kind: ErpCommercialKind, payload: ErpCommercialDraftPayload) {
   createDrafts[kind] = payload
@@ -181,11 +208,14 @@ function currentModal(generation: number, identity: number) {
 function pendingBefore() {
   return typeof sales.selectedOperation.value?.key === 'string' ? sales.selectedOperation.value.key : null
 }
-function captureRecoveryOwner(previousKey: string | null, expectedOperation: string, payload: unknown, modal: ModalKind, identity: number, sourceId: number | null, fingerprint: string) {
+function captureRecoveryOwner(previousKey: string | null, expectedOperation: string, payload: unknown, modal: ModalKind, identity: number, sourceId: number | null, fingerprint: string, returnDraft?: { key: string, fingerprint: string }) {
   const pending = sales.selectedOperation.value
   if (pending && pending.key !== previousKey && pending.operation === expectedOperation && JSON.stringify(pending.payload) === JSON.stringify(payload)) {
     const kind = modal === 'create' ? createKind.value : modal === 'edit' ? editKind.value : documentKind(detailArea.value)
-    recoveryOwners.set(pending.key, { key: pending.key, authority: sales.authorityGeneration.value, modal, identity, kind, sourceId, fingerprint })
+    recoveryOwners.set(pending.key, {
+      key: pending.key, authority: sales.authorityGeneration.value, modal, identity, kind, sourceId, fingerprint,
+      ...(returnDraft ? { returnDraftKey: returnDraft.key, returnDraftFingerprint: returnDraft.fingerprint } : {})
+    })
     return pending.key
   }
   return null
@@ -222,6 +252,9 @@ function completeRecoveredOperation(key: string | undefined) {
   if (owner.modal === 'edit') {
     editIdentity.value = ''
     editDraft.value = emptyDraft()
+  }
+  if (resolved.operation === 'erp.sale-returns.store' && owner.returnDraftKey && owner.returnDraftFingerprint) {
+    clearReturnDraft(owner.returnDraftKey, owner.returnDraftFingerprint)
   }
   if (modalKind.value === owner.modal) {
     if (owner.modal === 'create' || owner.modal === 'edit' || resolved.operation.includes('.convert') || resolved.operation === 'erp.sale-returns.store') detailArea.value = targetArea
@@ -364,6 +397,8 @@ async function confirmPostSale() {
 function startReturn() {
   const source = sales.selected.value as ErpCommercialDocument | null
   if (!source || selectedNeedsRefresh.value || source.status !== 'posted' || !sales.allowed('erp.sale-returns.store') || source.returnability?.needs_reconciliation || source.finance?.needs_reconciliation || sales.selectedOperation.value || sales.mutating.value) return
+  getReturnDraft(source.id)
+  sales.fieldErrors.value = {}
   modalGeneration.value++
   modalKind.value = 'return'
 }
@@ -372,12 +407,15 @@ async function createReturn(reason: string, lines: Array<{ source_line_id: numbe
   if (!source || selectedNeedsRefresh.value) return
   const generation = modalGeneration.value
   const sourceId = source.id
+  const draftKey = returnDraftKey(sourceId)
+  const returnDraftFingerprint = JSON.stringify(returnDrafts[draftKey] ?? emptyReturnDraft())
   const payload = { erp_sale_id: sourceId, reason, lines }
   const previousKey = pendingBefore()
   const request = sales.storeReturn(sourceId, reason, lines)
-  const ownerKey = captureRecoveryOwner(previousKey, 'erp.sale-returns.store', payload, 'return', createIdentity, sourceId, JSON.stringify(payload))
+  const ownerKey = captureRecoveryOwner(previousKey, 'erp.sale-returns.store', payload, 'return', createIdentity, sourceId, JSON.stringify(payload), { key: draftKey, fingerprint: returnDraftFingerprint })
   const result = await request
   if (ownerKey && (result !== null || sales.currentOperationKey() !== ownerKey)) recoveryOwners.delete(ownerKey)
+  if (result !== null) clearReturnDraft(draftKey, returnDraftFingerprint)
   if (result !== null && generation === modalGeneration.value && modalKind.value === 'return') {
     detailArea.value = 'returns'
     const returnId = resultDocumentId(result)
@@ -448,6 +486,7 @@ watch(sales.authorityGeneration, () => {
   createDrafts.order = emptyDraft()
   createDrafts.sale = emptyDraft()
   editDraft.value = emptyDraft()
+  for (const key of Object.keys(returnDrafts)) returnDrafts[key] = emptyReturnDraft()
   editIdentity.value = ''
   createIdentity++
   closeModal()
@@ -885,10 +924,13 @@ onMounted(() => {
           </div>
           <ErpSaleReturnForm
             v-else-if="modalKind === 'return' && sales.selected.value"
+            :key="activeReturnDraftKey"
             :sale="sales.selected.value as ErpCommercialDocument"
+            :draft="activeReturnDraft"
             :saving="sales.mutating.value"
             :errors="sales.fieldErrors.value"
             :disabled="sales.needsReconciliation.value"
+            @update:draft="updateReturnDraft((sales.selected.value as ErpCommercialDocument).id, $event)"
             @submit="createReturn"
             @cancel="modalKind = 'detail'"
           />

@@ -53,7 +53,7 @@ function createSalesWorkspace(api: (path: string, options?: Record<string, unkno
 }
 
 function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes') {
-  const { state, stop } = createSalesWorkspace(api)
+  const { state, currentCompany, stop } = createSalesWorkspace(api)
   const route = Vue.reactive({ path: '/erp/vendas', hash, query: {} })
   const router = { replace: async (location: { hash?: string }) => { if (location.hash) route.hash = location.hash } }
   const workspaceSource = readFileSync(new URL('../app/components/erp/ErpSalesWorkspace.vue', import.meta.url), 'utf8')
@@ -101,7 +101,12 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     onInput: (event: { target: { value: string } }) => context.emit('update:modelValue', event.target.value)
   }) })
   const formShell = Vue.defineComponent({ setup: (_props, context) => () => Vue.h('form', { ...context.attrs, onSubmit: (event: { preventDefault: () => void }) => { event.preventDefault(); context.emit('submit', event) } }, context.slots.default?.() ?? []) })
-  const modal = Vue.defineComponent({ props: { open: Boolean }, setup: (props, context) => () => props.open ? Vue.h('div', context.slots.body?.() ?? []) : null })
+  const modal = Vue.defineComponent({ props: { open: Boolean }, emits: ['update:open'], setup: (props, context) => () => props.open
+    ? Vue.h('div', [
+        Vue.h('button', { onClick: () => context.emit('update:open', false) }, 'Fechar modal'),
+        ...(context.slots.body?.() ?? [])
+      ])
+    : null })
   const detail = Vue.defineComponent({ props: { canPostSale: Boolean, canReturn: Boolean, document: Object }, emits: ['edit', 'postSale', 'returnSale'], setup: (props, context) => () => Vue.h('section', [
     Vue.h('button', { onClick: () => context.emit('edit') }, 'Editar rascunho'),
     ...(props.canPostSale ? [Vue.h('button', { onClick: () => context.emit('postSale') }, 'Lançar venda')] : []),
@@ -128,10 +133,17 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   })
   const instrumentedReturnForm = Vue.defineComponent({
     inheritAttrs: false,
+    emits: ['update:draft', 'submit', 'cancel'],
     setup: (_props, context) => {
       const child = Vue.ref<{ submit?: () => void } | null>(null)
       Vue.onMounted(() => { submitReturn = () => child.value?.submit?.() })
-      return () => Vue.h(returnForm, { ...context.attrs, ref: child })
+      return () => Vue.h(returnForm, {
+        ...context.attrs,
+        'ref': child,
+        'onUpdate:draft': (draft: unknown) => context.emit('update:draft', draft),
+        'onSubmit': (...values: unknown[]) => context.emit('submit', ...values),
+        'onCancel': () => context.emit('cancel')
+      })
     }
   })
   for (const name of ['USelect', 'UCheckbox', 'UBadge', 'UIcon', 'CompanyMenu', 'UserMenu', 'UDropdownMenu']) app.component(name, passthrough)
@@ -159,7 +171,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     await Vue.nextTick()
   }
   function textContent(node: Node): string { return `${node.text ?? ''}${node.children.map(textContent).join('')}` }
-  return { root, state, stop, app, walk, findButton, click, textContent, submitDraft: () => submitDraft(), submitReturn: () => submitReturn(), dispose: () => { app.unmount(); stop() } }
+  return { root, state, currentCompany, stop, app, walk, findButton, click, textContent, submitDraft: () => submitDraft(), submitReturn: () => submitReturn(), dispose: () => { app.unmount(); stop() } }
 }
 
 function installSessionStorage() {
@@ -474,11 +486,12 @@ describe('sales authority and mounted draft form', () => {
     const source = readFileSync(new URL('../app/components/erp/ErpSaleReturnForm.vue', import.meta.url), 'utf8')
     const { descriptor } = VueCompiler.parse(source)
     const script = VueCompiler.compileScript(descriptor, { id: 'sales-return', inlineTemplate: true })
-    const exports = compileModule(script.content, { 'vue': Vue, '#shared/utils/erpSales': salesHelpers }, { computed: Vue.computed, reactive: Vue.reactive, ref: Vue.ref })
+    const exports = compileModule(script.content, { 'vue': Vue, '#shared/utils/erpSales': salesHelpers }, { computed: Vue.computed, reactive: Vue.reactive, ref: Vue.ref, watch: Vue.watch })
     const component = exports.default as Vue.Component
     const sale = { id: 23, erp_establishment_id: 3, currency: 'BRL', returnability: { needs_reconciliation: false }, finance: { needs_reconciliation: false }, returnable_lines: [
       { source_line_id: 81, quantity: '1.0000', returned_quantity: '0.0000', remaining_quantity: '1.0000', unit_conversion_factor: '1.00000000', line_total: '10.0000', physical_eligibility: 'validated_at_post' }
     ] }
+    const parent = Vue.reactive({ draft: { reason: '', quantities: {} as Record<number, string> } })
     assert.equal(erpReturnLineError(82, [81, 82], { 'lines.1.quantity': 'Quantidade excede o saldo.' }), 'Quantidade excede o saldo.')
     type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
     const root: Node = { tag: 'root', children: [], parent: null, props: {} }
@@ -497,7 +510,7 @@ describe('sales authority and mounted draft form', () => {
     })
     const instance = Vue.ref<{ reason: string, quantities: Record<number, string>, submit: () => void } | null>(null)
     let submitted: unknown[] = []
-    const host = Vue.defineComponent({ setup: () => () => Vue.h(component, { ref: instance, sale, saving: false, errors: {}, onSubmit: (...value: unknown[]) => { submitted = value } }) })
+    const host = Vue.defineComponent({ setup: () => () => Vue.h(component, { 'ref': instance, sale, 'draft': parent.draft, 'saving': false, 'errors': {}, 'onUpdate:draft': (value: typeof parent.draft) => { parent.draft = value }, 'onSubmit': (...value: unknown[]) => { submitted = value } }) })
     const app = renderer.createApp(host)
     const passthrough = Vue.defineComponent({ setup: (_props, context) => () => Vue.h('div', context.slots.default?.() ?? []) })
     for (const name of ['UAlert', 'UButton', 'UForm', 'UFormField', 'UInput', 'UTextarea']) app.component(name, passthrough)
@@ -553,6 +566,114 @@ describe('sales authority and mounted draft form', () => {
       await Vue.nextTick()
       assert.equal(errorFor('lines.81.quantity'), '')
       assert.equal(errorFor('lines.82.quantity'), 'Quantidade excede o saldo.')
+    } finally {
+      mounted.dispose()
+      storage.restore()
+    }
+  })
+
+  it('preserves return drafts by authority and sale, clears on authority change, and resets only after creation', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const sale = (id: number) => ({
+      id, erp_establishment_id: 3, status: 'posted', fiscal_status: 'none', currency: 'BRL', draft_revision: 2, total_amount: '20.0000', lines: [],
+      finance: { needs_reconciliation: false }, returnability: { needs_reconciliation: false }, returnable_lines: [
+        { source_line_id: 81, quantity: '1.0000', remaining_quantity: '1.0000', line_total: '10.0000' },
+        { source_line_id: 82, quantity: '1.0000', remaining_quantity: '1.0000', line_total: '10.0000' }
+      ]
+    })
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path.startsWith('/erp/sales?')) return { data: [23, 24].map(id => ({ id, erp_establishment_id: 3, status: 'posted', currency: 'BRL', total_amount: '20.0000' })), meta: { current_page: 1, last_page: 1, per_page: 15, total: 2 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 3, name: 'Matriz', status: 'active' }], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+      if (path.startsWith('/erp/contacts?') || path.startsWith('/erp/units?') || path.startsWith('/erp/products?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      if (path === '/erp/sales/23') return { data: sale(23) }
+      if (path === '/erp/sales/24') return { data: sale(24) }
+      if (path === '/erp/sale-returns' && options?.method === 'POST') return { data: { id: 37, erp_sale_id: 23, status: 'draft', currency: 'BRL', reason: (options.body as { reason: string }).reason, total_amount: '2.5000' } }
+      if (path.startsWith('/erp/sale-returns?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
+      if (path === '/erp/sale-returns/37') return { data: { id: 37, erp_sale_id: 23, erp_establishment_id: 3, status: 'draft', currency: 'BRL', reason: 'Novo motivo', total_amount: '2.5000', lines: [{ source_line_id: 82, quantity: '0.5000' }] } }
+      throw new Error(`Unexpected API path ${path}`)
+    }
+    const mounted = mountSalesWorkspace(api, '#sales')
+    try {
+      await new Promise(resolve => setImmediate(resolve))
+      const openSale = async (id: number) => {
+        const row = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes(`Registro #${id}`))
+        assert.ok(row, `Expected sale row ${id}`)
+        ;(row.props.onClick as () => void)()
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      const openReturn = async () => { await mounted.click('Devolver item') }
+      const closeReturn = async () => { await mounted.click('Cancelar') }
+      const setField = (name: string, value: string) => {
+        const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === name)
+        assert.ok(field, `Expected field ${name}`)
+        const inputNode = mounted.walk(field).find(node => node.tag === 'input')
+        assert.ok(inputNode)
+        ;(inputNode.props.onInput as (event: unknown) => void)({ target: { value } })
+      }
+      const fieldValue = (name: string) => {
+        const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === name)
+        return field ? mounted.walk(field).find(node => node.tag === 'input')?.props.value : undefined
+      }
+
+      await openSale(23)
+      await openReturn()
+      setField('reason', 'Motivo salvo')
+      setField('lines.82.quantity', '0.2500')
+      await Vue.nextTick()
+      assert.equal(fieldValue('reason'), 'Motivo salvo')
+      assert.equal(fieldValue('lines.82.quantity'), '0.2500')
+      await closeReturn()
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), 'Motivo salvo')
+      assert.equal(fieldValue('lines.82.quantity'), '0.2500')
+
+      await closeReturn()
+      await openSale(24)
+      await openReturn()
+      assert.equal(fieldValue('reason'), '')
+      assert.equal(fieldValue('lines.82.quantity'), '')
+      await closeReturn()
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), 'Motivo salvo')
+
+      await closeReturn()
+      mounted.currentCompany.value = { id: 8, permissions: ['*'], role: 'owner' }
+      await Vue.nextTick()
+      await (mounted.state.load as (area: string) => Promise<void>)('sales')
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), '')
+      assert.equal(fieldValue('lines.82.quantity'), '')
+      setField('reason', 'Novo motivo')
+      setField('lines.82.quantity', '0.5000')
+      mounted.submitReturn()
+      await mounted.click('Fechar modal')
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+      assert.equal((mounted.state.selected as Vue.Ref<{ id: number } | null>).value?.id, 37)
+      assert.deepEqual((calls.find(call => call.path === '/erp/sale-returns' && call.options?.method === 'POST')?.options?.body), {
+        erp_sale_id: 23, reason: 'Novo motivo', lines: [{ source_line_id: 82, quantity: '0.5000' }]
+      })
+
+      await mounted.click('Vendas / balcão')
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), '')
+      assert.equal(fieldValue('lines.82.quantity'), '')
+      setField('reason', 'Rascunho mais recente')
+      setField('lines.82.quantity', '0.1250')
+      await Vue.nextTick()
+      assert.equal(fieldValue('reason'), 'Rascunho mais recente')
+      assert.equal(fieldValue('lines.82.quantity'), '0.1250')
+      await closeReturn()
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), 'Rascunho mais recente')
+      assert.equal(fieldValue('lines.82.quantity'), '0.1250')
     } finally {
       mounted.dispose()
       storage.restore()
