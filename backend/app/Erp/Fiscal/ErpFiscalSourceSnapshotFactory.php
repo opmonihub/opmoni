@@ -116,7 +116,7 @@ final class ErpFiscalSourceSnapshotFactory
             }
             $this->requireEnum($source['freight'], 'modality', [0, 1, 2, 3, 4, 9], 'freight', $errors);
             foreach ($source['items'] ?? [] as $index => $item) {
-                $this->assertScalars($item, array_diff(array_keys($item), ['tax']));
+                $this->assertScalars($item, array_diff(array_keys($item), ['tax']), ['erp_product_variant_id']);
                 $this->assertScalars($item['tax'] ?? [], array_keys($item['tax'] ?? []));
                 foreach (['code' => 60, 'description' => 120, 'unit' => 6] as $field => $maximum) {
                     $this->requireText($item, $field, 1, $maximum, 'items.'.$index, $errors);
@@ -513,9 +513,12 @@ final class ErpFiscalSourceSnapshotFactory
         $this->requirePattern($values, $field, '/^\d{1,'.$wholeDigits.'}(?:\.\d{1,'.$fractionDigits.'})?$/', $prefix, $errors);
     }
 
-    private function assertScalars(array $values, array $fields): void
+    private function assertScalars(array $values, array $fields, array $nullableFields = []): void
     {
         foreach ($fields as $field) {
+            if (array_key_exists($field, $values) && $values[$field] === null && in_array($field, $nullableFields, true)) {
+                continue;
+            }
             if (array_key_exists($field, $values) && (! is_scalar($values[$field]) || is_string($values[$field]) && trim($values[$field]) === '')) {
                 throw new InvalidArgumentException('Campo fiscal escalar inválido: '.$field.'.');
             }

@@ -440,6 +440,83 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         return array_merge(...array_map(static fn ($model) => array_map(static fn ($outcome) => [$model, $outcome], ['authorized', 'artifact_pending', 'rejected', 'unknown', 'timeout']), ['55', '58']));
     }
 
+    public function test_review_missing_published_xml_is_repaired_without_reauthorizing_or_duplicating_accounting(): void
+    {
+        $ctx = $this->ownerContext();
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $ctx['company']->id, 'account_id' => $office->id, 'authorized_by_user_id' => $ctx['user']->id]);
+        $client = Client::factory()->company()->create(['account_id' => $office->id, 'tax_id' => self::VALID_CNPJ]);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
+        $draft = $this->createQueuedDocument($ctx, '55', 'review-published-repair');
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.artifact_ready', true);
+        $document = ErpFiscalDocument::findOrFail($draft['id']);
+        $history = $document->only(['authorized_at', 'access_key', 'number', 'metadata']);
+        $accepted = $document->attempts()->where('action', 'document:transmit')->firstOrFail();
+        $acceptedHistory = $accepted->only(['status', 'provider_protocol', 'completed_at', 'safe_result']);
+        $delivery = ErpAccountingDelivery::query()->sole();
+        $path = $document->storage_path;
+        $bytes = Storage::disk('local')->get($path);
+        Storage::disk('local')->delete($path);
+        $this->withHeaders($ctx['headers'])->getJson('/api/v1/erp/fiscal/documents/'.$document->id)->assertJsonPath('data.artifact_ready', false);
+        $this->withHeaders($ctx['headers'])->get('/api/v1/erp/fiscal/documents/'.$document->id.'/xml')->assertConflict();
+        $this->executeDocumentAction($ctx, $document->id, 'consult')->assertJsonPath('data.artifact_ready', true)->assertJsonPath('data.status', 'authorized');
+        $this->assertNotSame($path, $document->fresh()->storage_path);
+        $this->assertEquals($history, $document->fresh()->only(array_keys($history)));
+        $this->assertEquals($acceptedHistory, $accepted->fresh()->only(array_keys($acceptedHistory)));
+        $this->assertSame($delivery->id, ErpAccountingDelivery::query()->sole()->id);
+        $this->withHeaders($ctx['headers'])->get('/api/v1/erp/fiscal/documents/'.$document->id.'/xml')->assertOk()->assertContent($bytes);
+    }
+
+    public function test_review_stale_missing_artifact_repair_cannot_replace_a_newer_verified_publication(): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createQueuedDocument($ctx, '55', 'review-repair-interleaving');
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.artifact_ready', true);
+        $document = ErpFiscalDocument::findOrFail($draft['id']);
+        $disk = Storage::disk('local');
+        $disk->delete($document->storage_path);
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $older = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$document->id.'/consult', ['idempotency_key' => 'repair-older'])->assertOk()->json('data.attempt.id');
+        $newer = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents/'.$document->id.'/consult', ['idempotency_key' => 'repair-newer'])->assertOk()->json('data.attempt.id');
+        $proxy = \Mockery::mock(FilesystemAdapter::class);
+        $proxy->shouldReceive('exists')->andReturnUsing(fn ($path) => $disk->exists($path));
+        $proxy->shouldReceive('get')->andReturnUsing(fn ($path) => $disk->get($path));
+        $nested = false;
+        $newPublication = null;
+        $proxy->shouldReceive('put')->andReturnUsing(function ($path, $bytes) use ($disk, $newer, $document, &$nested, &$newPublication) {
+            if (! $nested) {
+                $nested = true;
+                app()->call([new ProcessErpFiscalAttempt($newer), 'handle']);
+                $newPublication = $document->fresh()->only(['storage_path', 'artifact_sha256', 'artifact_byte_length']);
+            }
+
+            return $disk->put($path, $bytes);
+        });
+        Storage::shouldReceive('disk')->with('local')->andReturn($proxy);
+        app()->call([new ProcessErpFiscalAttempt($older), 'handle']);
+        $this->assertNotNull($newPublication);
+        $this->assertEquals($newPublication, $document->fresh()->only(array_keys($newPublication)));
+        $this->assertTrue($disk->exists($document->fresh()->storage_path));
+        $this->assertSame('accepted', ErpFiscalAttempt::findOrFail($newer)->status);
+        $this->assertSame('accepted', ErpFiscalAttempt::findOrFail($older)->status);
+        $this->assertSame('superseded', ErpFiscalAttempt::findOrFail($older)->safe_result['document_transition']);
+    }
+
+    public function test_review_explicit_null_variant_on_a_real_posted_line_can_be_drafted_and_queued(): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createDraftDocument($ctx, '55', 'review-null-variant-base');
+        $original = ErpFiscalDocument::findOrFail($draft['id']);
+        $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
+        $this->assertNull($original->sale->lines()->sole()->erp_product_variant_id);
+        $source['items'][0]['erp_product_variant_id'] = null;
+        $created = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $ctx['establishment']->id, 'model' => '55', 'erp_sale_id' => $original->erp_sale_id, 'source' => $source, 'idempotency_key' => 'review-explicit-null-variant'])->assertCreated();
+        $frozen = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot(ErpFiscalAttempt::findOrFail($created->json('data.attempt.id')))['request']['source'];
+        $this->assertArrayHasKey('erp_product_variant_id', $frozen['items'][0]);
+        $this->assertNull($frozen['items'][0]['erp_product_variant_id']);
+        $this->executeDocumentAction($ctx, $created->json('data.id'), 'queue')->assertJsonPath('data.status', 'queued')->assertJsonPath('data.attempt.status', 'accepted')->assertJsonPath('data.attempt.safe_result.provider_outcome', 'not_dispatched');
+    }
+
     public function test_review_artifact_pending_repair_creates_the_first_accounting_handoff_exactly_once(): void
     {
         $ctx = $this->ownerContext();
