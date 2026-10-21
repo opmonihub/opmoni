@@ -3,17 +3,22 @@
 namespace Tests\Integration;
 
 use App\Erp\Accounting\ErpAccountingHandoffService;
+use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
 use App\Models\Erp\Accounting\ErpAccountingDeliveryDispatch;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
+use App\Models\Erp\ErpOperationReceipt;
+use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
@@ -42,7 +47,7 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
         $this->assertTrue(Schema::hasTable('erp_accounting_delivery_dispatches'), 'Root must review and apply the exact additive Task16 migration.');
         $this->assertTrue(Schema::hasTable('jobs'), 'Task16 acceptance requires the isolated persistent database queue.');
 
-        foreach (['erp_companies', 'accounts', 'erp_establishments', 'erp_fiscal_documents', 'erp_accounting_deliveries', 'erp_accounting_delivery_dispatches'] as $table) {
+        foreach (['erp_companies', 'accounts', 'erp_establishments', 'erp_fiscal_documents', 'erp_accounting_deliveries', 'erp_accounting_delivery_dispatches', 'erp_operation_receipts'] as $table) {
             $rows = DB::table($table)->orderBy('id')->get();
             $this->baseline[$table] = ['ids' => $rows->pluck('id')->all(), 'hash' => hash('sha256', $rows->toJson())];
         }
@@ -205,6 +210,95 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
         }
     }
 
+    public function test_retry_receipt_roundtrip_replay_and_lookup_works_on_postgres(): void
+    {
+        $storageRoot = sys_get_temp_dir().'/erp-accounting-retry-receipt-'.bin2hex(random_bytes(6));
+        $queue = 'erp-accounting-retry-receipt-'.bin2hex(random_bytes(6));
+        mkdir($storageRoot.'/local', 0770, true);
+        mkdir($storageRoot.'/fiscal', 0770, true);
+        config([
+            'queue.default' => 'database',
+            'queue.connections.database.queue' => $queue,
+            'filesystems.disks.local.root' => $storageRoot.'/local',
+            'filesystems.disks.fiscal.root' => $storageRoot.'/fiscal',
+            'erp.operating_writes_enabled' => true,
+            'erp.release_mode' => 'production',
+            'erp.release_enabled' => true,
+        ]);
+        Storage::forgetDisk('local');
+        Storage::forgetDisk('fiscal');
+
+        try {
+            $fixture = $this->handoffFixture($storageRoot);
+            $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+            ErpCompanyMembership::factory()->create([
+                'erp_company_id' => $fixture['company']->id,
+                'user_id' => $fixture['actor']->id,
+                'role' => 'owner',
+            ]);
+            ErpSubscription::factory()->create([
+                'erp_company_id' => $fixture['company']->id,
+                'erp_plan_id' => $plan->id,
+                'status' => 'active',
+            ]);
+
+            $ingressHeaders = [
+                'X-Opmoni-Ingress-Key' => 'integration-test-only-key',
+                'X-Opmoni-Client-IP' => '127.0.0.1',
+                'X-Opmoni-Client-Proto' => 'http',
+                'Origin' => 'http://localhost:3000',
+            ];
+            $csrf = $this->withHeaders($ingressHeaders)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+            $this->withHeaders([...$ingressHeaders, 'X-CSRF-Token' => $csrf])
+                ->postJson('/api/v1/login', ['email' => $fixture['actor']->email, 'password' => 'password'])
+                ->assertOk();
+            $csrf = $this->withHeaders($ingressHeaders)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+            $this->withHeaders([...$ingressHeaders, 'X-CSRF-Token' => $csrf])
+                ->postJson('/api/v1/erp/company/switch', ['company_id' => $fixture['company']->id])
+                ->assertOk()
+                ->assertJsonPath('current_company.id', $fixture['company']->id);
+            $csrf = $this->withHeaders($ingressHeaders)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+
+            $key = 'accounting-retry-pg-'.bin2hex(random_bytes(8));
+            $headers = [
+                ...$ingressHeaders,
+                'X-Company-Id' => (string) $fixture['company']->id,
+                'X-CSRF-Token' => $csrf,
+                'Idempotency-Key' => $key,
+            ];
+            $path = '/api/v1/erp/accounting-deliveries/'.$fixture['delivery']->id.'/retry';
+            $first = $this->withHeaders($headers)->postJson($path);
+            $this->assertSame(200, $first->status(), 'Retry request failed: '.$first->getContent());
+            $first->assertJsonPath('data.id', $fixture['delivery']->id);
+            $receipt = ErpOperationReceipt::query()->where('key_digest', hash('sha256', $key))->sole();
+            $this->assertSame('accounting-v1', $receipt->canonical_version);
+            $this->assertLessThanOrEqual(16, strlen($receipt->canonical_version));
+            $this->assertSame(1, ErpOperationReceipt::query()->where('erp_company_id', $fixture['company']->id)->count());
+            $this->assertSame(1, DB::table('jobs')->where('queue', $queue)->count());
+
+            $replay = $this->withHeaders($headers)
+                ->postJson($path)
+                ->assertOk()
+                ->assertJsonPath('data.id', $fixture['delivery']->id);
+            $this->assertSame($first->json(), $replay->json());
+            $this->assertSame(1, ErpOperationReceipt::query()->where('erp_company_id', $fixture['company']->id)->count());
+            $this->assertSame(1, ErpAccountingDeliveryDispatch::query()->where('erp_accounting_delivery_id', $fixture['delivery']->id)->count());
+            $this->assertSame(1, DB::table('jobs')->where('queue', $queue)->count());
+
+            $this->withHeaders($headers)
+                ->getJson('/api/v1/erp/operations/lookup?operation=erp.accounting-deliveries.retry')
+                ->assertOk()
+                ->assertJsonPath('data.state', 'completed')
+                ->assertJsonPath('data.result.id', $fixture['delivery']->id);
+            $this->assertSame(1, ErpOperationReceipt::query()->where('erp_company_id', $fixture['company']->id)->count());
+            $this->assertSame(1, DB::table('jobs')->where('queue', $queue)->count());
+        } finally {
+            Storage::forgetDisk('local');
+            Storage::forgetDisk('fiscal');
+            File::deleteDirectory($storageRoot);
+        }
+    }
+
     /** @return array{company: ErpCompany, delivery: ErpAccountingDelivery} */
     private function fixture(): array
     {
@@ -255,7 +349,7 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
         return $process;
     }
 
-    /** @return array{company: ErpCompany, delivery: ErpAccountingDelivery} */
+    /** @return array{company: ErpCompany, delivery: ErpAccountingDelivery, actor: User} */
     private function handoffFixture(string $storageRoot): array
     {
         $cnpj = (string) random_int(10000000000000, 99999999999999);
@@ -295,7 +389,7 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
         ]);
         $delivery = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($document, $actor->id);
 
-        return compact('company', 'delivery');
+        return compact('company', 'delivery', 'actor');
     }
 
     private function duplicateQueuedMessage(string $queue): void

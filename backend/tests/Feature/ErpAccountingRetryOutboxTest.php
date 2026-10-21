@@ -79,6 +79,9 @@ class ErpAccountingRetryOutboxTest extends TestCase
             ->assertJsonPath('data.can_retry', false);
 
         $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $receipt = ErpOperationReceipt::query()->sole();
+        $this->assertSame('accounting-v1', $receipt->canonical_version);
+        $this->assertLessThanOrEqual(16, strlen($receipt->canonical_version));
         $this->assertDatabaseHas('erp_accounting_delivery_dispatches', [
             'erp_accounting_delivery_id' => $delivery->id,
             'generation' => 1,

@@ -24,6 +24,8 @@ use InvalidArgumentException;
 
 final class ErpOperationJournal
 {
+    private const ACCOUNTING_RETRY_CANONICAL_VERSION = 'accounting-v1';
+
     public function __construct(private ErpPaymentAllocationOperation $allocation, private ErpCatalogImportOperation $imports, private ErpStockOperation $stock, private ErpFinanceOperation $finance, private ErpAccountingRetryOperation $accountingRetry) {}
 
     public function key(Request $request, bool $required = false): ?string
@@ -126,11 +128,11 @@ final class ErpOperationJournal
             $payload = $this->accountingRetry->canonical($request, $deliveryId);
             $this->accountingRetry->assertAuthorized($request, $payload);
             AccessSession::assertOwnership($request);
-            $hash = hash('sha256', 'accounting-retry-v1:'.$this->canonicalJson($payload));
+            $hash = hash('sha256', self::ACCOUNTING_RETRY_CANONICAL_VERSION.':'.$this->canonicalJson($payload));
             $receipt = $this->receipts($request, $key, ErpAccountingRetryOperation::NAME)->lockForUpdate()->first();
             if ($receipt !== null) {
                 $this->accountingRetry->assertAuthorized($request, $receipt->resource_refs);
-                abort_unless($receipt->canonical_version === 'accounting-retry-v1' && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                abort_unless($receipt->canonical_version === self::ACCOUNTING_RETRY_CANONICAL_VERSION && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
                 AccessSession::assertOwnership($request);
 
                 return response()->json($receipt->response_body, $receipt->response_status);
@@ -145,7 +147,7 @@ final class ErpOperationJournal
                 'actor_user_id' => $request->user()->id,
                 'operation' => ErpAccountingRetryOperation::NAME,
                 'key_digest' => hash('sha256', $key),
-                'canonical_version' => 'accounting-retry-v1',
+                'canonical_version' => self::ACCOUNTING_RETRY_CANONICAL_VERSION,
                 'payload_hash' => $hash,
                 'response_status' => $response->getStatusCode(),
                 'response_body' => $body,
@@ -372,7 +374,7 @@ final class ErpOperationJournal
                 app(ErpPurchaseOperation::class)->authorize($request, $operation, $receipt->resource_refs);
             } elseif ($operation === ErpPaymentAllocationOperation::NAME) {
                 $this->allocation->assertAuthorized($request, $receipt->resource_refs);
-            } elseif ($operation === ErpAccountingRetryOperation::NAME && $receipt->canonical_version === 'accounting-retry-v1') {
+            } elseif ($operation === ErpAccountingRetryOperation::NAME && $receipt->canonical_version === self::ACCOUNTING_RETRY_CANONICAL_VERSION) {
                 $this->accountingRetry->assertAuthorized($request, $receipt->resource_refs);
             } elseif (in_array($operation, ErpCommercialOperation::names(), true) && $receipt->canonical_version === 'commercial-v1') {
                 app(ErpCommercialOperation::class)->assertAuthorized($request, $operation, $receipt->resource_refs + ['_original_response' => $receipt->response_body]);
