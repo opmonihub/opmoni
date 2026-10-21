@@ -284,7 +284,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
     restorePending()
     mutationError.value = apiErrorMessage(error) ?? 'Sua autorização ou o contexto da empresa mudou. Os dados privados foram removidos.'
     await refreshAuthForDenial(token, refreshEpoch)
-    if (operationIdentity(action) === deniedIdentity)
+    if (isAuthorityCurrent(token) && authorityRefreshEpoch === refreshEpoch && operationIdentity(action) === deniedIdentity)
       deniedActions.value = new Set([...deniedActions.value, action])
     return true
   }

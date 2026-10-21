@@ -1047,6 +1047,53 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).key, state.selectedOperation.value?.key)
   })
 
+  it('does not apply an old POST denial after a newer authority refresh wins', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const oldRefresh = deferred<unknown>()
+    let meCalls = 0
+    const refreshedIdentity = { id: 42, current_company: { id: 7, permissions: ['*', 'erp.read'], role: 'owner', access_kind: 'direct', status: 'active' } }
+    const api: Api = async (path, options) => {
+      if (path === '/me') {
+        meCalls++
+        return meCalls === 1 ? oldRefresh.promise : refreshedIdentity
+      }
+      if (options?.method === 'POST') throw { statusCode: 403, data: { message: 'A autorização antiga foi revogada' } }
+      if (path.startsWith('/erp/operations/lookup'))
+        throw { statusCode: 409, data: { code: 'company_context_changed', message: 'O contexto foi atualizado' } }
+      return page([])
+    }
+    const auth = createActualAuth(api)
+    const app = createWorkspace(api, async () => {}, async () => null, auth)
+    t.after(app.stop)
+    const state = app.state as {
+      post: (path: string, body: Record<string, unknown>) => Promise<unknown>
+      reconcile: () => Promise<void>
+      allowed: (action: string) => boolean
+      selectedOperation: Vue.Ref<{ key: string, payload: Record<string, unknown> } | null>
+      needsReconciliation: Vue.Ref<boolean>
+    }
+
+    const pendingPost = state.post('/erp/payments', { direction: 'in', amount: '25.0000', method: 'bank_transfer', currency: 'BRL' })
+    await settleUntil(() => meCalls === 1)
+    await (auth.refreshWithStatus as () => Promise<unknown>)()
+    assert.equal(meCalls, 2)
+
+    await state.reconcile()
+    assert.equal(meCalls, 3)
+    assert.equal(state.allowed('erp.payments.store'), true)
+    assert.equal(state.needsReconciliation.value, true)
+    const pending = state.selectedOperation.value
+    assert.ok(pending?.key)
+    assert.equal(pending.payload.amount, '25.0000')
+
+    oldRefresh.resolve({ id: 42, current_company: { id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' } })
+    await pendingPost
+    assert.equal(state.allowed('erp.payments.store'), true)
+    assert.equal(state.selectedOperation.value?.key, pending.key)
+    assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).key, pending.key)
+  })
+
   it('keeps all finance actions blocked after a 409 when identity refresh fails and preserves pending identity', async (t) => {
     const storage = sessionStorageFixture()
     t.after(storage.restore)
