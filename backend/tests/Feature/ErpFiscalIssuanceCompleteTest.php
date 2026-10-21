@@ -10,6 +10,8 @@ use App\Erp\Fiscal\ErpFiscalAttemptService;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Erp\Fiscal\ErpFiscalNumberAllocator;
 use App\Erp\Fiscal\ErpFiscalProviderResult;
+use App\Erp\Fiscal\ErpFiscalSchemaValidator;
+use App\Erp\Fiscal\ErpFiscalXmlSigner;
 use App\Jobs\ProcessErpFiscalAttempt;
 use App\Models\Account;
 use App\Models\Client;
@@ -204,6 +206,96 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->withHeaders($ctx['headers'])
             ->get('/api/v1/erp/fiscal/documents/'.$document['id'].'/xml')
             ->assertOk();
+    }
+
+    #[DataProvider('invalidOfflineContingencyTimestamps')]
+    public function test_offline_contingency_timestamp_is_rejected_before_number_document_or_attempt_allocation(string $timestamp): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createDraftDocument($ctx, '65', 'offline-time-contingency-base');
+        $original = ErpFiscalDocument::findOrFail($draft['id']);
+        $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
+        $source['identity']['contingency_started_at'] = $timestamp;
+        $before = [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()];
+        $allocator = app(ErpFiscalNumberAllocator::class);
+        $this->assertSame(2, $allocator->nextNumber($ctx['company']->id, '65', 'homologation', 1));
+
+        $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->postJson('/api/v1/erp/fiscal/documents', [
+                'erp_establishment_id' => $ctx['establishment']->id, 'model' => '65',
+                'erp_sale_id' => $original->erp_sale_id, 'source' => $source, 'idempotency_key' => 'offline-time-invalid',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('source.identity.contingency_started_at');
+
+        $this->assertSame($before, [ErpFiscalDocument::query()->count(), ErpFiscalAttempt::query()->count()]);
+        $this->assertSame(2, $allocator->nextNumber($ctx['company']->id, '65', 'homologation', 1));
+        $this->assertSame(ErpFiscalDocumentStateMachine::DRAFT, $original->fresh()->status);
+    }
+
+    public static function invalidOfflineContingencyTimestamps(): array
+    {
+        return array_map(static fn (string $timestamp): array => [$timestamp], [
+            '2026-10-21T14:00',
+            '2026-10-21T14:00-03:00',
+            '2026-10-21T14:00:00',
+            '2026-02-29T14:00:00-03:00',
+            '2026-04-31T14:00:00-03:00',
+            '2026-10-21T24:00:00-03:00',
+            '2026-10-21T14:00:00Z',
+            '2026-10-21T14:00:00+05:30',
+            '2026-10-21T14:00:00-12:00',
+        ]);
+    }
+
+    #[DataProvider('validOfflineContingencyTimestamps')]
+    public function test_offline_contingency_preserves_full_timestamp_through_real_signing_and_official_schema(string $timestamp): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createDraftDocument($ctx, '65', 'offline-time-contingency-base');
+        $original = ErpFiscalDocument::findOrFail($draft['id']);
+        $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
+        $source['identity']['contingency_started_at'] = $timestamp;
+        $created = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
+            ->postJson('/api/v1/erp/fiscal/documents', [
+                'erp_establishment_id' => $ctx['establishment']->id, 'model' => '65',
+                'erp_sale_id' => $original->erp_sale_id, 'source' => $source, 'idempotency_key' => 'offline-time-valid',
+            ])->assertCreated();
+        $this->assertSame(2, $created->json('data.number'));
+        $frozen = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot(ErpFiscalAttempt::findOrFail($created->json('data.attempt.id')))['request']['source'];
+        $this->assertSame($timestamp, $frozen['identity']['contingency_started_at']);
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldNotReceive('transmit');
+        $provider->shouldNotReceive('consult');
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+
+        $this->executeDocumentAction($ctx, $created->json('data.id'), 'contingency')
+            ->assertOk()
+            ->assertJsonPath('data.status', ErpFiscalDocumentStateMachine::CONTINGENCY_LOCAL)
+            ->assertJsonPath('data.claims_provider_authorization', false)
+            ->assertJsonPath('data.attempt.status', 'accepted');
+
+        $stored = ErpFiscalDocument::findOrFail($created->json('data.id'));
+        $xml = Storage::disk('local')->get($stored->storage_path);
+        app(ErpFiscalSchemaValidator::class)->assertValid($xml, '65', 'request');
+        $document = new \DOMDocument;
+        $this->assertTrue($document->loadXML($xml, LIBXML_NONET));
+        $xpath = new \DOMXPath($document);
+        $this->assertSame($timestamp, $xpath->query('//*[local-name()="dhCont"]')->item(0)?->textContent);
+        $encodedCertificate = $xpath->query('//*[local-name()="X509Certificate"]')->item(0)?->textContent;
+        $this->assertNotEmpty($encodedCertificate);
+        $certificate = "-----BEGIN CERTIFICATE-----\n".chunk_split((string) $encodedCertificate, 64, "\n")."-----END CERTIFICATE-----\n";
+        $this->assertTrue(app(ErpFiscalXmlSigner::class)->verify($xml, $certificate));
+    }
+
+    public static function validOfflineContingencyTimestamps(): array
+    {
+        return [
+            ['2026-10-21T14:00:17-03:00'],
+            ['2028-02-29T23:59:59-11:00'],
+            ['2026-10-21T14:00:17+00:00'],
+            ['2026-10-21T14:00:17+12:00'],
+        ];
     }
 
     public function test_cancel_event_rejection_keeps_document_authorized(): void

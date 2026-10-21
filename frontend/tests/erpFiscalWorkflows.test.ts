@@ -587,7 +587,7 @@ function nfeSfcFacts(model: '55' | '65', offline = false): Record<string, string
   for (const key of ['icms', 'taxes_total']) facts[`source.totals.${key}`] = '18.00'
   for (const key of ['icms_desonerated', 'fcp', 'st_base', 'st', 'fcp_st', 'fcp_st_retained', 'freight', 'insurance', 'discount', 'ii', 'ipi', 'ipi_returned', 'pis', 'cofins', 'other']) facts[`source.totals.${key}`] = '0.00'
   if (offline) {
-    facts['identity.contingency_started_at'] = '2026-10-21T10:00'
+    facts['identity.contingency_started_at'] = '2026-10-21T10:00:00-03:00'
     facts['identity.contingency_justification'] = 'Indisponibilidade de comunicação com o provedor fiscal.'
   }
   return facts
@@ -651,10 +651,53 @@ describe('ERP fiscal typed request helpers', () => {
 
     assert.equal(mounted.emitted.length, 1)
     const source = mounted.emitted[0]?.source as Record<string, Record<string, unknown>>
-    assert.equal(source.identity.contingency_started_at, '2026-10-21T10:00')
+    assert.equal(source.identity.contingency_started_at, '2026-10-21T10:00:00-03:00')
     assert.equal(source.identity.contingency_justification, 'Indisponibilidade de comunicação com o provedor fiscal.')
     mounted.app.unmount()
   })
+
+  for (const timestamp of [
+    '2026-10-21T14:00',
+    '2026-10-21T14:00-03:00',
+    '2026-10-21T14:00:00',
+    '2026-02-29T14:00:00-03:00',
+    '2026-04-31T14:00:00-03:00',
+    '2026-10-21T24:00:00-03:00',
+    '2026-10-21T14:00:00Z',
+    '2026-10-21T14:00:00+05:30',
+    '2026-10-21T14:00:00-12:00'
+  ]) {
+    it(`blocks an offline contingency timestamp outside the fiscal calendar/offset contract: ${timestamp}`, async () => {
+      const mounted = await submitDocumentSfc('65', { ...nfeSfcFacts('65', true), 'identity.contingency_started_at': timestamp }, { qrMode: 'offline' })
+      try {
+        assert.equal(mounted.emitted.length, 0, 'invalid contingency time must not create a draft')
+        const input = findNode(mounted.root, node => node.tag === 'input' && node.props['data-field'] === 'identity.contingency_started_at')
+        assert.equal(input?.value, timestamp, 'the operator can correct the entered value')
+      } finally {
+        mounted.app.unmount()
+      }
+    })
+  }
+
+  for (const timestamp of ['2028-02-29T23:59:59-11:00', '2026-10-21T14:00:17+00:00', '2026-10-21T14:00:17+12:00']) {
+    it(`preserves an explicit schema-supported offline timestamp and retains it after a field 422: ${timestamp}`, async () => {
+      const fieldErrors = Vue.reactive<Record<string, string>>({})
+      const mounted = await submitDocumentSfc('65', { ...nfeSfcFacts('65', true), 'identity.contingency_started_at': timestamp }, { qrMode: 'offline', fieldErrors })
+      try {
+        assert.equal(mounted.emitted.length, 1)
+        const source = mounted.emitted[0]?.source as Record<string, Record<string, unknown>>
+        assert.equal(source.identity.contingency_started_at, timestamp)
+        fieldErrors['source.identity.contingency_started_at'] = 'Revise a data e hora da contingência.'
+        await Vue.nextTick()
+        const input = findNode(mounted.root, node => node.tag === 'input' && node.props['data-field'] === 'identity.contingency_started_at')
+        assert.equal(input?.value, timestamp)
+        assert.equal(input?.props.type, 'text', 'the operator must enter seconds and a numeric UTC offset explicitly')
+        assert.ok(findNode(mounted.root, node => node.props.role === 'alert' && node.text === fieldErrors['source.identity.contingency_started_at']))
+      } finally {
+        mounted.app.unmount()
+      }
+    })
+  }
 
   it('emits complete typed CT-e and MDF-e facts from their native mounted forms', async () => {
     const cte = await submitDocumentSfc('57', cteSfcFacts())

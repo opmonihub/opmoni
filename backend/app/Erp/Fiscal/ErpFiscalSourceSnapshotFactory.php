@@ -3,6 +3,7 @@
 namespace App\Erp\Fiscal;
 
 use App\Erp\BrazilianStateCode;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 final class ErpFiscalSourceSnapshotFactory
@@ -227,7 +228,12 @@ final class ErpFiscalSourceSnapshotFactory
                     $errors[] = 'nfce_qr.url';
                 }
                 if (($qr['mode'] ?? null) === 'offline') {
-                    if (substr($key, 34, 1) !== '9' || strtotime((string) ($identity['contingency_started_at'] ?? '')) === false || mb_strlen((string) ($identity['contingency_justification'] ?? '')) < 15 || mb_strlen((string) ($identity['contingency_justification'] ?? '')) > 256) {
+                    if (! $this->validContingencyStartedAt($identity['contingency_started_at'] ?? null)) {
+                        throw ValidationException::withMessages([
+                            'source.identity.contingency_started_at' => 'Informe uma data válida de início da contingência com segundos e fuso UTC numérico em horas inteiras entre -11:00 e +12:00, como 2026-10-21T14:00:00-03:00.',
+                        ]);
+                    }
+                    if (substr($key, 34, 1) !== '9' || mb_strlen((string) ($identity['contingency_justification'] ?? '')) < 15 || mb_strlen((string) ($identity['contingency_justification'] ?? '')) > 256) {
                         $errors[] = 'nfce_qr.offline_contingency_facts';
                     }
                     foreach (['contingency_started_at', 'contingency_justification'] as $field) {
@@ -438,6 +444,16 @@ final class ErpFiscalSourceSnapshotFactory
         if ($errors !== []) {
             throw new InvalidArgumentException('Dados fiscais obrigatórios ausentes ou inválidos: '.implode(', ', array_values(array_unique($errors))).'.');
         }
+    }
+
+    /** Match the full timestamp and whole-hour offsets supported by the pinned NFC-e TDateTimeUTC schema. */
+    private function validContingencyStartedAt(mixed $value): bool
+    {
+        if (! is_string($value) || ! preg_match('/\A(20[0-9]{2})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:[+-](?:0[0-9]|1[01]):00|\+12:00)\z/', $value, $matches)) {
+            return false;
+        }
+
+        return checkdate((int) $matches[2], (int) $matches[3], (int) $matches[1]);
     }
 
     /** @param array<string, mixed>|null $address @param list<string> $errors */

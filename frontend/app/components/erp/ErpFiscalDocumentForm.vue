@@ -49,6 +49,17 @@ function numericFact(key: string): number | undefined {
   return value === undefined || value === '' ? undefined : Number(value)
 }
 
+function validContingencyStartedAt(value: string | undefined): boolean {
+  if (!value || value.length !== 25) return false
+  const match = /^(20[0-9]{2})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:[+-](?:0[0-9]|1[01]):00|\+12:00)$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const daysInMonth = [31, year % 4 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return day <= daysInMonth[month - 1]!
+}
+
 const models = [
   { label: 'NF-e (55)', value: '55' },
   { label: 'NFC-e (65)', value: '65' },
@@ -125,8 +136,11 @@ function createSaleBody() {
   if (kind.value === 'return' && !selectedOriginalId.value) throw new Error('Selecione o documento fiscal original autorizado.')
   const required = [facts.operation_type, facts.destination_type, facts.final_consumer, facts.presence_indicator, facts.print_type, facts.recipient_state_registration_indicator, facts.recipient_street, facts.recipient_number, facts.recipient_district, facts.recipient_city_code, facts.recipient_city_name, facts.recipient_zip_code, facts.recipient_uf, facts.freight_modality, facts.payment_method, facts.payment_amount, ...totalFields.map(([key]) => totals[key]), ...lineFacts.value.flatMap(line => [line.description, line.ind_total, line.icms_base, line.icms_rate, line.icms_value, line.pis_value, line.cofins_value, ...(kind.value === 'complement' ? [line.quantity, line.unit_price, line.gross_total] : [])])]
   if (required.some(value => value === '' || value === null || value === undefined)) throw new Error('Preencha todos os campos fiscais obrigatórios. Valores zero precisam ser informados explicitamente.')
-  if (offlineNfce.value && (!facts.contingency_started_at || (facts.contingency_justification ?? '').trim().length < 15 || (facts.contingency_justification ?? '').trim().length > 256)) {
-    throw new Error('Para NFC-e offline, informe data e hora da contingência e justificativa entre 15 e 256 caracteres.')
+  if (offlineNfce.value && !validContingencyStartedAt(facts.contingency_started_at)) {
+    throw new Error('Informe uma data válida de início da contingência com segundos e fuso UTC numérico, como 2026-10-21T14:00:00-03:00. O fuso deve ser uma hora inteira entre -11:00 e +12:00.')
+  }
+  if (offlineNfce.value && ((facts.contingency_justification ?? '').trim().length < 15 || (facts.contingency_justification ?? '').trim().length > 256)) {
+    throw new Error('Para NFC-e offline, informe uma justificativa entre 15 e 256 caracteres.')
   }
   const formFacts = makeTypedSaleFacts()
   if (kind.value === 'return' && !facts.cfop) throw new Error('Informe o CFOP de entrada configurado para a devolução (1202 ou 2202).')
@@ -321,8 +335,18 @@ function submit() {
           <p class="text-muted text-sm sm:col-span-2">
             Informe fatos reais da contingência. O sistema não cria horário nem justificativa automaticamente.
           </p>
-          <UFormField label="Data e hora de início da contingência" name="identity.contingency_started_at" :error="fieldErrors?.['source.identity.contingency_started_at']">
-            <UInput v-model="facts.contingency_started_at" type="datetime-local" />
+          <UFormField
+            label="Início da contingência (data, hora, segundos e fuso UTC)"
+            description="Informe o fuso real em horas inteiras, entre -11:00 e +12:00. Exemplo: 2026-10-21T14:00:00-03:00."
+            name="identity.contingency_started_at"
+            :error="fieldErrors?.['source.identity.contingency_started_at']"
+          >
+            <UInput
+              v-model="facts.contingency_started_at"
+              type="text"
+              placeholder="2026-10-21T14:00:00-03:00"
+              class="w-full"
+            />
           </UFormField>
           <UFormField label="Justificativa (15 a 256 caracteres)" name="identity.contingency_justification" :error="fieldErrors?.['source.identity.contingency_justification']">
             <UTextarea v-model="facts.contingency_justification" maxlength="256" />
