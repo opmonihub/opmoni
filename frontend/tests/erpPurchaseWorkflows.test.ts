@@ -684,6 +684,89 @@ describe('purchase decimal and source helpers', () => {
     }
   })
 
+  it('lets a current return source GET supersede an older purchase detail request', async () => {
+    const oldPurchase = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+    const returnDetail = deferred<{ data: { id: number, erp_purchase_id: number, status: string, currency: string, reason: string, total_amount: string, lines: unknown[] } }>()
+    const sourcePurchase = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+    let sourceRequested = false
+    const workspace = createWorkspace(async (path) => {
+      if (path === '/erp/purchases/41') return oldPurchase.promise
+      if (path === '/erp/purchase-returns/90') return returnDetail.promise
+      if (path === '/erp/purchases/42') { sourceRequested = true; return sourcePurchase.promise }
+      throw new Error(`Unexpected request ${path}`)
+    })
+    const oldRead = workspace.state.inspect(41)
+    const returnRead = workspace.state.inspectReturn(90, null)
+    returnDetail.resolve({ data: { id: 90, erp_purchase_id: 42, status: 'draft', currency: 'BRL', reason: 'Atual', total_amount: '2.0000', lines: [] } })
+    for (let turn = 0; turn < 8 && !sourceRequested; turn++) await Promise.resolve()
+    assert.equal(sourceRequested, true, 'the return has started its nested source GET')
+    assert.equal(workspace.state.loadingDetail.value, true)
+    sourcePurchase.resolve({ data: { id: 42, status: 'posted', currency: 'BRL', lines: [] } })
+    assert.equal((await returnRead)?.id, 90)
+    assert.equal(workspace.state.selected.value?.id, 42)
+    assert.equal(workspace.state.selectedReturn.value?.id, 90)
+    assert.equal(workspace.state.loadingDetail.value, false, 'the owning source load clears its loading state')
+    oldPurchase.resolve({ data: { id: 41, status: 'posted', currency: 'BRL', lines: [] } })
+    assert.equal(await oldRead, null, 'the superseded manual purchase read cannot commit')
+    assert.equal(workspace.state.selected.value?.id, 42)
+    assert.equal(workspace.state.selectedReturn.value?.id, 90)
+    assert.equal(workspace.state.loadingDetail.value, false, 'the invalidated request cannot leave loading stuck')
+    workspace.stop()
+  })
+
+  it('lets a newer manual detail intent supersede a pending initial return GET', async () => {
+    const returnDetail = deferred<{ data: { id: number, erp_purchase_id: number, status: string, currency: string, reason: string, total_amount: string, lines: unknown[] } }>()
+    const manualPurchase = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+    let sourceRequested = false
+    const workspace = createWorkspace(async (path) => {
+      if (path === '/erp/purchase-returns/90') return returnDetail.promise
+      if (path === '/erp/purchases/41') return manualPurchase.promise
+      if (path === '/erp/purchases/42') { sourceRequested = true; return { data: { id: 42, status: 'posted', currency: 'BRL', lines: [] } } }
+      throw new Error(`Unexpected request ${path}`)
+    })
+    const returnRead = workspace.state.inspectReturn(90, null)
+    const manualRead = workspace.state.inspect(41)
+    returnDetail.resolve({ data: { id: 90, erp_purchase_id: 42, status: 'draft', currency: 'BRL', reason: 'Retorno', total_amount: '2.0000', lines: [] } })
+    assert.equal(await returnRead, null, 'the return response cannot supersede a newer manual detail intent')
+    assert.equal(sourceRequested, false, 'the obsolete return does not start its nested source request')
+    assert.equal(workspace.state.loadingDetail.value, true, 'the current manual request retains loading ownership')
+    manualPurchase.resolve({ data: { id: 41, status: 'posted', currency: 'BRL', lines: [] } })
+    assert.equal((await manualRead)?.id, 41)
+    assert.equal(workspace.state.selected.value?.id, 41)
+    assert.equal(workspace.state.selectedReturn.value, null)
+    assert.equal(workspace.state.loadingDetail.value, false)
+    workspace.stop()
+  })
+
+  it('lets a newer manual purchase selection supersede an in-flight return source GET', async () => {
+    const returnDetail = deferred<{ data: { id: number, erp_purchase_id: number, status: string, currency: string, reason: string, total_amount: string, lines: unknown[] } }>()
+    const returnSource = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+    const manualPurchase = deferred<{ data: { id: number, status: string, currency: string, lines: unknown[] } }>()
+    let sourceRequested = false
+    const workspace = createWorkspace(async (path) => {
+      if (path === '/erp/purchase-returns/90') return returnDetail.promise
+      if (path === '/erp/purchases/42') { sourceRequested = true; return returnSource.promise }
+      if (path === '/erp/purchases/43') return manualPurchase.promise
+      throw new Error(`Unexpected request ${path}`)
+    })
+    const returnRead = workspace.state.inspectReturn(90, null)
+    returnDetail.resolve({ data: { id: 90, erp_purchase_id: 42, status: 'draft', currency: 'BRL', reason: 'Retorno', total_amount: '2.0000', lines: [] } })
+    for (let turn = 0; turn < 8 && !sourceRequested; turn++) await Promise.resolve()
+    assert.equal(sourceRequested, true, 'the return has started its nested source GET')
+    assert.equal(workspace.state.loadingDetail.value, true)
+    const manualRead = workspace.state.inspect(43)
+    returnSource.resolve({ data: { id: 42, status: 'posted', currency: 'BRL', lines: [] } })
+    assert.equal(await returnRead, null, 'the return cannot overwrite the later manual selection')
+    assert.equal(workspace.state.selected.value, null)
+    assert.equal(workspace.state.loadingDetail.value, true, 'the stale nested read cannot clear the newer manual load')
+    manualPurchase.resolve({ data: { id: 43, status: 'posted', currency: 'BRL', lines: [] } })
+    assert.equal((await manualRead)?.id, 43)
+    assert.equal(workspace.state.selected.value?.id, 43)
+    assert.equal(workspace.state.selectedReturn.value, null)
+    assert.equal(workspace.state.loadingDetail.value, false, 'the latest manual load clears its loading state')
+    workspace.stop()
+  })
+
   it('keeps a last-good reference family and XML token/mappings when refreshes fail transiently', async (t) => {
     const session = installSessionStorage()
     t.after(() => session.restore())

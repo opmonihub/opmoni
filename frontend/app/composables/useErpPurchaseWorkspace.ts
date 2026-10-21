@@ -87,6 +87,7 @@ export function useErpPurchaseWorkspace() {
   let listSequence = 0
   let returnListSequence = 0
   let detailSequence = 0
+  let selectionIntentSequence = 0
   let returnSequence = 0
   let previewSequence = 0
   let authorityRefreshEpoch = 0
@@ -120,6 +121,7 @@ export function useErpPurchaseWorkspace() {
     listSequence++
     returnListSequence++
     detailSequence++
+    selectionIntentSequence++
     returnSequence++
     previewSequence++
     authorityGeneration.value++
@@ -397,16 +399,17 @@ export function useErpPurchaseWorkspace() {
     if (!Number.isSafeInteger(id) || !allowed('erp.purchases.show')) return null
     const token = context.capture()
     const generation = requestGeneration
+    const selectionIntent = ++selectionIntentSequence
     const sequence = ++detailSequence
     loadingDetail.value = true
     detailError.value = ''
     try {
       const result = await api<{ data: ErpPurchase }>(`/erp/purchases/${id}`)
-      if (!current(token, generation) || sequence !== detailSequence) return null
+      if (!current(token, generation) || sequence !== detailSequence || selectionIntent !== selectionIntentSequence) return null
       selected.value = result.data
       return result.data
     } catch (error) {
-      if (!current(token, generation) || sequence !== detailSequence) return null
+      if (!current(token, generation) || sequence !== detailSequence || selectionIntent !== selectionIntentSequence) return null
       detailError.value = errorMessage(error, 'Não foi possível carregar o detalhe atual da compra.')
       if (showError) mutationError.value = detailError.value
       await handleDenial('erp.purchases.show', error, token)
@@ -417,14 +420,17 @@ export function useErpPurchaseWorkspace() {
   }
   function closeDetail() {
     detailSequence++
+    selectionIntentSequence++
     returnSequence++
     selected.value = null
     selectedReturn.value = null
     detailError.value = ''
+    loadingDetail.value = false
   }
-  async function refreshCurrent(sourceId?: number | null, expectedDetailSequence = detailSequence, expectedSelectionId = selected.value?.id ?? null) {
+  async function refreshCurrent(sourceId?: number | null, expectedDetailSequence = detailSequence, expectedSelectionId = selected.value?.id ?? null, expectedSelectionIntent = selectionIntentSequence) {
     await load()
-    if (detailSequence !== expectedDetailSequence || (selected.value?.id ?? null) !== expectedSelectionId) return
+    if (detailSequence !== expectedDetailSequence || selectionIntentSequence !== expectedSelectionIntent
+      || (selected.value?.id ?? null) !== expectedSelectionId) return
     const id = sourceId ?? expectedSelectionId
     if (id && allowed('erp.purchases.show')) await inspect(id, false)
   }
@@ -471,6 +477,7 @@ export function useErpPurchaseWorkspace() {
     const generation = requestGeneration
     const detailAtStart = detailSequence
     const selectionAtStart = selected.value?.id ?? null
+    const selectionIntentAtStart = selectionIntentSequence
     mutating.value = true
     try {
       await refreshCsrf()
@@ -483,7 +490,7 @@ export function useErpPurchaseWorkspace() {
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada.' : 'Operação confirmada. A identificação local ainda não pôde ser removida; consulte-a antes de iniciar outra.'
       if (detailSequence === detailAtStart && (selected.value?.id ?? null) === selectionAtStart)
-        await refreshCurrent(outcomePurchaseId(frozen, outcome), detailAtStart, selectionAtStart)
+        await refreshCurrent(outcomePurchaseId(frozen, outcome), detailAtStart, selectionAtStart, selectionIntentAtStart)
       if (!current(token, generation)) return null
       return outcome
     } catch (error) {
@@ -653,29 +660,37 @@ export function useErpPurchaseWorkspace() {
     if (!allowed('erp.purchase-returns.show')) return null
     const token = context.capture()
     const generation = requestGeneration
+    const selectionIntent = ++selectionIntentSequence
     const sequence = ++returnSequence
-    const currentReturn = () => current(token, generation) && returnSequence === sequence
+    const currentReturn = () => current(token, generation) && returnSequence === sequence && selectionIntentSequence === selectionIntent
     try {
       const result = await api<{ data: ErpPurchaseReturn }>(`/erp/purchase-returns/${id}`)
       if (!currentReturn() || (selected.value?.id ?? null) !== expectedSourceId) return null
       const sourceId = result.data.erp_purchase_id
       if (selected.value?.id !== sourceId) {
         if (allowed('erp.purchases.show')) {
-          const sourceDetailSequence = detailSequence
-          let source: { data: ErpPurchase }
+          const sourceDetailSequence = ++detailSequence
+          loadingDetail.value = true
+          detailError.value = ''
           try {
-            source = await api<{ data: ErpPurchase }>(`/erp/purchases/${sourceId}`)
-          } catch (error) {
+            let source: { data: ErpPurchase }
+            try {
+              source = await api<{ data: ErpPurchase }>(`/erp/purchases/${sourceId}`)
+            } catch (error) {
+              if (!currentReturn() || detailSequence !== sourceDetailSequence
+                || (selected.value?.id ?? null) !== expectedSourceId) return null
+              detailError.value = errorMessage(error, 'Não foi possível carregar a compra de origem da devolução.')
+              mutationError.value = detailError.value
+              await handleDenial('erp.purchases.show', error, token)
+              return null
+            }
             if (!currentReturn() || detailSequence !== sourceDetailSequence
-              || (selected.value?.id ?? null) !== expectedSourceId) return null
-            detailError.value = errorMessage(error, 'Não foi possível carregar a compra de origem da devolução.')
-            mutationError.value = detailError.value
-            await handleDenial('erp.purchases.show', error, token)
-            return null
+              || (selected.value?.id ?? null) !== expectedSourceId || source.data.id !== sourceId) return null
+            selected.value = source.data
+          } finally {
+            if (current(token, generation) && detailSequence === sourceDetailSequence)
+              loadingDetail.value = false
           }
-          if (!currentReturn() || detailSequence !== sourceDetailSequence
-            || (selected.value?.id ?? null) !== expectedSourceId || source.data.id !== sourceId) return null
-          selected.value = source.data
         } else if (!currentReturn()) {
           return null
         }
@@ -710,6 +725,7 @@ export function useErpPurchaseWorkspace() {
     const generation = requestGeneration
     const detailAtStart = detailSequence
     const selectionAtStart = selected.value?.id ?? null
+    const selectionIntentAtStart = selectionIntentSequence
     mutating.value = true
     canRetryExact.value = false
     try {
@@ -728,7 +744,7 @@ export function useErpPurchaseWorkspace() {
       needsReconciliation.value = !cleared
       mutationError.value = cleared ? 'Operação confirmada pelo registro do servidor.' : 'Operação confirmada; a cópia local continua guardada.'
       if (detailSequence === detailAtStart && (selected.value?.id ?? null) === selectionAtStart)
-        await refreshCurrent(sourceId, detailAtStart, selectionAtStart)
+        await refreshCurrent(sourceId, detailAtStart, selectionAtStart, selectionIntentAtStart)
       if (!current(token, generation)) return
       const outcomeId = typeof outcome === 'object' && outcome !== null && Number.isSafeInteger((outcome as { id?: unknown }).id)
         ? Number((outcome as { id: number }).id)
@@ -843,6 +859,7 @@ export function useErpPurchaseWorkspace() {
     requestGeneration++
     listSequence++
     detailSequence++
+    selectionIntentSequence++
     returnSequence++
     previewSequence++
   })
