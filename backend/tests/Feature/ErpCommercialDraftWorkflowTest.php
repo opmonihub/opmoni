@@ -14,6 +14,7 @@ use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\ErpPriceGroup;
 use App\Models\Erp\ErpUnit;
 use App\Models\Erp\Finance\ErpObligation;
+use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Sales\ErpOrder;
 use App\Models\Erp\Sales\ErpSale;
@@ -202,6 +203,45 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
         $this->send('sales/'.$next.'/post', $body)->assertUnprocessable();
         $this->assertSame('draft', ErpSale::findOrFail($next)->status);
         $this->assertDatabaseCount('erp_payments', 1);
+    }
+
+    public function test_fresh_posted_sale_detail_exposes_original_attributed_payment_ids_after_returns(): void
+    {
+        $sale = $this->send('sales', $this->serviceBody())->assertCreated()->json('data.id');
+        $posted = $this->send('sales/'.$sale.'/post', [
+            'draft_revision' => 1,
+            'payment' => ['direction' => 'in', 'amount' => '2', 'method' => 'manual', 'erp_establishment_id' => $this->establishment->id],
+        ], 'inline-sale-payment')->assertOk();
+        $inlinePayment = $posted->json('data.payment_id');
+        $obligation = ErpObligation::where('source_type', 'erp_sale')->where('source_id', $sale)->firstOrFail();
+        $laterPayment = $this->send('payments', ['amount' => '3', 'direction' => 'in', 'method' => 'manual', 'erp_establishment_id' => $this->establishment->id], 'later-payment')->assertCreated()->json('data.id');
+        $allocation = $this->send('payments/'.$laterPayment.'/allocate', ['erp_obligation_id' => $obligation->id, 'amount' => '3'], 'later-payment-allocation')->assertOk()->json('data.id');
+
+        $detail = $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk();
+        $this->assertSame([$inlinePayment, $laterPayment], $detail->json('data.finance.payment_ids'));
+        $this->getJson('/api/v1/erp/payments/'.$inlinePayment.'/receipt')->assertOk();
+        $this->send('payment-allocations/'.$allocation.'/reverse', ['amount' => '1', 'reason' => 'Correção parcial'], 'partial-allocation-compensation')->assertOk();
+        $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk()->assertJsonPath('data.finance.payment_ids', [$inlinePayment, $laterPayment]);
+        $this->send('payments/'.$laterPayment.'/reverse', ['reason' => 'Correção financeira'], 'full-payment-compensation')->assertOk();
+        $paymentDetail = $this->getJson('/api/v1/erp/payments/'.$laterPayment)->assertOk();
+        $this->assertNotNull($paymentDetail->json('data.reversal_id'));
+        $afterCompensation = $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk();
+        $this->assertSame([$inlinePayment, $laterPayment], $afterCompensation->json('data.finance.payment_ids'));
+        $this->assertNotContains($paymentDetail->json('data.reversal_id'), $afterCompensation->json('data.finance.payment_ids'));
+        $lineId = $detail->json('data.lines.0.id');
+        $return = $this->send('sale-returns', ['erp_sale_id' => $sale, 'reason' => 'Parcial', 'lines' => [['source_line_id' => $lineId, 'quantity' => '0.5']]])->assertCreated()->json('data.id');
+        $this->send('sale-returns/'.$return.'/post', [])->assertOk();
+        $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk()->assertJsonPath('data.finance.payment_ids', [$inlinePayment, $laterPayment]);
+
+        $hiddenEstablishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        ErpPayment::whereKey($laterPayment)->update(['erp_establishment_id' => $hiddenEstablishment->id]);
+        $membership = ErpCompanyMembership::where('user_id', $this->user->id)->firstOrFail();
+        $membership->update(['role' => 'operator', 'access_all_establishments' => false, 'action_permissions' => ['erp.sales.show', 'erp.payments.show']]);
+        $membership->establishments()->sync([$this->establishment->id => ['erp_company_id' => $this->company->id]]);
+        $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk()->assertJsonPath('data.finance.payment_ids', [$inlinePayment]);
+        $membership->update(['action_permissions' => ['erp.sales.show']]);
+        $this->getJson('/api/v1/erp/sales/'.$sale)->assertOk()->assertJsonPath('data.finance.payment_ids', [$inlinePayment]);
+        $this->getJson('/api/v1/erp/payments/'.$inlinePayment.'/receipt')->assertForbidden();
     }
 
     public function test_fiscal_request_copies_frozen_evidence_after_catalog_and_party_edits(): void

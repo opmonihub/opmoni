@@ -9,6 +9,8 @@ use App\Erp\Stock\ErpStockDecimal;
 use App\Erp\Stock\ErpStockLedger;
 use App\Erp\Stock\ErpStockParticipant;
 use App\Models\Erp\Finance\ErpObligation;
+use App\Models\Erp\Finance\ErpPayment;
+use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Sales\ErpSaleReturn;
 use App\Models\Erp\Sales\ErpSaleReturnLine;
@@ -376,6 +378,9 @@ final class ErpCommercialReturnService
         }
         $obligations = ErpObligation::where('erp_company_id', $source->erp_company_id)->where('source_type', 'erp_'.$kind)->where('source_id', $source->id)->get();
         $finance = ['currency' => $source->currency, 'original_obligation_id' => null, 'gross_original_due' => null, 'opposite_return_credit' => null, 'open_return_credit' => null, 'net_exposure' => null, 'needs_reconciliation' => $reason !== null, 'reconciliation_reason' => $reason, 'automatic_setoff' => false, 'automatic_refund' => false];
+        if ($kind === 'sale') {
+            $finance['payment_ids'] = [];
+        }
         if ($reason === null && $obligations->count() === 1) {
             $original = $obligations->sole();
             app(ErpFinanceReadService::class)->resource(request(), ErpObligation::class, $original->id);
@@ -387,6 +392,18 @@ final class ErpCommercialReturnService
                 $principal = bcadd($principal, $credit->amount, 4);
                 $open = bcadd($open, $credit->open_amount, 4);
                 $links[] = ['id' => $credit->id, 'source_type' => $credit->source_type, 'source_id' => $credit->source_id, 'amount' => $credit->amount, 'open_amount' => $credit->open_amount, 'due_on' => $credit->due_on];
+            }
+            if ($kind === 'sale') {
+                $payments = ErpPayment::query()
+                    ->where('erp_payments.erp_company_id', $source->erp_company_id)
+                    ->whereIn('erp_payments.id', ErpPaymentAllocation::query()
+                        ->select('erp_payment_id')
+                        ->where('erp_company_id', $source->erp_company_id)
+                        ->where('erp_obligation_id', $original->id)
+                        ->whereNull('reversal_of_id')
+                        ->where('amount', '>', '0'));
+                app(ErpFinanceReadService::class)->scopePayments(request(), $payments);
+                $finance['payment_ids'] = $payments->distinct()->orderBy('erp_payments.id')->pluck('erp_payments.id')->map(static fn ($id): int => (int) $id)->all();
             }
             $net = bcsub($original->open_amount, $open, 4);
             $finance = array_replace($finance, ['original_obligation_id' => $original->id, 'gross_original_due' => $original->open_amount, 'original_principal' => $original->amount, 'opposite_return_credit' => $principal, 'open_return_credit' => $open, 'net_exposure' => $original->direction === 'receivable' ? $net : bcsub('0', $net, 4), 'return_credits' => $links, 'original_due_on' => $original->due_on, 'needs_reconciliation' => false]);
