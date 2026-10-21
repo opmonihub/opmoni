@@ -98,7 +98,7 @@ function rowActionTrigger(root: HostNode, label: string): HostNode | undefined {
   return descendants(root).find(node => node.tag === 'button' && node.props['aria-label'] === label)
 }
 
-function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[], detailPanel?: Vue.Component, detailFormLabel?: string, detailPanelLabel?: string } = {}) {
+function setupResource(options: { accessKind?: 'direct' | 'delegated', permissions?: string[], detailPanel?: Vue.Component, detailFormLabel?: string, detailPanelLabel?: string, realUnitForm?: boolean } = {}) {
   const accessKind = options.accessKind ?? 'direct'
   const permissions = options.permissions ?? ['erp.units.index', 'erp.units.show', 'erp.units.store', 'erp.units.update', 'erp.units.archive']
   const user = Vue.ref<{ id: number } | null>({ id: 5 })
@@ -166,27 +166,43 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   )
   const { renderer: host, makeNode, allNodes } = renderer()
+  let referenceMountCount = 0
+  const referenceSelect = Vue.defineComponent({
+    setup() {
+      Vue.onMounted(() => {
+        referenceMountCount++
+      })
+      return () => Vue.h('select', { 'data-reference-select': 'base_unit_id' })
+    }
+  })
+  const resourceForm = options.realUnitForm
+    ? compileVueComponent(
+        'components/erp/catalogs/ErpUnitCatalogForm.vue',
+        bindings,
+        { '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect }
+      )
+    : Vue.defineComponent({
+        props: ['fieldErrors'],
+        setup(props) {
+          const draft = Vue.ref('')
+          return () => Vue.h('form', [
+            Vue.h('input', {
+              'data-draft': 'short_name',
+              'value': draft.value,
+              'onInput': (event: { target: { value: string } }) => { draft.value = event.target.value }
+            }),
+            props.fieldErrors?.short_name?.[0]
+              ? Vue.h('p', { 'role': 'alert', 'data-field-error': 'short_name' }, props.fieldErrors.short_name[0])
+              : null
+          ])
+        }
+      })
   const resourceProps = {
     path: '/erp/units',
     title: 'Unidades',
     detailFormLabel: options.detailFormLabel,
     detailPanelLabel: options.detailPanelLabel,
-    form: Vue.defineComponent({
-      props: ['fieldErrors'],
-      setup(props) {
-        const draft = Vue.ref('')
-        return () => Vue.h('form', [
-          Vue.h('input', {
-            'data-draft': 'short_name',
-            'value': draft.value,
-            'onInput': (event: { target: { value: string } }) => { draft.value = event.target.value }
-          }),
-          props.fieldErrors?.short_name?.[0]
-            ? Vue.h('p', { 'role': 'alert', 'data-field-error': 'short_name' }, props.fieldErrors.short_name[0])
-            : null
-        ])
-      }
-    }),
+    form: resourceForm,
     columns: [{ accessorKey: 'status', header: 'Status' }],
     recordLabel: (record: { short_name?: string, id: number }) => record.short_name ?? `Unidade ${record.id}`
   }
@@ -214,22 +230,17 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     }
   })
   const slideover = Vue.defineComponent({
-    props: ['open', 'title', 'description', 'unmountOnHide'],
+    props: ['open', 'title', 'description', 'unmountOnHide', 'content'],
     emits: ['update:open'],
     setup(props, { slots }) {
-      const previouslyOpened = Vue.ref(Boolean(props.open))
-      Vue.watch(() => props.open, (open) => {
-        if (open)
-          previouslyOpened.value = true
-      })
       return () => Vue.h('div', { 'data-slideover-open': String(props.open), 'data-slideover-unmount-on-hide': String(props.unmountOnHide) }, [
         Vue.h('h2', String(props.title ?? '')),
         Vue.h('p', String(props.description ?? '')),
-        ...(previouslyOpened.value ? [slots.body?.(), slots.footer?.()] : [])
+        ...(props.open ? [slots.body?.(), slots.footer?.()] : [])
       ])
     }
   })
-  for (const name of ['UButton', 'UCard', ...(options.detailPanel ? [] : ['UFormField', 'UInput'])])
+  for (const name of ['UButton', 'UCard', ...(options.detailPanel || options.realUnitForm ? [] : ['UFormField', 'UInput'])])
     app.component(name, passthrough)
   app.component('UDashboardToolbar', Vue.defineComponent({
     props: ['ui'],
@@ -285,7 +296,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
       return () => Vue.h('section', { role: 'alert' }, [Vue.h('p', String(props.title ?? '')), slots.actions?.()])
     }
   }))
-  if (options.detailPanel) {
+  if (options.detailPanel || options.realUnitForm) {
     app.component('UForm', Vue.defineComponent({
       props: ['state'],
       emits: ['submit'],
@@ -375,6 +386,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
     list,
     editor,
     requests,
+    get referenceMountCount() { return referenceMountCount },
     user,
     currentCompany,
     setAuthRefresh: (refresh: () => Promise<unknown>) => { authRefresh = refresh },
@@ -393,7 +405,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
 
 describe('ERP catalog shared resource authority', () => {
   it('exposes its permission-gated create action and keeps the list mounted through the focused editor lifecycle', async (t) => {
-    const resource = setupResource()
+    const resource = setupResource({ realUnitForm: true })
     t.after(resource.stop)
     const listRequest = resource.requests.find(request => request.url === '/erp/units?page=1')!
     listRequest.resolve({
@@ -405,6 +417,9 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.instance.createAction.allowed, true)
     assert.equal(resource.instance.createAction.label, 'Adicionar unidade')
     assert.equal(resource.editor.open.value, false, 'the editor starts closed')
+    assert.equal(descendants(resource.root).some(node => node.tag === 'input' && node.props.name === 'short_name'), false, 'the real form is not mounted while the editor is closed')
+    assert.equal(descendants(resource.root).some(node => node.props['data-reference-select'] === 'base_unit_id'), false, 'reference selectors are not mounted while the editor is closed')
+    assert.equal(resource.referenceMountCount, 0)
     const list = descendants(resource.root).find(node => node.props['data-row-count'] === '1')
     assert.ok(list, 'the list is rendered before an editor action')
 
@@ -412,6 +427,7 @@ describe('ERP catalog shared resource authority', () => {
     await resource.settle()
     assert.equal(resource.editor.open.value, true, 'the explicit navbar action opens create mode')
     assert.equal(resource.editor.mode.value, 'create')
+    assert.equal(resource.referenceMountCount, 1, 'opening creates one editor-session reference selector')
     assert.equal(isAttachedTo(resource.root, list), true, 'the list remains mounted while the editor is open')
     const listRegion = descendants(resource.root).find(node => node.props.class === 'space-y-4' && descendants(node).includes(list))
     assert.ok(listRegion)
@@ -425,11 +441,14 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.editor.open.value, false)
     assert.equal(resource.editor.record.value, null)
     assert.equal(isAttachedTo(resource.root, list), true)
+    assert.equal(descendants(resource.root).some(node => node.tag === 'input' && node.props.name === 'short_name'), false, 'cancel unmounts the form')
+    assert.equal(descendants(resource.root).some(node => node.props['data-reference-select'] === 'base_unit_id'), false, 'cancel unmounts reference selectors')
 
     resource.instance.createAction.trigger()
     await resource.settle()
-    const draft = descendants(resource.root).find(node => node.props['data-draft'] === 'short_name')
+    const draft = descendants(resource.root).find(node => node.tag === 'input' && node.props.name === 'short_name')
     assert.ok(draft)
+    assert.equal(draft.props.value, '', 'reopening starts with a fresh create draft')
     draft.props.onInput?.({ target: { value: 'Rascunho' } })
     const saving = resource.editor.save({ short_name: 'Rascunho', actual_name: 'Rascunho' })
     await resource.settle()
@@ -440,13 +459,36 @@ describe('ERP catalog shared resource authority', () => {
     await resource.settle()
     assert.equal(resource.editor.open.value, true, 'validation failures keep the native editor open')
     assert.equal(draft.props.value, 'Rascunho', 'the form draft remains mounted after a rejected save')
-    assert.equal(descendants(resource.root).some(node => node.props['data-field-error'] === 'short_name' && node.text === 'A sigla já está em uso.'), true)
+    assert.equal(descendants(resource.root).some(node => node.props['data-error'] === 'A sigla já está em uso.'), true, 'the real form displays the rejected field error')
     resource.editor.cancel()
     await resource.settle()
+
+    resource.instance.createAction.trigger()
+    await resource.settle()
+    const authorityDraft = descendants(resource.root).find(node => node.tag === 'input' && node.props.name === 'short_name')
+    assert.ok(authorityDraft)
+    authorityDraft.props.onInput?.({ target: { value: 'Rascunho protegido' } })
+    await resource.settle()
+    assert.equal(authorityDraft.props.value, 'Rascunho protegido')
 
     resource.currentCompany.value = { ...resource.currentCompany.value, permissions: ['erp.units.index'] }
     await resource.settle()
     assert.equal(resource.instance.createAction.allowed, false, 'the exposed action follows the current store grant')
+    assert.equal(resource.editor.open.value, false, 'same-company grant invalidation closes the editor session')
+    assert.equal(descendants(resource.root).some(node => node.tag === 'input' && node.props.name === 'short_name'), false, 'grant invalidation unmounts the real form')
+    assert.equal(descendants(resource.root).some(node => node.props['data-reference-select'] === 'base_unit_id'), false, 'grant invalidation unmounts reference selectors')
+    resource.instance.createAction.trigger()
+    await resource.settle()
+    assert.equal(resource.editor.open.value, false, 'the guarded navbar action cannot open after its grant is removed')
+
+    resource.currentCompany.value = { ...resource.currentCompany.value, permissions: ['erp.units.index', 'erp.units.store'] }
+    await resource.settle()
+    resource.instance.createAction.trigger()
+    await resource.settle()
+    const restoredDraft = descendants(resource.root).find(node => node.tag === 'input' && node.props.name === 'short_name')
+    assert.ok(restoredDraft)
+    assert.equal(restoredDraft.props.value, '', 'restoring a same-company grant opens a fresh form')
+    assert.equal(resource.referenceMountCount, 4, 'each opened editor session mounts a fresh reference selector')
   })
 
   it('keeps the real Contact notes panel draft and selected File across native-style detail tab switches', async (t) => {

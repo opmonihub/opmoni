@@ -166,6 +166,10 @@ async function focusEditorAfterMenuClose(event: Event) {
     editorRegion.value?.focus()
 }
 
+function preventNativeEditorFocusRestore(event: Event) {
+  event.preventDefault()
+}
+
 function rowActionItems(row: CatalogRow): DropdownMenuItem[][] {
   const actions: DropdownMenuItem[] = []
   if (canShow.value) {
@@ -420,7 +424,8 @@ defineExpose({ createAction })
     :title="mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}`"
     :description="mode === 'detail' ? 'Consulta do cadastro.' : 'Preencha os dados e salve para atualizar o cadastro.'"
     :dismissible="!isSaving"
-    :unmount-on-hide="false"
+    :unmount-on-hide="true"
+    :content="{ onCloseAutoFocus: preventNativeEditorFocusRestore }"
     :ui="{ content: 'w-full sm:max-w-3xl' }"
   >
     <template #body>
