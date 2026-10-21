@@ -15,12 +15,16 @@ const detailOpen = ref(false)
 const returnOpen = ref(false)
 const postOpen = ref(false)
 const modalAttempt = reactive({ create: 0, edit: 0, detail: 0, return: 0, xml: 0, post: 0 })
-const draft = ref<ErpPurchaseDraftPayload>(emptyDraft())
+const createDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
+const editDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
 const draftAuthority = ref(purchase.authorityGeneration.value)
 const returnEntry = ref({ quantities: {} as Record<string, string>, reason: '' })
 const returnEntryIdentity = ref('')
+let pendingReturnSourceId: number | null = null
+let pendingEditSourceId: number | null = null
 const xmlEstablishmentId = ref<number | null>(null)
 const editPurchaseId = ref<number | null>(null)
+const editAuthority = ref<number | null>(null)
 const editDraftIdentity = ref('')
 const xmlRefreshing = ref(false)
 const xmlUploading = ref(false)
@@ -84,21 +88,21 @@ function supplierName(row: ErpPurchase) {
   const snapshot = row.supplier_snapshot as { trade_name?: unknown, name?: unknown } | null
   return String(snapshot?.trade_name ?? snapshot?.name ?? `Fornecedor #${row.erp_contact_id}`)
 }
-function begin(kind: keyof typeof modalAttempt) {
+function begin(kind: keyof typeof modalAttempt, expectedSourceId?: number | null, allowMissingSource = false) {
   modalAttempt[kind]++
-  return { kind, attempt: modalAttempt[kind], authority: purchase.authorityGeneration.value, sourceId: purchase.selected.value?.id ?? null }
+  return { kind, attempt: modalAttempt[kind], authority: purchase.authorityGeneration.value, sourceId: expectedSourceId === undefined ? purchase.selected.value?.id ?? null : expectedSourceId, allowMissingSource }
 }
 function currentModal(token: ReturnType<typeof begin>) {
   return token.attempt === modalAttempt[token.kind]
     && token.authority === purchase.authorityGeneration.value
-    && (token.sourceId === null || token.sourceId === purchase.selected.value?.id)
+    && (token.sourceId === null || token.sourceId === purchase.selected.value?.id || (token.allowMissingSource && purchase.selected.value === null))
 }
 function startCreate() {
   if (!allowed('erp.purchases.store')) return
   begin('create')
   purchase.clearOperationNotice()
   if (draftAuthority.value !== purchase.authorityGeneration.value) {
-    draft.value = emptyDraft()
+    createDraft.value = emptyDraft()
     draftAuthority.value = purchase.authorityGeneration.value
   }
   createOpen.value = true
@@ -107,11 +111,12 @@ function startEdit(row: ErpPurchase) {
   if (!allowed('erp.purchases.update') || row.status !== 'draft') return
   begin('edit')
   editPurchaseId.value = row.id
+  editAuthority.value = purchase.authorityGeneration.value
   purchase.clearOperationNotice()
   const identity = `${purchase.authorityGeneration.value}:${row.id}:${row.draft_revision ?? 'none'}`
   if (editDraftIdentity.value !== identity) {
     editDraftIdentity.value = identity
-    draft.value = {
+    editDraft.value = {
       erp_establishment_id: row.erp_establishment_id,
       erp_contact_id: row.erp_contact_id,
       currency: row.currency,
@@ -125,8 +130,19 @@ function startEdit(row: ErpPurchase) {
         quantity: line.quantity,
         unit_cost: line.unit_cost,
         unit_conversion_factor: line.unit_conversion_factor,
-        discount_amount: line.discount_amount ?? '0.0000',
-        tax_amount: line.tax_amount ?? '0.0000'
+        discount_amount: line.product_snapshot?.amounts?.discount_amount ?? line.discount_amount ?? '0.0000',
+        tax_amount: line.product_snapshot?.amounts?.tax_amount ?? line.tax_amount ?? '0.0000',
+        erp_tax_rate_id: line.product_snapshot?.tax_rate?.id ?? null,
+        erp_operation_nature_id: line.product_snapshot?.operation_nature?.id ?? null,
+        accepted_amounts: line.product_snapshot?.amounts?.line_total
+          ? {
+              quantity: line.product_snapshot.amounts.quantity ?? line.quantity,
+              unit_cost: line.product_snapshot.amounts.unit_cost ?? line.unit_cost,
+              discount_amount: line.product_snapshot.amounts.discount_amount ?? line.discount_amount ?? '0.0000',
+              tax_amount: line.product_snapshot.amounts.tax_amount ?? line.tax_amount ?? '0.0000',
+              line_total: line.product_snapshot.amounts.line_total
+            }
+          : undefined
       }))
     }
   }
@@ -138,14 +154,20 @@ async function saveDraft(payload: ErpPurchaseDraftPayload, editing: boolean) {
   if (result !== null && currentModal(token)) {
     createOpen.value = false
     editOpen.value = false
-    if (!editing) draft.value = emptyDraft()
+    if (!editing) createDraft.value = emptyDraft()
     if (editing) editDraftIdentity.value = ''
   }
 }
 async function openEdit(row: ErpPurchase) {
-  const detail = await purchase.inspect(row.id)
-  if (!detail || detail.status !== 'draft' || !allowed('erp.purchases.update')) return
-  startEdit(detail)
+  pendingEditSourceId = row.id
+  try {
+    const detail = await purchase.inspect(row.id)
+    if (!detail || detail.status !== 'draft' || !allowed('erp.purchases.update')) return
+    startEdit(detail)
+    await nextTick()
+  } finally {
+    if (pendingEditSourceId === row.id) pendingEditSourceId = null
+  }
 }
 async function openDetail(row: ErpPurchase) {
   if (!allowed('erp.purchases.show')) return
@@ -240,14 +262,31 @@ function cancelXml() {
   purchase.cancelXmlPreview()
 }
 async function inspectReturnFromHistory(id: number) {
-  const result = await purchase.inspectReturn(id, purchase.selected.value?.id ?? null)
-  if (result) returnOpen.value = true
+  const sourceId = purchase.selected.value?.id ?? null
+  const token = begin('return', sourceId)
+  const result = await purchase.inspectReturn(id, sourceId)
+  await nextTick()
+  if (result && currentModal(token)) returnOpen.value = true
 }
 async function inspectReturnFromIndex(row: ErpPurchaseReturn) {
-  begin('return')
-  const result = await purchase.inspectReturn(row.id, purchase.selected.value?.id ?? null)
-  if (result) returnOpen.value = true
+  const sourceId = row.erp_purchase_id
+  const token = begin('return', sourceId, !allowed('erp.purchases.show'))
+  pendingReturnSourceId = sourceId
+  try {
+    const result = await purchase.inspectReturn(row.id, purchase.selected.value?.id ?? null)
+    await nextTick()
+    if (result && currentModal(token)) returnOpen.value = true
+  } finally {
+    if (pendingReturnSourceId === sourceId) pendingReturnSourceId = null
+  }
 }
+watch([createOpen, editOpen, returnOpen, postOpen], ([create, edit, returns, post], previous) => {
+  const kinds = ['create', 'edit', 'return', 'post'] as const
+  const current = [create, edit, returns, post]
+  current.forEach((isOpen, index) => {
+    if (previous[index] && !isOpen) begin(kinds[index]!)
+  })
+})
 watch(purchase.authorityGeneration, () => {
   for (const key of Object.keys(modalAttempt) as Array<keyof typeof modalAttempt>) begin(key)
   createOpen.value = false
@@ -256,9 +295,11 @@ watch(purchase.authorityGeneration, () => {
   returnOpen.value = false
   postOpen.value = false
   xmlEstablishmentId.value = null
-  draft.value = emptyDraft()
+  createDraft.value = emptyDraft()
+  editDraft.value = emptyDraft()
   draftAuthority.value = purchase.authorityGeneration.value
   editPurchaseId.value = null
+  editAuthority.value = null
   editDraftIdentity.value = ''
   returnEntry.value = { quantities: {}, reason: '' }
   returnEntryIdentity.value = ''
@@ -269,15 +310,28 @@ watch(purchase.authorityGeneration, () => {
 })
 watch(() => purchase.selected.value?.id, (id, previous) => {
   if (previous !== undefined && id !== previous) {
-    for (const key of ['edit', 'detail', 'return', 'post'] as const) begin(key)
-    editOpen.value = false
+    const expectedReturnTransition = id !== undefined && id === pendingReturnSourceId
+    const expectedEditTransition = id !== undefined && id === pendingEditSourceId
+    for (const key of ['detail', 'post'] as const) begin(key)
+    if (!expectedEditTransition) begin('edit')
+    if (!expectedReturnTransition) begin('return')
+    if (!expectedEditTransition) editOpen.value = false
     detailOpen.value = false
-    returnOpen.value = false
+    if (!expectedReturnTransition) returnOpen.value = false
     postOpen.value = false
     editDraftIdentity.value = ''
     returnEntry.value = { quantities: {}, reason: '' }
     returnEntryIdentity.value = ''
   }
+})
+watch(purchase.staleRevisionRefreshed, (result) => {
+  if (!result || !editOpen.value || editPurchaseId.value !== result.id || purchase.selected.value?.id !== result.id
+    || editAuthority.value !== purchase.authorityGeneration.value) return
+  editOpen.value = false
+  editAuthority.value = null
+  editDraftIdentity.value = ''
+  purchase.mutationError.value = 'A revisão desatualizada foi rejeitada. Reabra o rascunho para conferir a versão atual antes de editar novamente.'
+  begin('edit')
 })
 watch(() => route.hash, (hash) => {
   const area = areaFromHash(hash)
@@ -483,6 +537,7 @@ onMounted(() => {
         :loading="xmlUploading || purchase.mutating.value"
         :refreshing="xmlRefreshing"
         :error="purchase.mutationError.value || undefined"
+        :field-errors="purchase.fieldErrors.value"
         @upload="uploadXml"
         @refresh="refreshXml"
         @confirm="confirmXml"
@@ -546,7 +601,7 @@ onMounted(() => {
       <template #body>
         <ErpPurchaseForm
           :key="`create-${purchase.authorityGeneration.value}`"
-          v-model="draft"
+          v-model="createDraft"
           :suppliers="purchase.suppliers.value"
           :establishments="purchase.establishments.value"
           :variants="purchase.variants.value"
@@ -557,6 +612,15 @@ onMounted(() => {
           @submit="saveDraft($event, false)"
           @cancel="createOpen = false"
         />
+        <ErpPurchaseOperationRecovery
+          :message="purchase.mutationError.value"
+          :pending="Boolean(purchase.selectedOperation.value)"
+          :can-retry="purchase.canRetryExact.value"
+          :busy="purchase.mutating.value"
+          @reconcile="purchase.reconcile"
+          @retry="purchase.retryExact"
+          @dismiss="purchase.clearOperationNotice"
+        />
       </template>
     </UModal>
     <UModal v-model:open="editOpen" title="Editar rascunho" :ui="{ content: 'sm:max-w-5xl' }">
@@ -564,7 +628,7 @@ onMounted(() => {
         <ErpPurchaseForm
           v-if="purchase.selected.value"
           :key="`edit-${purchase.selected.value.id}-${purchase.selected.value.draft_revision}-${purchase.authorityGeneration.value}`"
-          v-model="draft"
+          v-model="editDraft"
           :suppliers="purchase.suppliers.value"
           :establishments="purchase.establishments.value"
           :variants="purchase.variants.value"
@@ -575,6 +639,15 @@ onMounted(() => {
           :xml-origin="Boolean(purchase.selected.value.source_access_key)"
           @submit="saveDraft($event, true)"
           @cancel="editOpen = false"
+        />
+        <ErpPurchaseOperationRecovery
+          :message="purchase.mutationError.value"
+          :pending="Boolean(purchase.selectedOperation.value)"
+          :can-retry="purchase.canRetryExact.value"
+          :busy="purchase.mutating.value"
+          @reconcile="purchase.reconcile"
+          @retry="purchase.retryExact"
+          @dismiss="purchase.clearOperationNotice"
         />
       </template>
     </UModal>
@@ -658,7 +731,13 @@ onMounted(() => {
             <div class="grid gap-3 text-sm sm:grid-cols-3">
               <p>Aberto original<br><strong class="tabular-nums">{{ money(purchase.selected.value.finance?.gross_original_due, purchase.selected.value.finance?.currency ?? purchase.selected.value.currency) }}</strong></p>
               <p>Crédito em aberto<br><strong class="tabular-nums">{{ money(purchase.selected.value.finance?.open_return_credit, purchase.selected.value.finance?.currency ?? purchase.selected.value.currency) }}</strong></p>
+              <p>Crédito oposto total<br><strong class="tabular-nums">{{ money(purchase.selected.value.finance?.opposite_return_credit, purchase.selected.value.finance?.currency ?? purchase.selected.value.currency) }}</strong></p>
               <p>Exposição líquida assinada<br><strong class="tabular-nums">{{ money(purchase.selected.value.finance?.net_exposure, purchase.selected.value.finance?.currency ?? purchase.selected.value.currency) }}</strong></p>
+              <p>Vencimento original<br><strong>{{ purchase.selected.value.finance?.original_due_on ?? 'Indisponível' }}</strong></p>
+              <p v-if="allowed('erp.obligations.index')">
+                Obrigação #{{ purchase.selected.value.finance?.original_obligation_id ?? '—' }} ·
+                <NuxtLink to="/erp/financeiro#obligations" class="text-primary underline">Ver obrigações</NuxtLink>
+              </p>
             </div>
             <p class="text-xs text-muted">
               Sem compensação ou reembolso automático. Os créditos do fornecedor permanecem separados dos pagamentos originais.
@@ -699,7 +778,7 @@ onMounted(() => {
     <UModal v-model:open="returnOpen" title="Devolução de fornecedor" :ui="{ content: 'sm:max-w-4xl' }">
       <template #body>
         <ErpPurchaseReturnForm
-          v-if="purchase.selected.value && purchase.selected.value.id === purchase.selectedReturn.value?.erp_purchase_id"
+          v-if="purchase.selected.value && (!purchase.selectedReturn.value || purchase.selected.value.id === purchase.selectedReturn.value.erp_purchase_id)"
           :key="`return-${purchase.selected.value.id}-${purchase.authorityGeneration.value}`"
           v-model="returnEntry"
           :purchase="purchase.selected.value"
@@ -713,7 +792,26 @@ onMounted(() => {
           @post="postReturn"
           @cancel="returnOpen = false; purchase.selectedReturn.value = null"
         />
-        <section v-else-if="purchase.selectedReturn.value" class="space-y-4 rounded-lg border border-default p-4" aria-label="Detalhes da devolução">
+        <ErpPurchaseOperationRecovery
+          v-if="purchase.selected.value && (!purchase.selectedReturn.value || purchase.selected.value.id === purchase.selectedReturn.value.erp_purchase_id)"
+          :message="purchase.mutationError.value"
+          :pending="Boolean(purchase.selectedOperation.value)"
+          :can-retry="purchase.canRetryExact.value"
+          :busy="purchase.mutating.value"
+          @reconcile="purchase.reconcile"
+          @retry="purchase.retryExact"
+          @dismiss="purchase.clearOperationNotice"
+        />
+        <section v-if="purchase.selectedReturn.value && (!purchase.selected.value || purchase.selected.value.id !== purchase.selectedReturn.value.erp_purchase_id)" class="space-y-4 rounded-lg border border-default p-4" aria-label="Detalhes da devolução">
+          <ErpPurchaseOperationRecovery
+            :message="purchase.mutationError.value"
+            :pending="Boolean(purchase.selectedOperation.value)"
+            :can-retry="purchase.canRetryExact.value"
+            :busy="purchase.mutating.value"
+            @reconcile="purchase.reconcile"
+            @retry="purchase.retryExact"
+            @dismiss="purchase.clearOperationNotice"
+          />
           <p class="text-sm text-muted">
             Devolução #{{ purchase.selectedReturn.value.id }} · compra de origem #{{ purchase.selectedReturn.value.erp_purchase_id }}
           </p>
@@ -743,6 +841,15 @@ onMounted(() => {
           <UAlert color="warning" title="Confirmação de estoque e financeiro">
             O lançamento registra o recebimento e cria a obrigação correspondente em uma única operação. Esta ação não pode ser desfeita pela edição do documento.
           </UAlert>
+          <ErpPurchaseOperationRecovery
+            :message="purchase.mutationError.value"
+            :pending="Boolean(purchase.selectedOperation.value)"
+            :can-retry="purchase.canRetryExact.value"
+            :busy="purchase.mutating.value"
+            @reconcile="purchase.reconcile"
+            @retry="purchase.retryExact"
+            @dismiss="purchase.clearOperationNotice"
+          />
           <p class="text-sm">
             Compra #{{ purchase.selected.value.id }} · total {{ money(purchase.selected.value.total_amount, purchase.selected.value.currency) }}
           </p>

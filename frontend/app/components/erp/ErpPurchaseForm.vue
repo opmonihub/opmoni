@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ErpPurchaseDraftLine, ErpPurchaseDraftPayload, ErpPurchaseEstablishment, ErpPurchaseSupplier, ErpPurchaseUnit, ErpPurchaseVariant } from '#shared/types/erpBusiness'
-import { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor } from '#shared/utils/erpPurchase'
+import { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal } from '#shared/utils/erpPurchase'
 
 const props = defineProps<{
   suppliers: ErpPurchaseSupplier[]
@@ -43,16 +43,34 @@ function displayedBaseQuantity(line: ErpPurchaseDraftLine): string {
   }
 }
 function lineTotal(line: ErpPurchaseDraftLine): string {
+  const accepted = line.accepted_amounts
+  const unchangedSourceBasis = props.xmlOrigin && accepted !== undefined
+    && samePurchaseDecimal(line.quantity, accepted.quantity)
+    && samePurchaseDecimal(line.unit_cost, accepted.unit_cost)
+    && samePurchaseDecimal(line.discount_amount || '0.0000', accepted.discount_amount)
+  if (unchangedSourceBasis) {
+    const tax = line.tax_amount || '0.0000'
+    if (line.erp_tax_rate_id && !samePurchaseDecimal(tax, accepted.tax_amount)) return '—'
+    try {
+      return replacePurchaseTax(accepted.line_total, accepted.tax_amount, tax)
+    } catch {
+      return '—'
+    }
+  }
+  if (line.erp_tax_rate_id) return '—'
   try {
     return calculatePurchaseLineTotal(line.quantity, line.unit_cost, line.discount_amount || '0.0000', line.tax_amount || '0.0000')
   } catch {
     return '—'
   }
 }
-const totalAmount = computed(() => draft.value.lines.reduce((sum, line) => {
-  const amount = lineTotal(line)
-  return amount === '—' ? sum : addPurchaseMoney(sum, amount)
-}, '0.0000'))
+const totalAmount = computed(() => {
+  if (draft.value.lines.some(line => lineTotal(line) === '—')) return null
+  return draft.value.lines.reduce((sum, line) => {
+    const amount = lineTotal(line)
+    return amount === '—' ? sum : addPurchaseMoney(sum, amount)
+  }, '0.0000')
+})
 function selectVariant(line: ErpPurchaseDraftLine, variantId: number | null | undefined) {
   line.erp_product_variant_id = typeof variantId === 'number' ? variantId : null
   const variant = variantFor(line)
@@ -101,7 +119,16 @@ function submit() {
       if (!factor) throw new Error(`Selecione uma unidade compatível no item ${index + 1}.`)
       const quantity = convertPurchaseQuantity(line.quantity, factor)
       if (quantity === '0.0000') throw new Error(`A quantidade do item ${index + 1} deve ser positiva.`)
-      calculatePurchaseLineTotal(line.quantity, line.unit_cost, line.discount_amount || '0.0000', line.tax_amount || '0.0000')
+      const accepted = line.accepted_amounts
+      const unchangedSourceBasis = Boolean(props.xmlOrigin && accepted
+        && samePurchaseDecimal(line.quantity, accepted.quantity)
+        && samePurchaseDecimal(line.unit_cost, accepted.unit_cost)
+        && samePurchaseDecimal(line.discount_amount || '0.0000', accepted.discount_amount))
+      if (!unchangedSourceBasis) calculatePurchaseLineTotal(line.quantity, line.unit_cost, line.discount_amount || '0.0000', line.tax_amount || '0.0000')
+      const unchangedAcceptedBasis = Boolean(props.xmlOrigin && accepted
+        && samePurchaseDecimal(line.quantity, accepted.quantity)
+        && samePurchaseDecimal(line.unit_cost, accepted.unit_cost)
+        && samePurchaseDecimal(line.discount_amount || '0.0000', accepted.discount_amount))
       return {
         ...(line.id ? { id: line.id } : {}),
         erp_product_variant_id: line.erp_product_variant_id,
@@ -111,7 +138,9 @@ function submit() {
         unit_cost: line.unit_cost,
         unit_conversion_factor: factor,
         discount_amount: line.discount_amount || '0.0000',
-        tax_amount: line.tax_amount || '0.0000'
+        ...((!line.erp_tax_rate_id || unchangedAcceptedBasis) ? { tax_amount: line.tax_amount || '0.0000' } : {}),
+        ...(line.erp_tax_rate_id ? { erp_tax_rate_id: line.erp_tax_rate_id } : {}),
+        ...(line.erp_operation_nature_id ? { erp_operation_nature_id: line.erp_operation_nature_id } : {})
       }
     })
     const payload: ErpPurchaseDraftPayload = {
@@ -120,7 +149,7 @@ function submit() {
       currency: draft.value.currency,
       document_no: draft.value.document_no.trim(),
       ...(draft.value.draft_revision === undefined ? {} : { draft_revision: draft.value.draft_revision }),
-      expected_total: totalAmount.value,
+      ...(totalAmount.value === null ? {} : { expected_total: totalAmount.value }),
       lines
     }
     emit('submit', payload)
@@ -170,6 +199,7 @@ defineExpose({ submit, totalAmount, displayedBaseQuantity, localError })
       <UFormField label="Número do documento" name="document_no" :error="fieldErrors?.document_no">
         <UInput
           v-model="draft.document_no"
+          aria-label="Número do documento"
           maxlength="64"
           :disabled="loading || status === 'posted'"
           class="w-full"
@@ -315,7 +345,7 @@ defineExpose({ submit, totalAmount, displayedBaseQuantity, localError })
       </div>
       <div class="flex justify-end border-t border-default pt-3">
         <p class="text-right text-sm text-muted">
-          Total estimado<br><strong class="text-lg text-highlighted tabular-nums">{{ draft.currency }} {{ formatPurchaseDecimal(totalAmount) }}</strong>
+          Total estimado<br><strong class="text-lg text-highlighted tabular-nums">{{ totalAmount === null ? 'Calculado pelo servidor' : `${draft.currency} ${formatPurchaseDecimal(totalAmount)}` }}</strong>
         </p>
       </div>
     </section>

@@ -11,6 +11,7 @@ const props = defineProps<{
   loading?: boolean
   refreshing?: boolean
   error?: string
+  fieldErrors?: Record<string, string>
 }>()
 const state = defineModel<ErpPurchasePreviewState | null>({ required: true })
 const establishmentId = defineModel<number | null>('establishmentId', { required: true })
@@ -203,7 +204,7 @@ function amount(value: string | null | undefined, currency: string) {
             <span v-if="line.amounts" class="tabular-nums">Total {{ amount(line.amounts.line_total, state.preview.total.currency ?? 'BRL') }}</span>
           </div>
           <div class="grid gap-3 sm:grid-cols-3">
-            <UFormField label="Produto/variante">
+            <UFormField label="Produto/variante" :name="`xml.items.${index}.erp_product_variant_id`" :error="fieldErrors?.[`xml.items.${index}.erp_product_variant_id`]">
               <UInputMenu
                 :model-value="state.mappings[index]?.erp_product_variant_id"
                 :items="variantOptions"
@@ -214,7 +215,7 @@ function amount(value: string | null | undefined, currency: string) {
                 @update:model-value="setMapping(index, 'erp_product_variant_id', $event)"
               />
             </UFormField>
-            <UFormField label="Unidade do estoque">
+            <UFormField label="Unidade do estoque" :name="`xml.items.${index}.erp_unit_id`" :error="fieldErrors?.[`xml.items.${index}.erp_unit_id`]">
               <UInputMenu
                 :model-value="state.mappings[index]?.erp_unit_id ?? undefined"
                 :items="compatibleUnits(state.mappings[index]?.erp_product_variant_id ?? 0).map(unit => ({ id: unit.id, label: unit.short_name, description: unit.actual_name }))"
@@ -226,7 +227,7 @@ function amount(value: string | null | undefined, currency: string) {
                 @update:model-value="setMapping(index, 'erp_unit_id', $event)"
               />
             </UFormField>
-            <UFormField label="Fator de conversão" :name="`xml.items.${index}.unit_conversion_factor`">
+            <UFormField label="Fator de conversão" :name="`xml.items.${index}.unit_conversion_factor`" :error="fieldErrors?.[`xml.items.${index}.unit_conversion_factor`]">
               <UInput
                 :model-value="state.mappings[index]?.unit_conversion_factor"
                 type="text"

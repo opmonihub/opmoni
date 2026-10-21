@@ -75,6 +75,18 @@ export function addPurchaseMoney(left: string, right: string): string {
   return decimalString(scaledInteger(left, 4, 'Valor') + scaledInteger(right, 4, 'Valor'), 4)
 }
 
+export function replacePurchaseTax(total: string, previousTax: string, nextTax: string): string {
+  return decimalString(scaledInteger(total, 4, 'Valor') - scaledInteger(previousTax, 4, 'Imposto') + scaledInteger(nextTax, 4, 'Imposto'), 4)
+}
+
+export function samePurchaseDecimal(left: string, right: string, scale = 4): boolean {
+  try {
+    return scaledInteger(left, scale, 'Valor') === scaledInteger(right, scale, 'Valor')
+  } catch {
+    return false
+  }
+}
+
 export function buildPurchaseReturnPayload(
   source: ErpPurchaseReturnSource,
   selected: Record<string, string>,

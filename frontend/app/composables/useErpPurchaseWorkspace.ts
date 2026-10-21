@@ -9,11 +9,11 @@ import type {
   ErpPurchaseXmlPreview,
   ErpPurchaseXmlMapping
 } from '#shared/types/erpBusiness'
-import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
+import { apiErrorMessage, apiFieldErrors, apiMessage, apiStatus } from '~/composables/useApiError'
 import { buildPurchaseReturnPayload, buildXmlConfirmationItems, type ErpPurchaseReturnSource } from '#shared/utils/erpPurchase'
 import { createPendingOperation, pendingOperationLookup, readPendingOperation, writePendingOperation, type ErpPendingOperation } from '#shared/utils/erpOperationRecovery'
 
-type PurchaseOperation = ErpPendingOperation
+type PurchaseOperation = ErpPendingOperation & { stale_revision_rejection?: number }
 type PageResult<T> = { data: T[], meta?: { current_page: number, last_page: number, per_page: number, total: number } }
 type PurchaseAction = string
 
@@ -75,6 +75,7 @@ export function useErpPurchaseWorkspace() {
   const selectedOperation = ref<PurchaseOperation | null>(null)
   const needsReconciliation = ref(false)
   const canRetryExact = ref(false)
+  const staleRevisionRefreshed = ref<{ id: number, revision: number } | null>(null)
   const authorityGeneration = ref(0)
   const deniedActions = ref(new Set<string>())
   const authorityNeedsRefresh = ref(false)
@@ -84,6 +85,7 @@ export function useErpPurchaseWorkspace() {
   let listSequence = 0
   let returnListSequence = 0
   let detailSequence = 0
+  let returnSequence = 0
   let previewSequence = 0
   let authorityRefreshEpoch = 0
   const grants = computed(() => currentCompany.value?.permissions ?? [])
@@ -116,6 +118,7 @@ export function useErpPurchaseWorkspace() {
     listSequence++
     returnListSequence++
     detailSequence++
+    returnSequence++
     previewSequence++
     authorityGeneration.value++
     purchases.value = []
@@ -142,6 +145,7 @@ export function useErpPurchaseWorkspace() {
     selectedOperation.value = null
     needsReconciliation.value = false
     canRetryExact.value = false
+    staleRevisionRefreshed.value = null
   }
   function readPending() {
     if (typeof sessionStorage === 'undefined') return null
@@ -180,12 +184,24 @@ export function useErpPurchaseWorkspace() {
   function persistPreview() {
     if (typeof sessionStorage === 'undefined') return
     try {
-      if (previewState.value) sessionStorage.setItem(previewStorageKey.value, JSON.stringify(previewState.value))
-      else sessionStorage.removeItem(previewStorageKey.value)
+      if (previewState.value) {
+        if (previewState.value.preview.det.length > 500 || previewState.value.mappings.length > 500) {
+          sessionStorage.removeItem(previewStorageKey.value)
+          return
+        }
+        const serialized = JSON.stringify(previewState.value)
+        if (serialized.length > 262144) {
+          sessionStorage.removeItem(previewStorageKey.value)
+          mutationError.value = 'O mapeamento XML excede o limite de armazenamento da sessão; mantenha esta aba aberta.'
+          return
+        }
+        sessionStorage.setItem(previewStorageKey.value, serialized)
+      } else sessionStorage.removeItem(previewStorageKey.value)
     } catch {
       mutationError.value = 'Não foi possível guardar a prévia XML nesta sessão. Mantenha esta aba aberta para preservar o mapeamento.'
     }
   }
+  watch(previewState, persistPreview, { deep: true })
   function restorePreview() {
     if (typeof sessionStorage === 'undefined') return
     if (!allowed('erp.purchases.xml-preview.read')) {
@@ -397,6 +413,7 @@ export function useErpPurchaseWorkspace() {
   }
   function closeDetail() {
     detailSequence++
+    returnSequence++
     selected.value = null
     selectedReturn.value = null
     detailError.value = ''
@@ -460,11 +477,41 @@ export function useErpPurchaseWorkspace() {
       fieldErrors.value = apiFieldErrors(error)
       const status = apiStatus(error)
       if (await handleDenial(action, error, token, true)) return null
+      const rawFieldErrors = fieldErrors.value
+      const submittedPayload = frozen.payload
+      if (action === 'erp.purchase-returns.store' && Array.isArray(submittedPayload.lines)) {
+        const translated = { ...rawFieldErrors }
+        submittedPayload.lines.forEach((line, index) => {
+          if (typeof line !== 'object' || line === null) return
+          const sourceId = (line as { source_line_id?: unknown }).source_line_id
+          const errorKey = `lines.${index}.quantity`
+          if (Number.isSafeInteger(sourceId) && rawFieldErrors[errorKey]) translated[`lines.${sourceId}.quantity`] = rawFieldErrors[errorKey]!
+        })
+        fieldErrors.value = translated
+      }
+      if (action === 'erp.purchases.xml-confirm' && Array.isArray(submittedPayload.items)) {
+        const translated = { ...rawFieldErrors }
+        submittedPayload.items.forEach((item, index) => {
+          if (typeof item !== 'object' || item === null) return
+          const line = (item as { line?: unknown }).line
+          if (!Number.isSafeInteger(line)) return
+          for (const field of ['erp_product_variant_id', 'erp_unit_id', 'unit_conversion_factor']) {
+            const error = rawFieldErrors[`items.${index}.${field}`]
+            if (error) translated[`xml.items.${Number(line) - 1}.${field}`] = error
+          }
+        })
+        fieldErrors.value = translated
+      }
       if (status === 422) {
         const cleared = storePending(null)
         needsReconciliation.value = !cleared
         mutationError.value = errorMessage(error, 'Revise os campos indicados antes de tentar novamente.')
       } else if (status === 409) {
+        const revision = payload.draft_revision
+        if (!existing && (action === 'erp.purchases.update' || action === 'erp.purchases.post')
+          && apiMessage(error) === 'Rascunho alterado.' && Number.isSafeInteger(revision) && Number(revision) > 0) {
+          storePending({ ...frozen, stale_revision_rejection: Number(revision) })
+        }
         needsReconciliation.value = true
         mutationError.value = errorMessage(error, 'O sistema exige conferência da operação e dos dados atuais antes de continuar.')
       } else {
@@ -511,7 +558,7 @@ export function useErpPurchaseWorkspace() {
       persistPreview()
       return result.data
     } catch (error) {
-      if (!current(token, generation)) return null
+      if (!current(token, generation) || sequence !== previewSequence) return null
       mutationError.value = errorMessage(error, 'Não foi possível conferir o XML. Selecione-o novamente para tentar outra prévia.')
       await handleDenial('erp.purchases.xml-preview', error, token)
       return null
@@ -588,24 +635,25 @@ export function useErpPurchaseWorkspace() {
     if (!allowed('erp.purchase-returns.show')) return null
     const token = context.capture()
     const generation = requestGeneration
-    const sequence = detailSequence
+    const sequence = ++returnSequence
+    const currentReturn = () => current(token, generation) && returnSequence === sequence
     try {
       const result = await api<{ data: ErpPurchaseReturn }>(`/erp/purchase-returns/${id}`)
-      if (!current(token, generation) || detailSequence !== sequence || (selected.value?.id ?? null) !== expectedSourceId) return null
+      if (!currentReturn() || (selected.value?.id ?? null) !== expectedSourceId) return null
       const sourceId = result.data.erp_purchase_id
       if (selected.value?.id !== sourceId) {
         if (allowed('erp.purchases.show')) {
           const source = await inspect(sourceId)
-          if (!current(token, generation) || !source || source.id !== sourceId) return null
-        } else if (!current(token, generation)) {
+          if (!currentReturn() || !source || source.id !== sourceId) return null
+        } else if (!currentReturn()) {
           return null
         }
       }
-      if (!current(token, generation) || (selected.value && selected.value.id !== sourceId)) return null
+      if (!currentReturn() || (selected.value && selected.value.id !== sourceId)) return null
       selectedReturn.value = result.data
       return result.data
     } catch (error) {
-      if (!current(token, generation)) return null
+      if (!currentReturn()) return null
       mutationError.value = errorMessage(error, 'Não foi possível carregar a devolução atual.')
       await handleDenial('erp.purchase-returns.show', error, token)
       return null
@@ -623,7 +671,7 @@ export function useErpPurchaseWorkspace() {
     return result
   }
   async function reconcile() {
-    const pending = selectedOperation.value ?? readPending()
+    const pending = (selectedOperation.value ?? readPending()) as PurchaseOperation | null
     if (!pending || pending.identity !== operationIdentity(pending.operation) || mutating.value) return
     selectedOperation.value = pending
     const token = context.capture()
@@ -662,6 +710,41 @@ export function useErpPurchaseWorkspace() {
     } catch (error) {
       if (!current(token, generation)) return
       if (apiStatus(error) === 404) {
+        const record = error as { data?: { code?: unknown }, response?: { _data?: { code?: unknown } } }
+        const lookupCode = record.data?.code ?? record.response?._data?.code
+        if (lookupCode === 'operation_not_recorded' && Number.isSafeInteger(pending.stale_revision_rejection)
+          && (pending.operation === 'erp.purchases.update' || pending.operation === 'erp.purchases.post')
+          && allowed('erp.purchases.show')) {
+          const purchaseId = Number(pending.path.match(/^\/erp\/purchases\/(\d+)(?:\/post)?$/)?.[1])
+          if (Number.isSafeInteger(purchaseId) && purchaseId > 0) {
+            try {
+              const latest = await api<{ data: ErpPurchase }>('/erp/purchases/' + purchaseId)
+              if (!current(token, generation) || selectedOperation.value?.key !== pending.key) return
+              if (latest.data.id === purchaseId && latest.data.status === 'draft'
+                && Number.isSafeInteger(latest.data.draft_revision)
+                && latest.data.draft_revision !== pending.stale_revision_rejection) {
+                const cleared = storePending(null)
+                needsReconciliation.value = !cleared
+                canRetryExact.value = false
+                mutationError.value = cleared
+                  ? 'O servidor rejeitou a revisão desatualizada; a compra atual foi recarregada. Revise os dados antes de tentar novamente.'
+                  : 'A revisão desatualizada foi rejeitada e a compra atual foi recarregada, mas a identificação local não pôde ser removida.'
+                if (detailSequence === detailAtStart && (selected.value?.id ?? null) === selectionAtStart && selected.value?.id === purchaseId)
+                  selected.value = latest.data
+                staleRevisionRefreshed.value = { id: purchaseId, revision: latest.data.draft_revision! }
+                return
+              }
+              mutationError.value = 'A compra atual não confirmou uma nova revisão. Mantenha a operação guardada e consulte novamente.'
+              return
+            } catch (refreshError) {
+              if (!current(token, generation)) return
+              const denied = await handleDenial('erp.purchases.show', refreshError, token)
+              if (denied || !current(token, generation)) return
+              mutationError.value = errorMessage(refreshError, 'Não foi possível confirmar a revisão atual. A operação original continua guardada.')
+              return
+            }
+          }
+        }
         canRetryExact.value = true
         needsReconciliation.value = true
         mutationError.value = 'A consulta não encontrou um registro concluído. Repita apenas o mesmo conteúdo com a mesma identificação.'
@@ -721,14 +804,15 @@ export function useErpPurchaseWorkspace() {
     requestGeneration++
     listSequence++
     detailSequence++
+    returnSequence++
     previewSequence++
   })
 
   return {
     purchases, returns, meta, returnMeta, returnFilters, suppliers, establishments, variants, units, selected, selectedReturn, previewState,
     listLoading, returnsLoading, referencesLoading, mutating, loadingDetail, pageError, referenceError, mutationError, detailError, fieldErrors,
-    selectedOperation, needsReconciliation, canRetryExact, authorityGeneration, filters, allowed,
+    selectedOperation, needsReconciliation, canRetryExact, staleRevisionRefreshed, authorityGeneration, filters, allowed,
     load, loadReturns, loadReferences, inspect, closeDetail, saveDraft, postReceipt, inspectXml, refreshXmlPreview, cancelXmlPreview, confirmXml,
-    createReturn, inspectReturn, postReturn, reconcile, retryExact, clearOperationNotice
+    createReturn, inspectReturn, postReturn, reconcile, retryExact, clearOperationNotice, restorePreview
   }
 }

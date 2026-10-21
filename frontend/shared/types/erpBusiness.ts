@@ -175,7 +175,18 @@ export interface ErpPurchaseLine {
   line_total: string
   discount_amount?: string | null
   tax_amount?: string | null
-  product_snapshot?: Record<string, unknown> | null
+  product_snapshot?: {
+    amounts?: {
+      quantity?: string
+      unit_cost?: string
+      discount_amount?: string
+      tax_amount?: string
+      line_total?: string
+    }
+    tax_rate?: { id?: number | null } | null
+    operation_nature?: { id?: number | null } | null
+    [key: string]: unknown
+  } | null
 }
 
 export interface ErpPurchaseDraftLine {
@@ -187,7 +198,16 @@ export interface ErpPurchaseDraftLine {
   unit_cost: string
   unit_conversion_factor: string
   discount_amount: string
-  tax_amount: string
+  tax_amount?: string
+  erp_tax_rate_id?: number | null
+  erp_operation_nature_id?: number | null
+  accepted_amounts?: {
+    quantity: string
+    unit_cost: string
+    discount_amount: string
+    tax_amount: string
+    line_total: string
+  }
 }
 
 export interface ErpPurchaseDraftPayload {
@@ -224,6 +244,7 @@ export interface ErpPurchaseFinanceProjection {
   original_obligation_id: number | null
   gross_original_due: ErpMoney | null
   original_principal?: ErpMoney
+  original_due_on?: string | null
   opposite_return_credit: ErpMoney | null
   open_return_credit: ErpMoney | null
   net_exposure: ErpMoney | null

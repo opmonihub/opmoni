@@ -158,6 +158,7 @@ function submit() {
             <UInput
               v-model="quantities[String(line.source_line_id)]"
               type="text"
+              :aria-label="`Quantidade a devolver da linha ${line.source_line_id}`"
               inputmode="decimal"
               autocomplete="off"
               placeholder="0.0000"
@@ -170,6 +171,7 @@ function submit() {
       <UFormField label="Motivo da devolução" name="reason" :error="fieldErrors?.reason">
         <UTextarea
           v-model="reason"
+          aria-label="Motivo da devolução"
           maxlength="2000"
           :disabled="loading || locked || purchase.status !== 'posted'"
           class="w-full"
