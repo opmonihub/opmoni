@@ -11,6 +11,7 @@ use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalCertificate;
+use App\Models\Erp\Fiscal\ErpFiscalConfigurationRevision;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -143,6 +144,84 @@ class ErpFiscalIssuerConfigurationTest extends TestCase
         $this->assertNotSame($firstRevision, $second->json('data.revision_id'));
         $this->assertDatabaseCount('erp_fiscal_configuration_revisions', 2);
         $this->assertSame(self::VALID_CNPJ, $context['establishment']->fresh()->cnpj);
+    }
+
+    public function test_configuration_edit_preserves_only_omitted_transport_in_the_same_environment_and_included_model(): void
+    {
+        $context = $this->ownerContext();
+        $csrf = $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        $headers = [...$context['headers'], 'X-CSRF-Token' => $csrf];
+        $url = '/api/v1/erp/fiscal/configuration/'.$context['establishment']->id;
+        $configuration = [
+            'environment' => 'homologation',
+            'issuer' => ['tax_regime' => 3, 'state_registration' => '110042490114', 'uf' => 'SP',
+                'address' => ['street' => 'Rua Um', 'number' => '1', 'district' => 'Centro', 'city_code' => '3550308', 'city_name' => 'São Paulo', 'zip_code' => '01001000']],
+            'models' => [
+                '57' => ['series' => 1, 'next_number' => 1, 'transport' => ['sender' => ['cnpj' => '11222333000181', 'legal_name' => 'Private sender'], 'route' => ['origin_uf' => 'SP', 'destination_uf' => 'RJ']]],
+                '58' => ['series' => 1, 'next_number' => 1, 'transport' => ['driver' => ['cpf' => '12345678909', 'name' => 'Private driver'], 'vehicle' => ['plate' => 'ABC1D23']]],
+            ],
+        ];
+        $created = $this->withHeaders($headers)->patchJson($url, $configuration)->assertOk();
+        $first = ErpFiscalConfigurationRevision::findOrFail($created->json('data.revision_id'));
+        $original = $first->only(['configuration', 'configuration_sha256']);
+        $this->withHeaders($context['headers'])->getJson($url)->assertOk()
+            ->assertJsonPath('data.models.57.transport_prerequisites', ['sender', 'route'])
+            ->assertJsonPath('data.models.58.transport_prerequisites', ['vehicle', 'driver'])
+            ->assertJsonMissingPath('data.models.57.transport')->assertJsonMissingPath('data.models.58.transport')
+            ->assertDontSee('Private sender')->assertDontSee('Private driver')->assertDontSee('12345678909');
+
+        $edit = $configuration;
+        unset($edit['models']['57']['transport'], $edit['models']['58']['transport']);
+        $edit['issuer']['state_registration'] = '110042490115';
+        $edit['models']['57']['series'] = 2;
+        $edit['models']['57']['next_number'] = 11;
+        $updated = $this->withHeaders($headers)->patchJson($url, $edit)->assertOk();
+        $second = ErpFiscalConfigurationRevision::findOrFail($updated->json('data.revision_id'));
+        $this->assertNotSame($first->id, $second->id);
+        foreach (['57', '58'] as $model) {
+            $this->assertSame($original['configuration']['models'][$model]['transport'], $second->configuration['models'][$model]['transport'] ?? null);
+        }
+        $this->assertSame('110042490115', $second->configuration['issuer']['state_registration']);
+        $this->assertSame(11, app(ErpFiscalNumberAllocator::class)->nextNumber($context['company']->id, '57', 'homologation', 2));
+        $this->assertSame(hash('sha256', json_encode($second->configuration, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)), $second->configuration_sha256);
+        $this->assertSame($original, $first->fresh()->only(array_keys($original)));
+
+        $clear = $edit;
+        $clear['models']['57']['transport'] = [];
+        $cleared = $this->withHeaders($headers)->patchJson($url, $clear)->assertOk();
+        $third = ErpFiscalConfigurationRevision::findOrFail($cleared->json('data.revision_id'));
+        $this->assertSame([], $third->configuration['models']['57']['transport']);
+        $this->assertSame($original['configuration']['models']['58']['transport'], $third->configuration['models']['58']['transport']);
+
+        $replacement = $clear;
+        $replacement['models']['57']['transport'] = ['route' => ['origin_uf' => 'MG']];
+        $replaced = $this->withHeaders($headers)->patchJson($url, $replacement)->assertOk();
+        $fourth = ErpFiscalConfigurationRevision::findOrFail($replaced->json('data.revision_id'));
+        $this->assertSame(['route' => ['origin_uf' => 'MG']], $fourth->configuration['models']['57']['transport']);
+        $this->assertSame([], $third->fresh()->configuration['models']['57']['transport']);
+
+        $production = [...$edit, 'environment' => 'production'];
+        $switched = $this->withHeaders($headers)->patchJson($url, $production)->assertOk();
+        $fifth = ErpFiscalConfigurationRevision::findOrFail($switched->json('data.revision_id'));
+        foreach (['57', '58'] as $model) {
+            $this->assertArrayNotHasKey('transport', $fifth->configuration['models'][$model]);
+        }
+        $this->assertSame(11, app(ErpFiscalNumberAllocator::class)->nextNumber($context['company']->id, '57', 'production', 2));
+
+        $removed = $edit;
+        unset($removed['models']['58']);
+        $removed['models']['57']['transport'] = ['route' => ['origin_uf' => 'RS']];
+        $response = $this->withHeaders($headers)->patchJson($url, $removed)->assertOk()->assertJsonPath('data.models.58.series', null)->assertJsonPath('data.models.58.transport_prerequisites', []);
+        $this->assertContains('model_configuration_missing', $response->json('data.models.58.readiness.blockers'));
+        $sixth = ErpFiscalConfigurationRevision::findOrFail($response->json('data.revision_id'));
+        $this->assertArrayNotHasKey('58', $sixth->configuration['models']);
+        unset($removed['models']['57']['transport']);
+        $response = $this->withHeaders($headers)->patchJson($url, $removed)->assertOk()->assertJsonPath('data.models.58.series', null)->assertJsonPath('data.models.58.transport_prerequisites', []);
+        $this->assertContains('model_configuration_missing', $response->json('data.models.58.readiness.blockers'));
+        $seventh = ErpFiscalConfigurationRevision::findOrFail($response->json('data.revision_id'));
+        $this->assertArrayNotHasKey('58', $seventh->configuration['models']);
+        $this->assertSame(['route' => ['origin_uf' => 'RS']], $seventh->configuration['models']['57']['transport']);
+        $this->assertSame($original, $first->fresh()->only(array_keys($original)));
     }
 
     public function test_readiness_exposes_live_shared_number_and_model_blockers_without_transport_source_details(): void

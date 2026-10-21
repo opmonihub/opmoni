@@ -32,13 +32,21 @@ class ErpFiscalConfigurationRevisionService
             $previousRevision = $owner->current_revision_id === null
                 ? null
                 : ErpFiscalConfigurationRevision::query()->whereKey($owner->current_revision_id)->first();
-            $this->assertOperationNatures($establishment, $configuration);
-            $this->initializeSequences($establishment, $configuration);
-
+            if ($previousRevision?->environment === $configuration['environment']) {
+                $previousModels = $previousRevision->configuration['models'] ?? [];
+                foreach (['57', '58'] as $model) {
+                    if (isset($configuration['models'][$model]) && ! array_key_exists('transport', $configuration['models'][$model])
+                        && array_key_exists('transport', $previousModels[$model] ?? [])) {
+                        $configuration['models'][$model]['transport'] = $previousModels[$model]['transport'];
+                    }
+                }
+            }
             if (isset($configuration['models']['65']['nfce_qr']['version'])) {
                 $configuration['models']['65']['nfce_qr']['version'] = (int) $configuration['models']['65']['nfce_qr']['version'];
             }
             $canonical = $this->sortAssociativeKeys($configuration);
+            $this->assertOperationNatures($establishment, $canonical);
+            $this->initializeSequences($establishment, $canonical);
             $json = json_encode($canonical, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $revision = ErpFiscalConfigurationRevision::query()->create([
                 'erp_fiscal_configuration_id' => $owner->id,
