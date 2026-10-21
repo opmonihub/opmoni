@@ -210,8 +210,6 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
       >
         <span class="hidden sm:inline">Abrir sessão</span>
       </UButton>
-      <CompanyMenu class="min-w-0 max-w-40 lg:hidden" />
-      <UserMenu collapsed class="lg:hidden" />
     </template>
     <template #toolbar>
       <UNavigationMenu
