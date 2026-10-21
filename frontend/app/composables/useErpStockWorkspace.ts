@@ -35,6 +35,7 @@ const operationRoutes: Record<string, string | RegExp> = {
   'erp.stock.transfers.reverse': /^\/erp\/stock\/transfers\/\d+\/reverse$/,
   'erp.stock.movements.reverse': /^\/erp\/stock\/movements\/\d+\/reverse$/
 }
+const legacyTransferNeedsReconciliation = 'Transferência antiga exige conciliação.'
 
 export function erpStockActionAllowed(grants: readonly string[] | undefined, role: string | undefined, action: string) {
   return stockActionAllowed(grants, role, action)
@@ -108,6 +109,11 @@ export function useErpStockWorkspace() {
     const record = error as { data?: unknown, response?: { _data?: unknown } }
     const data = record.data ?? record.response?._data
     return typeof data === 'object' && data !== null && (data as { code?: unknown }).code === 'company_context_changed'
+  }
+  function isKnownLegacyTransferRejection(action: string, error: unknown) {
+    return action === 'erp.stock.transfers.reverse'
+      && apiStatus(error) === 409
+      && errorMessage(error, '') === legacyTransferNeedsReconciliation
   }
   function clearPrivateState() {
     requestGeneration++
@@ -439,8 +445,7 @@ export function useErpStockWorkspace() {
       canRetryExact.value = false
       if (cleared && detail.value === selectionAtStart && selectionIntentSequence === intentAtStart) {
         if (action === 'erp.stock.movements.reverse' && detail.value?.kind === 'movement') {
-          const refreshed = await readDetailForIntent('movement', detail.value.row.id, intentAtStart)
-          if (refreshed && (refreshed as ErpStockMovementDetail).reversal.remaining_quantity === '0.0000') detailOpen.value = true
+          await readDetailForIntent('movement', detail.value.row.id, intentAtStart)
         } else if (action === 'erp.stock.transfers.reverse' && detail.value?.kind === 'transfer') {
           await readDetailForIntent('transfer', detail.value.row.id, intentAtStart)
         } else if (action === 'erp.stock.adjustments.store' || action === 'erp.stock.transfers.store') {
@@ -455,7 +460,14 @@ export function useErpStockWorkspace() {
       fieldErrors.value = apiFieldErrors(error)
       const status = apiStatus(error)
       if (await handleDenial(action, error, token, true)) return null
-      if (status === 422) {
+      if (isKnownLegacyTransferRejection(action, error)) {
+        const transferId = pending.path.match(/^\/erp\/stock\/transfers\/(\d+)\/reverse$/)?.[1]
+        const cleared = storePending(null)
+        if (cleared) selectedOperation.value = null
+        needsReconciliation.value = true
+        canRetryExact.value = false
+        mutationError.value = `A transferência${transferId ? ` #${transferId}` : ''} antiga precisa de conciliação antes da correção. O servidor não registrou esta operação; outras operações de estoque podem continuar.`
+      } else if (status === 422) {
         const cleared = storePending(null)
         if (cleared) selectedOperation.value = null
         needsReconciliation.value = !cleared
@@ -587,6 +599,9 @@ export function useErpStockWorkspace() {
     else if (transfer?.[1] && allowed('erp.stock.transfers.show')) void readDetailForIntent('transfer', Number(transfer[1]), selectionIntentSequence)
   }
   watch(context.key, () => {
+    authorityRefreshEpoch++
+    deniedActions.value = new Set()
+    authorityNeedsRefresh.value = false
     clearPrivateState()
     restorePending()
     if (currentCompany.value) {

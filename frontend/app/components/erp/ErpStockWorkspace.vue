@@ -54,6 +54,18 @@ const detailTitle = computed(() => workspace.detail.value?.kind === 'movement'
     : workspace.detail.value?.kind === 'transfer'
       ? `Transferência #${workspace.detail.value.row.id}`
       : 'Detalhe do estoque')
+const pendingReversal = computed(() => {
+  const operation = workspace.selectedOperation.value
+  if (operation?.operation === 'erp.stock.movements.reverse') {
+    const id = operation.path.match(/^\/erp\/stock\/movements\/(\d+)\/reverse$/)?.[1]
+    return id ? { kind: 'movement' as const, id: Number(id), operation } : null
+  }
+  if (operation?.operation === 'erp.stock.transfers.reverse') {
+    const id = operation.path.match(/^\/erp\/stock\/transfers\/(\d+)\/reverse$/)?.[1]
+    return id ? { kind: 'transfer' as const, id: Number(id), operation } : null
+  }
+  return null
+})
 const establishmentNames = computed(() => new Map(workspace.establishments.value.map(row => [row.id, row.name])))
 const variantNames = computed(() => new Map(workspace.variants.value.map(row => [row.id, `${row.product.name} · ${row.name}${row.sku ? ` · ${row.sku}` : ''}`])))
 const columns: TableColumn<ErpStockBalance | ErpStockMovement | ErpStockLot | ErpStockAdjustment | ErpStockTransfer>[] = [
@@ -165,6 +177,9 @@ function clearFilters() {
   workspace.filters.status = ''
   applyFilters()
 }
+function inspectLotMovement(lot: ErpStockLot) {
+  if (lot.erp_stock_movement_id !== null) void workspace.inspectMovement(lot.erp_stock_movement_id)
+}
 function openAdjustment() {
   if (!workspace.allowed('erp.stock.adjustments.store')) return
   const pending = workspace.selectedOperation.value
@@ -226,6 +241,10 @@ async function submitTransfer(payload: { from_establishment_id: string, to_estab
 function movementOperationMatches() {
   const operation = workspace.selectedOperation.value
   return operation?.operation === 'erp.stock.movements.reverse' && operation.path === `/erp/stock/movements/${workspace.detail.value?.row.id}/reverse`
+}
+function openTransferFromMovement(id: number) {
+  if (!workspace.allowed('erp.stock.transfers.show')) return
+  void workspace.inspectTransfer(id)
 }
 function transferOperationMatches() {
   const operation = workspace.selectedOperation.value
@@ -411,6 +430,42 @@ function previousPage() {
     </UAlert>
 
     <UAlert
+      v-if="pendingReversal"
+      color="warning"
+      variant="subtle"
+      title="Correção de estoque sem resultado confirmado"
+      :description="pendingReversal.kind === 'movement'
+        ? `Movimento #${pendingReversal.id} · identidade e solicitação original preservadas. Consulte ou repita exatamente esta operação.`
+        : `Transferência #${pendingReversal.id} · identidade e solicitação original preservadas. Consulte ou repita exatamente esta operação.`"
+    >
+      <template #actions>
+        <UButton
+          v-if="pendingReversal.kind === 'movement' ? workspace.allowed('erp.stock.movements.show') : workspace.allowed('erp.stock.transfers.show')"
+          color="neutral"
+          variant="outline"
+          label="Retomar correção pendente"
+          :disabled="workspace.detailLoading.value"
+          @click="workspace.openRecoveryDetail"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Consultar operação"
+          :disabled="workspace.mutating.value"
+          @click="workspace.reconcile"
+        />
+        <UButton
+          v-if="workspace.canRetryExact.value"
+          color="warning"
+          variant="outline"
+          label="Repetir exatamente"
+          :disabled="workspace.mutating.value"
+          @click="workspace.retryExact"
+        />
+      </template>
+    </UAlert>
+
+    <UAlert
       v-if="permittedAreas.length === 0"
       color="error"
       title="Seu acesso não permite consultar o estoque desta empresa."
@@ -533,13 +588,13 @@ function previousPage() {
               @click="workspace.inspectMovement((row.original as ErpStockMovement).id)"
             />
             <UButton
-              v-else-if="area === 'lots' && workspace.allowed('erp.stock.movements.show')"
+              v-else-if="area === 'lots' && workspace.allowed('erp.stock.movements.show') && (row.original as ErpStockLot).erp_stock_movement_id"
               size="xs"
               color="neutral"
               variant="ghost"
               icon="i-lucide-eye"
               :aria-label="`Abrir movimento de origem ${(row.original as ErpStockLot).erp_stock_movement_id}`"
-              @click="workspace.inspectMovement((row.original as ErpStockLot).erp_stock_movement_id)"
+              @click="inspectLotMovement(row.original as ErpStockLot)"
             />
             <UButton
               v-else-if="area === 'adjustments' && workspace.allowed('erp.stock.adjustments.show')"
@@ -628,7 +683,7 @@ function previousPage() {
         />
         <ErpStockAdjustmentForm
           ref="adjustmentForm"
-          :key="adjustmentFormKey"
+          :key="`adjustment-form-${adjustmentFormKey}`"
           :establishments="workspace.establishments.value"
           :variants="workspace.variants.value"
           :busy="workspace.mutating.value"
@@ -681,7 +736,7 @@ function previousPage() {
         />
         <ErpStockTransferForm
           ref="transferForm"
-          :key="transferFormKey"
+          :key="`transfer-form-${transferFormKey}`"
           :establishments="workspace.establishments.value"
           :variants="workspace.variants.value"
           :busy="workspace.mutating.value"
@@ -748,11 +803,15 @@ function previousPage() {
             :busy="workspace.mutating.value"
             :mutation-error="movementOperationMatches() ? '' : workspace.mutationError.value"
             :field-errors="fieldErrors"
+            :can-open-transfer="workspace.allowed('erp.stock.transfers.show')"
+            :can-open-purchase-return="workspace.allowed('erp.purchase-returns.index')"
+            :can-open-sale-return="workspace.allowed('erp.sale-returns.index')"
             :operation-pending="movementOperationMatches()"
             :can-retry-exact="workspace.canRetryExact.value"
             @reverse="payload => workspace.reverseMovement(workspace.detail.value!.row.id, payload)"
             @reconcile="workspace.reconcile"
             @retry="workspace.retryExact"
+            @open-transfer="openTransferFromMovement"
           />
         </template>
         <ErpStockTransferDetail

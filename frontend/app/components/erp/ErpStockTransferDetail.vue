@@ -79,8 +79,35 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
         </p>
       </div>
       <p class="sm:col-span-2 text-sm text-muted">
-        A correção devolve o estoque ao destino primeiro e cria as duas pernas em uma única operação.
+        A correção retira o estoque do destino e o devolve à origem em uma única operação atômica.
       </p>
+    </section>
+
+    <section v-if="operationPending" class="space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4" aria-label="Recuperação da transferência pendente">
+      <UAlert
+        color="warning"
+        variant="subtle"
+        title="A correção desta transferência continua sem resultado confirmado."
+      />
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :disabled="busy"
+          label="Consultar operação"
+          @click="emit('reconcile')"
+        />
+        <UButton
+          v-if="canRetryExact"
+          type="button"
+          color="warning"
+          variant="outline"
+          :disabled="busy"
+          label="Repetir exatamente"
+          @click="emit('retry')"
+        />
+      </div>
     </section>
 
     <section class="space-y-2">
@@ -102,6 +129,12 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
       </ul>
     </section>
 
+    <p v-if="remainingQuantity === '0.0000'" class="rounded-lg border border-default p-4 text-sm text-muted">
+      Não há saldo restante para corrigir nesta transferência.
+    </p>
+    <p v-else-if="!canReverse" class="rounded-lg border border-default p-4 text-sm text-muted">
+      Saldo ainda corrigível: {{ remainingQuantity }}. Seu acesso não permite corrigir esta transferência.
+    </p>
     <section v-if="canReverseHere" class="space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4">
       <div>
         <h3 class="font-semibold">
@@ -116,12 +149,6 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
         color="error"
         variant="subtle"
         :title="mutationError"
-      />
-      <UAlert
-        v-if="operationPending"
-        color="warning"
-        variant="subtle"
-        title="A operação continua sem resultado confirmado. Consulte ou repita o mesmo conteúdo."
       />
       <UForm :state="{ quantity, reason, confirmed }" class="grid gap-3 sm:grid-cols-2" @submit="submitReversal">
         <UFormField
@@ -161,24 +188,6 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
           class="sm:col-span-2"
         />
         <div class="flex flex-wrap justify-end gap-2 sm:col-span-2">
-          <UButton
-            v-if="operationPending"
-            type="button"
-            color="neutral"
-            variant="outline"
-            :disabled="busy"
-            label="Consultar operação"
-            @click="emit('reconcile')"
-          />
-          <UButton
-            v-if="operationPending && canRetryExact"
-            type="button"
-            color="warning"
-            variant="outline"
-            :disabled="busy"
-            label="Repetir exatamente"
-            @click="emit('retry')"
-          />
           <UButton
             type="submit"
             color="warning"

@@ -222,16 +222,44 @@ export interface ErpStockMovement {
 
 export interface ErpStockAllocation {
   id: number
-  erp_stock_movement_id: number
+  erp_company_id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  erp_stock_movement_id: number | null
+  opening_balance_id: number | null
   erp_stock_lot_id: number | null
+  original_allocation_id: number | null
   ordinal: number
   quantity: string
-  unit_cost: ErpMoney | null
-  total_cost: ErpMoney | null
+  cost: ErpMoney | null
+  returned_quantity: string
+  returned_cost: ErpMoney
+  settled_quantity: string
   currency: string | null
   kind: string
   cost_status: string
-  erp_stock_allocation_id: number | null
+  issued_at: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ErpStockCostSettlement {
+  id: number
+  erp_company_id: number
+  erp_establishment_id: number
+  erp_product_variant_id: number
+  erp_stock_allocation_id: number
+  erp_stock_lot_id: number
+  erp_stock_movement_id: number
+  reversal_of_id: number | null
+  quantity: string
+  cost: ErpMoney | null
+  returned_quantity: string
+  returned_cost: ErpMoney
+  currency: string | null
+  posted_at: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface ErpStockLot {
@@ -239,7 +267,8 @@ export interface ErpStockLot {
   erp_company_id: number
   erp_establishment_id: number
   erp_product_variant_id: number
-  erp_stock_movement_id: number
+  erp_stock_movement_id: number | null
+  opening_balance_id: number | null
   root_lot_id: number | null
   parent_lot_id: number | null
   parent_allocation_id: number | null
@@ -252,6 +281,8 @@ export interface ErpStockLot {
   consumed_cost: ErpMoney | null
   cost_status: string
   received_at: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface ErpStockReversalPolicy {
@@ -267,7 +298,7 @@ export interface ErpStockMovementDetail extends ErpStockMovement {
   reversal: ErpStockReversalPolicy
   reversals: ErpStockMovement[]
   lots: ErpStockLot[]
-  settlements: Array<Record<string, unknown>>
+  settlements: ErpStockCostSettlement[]
 }
 
 export interface ErpStockAdjustment {

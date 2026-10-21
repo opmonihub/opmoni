@@ -10,11 +10,15 @@ const props = withDefaults(defineProps<{
   fieldErrors?: Record<string, string>
   operationPending?: boolean
   canRetryExact?: boolean
-}>(), { busy: false, mutationError: '', fieldErrors: () => ({}), operationPending: false, canRetryExact: false })
+  canOpenTransfer?: boolean
+  canOpenPurchaseReturn?: boolean
+  canOpenSaleReturn?: boolean
+}>(), { busy: false, mutationError: '', fieldErrors: () => ({}), operationPending: false, canRetryExact: false, canOpenTransfer: false, canOpenPurchaseReturn: false, canOpenSaleReturn: false })
 const emit = defineEmits<{
   reverse: [payload: { quantity: string, remaining_quantity: string, reason: string }]
   reconcile: []
   retry: []
+  openTransfer: [id: number]
 }>()
 const quantity = ref(props.detail.reversal.remaining_quantity)
 const reason = ref('')
@@ -101,8 +105,9 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
         <li v-for="allocation in detail.allocations" :key="allocation.id" class="grid gap-1 p-3 text-sm sm:grid-cols-3">
           <span>Linha {{ allocation.ordinal }} · {{ allocation.kind }}</span>
           <span>Quantidade {{ allocation.quantity }}</span>
-          <span>{{ allocation.currency ?? 'Moeda não identificada' }} · {{ allocation.unit_cost ?? 'Custo desconhecido' }} · {{ allocation.cost_status }}</span>
-          <span class="sm:col-span-3 text-muted">Lote {{ allocation.erp_stock_lot_id ?? 'não vinculado' }} · Alocação de origem {{ allocation.erp_stock_allocation_id ?? 'não informada' }}</span>
+          <span>{{ allocation.currency ?? 'Moeda não identificada' }} · {{ allocation.cost ?? 'Custo desconhecido' }} · {{ allocation.cost_status }}</span>
+          <span class="sm:col-span-3 text-muted">Movimento #{{ allocation.erp_stock_movement_id ?? 'não informado' }} · lote {{ allocation.erp_stock_lot_id ?? 'não vinculado' }} · alocação original #{{ allocation.original_allocation_id ?? 'não informada' }}</span>
+          <span class="sm:col-span-3 text-muted">Devolvida {{ allocation.returned_quantity }} · custo {{ allocation.returned_cost }} · conciliada {{ allocation.settled_quantity }}</span>
         </li>
       </ul>
     </section>
@@ -115,10 +120,61 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
         As conciliações preservam o movimento original e não representam outra movimentação física.
       </p>
       <ul class="divide-y divide-default rounded-md border border-default">
-        <li v-for="(settlement, index) in detail.settlements" :key="index" class="p-3 text-sm">
-          Conciliação {{ index + 1 }} · consulte os custos e as quantidades das alocações acima.
+        <li v-for="settlement in detail.settlements" :key="settlement.id" class="grid gap-1 p-3 text-sm sm:grid-cols-2">
+          <span>Conciliação #{{ settlement.id }} · quantidade {{ settlement.quantity }} · {{ settlement.currency ?? 'Moeda não identificada' }} {{ settlement.cost ?? 'Custo desconhecido' }}</span>
+          <span>Alocação #{{ settlement.erp_stock_allocation_id }} · camada #{{ settlement.erp_stock_lot_id }} · movimento #{{ settlement.erp_stock_movement_id }}</span>
+          <span>Quantidade devolvida {{ settlement.returned_quantity }} · custo devolvido {{ settlement.returned_cost }}</span>
+          <span>{{ settlement.reversal_of_id === null ? 'Conciliação original' : `Estorno da conciliação #${settlement.reversal_of_id}` }} · {{ settlement.posted_at }}</span>
         </li>
       </ul>
+    </section>
+
+    <section v-if="detail.reversal.workflow === 'transfer' || detail.reversal.workflow === 'purchase_return' || detail.reversal.workflow === 'sale_return'" class="rounded-lg border border-default p-4">
+      <h3 class="font-semibold">
+        Origem comercial e correção vinculada
+      </h3>
+      <p v-if="detail.reversal.workflow === 'transfer'" class="text-sm text-muted">
+        Transferência de origem #{{ detail.reversal.source_id }}; a correção deve atuar nas duas pernas.
+      </p>
+      <p v-else class="text-sm text-muted">
+        Origem {{ detail.reversal.workflow === 'purchase_return' ? 'de compra' : 'de venda' }} #{{ detail.reversal.source_id }}; use a devolução comercial correspondente.
+      </p>
+      <UButton
+        v-if="detail.reversal.workflow === 'transfer' && detail.reversal.permission === 'erp.stock.transfers.reverse' && canOpenTransfer"
+        class="mt-2"
+        color="neutral"
+        variant="outline"
+        :label="`Abrir transferência vinculada #${detail.reversal.source_id}`"
+        @click="emit('openTransfer', detail.reversal.source_id)"
+      />
+      <UButton
+        v-else-if="detail.reversal.workflow === 'purchase_return' && detail.reversal.permission === 'erp.purchase-returns.post' && canOpenPurchaseReturn"
+        class="mt-2"
+        color="neutral"
+        variant="outline"
+        :to="'/erp/compras#returns'"
+        :label="`Abrir devoluções de compra · origem #${detail.reversal.source_id}`"
+      />
+      <UButton
+        v-else-if="detail.reversal.workflow === 'sale_return' && detail.reversal.permission === 'erp.sale-returns.post' && canOpenSaleReturn"
+        class="mt-2"
+        color="neutral"
+        variant="outline"
+        :to="'/erp/vendas#returns'"
+        :label="`Abrir devoluções de venda · origem #${detail.reversal.source_id}`"
+      />
+      <p v-else-if="detail.reversal.workflow === 'purchase_return' && (!canOpenPurchaseReturn || detail.reversal.permission !== 'erp.purchase-returns.post')" class="mt-2 text-sm text-muted">
+        Seu acesso não permite abrir a área de devoluções de compra.
+      </p>
+      <p v-else-if="detail.reversal.workflow === 'sale_return' && (!canOpenSaleReturn || detail.reversal.permission !== 'erp.sale-returns.post')" class="mt-2 text-sm text-muted">
+        Seu acesso não permite abrir a área de devoluções de venda.
+      </p>
+      <p v-else-if="detail.reversal.workflow !== 'transfer'" class="mt-2 text-sm text-muted">
+        Seu acesso não permite abrir a área de devoluções correspondente.
+      </p>
+      <p v-else-if="detail.reversal.workflow === 'transfer'" class="mt-2 text-sm text-muted">
+        Seu acesso não permite abrir o detalhe da transferência.
+      </p>
     </section>
 
     <section v-if="detail.reversals.length" class="space-y-2">
@@ -133,6 +189,36 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
       </ul>
     </section>
 
+    <section v-if="operationPending" class="space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4" aria-label="Recuperação da correção pendente">
+      <UAlert
+        color="warning"
+        variant="subtle"
+        title="A correção deste movimento continua sem resultado confirmado."
+      />
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :disabled="busy"
+          label="Consultar operação"
+          @click="emit('reconcile')"
+        />
+        <UButton
+          v-if="canRetryExact"
+          type="button"
+          color="warning"
+          variant="outline"
+          :disabled="busy"
+          label="Repetir exatamente"
+          @click="emit('retry')"
+        />
+      </div>
+    </section>
+
+    <section v-if="detail.reversal.workflow === 'standalone' && remainingQuantity !== '0.0000' && !canReverse" class="rounded-lg border border-default p-4 text-sm text-muted">
+      Saldo ainda corrigível: {{ remainingQuantity }}. Seu acesso não permite corrigir este movimento.
+    </section>
     <section v-if="canReverseHere" class="space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4">
       <div>
         <h3 class="font-semibold">
@@ -147,12 +233,6 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
         color="error"
         variant="subtle"
         :title="mutationError"
-      />
-      <UAlert
-        v-if="operationPending"
-        color="warning"
-        variant="subtle"
-        title="A operação continua sem resultado confirmado. Consulte ou repita o mesmo conteúdo."
       />
       <UForm :state="{ quantity, reason, confirmed }" class="grid gap-3 sm:grid-cols-2" @submit="submitReversal">
         <UFormField
@@ -192,24 +272,6 @@ defineExpose({ submitReversal, quantity, reason, confirmed })
           class="sm:col-span-2"
         />
         <div class="flex flex-wrap justify-end gap-2 sm:col-span-2">
-          <UButton
-            v-if="operationPending"
-            type="button"
-            color="neutral"
-            variant="outline"
-            :disabled="busy"
-            label="Consultar operação"
-            @click="emit('reconcile')"
-          />
-          <UButton
-            v-if="operationPending && canRetryExact"
-            type="button"
-            color="warning"
-            variant="outline"
-            :disabled="busy"
-            label="Repetir exatamente"
-            @click="emit('retry')"
-          />
           <UButton
             type="submit"
             color="warning"

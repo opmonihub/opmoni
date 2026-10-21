@@ -27,7 +27,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   return exports
 }
 
-function createStockWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, permissions = ['*']) {
+function createStockWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, permissions = ['*'], refreshWithStatus = async () => ({ identity: {}, committed: true })) {
   const user = Vue.ref({ id: 91 })
   const currentCompany = Vue.ref({ id: 7, permissions, role: 'owner' })
   const key = Vue.computed(() => JSON.stringify([user.value.id, currentCompany.value.id, currentCompany.value.role, ...currentCompany.value.permissions]))
@@ -44,7 +44,7 @@ function createStockWorkspace(api: (path: string, options?: Record<string, unkno
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch,
     onMounted: (callback: () => void) => mounted.push(callback), onScopeDispose: Vue.onScopeDispose,
     useAccessApi: () => ({ api, refreshCsrf: async () => {} }),
-    useAuth: () => ({ user, currentCompany, refreshWithStatus: async () => ({ identity: {}, committed: true }) }),
+    useAuth: () => ({ user, currentCompany, refreshWithStatus }),
     useErpAdministrationContext: () => context
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- The runtime-only harness reads the composable's Vue refs.
@@ -96,15 +96,17 @@ function mountStockChild(file: string, imports: Record<string, unknown>, props: 
   })
   const componentRef = Vue.ref(null as unknown as Record<string, unknown>)
   const emitted: unknown[] = []
-  const host = Vue.defineComponent({ setup: () => () => Vue.h(component, { ...props, ref: componentRef, onSubmit: (payload: unknown) => emitted.push(payload), onReverse: (payload: unknown) => emitted.push(payload) }) })
+  const host = Vue.defineComponent({ setup: () => () => Vue.h(component, { ...props, ref: componentRef, onSubmit: (payload: unknown) => emitted.push(payload), onReverse: (payload: unknown) => emitted.push(payload), onOpenTransfer: (id: number) => emitted.push({ openTransfer: id }), onReconcile: () => emitted.push('reconcile'), onRetry: () => emitted.push('retry') }) })
   const app = renderer.createApp(host)
   const passthrough = { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', context.slots.default?.()) }
   for (const name of ['UAlert', 'UCheckbox', 'UForm', 'UFormField', 'UInput', 'USelect', 'UTextarea']) app.component(name, passthrough)
   app.component('UButton', { props: ['label'], setup: (componentProps: { label?: string }, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('button', componentProps.label ?? context.slots.default?.()) })
   const renderErrors: unknown[] = []
+  const renderWarnings: string[] = []
   app.config.errorHandler = error => renderErrors.push(error)
+  app.config.warnHandler = warning => renderWarnings.push(warning)
   app.mount(root)
-  return { component: componentRef, emitted, renderErrors, root }
+  return { component: componentRef, emitted, renderErrors, renderWarnings, root }
 }
 
 function compileStockComponent(file: string, imports: Record<string, unknown>, bindings: Record<string, unknown>) {
@@ -130,6 +132,14 @@ function mountStockWorkspace(workspace: Record<string, unknown>, initialHash = '
   const transferComponent = compileStockComponent('../app/components/erp/ErpStockTransferForm.vue', {
     '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockTransferPayload }
   }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch })
+  const movementDetailComponent = compileStockComponent('../app/components/erp/ErpStockMovementDetail.vue', {
+    '#shared/types/erpBusiness': {},
+    '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+  }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch })
+  const transferDetailComponent = compileStockComponent('../app/components/erp/ErpStockTransferDetail.vue', {
+    '#shared/types/erpBusiness': {},
+    '#shared/utils/erpStock': { buildErpStockReversalPayload, remainingStockQuantity, stockCostDescription }
+  }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch })
   const root = { children: [] as unknown[] }
   const renderer = Vue.createRenderer({
     patchProp(node: { props: Record<string, unknown> }, key, _previous, next) { node.props[key] = next },
@@ -151,7 +161,9 @@ function mountStockWorkspace(workspace: Record<string, unknown>, initialHash = '
   let adjustmentFormInstance: { state: Record<string, string>, submit: () => void, locked: boolean } | null = null
   let transferFormInstance: { state: Record<string, string>, submit: () => void, locked: boolean } | null = null
   const passthrough = { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', context.slots.body?.() ?? context.slots.default?.()) }
-  for (const name of ['UNavigationMenu', 'USelect', 'UInput', 'UForm', 'UFormField', 'UTextarea', 'UBadge', 'USkeleton', 'CompanyMenu', 'UserMenu', 'ErpStockMovementDetail', 'ErpStockTransferDetail']) app.component(name, passthrough)
+  for (const name of ['UNavigationMenu', 'USelect', 'UInput', 'UForm', 'UFormField', 'UTextarea', 'UCheckbox', 'UBadge', 'USkeleton', 'CompanyMenu', 'UserMenu']) app.component(name, passthrough)
+  app.component('ErpStockMovementDetail', movementDetailComponent)
+  app.component('ErpStockTransferDetail', transferDetailComponent)
   app.component('UAlert', { props: ['title'], setup: (props: { title?: string }, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', { 'data-alert-title': props.title }, [props.title ?? '', context.slots.description?.(), context.slots.actions?.()]) })
   app.component('UTable', { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('table', { 'data-stock-table': 'true' }, context.slots.default?.()) })
   app.component('ErpCatalogPageShell', { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) })
@@ -172,9 +184,11 @@ function mountStockWorkspace(workspace: Record<string, unknown>, initialHash = '
   app.component('UButton', { props: ['label', 'disabled', 'aria-label'], setup: (props: { 'label'?: string, 'disabled'?: boolean, 'aria-label'?: string }, context: { attrs: Record<string, unknown>, slots: Record<string, () => unknown[]> }) => () => Vue.h('button', { ...context.attrs, 'disabled': props.disabled, 'aria-label': props['aria-label'], 'onClick': context.attrs.onClick }, context.slots.default?.() ?? props.label ?? props['aria-label']) })
   app.component('UModal', { props: ['open', 'title'], setup: (props: { open: boolean, title: string }, context: { attrs: Record<string, unknown>, slots: Record<string, () => unknown[]> }) => () => Vue.h('div', { 'data-modal-title': props.title, 'data-modal-open': String(props.open), 'data-on-update-open': context.attrs['onUpdate:open'] }, context.slots.body?.()) })
   const renderErrors: unknown[] = []
+  const renderWarnings: string[] = []
   app.config.errorHandler = error => renderErrors.push(error)
+  app.config.warnHandler = warning => renderWarnings.push(warning)
   app.mount(root)
-  return { app, root, renderErrors, route, get adjustmentForm() { return adjustmentFormInstance }, get transferForm() { return transferFormInstance }, stop: () => app.unmount() }
+  return { app, root, renderErrors, renderWarnings, route, get adjustmentForm() { return adjustmentFormInstance }, get transferForm() { return transferFormInstance }, stop: () => app.unmount() }
 }
 
 function walkNodes(node: unknown): Array<Record<string, unknown>> {
@@ -322,6 +336,183 @@ describe('stock cost presentation', () => {
 })
 
 describe('stock workspace request lifecycle', () => {
+  it('releases only the proven no-effect legacy transfer rejection and retains unknown conflicts', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path === '/erp/stock/transfers/41/reverse') throw { statusCode: 409, data: { message: 'Transferência antiga exige conciliação.' } }
+      if (path === '/erp/stock/adjustments') return { data: { id: 71 } }
+      if (path === '/erp/stock/movements/31/reverse') throw { statusCode: 409, data: { message: 'Chave reutilizada com conteúdo diferente.' } }
+      if (path.startsWith('/erp/operations/lookup')) throw { statusCode: 404, data: { code: 'operation_not_recorded', message: 'Operação não registrada' } }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.transfers.reverse', 'erp.stock.adjustments.store', 'erp.stock.movements.reverse'])
+    try {
+      await workspace.state.reverseTransfer(41, { quantity: '1.0000', remaining_quantity: '1.0000', reason: 'Conciliação necessária' })
+      assert.equal(workspace.state.selectedOperation.value, null)
+      assert.equal(workspace.state.needsReconciliation.value, true)
+      assert.match(workspace.state.mutationError.value, /transferência #41 antiga precisa de conciliação/)
+      await workspace.state.postAdjustment({ erp_establishment_id: '8', erp_product_variant_id: '21', quantity_delta: '1.0000', reason: 'Entrada contada' })
+      assert.equal(calls.some(call => call.path === '/erp/stock/adjustments'), true)
+
+      const key = '00000000-0000-0000-0000-000000000031'
+      const pending = operationRecovery.createPendingOperation('91:7:erp.stock.movements.reverse', 'erp.stock.movements.reverse', '/erp/stock/movements/31/reverse', { quantity: '1.0000', reason: 'Revisar' }, key)
+      operationRecovery.writePendingOperation(sessionStorage, 'erp-stock:v1:91:7', pending)
+      const restored = createStockWorkspace(api, ['erp.stock.movements.reverse'])
+      try {
+        await restored.state.reconcile()
+        await restored.state.retryExact()
+        assert.equal(restored.state.selectedOperation.value.key, key)
+        assert.equal(restored.state.needsReconciliation.value, true)
+        assert.equal(JSON.parse(storage.values.get('erp-stock:v1:91:7')!).key, key)
+      } finally {
+        restored.stop()
+      }
+    } finally {
+      workspace.stop()
+      storage.restore()
+    }
+  })
+
+  it('does not reopen an exhausted movement detail after a watcher dismisses the nested refresh', async () => {
+    const storage = installSessionStorage()
+    const detail = {
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '1.0000', unit_cost: null,
+      source_type: 'erp_stock_adjustment', source_id: 12, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: null, reversal_of_id: null, valuation_method: 'fifo', currency: null, source_currency: null, cost_breakdown: null,
+      total_cost: null, known_cost: null, unvalued_quantity: '1.0000', cost_status: 'legacy_unknown', reason: 'Ajuste',
+      allocations: [], reversal: { workflow: 'standalone', remaining_quantity: '1.0000', reason_required: true, source_id: 12, permission: 'erp.stock.movements.reverse' },
+      reversals: [], lots: [], settlements: []
+    }
+    const refreshed = { ...detail, reversal: { ...detail.reversal, remaining_quantity: '0.0000' } }
+    const secondRead = deferred<{ data: typeof refreshed }>()
+    let detailReads = 0
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      if (path === '/erp/stock/movements/31' && !options?.method) {
+        detailReads++
+        return detailReads === 1 ? { data: detail } : secondRead.promise
+      }
+      if (path === '/erp/stock/movements/31/reverse') return { data: { id: 88 } }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.movements.show', 'erp.stock.movements.reverse', 'erp.stock.movements.index'])
+    try {
+      await workspace.state.inspectMovement(31)
+      const dismissOnExhaustion = Vue.watch(workspace.state.detail, (selection: { row: typeof refreshed } | null) => {
+        if (selection?.kind === 'movement' && selection.row.reversal.remaining_quantity === '0.0000') workspace.state.closeDetail()
+      }, { flush: 'pre' })
+      const operation = workspace.state.reverseMovement(31, { quantity: '1.0000', remaining_quantity: '1.0000', reason: 'Corrigir' })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      secondRead.resolve({ data: refreshed })
+      await operation
+      await Vue.nextTick()
+      assert.equal(workspace.state.detail.value, null)
+      assert.equal(workspace.state.detailOpen.value, false)
+      dismissOnExhaustion()
+    } finally {
+      workspace.stop()
+      storage.restore()
+    }
+  })
+
+  it('clears a denied read action when the company and grant context changes', async () => {
+    const api = async (path: string) => {
+      if (path === '/erp/stock/movements/31') throw { statusCode: 403, data: { message: 'Sem acesso' } }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.movements.show', 'erp.stock.movements.reverse'])
+    try {
+      await workspace.state.inspectMovement(31)
+      assert.equal(workspace.state.allowed('erp.stock.movements.show'), false)
+      workspace.currentCompany.value = { ...workspace.currentCompany.value, id: 8, permissions: [...workspace.currentCompany.value.permissions, 'erp.stock.lots.index'] }
+      await Vue.nextTick()
+      assert.equal(workspace.state.allowed('erp.stock.movements.show'), true)
+    } finally {
+      workspace.stop()
+    }
+  })
+
+  it('ignores a delayed authorization refresh from the previous company', async () => {
+    const storage = installSessionStorage()
+    const refresh = deferred<{ identity: object, committed: boolean }>()
+    const detail = {
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '1.0000', unit_cost: null,
+      source_type: 'erp_stock_adjustment', source_id: 12, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: null, reversal_of_id: null, valuation_method: 'fifo', currency: null, source_currency: null, cost_breakdown: null,
+      total_cost: null, known_cost: null, unvalued_quantity: '1.0000', cost_status: 'known', reason: 'Ajuste', allocations: [],
+      reversal: { workflow: 'standalone', remaining_quantity: '1.0000', reason_required: true, source_id: 12, permission: 'erp.stock.movements.reverse' },
+      reversals: [], lots: [], settlements: []
+    }
+    const api = async (path: string) => {
+      if (path === '/erp/stock/movements/31') return { data: detail }
+      if (path === '/erp/stock/movements/31/reverse') throw { statusCode: 403, data: { message: 'Sem acesso' } }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.movements.show', 'erp.stock.movements.reverse'], () => refresh.promise)
+    try {
+      await workspace.state.inspectMovement(31)
+      const denied = workspace.state.reverseMovement(31, { quantity: '1.0000', remaining_quantity: '1.0000', reason: 'Corrigir' })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      workspace.currentCompany.value = { ...workspace.currentCompany.value, id: 8 }
+      await Vue.nextTick()
+      refresh.resolve({ identity: {}, committed: true })
+      await denied
+      await Vue.nextTick()
+      assert.equal(workspace.state.allowed('erp.stock.movements.reverse'), true)
+      assert.equal(workspace.state.mutationError.value, '')
+    } finally {
+      workspace.stop()
+      storage.restore()
+    }
+  })
+
+  it('keeps a pending reversal reachable after detail dismissal and failed source refresh without an index grant', async () => {
+    const storage = installSessionStorage()
+    const key = '00000000-0000-0000-0000-000000000032'
+    const payload = { quantity: '0.7500', reason: 'Correção parcial' }
+    const pending = operationRecovery.createPendingOperation('91:7:erp.stock.movements.reverse', 'erp.stock.movements.reverse', '/erp/stock/movements/31/reverse', payload, key)
+    operationRecovery.writePendingOperation(sessionStorage, 'erp-stock:v1:91:7', pending)
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path === '/erp/stock/movements/31') throw { statusCode: 503, data: { message: 'Falha de rede' } }
+      if (path.startsWith('/erp/operations/lookup')) throw { statusCode: 404, data: { code: 'operation_not_recorded', message: 'Operação não registrada' } }
+      if (path === '/erp/stock/movements/31/reverse' && options?.method === 'POST') return { data: { id: 87 } }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.movements.show', 'erp.stock.movements.reverse'])
+    const mounted = mountStockWorkspace(workspace.state)
+    const button = (label: string) => walkNodes(mounted.root).find(node => (node as { tag?: string }).tag === 'button' && renderedText(node).includes(label))
+    try {
+      await Vue.nextTick()
+      const resume = button('Retomar correção pendente')
+      assert.ok(resume)
+      ;(resume!.props as Record<string, unknown>).onClick?.()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Vue.nextTick()
+      assert.match(workspace.state.detailError.value, /Falha de rede/)
+      assert.equal(workspace.state.allowed('erp.stock.movements.index'), false)
+      assert.ok(button('Consultar operação'))
+      ;(button('Consultar operação')!.props as Record<string, unknown>).onClick?.()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Vue.nextTick()
+      assert.equal(workspace.state.canRetryExact.value, true)
+      ;(button('Repetir exatamente')!.props as Record<string, unknown>).onClick?.()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Vue.nextTick()
+      const retry = calls.find(call => call.path === pending.path && call.options?.method === 'POST')
+      assert.deepEqual(retry?.options?.body, payload)
+      assert.equal((retry?.options?.headers as Record<string, string>)['Idempotency-Key'], key)
+      assert.equal(workspace.state.selectedOperation.value, null)
+      assert.deepEqual(mounted.renderErrors, [])
+    } finally {
+      mounted.stop()
+      workspace.stop()
+      storage.restore()
+    }
+  })
+
   it('posts a transfer with the authorized exact grant, decimal body, and stable key header', async () => {
     const storage = installSessionStorage()
     const requests: Array<{ path: string, options?: Record<string, unknown> }> = []
@@ -364,6 +555,7 @@ describe('stock workspace request lifecycle', () => {
       assert.equal(workspace.state.selectedOperation.value.key, firstKey)
       assert.deepEqual(workspace.state.selectedOperation.value.payload, { erp_establishment_id: 8, erp_product_variant_id: 21, quantity_delta: '1.0000', reason: 'Ajuste' })
       assert.equal(workspace.state.needsReconciliation.value, true)
+      assert.equal(JSON.parse(storage.values.get('erp-stock:v1:91:7')!).key, firstKey)
     } finally {
       workspace.stop()
       storage.restore()
@@ -568,6 +760,44 @@ describe('mounted stock operation forms', () => {
     assert.deepEqual(mounted.renderErrors, [])
   })
 
+  it('renders raw allocation lineage and cost settlement facts from the movement API', () => {
+    const detail = {
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '3.0000', unit_cost: null,
+      source_type: 'erp_sale', source_id: 12, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: 55, reversal_of_id: null, valuation_method: 'fifo', currency: 'BRL', source_currency: 'BRL', cost_breakdown: null,
+      total_cost: null, known_cost: '12.5000', unvalued_quantity: '1.5000', cost_status: 'mixed', reason: null,
+      allocations: [{ id: 80, erp_company_id: 7, erp_establishment_id: 8, erp_product_variant_id: 21, erp_stock_movement_id: 31,
+        erp_stock_lot_id: 90, original_allocation_id: 71, ordinal: 1, kind: 'issue', quantity: '1.5000', cost: '12.5000',
+        returned_quantity: '0.2500', returned_cost: '3.1250', settled_quantity: '1.0000', currency: 'BRL', cost_status: 'known' },
+      { id: 81, erp_company_id: 7, erp_establishment_id: 8, erp_product_variant_id: 21, erp_stock_movement_id: 31,
+        erp_stock_lot_id: null, original_allocation_id: null, ordinal: 2, kind: 'deficit', quantity: '1.5000', cost: null,
+        returned_quantity: '0.0000', returned_cost: '0.0000', settled_quantity: '0.0000', currency: null, cost_status: 'legacy_unknown' }],
+      reversal: { workflow: 'sale_return', remaining_quantity: '0.0000', reason_required: true, source_id: 12, permission: 'erp.sale-returns.post' },
+      reversals: [], lots: [], settlements: [{ id: 150, erp_company_id: 7, erp_establishment_id: 8, erp_product_variant_id: 21,
+        erp_stock_allocation_id: 80, erp_stock_lot_id: 91, erp_stock_movement_id: 44, reversal_of_id: null, quantity: '1.5000',
+        cost: '6.2500', returned_quantity: '0.0000', returned_cost: '0.0000', currency: 'BRL', posted_at: '2026-10-20T14:00:00Z' },
+      { id: 151, erp_company_id: 7, erp_establishment_id: 8, erp_product_variant_id: 21, erp_stock_allocation_id: 80,
+        erp_stock_lot_id: 90, erp_stock_movement_id: 45, reversal_of_id: 150, quantity: '0.2500', cost: null,
+        returned_quantity: '0.0000', returned_cost: '0.0000', currency: 'BRL', posted_at: '2026-10-20T15:00:00Z' }]
+    }
+    const mounted = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {},
+      '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail, canReverse: false })
+    const text = renderedText(mounted.root as unknown as Record<string, unknown>)
+    assert.match(text, /BRL · 12\.5000/)
+    assert.match(text, /alocação original #71/)
+    assert.match(text, /Devolvida 0\.2500 · custo 3\.1250 · conciliada 1\.0000/)
+    assert.match(text, /Custo desconhecido · legacy_unknown/)
+    assert.match(text, /alocação original #não informada/)
+    assert.match(text, /Conciliação #150/)
+    assert.match(text, /movimento #44/)
+    assert.match(text, /camada #91/)
+    assert.match(text, /Conciliação #150 · quantidade 1\.5000 · BRL 6\.2500/)
+    assert.match(text, /Estorno da conciliação #150/)
+    assert.deepEqual(mounted.renderErrors, [])
+  })
+
   it('uses the reduced transfer balance and emits an explicit paired reversal amount', () => {
     const detail = {
       id: 41, movement_ids: [51, 52], from_establishment_id: 8, to_establishment_id: 9, erp_product_variant_id: 21,
@@ -586,9 +816,131 @@ describe('mounted stock operation forms', () => {
     assert.deepEqual(mounted.emitted, [{ quantity: '1.7500', reason: 'Correção de transferência', remaining_quantity: '1.7500' }])
     assert.deepEqual(mounted.renderErrors, [])
   })
+
+  it('distinguishes missing transfer reversal permission from an exhausted transfer', () => {
+    const detail = {
+      id: 41, movement_ids: [51, 52], from_establishment_id: 8, to_establishment_id: 9, erp_product_variant_id: 21,
+      quantity: '3.0000', status: 'posted', source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      returned_quantity: '1.2500', movements: [], reversals: []
+    }
+    const forbidden = mountStockChild('../app/components/erp/ErpStockTransferDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, remainingStockQuantity, stockCostDescription }
+    }, { detail, canReverse: false })
+    const forbiddenText = renderedText(forbidden.root as unknown as Record<string, unknown>)
+    assert.match(forbiddenText, /Saldo ainda corrigível: 1\.7500\. Seu acesso não permite/)
+    assert.doesNotMatch(forbiddenText, /Não há saldo restante/)
+    assert.match(forbiddenText, /retira o estoque do destino e o devolve à origem/)
+    const exhausted = mountStockChild('../app/components/erp/ErpStockTransferDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, remainingStockQuantity, stockCostDescription }
+    }, { detail: { ...detail, returned_quantity: '3.0000' }, canReverse: false })
+    const exhaustedText = renderedText(exhausted.root as unknown as Record<string, unknown>)
+    assert.match(exhaustedText, /Não há saldo restante para corrigir/)
+    assert.doesNotMatch(exhaustedText, /Seu acesso não permite corrigir/)
+  })
+
+  it('routes only the server-approved source workflow to its canonical return area', () => {
+    const movement = (workflow: string, permission: string | null, sourceId: number) => ({
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '1.0000', unit_cost: null,
+      source_type: 'erp_sale', source_id: sourceId, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: 55, reversal_of_id: null, valuation_method: 'fifo', currency: 'BRL', source_currency: 'BRL', cost_breakdown: null,
+      total_cost: null, known_cost: null, unvalued_quantity: '1.0000', cost_status: 'legacy_unknown', reason: null,
+      allocations: [], reversal: { workflow, remaining_quantity: '0.0000', reason_required: true, source_id: sourceId, permission }, reversals: [], lots: [], settlements: []
+    })
+    const transfer = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail: movement('transfer', 'erp.stock.transfers.reverse', 72), canReverse: false, canOpenTransfer: true })
+    const transferLink = walkNodes(transfer.root).find(node => (node as { tag?: string }).tag === 'button' && renderedText(node).includes('Abrir transferência vinculada #72'))
+    assert.ok(transferLink)
+    ;(transferLink!.props as Record<string, unknown>).onClick?.()
+    assert.deepEqual(transfer.emitted, [{ openTransfer: 72 }])
+    assert.equal(walkNodes(transfer.root).some(node => node.props?.['to']), false)
+
+    const purchase = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail: movement('purchase_return', 'erp.purchase-returns.post', 81), canReverse: false, canOpenPurchaseReturn: true })
+    const purchaseLink = walkNodes(purchase.root).find(node => node.props?.['to'] === '/erp/compras#returns')
+    assert.ok(purchaseLink)
+    assert.match(renderedText(purchaseLink!), /origem #81/)
+
+    const sale = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail: movement('sale_return', 'erp.sale-returns.post', 91), canReverse: false, canOpenSaleReturn: true })
+    const saleLink = walkNodes(sale.root).find(node => node.props?.['to'] === '/erp/vendas#returns')
+    assert.ok(saleLink)
+    assert.match(renderedText(saleLink!), /origem #91/)
+
+    const mismatchedPolicy = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail: movement('sale_return', 'erp.purchase-returns.post', 92), canReverse: true, canOpenSaleReturn: true })
+    assert.equal(walkNodes(mismatchedPolicy.root).some(node => node.props?.['to']), false)
+    assert.match(renderedText(mismatchedPolicy.root as unknown as Record<string, unknown>), /Origem de venda #92/)
+    assert.deepEqual(mismatchedPolicy.emitted, [])
+  })
+
+  it('keeps lookup and exact retry controls in the detail overlay after the source is exhausted', () => {
+    const detail = {
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '1.0000', unit_cost: null,
+      source_type: 'erp_stock_adjustment', source_id: 12, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: null, reversal_of_id: null, valuation_method: 'fifo', currency: null, source_currency: null, cost_breakdown: null,
+      total_cost: null, known_cost: null, unvalued_quantity: '1.0000', cost_status: 'known', reason: 'Ajuste', allocations: [],
+      reversal: { workflow: 'standalone', remaining_quantity: '0.0000', reason_required: true, source_id: 12, permission: 'erp.stock.movements.reverse' },
+      reversals: [], lots: [], settlements: []
+    }
+    const mounted = mountStockChild('../app/components/erp/ErpStockMovementDetail.vue', {
+      '#shared/types/erpBusiness': {}, '#shared/utils/erpStock': { buildErpStockReversalPayload, stockCostDescription }
+    }, { detail, canReverse: true, operationPending: true, canRetryExact: true })
+    for (const label of ['Consultar operação', 'Repetir exatamente']) {
+      const button = walkNodes(mounted.root).find(node => (node as { tag?: string }).tag === 'button' && renderedText(node).includes(label))
+      assert.ok(button)
+      ;(button!.props as Record<string, unknown>).onClick?.()
+    }
+    assert.deepEqual(mounted.emitted, ['reconcile', 'retry'])
+    assert.doesNotMatch(renderedText(mounted.root as unknown as Record<string, unknown>), /Corrigir este movimento/)
+    assert.deepEqual(mounted.renderErrors, [])
+  })
 })
 
 describe('mounted stock workspace recovery lifecycle', () => {
+  it('follows a transfer source policy into the authorized paired transfer detail', async () => {
+    const movement = {
+      id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '2.0000', unit_cost: null,
+      source_type: 'erp_stock_transfer', source_id: 41, source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      source_line_id: null, reversal_of_id: null, valuation_method: 'fifo', currency: 'BRL', source_currency: 'BRL', cost_breakdown: null,
+      total_cost: null, known_cost: null, unvalued_quantity: '2.0000', cost_status: 'known', reason: null, allocations: [],
+      reversal: { workflow: 'transfer', remaining_quantity: '2.0000', reason_required: true, source_id: 41, permission: 'erp.stock.transfers.reverse' },
+      reversals: [], lots: [], settlements: []
+    }
+    const transfer = { id: 41, movement_ids: [51, 52], from_establishment_id: 8, to_establishment_id: 9, erp_product_variant_id: 21,
+      quantity: '2.0000', status: 'posted', source_operation_key: null, posted_by_user_id: 91, posted_at: null,
+      returned_quantity: '0.0000', movements: [], reversals: [] }
+    const calls: string[] = []
+    const api = async (path: string) => {
+      calls.push(path)
+      if (path === '/erp/stock/movements/31') return { data: movement }
+      if (path === '/erp/stock/transfers/41') return { data: transfer }
+      return emptyPage
+    }
+    const workspace = createStockWorkspace(api, ['erp.stock.movements.index', 'erp.stock.movements.show', 'erp.stock.transfers.show'])
+    await workspace.state.inspectMovement(31)
+    const mounted = mountStockWorkspace(workspace.state, '#movements')
+    try {
+      await Vue.nextTick()
+      const link = walkNodes(mounted.root).find(node => (node as { tag?: string }).tag === 'button' && renderedText(node).includes('Abrir transferência vinculada #41'))
+      assert.ok(link)
+      ;(link!.props as Record<string, unknown>).onClick?.()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Vue.nextTick()
+      assert.equal(calls.includes('/erp/stock/transfers/41'), true)
+      assert.equal((workspace.state.detail.value as { kind: string, row: { id: number } }).kind, 'transfer')
+      assert.equal((workspace.state.detail.value as { kind: string, row: { id: number } }).row.id, 41)
+      assert.deepEqual(mounted.renderErrors, [])
+      assert.deepEqual(mounted.renderWarnings, [])
+    } finally {
+      mounted.stop()
+      workspace.stop()
+    }
+  })
+
   it('does not show an unauthorized area as an empty table and sanitizes its hash', async () => {
     const mock = createMountedStockWorkspace([])
     const mounted = mountStockWorkspace(mock.workspace, '#balances')
@@ -654,6 +1006,7 @@ describe('mounted stock workspace recovery lifecycle', () => {
       assert.equal(mock.selectedOperation.value, null)
       assert.equal((mock.resolvedOperation.value as Record<string, unknown>).key, '00000000-0000-0000-0000-000000000019')
       assert.deepEqual(mounted.renderErrors, [])
+      assert.deepEqual(mounted.renderWarnings, [])
     } finally {
       mounted.stop()
     }
