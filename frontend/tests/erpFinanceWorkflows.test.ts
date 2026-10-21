@@ -219,9 +219,9 @@ async function settleUntil(ready: () => boolean) {
   assert.ok(ready(), 'asynchronous workspace action should settle')
 }
 
-function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}, refreshIdentity: () => Promise<unknown> = async () => null) {
-  const user = Vue.ref({ id: 42 })
-  const company = Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' })
+function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}, refreshIdentity: () => Promise<unknown> = async () => null, authOverride?: Record<string, unknown>) {
+  const user = (authOverride?.user as Vue.Ref<{ id: number }> | undefined) ?? Vue.ref({ id: 42 })
+  const company = (authOverride?.currentCompany as Vue.Ref<{ id: number, permissions: string[], role: string }> | undefined) ?? Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' })
   const key = Vue.computed(() => JSON.stringify([user.value.id, company.value.id, company.value.permissions.join(',')]))
   let generation = 0
   const context = {
@@ -229,10 +229,17 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
     capture: () => ({ key: key.value, generation }),
     isCurrent: (token: { key: string, generation: number }) => token.key === key.value && token.generation === generation
   }
+  const authBindings = authOverride ?? {
+    user, currentCompany: company, refresh: refreshIdentity, fetchMe: refreshIdentity,
+    refreshWithStatus: async () => {
+      const identity = await refreshIdentity()
+      return { identity, committed: Boolean(identity) }
+    }
+  }
   let mounted: () => void = () => {}
   const bindings = {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted(callback: () => void) { mounted = callback }, onScopeDispose: Vue.onScopeDispose,
-    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => ({ user, currentCompany: company, refresh: refreshIdentity, fetchMe: refreshIdentity }), useErpAdministrationContext: () => context
+    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => authBindings, useErpAdministrationContext: () => context
   }
   const moduleExports = compileModule(readFileSync(new URL('../app/composables/useErpFinanceWorkspace.ts', import.meta.url), 'utf8'), {
     '#shared/types/erpBusiness': {},
@@ -249,6 +256,28 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
     bump: () => { generation++ },
     stop: () => scope.stop()
   }
+}
+
+function createActualAuth(api: Api) {
+  const states = new Map<string, Vue.Ref<unknown>>([
+    ['access-user', Vue.ref({ id: 42, current_company: { id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' } })],
+    ['access-resolved', Vue.ref(true)]
+  ])
+  const authSource = readFileSync(new URL('../app/composables/useAuth.ts', import.meta.url), 'utf8').replaceAll('import.meta.client', 'false')
+  const authModule = compileModule(authSource, {
+    'vue': Vue,
+    '#shared/utils/business': { tenantPermissions: () => ({}) },
+    '#shared/utils/access': { accessDestination: () => '/erp', apiFailure: (error: unknown) => ({ status: typeof error === 'object' && error !== null && 'statusCode' in error ? (error as { statusCode: number }).statusCode : 0 }) }
+  }, {
+    useNuxtApp: () => ({ runWithContext: (callback: () => unknown) => callback() }),
+    useState: (key: string, initial: () => unknown) => {
+      if (!states.has(key)) states.set(key, Vue.ref(initial()))
+      return states.get(key)!
+    },
+    useAccessApi: () => ({ api, csrf: Vue.ref(null), refreshCsrf: async () => {} }),
+    clearNuxtData: () => {}, clearNuxtState: () => {}, navigateTo: async () => {}
+  })
+  return (authModule.useAuth as () => Record<string, unknown>)()
 }
 
 const obligation: ErpObligation = {
@@ -319,6 +348,60 @@ describe('finance permission family matching', () => {
 })
 
 describe('finance workspace', { concurrency: 1 }, () => {
+  it('keeps finance blocked when a superseded committed identity refresh returns stale grants after a newer refresh fails', async (t) => {
+    const olderMe = deferred<unknown>()
+    let meCalls = 0
+    const api: Api = async (path) => {
+      if (path === '/me') {
+        meCalls++
+        if (meCalls === 1) return olderMe.promise
+        throw { statusCode: 503, data: { message: 'Identity service unavailable' } }
+      }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Company context changed' } }
+      return page([])
+    }
+    const auth = createActualAuth(api)
+    const app = createWorkspace(api, async () => {}, async () => null, auth)
+    t.after(app.stop)
+    const state = app.state as { load: () => Promise<void>, canRead: Vue.Ref<boolean>, allowed: (action: string) => boolean }
+    const deniedRead = state.load()
+    await settleUntil(() => meCalls === 1)
+    await assert.rejects((auth.refresh as () => Promise<unknown>)())
+    olderMe.resolve({ id: 42, current_company: { id: 7, permissions: [], role: 'viewer', access_kind: 'direct', status: 'active' } })
+    await deniedRead
+    assert.equal(state.canRead.value, false)
+    assert.equal(state.allowed('erp.obligations.store'), false)
+    assert.deepEqual((auth.currentCompany as Vue.ComputedRef<{ permissions: string[] }>).value.permissions, ['*'])
+  })
+
+  it('keeps finance blocked after the actual shared auth refresh fails', async (t) => {
+    const api: Api = async (path) => {
+      if (path === '/me') throw { statusCode: 503, data: { message: 'Identity service unavailable' } }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Context changed' } }
+      return page([])
+    }
+    const auth = createActualAuth(api)
+    const app = createWorkspace(api, async () => {}, async () => null, auth)
+    t.after(app.stop)
+    await (app.state as { load: () => Promise<void> }).load()
+    assert.equal((app.state as { canRead: Vue.Ref<boolean> }).canRead.value, false)
+    assert.equal((app.state as { allowed: (action: string) => boolean }).allowed('erp.obligations.store'), false)
+  })
+
+  it('unlocks finance only after the actual shared auth refresh commits the current identity', async (t) => {
+    const api: Api = async (path) => {
+      if (path === '/me') return { id: 42, current_company: { id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' } }
+      if (path.startsWith('/erp/obligations?')) throw { statusCode: 409, data: { message: 'Company context changed' } }
+      return page([])
+    }
+    const auth = createActualAuth(api)
+    const app = createWorkspace(api, async () => {}, async () => null, auth)
+    t.after(app.stop)
+    await (app.state as { load: () => Promise<void> }).load()
+    assert.equal((app.state as { canRead: Vue.Ref<boolean> }).canRead.value, true)
+    assert.equal((app.state as { allowed: (action: string) => boolean }).allowed('erp.obligations.store'), true)
+  })
+
   it('retains mounted form drafts across tabs and resets them on authority changes', async (t) => {
     const app = createWorkspace(async () => page([]))
     t.after(app.stop)

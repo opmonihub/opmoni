@@ -33,7 +33,7 @@ const referenceConfig: Record<ReferenceKind, { path: string, action: ErpFinanceA
 
 export function useErpFinanceWorkspace() {
   const { api, refreshCsrf } = useAccessApi()
-  const { user, currentCompany, refresh: refreshIdentity } = useAuth()
+  const { user, currentCompany, refreshWithStatus } = useAuth()
   const context = useErpAdministrationContext()
   const tab = ref<Tab>('obligations')
   const rows = ref<Row[]>([])
@@ -194,8 +194,8 @@ export function useErpFinanceWorkspace() {
   async function refreshAuthForDenial(token: ReturnType<typeof context.capture>, refreshEpoch?: number) {
     if (!isAuthorityCurrent(token)) return
     try {
-      const identity = await refreshIdentity()
-      if (identity && refreshEpoch !== undefined && authorityRefreshEpoch === refreshEpoch) {
+      const result = await refreshWithStatus()
+      if (result.identity && result.committed && refreshEpoch !== undefined && authorityRefreshEpoch === refreshEpoch) {
         authorityNeedsRefresh.value = false
         if (isAuthorityCurrent(token)) deniedActions.value = new Set()
       }

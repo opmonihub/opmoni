@@ -32,24 +32,28 @@ export function useAuth() {
       csrf.value = null
     }
   }
-  async function refresh() {
+  async function refreshWithStatus() {
     const version = ++generation.value
     try {
       const identity = await api<Identity>('/me')
       if (version === generation.value) {
         user.value = identity
         resolved.value = true
+        return { identity: user.value, committed: true }
       }
-      return user.value
+      return { identity: user.value, committed: false }
     } catch (error) {
       if (apiFailure(error).status === 401) {
         if (version === generation.value) {
           clearSession()
         }
-        return null
+        return { identity: null, committed: false }
       }
       throw error
     }
+  }
+  async function refresh() {
+    return (await refreshWithStatus()).identity
   }
   async function authenticate(path: '/login' | '/register' | '/first-access', body: Record<string, unknown>) {
     const identity = await api<Identity>(path, { method: 'POST', body })
@@ -113,7 +117,7 @@ export function useAuth() {
   async function registrationAvailable() {
     return (await api<{ registration_available: boolean }>('/registration-status')).registration_available
   }
-  return { user, resolved, refresh, fetchMe: refresh, authenticate, switchAccount, switchCompany, logout, invalidateSession: clearSession,
+  return { user, resolved, refresh, refreshWithStatus, fetchMe: refresh, authenticate, switchAccount, switchCompany, logout, invalidateSession: clearSession,
     isSuperAdmin, accounts, currentAccount, companies, currentCompany, currentRole, can, canManageClients,
     canManageWork, canManageDepartments, canManageMembers, registrationAvailable }
 }

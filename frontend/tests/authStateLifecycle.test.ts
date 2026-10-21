@@ -13,7 +13,9 @@ registerHooks({
 
 const { useAuth } = await import('../app/composables/useAuth.ts')
 
-function session() {
+function session(api: (path: string) => Promise<unknown> = async () => {
+  throw { statusCode: 401 }
+}) {
   let currentContext = true
   let cacheCleared = false
   const states = new Map<string, Ref<unknown>>([
@@ -44,9 +46,9 @@ function session() {
     useAccessApi: () => ({
       csrf: ref('expired-token'),
       refreshCsrf: async () => {},
-      api: async () => {
+      api: async (path: string) => {
         currentContext = false
-        throw { statusCode: 401 }
+        return api(path)
       }
     }),
     clearNuxtData: () => {
@@ -61,6 +63,16 @@ function session() {
     }
   })
   return { auth: useAuth(), states, cacheCleared: () => cacheCleared }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 test('an asynchronous SSR 401 clears tenant state using the captured Nuxt request context', async () => {
@@ -78,4 +90,21 @@ test('session invalidation clears tenant state while preserving Nuxt DevTools ru
   assert.equal(view.states.get('clients-selection')!.value, undefined)
   assert.deepEqual(view.states.get('__nuxt_devtools__')!.value, { timeSsrStart: 123 })
   assert.equal(view.auth.user.value, null)
+})
+
+test('a superseded refresh still returns null for its 401 while preserving the newer identity', async () => {
+  const older = deferred<unknown>()
+  let requests = 0
+  const newerIdentity = { id: 2 }
+  const view = session(async () => {
+    requests++
+    return requests === 1 ? older.promise : newerIdentity
+  })
+  const olderRefresh = view.auth.refresh()
+  await Promise.resolve()
+  assert.equal(requests, 1)
+  assert.deepEqual(await view.auth.refresh(), newerIdentity)
+  older.reject({ statusCode: 401 })
+  assert.equal(await olderRefresh, null)
+  assert.deepEqual(view.auth.user.value, newerIdentity)
 })
