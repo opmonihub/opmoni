@@ -116,7 +116,7 @@ function mountFinanceWorkspace(finance: Record<string, unknown>) {
       if (instance?.type === components[name]) return instance.exposed ?? {}
       const result = instance?.subTree && visit(instance.subTree)
       if (result) return result
-      for (const child of (vnode.children ?? []) as Vue.VNode[]) {
+      for (const child of (Array.isArray(vnode.children) ? vnode.children : []) as Vue.VNode[]) {
         if (child && typeof child === 'object') {
           const found = visit(child)
           if (found) return found
@@ -162,7 +162,11 @@ function mountFinanceWorkspace(finance: Record<string, unknown>) {
     assert.ok(found, 'matching form control should be mounted')
     return found
   }
-  return { exposed, button, control, modalOpenStates, unmount: () => app.unmount() }
+  function hasText(value: string) {
+    const visit = (node: { text?: string, children?: unknown[] }): boolean => Boolean(node.text?.includes(value)) || (node.children ?? []).some(child => child && typeof child === 'object' && visit(child as { text?: string, children?: unknown[] }))
+    return root.children.some(child => child && typeof child === 'object' && visit(child as { text?: string, children?: unknown[] }))
+  }
+  return { exposed, button, control, hasText, modalOpenStates, unmount: () => app.unmount() }
 }
 
 const emptyMeta = { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] as ErpFinanceTotals[] }
@@ -215,7 +219,7 @@ async function settleUntil(ready: () => boolean) {
   assert.ok(ready(), 'asynchronous workspace action should settle')
 }
 
-function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}) {
+function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () => {}, refreshIdentity: () => Promise<unknown> = async () => null) {
   const user = Vue.ref({ id: 42 })
   const company = Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' })
   const key = Vue.computed(() => JSON.stringify([user.value.id, company.value.id, company.value.permissions.join(',')]))
@@ -228,7 +232,7 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
   let mounted: () => void = () => {}
   const bindings = {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted(callback: () => void) { mounted = callback }, onScopeDispose: Vue.onScopeDispose,
-    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => ({ user, currentCompany: company }), useErpAdministrationContext: () => context
+    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => ({ user, currentCompany: company, refresh: refreshIdentity, fetchMe: refreshIdentity }), useErpAdministrationContext: () => context
   }
   const moduleExports = compileModule(readFileSync(new URL('../app/composables/useErpFinanceWorkspace.ts', import.meta.url), 'utf8'), {
     '#shared/types/erpBusiness': {},
@@ -302,6 +306,324 @@ describe('finance forms use actual form submissions and exact decimal strings', 
 })
 
 describe('finance workspace', { concurrency: 1 }, () => {
+  it('retains mounted form drafts across tabs and resets them on authority changes', async (t) => {
+    const app = createWorkspace(async () => page([]))
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    const draft = mounted.exposed('ErpObligationForm').state as Record<string, string>
+    draft.category = 'frete'
+    draft.amount = '51.2300'
+    mounted.button('Pagamentos').onClick?.()
+    await settle()
+    mounted.button('Obrigações').onClick?.()
+    await settle()
+    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '51.2300')
+    app.company.value = { ...app.company.value, id: 8 }
+    await settle()
+    assert.equal((mounted.exposed('ErpObligationForm').state as Record<string, string>).amount, '')
+  })
+
+  it('closes and clears an allocation confirmation when the company authority changes', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const posts: string[] = []
+    const app = createWorkspace(async (path, options) => {
+      if (options?.method === 'POST') posts.push(path)
+      if (path.includes('/allocation-candidates?')) return page([obligation])
+      if (path.startsWith('/erp/payments?')) return page([payment])
+      if (path === '/erp/payments/17') return { data: payment }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Pagamentos').onClick?.()
+    await settle()
+    mounted.button('Alocar').onClick?.()
+    await settle()
+    mounted.control(props => Array.isArray(props.items) && (props.items as { value: string }[]).some(item => item.value === '9'))['onUpdate:modelValue']?.('9')
+    mounted.control(props => props.inputmode === 'decimal', true)['onUpdate:modelValue']?.('80.0000')
+    assert.equal(mounted.modalOpenStates[0], true)
+    app.company.value = { ...app.company.value, id: 8 }
+    await settle()
+    assert.equal(mounted.modalOpenStates[0], false)
+    assert.throws(() => mounted.button('Confirmar alocação'))
+    assert.deepEqual(posts, [])
+  })
+
+  it('paginates reference, candidate, and allocation choices without overwriting account options with list rows', async (t) => {
+    const accountOne = { id: 1, name: 'Conta referência 1', erp_establishment_id: null, account_type: 'saving_current', currency: 'BRL', status: 'active' }
+    const accountTwo = { ...accountOne, id: 2, name: 'Conta referência 2' }
+    const visibleAccount = { ...accountOne, id: 99, name: 'Conta da página filtrada' }
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (path.startsWith('/erp/financial-accounts?') && path.includes('status=active')) {
+        if (path.includes('page=2')) return page([accountTwo], 101)
+        return { data: [accountOne], meta: { ...emptyMeta, total: 101, last_page: 2 } }
+      }
+      if (path.startsWith('/erp/financial-accounts?')) return page([visibleAccount], 1)
+      if (path.includes('/allocation-candidates?')) {
+        const requestedPage = new URLSearchParams(path.split('?')[1]).get('page')
+        const row = { ...obligation, id: Number(requestedPage) === 2 ? 10 : 9 }
+        return { data: [row], meta: { ...emptyMeta, current_page: Number(requestedPage), last_page: 2, total: 16 } }
+      }
+      if (path.includes('/allocations?')) {
+        const requestedPage = new URLSearchParams(path.split('?')[1]).get('page')
+        const row = { id: Number(requestedPage) === 2 ? 2 : 1, erp_payment_id: 17, erp_obligation_id: 9, amount: '5.0000', reversal_of_id: null, remaining_reversible: '5.0000', reason: null, posted_by_user_id: 42, actor: null, posted_at: null }
+        return { data: [row], meta: { ...emptyMeta, current_page: Number(requestedPage), last_page: 2, total: 16 } }
+      }
+      return page([])
+    })
+    t.after(app.stop)
+    const state = app.state as {
+      accountOptions: Vue.Ref<typeof accountOne[]>
+      rows: Vue.Ref<unknown[]>
+      loadReferences: () => Promise<void>
+      loadMoreReferences: (kind: 'accounts') => Promise<void>
+      load: () => Promise<void>
+      loadCandidates: (payment: ErpPayment, page?: number) => Promise<void>
+      candidates: Vue.Ref<ErpObligation[]>
+      candidateMeta: Vue.Ref<ErpFinancePage<ErpObligation>['meta'] | null>
+      loadAllocations: (paymentId: number, page?: number) => Promise<void>
+      allocations: Vue.Ref<ErpPaymentAllocation[]>
+      allocationMeta: Vue.Ref<ErpFinancePage<ErpPaymentAllocation>['meta'] | null>
+      selectTab: (tab: 'accounts') => Promise<void>
+    }
+    await state.loadReferences()
+    await state.loadMoreReferences('accounts')
+    assert.deepEqual(state.accountOptions.value.map(row => row.id), [1, 2])
+    await state.selectTab('accounts')
+    assert.equal(state.rows.value[0] && 'id' in state.rows.value[0] ? state.rows.value[0].id : null, 99)
+    assert.deepEqual(state.accountOptions.value.map(row => row.id), [1, 2])
+    await state.loadCandidates(payment, 2)
+    assert.equal(state.candidates.value[0]?.id, 10)
+    assert.equal(state.candidateMeta.value?.current_page, 2)
+    await state.loadAllocations(17, 2)
+    assert.equal(state.allocations.value[0]?.id, 2)
+    assert.equal(state.allocationMeta.value?.current_page, 2)
+    assert.ok(calls.some(path => path.includes('/financial-accounts?per_page=100&page=2&status=active')))
+    assert.ok(calls.some(path => path.includes('/allocation-candidates?per_page=15&page=2')))
+    assert.ok(calls.some(path => path.includes('/allocations?per_page=15&page=2')))
+  })
+
+  it('does not resume payment history under a new company after the detail read resolves', async (t) => {
+    const detail = deferred<unknown>()
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (path === '/erp/payments/17') return detail.promise
+      return page([])
+    })
+    t.after(app.stop)
+    const state = app.state as { selectTab: (tab: 'payments') => Promise<void>, inspectPayment: (row: ErpPayment) => Promise<void> }
+    await state.selectTab('payments')
+    calls.length = 0
+    const request = state.inspectPayment(payment)
+    app.company.value = { ...app.company.value, id: 8 }
+    detail.resolve({ data: payment })
+    await request
+    assert.equal(calls.some(path => path.startsWith('/erp/payments/17/allocations?')), false)
+  })
+
+  it('keeps authorized finance references when establishment access is absent', async (t) => {
+    const app = createWorkspace(async (path) => {
+      if (path.startsWith('/erp/establishments')) throw { statusCode: 403, data: { message: 'Estabelecimentos negados' } }
+      if (path.startsWith('/erp/financial-accounts?')) return page([{ id: 7, name: 'Caixa banco', account_type: 'saving_current', currency: 'BRL', status: 'active', erp_establishment_id: null }])
+      if (path.startsWith('/erp/payments?')) return page([payment])
+      if (path.startsWith('/erp/cash-sessions')) return page([{ id: 4, currency: 'BRL', erp_establishment_id: null, status: 'open' }])
+      return page([])
+    })
+    t.after(app.stop)
+    app.company.value = { ...app.company.value, permissions: ['erp.obligations.index', 'erp.financial-accounts.index', 'erp.payments.index', 'erp.cash-sessions.index'] }
+    const state = app.state as { loadReferences: () => Promise<void>, accountOptions: Vue.Ref<ErpFinancialAccount[]>, cashSessions: Vue.Ref<{ id: number }[]> }
+    await state.loadReferences()
+    assert.deepEqual(state.accountOptions.value.map(row => row.id), [7])
+    assert.deepEqual(state.cashSessions.value.map(row => row.id), [4])
+  })
+
+  it('loads and renders financial-account details from its actual GET route', async (t) => {
+    const account = { id: 33, name: 'Conta principal', account_type: 'saving_current', currency: 'BRL', status: 'active', erp_establishment_id: null }
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (path.startsWith('/erp/financial-accounts?')) return page([account])
+      if (path === '/erp/financial-accounts/33') return { data: account }
+      return page([])
+    })
+    t.after(app.stop)
+    const mounted = mountFinanceWorkspace(app.state as Record<string, unknown>)
+    t.after(mounted.unmount)
+    app.mount()
+    await settle()
+    mounted.button('Contas').onClick?.()
+    await settle()
+    mounted.button('Detalhes').onClick?.()
+    await settle()
+    assert.ok(calls.includes('/erp/financial-accounts/33'))
+    assert.equal(mounted.hasText('Conta principal'), true)
+  })
+
+  it('clears a denied cached finance read, refreshes auth, and ignores an older successful callback', async (t) => {
+    const delayed = deferred<unknown>()
+    let requests = 0
+    let refreshed = 0
+    const account = { id: 5, name: 'Referência mantida', account_type: 'saving_current', currency: 'BRL', status: 'active', erp_establishment_id: null }
+    const app = createWorkspace(async (path) => {
+      if (path.startsWith('/erp/financial-accounts?')) return page([account])
+      if (path.startsWith('/erp/obligations?')) {
+        requests++
+        if (requests === 1) return page([obligation])
+        if (requests === 2) return delayed.promise
+        throw { statusCode: 403, data: { message: 'A leitura foi revogada' } }
+      }
+      return page([])
+    }, async () => {}, async () => { refreshed++ })
+    t.after(app.stop)
+    const state = app.state as { rows: Vue.Ref<unknown[]>, meta: Vue.Ref<unknown>, accountOptions: Vue.Ref<ErpFinancialAccount[]>, load: () => Promise<void>, loadReferences: () => Promise<void>, canRead: Vue.Ref<boolean> }
+    await state.loadReferences()
+    await state.load()
+    assert.equal(state.rows.value.length, 1)
+    const late = state.load()
+    await Promise.resolve()
+    const denied = state.load()
+    await denied
+    delayed.resolve(page([{ ...obligation, id: 88 }]))
+    await late
+    assert.equal(state.rows.value.length, 0)
+    assert.equal(state.meta.value, null)
+    assert.equal(state.canRead.value, false)
+    assert.equal(refreshed, 1)
+    assert.equal(state.accountOptions.value[0]?.id, 5)
+  })
+
+  it('reloads typed current payment detail and linked allocations after allocation mutation', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const calls: Array<{ path: string, options?: { method?: string } }> = []
+    const current = { ...payment, available_amount: '75.0000', allocated_amount: '25.0000' }
+    const allocation = { id: 31, erp_payment_id: 17, erp_obligation_id: 9, amount: '25.0000', reversal_of_id: null, remaining_reversible: '25.0000', reason: null, posted_by_user_id: 42, actor: null, posted_at: null }
+    const app = createWorkspace(async (path, options) => {
+      calls.push({ path, options })
+      if (options?.method === 'POST') return { data: allocation }
+      if (path === '/erp/payments/17') return { data: current }
+      if (path.startsWith('/erp/payments/17/allocations?')) return page([allocation])
+      return page([])
+    })
+    t.after(app.stop)
+    const state = app.state as { post: (path: string, body: Record<string, unknown>, op: string) => Promise<unknown>, selected: Vue.Ref<ErpPayment | null>, allocations: Vue.Ref<ErpPaymentAllocation[]>, operationOutcome: Vue.Ref<unknown> }
+    await state.post('/erp/payments/17/allocate', { erp_obligation_id: 9, amount: '25.0000' }, 'erp.payments.allocate')
+    assert.equal(state.selected.value?.available_amount, '75.0000')
+    assert.equal(state.allocations.value[0]?.id, 31)
+    assert.equal(state.operationOutcome.value && (state.operationOutcome.value as { id: number }).id, 31)
+    assert.ok(calls.some(call => call.path === '/erp/payments/17'))
+    assert.ok(calls.some(call => call.path === '/erp/payments/17/allocations?per_page=15&page=1'))
+  })
+
+  it('uses operation lookup only as an outcome and reloads current typed detail', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const pending = { identity: '42:7:erp.obligations.store', operation: 'erp.obligations.store', path: '/erp/obligations', payload: { amount: '5.0000' }, key: 'a1b2c3d4-e5f6-4789-a123-123456789abc' }
+    storage.saved.set('erp-finance:v1:42:7', JSON.stringify(pending))
+    const current = { ...obligation, id: 44, open_amount: '2.0000', allocated_amount: '3.0000' }
+    const original = { ...obligation, id: 44, open_amount: '5.0000', allocated_amount: '0.0000' }
+    const calls: string[] = []
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (path.startsWith('/erp/operations/lookup')) return { data: { state: 'completed', result: original } }
+      if (path === '/erp/obligations/44') return { data: current }
+      return page([])
+    })
+    t.after(app.stop)
+    app.mount()
+    const state = app.state as { reconcile: () => Promise<void>, selected: Vue.Ref<ErpObligation | null>, operationOutcome: Vue.Ref<unknown> }
+    await state.reconcile()
+    assert.equal(state.selected.value?.open_amount, '2.0000')
+    assert.equal((state.operationOutcome.value as ErpObligation).open_amount, '5.0000')
+    assert.ok(calls.includes('/erp/obligations/44'))
+  })
+
+  it('uses per-resource selection sequences for details, candidates and receipts, including close races', async (t) => {
+    const lateDetail = deferred<unknown>()
+    const lateCandidates = deferred<unknown>()
+    const lateReceipt = deferred<unknown>()
+    const app = createWorkspace(async (path) => {
+      if (path === '/erp/payments/17') return lateDetail.promise
+      if (path === '/erp/payments/18') return { data: { ...payment, id: 18 } }
+      if (path === '/erp/payments/17/allocation-candidates?per_page=15&page=1') return lateCandidates.promise
+      if (path === '/erp/payments/18/allocation-candidates?per_page=15&page=1') return page([{ ...obligation, id: 18 }])
+      if (path === '/erp/payments/17/receipt') return lateReceipt.promise
+      if (path === '/erp/payments/18/receipt') return { data: { version: 1, reference: 'R18', company: { id: 7, name: 'Empresa' }, id: 18, amount: '1.0000', currency: 'BRL', direction: 'in', effective_status: 'posted', method: 'cash', posted_at: null, actor: null } }
+      return page([])
+    })
+    t.after(app.stop)
+    const state = app.state as {
+      inspectPayment: (row: ErpPayment) => Promise<void>
+      closeSelected: () => void
+      selected: Vue.Ref<ErpPayment | null>
+      loadCandidates: (row: ErpPayment, page?: number) => Promise<void>
+      candidates: Vue.Ref<ErpObligation[]>
+      loadReceipt: (row: ErpPayment) => Promise<void>
+      closeReceipt: () => void
+      receipt: Vue.Ref<{ reference: string } | null>
+    }
+    await (app.state as { selectTab: (tab: 'payments') => Promise<void> }).selectTab('payments')
+    const inspectOld = state.inspectPayment(payment)
+    await state.inspectPayment({ ...payment, id: 18 })
+    lateDetail.resolve({ data: payment })
+    await inspectOld
+    assert.equal(state.selected.value?.id, 18)
+    const inspectClosing = state.inspectPayment(payment)
+    state.closeSelected()
+    lateDetail.resolve({ data: payment })
+    await inspectClosing
+    assert.equal(state.selected.value, null)
+    const candidatesOld = state.loadCandidates(payment)
+    await state.loadCandidates({ ...payment, id: 18 })
+    lateCandidates.resolve(page([{ ...obligation, id: 17 }]))
+    await candidatesOld
+    assert.equal(state.candidates.value[0]?.id, 18)
+    const receiptOld = state.loadReceipt(payment)
+    await state.loadReceipt({ ...payment, id: 18 })
+    lateReceipt.resolve({ data: { version: 1, reference: 'R17', company: { id: 7, name: 'Empresa' }, id: 17, amount: '1.0000', currency: 'BRL', direction: 'in', effective_status: 'posted', method: 'cash', posted_at: null, actor: null } })
+    await receiptOld
+    assert.equal(state.receipt.value?.reference, 'R18')
+    const receiptClosing = state.loadReceipt(payment)
+    state.closeReceipt()
+    lateReceipt.resolve({ data: { version: 1, reference: 'R17-close', company: { id: 7, name: 'Empresa' }, id: 17, amount: '1.0000', currency: 'BRL', direction: 'in', effective_status: 'posted', method: 'cash', posted_at: null, actor: null } })
+    await receiptClosing
+    assert.equal(state.receipt.value, null)
+  })
+
+  it('keeps legacy-observed lookup records unresolved without clearing or creating a new key', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const pending = { identity: '42:7:erp.payments.allocate', operation: 'erp.payments.allocate', path: '/erp/payments/17/allocate', payload: { erp_obligation_id: 9, amount: '5.0000' }, key: 'a1b2c3d4-e5f6-4789-a123-123456789abc' }
+    storage.saved.set('erp-finance:v1:42:7', JSON.stringify(pending))
+    const posts: string[] = []
+    const app = createWorkspace(async (path, options) => {
+      if (options?.method === 'POST') posts.push(path)
+      if (path.startsWith('/erp/operations/lookup')) return { data: { state: 'legacy_observed', result: null, resource: { type: 'payment_allocation', id: 31 } } }
+      return page([])
+    })
+    t.after(app.stop)
+    app.mount()
+    const state = app.state as { reconcile: () => Promise<void>, selectedOperation: Vue.Ref<{ key: string } | null>, canRetryExact: Vue.Ref<boolean>, needsReconciliation: Vue.Ref<boolean>, mutationError: Vue.Ref<string>, post: (path: string, body: Record<string, unknown>, op: string) => Promise<unknown> }
+    await state.reconcile()
+    assert.equal(state.selectedOperation.value?.key, pending.key)
+    assert.equal(JSON.parse(storage.saved.get('erp-finance:v1:42:7')!).key, pending.key)
+    assert.equal(state.canRetryExact.value, false)
+    assert.equal(state.needsReconciliation.value, true)
+    assert.match(state.mutationError.value, /observada/)
+    await state.post('/erp/payments/17/allocate', { erp_obligation_id: 10, amount: '5.0000' }, 'erp.payments.allocate')
+    assert.deepEqual(posts, [])
+  })
+
   it('mounts the real workspace and child form, emits its submission, and retains decimal input after 422', async (t) => {
     const storage = sessionStorageFixture()
     t.after(storage.restore)
@@ -441,6 +763,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
     const late = deferred<unknown>()
     let postCount = 0
     const app = createWorkspace(async (_path, options) => {
+      if (_path === '/erp/financial-accounts/88') return { data: { id: 88, currency: 'BRL', name: 'B result', account_type: 'saving_current', status: 'active', erp_establishment_id: null } }
       if (options?.method === 'POST') {
         postCount++
         if (postCount === 1) return late.promise
@@ -648,7 +971,7 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.deepEqual(posts[1]?.options?.body, { amount: '2.0000', reason: 'Ajuste conferido' })
     assert.equal(posts[2]?.path, '/erp/payments/17/reverse')
     assert.deepEqual(posts[2]?.options?.body, { reason: 'Compensação autorizada' })
-    assert.ok(calls.some(call => call.path === '/erp/payments/17/allocation-candidates?per_page=100&page=1'))
+    assert.ok(calls.some(call => call.path === '/erp/payments/17/allocation-candidates?per_page=15&page=1'))
   })
 
   it('drops a response after authority changes and never invents empty success data', async (t) => {

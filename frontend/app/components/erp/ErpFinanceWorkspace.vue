@@ -7,11 +7,19 @@ import { useErpFinanceWorkspace } from '~/composables/useErpFinanceWorkspace'
 type FinanceRow = ErpFinancialAccount | ErpObligation | ErpPayment
 const finance = useErpFinanceWorkspace()
 const dialogOpen = ref(false)
+const dialogAuthority = ref('')
+const dialogOpenModel = computed({
+  get: () => dialogOpen.value,
+  set: (open: boolean) => {
+    dialogOpen.value = open
+    if (!open) clearActionTarget()
+  }
+})
 const receiptOpen = computed({
   get: () => finance.receipt.value !== null,
   set: (open: boolean) => {
     if (!open)
-      finance.receipt.value = null
+      finance.closeReceipt()
   }
 })
 const action = ref<'allocate' | 'reverse-allocation' | 'reverse-payment' | null>(null)
@@ -22,6 +30,7 @@ const actionError = ref('')
 const actionFeedback = computed(() => actionError.value || Object.values(finance.fieldErrors.value).join(' '))
 const selectedPayment = computed(() => finance.selected.value && 'effective_status' in finance.selected.value ? finance.selected.value : null)
 const selectedObligation = computed(() => finance.selected.value && 'open_amount' in finance.selected.value ? finance.selected.value : null)
+const selectedAccount = computed(() => finance.selected.value && 'account_type' in finance.selected.value ? finance.selected.value : null)
 const titles = { accounts: 'Contas financeiras', obligations: 'Obrigações', payments: 'Pagamentos' }
 const directionFilter = computed({ get: () => finance.filters.direction || 'all', set: (value: string) => finance.filters.direction = value === 'all' ? '' : value })
 const statusFilter = computed({ get: () => finance.filters.status || 'all', set: (value: string) => finance.filters.status = value === 'all' ? '' : value })
@@ -67,9 +76,41 @@ function rowAvailableAmount(row: FinanceRow) {
 function scrollToForm(kind: string) {
   document.querySelector(`[data-finance-form="${kind}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
 }
+function clearActionTarget() {
+  if (action.value === 'allocate') finance.closeCandidates()
+  action.value = null
+  targetPayment.value = null
+  targetAllocation.value = null
+  actionState.erp_obligation_id = 'none'
+  actionState.amount = ''
+  actionState.reason = ''
+  actionState.erp_cash_session_id = 'none'
+  actionError.value = ''
+  finance.fieldErrors.value = {}
+  dialogAuthority.value = ''
+}
+watch(finance.authorityGeneration, () => {
+  dialogOpen.value = false
+  clearActionTarget()
+}, { flush: 'sync' })
+watch(() => {
+  if (action.value === 'allocate') return finance.allowed('erp.payments.allocate')
+  if (action.value === 'reverse-allocation') return finance.allowed('erp.payment-allocations.reverse')
+  if (action.value === 'reverse-payment') return finance.allowed('erp.payments.reverse')
+  return true
+}, (allowed) => {
+  if (!allowed && dialogOpen.value) {
+    dialogOpen.value = false
+    clearActionTarget()
+  }
+}, { flush: 'sync' })
 function select(row: FinanceRow) {
   if ('effective_status' in row) void finance.inspectPayment(row)
   else void finance.inspect(row)
+}
+function loadAllocationPage(page: number) {
+  const payment = selectedPayment.value
+  if (payment) void finance.loadAllocations(payment.id, page)
 }
 function startAllocation(payment: ErpPayment) {
   if (!finance.allowed('erp.payments.allocate')) return
@@ -80,15 +121,19 @@ function startAllocation(payment: ErpPayment) {
   actionState.reason = ''
   actionError.value = ''
   dialogOpen.value = true
+  dialogAuthority.value = finance.authorityGeneration.value.toString()
   void finance.loadCandidates(payment)
 }
 function startAllocationReversal(allocation: ErpPaymentAllocation) {
+  if (!finance.allowed('erp.payment-allocations.reverse')) return
+  targetPayment.value = selectedPayment.value
   action.value = 'reverse-allocation'
   targetAllocation.value = allocation
   actionState.amount = allocation.remaining_reversible
   actionState.reason = ''
   actionError.value = ''
   dialogOpen.value = true
+  dialogAuthority.value = finance.authorityGeneration.value.toString()
 }
 function startPaymentReversal(payment: ErpPayment) {
   if (!finance.allowed('erp.payments.reverse') || payment.correction.workflow !== 'payment_reversal') return
@@ -98,16 +143,29 @@ function startPaymentReversal(payment: ErpPayment) {
   actionState.erp_cash_session_id = 'none'
   actionError.value = ''
   dialogOpen.value = true
+  dialogAuthority.value = finance.authorityGeneration.value.toString()
 }
 async function confirmAction() {
   actionError.value = ''
+  if (!dialogOpen.value || dialogAuthority.value !== finance.authorityGeneration.value.toString()) {
+    dialogOpen.value = false
+    clearActionTarget()
+    return
+  }
+  const requiredAction = action.value === 'allocate' ? 'erp.payments.allocate' : action.value === 'reverse-allocation' ? 'erp.payment-allocations.reverse' : 'erp.payments.reverse'
+  if (!finance.allowed(requiredAction)) {
+    dialogOpen.value = false
+    clearActionTarget()
+    actionError.value = 'Sua autorização mudou. Reabra a operação após atualizar os dados.'
+    return
+  }
   if (action.value === 'allocate') {
     if (!targetPayment.value || actionState.erp_obligation_id === 'none' || !decimalTextIsValid(actionState.amount)) {
       actionError.value = 'Selecione uma obrigação e informe um valor decimal positivo.'
       return
     }
     const result = await finance.post(`/erp/payments/${targetPayment.value.id}/allocate`, { erp_obligation_id: Number(actionState.erp_obligation_id), amount: actionState.amount }, 'erp.payments.allocate')
-    if (result !== null) dialogOpen.value = false
+    if (result !== null) dialogOpenModel.value = false
   } else if (action.value === 'reverse-allocation') {
     if (!actionState.reason.trim()) {
       actionError.value = 'Informe o motivo da correção.'
@@ -118,7 +176,7 @@ async function confirmAction() {
       return
     }
     const result = await finance.post(`/erp/payment-allocations/${targetAllocation.value.id}/reverse`, { amount: actionState.amount, reason: actionState.reason.trim() }, 'erp.payment-allocations.reverse')
-    if (result !== null) dialogOpen.value = false
+    if (result !== null) dialogOpenModel.value = false
   } else if (action.value === 'reverse-payment' && targetPayment.value) {
     if (!actionState.reason.trim()) {
       actionError.value = 'Informe o motivo da correção.'
@@ -131,7 +189,7 @@ async function confirmAction() {
     const body: Record<string, unknown> = { reason: actionState.reason.trim() }
     if (actionState.erp_cash_session_id !== 'none') body.erp_cash_session_id = Number(actionState.erp_cash_session_id)
     const result = await finance.post(`/erp/payments/${targetPayment.value.id}/reverse`, body, 'erp.payments.reverse')
-    if (result !== null) dialogOpen.value = false
+    if (result !== null) dialogOpenModel.value = false
   }
 }
 async function changeFilter() {
@@ -215,29 +273,32 @@ function downloadReceipt() {
       </div>
 
       <ErpFinancialAccountForm
-        v-if="finance.tab.value === 'accounts' && finance.allowed('erp.financial-accounts.store')"
-        :key="finance.authorityGeneration.value"
+        v-if="finance.allowed('erp.financial-accounts.store')"
+        :key="`account-${finance.authorityGeneration.value}`"
+        :style="{ display: finance.tab.value === 'accounts' ? '' : 'none' }"
         :busy="finance.mutating.value"
         :errors="finance.fieldErrors.value"
         :establishments="finance.establishments.value"
         @submit="payload => finance.post('/erp/financial-accounts', payload)"
       />
       <ErpObligationForm
-        v-if="finance.tab.value === 'obligations' && finance.allowed('erp.obligations.store')"
-        :key="finance.authorityGeneration.value"
+        v-if="finance.allowed('erp.obligations.store')"
+        :key="`obligation-${finance.authorityGeneration.value}`"
+        :style="{ display: finance.tab.value === 'obligations' ? '' : 'none' }"
         :busy="finance.mutating.value"
         :errors="finance.fieldErrors.value"
         :establishments="finance.establishments.value"
-        :accounts="finance.accounts.value"
+        :accounts="finance.accountOptions.value"
         @submit="payload => finance.post('/erp/obligations', payload)"
       />
       <ErpPaymentForm
-        v-if="finance.tab.value === 'payments' && finance.allowed('erp.payments.store')"
-        :key="finance.authorityGeneration.value"
+        v-if="finance.allowed('erp.payments.store')"
+        :key="`payment-${finance.authorityGeneration.value}`"
+        :style="{ display: finance.tab.value === 'payments' ? '' : 'none' }"
         :busy="finance.mutating.value"
         :errors="finance.fieldErrors.value"
         :establishments="finance.establishments.value"
-        :accounts="finance.accounts.value"
+        :accounts="finance.accountOptions.value"
         :sessions="finance.cashSessions.value"
         @submit="payload => finance.post('/erp/payments', payload)"
       />
@@ -253,7 +314,7 @@ function downloadReceipt() {
           <USelect v-model="establishmentFilter" :items="[{ label: 'Todos', value: 'all' }, ...finance.establishments.value.map(row => ({ label: row.name, value: String(row.id) }))]" @update:model-value="changeFilter" />
         </UFormField>
         <UFormField v-if="finance.tab.value !== 'accounts'" label="Conta financeira" name="erp_financial_account_id">
-          <USelect v-model="accountFilter" :items="[{ label: 'Todas', value: 'all' }, ...finance.accounts.value.map(account => ({ label: account.name, value: String(account.id) }))]" @update:model-value="changeFilter" />
+          <USelect v-model="accountFilter" :items="[{ label: 'Todas', value: 'all' }, ...finance.accountOptions.value.map(account => ({ label: account.name, value: String(account.id) }))]" @update:model-value="changeFilter" />
         </UFormField>
         <UFormField label="Moeda" name="currency">
           <UInput
@@ -270,6 +331,37 @@ function downloadReceipt() {
           <UInput v-model="finance.filters.date_to" type="date" @change="changeFilter" />
         </UFormField>
       </section>
+
+      <div v-if="finance.referenceMeta.establishments && finance.referenceMeta.establishments.current_page < finance.referenceMeta.establishments.last_page" class="flex flex-wrap gap-2 text-xs">
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          label="Carregar mais estabelecimentos"
+          :loading="finance.referenceLoading.establishments"
+          @click="finance.loadMoreReferences('establishments')"
+        />
+      </div>
+      <div v-if="finance.referenceMeta.accounts && finance.referenceMeta.accounts.current_page < finance.referenceMeta.accounts.last_page" class="flex flex-wrap gap-2 text-xs">
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          label="Carregar mais contas financeiras"
+          :loading="finance.referenceLoading.accounts"
+          @click="finance.loadMoreReferences('accounts')"
+        />
+      </div>
+      <div v-if="finance.referenceMeta.cashSessions && finance.referenceMeta.cashSessions.current_page < finance.referenceMeta.cashSessions.last_page" class="flex flex-wrap gap-2 text-xs">
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="ghost"
+          label="Carregar mais caixas abertos"
+          :loading="finance.referenceLoading.cashSessions"
+          @click="finance.loadMoreReferences('cashSessions')"
+        />
+      </div>
 
       <UAlert
         v-if="finance.pageError.value"
@@ -363,6 +455,7 @@ function downloadReceipt() {
           <template #actions-cell="{ row }">
             <div class="flex flex-wrap gap-1">
               <UButton
+                v-if="finance.allowed(finance.tab.value === 'accounts' ? 'erp.financial-accounts.show' : finance.tab.value === 'obligations' ? 'erp.obligations.show' : 'erp.payments.show')"
                 size="xs"
                 color="neutral"
                 variant="ghost"
@@ -424,7 +517,7 @@ function downloadReceipt() {
             color="neutral"
             variant="ghost"
             label="Fechar detalhes"
-            @click="finance.selected.value = null; finance.allocations.value = []; finance.candidates.value = []"
+            @click="finance.closeSelected()"
           />
         </div>
         <p class="text-sm text-muted">
@@ -450,6 +543,15 @@ function downloadReceipt() {
             />
           </div>
         </div>
+        <div v-if="finance.allocationMeta.value && finance.allocationMeta.value.last_page > 1" class="flex justify-end">
+          <UPagination
+            :page="finance.allocationMeta.value.current_page"
+            :total="finance.allocationMeta.value.total"
+            :items-per-page="finance.allocationMeta.value.per_page"
+            show-edges
+            @update:page="loadAllocationPage"
+          />
+        </div>
       </section>
 
       <section v-if="selectedObligation" class="space-y-3 border-t border-muted pt-5" aria-label="Detalhes da obrigação">
@@ -464,7 +566,7 @@ function downloadReceipt() {
             color="neutral"
             variant="ghost"
             label="Fechar detalhes"
-            @click="finance.selected.value = null"
+            @click="finance.closeSelected()"
           />
         </div>
         <p class="text-sm text-muted">
@@ -487,8 +589,37 @@ function downloadReceipt() {
         </p>
       </section>
 
+      <section v-if="selectedAccount" class="space-y-3 border-t border-muted pt-5" aria-label="Detalhes da conta financeira">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">
+              {{ selectedAccount.name }}
+            </h2>
+            <p class="text-sm text-muted">
+              Conta financeira #{{ selectedAccount.id }} · {{ selectedAccount.account_type }} · {{ selectedAccount.status }}
+            </p>
+          </div>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Fechar detalhes"
+            @click="finance.closeSelected()"
+          />
+        </div>
+        <p class="text-sm text-muted">
+          Moeda {{ selectedAccount.currency }} · Estabelecimento {{ selectedAccount.erp_establishment_id ?? 'toda a empresa' }}
+        </p>
+      </section>
+
+      <details v-if="finance.operationOutcome.value !== null" class="border-t border-muted pt-3 text-sm">
+        <summary class="cursor-pointer font-medium">
+          Resultado original da operação
+        </summary>
+        <pre class="mt-2 overflow-x-auto rounded bg-elevated p-3 text-xs">{{ JSON.stringify(finance.operationOutcome.value, null, 2) }}</pre>
+      </details>
+
       <UModal
-        v-model:open="dialogOpen"
+        v-model:open="dialogOpenModel"
         :title="action === 'allocate' ? 'Alocar pagamento' : action === 'reverse-allocation' ? 'Desfazer alocação' : 'Estornar pagamento'"
         :description="action === 'reverse-payment' ? 'A ação cria uma compensação vinculada e preserva o pagamento original.' : 'A correção será registrada com uma operação identificável.'"
         :ui="{ footer: 'justify-end' }"
@@ -506,6 +637,14 @@ function downloadReceipt() {
               :error="finance.fieldErrors.value.erp_obligation_id"
             >
               <USelect v-model="actionState.erp_obligation_id" :items="[{ label: 'Selecione uma obrigação', value: 'none' }, ...finance.candidates.value.map(row => ({ label: `#${row.id} · ${row.direction === 'receivable' ? 'A receber' : 'A pagar'} · ${money(row.open_amount, row.currency)}`, value: String(row.id) }))]" />
+              <UPagination
+                v-if="finance.candidateMeta.value && finance.candidateMeta.value.last_page > 1"
+                :page="finance.candidateMeta.value.current_page"
+                :total="finance.candidateMeta.value.total"
+                :items-per-page="finance.candidateMeta.value.per_page"
+                show-edges
+                @update:page="page => targetPayment && finance.loadCandidates(targetPayment, page)"
+              />
             </UFormField>
             <UFormField
               v-if="action === 'allocate' || action === 'reverse-allocation'"
@@ -529,6 +668,15 @@ function downloadReceipt() {
               :error="finance.fieldErrors.value.erp_cash_session_id"
             >
               <USelect v-model="actionState.erp_cash_session_id" :items="[{ label: 'Selecione um caixa aberto', value: 'none' }, ...finance.cashSessions.value.filter(session => session.currency === targetPayment?.currency).map(session => ({ label: `Caixa #${session.id} · ${session.currency}`, value: String(session.id) }))]" />
+              <UButton
+                v-if="finance.referenceMeta.cashSessions && finance.referenceMeta.cashSessions.current_page < finance.referenceMeta.cashSessions.last_page"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                label="Carregar mais caixas abertos"
+                :loading="finance.referenceLoading.cashSessions"
+                @click="finance.loadMoreReferences('cashSessions')"
+              />
             </UFormField>
             <UFormField
               v-if="action !== 'allocate'"
@@ -553,7 +701,7 @@ function downloadReceipt() {
             variant="outline"
             label="Cancelar"
             :disabled="finance.mutating.value"
-            @click="close"
+            @click="close(); clearActionTarget()"
           />
           <UButton
             :color="action === 'allocate' ? 'primary' : 'error'"

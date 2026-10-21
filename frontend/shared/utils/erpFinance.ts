@@ -1,4 +1,4 @@
-export type ErpFinanceAction = 'erp.financial-accounts.index' | 'erp.financial-accounts.store' | 'erp.obligations.index' | 'erp.obligations.store' | 'erp.payments.index' | 'erp.payments.store' | 'erp.payments.allocate' | 'erp.payments.reverse' | 'erp.payments.receipt' | 'erp.payment-allocations.reverse' | 'erp.cash-sessions.index'
+export type ErpFinanceAction = 'erp.financial-accounts.index' | 'erp.financial-accounts.show' | 'erp.financial-accounts.store' | 'erp.obligations.index' | 'erp.obligations.show' | 'erp.obligations.store' | 'erp.payments.index' | 'erp.payments.show' | 'erp.payments.allocations.index' | 'erp.payments.store' | 'erp.payments.allocate' | 'erp.payments.reverse' | 'erp.payments.receipt' | 'erp.payment-allocations.reverse' | 'erp.establishments.index' | 'erp.cash-sessions.index'
 
 export function erpFinanceAllowed(grants: readonly string[] | undefined, role: string | undefined, action: ErpFinanceAction): boolean {
   if (!grants?.length)
