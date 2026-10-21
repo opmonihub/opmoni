@@ -1,6 +1,6 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { CompanyMembership } from '../../shared/types/access.ts'
-import { erpCadastrosPages } from '../../shared/utils/erpCatalogs.ts'
+import { erpCadastrosPages } from '#shared/utils/erpCatalogs'
 import {
   erpCompanyHasPermission,
   erpModulePageContracts,

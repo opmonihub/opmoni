@@ -5,7 +5,9 @@ import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
-import * as workspaceNav from '../app/utils/erpWorkspaceNav.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
+
+const workspaceNav = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
 
 function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const output = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText

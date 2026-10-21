@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import {
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
+
+const {
   erpWorkspaceCatalogGroups,
   erpWorkspaceSettingsGroups,
   erpWorkspaceSidebarItems
-} from '../app/utils/erpWorkspaceNav.ts'
+} = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
 
 function company(overrides: Record<string, unknown> = {}) {
   return {
