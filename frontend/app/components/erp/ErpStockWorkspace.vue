@@ -294,99 +294,101 @@ function previousPage() {
       </UButton>
     </template>
     <template #toolbar>
-      <UNavigationMenu
-        :items="areaLinks"
-        highlight
-        aria-label="Áreas de estoque"
-        class="min-w-0 flex-1 overflow-x-auto"
-      />
-      <div class="flex w-full flex-wrap items-center gap-2 pt-2">
-        <USelect
-          :model-value="workspace.filters.erp_establishment_id || 'all'"
-          aria-label="Filtrar por estabelecimento"
-          :items="[{ label: 'Todos os estabelecimentos', value: 'all' }, ...workspace.establishments.value.map(row => ({ label: row.name, value: String(row.id) }))]"
-          @update:model-value="workspace.filters.erp_establishment_id = $event === 'all' ? '' : String($event)"
+      <div class="flex w-full min-w-0 flex-col items-stretch gap-2">
+        <UNavigationMenu
+          :items="areaLinks"
+          highlight
+          aria-label="Áreas de estoque"
+          class="w-full min-w-0 overflow-x-auto"
         />
-        <USelect
-          :model-value="workspace.filters.erp_product_variant_id || 'all'"
-          aria-label="Filtrar por produto ou variante"
-          :items="[{ label: 'Todos os produtos', value: 'all' }, ...workspace.variants.value.map(row => ({ label: `${row.product.name} · ${row.name}`, value: String(row.id) }))]"
-          @update:model-value="workspace.filters.erp_product_variant_id = $event === 'all' ? '' : String($event)"
-        />
-        <template v-if="['movements', 'lots', 'adjustments', 'transfers'].includes(area)">
+        <div class="flex w-full min-w-0 flex-wrap items-center gap-2">
           <USelect
-            :model-value="workspace.filters.source_type || 'all'"
-            aria-label="Filtrar por tipo de origem"
-            :items="[
-              { label: 'Todas as origens', value: 'all' }, { label: 'Compra', value: 'erp_purchase' }, { label: 'Venda', value: 'erp_sale' },
-              { label: 'Devolução de compra', value: 'erp_purchase_return' }, { label: 'Devolução de venda', value: 'erp_sale_return' },
-              { label: 'Ajuste', value: 'erp_stock_adjustment' }, { label: 'Transferência', value: 'erp_stock_transfer' },
-              { label: 'Correção de transferência', value: 'erp_stock_transfer_return' }, { label: 'Correção', value: 'erp_stock_reversal' }
-            ]"
-            @update:model-value="workspace.filters.source_type = $event === 'all' ? '' : String($event)"
+            :model-value="workspace.filters.erp_establishment_id || 'all'"
+            aria-label="Filtrar por estabelecimento"
+            :items="[{ label: 'Todos os estabelecimentos', value: 'all' }, ...workspace.establishments.value.map(row => ({ label: row.name, value: String(row.id) }))]"
+            @update:model-value="workspace.filters.erp_establishment_id = $event === 'all' ? '' : String($event)"
+          />
+          <USelect
+            :model-value="workspace.filters.erp_product_variant_id || 'all'"
+            aria-label="Filtrar por produto ou variante"
+            :items="[{ label: 'Todos os produtos', value: 'all' }, ...workspace.variants.value.map(row => ({ label: `${row.product.name} · ${row.name}`, value: String(row.id) }))]"
+            @update:model-value="workspace.filters.erp_product_variant_id = $event === 'all' ? '' : String($event)"
+          />
+          <template v-if="['movements', 'lots', 'adjustments', 'transfers'].includes(area)">
+            <USelect
+              :model-value="workspace.filters.source_type || 'all'"
+              aria-label="Filtrar por tipo de origem"
+              :items="[
+                { label: 'Todas as origens', value: 'all' }, { label: 'Compra', value: 'erp_purchase' }, { label: 'Venda', value: 'erp_sale' },
+                { label: 'Devolução de compra', value: 'erp_purchase_return' }, { label: 'Devolução de venda', value: 'erp_sale_return' },
+                { label: 'Ajuste', value: 'erp_stock_adjustment' }, { label: 'Transferência', value: 'erp_stock_transfer' },
+                { label: 'Correção de transferência', value: 'erp_stock_transfer_return' }, { label: 'Correção', value: 'erp_stock_reversal' }
+              ]"
+              @update:model-value="workspace.filters.source_type = $event === 'all' ? '' : String($event)"
+            />
+            <UInput
+              v-model="workspace.filters.source_id"
+              aria-label="ID da origem"
+              placeholder="ID da origem"
+              inputmode="numeric"
+              class="w-32"
+            />
+          </template>
+          <USelect
+            v-if="area === 'movements'"
+            :model-value="workspace.filters.direction || 'all'"
+            aria-label="Filtrar direção"
+            :items="[{ label: 'Entradas e saídas', value: 'all' }, { label: 'Entrada', value: 'in' }, { label: 'Saída', value: 'out' }]"
+            @update:model-value="workspace.filters.direction = $event === 'all' ? '' : String($event)"
+          />
+          <USelect
+            v-if="['adjustments', 'transfers'].includes(area)"
+            :model-value="workspace.filters.status || 'all'"
+            aria-label="Filtrar situação"
+            :items="[{ label: 'Todas as situações', value: 'all' }, { label: 'Lançado', value: 'posted' }]"
+            @update:model-value="workspace.filters.status = $event === 'all' ? '' : String($event)"
           />
           <UInput
-            v-model="workspace.filters.source_id"
-            aria-label="ID da origem"
-            placeholder="ID da origem"
-            inputmode="numeric"
-            class="w-32"
+            v-if="area !== 'balances'"
+            v-model="workspace.filters.date_from"
+            aria-label="Data inicial"
+            type="date"
           />
-        </template>
-        <USelect
-          v-if="area === 'movements'"
-          :model-value="workspace.filters.direction || 'all'"
-          aria-label="Filtrar direção"
-          :items="[{ label: 'Entradas e saídas', value: 'all' }, { label: 'Entrada', value: 'in' }, { label: 'Saída', value: 'out' }]"
-          @update:model-value="workspace.filters.direction = $event === 'all' ? '' : String($event)"
-        />
-        <USelect
-          v-if="['adjustments', 'transfers'].includes(area)"
-          :model-value="workspace.filters.status || 'all'"
-          aria-label="Filtrar situação"
-          :items="[{ label: 'Todas as situações', value: 'all' }, { label: 'Lançado', value: 'posted' }]"
-          @update:model-value="workspace.filters.status = $event === 'all' ? '' : String($event)"
-        />
-        <UInput
-          v-if="area !== 'balances'"
-          v-model="workspace.filters.date_from"
-          aria-label="Data inicial"
-          type="date"
-        />
-        <UInput
-          v-if="area !== 'balances'"
-          v-model="workspace.filters.date_to"
-          aria-label="Data final"
-          type="date"
-        />
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-filter"
-          label="Aplicar filtros"
-          @click="applyFilters"
-        />
-        <UButton
-          color="neutral"
-          variant="ghost"
-          label="Limpar"
-          @click="clearFilters"
-        />
-        <UButton
-          to="/erp/configuracoes/empresa"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-settings-2"
-          label="Método contábil"
-        />
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-refresh-cw"
-          label="Atualizar"
-          :loading="workspace.loading[area]"
-          @click="workspace.load(area, activeMeta?.current_page ?? 1)"
-        />
+          <UInput
+            v-if="area !== 'balances'"
+            v-model="workspace.filters.date_to"
+            aria-label="Data final"
+            type="date"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-filter"
+            label="Aplicar filtros"
+            @click="applyFilters"
+          />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Limpar"
+            @click="clearFilters"
+          />
+          <UButton
+            to="/erp/configuracoes/empresa"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-settings-2"
+            label="Método contábil"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            label="Atualizar"
+            :loading="workspace.loading[area]"
+            @click="workspace.load(area, activeMeta?.current_page ?? 1)"
+          />
+        </div>
       </div>
     </template>
     <UAlert
