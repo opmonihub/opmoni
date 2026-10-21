@@ -1,19 +1,33 @@
 <script setup lang="ts">
 import type { ErpCommercialDocument } from '#shared/types/erpBusiness'
+import { erpReturnLineError } from '#shared/utils/erpSales'
 
 const props = defineProps<{ sale: ErpCommercialDocument, saving: boolean, errors: Record<string, string>, disabled?: boolean }>()
 const emit = defineEmits<{ submit: [reason: string, lines: Array<{ source_line_id: number, quantity: string }>], cancel: [] }>()
 const reason = ref('')
 const quantities = reactive<Record<number, string>>({})
+const submittedSourceLineIds = ref<number[]>([])
+const editedSourceLineIds = ref(new Set<number>())
 const returnableLines = computed(() => props.sale.returnable_lines ?? [])
 const ready = computed(() => reason.value.trim().length > 0 && returnableLines.value.some(line => Boolean(quantities[line.source_line_id]?.trim())))
+function lineError(lineId: number) {
+  return editedSourceLineIds.value.has(lineId) ? '' : erpReturnLineError(lineId, submittedSourceLineIds.value, props.errors)
+}
+function changeQuantity(lineId: number, value: unknown) {
+  quantities[lineId] = typeof value === 'string' ? value : ''
+  editedSourceLineIds.value = new Set(editedSourceLineIds.value).add(lineId)
+}
 
 function submit() {
   const lines = returnableLines.value.flatMap((line) => {
     const quantity = quantities[line.source_line_id]?.trim()
     return quantity ? [{ source_line_id: line.source_line_id, quantity }] : []
   })
-  if (ready.value) emit('submit', reason.value, lines)
+  if (ready.value) {
+    submittedSourceLineIds.value = lines.map(line => line.source_line_id)
+    editedSourceLineIds.value = new Set()
+    emit('submit', reason.value, lines)
+  }
 }
 defineExpose({ reason, quantities, submit })
 </script>
@@ -47,14 +61,15 @@ defineExpose({ reason, quantities, submit })
             Restante: {{ line.remaining_quantity ?? 'Indisponível' }} · Total original: {{ line.line_total }}
           </p>
         </div>
-        <UFormField :name="`lines.${line.source_line_id}.quantity`" label="Quantidade" :error="errors[`lines.${line.source_line_id}.quantity`]">
+        <UFormField :name="`lines.${line.source_line_id}.quantity`" label="Quantidade" :error="lineError(line.source_line_id)">
           <UInput
-            v-model="quantities[line.source_line_id]"
+            :model-value="quantities[line.source_line_id]"
             type="text"
             inputmode="decimal"
             autocomplete="off"
             class="w-full"
             :disabled="disabled || saving || line.remaining_quantity === null || line.remaining_quantity === '0.0000'"
+            @update:model-value="changeQuantity(line.source_line_id, $event)"
           />
         </UFormField>
       </article>

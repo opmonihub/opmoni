@@ -2,7 +2,7 @@
 import type { ErpCommercialDocument, ErpCommercialDraftPayload, ErpCommercialKind, ErpSaleReturn } from '#shared/types/erpBusiness'
 import type { ErpSalesArea } from '~/composables/useErpSalesWorkspace'
 import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
-import { erpCommercialDocumentToDraft } from '#shared/utils/erpSales'
+import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
 
 type ModalKind = 'create' | 'edit' | 'detail' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
 type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string }
@@ -65,6 +65,10 @@ const detailPaymentIds = computed(() => {
   const selected = sales.selected.value as ErpCommercialDocument | null
   return detailArea.value === 'sales' && selected ? selected.finance?.payment_ids ?? [] : []
 })
+const selectedNeedsRefresh = computed(() => {
+  const selected = sales.selected.value
+  return Boolean(selected && sales.requiresFreshDetail(detailArea.value, selected.id))
+})
 
 function emptyDraft(establishmentId: number | null = null): ErpCommercialDraftPayload {
   return {
@@ -73,6 +77,12 @@ function emptyDraft(establishmentId: number | null = null): ErpCommercialDraftPa
     currency: 'BRL',
     lines: [{ erp_product_variant_id: null, erp_unit_id: null, description: '', quantity: '1.0000', discount_amount: '0.0000', tax_amount: '0.0000' }]
   }
+}
+function updateCreateDraft(kind: ErpCommercialKind, payload: ErpCommercialDraftPayload) {
+  createDrafts[kind] = payload
+}
+function updateEditDraft(payload: ErpCommercialDraftPayload) {
+  editDraft.value = payload
 }
 function actionForNew(area: ErpSalesArea): ErpCommercialKind | null {
   if (area === 'quotes' && sales.allowed('erp.quotes.store')) return 'quote'
@@ -274,7 +284,7 @@ async function openDetail(areaName: ErpSalesArea, row: Record<string, unknown>) 
   }
 }
 async function openEdit() {
-  if (!sales.selected.value || !documentKind(detailArea.value) || sales.mutating.value || sales.selectedOperation.value) return
+  if (!sales.selected.value || selectedNeedsRefresh.value || !documentKind(detailArea.value) || sales.mutating.value || sales.selectedOperation.value) return
   const kind = documentKind(detailArea.value)!
   const action = `erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`
   const document = sales.selected.value as ErpCommercialDocument
@@ -318,14 +328,14 @@ async function convertDocument() {
   }
 }
 function startConvert() {
-  if (!sales.selected.value || sales.selectedOperation.value || sales.mutating.value) return
+  if (!sales.selected.value || selectedNeedsRefresh.value || sales.selectedOperation.value || sales.mutating.value) return
   convertNumber.value = ''
   modalGeneration.value++
   modalKind.value = 'convert'
 }
 function startPostSale() {
   const row = sales.selected.value as ErpCommercialDocument | null
-  if (!row || row.status !== 'draft' || !sales.allowed('erp.sales.post') || sales.selectedOperation.value || sales.mutating.value) return
+  if (!row || selectedNeedsRefresh.value || row.status !== 'draft' || !sales.allowed('erp.sales.post') || sales.selectedOperation.value || sales.mutating.value) return
   includeInlinePayment.value = false
   inlinePaymentAmount.value = ''
   paymentConfirmationError.value = ''
@@ -334,7 +344,7 @@ function startPostSale() {
 }
 async function confirmPostSale() {
   const row = sales.selected.value as ErpCommercialDocument | null
-  if (!row) return
+  if (!row || selectedNeedsRefresh.value) return
   if (includeInlinePayment.value && (!sales.allowed('erp.payments.store') || !sales.allowed('erp.payments.allocate') || !inlinePaymentAmount.value.trim())) {
     paymentConfirmationError.value = 'Informe um valor e confirme as permissões independentes de pagamento e alocação.'
     return
@@ -343,7 +353,7 @@ async function confirmPostSale() {
   const modal = modalKind.value
   const sourceId = row.id
   const payment = includeInlinePayment.value ? { direction: 'in', amount: inlinePaymentAmount.value.trim(), method: 'manual', erp_establishment_id: row.erp_establishment_id } : undefined
-  const payload = { draft_revision: row.draft_revision, ...(payment ? { payment } : {}) }
+  const payload = erpSalePostPayload(row, payment)
   const previousKey = pendingBefore()
   const request = sales.postSale(row, payment)
   const ownerKey = captureRecoveryOwner(previousKey, 'erp.sales.post', payload, modal, createIdentity, sourceId, JSON.stringify(row))
@@ -353,13 +363,13 @@ async function confirmPostSale() {
 }
 function startReturn() {
   const source = sales.selected.value as ErpCommercialDocument | null
-  if (!source || source.status !== 'posted' || !sales.allowed('erp.sale-returns.store') || source.returnability?.needs_reconciliation || source.finance?.needs_reconciliation || sales.selectedOperation.value || sales.mutating.value) return
+  if (!source || selectedNeedsRefresh.value || source.status !== 'posted' || !sales.allowed('erp.sale-returns.store') || source.returnability?.needs_reconciliation || source.finance?.needs_reconciliation || sales.selectedOperation.value || sales.mutating.value) return
   modalGeneration.value++
   modalKind.value = 'return'
 }
 async function createReturn(reason: string, lines: Array<{ source_line_id: number, quantity: string }>) {
   const source = sales.selected.value as ErpCommercialDocument | null
-  if (!source) return
+  if (!source || selectedNeedsRefresh.value) return
   const generation = modalGeneration.value
   const sourceId = source.id
   const payload = { erp_sale_id: sourceId, reason, lines }
@@ -377,7 +387,7 @@ async function createReturn(reason: string, lines: Array<{ source_line_id: numbe
 }
 async function postReturn() {
   const row = sales.selected.value as ErpSaleReturn | null
-  if (!row || row.status !== 'draft' || sales.selectedOperation.value || sales.mutating.value) return
+  if (!row || selectedNeedsRefresh.value || row.status !== 'draft' || sales.selectedOperation.value || sales.mutating.value) return
   const generation = modalGeneration.value
   const modal = modalKind.value
   const sourceId = row.id
@@ -408,22 +418,25 @@ function financeAuthority() {
 }
 function canEditDetail() {
   const kind = documentKind(detailArea.value)
-  return !!kind && !sales.selectedOperation.value && !sales.mutating.value && sales.selected.value && (sales.selected.value as ErpCommercialDocument).status !== 'posted' && sales.allowed(`erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`)
+  return !!kind && !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && sales.selected.value && (sales.selected.value as ErpCommercialDocument).status !== 'posted' && sales.allowed(`erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`)
 }
 function canConvertDetail() {
-  if (sales.selectedOperation.value || sales.mutating.value) return false
+  if (selectedNeedsRefresh.value || sales.selectedOperation.value || sales.mutating.value) return false
   if (detailArea.value === 'quotes') return sales.allowed('erp.quotes.convert') && (sales.selected.value as ErpCommercialDocument | null)?.status === 'draft'
   if (detailArea.value === 'orders') return sales.allowed('erp.orders.convert') && (sales.selected.value as ErpCommercialDocument | null)?.status === 'confirmed'
   return false
 }
 function canPostSaleDetail() {
-  return !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'sales' && (sales.selected.value as ErpCommercialDocument | null)?.status === 'draft' && sales.allowed('erp.sales.post')
+  return !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'sales' && (sales.selected.value as ErpCommercialDocument | null)?.status === 'draft' && sales.allowed('erp.sales.post')
 }
 function canReturnDetail() {
-  return !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'sales' && (sales.selected.value as ErpCommercialDocument | null)?.status === 'posted' && sales.allowed('erp.sale-returns.store')
+  return !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'sales' && (sales.selected.value as ErpCommercialDocument | null)?.status === 'posted' && sales.allowed('erp.sale-returns.store')
 }
 function canPostReturnDetail() {
-  return !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'returns' && (sales.selected.value as ErpSaleReturn | null)?.status === 'draft' && sales.allowed('erp.sale-returns.post')
+  return !selectedNeedsRefresh.value && !sales.selectedOperation.value && !sales.mutating.value && detailArea.value === 'returns' && (sales.selected.value as ErpSaleReturn | null)?.status === 'draft' && sales.allowed('erp.sale-returns.post')
+}
+async function refreshCompletedDetail(areaName: ErpSalesArea, id: number) {
+  await sales.refreshCompletedDetail(areaName, id)
 }
 
 watch(() => route.hash, (hash) => {
@@ -643,6 +656,24 @@ onMounted(() => {
         </div>
       </template>
     </UAlert>
+    <UAlert
+      v-for="pendingDetail in sales.completedDetailRefresh.value"
+      :key="`${pendingDetail.area}-${pendingDetail.id}`"
+      color="warning"
+      title="Operação confirmada; detalhe desatualizado"
+      :description="`O servidor confirmou a operação, mas o detalhe ${pendingDetail.area === 'sales' ? 'da venda' : pendingDetail.area === 'quotes' ? 'do orçamento' : pendingDetail.area === 'orders' ? 'do pedido' : 'da devolução'} #${pendingDetail.id} ainda não foi atualizado. Consulte a versão autorizada antes de continuar.`"
+    >
+      <template #actions>
+        <UButton
+          type="button"
+          color="primary"
+          size="sm"
+          label="Atualizar detalhe"
+          :loading="sales.detailLoading.value"
+          @click="refreshCompletedDetail(pendingDetail.area, pendingDetail.id)"
+        />
+      </template>
+    </UAlert>
 
     <UModal
       v-model:open="modalOpen"
@@ -653,6 +684,23 @@ onMounted(() => {
     >
       <template #body>
         <div class="min-w-0 space-y-4">
+          <UAlert
+            v-if="selectedNeedsRefresh && sales.selected.value"
+            color="warning"
+            title="Operação confirmada; detalhe desatualizado"
+            description="O servidor confirmou esta operação, mas a nova versão autorizada ainda não foi carregada. Continue depois de atualizar o detalhe."
+          >
+            <template #actions>
+              <UButton
+                type="button"
+                color="primary"
+                size="sm"
+                label="Atualizar detalhe"
+                :loading="sales.detailLoading.value"
+                @click="refreshCompletedDetail(detailArea, sales.selected.value!.id)"
+              />
+            </template>
+          </UAlert>
           <UAlert
             v-if="sales.mutationError.value"
             :color="sales.resolvedOperation.value ? 'success' : 'error'"
@@ -693,6 +741,7 @@ onMounted(() => {
             :can-override-price="sales.allowed('erp.sales.price.override')"
             :can-override-discount="sales.allowed('erp.sales.discount.override')"
             :disabled="sales.needsReconciliation.value"
+            @update:draft="updateCreateDraft(createKind, $event)"
             @save="saveDraft"
             @cancel="closeModal"
           />
@@ -707,6 +756,7 @@ onMounted(() => {
             :can-override-price="sales.allowed('erp.sales.price.override')"
             :can-override-discount="sales.allowed('erp.sales.discount.override')"
             :disabled="sales.needsReconciliation.value"
+            @update:draft="updateEditDraft"
             @save="saveDraft"
             @cancel="closeModal"
           />
@@ -734,7 +784,7 @@ onMounted(() => {
               :can-payments-index="sales.allowed('erp.payments.index')"
               :can-obligations-index="sales.allowed('erp.obligations.index')"
               :can-fiscal="sales.allowed('erp.fiscal.documents.index')"
-              :busy="sales.mutating.value"
+              :busy="sales.mutating.value || selectedNeedsRefresh"
               @edit="openEdit"
               @convert="startConvert"
               @post-sale="startPostSale"
@@ -754,14 +804,14 @@ onMounted(() => {
                 color="neutral"
                 variant="ghost"
                 label="Voltar"
-                :disabled="sales.mutating.value"
+                :disabled="sales.mutating.value || selectedNeedsRefresh"
                 @click="modalKind = 'detail'"
               /><UButton
                 type="button"
                 color="primary"
                 :label="detailArea === 'quotes' ? 'Confirmar conversão para pedido' : 'Confirmar conversão para venda'"
                 :loading="sales.mutating.value"
-                :disabled="sales.needsReconciliation.value"
+                :disabled="sales.needsReconciliation.value || selectedNeedsRefresh"
                 @click="convertDocument"
               />
             </div>

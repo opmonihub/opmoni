@@ -14,7 +14,7 @@ import type {
 } from '#shared/types/erpBusiness'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
 import { createPendingOperation, parsePendingOperation, pendingOperationLookup, writePendingOperation, type ErpPendingOperation } from '#shared/utils/erpOperationRecovery'
-import { erpSalesActionAllowed } from '#shared/utils/erpSales'
+import { erpSalePostPayload, erpSalesActionAllowed } from '#shared/utils/erpSales'
 
 export type ErpSalesArea = 'quotes' | 'orders' | 'sales' | 'returns'
 type SalesAction = string
@@ -70,6 +70,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   const revisionConflict = ref<{ area: ErpSalesArea, id: number, latestRevision: number } | null>(null)
   const canRetryExact = ref(false)
   const resolvedOperation = ref<{ key: string, operation: string, outcome: unknown } | null>(null)
+  const completedDetailRefresh = ref<Array<{ area: ErpSalesArea, id: number }>>([])
   const authorityGeneration = ref(0)
   const operationIntentSequence = ref(0)
   const deniedActions = ref(new Set<string>())
@@ -148,6 +149,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     referenceLoading.value = false
     referenceError.value = ''
     selected.value = null
+    completedDetailRefresh.value = []
     paymentDetails.value = []
     selectedObligation.value = null
     receipt.value = null
@@ -302,6 +304,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     try {
       const result = await api<{ data: SalesRow }>(`${base}/${id}`)
       if (!current(token, generation, intent) || sequence !== detailSequence) return null
+      completedDetailRefresh.value = completedDetailRefresh.value.filter(item => item.area !== areaName || item.id !== id)
       selected.value = result.data
       const commercial = areaName === 'sales' ? result.data as ErpCommercialDocument : null
       if (commercial?.finance) {
@@ -350,6 +353,13 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     detailError.value = ''
     detailLoading.value = false
   }
+  function requiresFreshDetail(areaName: ErpSalesArea, id: number) {
+    return completedDetailRefresh.value.some(item => item.area === areaName && item.id === id)
+  }
+  async function refreshCompletedDetail(areaName: ErpSalesArea, id: number) {
+    const intent = claimIntent()
+    return inspect(areaName, id, intent)
+  }
   function pendingRead() {
     if (typeof sessionStorage === 'undefined') return null
     try {
@@ -376,7 +386,8 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     if (!current(token, generation, intent)) return
     const sourceArea = areaOf(operation.path)
     let targetArea = sourceArea
-    let targetId: number | null = null
+    const pathId = operation.path.match(/\/(\d+)(?:\/|$)/)?.[1]
+    let targetId: number | null = pathId ? Number(pathId) : resultId(data)
     if (operation.operation === 'erp.quotes.convert' && typeof data === 'object' && data !== null) {
       const order = (data as { order?: { id?: unknown } }).order
       if (typeof order?.id === 'number') {
@@ -390,18 +401,42 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
         targetId = sale.id
       }
     }
+    const sourceId = pathId ? Number(pathId) : null
+    const targets: Array<{ area: ErpSalesArea, id: number }> = []
+    if (sourceId) targets.push({ area: sourceArea, id: sourceId })
+    if (targetId) targets.push({ area: targetArea, id: targetId })
+    for (const target of targets) {
+      if (target.id && allowed(showActions[target.area]) && !requiresFreshDetail(target.area, target.id)) {
+        completedDetailRefresh.value = [...completedDetailRefresh.value, target]
+      }
+    }
     await load(sourceArea, filters.page, intent)
     if (!current(token, generation, intent)) return
-    const pathId = operation.path.match(/\/(\d+)(?:\/|$)/)?.[1]
-    if (!targetId) targetId = pathId ? Number(pathId) : resultId(data)
     if (targetArea !== sourceArea) await load(targetArea, 1, intent)
     if (!current(token, generation, intent)) return
-    if (targetId && allowed(showActions[targetArea])) await inspect(targetArea, targetId, intent)
+    if (targetArea !== sourceArea && sourceId && requiresFreshDetail(sourceArea, sourceId) && allowed(showActions[sourceArea])) {
+      try {
+        await api<{ data: SalesRow }>(`${paths[sourceArea]}/${sourceId}`)
+        if (!current(token, generation, intent)) return
+        completedDetailRefresh.value = completedDetailRefresh.value.filter(item => item.area !== sourceArea || item.id !== sourceId)
+      } catch (error) {
+        if (!current(token, generation, intent)) return
+        await handleDenial(showActions[sourceArea], error, token)
+        if (!current(token, generation, intent)) return
+      }
+    }
+    if (targetId && allowed(showActions[targetArea])) {
+      const refreshed = await inspect(targetArea, targetId, intent)
+      if (!refreshed && current(token, generation, intent) && requiresFreshDetail(targetArea, targetId)) {
+        detailError.value = 'A operação foi confirmada, mas o detalhe atualizado ainda não pôde ser lido. Atualize a consulta antes de iniciar outra alteração neste documento.'
+      }
+    }
   }
   async function execute(path: string, body: Record<string, unknown>, action: string, existing?: PendingSalesOperation) {
     mutationError.value = ''
     fieldErrors.value = {}
     canRetryExact.value = false
+    resolvedOperation.value = null
     if (mutating.value) return null
     if (!allowed(action)) {
       mutationError.value = 'Seu acesso não permite esta operação.'
@@ -410,6 +445,11 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     if (selectedOperation.value && !existing) {
       mutationError.value = 'Consulte ou repita a operação original antes de iniciar outra.'
       needsReconciliation.value = true
+      return null
+    }
+    const pathId = path.match(/\/(\d+)(?:\/|$)/)?.[1]
+    if (!existing && pathId && requiresFreshDetail(areaOf(path), Number(pathId))) {
+      mutationError.value = 'Atualize o detalhe confirmado pelo servidor antes de iniciar outra alteração neste documento.'
       return null
     }
     const operation = existing ?? { ...createPendingOperation(operationIdentity(action), action, path, body, crypto.randomUUID()), method: operationMethod(action) }
@@ -498,8 +538,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   }
   async function postSale(row: ErpCommercialDocument, payment?: Record<string, unknown>) {
     if (!allowed('erp.sales.post')) return null
-    const body: Record<string, unknown> = { draft_revision: row.draft_revision, expected_total: row.total_amount }
-    if (payment) body.payment = payment
+    const body = erpSalePostPayload(row, payment)
     return execute(`/erp/sales/${row.id}/post`, body, 'erp.sales.post')
   }
   async function storeReturn(saleId: number, reason: string, lines: Array<{ source_line_id: number, quantity: string }>) {
@@ -586,6 +625,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
     references, referenceLoading, referenceError, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
     mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, canRetryExact, resolvedOperation, authorityGeneration, operationIntentSequence,
+    completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,
     allowed, canRead, load, loadReferences, selectArea, setPage, setStatus, refreshArea, inspect, closeSelected, saveDraft, convertQuote,
     convertOrder, postSale, storeReturn, postReturn, reconcile, retryExact, loadReceipt, claimIntent
   }

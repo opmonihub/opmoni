@@ -1,5 +1,22 @@
 import type { ErpCommercialDocument, ErpCommercialDraftPayload } from '#shared/types/erpBusiness'
 
+export function erpSalePostPayload(row: Pick<ErpCommercialDocument, 'draft_revision' | 'total_amount'>, payment?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    draft_revision: row.draft_revision,
+    expected_total: row.total_amount,
+    ...(payment ? { payment } : {})
+  }
+}
+
+export function erpReturnLineError(
+  sourceLineId: number,
+  submittedSourceLineIds: number[],
+  errors: Record<string, string>
+): string {
+  const submittedIndex = submittedSourceLineIds.indexOf(sourceLineId)
+  return submittedIndex < 0 ? '' : errors[`lines.${submittedIndex}.quantity`] ?? ''
+}
+
 const writeActions = new Set([
   'erp.quotes.store', 'erp.quotes.update', 'erp.quotes.convert',
   'erp.orders.store', 'erp.orders.update', 'erp.orders.convert',

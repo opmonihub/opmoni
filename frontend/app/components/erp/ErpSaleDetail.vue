@@ -209,13 +209,18 @@ const statusLabel = computed(() => isReturn.value ? returned.value.status === 'p
             Exposição líquida
           </dt><dd>{{ commercial.currency }} {{ commercial.finance.net_exposure ?? 'Indisponível' }}</dd>
         </div>
+        <div>
+          <dt class="text-xs text-muted">
+            Vencimento original
+          </dt><dd>{{ commercial.finance.original_due_on ?? 'Não informado' }}</dd>
+        </div>
       </dl>
       <div v-if="commercial.finance.return_credits?.length" class="space-y-2">
         <h4 class="text-xs font-semibold text-highlighted">
           Créditos vinculados às devoluções
         </h4>
         <div v-for="credit in commercial.finance.return_credits" :key="credit.id" class="flex flex-wrap items-center justify-between gap-2 rounded-md bg-elevated px-3 py-2 text-sm">
-          <span>Obrigação #{{ credit.id }} · devolução #{{ credit.source_id }} · aberto {{ credit.open_amount }} {{ commercial.currency }}</span>
+          <span>Obrigação #{{ credit.id }} · devolução #{{ credit.source_id }} · aberto {{ credit.open_amount }} {{ commercial.currency }} · vencimento {{ credit.due_on ?? 'não informado' }}</span>
           <NuxtLink v-if="canObligationsIndex" to="/erp/financeiro#obligations" class="text-primary underline">Consultar no Financeiro</NuxtLink>
         </div>
       </div>

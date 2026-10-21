@@ -11,27 +11,44 @@ const props = defineProps<{
   canOverrideDiscount: boolean
   disabled?: boolean
 }>()
-const emit = defineEmits<{ save: [payload: ErpCommercialDraftPayload], cancel: [] }>()
+const emit = defineEmits<{ 'update:draft': [payload: ErpCommercialDraftPayload], 'save': [payload: ErpCommercialDraftPayload], 'cancel': [] }>()
 const draft = ref(JSON.parse(JSON.stringify(props.draft)) as ErpCommercialDraftPayload)
+watch(draft, value => emit('update:draft', JSON.parse(JSON.stringify(value)) as ErpCommercialDraftPayload), { deep: true, flush: 'sync' })
 
 const title = computed(() => props.kind === 'quote' ? 'Orçamento' : props.kind === 'order' ? 'Pedido' : 'Venda de balcão')
 const headerDiscountAmount = computed({
   get: () => draft.value.discount?.discount_amount ?? '',
-  set: (value: string) => { draft.value.discount = { discount_type: draft.value.discount?.discount_type ?? 'fixed', discount_amount: value } }
+  set: (value: string) => {
+    draft.value.discount = { discount_type: draft.value.discount?.discount_type ?? 'fixed', discount_amount: value }
+    clearLineTotals()
+  }
 })
 const headerDiscountType = computed({
   get: () => draft.value.discount?.discount_type ?? 'fixed',
-  set: (value: string) => { draft.value.discount = { discount_type: value === 'percentage' ? 'percentage' : 'fixed', discount_amount: draft.value.discount?.discount_amount ?? '0.0000' } }
+  set: (value: string) => {
+    draft.value.discount = { discount_type: value === 'percentage' ? 'percentage' : 'fixed', discount_amount: draft.value.discount?.discount_amount ?? '0.0000' }
+    clearLineTotals()
+  }
 })
 const headerTaxRate = computed({
   get: () => draft.value.tax_rate_percent ?? '',
-  set: (value: string) => { draft.value.tax_rate_percent = value }
+  set: (value: string) => {
+    draft.value.tax_rate_percent = value
+    clearLineTotals()
+  }
 })
 const establishmentItems = computed(() => props.references.establishments.map(row => ({ label: row.name, value: row.id })))
 const contactItems = computed(() => [{ label: 'Sem cliente vinculado', value: 0 }, ...props.references.contacts.map(row => ({ label: row.trade_name || row.name, value: row.id }))])
 const unitItems = computed(() => [{ label: 'Unidade do catálogo', value: 0 }, ...props.references.units.map(row => ({ label: row.symbol ? `${row.name} (${row.symbol})` : row.name, value: row.id }))])
 const variantItems = computed(() => [{ label: 'Item sem produto', value: 0 }, ...props.references.variants.map(row => ({ label: `${row.name}${row.sku ? ` · ${row.sku}` : ''}`, value: row.id }))])
 const formName = (field: string) => props.errors[field] ?? ''
+function clearLineTotals() {
+  for (const line of draft.value.lines) line.line_total = undefined
+}
+function setLineAmount(line: ErpCommercialDraftPayload['lines'][number], key: 'quantity' | 'unit_price' | 'discount_amount' | 'tax_amount', value: string) {
+  line[key] = value
+  line.line_total = undefined
+}
 
 function selectValue(value: unknown): number | null {
   if (value === null || value === undefined || value === '' || value === 0 || value === '0') return null
@@ -43,6 +60,31 @@ function addLine() {
 }
 function removeLine(index: number) {
   if (draft.value.lines.length > 1) draft.value.lines.splice(index, 1)
+}
+function selectVariant(line: ErpCommercialDraftPayload['lines'][number], value: unknown) {
+  const next = selectValue(value)
+  if (line.erp_product_variant_id !== next) {
+    line.erp_product_variant_id = next
+    line.erp_unit_id = null
+    line.unit_conversion_factor = undefined
+    line.unit_price = undefined
+    line.line_total = undefined
+  }
+}
+function selectUnit(line: ErpCommercialDraftPayload['lines'][number], value: unknown) {
+  const next = selectValue(value)
+  if (line.erp_unit_id !== next) {
+    line.erp_unit_id = next
+    line.unit_conversion_factor = undefined
+    line.unit_price = undefined
+    line.line_total = undefined
+  }
+}
+function useCurrentCatalog(line: ErpCommercialDraftPayload['lines'][number]) {
+  line.erp_unit_id = null
+  line.unit_conversion_factor = undefined
+  line.unit_price = undefined
+  line.line_total = undefined
 }
 function submit() {
   const payload = JSON.parse(JSON.stringify(draft.value)) as ErpCommercialDraftPayload
@@ -60,7 +102,7 @@ function submit() {
   })
   emit('save', payload)
 }
-defineExpose({ submit })
+defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
 </script>
 
 <template>
@@ -192,7 +234,7 @@ defineExpose({ submit })
               :items="variantItems"
               class="w-full"
               :disabled="disabled || saving"
-              @update:model-value="line.erp_product_variant_id = selectValue($event)"
+              @update:model-value="selectVariant(line, $event)"
             />
           </UFormField>
           <UFormField :name="`lines.${index}.description`" label="Descrição" :error="formName(`lines.${index}.description`)">
@@ -204,7 +246,7 @@ defineExpose({ submit })
               :items="unitItems"
               class="w-full"
               :disabled="disabled || saving"
-              @update:model-value="line.erp_unit_id = selectValue($event)"
+              @update:model-value="selectUnit(line, $event)"
             />
           </UFormField>
           <UFormField
@@ -214,32 +256,35 @@ defineExpose({ submit })
             :error="formName(`lines.${index}.quantity`)"
           >
             <UInput
-              v-model="line.quantity"
+              :model-value="line.quantity"
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class="w-full"
               :disabled="disabled || saving"
+              @update:model-value="setLineAmount(line, 'quantity', String($event ?? ''))"
             />
           </UFormField>
           <UFormField :name="`lines.${index}.discount_amount`" label="Desconto (R$)" :error="formName(`lines.${index}.discount_amount`)">
             <UInput
-              v-model="line.discount_amount"
+              :model-value="line.discount_amount"
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class="w-full"
-              :disabled="disabled || saving || Boolean(draft.discount || draft.erp_discount_rule_id) || (!canOverrideDiscount && line.discount_amount !== '0.0000')"
+              :disabled="disabled || saving || !canOverrideDiscount || Boolean(draft.discount || draft.erp_discount_rule_id)"
+              @update:model-value="setLineAmount(line, 'discount_amount', String($event ?? ''))"
             />
           </UFormField>
           <UFormField :name="`lines.${index}.tax_amount`" label="Imposto informado (R$)" :error="formName(`lines.${index}.tax_amount`)">
             <UInput
-              v-model="line.tax_amount"
+              :model-value="line.tax_amount"
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class="w-full"
               :disabled="disabled || saving"
+              @update:model-value="setLineAmount(line, 'tax_amount', String($event ?? ''))"
             />
           </UFormField>
           <UFormField
@@ -249,15 +294,26 @@ defineExpose({ submit })
             :error="formName(`lines.${index}.unit_price`)"
           >
             <UInput
-              v-model="line.unit_price"
+              :model-value="line.unit_price"
               type="text"
               inputmode="decimal"
               autocomplete="off"
               class="w-full"
               :disabled="disabled || saving || !canOverridePrice"
               placeholder="Em branco: usar preço do catálogo"
+              @update:model-value="setLineAmount(line, 'unit_price', String($event ?? ''))"
             />
           </UFormField>
+          <UButton
+            v-if="line.unit_price && line.erp_product_variant_id"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            label="Usar preço e unidade atuais do catálogo"
+            :disabled="disabled || saving"
+            @click="useCurrentCatalog(line)"
+          />
           <p v-else class="self-end text-xs text-muted">
             O preço do catálogo será confirmado pelo servidor ao salvar.
           </p>
