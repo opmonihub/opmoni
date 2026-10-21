@@ -399,7 +399,18 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
       return () => Vue.h('select')
     }
   }))
-  for (const name of ['UAlert', 'UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm']) {
+  app.component('UAlert', Vue.defineComponent({
+    props: ['title', 'description'],
+    setup(alert, { slots }) {
+      return () => Vue.h('div', { 'data-alert-title': alert.title }, [
+        alert.title ? Vue.h('h3', String(alert.title)) : null,
+        alert.description ? Vue.h('p', String(alert.description)) : null,
+        slots.default?.(),
+        slots.actions?.()
+      ])
+    }
+  }))
+  for (const name of ['UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm']) {
     app.component(name, Vue.defineComponent({
       setup(_props, { slots }) {
         return () => Vue.h('div', slots.default?.())
@@ -431,13 +442,14 @@ function loadWorkspaceComposable(api: (path: string, options?: Record<string, un
     current_account: { id: context.accountId ?? 3, status: 'active', role: context.accountRole ?? 'admin' }
   })
   const contextKey = Vue.computed(() => `${identity.value.id}:${identity.value.current_company?.id ?? 'none'}:${identity.value.current_company?.permissions.join(',') ?? ''}`)
-  const useContext = () => {
+  const useContext = (extra: () => string | number | null = () => null) => {
+    const authorityKey = Vue.computed(() => `${contextKey.value}:${extra() ?? ''}`)
     const generation = Vue.ref(0)
-    Vue.watch(contextKey, () => generation.value++, { flush: 'sync' })
+    Vue.watch(authorityKey, () => generation.value++, { flush: 'sync' })
     return {
-      key: contextKey,
-      capture: () => ({ key: contextKey.value, generation: generation.value }),
-      isCurrent: (token: { key: string, generation: number }) => token.key === contextKey.value && token.generation === generation.value
+      key: authorityKey,
+      capture: () => ({ key: authorityKey.value, generation: generation.value }),
+      isCurrent: (token: { key: string, generation: number }) => token.key === authorityKey.value && token.generation === generation.value
     }
   }
   const globals = {
@@ -1465,6 +1477,55 @@ describe('ERP fiscal durable workspace operations', () => {
     }
   })
 
+  it('shows and repeats read-only recovery in the mounted fiscal page with exact show grants', async (t) => {
+    const cases = [
+      { action: 'document:transmit', path: '/erp/fiscal/documents/91/transmit', detail: '/erp/fiscal/documents/91', resourceId: 91, key: 'document-page-show', show: 'erp.fiscal.documents.show', payload: { id: 91, idempotency_key: 'document-page-show', model: '55', status: 'queued', attempts: [{ id: 1, action: 'document:transmit', status: 'pending', idempotency_key: 'document-page-show', safe_result: null }] } },
+      { action: 'event:submit', path: '/erp/fiscal/events/31/submit', detail: '/erp/fiscal/events/31', resourceId: 31, key: 'event-page-show', show: 'erp.fiscal.events.show', payload: { id: 31, idempotency_key: 'event-page-show', status: 'queued', attempt: { id: 2, action: 'event:submit', status: 'pending', idempotency_key: 'event-page-show', safe_result: null } } },
+      { action: 'invalidation:submit', path: '/erp/fiscal/invalidations/41/submit', detail: '/erp/fiscal/invalidations/41', resourceId: 41, key: 'invalidation-page-show', show: 'erp.fiscal.invalidations.show', payload: { id: 41, idempotency_key: 'invalidation-page-show', status: 'queued', attempt: { id: 3, action: 'invalidation:submit', status: 'pending', idempotency_key: 'invalidation-page-show', safe_result: null } } }
+    ]
+    for (const fixture of cases) {
+      const memory = installSessionStorage(t)
+      const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: fixture.action, path: fixture.path, idempotencyKey: fixture.key, body: { idempotency_key: fixture.key }, resourceId: fixture.resourceId, recoveryMode: 'read' })
+      memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+      const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+      let detailReads = 0
+      const fiscal = loadWorkspaceComposable(async (path, options) => {
+        calls.push({ path, options })
+        if (path === fixture.detail) {
+          detailReads++
+          return { data: fixture.payload }
+        }
+        if (path === '/erp/establishments?per_page=100' || path.endsWith('?per_page=100')) {
+          throw { statusCode: 403, data: { message: 'A listagem não está autorizada.' } }
+        }
+        return { data: [] }
+      }, { actorId: 7, companyId: 22, grants: [fixture.show] })
+      t.after(fiscal.close)
+      const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+      t.after(() => mounted.app.unmount())
+
+      for (let attempt = 0; attempt < 10 && (detailReads === 0 || !fiscal.workspace.recoveryMessage); attempt++) await Vue.nextTick()
+      await Vue.nextTick()
+      const pendingAlert = findNode(mounted.root, node => node.props['data-alert-title'] === 'Operação fiscal pendente de confirmação')
+      const deniedAlert = findNode(mounted.root, node => node.props['data-alert-title'] === 'Acesso fiscal não concedido')
+      const recoveryButton = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Recuperar operação original')
+      assert.ok(fiscal.workspace.pendingRecovery, `${fixture.show} retains the known pending identity`)
+      assert.ok(pendingAlert, `${fixture.show} renders the pending recovery state`)
+      assert.equal(deniedAlert, undefined, `${fixture.show} does not replace recovery with an access-denied page`)
+      assert.ok(recoveryButton, `${fixture.show} renders the permitted inspection control`)
+      assert.equal(detailReads, 1, 'mount recovery requests the exact existing detail once')
+
+      await (recoveryButton.props.onClick as () => Promise<void>)()
+      await Vue.nextTick()
+
+      assert.equal(detailReads, 2, 'the visible recovery control repeats only the existing detail inspection')
+      assert.equal(calls.filter(call => call.path === fixture.detail).length, 2)
+      assert.equal(calls.some(call => call.options?.method === 'POST'), false, 'show-only inspection never replays a mutation')
+      assert.ok(memory.size > 0, 'pending status keeps its same-key identity locked after inspection')
+      mounted.app.unmount()
+    }
+  })
+
   it('keeps known-resource detail recovery independent of list failures and rejects malformed recovery scope quietly', async (t) => {
     const memory = installSessionStorage(t)
     const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'document:transmit', path: '/erp/fiscal/documents/91/transmit', idempotencyKey: 'tx-list-failure', body: { idempotency_key: 'tx-list-failure' }, resourceId: 91, recoveryMode: 'read' })
@@ -1629,6 +1690,55 @@ describe('ERP fiscal durable workspace operations', () => {
       releaseFirstPost?.({ data: { id: 5, label: 'Certificado matriz', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } })
       await Promise.allSettled([firstUpload, secondUpload])
     }
+  })
+
+  it('keeps a certificate operation owned across establishment changes until its request settles', async (t) => {
+    const memory = installSessionStorage(t)
+    let releasePost: ((value: unknown) => void) | null = null
+    let metadataReads = 0
+    let writes = 0
+    const mounted = loadWorkspaceComposable(async (path, options) => {
+      if (path === '/erp/fiscal/certificates?per_page=100' && !options?.method) {
+        metadataReads++
+        return { data: [] }
+      }
+      if (path === '/erp/fiscal/certificates' && options?.method === 'POST') {
+        writes++
+        if (writes === 1) {
+          return await new Promise((resolve) => {
+            releasePost = resolve
+          })
+        }
+        return { data: { id: 6, label: 'Certificado outro estabelecimento', erp_establishment_id: 7, revision: 1, revision_id: 12, status: 'active' } }
+      }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.certificates.index', 'erp.fiscal.certificates.store'] })
+    t.after(mounted.close)
+    mounted.workspace.selectedEstablishmentId = 6
+    const firstUpload = mounted.workspace.uploadCertificate({ label: 'Certificado matriz', establishmentId: 6, certificate, password: '' })
+    try {
+      for (let attempt = 0; attempt < 10 && !releasePost; attempt++) await Vue.nextTick()
+      assert.ok(releasePost, 'the first upload reaches its deferred multipart response')
+      const originalRecord = [...memory.values()].join('\n')
+      mounted.workspace.selectedEstablishmentId = 7
+
+      await mounted.workspace.recoverCertificateMutation()
+      mounted.workspace.confirmCertificateRecoveryReview()
+      await Promise.allSettled([mounted.workspace.uploadCertificate({ label: 'Certificado outro estabelecimento', establishmentId: 7, certificate: new File(['second'], 'second.p12'), password: '' })])
+
+      assert.equal(metadataReads, 1, 'metadata inspection remains blocked while the company-scoped request is active')
+      assert.equal(writes, 1, 'changing establishments does not admit a second multipart request')
+      assert.equal([...memory.values()].join('\n'), originalRecord, 'inspection and acknowledgment cannot clear or replace the first operation identity')
+    } finally {
+      releasePost?.({ data: { id: 5, label: 'Certificado matriz', erp_establishment_id: 6, revision: 1, revision_id: 11, status: 'active' } })
+      await firstUpload
+    }
+
+    await mounted.workspace.recoverCertificateMutation()
+    assert.equal(metadataReads, 2, 'metadata recovery becomes available after the original request settles')
+    assert.ok(mounted.workspace.certificateRecoveryReview)
+    mounted.workspace.confirmCertificateRecoveryReview()
+    assert.equal(memory.size, 0)
   })
 
   it('keeps an unknown certificate mutation locked after reload without replaying its secret-bearing request', async (t) => {

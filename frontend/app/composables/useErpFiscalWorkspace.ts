@@ -111,7 +111,14 @@ export function useErpFiscalWorkspace() {
     if (isWrite && !directWriter.value && !delegatedWriter.value) return false
     return erpCompanyHasPermission(grants.value, permission)
   }
-  const canRead = computed(() => can(actionGrants.documentRead) || can(actionGrants.configurationRead) || can(actionGrants.certificateRead) || can(actionGrants.eventRead) || can(actionGrants.invalidationRead))
+  const canRead = computed(() => can(actionGrants.documentRead)
+    || can(actionGrants.documentShow)
+    || can(actionGrants.configurationRead)
+    || can(actionGrants.certificateRead)
+    || can(actionGrants.eventRead)
+    || can(actionGrants.eventShow)
+    || can(actionGrants.invalidationRead)
+    || can(actionGrants.invalidationShow))
   const readOnly = computed(() => !can(actionGrants.documentCreate) && !can(actionGrants.configurationWrite) && !can(actionGrants.certificateUpload) && !can(actionGrants.certificateRotate) && !can(actionGrants.eventCreate) && !can(actionGrants.invalidationCreate))
   const canWriteConfiguration = computed(() => can(actionGrants.configurationWrite))
   const canUploadCertificates = computed(() => can(actionGrants.certificateUpload))
@@ -119,7 +126,10 @@ export function useErpFiscalWorkspace() {
   const canCreateDocuments = computed(() => can(actionGrants.documentCreate))
   const productionBlocked = computed(() => configuration.value?.release_gates.production_transmission_enabled !== true)
   const productionBlocker = computed(() => configuration.value?.release_gates.production_blocker ?? (configuration.value?.release_gates.provider === 'unavailable' ? 'provider_unavailable' : null))
-  const certificateMutationInFlight = computed(() => certificateOperationOwner.value?.authorityKey === authority.key.value)
+  const certificateMutationInFlight = computed(() => {
+    const owner = certificateOperationOwner.value
+    return Boolean(owner && owner.actorId === actorId.value && owner.companyId === companyId.value && !noCompany.value)
+  })
 
   function isCurrent(token: ReturnType<typeof authority.capture>, epoch: number): boolean {
     return authority.isCurrent(token) && operationEpoch.value === epoch && !noCompany.value
@@ -349,7 +359,9 @@ export function useErpFiscalWorkspace() {
     loading.value = true
     errorMessage.value = ''
     try {
-      const reads: Array<Promise<unknown>> = [api('/erp/establishments?per_page=100')]
+      const reads: Array<Promise<unknown>> = []
+      const wantsEstablishments = can('erp.establishments.index')
+      if (wantsEstablishments) reads.push(api('/erp/establishments?per_page=100'))
       const wantsDocuments = can(actionGrants.documentRead)
       const wantsConfiguration = can(actionGrants.configurationRead) && id !== null
       const wantsCertificates = can(actionGrants.certificateRead)
@@ -362,10 +374,12 @@ export function useErpFiscalWorkspace() {
       if (wantsInvalidations) reads.push(api('/erp/fiscal/invalidations?per_page=100'))
       const settled = await Promise.allSettled(reads)
       if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
-      const establishmentsResult = settled[0]
-      if (establishmentsResult?.status === 'fulfilled') acceptRows(establishmentsResult.value as ApiEnvelope<Array<{ id: number, name: string, cnpj: string | null, status: string }>>, establishments)
-      else throw establishmentsResult?.reason
-      let index = 1
+      let index = 0
+      if (wantsEstablishments) {
+        const establishmentsResult = settled[index++]
+        if (establishmentsResult?.status === 'fulfilled') acceptRows(establishmentsResult.value as ApiEnvelope<Array<{ id: number, name: string, cnpj: string | null, status: string }>>, establishments)
+        else throw establishmentsResult?.reason
+      }
       if (wantsDocuments) {
         const result = settled[index++]
         if (result?.status === 'fulfilled') acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documents)
@@ -479,7 +493,10 @@ export function useErpFiscalWorkspace() {
     const permission = input.certificateId ? actionGrants.certificateRotate : actionGrants.certificateUpload
     if (!can(permission) || input.certificate.size > 2 * 1024 * 1024) return
     const token = authority.capture()
-    if (certificateOperationOwner.value?.authorityKey === token.key) throw new Error('Outra alteração de certificado já está em andamento para este contexto.')
+    const activeOwner = certificateOperationOwner.value
+    if (activeOwner && activeOwner.actorId === actorId.value && activeOwner.companyId === companyId.value) {
+      throw new Error('Outra alteração de certificado já está em andamento para esta empresa.')
+    }
     const existingRecovery = readCertificateRecovery()
     if (existingRecovery) throw new Error('Há uma alteração de certificado sem resultado confirmado. Consulte os metadados antes de iniciar outra alteração.')
     if (!can(actionGrants.certificateRead)) throw new Error('Consulte os metadados de certificados antes de enviar ou substituir um arquivo.')
