@@ -5,18 +5,20 @@ import { erpWorkspaceSidebarItems } from '~/utils/erpWorkspaceNav'
 const route = useRoute()
 const { currentCompany, currentAccount } = useAuth()
 const open = ref(false)
+const mounted = ref(false)
 const expandedModules = ref<string[]>([])
 const { closeForNavigation } = useErpSidebarNavigation(open)
 const workspaceKey = computed(() => `${currentAccount.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${currentCompany.value?.access_kind ?? ''}`)
+const sidebarHash = computed(() => mounted.value ? route.hash : '')
 // Operational modules, catalogs and settings provide their own native panel and header.
 const pageOwnsPanel = computed(() => erpNavModules.some(module =>
   module.id !== 'overview' && erpModuleActive(route.path, module)
 ))
 
-const links = computed(() => erpWorkspaceSidebarItems(route.path, currentCompany.value, closeForNavigation, route.hash))
+const links = computed(() => erpWorkspaceSidebarItems(route.path, currentCompany.value, closeForNavigation, sidebarHash.value))
 
 watch(
-  () => [route.path, route.hash, workspaceKey.value],
+  () => [route.path, sidebarHash.value, workspaceKey.value],
   () => {
     const activeModule = links.value[0]?.find(item => item.type === 'trigger' && item.active)
     const value = activeModule?.value
@@ -25,6 +27,10 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  mounted.value = true
+})
 
 const navbarTitle = computed(() => {
   if (currentCompany.value?.name)

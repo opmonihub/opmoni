@@ -143,6 +143,8 @@ describe('ERP mobile shell and contract', () => {
     t.after(view.close)
     const unmount = mount(() => Vue.h({ render: () => named(view.render(), 'UNavigationMenu')[0]! }))
     t.after(unmount)
+    await view.mounted[0]!()
+    await Vue.nextTick()
 
     assert.deepEqual(menuProps?.modelValue, [])
     route.path = '/erp/financeiro'
@@ -160,6 +162,41 @@ describe('ERP mobile shell and contract', () => {
     updateMenu!([])
     await Vue.nextTick()
     assert.deepEqual(menuProps?.modelValue, [], 'a user can collapse the active module without an immediate watcher reopening it')
+  })
+  it('keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount', async (t) => {
+    const route = Vue.reactive({ path: '/erp/financeiro', hash: '#payments' })
+    const activeFinanceTarget = (items: Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>) =>
+      items.find(item => item.label === 'Financeiro')?.children?.find(child => child.active)?.to
+    const serverView = surface('layouts/erp.vue', {
+      useRoute: () => route,
+      useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) })
+    })
+    t.after(serverView.close)
+    const serverItems = named(serverView.render(), 'UNavigationMenu')[0]!.props!.items as Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>
+    assert.equal(activeFinanceTarget(serverItems), '/erp/financeiro#obligations', 'SSR uses the contract default despite the browser URL fragment')
+
+    let clientMenuProps: { items: Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }> } | undefined
+    const menu = Vue.defineComponent({
+      name: 'UNavigationMenu',
+      props: { items: { type: Array as Vue.PropType<Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>>, default: () => [] } },
+      setup(props) {
+        clientMenuProps = props
+        return () => Vue.h('nav')
+      }
+    })
+    const clientView = surface('layouts/erp.vue', {
+      useRoute: () => route,
+      useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) }),
+      resolveComponent: (name: string) => name === 'UNavigationMenu' ? menu : ({ name })
+    })
+    t.after(clientView.close)
+    const unmount = mount(() => Vue.h({ render: () => named(clientView.render(), 'UNavigationMenu')[0]! }))
+    t.after(unmount)
+    assert.equal(activeFinanceTarget(clientMenuProps!.items), activeFinanceTarget(serverItems), 'the initial client render matches SSR')
+
+    await clientView.mounted[0]!()
+    await Vue.nextTick()
+    assert.equal(activeFinanceTarget(clientMenuProps!.items), '/erp/financeiro#payments', 'the mounted client applies the direct-link hash')
   })
   it('changes the catalog content key when company or Account context changes', (t) => {
     const currentCompany = Vue.ref(company())
