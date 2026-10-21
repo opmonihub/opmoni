@@ -61,3 +61,7 @@ Suggested UI follow-up sequence: `$impeccable harden` for identity/error/honest-
 Three disjoint explorers completed report-only work: template (requested Luna/medium), ERP (Luna/high), and access/office/platform (Sol/high for authority boundaries). Runtime model routing, token usage and monetary cost were not exposed and remain unknown. Workers did not delegate or modify application files. The coordinator read the reports, returned concrete corrections and owned browser evidence and final synthesis.
 
 The current browser sample fits both viewport widths and loads Public Sans. Finance axe reports zero violations in both desktop themes with two incomplete rules each; this does not establish whole-product WCAG conformance. Current source inventory, evidence JSON and local report links were checked. No application lint/test/build rerun was needed for report-only changes; the retained runtime uses the already verified Task 11 immutable build. SERPRO, fiscal canaries, email/WhatsApp delivery, printers and unexercised browser flows remain unverified.
+
+## Delivered ERP standardization
+
+[Implementation result and final browser evidence](implementation-result.md) records the follow-up UI change. It closes the bounded ERP navigation/editor plan; it does not resolve every finding in this original audit.

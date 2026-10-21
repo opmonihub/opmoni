@@ -1,0 +1,21 @@
+{
+  "source": "254f63feae6a0dbe9131c929969999096c568124",
+  "runtime_manifest_sha256": "3de81882600a96b0a2b330c1f8b90301a7fee37079fb2df253562953cd69003f",
+  "screenshots_opened_by_coordinator": [
+    "01-finance-desktop-light.png",
+    "02-payment-editor-dark.png",
+    "03-finance-mobile-dark.png",
+    "04-finance-mobile-light.png",
+    "05-mobile-expanded-catalogs.png",
+    "06-unit-editor-mobile.png",
+    "08-products-loading.png",
+    "11-settings-grouped.png",
+    "12-reports-finance.png",
+    "13-obligations-desktop-light.png",
+    "14-obligations-mobile-light.png",
+    "15-obligations-desktop-dark.png",
+    "16-products-desktop.png"
+  ],
+  "method": "Owned Chrome/CDP agent-browser; synthetic existing fixtures; no new domain writes",
+  "network_capture_limit": "09-direct-accounts-network.json is empty; no browser request-count claim"
+}

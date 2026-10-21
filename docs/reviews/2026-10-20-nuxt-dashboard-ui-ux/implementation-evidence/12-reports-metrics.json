@@ -1,0 +1,48 @@
+{
+  "activeLinks": [
+    {
+      "href": "/erp/relatorios#finance",
+      "text": "Financeiro"
+    },
+    {
+      "href": "/erp/relatorios#finance",
+      "text": "Financeiro"
+    }
+  ],
+  "dialogs": [],
+  "documentWidth": 1366,
+  "expanded": [
+    "Relatórios"
+  ],
+  "firstRow": null,
+  "focus": {
+    "name": "Financeiro",
+    "tag": "A"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "headings": [
+    "Relatórios",
+    "Exportação privada"
+  ],
+  "nestedForms": 0,
+  "theme": "light",
+  "url": "http://localhost:3334/erp/relatorios#finance",
+  "viewport": {
+    "height": 768,
+    "width": 1366
+  },
+  "visibleForms": [
+    {
+      "height": 100,
+      "width": 1078,
+      "x": 264,
+      "y": 177
+    },
+    {
+      "height": 56,
+      "width": 1078,
+      "x": 264,
+      "y": 536
+    }
+  ]
+}

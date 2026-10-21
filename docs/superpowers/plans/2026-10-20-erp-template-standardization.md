@@ -34,11 +34,11 @@
 
 **Interfaces:** Preserve existing exported navigation helper signatures used outside ERP. Produce a typed shared registry/helper in `erpWorkspaceNav.ts` for catalog/settings navigation and sidebar groups, accepting full current Company where owner/delegation gating needs it. Existing module contracts supply hash children. Finance child targets are `/erp/financeiro#accounts`, `#obligations`, `#payments`; default Finance is obligations. Reports/hubs retain their existing hashes. Do not change finance source in this task. `ErpCatalogPageShell` adds optional `#actions` (navbar trailing/right with current mobile context controls retained) and `#toolbar` (inside `UDashboardToolbar`); default content and title/description props remain compatible.
 
-- [ ] Inspect actual Settings/default layout expansion and installed NavigationMenu APIs; write behavioral tests for active descendant/default area, exact grants/empty groups, owner versus manager/viewer/delegated settings and mobile trigger versus leaf selection.
-- [ ] Implement native expanding groups with stable values and active-child expansion, text-only children as in Settings, correct collapsed popovers. No duplicate navigation implementations or guessed permission rules; retain module leaf when it has no children.
-- [ ] Use shared catalog/settings metadata in page navigation; replace the unwieldy fifteen-item settings strip with compact meaningful groups/selection using native components while preserving every supported destination. Follow the reference settings frame and one navbar; avoid inaccessible hidden tabs. Include desktop collapse/mobile toggle in the shared shell, settings and layout headers without duplicate controls.
-- [ ] Run focused nav/shell tests and changed-path lint; report exact commands/results and interfaces. Typecheck is serialized by coordinator when no other worker generation is active.
-- [ ] Self-review and write task report. No commit: coordinator accepts and checkpoints.
+- [x] Inspect actual Settings/default layout expansion and installed NavigationMenu APIs; write behavioral tests for active descendant/default area, exact grants/empty groups, owner versus manager/viewer/delegated settings and mobile trigger versus leaf selection.
+- [x] Implement native expanding groups with stable values and active-child expansion, text-only children as in Settings, correct collapsed popovers. No duplicate navigation implementations or guessed permission rules; retain module leaf when it has no children.
+- [x] Use shared catalog/settings metadata in page navigation; replace the unwieldy fifteen-item settings strip with compact meaningful groups/selection using native components while preserving every supported destination. Follow the reference settings frame and one navbar; avoid inaccessible hidden tabs. Include desktop collapse/mobile toggle in the shared shell, settings and layout headers without duplicate controls.
+- [x] Run focused nav/shell tests and changed-path lint; report exact commands/results and interfaces. Typecheck is serialized by coordinator when no other worker generation is active.
+- [x] Self-review and write task report. No commit: coordinator accepts and checkpoints.
 
 ### Task 2: List-first Finance with native editors
 
@@ -46,10 +46,10 @@
 
 **Interfaces:** Consume shell `#actions` and `#toolbar`. Synchronize selected Finance area with validated route hash `#accounts|#obligations|#payments`, default obligations; handle deep links/history without redundant requests or self-triggering loops. Preserve existing finance composable public behavior. Existing callers with no explicit hash keep current default.
 
-- [ ] Read accepted finance workflow tests and source. Add meaningful component regression for no initial entry editor, explicit open/cancel/focus, area deep link/history, retained field values after close/area switch, failed submit remaining open and context invalidation clearing editor/drafts.
-- [ ] Replace persistent creation sections with native modal/slideover entry, using actual installed APIs for lifecycle/presence. Safe drafts must not disappear through overlay unmount; context generation must still clear them. Keep lists/filtering visible at rest; primary New account/obligation/payment action in navbar, native area navigation in toolbar.
-- [ ] Preserve allocation/reversal/receipt/details/operation recovery and exact permissions. Keep permission-denied/unknown/read-failure states honest; do not imply zero records before any successful read. Translate visible raw Finance enum labels when exact domain mappings exist, with safe unknown fallback.
-- [ ] Run the complete focused Finance and relevant auth lifecycle suites, changed-path lint, then report. Typecheck only when coordinator grants generation lease. No build/browser/commit.
+- [x] Read accepted finance workflow tests and source. Add meaningful component regression for no initial entry editor, explicit open/cancel/focus, area deep link/history, retained field values after close/area switch, failed submit remaining open and context invalidation clearing editor/drafts.
+- [x] Replace persistent creation sections with native modal/slideover entry, using actual installed APIs for lifecycle/presence. Safe drafts must not disappear through overlay unmount; context generation must still clear them. Keep lists/filtering visible at rest; primary New account/obligation/payment action in navbar, native area navigation in toolbar.
+- [x] Preserve allocation/reversal/receipt/details/operation recovery and exact permissions. Keep permission-denied/unknown/read-failure states honest; do not imply zero records before any successful read. Translate visible raw Finance enum labels when exact domain mappings exist, with safe unknown fallback.
+- [x] Run the complete focused Finance and relevant auth lifecycle suites, changed-path lint, then report. Typecheck only when coordinator grants generation lease. No build/browser/commit.
 
 ### Task 3: Catalog editors and remaining ERP composition
 
@@ -57,14 +57,16 @@
 
 **Interfaces:** Consume Task 1 shell slots. Catalog public APIs/props, row-action grants, real forms/notes/files and transport remain stable. Native overlay lifecycle replaces the inline editor; list remains mounted and view state preserved. Hubs/reports retain their route hash and permission/state contracts.
 
-- [ ] Add focused actual component checks for explicit catalog creation/detail/edit open, closed default editor, preserved validation/drafts on failures, cancel/focus and authority clearing; retain existing catalog privacy/action/list regression coverage.
-- [ ] Move catalog primary create to navbar and open focused native modal/slideover on demand. Preserve detail tab contents and current source-owner permissions. Keep native reference table/panel styling, typed status labels, list selection/filter/pagination and transient errors.
-- [ ] Move existing report/hub navigation into shell toolbar, align page identity/actions/filters with the template and avoid repeated heading/card layers. Keep incomplete module consultation descriptions honest; no invented domain tables/actions or expanded API scope.
-- [ ] Run affected catalog/report/hub focused suites and changed-path lint; report exact paths/results. Final types/build/browser remain coordinator-owned.
+- [x] Add focused actual component checks for explicit catalog creation/detail/edit open, closed default editor, preserved validation/drafts on failures, cancel/focus and authority clearing; retain existing catalog privacy/action/list regression coverage.
+- [x] Move catalog primary create to navbar and open focused native modal/slideover on demand. Preserve detail tab contents and current source-owner permissions. Keep native reference table/panel styling, typed status labels, list selection/filter/pagination and transient errors.
+- [x] Move existing report/hub navigation into shell toolbar, align page identity/actions/filters with the template and avoid repeated heading/card layers. Keep incomplete module consultation descriptions honest; no invented domain tables/actions or expanded API scope.
+- [x] Run affected catalog/report/hub focused suites and changed-path lint; report exact paths/results. Final types/build/browser remain coordinator-owned.
 
 ## Final validation
 
-- [ ] Coordinator reads all diffs and receives independent task spec/quality verdicts; resolve material findings with original writer and scoped re-review.
-- [ ] Run combined changed-area suites, frontend lint/typecheck, production build once source is accepted; known unfinished cash RED test is outside this UI scope and must be recorded instead of “fixing” it.
-- [ ] Coordinator directly exercises representative list/create/cancel/validation/context paths, expansion/leaf/deep-link/collapsed/mobile navigation, settings group selection and light/dark screenshots; compare against the actual template.
-- [ ] One focused final cross-task review; retain user-reviewable artifacts and report completion/remaining acceptance. No merge, push, archive or unrelated ERP task restart.
+- [x] Coordinator reads all diffs and receives independent task spec/quality verdicts; resolve material findings with original writer and scoped re-review.
+- [x] Run combined changed-area suites, frontend lint/typecheck, production build once source is accepted; known unfinished cash RED test is outside this UI scope and must be recorded instead of “fixing” it.
+- [x] Coordinator directly exercises representative list/create/cancel/validation/context paths, expansion/leaf/deep-link/collapsed/mobile navigation, settings group selection and light/dark screenshots; compare against the actual template.
+- [x] One focused final cross-task review; retain user-reviewable artifacts and report completion/remaining acceptance. No merge, push, archive or unrelated ERP task restart.
+
+Final application source `254f63f`; result and bounded acceptance: [implementation-result.md](../../reviews/2026-10-20-nuxt-dashboard-ui-ux/implementation-result.md). Remaining ERP Task12 and broader audit findings are outside this UI plan.
