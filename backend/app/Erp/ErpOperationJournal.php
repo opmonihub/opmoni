@@ -6,6 +6,7 @@ use App\Erp\Accounting\ErpAccountingRetryOperation;
 use App\Erp\Finance\ErpDecimal;
 use App\Erp\Finance\ErpFinanceOperation;
 use App\Erp\Finance\ErpPaymentAllocationOperation;
+use App\Erp\Reports\ErpReportExportOperation;
 use App\Erp\Sales\ErpCommercialOperation;
 use App\Erp\Stock\ErpPurchaseOperation;
 use App\Erp\Stock\ErpStockOperation;
@@ -115,7 +116,44 @@ final class ErpOperationJournal
 
     public static function operations(): array
     {
-        return [ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ErpAccountingRetryOperation::NAME, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
+        return [ErpReportExportOperation::NAME, ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ErpAccountingRetryOperation::NAME, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
+    }
+
+    /** @param Closure():JsonResponse $publish */
+    public function executeReportExport(Request $request, string $category, array $filters, Closure $publish): JsonResponse
+    {
+        abort_unless(DB::transactionLevel() > 0, 500);
+
+        return DB::transaction(function () use ($request, $category, $filters, $publish): JsonResponse {
+            $adapter = app(ErpReportExportOperation::class);
+            $key = $this->key($request);
+            $adapter->assertAuthorized($request, [], true);
+            AccessSession::assertOwnership($request);
+            $hash = hash('sha256', 'report-v1:'.$this->canonicalJson($adapter->canonical($category, $filters)));
+            $receipt = $key === null ? null : $this->receipts($request, $key, ErpReportExportOperation::NAME)->lockForUpdate()->first();
+            if ($receipt !== null) {
+                $adapter->assertAuthorized($request, $receipt->resource_refs);
+                abort_unless($receipt->canonical_version === 'report-v1' && hash_equals($receipt->payload_hash, $hash), 409, 'Chave de operação reutilizada com conteúdo diferente');
+                AccessSession::assertOwnership($request);
+
+                return response()->json($receipt->response_body, $receipt->response_status);
+            }
+            $response = $publish();
+            $body = $response->getData(true);
+            if ($key !== null && in_array($response->getStatusCode(), [201, 503], true) && isset($body['data']['id'])) {
+                ErpOperationReceipt::query()->create([
+                    'erp_company_id' => CurrentCompany::fromRequest($request)->company->id,
+                    'actor_user_id' => $request->user()->id,
+                    'operation' => ErpReportExportOperation::NAME,
+                    'key_digest' => hash('sha256', $key), 'canonical_version' => 'report-v1', 'payload_hash' => $hash,
+                    'response_status' => $response->getStatusCode(), 'response_body' => $body,
+                    'resource_refs' => $adapter->resourceReferences($body['data']['id']), 'recorded_at' => now(),
+                ]);
+            }
+            AccessSession::assertOwnership($request);
+
+            return $response;
+        });
     }
 
     /** @param Closure():JsonResponse $post */
@@ -369,8 +407,13 @@ final class ErpOperationJournal
         $operation = $request->input('operation');
         abort_unless(in_array($operation, self::operations(), true), 422);
         $receipt = $this->receipts($request, $key, $operation)->first();
+        if ($operation === ErpReportExportOperation::NAME) {
+            app(ErpReportExportOperation::class)->assertAuthorized($request, $receipt?->resource_refs ?? []);
+        }
         if ($receipt) {
-            if (in_array($operation, ErpPurchaseOperation::names(), true) && $receipt->canonical_version === 'purchase-v1') {
+            if ($operation === ErpReportExportOperation::NAME) {
+                abort_unless($receipt->canonical_version === 'report-v1', 409);
+            } elseif (in_array($operation, ErpPurchaseOperation::names(), true) && $receipt->canonical_version === 'purchase-v1') {
                 app(ErpPurchaseOperation::class)->authorize($request, $operation, $receipt->resource_refs);
             } elseif ($operation === ErpPaymentAllocationOperation::NAME) {
                 $this->allocation->assertAuthorized($request, $receipt->resource_refs);

@@ -5,7 +5,7 @@ import { apiErrorMessage } from '~/composables/useApiError'
 
 const route = useRoute()
 const { api } = useAccessApi()
-const { currentCompany } = useAuth()
+const { user, currentCompany } = useAuth()
 const contract = erpRelatoriosContract
 const activeTab = computed(() => contract.tabs.find(tab => `#${tab.id}` === route.hash) ?? contract.tabs[0]!)
 const category = computed(() => activeTab.value.apiPath.split('/').at(-1)!)
@@ -14,7 +14,7 @@ const canRead = computed(() => erpCompanyHasPermission(currentCompany.value?.per
 const canExport = computed(() => currentCompany.value?.access_kind === 'direct'
   && currentCompany.value.role !== 'viewer'
   && (currentCompany.value.permissions.some(grant => ['*', 'erp.write', 'erp.reports.exports.store', 'erp.reports.exports.*', 'erp.reports.exports.write'].includes(grant))))
-const contextKey = computed(() => `${currentCompany.value?.id}:${currentCompany.value?.access_kind}:${currentCompany.value?.role}:${currentCompany.value?.permissions.join(',')}`)
+const contextKey = computed(() => JSON.stringify([user?.value?.id, currentCompany.value]))
 const filters = reactive({ date_from: '', date_to: '', erp_establishment_id: '', currency: 'BRL', status: '', direction: '' })
 function selectFilter(field: 'erp_establishment_id' | 'status' | 'direction') {
   return computed({
@@ -34,9 +34,20 @@ const normalizedFilters = computed(() => report.value?.filters ?? {})
 const hasCurrency = computed(() => !['stock', 'fiscal'].includes(category.value))
 const statuses = computed(() => category.value === 'fiscal'
   ? [{ label: 'Autorizado', value: 'authorized' }, { label: 'Rascunho', value: 'draft' }, { label: 'Rejeitado', value: 'rejected' }, { label: 'Indeterminado', value: 'indeterminate' }, { label: 'Contingência local', value: 'contingency_local' }, { label: 'Cancelado', value: 'canceled' }, { label: 'Na fila', value: 'queued' }, { label: 'Em envio', value: 'submitting' }]
-  : category.value === 'financial' ? [{ label: 'Em aberto', value: 'open' }, { label: 'Liquidado', value: 'settled' }, { label: 'Estornado', value: 'reversed' }] : [])
+  : category.value === 'financial'
+    ? [{ label: 'Em aberto', value: 'open' }, { label: 'Liquidado', value: 'settled' }, { label: 'Estornado', value: 'reversed' }]
+    : ['sales', 'purchases'].includes(category.value)
+        ? [{ label: 'Lançado', value: 'posted' }]
+        : [])
 const tabs = computed(() => [contract.tabs.map(tab => ({ label: tab.label, to: `${contract.to}#${tab.id}`, active: tab.id === activeTab.value.id }))])
-const isEmpty = computed(() => report.value && Object.values(report.value.sections ?? { totals: report.value.totals ?? {} }).every(totals => Object.values(totals).every(value => /^0(?:\.0+)?$/.test(String(value)))))
+const isEmpty = computed(() => {
+  if (!report.value) return false
+  if (report.value.ledgers) {
+    const ledgers = Object.values(report.value.ledgers).flatMap(value => 'basis' in value ? [value] : Object.values(value))
+    return ledgers.every(ledger => ledger.row_count === 0)
+  }
+  return Object.values(report.value.sections ?? { totals: report.value.totals ?? {} }).every(totals => Object.values(totals).every(value => value === null || /^0(?:\.0+)?$/.test(String(value))))
+})
 let generation = 0
 let establishmentGeneration = 0
 
@@ -116,10 +127,10 @@ onScopeDispose(() => {
       <UAlert v-if="!canRead" color="warning" title="Sem permissão para consultar relatórios" />
       <template v-else>
         <form class="flex flex-wrap items-end gap-3" @submit.prevent="load">
-          <UFormField label="De" name="date_from">
+          <UFormField label="Atividade de" name="date_from">
             <UInput v-model="filters.date_from" type="date" />
           </UFormField>
-          <UFormField label="Até" name="date_to">
+          <UFormField label="Atividade até" name="date_to">
             <UInput v-model="filters.date_to" type="date" />
           </UFormField>
           <UFormField label="Estabelecimento" name="erp_establishment_id">
@@ -134,7 +145,7 @@ onScopeDispose(() => {
               required
             />
           </UFormField>
-          <UFormField v-if="statuses.length" :label="category === 'financial' ? 'Status da obrigação' : 'Status fiscal'" name="status">
+          <UFormField v-if="statuses.length" :label="category === 'financial' ? 'Status da obrigação' : category === 'fiscal' ? 'Status fiscal' : 'Status do documento'" name="status">
             <USelect v-model="statusFilter" :items="[{ label: 'Todos', value: 'all' }, ...statuses]" class="w-44" />
           </UFormField>
           <UFormField v-if="category === 'financial'" label="Direção da obrigação" name="direction">
@@ -159,7 +170,7 @@ onScopeDispose(() => {
           <dl class="text-muted flex flex-wrap gap-x-5 gap-y-2 text-sm">
             <div>
               <dt class="inline font-medium">
-                Período:
+                Período de atividade:
               </dt><dd class="inline">
                 {{ report.filters.date_from }} — {{ report.filters.date_to }}
               </dd>
@@ -194,7 +205,7 @@ onScopeDispose(() => {
             </div>
           </dl>
           <p v-if="category === 'financial' && (report.filters.status || report.filters.direction)" class="text-muted text-sm">
-            Filtros de status e direção se aplicam às obrigações. O total de pagamentos fica indisponível neste recorte.
+            Status e direção filtram somente obrigações. Pagamentos, alocações e caixa têm recortes próprios declarados abaixo; não são o saldo das obrigações.
           </p>
           <UEmpty
             v-if="isEmpty"
@@ -203,7 +214,7 @@ onScopeDispose(() => {
             icon="i-lucide-chart-column"
           />
           <p v-if="category === 'stock' || category === 'overview'" class="text-muted text-sm">
-            Estoque mostra saldos atuais; o período não recompõe o histórico. A avaliação monetária aguarda atribuição de moeda ao estoque.
+            Estoque mostra posições atuais e movimentos do período separadamente. Custos comprovados são agrupados por moeda; quantidades sem custo ficam explícitas. O período não recompõe avaliação histórica.
           </p>
           <ErpReportMetrics :report="report" />
         </template>

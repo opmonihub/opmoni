@@ -51,8 +51,11 @@ class ErpFinanceConcurrencyTest extends TestCase
         $this->assertSame('13', (string) Redis::connection('default')->client()->getDBNum());
         $this->assertSame('14', (string) Redis::connection('cache')->client()->getDBNum());
         $this->assertSame('15', (string) Redis::connection('sessions')->client()->getDBNum());
-        $this->assertStringStartsWith('18.', DB::selectOne('show server_version')->server_version);
-        $this->assertStringStartsWith('8.', Redis::connection('cache')->info('server')['redis_version']);
+        $postgresVersion = DB::selectOne('show server_version')->server_version;
+        $redisVersion = Redis::connection('cache')->info('server')['redis_version'];
+        $this->assertStringStartsWith('18.', $postgresVersion);
+        $this->assertStringStartsWith('8.', $redisVersion);
+        fwrite(STDERR, "Retained finance stores: PostgreSQL {$postgresVersion}, database opmoni_test; Redis {$redisVersion}, databases 13/14/15\n");
 
         $this->assertTrue(Schema::hasTable('erp_cash_movements'), 'Root must approve and apply the exact additive finance migration.');
 
@@ -75,6 +78,7 @@ class ErpFinanceConcurrencyTest extends TestCase
             foreach ($this->baseline as $table => $baseline) {
                 $this->assertSame($baseline['hash'], hash('sha256', DB::table($table)->whereIn('id', $baseline['ids'])->orderBy('id')->get()->toJson()), 'Existing rows changed in '.$table);
             }
+            fwrite(STDERR, 'Retained baseline preserved: '.count($this->baseline).' tables, '.array_sum(array_map(fn (array $baseline): int => count($baseline['ids']), $this->baseline)).' rows, SHA256 '.hash('sha256', json_encode($this->baseline, JSON_THROW_ON_ERROR))."\n");
         } finally {
             parent::tearDown();
         }
@@ -157,7 +161,7 @@ class ErpFinanceConcurrencyTest extends TestCase
         ];
     }
 
-    private function waitForCompanyLock(string $label, string $ready): void
+    private function waitForCompanyLock(string $label, string $ready, ?int $blocker = null): array
     {
         $deadline = microtime(true) + 8;
         do {
@@ -166,9 +170,15 @@ class ErpFinanceConcurrencyTest extends TestCase
             $waiting = $identity === null ? 0 : DB::selectOne("select count(*) as count from pg_stat_activity where pid = ? and datname = ? and application_name = ? and wait_event_type = 'Lock'", [$identity['pg_pid'], 'opmoni_test', $label])->count;
             if ($identity !== null && (int) $waiting === 1) {
                 $this->assertSame('opmoni_test', $identity['database']);
+                if ($blocker !== null) {
+                    $activity = DB::selectOne('select query, ? = any(pg_blocking_pids(pid)) as blocked_by_holder from pg_stat_activity where pid = ?', [$blocker, $identity['pg_pid']]);
+                    $this->assertTrue($activity->blocked_by_holder);
+                    $this->assertStringContainsString('"erp_companies"', $activity->query);
+                    $this->assertStringContainsString('for update', $activity->query);
+                }
                 fwrite(STDERR, "Barrier confirmed: {$label}, OS PID {$identity['pid']}, PostgreSQL PID {$identity['pg_pid']}, database {$identity['database']}, waiting on Company row lock\n");
 
-                return;
+                return $identity;
             }
             usleep(10000);
         } while (microtime(true) < $deadline);
@@ -258,6 +268,245 @@ class ErpFinanceConcurrencyTest extends TestCase
         $this->assertNotSame($a['cookies']['opmoni-session'], $b['cookies']['opmoni-session']);
 
         return [$a, $b];
+    }
+
+    private function reportCashSession(array $session): int
+    {
+        $register = $this->create($session, 'cash-registers', ['name' => 'Report process acceptance', 'erp_establishment_id' => $this->establishment->id]);
+
+        return $this->create($session, 'cash-sessions', ['erp_cash_register_id' => $register, 'currency' => 'BRL', 'opening_amount' => '0']);
+    }
+
+    private function cashPayment(array $session, int $cash, string $amount): int
+    {
+        return $this->create($session, 'payments', ['erp_establishment_id' => $this->establishment->id, 'erp_cash_session_id' => $cash, 'direction' => 'in', 'method' => 'cash', 'currency' => 'BRL', 'amount' => $amount]);
+    }
+
+    private function allocate(array $session, int $payment, int $obligation, string $amount): int
+    {
+        $result = $this->request($this->postInput($session, "payments/{$payment}/allocate", ['erp_obligation_id' => $obligation, 'amount' => $amount], 'report-allocation-'.bin2hex(random_bytes(8))));
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
+
+        return $result['body']['data']['id'];
+    }
+
+    private function waitForReportPause(Process $worker, string $paused, string $phase): array
+    {
+        $deadline = microtime(true) + 8;
+        do {
+            if (file_exists($paused)) {
+                $identity = json_decode(file_get_contents($paused), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($phase, $identity['phase']);
+                $this->assertSame('opmoni_test', $identity['database']);
+                $this->assertGreaterThanOrEqual($phase === 'report-before-payments' ? 1 : 2, $identity['transaction_level']);
+                $this->assertContains($this->company->id, $identity['locked_company_ids']);
+                if ($phase === 'report-before-payments') {
+                    $this->assertSame(2, $identity['completed_obligation_reads']);
+                    $this->assertStringContainsString('from "erp_payments"', $identity['query']);
+                } else {
+                    $this->assertStringStartsWith('insert into "erp_payments"', $identity['query']);
+                    $this->assertSame(1, $identity['completed_allocation_compensations']);
+                    $this->assertSame(1, $identity['completed_obligation_updates']);
+                }
+                fwrite(STDERR, "Pause confirmed: {$identity['label']}, OS PID {$identity['pid']}, PostgreSQL PID {$identity['pg_pid']}, phase {$phase}, transaction level {$identity['transaction_level']}, completed obligation reads {$identity['completed_obligation_reads']}\n");
+
+                return $identity;
+            }
+            if (! $worker->isRunning()) {
+                $result = json_decode($worker->getOutput(), true);
+                $this->fail('HTTP worker exited before pause; status '.($result['status'] ?? 'unknown').', code '.($result['body']['code'] ?? 'none').'; '.$worker->getErrorOutput());
+            }
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+
+        $this->fail('HTTP worker did not reach the bounded test pause: '.$phase);
+    }
+
+    private function assertReportMoney(array $result, array $fixture, bool $reversed): void
+    {
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
+        $report = $result['body']['data'];
+        $ledgers = $report['ledgers'];
+        $open = $reversed ? '100.0000' : '60.0000';
+        $net = $reversed ? '0.0000' : '40.0000';
+        $this->assertSame('100.0000', $report['totals']['obligations_amount']);
+        $this->assertSame($open, $report['totals']['obligations_open_amount']);
+        $this->assertSame([$fixture['obligation']], array_column($ledgers['obligations']['rows'], 'id'));
+        $this->assertSame($open, $ledgers['obligations']['rows'][0]['open_amount']);
+        $this->assertSame($open, $ledgers['obligations']['totals']['open_amount']);
+        $this->assertSame('100.0000', $ledgers['obligation_activity']['totals']['amount']);
+        $this->assertSame($net, $ledgers['payments']['totals']['net_amount']);
+        $this->assertSame($net, $ledgers['allocations']['totals']['amount']);
+        $this->assertSame($net, $ledgers['cash']['totals']['net_amount']);
+        foreach (['payments', 'allocations', 'cash'] as $name) {
+            $ledger = $ledgers[$name];
+            $this->assertSame($reversed ? 2 : 1, $ledger['row_count']);
+            $this->assertCount($ledger['row_count'], $ledger['rows']);
+            $this->assertFalse($ledger['detail_truncated']);
+            $this->assertSame($fixture[$name], $ledger['rows'][0]['id']);
+            $this->assertNull($ledger['rows'][0]['reversal_of_id']);
+            $this->assertSame('40.0000', $ledger['rows'][0]['amount']);
+            if ($reversed) {
+                $this->assertSame($fixture[$name], $ledger['rows'][1]['reversal_of_id']);
+                $this->assertSame($name === 'cash' ? '40.0000' : '-40.0000', $ledger['rows'][1]['amount']);
+            }
+            $sum = '0.0000';
+            foreach ($ledger['rows'] as $row) {
+                $amount = $name !== 'allocations' && $row['direction'] === 'out' ? bcsub('0', $row['amount'], 4) : $row['amount'];
+                $sum = bcadd($sum, $amount, 4);
+            }
+            $this->assertSame($net, $sum, 'Details and net totals differ in '.$name);
+        }
+        $this->assertSame($report['totals']['payments_posted_total'], $ledgers['payments']['totals']['amount']);
+        $this->assertSame($fixture['payments'], $ledgers['allocations']['rows'][0]['erp_payment_id']);
+        $this->assertSame($fixture['obligation'], $ledgers['allocations']['rows'][0]['erp_obligation_id']);
+        $this->assertSame($fixture['payments'], $ledgers['cash']['rows'][0]['erp_payment_id']);
+        if ($reversed) {
+            $this->assertSame($fixture['payments'], $ledgers['allocations']['rows'][1]['erp_payment_id']);
+            $this->assertSame($ledgers['payments']['rows'][1]['id'], $ledgers['cash']['rows'][1]['erp_payment_id']);
+            $this->assertSame('out', $ledgers['cash']['rows'][1]['direction']);
+        }
+    }
+
+    private function reportReversalFence(bool $reportFirst): void
+    {
+        [$a, $b] = $this->sessions();
+        $cashSession = $this->reportCashSession($a);
+        $obligation = $this->obligation($a);
+        $payment = $this->cashPayment($a, $cashSession, '40');
+        $allocation = $this->allocate($a, $payment, $obligation, '40');
+        $cash = DB::table('erp_cash_movements')->where('erp_payment_id', $payment)->sole()->id;
+        $fixture = ['obligation' => $obligation, 'payments' => $payment, 'allocations' => $allocation, 'cash' => $cash];
+        $originals = [];
+        foreach (['erp_payments' => $payment, 'erp_payment_allocations' => $allocation, 'erp_cash_movements' => $cash] as $table => $id) {
+            $originals[$table] = (array) DB::table($table)->find($id);
+        }
+        $report = $a + ['path' => '/api/v1/erp/reports/financial'];
+        $reverse = $this->postInput($b, "payments/{$payment}/reverse", ['reason' => 'Report process acceptance'], 'report-reversal');
+        $phase = $reportFirst ? 'report-before-payments' : 'reversal-before-payment-insert';
+        $label = 'erp-report-holder-'.$this->company->id;
+        $waitingLabel = 'erp-report-waiter-'.$this->company->id;
+        $paused = tempnam(sys_get_temp_dir(), 'finance-report-pause-');
+        $release = tempnam(sys_get_temp_dir(), 'finance-report-release-');
+        $ready = tempnam(sys_get_temp_dir(), 'finance-report-ready-');
+        foreach ([$paused, $release, $ready] as $path) {
+            unlink($path);
+        }
+        $holder = $waiter = null;
+        try {
+            $holder = $this->worker(($reportFirst ? $report : $reverse) + ['label' => $label, 'pause' => ['phase' => $phase, 'paused' => $paused, 'release' => $release]]);
+            $holding = $this->waitForReportPause($holder, $paused, $phase);
+            $waiter = $this->worker(($reportFirst ? $reverse : $report) + ['label' => $waitingLabel, 'ready' => $ready]);
+            $waiting = $this->waitForCompanyLock($waitingLabel, $ready, $holding['pg_pid']);
+            $this->assertNotSame($holding['pid'], $waiting['pid']);
+            $this->assertNotSame($holding['pg_pid'], $waiting['pg_pid']);
+            $this->assertTrue($holder->isRunning());
+            $this->assertTrue($waiter->isRunning());
+            file_put_contents($release, 'release');
+            $first = $this->response($holder);
+            $second = $this->response($waiter);
+            $this->assertSame($holding['pg_pid'], $first['pg_pid']);
+            $this->assertSame($waiting['pg_pid'], $second['pg_pid']);
+            $this->assertSame(200, ($reportFirst ? $second : $first)['status']);
+            $this->assertReportMoney($reportFirst ? $first : $second, $fixture, ! $reportFirst);
+            $fresh = $this->request($report);
+            $this->assertNotSame($first['pg_pid'], $fresh['pg_pid']);
+            $this->assertNotSame($second['pg_pid'], $fresh['pg_pid']);
+            $this->assertReportMoney($fresh, $fixture, true);
+            $this->assertSame('100.0000', ErpObligation::findOrFail($obligation)->open_amount);
+            $this->assertSame('0.0000', ErpCashSession::findOrFail($cashSession)->opening_amount);
+            foreach ($originals as $table => $original) {
+                $this->assertSame($original, (array) DB::table($table)->find($original['id']));
+                $this->assertSame(1, DB::table($table)->where('reversal_of_id', $original['id'])->count());
+            }
+            $this->assertSame(1, DB::table('erp_operation_receipts')->where('erp_company_id', $this->company->id)->where('operation', 'erp.payments.reverse')->count());
+        } finally {
+            if ($holder instanceof Process && $holder->isRunning()) {
+                file_put_contents($release, 'release');
+            }
+            foreach ([$holder, $waiter] as $worker) {
+                if ($worker instanceof Process && $worker->isRunning()) {
+                    $worker->stop(1);
+                }
+            }
+            foreach ([$paused, $paused.'.tmp', $release, $ready] as $path) {
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+            }
+        }
+    }
+
+    public function test_actual_pg_http_financial_report_holds_company_between_ledgers_before_payment_reversal(): void
+    {
+        $this->reportReversalFence(true);
+    }
+
+    public function test_actual_pg_http_financial_report_waits_for_inflight_payment_reversal_before_reading_ledgers(): void
+    {
+        $this->reportReversalFence(false);
+    }
+
+    public function test_actual_pg_http_financial_and_overview_recheck_whole_payment_scope_after_membership_narrows(): void
+    {
+        [$a] = $this->sessions();
+        $second = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $cash = $this->reportCashSession($a);
+        $obligation = $this->obligation($a);
+        $hidden = $this->create($a, 'obligations', ['erp_establishment_id' => $second->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100']);
+        $independent = $this->obligation($a, '23');
+        $payment = $this->cashPayment($a, $cash, '100');
+        $deniedAllocation = $this->allocate($a, $payment, $obligation, '40');
+        $this->allocate($a, $payment, $hidden, '60');
+        $control = $this->cashPayment($a, $cash, '7');
+        $controlAllocation = $this->allocate($a, $control, $obligation, '7');
+        $controlCash = DB::table('erp_cash_movements')->where('erp_payment_id', $control)->sole()->id;
+        $membership = ErpCompanyMembership::where('erp_company_id', $this->company->id)->where('user_id', $this->firstActor['user']->id)->sole();
+        $membership->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $membership->establishments()->attach([$this->establishment->id, $second->id], ['erp_company_id' => $this->company->id]);
+        $filter = '?erp_establishment_id='.$this->establishment->id;
+        foreach (['financial', 'overview'] as $category) {
+            $before = $this->request($a + ['path' => '/api/v1/erp/reports/'.$category.$filter]);
+            $this->assertSame(200, $before['status'], json_encode($before['body']));
+            $data = $before['body']['data'];
+            $ledgers = $category === 'overview' ? $data['ledgers']['financial'] : $data['ledgers'];
+            $this->assertSame([$payment, $control], array_column($ledgers['payments']['rows'], 'id'));
+            $this->assertSame([$deniedAllocation, $controlAllocation], array_column($ledgers['allocations']['rows'], 'id'));
+            $this->assertSame('107.0000', $ledgers['payments']['totals']['net_amount']);
+            $this->assertSame('47.0000', $ledgers['allocations']['totals']['amount']);
+            $this->assertSame('107.0000', $ledgers['cash']['totals']['net_amount']);
+        }
+        $membership->establishments()->detach($second->id);
+        $denied = $this->request($a + ['path' => '/api/v1/erp/payments/'.$payment]);
+        $this->assertSame(404, $denied['status']);
+        foreach (['financial', 'overview'] as $category) {
+            foreach (['', $filter] as $query) {
+                $after = $this->request($a + ['path' => '/api/v1/erp/reports/'.$category.$query]);
+                $this->assertSame(200, $after['status'], json_encode($after['body']));
+                $data = $after['body']['data'];
+                $ledgers = $category === 'overview' ? $data['ledgers']['financial'] : $data['ledgers'];
+                $totals = $category === 'overview' ? $data['sections']['financial'] : $data['totals'];
+                $this->assertSame('7.0000', $totals['payments_posted_total']);
+                $this->assertSame('123.0000', $totals['obligations_amount']);
+                $this->assertSame('76.0000', $totals['obligations_open_amount']);
+                $this->assertSame([$obligation, $independent], array_column($ledgers['obligations']['rows'], 'id'));
+                $this->assertSame([$control], array_column($ledgers['payments']['rows'], 'id'));
+                $this->assertSame([$controlAllocation], array_column($ledgers['allocations']['rows'], 'id'));
+                $this->assertSame([$controlCash], array_column($ledgers['cash']['rows'], 'id'));
+                $this->assertSame([$control], array_column($ledgers['allocations']['rows'], 'erp_payment_id'));
+                $this->assertSame([$control], array_column($ledgers['cash']['rows'], 'erp_payment_id'));
+                $this->assertSame('7.0000', $ledgers['payments']['totals']['amount']);
+                $this->assertSame('7.0000', $ledgers['payments']['totals']['net_amount']);
+                $this->assertSame(['in' => '7.0000'], $ledgers['payments']['totals']['by_direction']);
+                $this->assertSame('7.0000', $ledgers['allocations']['totals']['amount']);
+                $this->assertSame('7.0000', $ledgers['cash']['totals']['net_amount']);
+                $this->assertSame(['7.0000'], array_values($ledgers['cash']['totals']['by_group']));
+                foreach (['payments', 'allocations', 'cash'] as $name) {
+                    $this->assertSame(1, $ledgers[$name]['row_count']);
+                    $this->assertFalse($ledgers[$name]['detail_truncated']);
+                }
+            }
+        }
     }
 
     public function test_actual_http_overallocation_competitors_leave_one_bounded_effect(): void
