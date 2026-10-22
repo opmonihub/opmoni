@@ -58,7 +58,7 @@ class ErpStockLotConcurrencyTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('erp_stock_cost_settlements'), 'Root must approve and apply the exact additive stock migration.');
 
-        foreach (['erp_contacts', 'erp_products', 'erp_product_variants', 'erp_units', 'erp_operation_receipts', 'erp_stock_balances', 'erp_stock_movements', 'erp_stock_lots', 'erp_stock_allocations', 'erp_stock_cost_settlements'] as $table) {
+        foreach (['erp_contacts', 'erp_products', 'erp_product_variants', 'erp_units', 'erp_operation_receipts', 'erp_stock_balances', 'erp_stock_movements', 'erp_stock_lots', 'erp_stock_allocations', 'erp_stock_cost_settlements', 'erp_catalog_imports', 'erp_catalog_attributions'] as $table) {
             $rows = DB::table($table)->orderBy('id')->get();
             $this->baseline[$table] = ['ids' => $rows->pluck('id')->all(), 'hash' => hash('sha256', $rows->toJson())];
         }
@@ -88,7 +88,9 @@ class ErpStockLotConcurrencyTest extends TestCase
     /** @return array{user: User, company: ErpCompany, unit: ErpUnit} */
     private function owner(ErpCompany $company, ErpUnit $unit): array
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create([
+            'email' => 'stock-owner-'.$company->id.'-'.bin2hex(random_bytes(16)).'@example.test',
+        ]);
         ErpCompanyMembership::factory()->create([
             'erp_company_id' => $company->id,
             'user_id' => $user->id,
@@ -237,17 +239,20 @@ class ErpStockLotConcurrencyTest extends TestCase
         return $id;
     }
 
-    private function sale(array $session, string $quantity, bool $post = false): int
+    /** @return array{id: int, draft_revision: int} */
+    private function sale(array $session, string $quantity, bool $post = false): array
     {
         $result = $this->request($this->postInput($session, 'sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'PG-'.bin2hex(random_bytes(6)), 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => $quantity, 'unit_price' => '40']]], 'draft-sale-'.bin2hex(random_bytes(6))));
         $this->assertSame(201, $result['status'], json_encode($result['body']));
-        $id = $result['body']['data']['id'];
+        $sale = ['id' => $result['body']['data']['id'], 'draft_revision' => $result['body']['data']['draft_revision']];
+        $this->assertIsInt($sale['draft_revision']);
+        $this->assertGreaterThan(0, $sale['draft_revision']);
         if ($post) {
-            $result = $this->request($this->postInput($session, 'sales/'.$id.'/post', [], 'sale-'.$id));
+            $result = $this->request($this->postInput($session, 'sales/'.$sale['id'].'/post', ['draft_revision' => $sale['draft_revision']], 'sale-'.$sale['id']));
             $this->assertSame(200, $result['status'], json_encode($result['body']));
         }
 
-        return $id;
+        return $sale;
     }
 
     private function quantity(int $establishment): string
@@ -271,7 +276,7 @@ class ErpStockLotConcurrencyTest extends TestCase
         $this->purchase($a, '1', '10');
         $first = $this->sale($a, '1');
         $second = $this->sale($b, '1');
-        $results = $this->race($this->postInput($a, 'sales/'.$first.'/post', [], 'final-a'), $this->postInput($b, 'sales/'.$second.'/post', [], 'final-b'));
+        $results = $this->race($this->postInput($a, 'sales/'.$first['id'].'/post', ['draft_revision' => $first['draft_revision']], 'final-a'), $this->postInput($b, 'sales/'.$second['id'].'/post', ['draft_revision' => $second['draft_revision']], 'final-b'));
         $this->assertSame([200, 422], $this->statuses($results), json_encode($results));
         $this->assertSame('0.0000', $this->quantity($this->establishment->id));
         $allocations = DB::table('erp_stock_allocations')->where('erp_company_id', $this->company->id)->get();
@@ -286,7 +291,7 @@ class ErpStockLotConcurrencyTest extends TestCase
         $b = $this->login($this->secondActor);
         $this->purchase($a, '2', '10');
         $sale = $this->sale($a, '1');
-        $results = $this->race($this->postInput($a, 'sales/'.$sale.'/post', [], 'same-sale'), $this->postInput($b, 'sales/'.$sale.'/post', [], 'same-sale'));
+        $results = $this->race($this->postInput($a, 'sales/'.$sale['id'].'/post', ['draft_revision' => $sale['draft_revision']], 'same-sale'), $this->postInput($b, 'sales/'.$sale['id'].'/post', ['draft_revision' => $sale['draft_revision']], 'same-sale'));
         $this->assertSame([200, 200], $this->statuses($results), json_encode($results));
         $this->assertSame($results[0]['body'], $results[1]['body']);
         $this->assertSame('1.0000', $this->quantity($this->establishment->id));
@@ -314,7 +319,7 @@ class ErpStockLotConcurrencyTest extends TestCase
         $b = $this->login($this->secondActor);
         $this->purchase($a, '1', '10');
         $sale = $this->sale($a, '2', true);
-        $issue = DB::table('erp_stock_movements')->where('erp_company_id', $this->company->id)->where('source_type', 'erp_sale')->where('source_id', $sale)->sole();
+        $issue = DB::table('erp_stock_movements')->where('erp_company_id', $this->company->id)->where('source_type', 'erp_sale')->where('source_id', $sale['id'])->sole();
         $before = (array) $issue;
         $first = $this->purchase($a, '1', '20', post: false);
         $second = $this->purchase($b, '1', '30', post: false);
