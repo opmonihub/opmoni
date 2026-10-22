@@ -7,6 +7,9 @@ import { readFileSync } from 'node:fs'
 import { erpCompanyHasPermission } from '../app/utils/erpModulesNav.ts'
 import { settingsTabs } from '../app/utils/settingsNav.ts'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/useApiError.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
+
+const workspaceNav = loadAppComposable('utils/erpWorkspaceNav.ts')
 
 const routeFile = new URL('../app/pages/erp/configuracoes.vue', import.meta.url)
 const companyAdministrationFile = new URL('../app/components/erp/ErpCompanyAdministration.vue', import.meta.url)
@@ -328,7 +331,8 @@ function settingsLinks(company: {
   const compiled = ts.transpileModule(script.content, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   })
-  const exports = {} as { default: { setup: (props: object, context: object) => { links: Vue.ComputedRef<Array<Array<{ to: string, label: string }>>> } } }
+  type Link = { to?: string, label: string, children?: Link[] }
+  const exports = {} as { default: { setup: (props: object, context: object) => { links: Vue.ComputedRef<Link[][]> } } }
   const globals = {
     computed: Vue.computed,
     definePageMeta() {},
@@ -336,13 +340,14 @@ function settingsLinks(company: {
     useAuth: () => ({ currentCompany: Vue.ref(company), currentAccount: Vue.ref(account), canManageMembers: Vue.computed(() => account?.role === 'admin') })
   }
   new Function('require', 'exports', ...Object.keys(globals), compiled.outputText)(
-    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : name === '~/utils/settingsNav' ? { settingsTabs } : (() => { throw new Error(`Unexpected import: ${name}`) })(),
+    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpWorkspaceNav' ? workspaceNav : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : name === '~/utils/settingsNav' ? { settingsTabs } : (() => { throw new Error(`Unexpected import: ${name}`) })(),
     exports,
     ...Object.values(globals)
   )
   const scope = Vue.effectScope()
   const state = scope.run(() => exports.default.setup({}, { expose() {} }))!
-  return { links: state.links.value[0]!, close: () => scope.stop() }
+  const flatten = (links: Link[]): Link[] => links.flatMap(link => [link, ...flatten(link.children ?? [])])
+  return { links: flatten(state.links.value.flat()), close: () => scope.stop() }
 }
 
 describe('ERP company administration navigation', () => {
@@ -361,19 +366,19 @@ describe('ERP company administration navigation', () => {
   })
 
   it('shows owner controls only for a direct owner company context', (t) => {
-    const owner = settingsLinks({ id: 10, status: 'active', access_kind: 'direct', role: 'owner', permissions: ['erp.read'] })
+    const owner = settingsLinks({ id: 10, status: 'active', access_kind: 'direct', role: 'owner', permissions: ['erp.establishments.index'] })
     t.after(owner.close)
     assert.deepEqual(
-      owner.links.filter(link => ['/erp/configuracoes/estabelecimentos', '/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to)).map(link => link.to),
+      owner.links.filter(link => ['/erp/configuracoes/estabelecimentos', '/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to ?? '')).map(link => link.to),
       ['/erp/configuracoes/estabelecimentos', '/erp/configuracoes/membros', '/erp/configuracoes/escritorio']
     )
 
     const delegated = settingsLinks({ id: 10, status: 'active', access_kind: 'delegated', role: 'delegated', permissions: ['*'] })
     t.after(delegated.close)
     assert.ok(delegated.links.some(link => link.to === '/erp/configuracoes/estabelecimentos'))
-    assert.ok(delegated.links.every(link => !['/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to)))
+    assert.ok(delegated.links.every(link => !['/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to ?? '')))
 
-    const readOnly = settingsLinks({ id: 10, status: 'active', access_kind: 'direct', role: 'operator', permissions: ['erp.read'] })
+    const readOnly = settingsLinks({ id: 10, status: 'active', access_kind: 'direct', role: 'operator', permissions: ['erp.establishments.index'] })
     t.after(readOnly.close)
     assert.ok(readOnly.links.some(link => link.to === '/erp/configuracoes/estabelecimentos'))
   })
@@ -387,7 +392,7 @@ describe('ERP company administration navigation', () => {
     ]) {
       const view = settingsLinks(company)
       t.after(view.close)
-      assert.ok(view.links.every(link => !['/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to)))
+      assert.ok(view.links.every(link => !['/erp/configuracoes/membros', '/erp/configuracoes/escritorio'].includes(link.to ?? '')))
     }
   })
 })
