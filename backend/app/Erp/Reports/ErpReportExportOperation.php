@@ -2,9 +2,11 @@
 
 namespace App\Erp\Reports;
 
+use App\Erp\ErpCommercialReturnService;
 use App\Erp\ErpEstablishmentAccess;
 use App\Erp\ErpReleaseGate;
 use App\Erp\Finance\ErpFinanceReadService;
+use App\Erp\Sales\ErpCommercialDraftService;
 use App\Models\Erp\Finance\ErpPayment;
 use App\Models\Erp\Reports\ErpReportExport;
 use App\Support\CurrentCompany;
@@ -26,15 +28,34 @@ class ErpReportExportOperation
     {
         $export = ErpReportExport::query()->findOrFail($exportId);
 
-        return ['export_id' => $exportId, ...(
+        return ['export_id' => $exportId, 'commercial_ids' => $export->filters['authorized_commercial_ids'] ?? null, ...(
             in_array($export->report_type, ['financial', 'overview'], true)
                 ? ['payment_ids' => $export->filters['authorized_payment_ids'] ?? null]
                 : []
         )];
     }
 
-    public function paymentReferencesAllow(Request $request, ErpReportExport $export, array $references = []): bool
+    public function dependenciesAllow(Request $request, ErpReportExport $export, array $references = []): bool
     {
+        $commercial = $export->filters['authorized_commercial_ids'] ?? null;
+        if (! is_array($commercial) || array_keys($commercial) !== ['sales', 'returns']
+            || (array_key_exists('commercial_ids', $references) && $references['commercial_ids'] !== $commercial)) {
+            return false;
+        }
+        foreach ($commercial as $kind => $ids) {
+            if (! is_array($ids) || ! array_is_list($ids) || count(array_unique($ids, SORT_REGULAR)) !== count($ids)
+                || array_filter($ids, fn ($id): bool => ! is_int($id) || $id < 1) !== []) {
+                return false;
+            }
+            foreach (array_chunk($ids, 500) as $batch) {
+                $query = $kind === 'sales'
+                    ? app(ErpCommercialDraftService::class)->scopedQuery($request, 'sale')
+                    : app(ErpCommercialReturnService::class)->scopedQuery($request, 'sale_return');
+                if ($query->whereKey($batch)->count() !== count($batch)) {
+                    return false;
+                }
+            }
+        }
         if (! in_array($export->report_type, ['financial', 'overview'], true)) {
             return true;
         }
@@ -72,6 +93,6 @@ class ErpReportExportOperation
             ? ($ids === null || array_diff($export->authorized_establishment_ids ?? [], $ids) === [])
             : $ids === null;
         abort_unless($scopeAllowed && ($export->authorized_companywide_finance === false || $companywide)
-            && $this->paymentReferencesAllow($request, $export, $references), 409, 'Esta exportação precisa ser gerada novamente.');
+            && $this->dependenciesAllow($request, $export, $references), 409, 'Esta exportação precisa ser gerada novamente.');
     }
 }

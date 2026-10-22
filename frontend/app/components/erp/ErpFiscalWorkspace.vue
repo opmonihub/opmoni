@@ -38,7 +38,7 @@ const canSubmitEvent = computed(() => workspace.canCreateEvents
   && !workspace.pendingRecovery
   && workspace.configuration?.release_gates.provider !== 'unavailable'
   && (workspace.configuration?.environment === 'homologation' || workspace.configuration?.release_gates.production_transmission_enabled === true))
-const contextFormKey = computed(() => uiAuthority.key.value)
+const contextFormKey = computed(() => `${uiAuthority.key.value}:${workspace.authorityGeneration}`)
 
 function beginUiAction() {
   return { epoch: ++uiEpoch, context: uiAuthority.capture(), establishmentId: workspace.selectedEstablishmentId, documentId: focusedDocument.value?.id ?? null }
@@ -50,7 +50,7 @@ function isCurrentUi(action: ReturnType<typeof beginUiAction>, requireDocument =
     && (!requireDocument || action.documentId === (focusedDocument.value?.id ?? null))
 }
 
-watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId], () => {
+watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId, workspace.authorityGeneration], () => {
   uiEpoch++
   localBusy.value = false
   requestError.value = ''

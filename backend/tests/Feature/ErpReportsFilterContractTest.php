@@ -152,8 +152,10 @@ class ErpReportsFilterContractTest extends TestCase
     {
         $this->travelTo(now()->setDate(2026, 10, 22)->setTime(12, 0));
         $base = ['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'currency' => 'BRL', 'category' => 'sale', 'status' => 'open', 'posted_at' => '2026-09-10 12:00:00'];
-        $original = ErpObligation::create($base + ['direction' => 'receivable', 'amount' => '100.0000', 'open_amount' => '40.0000', 'due_on' => '2026-10-10', 'source_type' => 'erp_sale', 'source_id' => 12]);
-        $credit = ErpObligation::create(array_replace($base, ['direction' => 'payable', 'amount' => '25.0000', 'open_amount' => '25.0000', 'due_on' => '2026-10-25', 'source_type' => 'erp_sale_return', 'source_id' => 13, 'return_of_id' => $original->id, 'posted_at' => '2026-10-20 12:00:00']));
+        $sale = ErpSale::create(array_intersect_key($base, array_flip(['erp_company_id', 'erp_establishment_id', 'currency', 'posted_at'])) + ['invoice_no' => 'aging-sale', 'status' => 'posted', 'total_amount' => '100.0000']);
+        $return = ErpSaleReturn::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'erp_sale_id' => $sale->id, 'status' => 'posted', 'currency' => 'BRL', 'total_amount' => '25.0000', 'posted_at' => '2026-10-20 12:00:00']);
+        $original = ErpObligation::create($base + ['direction' => 'receivable', 'amount' => '100.0000', 'open_amount' => '40.0000', 'due_on' => '2026-10-10', 'source_type' => 'erp_sale', 'source_id' => $sale->id]);
+        $credit = ErpObligation::create(array_replace($base, ['direction' => 'payable', 'amount' => '25.0000', 'open_amount' => '25.0000', 'due_on' => '2026-10-25', 'source_type' => 'erp_sale_return', 'source_id' => $return->id, 'return_of_id' => $original->id, 'posted_at' => '2026-10-20 12:00:00']));
         ErpObligation::create($base + ['direction' => 'payable', 'amount' => '5.0000', 'open_amount' => '5.0000']);
         $report = $this->getJson('/api/v1/erp/reports/financial?date_from=2026-10-01&date_to=2026-10-21')->assertOk();
         $report->assertJsonPath('data.generated_at', '2026-10-22T12:00:00+00:00')
@@ -195,6 +197,50 @@ class ErpReportsFilterContractTest extends TestCase
             ->assertJsonPath('data.ledgers.cash.rows.1.reversal_of_id', $cash->id)
             ->assertJsonPath('data.ledgers.payments.status_filter', 'posted')
             ->assertJsonPath('data.ledgers.cash.status_filter', null);
+    }
+
+    #[DataProvider('financialReportCategories')]
+    public function test_payment_reversal_inherits_hidden_commercial_ancestor_scope_for_payment_and_cash_ledgers(string $category): void
+    {
+        $fixture = $this->crossEstablishmentSale();
+        $establishmentId = $fixture['visible']->erp_establishment_id;
+        $register = ErpCashRegister::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishmentId, 'name' => 'Reversal scope']);
+        $session = ErpCashSession::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishmentId,
+            'erp_cash_register_id' => $register->id, 'currency' => 'BRL', 'operator_user_id' => $this->user->id,
+            'opened_by_user_id' => $this->user->id, 'opened_at' => now()]);
+        $base = ['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishmentId, 'currency' => 'BRL',
+            'direction' => 'in', 'method' => 'cash', 'status' => 'posted', 'erp_cash_session_id' => $session->id,
+            'posted_at' => now()];
+        $saleObligation = ErpObligation::where('source_type', 'erp_sale')->where('source_id', $fixture['sale']->id)->sole();
+        $original = ErpPayment::create($base + ['amount' => '40.0000']);
+        ErpPaymentAllocation::create(['erp_payment_id' => $original->id, 'erp_obligation_id' => $saleObligation->id,
+            'amount' => '40.0000', 'posted_at' => now()]);
+        $reversal = ErpPayment::create(array_replace($base, ['amount' => '-40.0000', 'source_type' => 'payment_reversal',
+            'source_id' => $original->id, 'reversal_of_id' => $original->id]));
+        $control = ErpPayment::create($base + ['amount' => '7.0000']);
+        $cashBase = ['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishmentId,
+            'erp_cash_register_id' => $register->id, 'erp_cash_session_id' => $session->id,
+            'currency' => 'BRL', 'posted_at' => now()];
+        ErpCashMovement::factory()->forSession($session)->create($cashBase + ['direction' => 'in', 'kind' => 'payment',
+            'amount' => '40.0000', 'erp_payment_id' => $original->id]);
+        ErpCashMovement::factory()->forSession($session)->create($cashBase + ['direction' => 'out', 'kind' => 'reversal',
+            'amount' => '40.0000', 'erp_payment_id' => $reversal->id]);
+        $controlCash = ErpCashMovement::factory()->forSession($session)->create($cashBase + ['direction' => 'in', 'kind' => 'payment',
+            'amount' => '7.0000', 'erp_payment_id' => $control->id]);
+        $fixture['membership']->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $fixture['membership']->establishments()->attach($establishmentId, ['erp_company_id' => $this->company->id]);
+
+        $report = $this->getJson('/api/v1/erp/reports/'.$category.'?'.http_build_query($fixture['filters']))->assertOk();
+        $ledgerPrefix = $category === 'overview' ? 'data.ledgers.financial' : 'data.ledgers';
+        $totalsPrefix = $category === 'overview' ? 'data.sections.financial' : 'data.totals';
+        $report->assertJsonPath($totalsPrefix.'.payments_posted_total', '7.0000')
+            ->assertJsonPath($ledgerPrefix.'.payments.row_count', 1)
+            ->assertJsonPath($ledgerPrefix.'.payments.rows.0.id', $control->id)
+            ->assertJsonPath($ledgerPrefix.'.cash.row_count', 1)
+            ->assertJsonPath($ledgerPrefix.'.cash.rows.0.id', $controlCash->id)
+            ->assertJsonPath($ledgerPrefix.'.cash.totals.net_amount', '7.0000');
+        $this->assertNotSame($original->id, $report->json($ledgerPrefix.'.payments.rows.0.id'));
+        $this->assertNotSame($reversal->id, $report->json($ledgerPrefix.'.payments.rows.0.id'));
     }
 
     public function test_paid_sale_and_partial_return_keep_original_activity_and_current_credit_separate(): void
@@ -287,6 +333,67 @@ class ErpReportsFilterContractTest extends TestCase
     public static function financialReportCategories(): array
     {
         return ['financial' => ['financial'], 'overview' => ['overview']];
+    }
+
+    public static function commercialReportCategories(): array
+    {
+        return ['sales' => ['sales'], 'overview' => ['overview']];
+    }
+
+    #[DataProvider('commercialReportCategories')]
+    public function test_commercial_ancestor_scope_precedes_report_rows_totals_and_related_obligations(string $category): void
+    {
+        $fixture = $this->crossEstablishmentSale();
+        $this->withHeader('Idempotency-Key', 'ancestor-report-'.$category);
+        $prefix = $category === 'overview' ? 'data.ledgers.sales' : 'data.ledgers';
+        $totals = $category === 'overview' ? 'data.sections.sales' : 'data.totals';
+        $this->getJson('/api/v1/erp/reports/'.$category.'?'.http_build_query($fixture['filters']))->assertOk()
+            ->assertJsonPath($totals.'.posted_total', '27.0000')
+            ->assertJsonPath($prefix.'.returns.totals.amount', '10.0000');
+        $fixture['membership']->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $fixture['membership']->establishments()->attach($fixture['visible']->erp_establishment_id, ['erp_company_id' => $this->company->id]);
+        $this->getJson('/api/v1/erp/sales/'.$fixture['sale']->id)->assertNotFound();
+        $this->getJson('/api/v1/erp/sale-returns/'.$fixture['return']->id)->assertNotFound();
+        $report = $this->getJson('/api/v1/erp/reports/'.$category.'?'.http_build_query($fixture['filters']))->assertOk()
+            ->assertJsonPath($totals.'.document_count', 1)->assertJsonPath($totals.'.posted_total', '7.0000')
+            ->assertJsonPath($prefix.'.documents.rows.0.id', $fixture['visible']->id)
+            ->assertJsonPath($prefix.'.returns.row_count', 0)
+            ->assertJsonPath($prefix.'.obligations.row_count', 1)
+            ->assertJsonPath($prefix.'.obligations.totals.amount', '7.0000');
+        if ($category === 'overview') {
+            $report->assertJsonPath('data.ledgers.financial.obligations.row_count', 1)
+                ->assertJsonPath('data.sections.financial.obligations_amount', '7.0000');
+        }
+        $export = $this->postJson('/api/v1/erp/reports/'.$category.'/exports', $fixture['filters'])->assertCreated();
+        $snapshot = $this->getJson('/api/v1/erp/reports/exports/'.$export->json('data.id'))->assertOk()->json('data.report');
+        $this->assertSame($report->json('data'), $snapshot);
+        $this->assertStringNotContainsString($fixture['sale']->invoice_no, json_encode($snapshot));
+        $ledgers = $category === 'overview' ? $snapshot['ledgers']['sales'] : $snapshot['ledgers'];
+        $this->assertSame([$fixture['visible']->id], array_column($ledgers['obligations']['rows'], 'source_id'));
+    }
+
+    protected function crossEstablishmentSale(): array
+    {
+        $this->freezeTime();
+        $send = fn (string $path, array $body) => $this->postJson('/api/v1/erp/'.$path, $body, ['Idempotency-Key' => 'fixture-'.bin2hex(random_bytes(12))]);
+        $quote = $send('quotes', ['erp_establishment_id' => $this->establishment->id,
+            'lines' => [['description' => 'Service', 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
+        $order = $send('quotes/'.$quote.'/convert', ['draft_revision' => 1])->assertOk()->json('data.order.id');
+        $saleId = $send('orders/'.$order.'/convert', ['draft_revision' => 1])->assertOk()->json('data.sale.id');
+        $second = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $this->patchJson('/api/v1/erp/sales/'.$saleId, ['erp_establishment_id' => $second->id], ['Idempotency-Key' => 'fixture-move'])->assertOk();
+        $send('sales/'.$saleId.'/post', ['draft_revision' => 2])->assertOk();
+        $sale = ErpSale::findOrFail($saleId);
+        $returnId = $send('sale-returns', ['erp_sale_id' => $saleId, 'reason' => 'Correction',
+            'lines' => [['source_line_id' => $sale->lines()->sole()->id, 'quantity' => '1']]])->assertCreated()->json('data.id');
+        $send('sale-returns/'.$returnId.'/post', [])->assertOk();
+        $visibleId = $send('sales', ['erp_establishment_id' => $second->id,
+            'lines' => [['description' => 'Visible service', 'quantity' => '1', 'unit_price' => '7']]])->assertCreated()->json('data.id');
+        $send('sales/'.$visibleId.'/post', ['draft_revision' => 1])->assertOk();
+
+        return ['membership' => ErpCompanyMembership::where('user_id', $this->user->id)->sole(),
+            'sale' => $sale, 'return' => ErpSaleReturn::findOrFail($returnId), 'visible' => ErpSale::findOrFail($visibleId),
+            'filters' => ['erp_establishment_id' => $second->id, 'date_from' => now()->startOfMonth()->toDateString(), 'date_to' => now()->toDateString()]];
     }
 
     #[DataProvider('financialReportCategories')]

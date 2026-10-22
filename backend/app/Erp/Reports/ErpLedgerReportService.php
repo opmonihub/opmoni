@@ -3,7 +3,9 @@
 namespace App\Erp\Reports;
 
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpCommercialReturnService;
 use App\Erp\Finance\ErpFinanceReadService;
+use App\Erp\Sales\ErpCommercialDraftService;
 use App\Models\Erp\Finance\ErpCashMovement;
 use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
@@ -22,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class ErpLedgerReportService
@@ -30,6 +33,14 @@ class ErpLedgerReportService
 
     /** @var array<int, int> */
     private array $paymentReferences = [];
+
+    /** @var array{sales: array<int, int>, returns: array<int, int>} */
+    private array $commercialReferences = ['sales' => [], 'returns' => []];
+
+    private Request $request;
+
+    /** @var array<string, list<int>> */
+    private array $commercialSourceIds = [];
 
     /** @var list<string> */
     public const CATEGORIES = ['sales', 'purchases', 'stock', 'financial', 'fiscal', 'overview'];
@@ -48,7 +59,10 @@ class ErpLedgerReportService
         }
 
         $this->generatedAt = now();
+        $this->request = $request;
         $this->paymentReferences = [];
+        $this->commercialReferences = ['sales' => [], 'returns' => []];
+        $this->commercialSourceIds = [];
         $normalized = $this->normalizeFilters($companyId, $filters, $category, $allowedEstablishmentIds, $includeCompanywideFinance);
 
         $report = match ($category) {
@@ -67,6 +81,61 @@ class ErpLedgerReportService
     public function paymentReferences(): array
     {
         return array_values($this->paymentReferences);
+    }
+
+    /** Private full-set dependency proof; never part of the report presentation. */
+    public function commercialReferences(): array
+    {
+        foreach (array_chunk($this->paymentReferences(), 500) as $batch) {
+            $obligations = ErpObligation::whereIn('id', ErpPaymentAllocation::select('erp_obligation_id')->whereIn('erp_payment_id', $batch));
+            foreach ($obligations->select(['source_type', 'source_id'])->cursor() as $obligation) {
+                $this->rememberCommercialSource($obligation);
+            }
+            foreach (ErpPayment::whereKey($batch)->select(['source_type', 'source_id'])->cursor() as $payment) {
+                $this->rememberCommercialSource($payment);
+            }
+            $ids = implode(',', array_map('intval', $batch));
+            $ancestors = DB::select('WITH RECURSIVE payment_ancestry(start_id, ancestor_id) AS (
+                SELECT id, reversal_of_id FROM erp_payments WHERE id IN ('.$ids.') AND reversal_of_id IS NOT NULL
+                UNION
+                SELECT ancestry.start_id, parent.reversal_of_id FROM payment_ancestry ancestry
+                JOIN erp_payments parent ON parent.id = ancestry.ancestor_id
+                WHERE parent.reversal_of_id IS NOT NULL
+            )
+            SELECT DISTINCT ancestor.id AS payment_id, ancestor.source_type, ancestor.source_id
+            FROM payment_ancestry ancestry
+            JOIN erp_payments ancestor ON ancestor.id = ancestry.ancestor_id
+            UNION
+            SELECT DISTINCT ancestor.id AS payment_id, obligation.source_type, obligation.source_id
+            FROM payment_ancestry ancestry
+            JOIN erp_payments ancestor ON ancestor.id = ancestry.ancestor_id
+            JOIN erp_payment_allocations allocation ON allocation.erp_payment_id = ancestor.id
+            JOIN erp_obligations obligation ON obligation.id = allocation.erp_obligation_id', []);
+            foreach ($ancestors as $ancestor) {
+                $this->paymentReferences[$ancestor->payment_id] = $ancestor->payment_id;
+                $this->rememberCommercialReference($ancestor->source_type, $ancestor->source_id);
+            }
+        }
+
+        return array_map(array_values(...), $this->commercialReferences);
+    }
+
+    private function rememberCommercialSource(Model $record): void
+    {
+        $this->rememberCommercialReference($record->getAttribute('source_type'), $record->getAttribute('source_id'));
+    }
+
+    private function rememberCommercialReference(?string $sourceType, mixed $sourceId): void
+    {
+        $kind = match ($sourceType) {
+            'erp_sale' => 'sales',
+            'erp_sale_return' => 'returns',
+            default => null,
+        };
+        if ($kind !== null && $sourceId !== null) {
+            $id = (int) $sourceId;
+            $this->commercialReferences[$kind][$id] = $id;
+        }
     }
 
     /**
@@ -289,6 +358,11 @@ class ErpLedgerReportService
         $activity = $this->obligations($obligationQuery->whereBetween('posted_at', [$filters['date_from'], $filters['date_to']]), $filters, false);
         $visiblePayments = ErpPayment::query()->select('erp_payments.id')->where('erp_company_id', $companyId);
         app(ErpFinanceReadService::class)->scopePayments($request, $visiblePayments);
+        $visibleObligations = ErpObligation::where('erp_company_id', $companyId)->select('id');
+        $this->scopeCommercialSources($visibleObligations);
+        $visiblePayments->whereNotIn('id', ErpPaymentAllocation::select('erp_payment_id')->whereNotIn('erp_obligation_id', $visibleObligations));
+        $this->scopeCommercialSources($visiblePayments);
+        $this->scopePaymentCommercialAncestry($visiblePayments, $companyId);
         $paymentQuery = $this->sourceQuery(ErpPayment::class, $companyId, $filters, $allowedEstablishmentIds, $includeCompanywideFinance)
             ->whereIn('id', clone $visiblePayments)
             ->where('status', 'posted')->where('currency', $filters['currency']);
@@ -395,13 +469,69 @@ class ErpLedgerReportService
 
     private function sourceQuery(string $class, int $companyId, array $filters, ?array $allowed, bool $companywide = false, bool $activity = true): Builder
     {
-        $query = $class::query()->where('erp_company_id', $companyId);
+        $query = match ($class) {
+            ErpSale::class => app(ErpCommercialDraftService::class)->scopedQuery($this->request, 'sale'),
+            ErpSaleReturn::class => app(ErpCommercialReturnService::class)->scopedQuery($this->request, 'sale_return'),
+            default => $class::query()->where('erp_company_id', $companyId),
+        };
+        if (in_array($class, [ErpObligation::class, ErpPayment::class, ErpStockMovement::class], true)) {
+            $this->scopeCommercialSources($query);
+        }
         if ($activity) {
             $query->whereBetween('posted_at', [$filters['date_from'], $filters['date_to']]);
         }
         $this->applyFinancialEstablishmentFilter($query, $filters, $allowed, $companywide);
 
         return $query;
+    }
+
+    private function scopeCommercialSources(Builder $query): void
+    {
+        foreach (['erp_sale' => 'sale', 'erp_sale_return' => 'sale_return'] as $type => $kind) {
+            $ids = $this->commercialSourceIds($kind);
+            $query->where(fn (Builder $inner) => $inner->whereNull('source_type')->orWhere('source_type', '!=', $type)
+                ->orWhereIntegerInRaw('source_id', $ids));
+        }
+    }
+
+    private function commercialSourceIds(string $kind): array
+    {
+        return $this->commercialSourceIds[$kind] ??= ($kind === 'sale'
+            ? app(ErpCommercialDraftService::class)->scopedQuery($this->request, 'sale')
+            : app(ErpCommercialReturnService::class)->scopedQuery($this->request, 'sale_return'))->pluck('id')->all();
+    }
+
+    private function scopePaymentCommercialAncestry(Builder $query, int $companyId): void
+    {
+        $saleIds = $this->commercialSourceIds('sale');
+        $returnIds = $this->commercialSourceIds('sale_return');
+        $unauthorizedSource = static function (string $table, string $type, array $ids): string {
+            if ($ids === []) {
+                return "{$table}.source_type = '{$type}'";
+            }
+            $authorized = implode(',', array_map('intval', $ids));
+
+            return "({$table}.source_type = '{$type}' AND ({$table}.source_id IS NULL OR {$table}.source_id NOT IN ({$authorized})))";
+        };
+        $unauthorizedAllocatedSource = $unauthorizedSource('allocated_obligation', 'erp_sale', $saleIds)
+            .' OR '.$unauthorizedSource('allocated_obligation', 'erp_sale_return', $returnIds);
+        $blocked = 'WITH RECURSIVE payment_ancestry(start_id, ancestor_id) AS (
+            SELECT id, reversal_of_id FROM erp_payments WHERE erp_company_id = ? AND reversal_of_id IS NOT NULL
+            UNION
+            SELECT ancestry.start_id, parent.reversal_of_id FROM payment_ancestry ancestry
+            JOIN erp_payments parent ON parent.id = ancestry.ancestor_id AND parent.erp_company_id = ?
+            WHERE parent.reversal_of_id IS NOT NULL
+        )
+        SELECT DISTINCT ancestry.start_id FROM payment_ancestry ancestry
+        LEFT JOIN erp_payments ancestor ON ancestor.id = ancestry.ancestor_id AND ancestor.erp_company_id = ?
+        WHERE ancestor.id IS NULL
+            OR ancestry.ancestor_id IN (SELECT start_id FROM payment_ancestry WHERE start_id = ancestor_id)
+            OR '.$unauthorizedSource('ancestor', 'erp_sale', $saleIds).'
+            OR '.$unauthorizedSource('ancestor', 'erp_sale_return', $returnIds).'
+            OR EXISTS (SELECT 1 FROM erp_payment_allocations ancestor_allocation
+                JOIN erp_obligations allocated_obligation ON allocated_obligation.id = ancestor_allocation.erp_obligation_id
+                WHERE ancestor_allocation.erp_payment_id = ancestor.id AND ('.$unauthorizedAllocatedSource.'))';
+        $query->whereRaw('erp_payments.id NOT IN ('.$blocked.')', [$companyId, $companyId, $companyId]);
     }
 
     /** Detail is a bounded prefix; totals consume the entire same cursor, never a second query. */
@@ -416,6 +546,17 @@ class ErpLedgerReportService
                 : (($record instanceof ErpPaymentAllocation || $record instanceof ErpCashMovement) ? $record->erp_payment_id : null);
             if ($paymentId !== null) {
                 $this->paymentReferences[$paymentId] = $paymentId;
+            }
+            $saleId = $record instanceof ErpSale ? $record->id
+                : (($record instanceof ErpSaleReturn || $record instanceof ErpFiscalDocument) ? $record->erp_sale_id
+                    : ($record->getAttribute('source_type') === 'erp_sale' ? $record->getAttribute('source_id') : null));
+            $returnId = $record instanceof ErpSaleReturn ? $record->id
+                : ($record->getAttribute('source_type') === 'erp_sale_return' ? $record->getAttribute('source_id') : null);
+            if ($saleId !== null) {
+                $this->commercialReferences['sales'][$saleId] = $saleId;
+            }
+            if ($returnId !== null) {
+                $this->commercialReferences['returns'][$returnId] = $returnId;
             }
             if ($count < 200) {
                 $rows[] = $row;
@@ -441,6 +582,8 @@ class ErpLedgerReportService
             ->where('erp_company_id', $companyId)
             ->whereBetween('created_at', [$filters['date_from'], $filters['date_to']]);
         $this->applyEstablishmentFilter($query, $filters, $allowedEstablishmentIds);
+        $query->where(fn (Builder $inner) => $inner->whereNull('erp_sale_id')
+            ->orWhereIn('erp_sale_id', app(ErpCommercialDraftService::class)->scopedQuery($this->request, 'sale')->select('id')));
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);

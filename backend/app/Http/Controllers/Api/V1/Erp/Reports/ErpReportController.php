@@ -80,6 +80,7 @@ class ErpReportController extends ErpOperationsController
             try {
                 $normalized = $this->reports->normalizeFilters($companyId, $filters, $category, $allowedEstablishmentIds, $includeCompanywideFinance);
                 $payload = $this->reports->report($companyId, $category, $normalized, $allowedEstablishmentIds, $includeCompanywideFinance, $request);
+                $normalized['authorized_commercial_ids'] = $this->reports->commercialReferences();
                 if (in_array($category, ['financial', 'overview'], true)) {
                     $normalized['authorized_payment_ids'] = $this->reports->paymentReferences();
                 }
@@ -163,7 +164,7 @@ class ErpReportController extends ErpOperationsController
         $access = app(ErpEstablishmentAccess::class);
         $context = CurrentCompany::fromRequest($request);
         if (! $this->exportScopeAllows($model, $access->allowedIds($context), $access->allowsCompanywideNullableRecords($context))
-            || ! app(ErpReportExportOperation::class)->paymentReferencesAllow($request, $model)) {
+            || ! app(ErpReportExportOperation::class)->dependenciesAllow($request, $model)) {
             return $this->exportError($model, 'export_requires_regeneration', 409);
         }
 
@@ -253,7 +254,7 @@ class ErpReportController extends ErpOperationsController
         return [
             'id' => $export->id,
             'report_type' => $export->report_type,
-            'filters' => array_diff_key($export->filters ?? [], array_flip(['authorized_payment_ids'])),
+            'filters' => array_diff_key($export->filters ?? [], array_flip(['authorized_payment_ids', 'authorized_commercial_ids'])),
             'status' => $export->status,
             'expires_at' => $export->expires_at?->toIso8601String(),
             ...($export->failure_code !== null ? ['failure_code' => $export->failure_code] : []),

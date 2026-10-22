@@ -6,8 +6,11 @@ use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\Finance\ErpFinancialAccount;
+use App\Models\Erp\Finance\ErpObligation;
 use App\Models\Erp\Finance\ErpPayment;
+use App\Models\Erp\Finance\ErpPaymentAllocation;
 use App\Models\Erp\Reports\ErpReportExport;
+use App\Models\Erp\Sales\ErpSale;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
@@ -15,6 +18,111 @@ use PHPUnit\Framework\Attributes\DataProvider;
 
 class ErpReportExportIdentityTest extends ErpReportsFilterContractTest
 {
+    #[DataProvider('commercialReportCategories')]
+    public function test_commercial_export_reauthorizes_ancestors_for_get_replay_and_lookup_without_mutation(string $category): void
+    {
+        $fixture = $this->crossEstablishmentSale();
+        $this->withHeader('Idempotency-Key', 'ancestor-'.$category);
+        $created = $this->postJson('/api/v1/erp/reports/'.$category.'/exports', $fixture['filters'])->assertCreated()
+            ->assertJsonMissingPath('data.filters.authorized_commercial_ids');
+        $export = ErpReportExport::findOrFail($created->json('data.id'));
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertOk()
+            ->assertJsonMissingPath('data.report.filters.authorized_commercial_ids');
+        $attributes = $export->getAttributes();
+        $receipt = ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes();
+        $bytes = Storage::disk('local')->get($export->storage_path);
+        $fixture['membership']->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $fixture['membership']->establishments()->attach($fixture['visible']->erp_establishment_id, ['erp_company_id' => $export->erp_company_id]);
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertConflict()
+            ->assertJsonPath('code', 'export_requires_regeneration')->assertJsonMissingPath('data.report')
+            ->assertJsonMissingPath('data.filters.authorized_commercial_ids');
+        $this->postJson('/api/v1/erp/reports/'.$category.'/exports', $fixture['filters'])->assertConflict()->assertJsonMissingPath('data');
+        $this->getJson('/api/v1/erp/operations/lookup?operation=erp.reports.exports.store')->assertConflict()->assertJsonMissingPath('data');
+        $this->assertSame($attributes, $export->fresh()->getAttributes());
+        $this->assertSame($receipt, ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes());
+        $this->assertSame($bytes, Storage::disk('local')->get($export->storage_path));
+        $this->assertDatabaseCount('erp_report_exports', 1);
+    }
+
+    public function test_commercial_export_dependencies_include_current_obligations_outside_period_and_full_set_beyond_detail(): void
+    {
+        $fixture = $this->crossEstablishmentSale();
+        $this->withHeader('Idempotency-Key', 'commercial-full-set');
+        $fixture['sale']->update(['posted_at' => now()->subMonth()]);
+        for ($i = 0; $i < 201; $i++) {
+            ErpSale::create(['erp_company_id' => $fixture['sale']->erp_company_id, 'erp_establishment_id' => $fixture['visible']->erp_establishment_id,
+                'invoice_no' => 'full-set-'.$i, 'status' => 'posted', 'currency' => 'BRL', 'total_amount' => '1.0000', 'posted_at' => now()]);
+        }
+        $last = ErpSale::create(['erp_company_id' => $fixture['sale']->erp_company_id,
+            'erp_establishment_id' => $fixture['visible']->erp_establishment_id, 'erp_order_id' => $fixture['sale']->erp_order_id,
+            'invoice_no' => 'hidden-beyond-cutoff', 'status' => 'posted', 'currency' => 'BRL', 'total_amount' => '3.0000', 'posted_at' => now()]);
+        $created = $this->postJson('/api/v1/erp/reports/sales/exports', $fixture['filters'])->assertCreated();
+        $this->getJson('/api/v1/erp/reports/exports/'.$created->json('data.id'))->assertOk()
+            ->assertJsonPath('data.report.ledgers.documents.row_count', 203)->assertJsonCount(200, 'data.report.ledgers.documents.rows')
+            ->assertJsonPath('data.report.totals.posted_total', '211.0000');
+        $export = ErpReportExport::findOrFail($created->json('data.id'));
+        $this->assertContains($fixture['sale']->id, $export->filters['authorized_commercial_ids']['sales'] ?? []);
+        $this->assertContains($last->id, $export->filters['authorized_commercial_ids']['sales'] ?? []);
+        $this->assertCount(204, $export->filters['authorized_commercial_ids']['sales'] ?? []);
+        $receipt = ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes();
+        $fixture['membership']->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $fixture['membership']->establishments()->attach($fixture['visible']->erp_establishment_id, ['erp_company_id' => $export->erp_company_id]);
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertConflict()->assertJsonMissingPath('data.report');
+        $this->assertSame($receipt, ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes());
+    }
+
+    public function test_reversal_only_period_export_reauthorizes_commercial_payment_ancestry_without_mutation(): void
+    {
+        $fixture = $this->crossEstablishmentSale();
+        $establishmentId = $fixture['visible']->erp_establishment_id;
+        $saleObligation = ErpObligation::where('source_type', 'erp_sale')
+            ->where('source_id', $fixture['sale']->id)->sole();
+        // The payable filter removes this receivable from the snapshot, isolating the payment's ancestry proof.
+        ErpObligation::where('erp_company_id', $fixture['sale']->erp_company_id)
+            ->where('id', '!=', $saleObligation->id)->update(['source_type' => null, 'source_id' => null]);
+        $base = ['erp_company_id' => $fixture['sale']->erp_company_id, 'erp_establishment_id' => $establishmentId,
+            'currency' => 'BRL', 'direction' => 'in', 'method' => 'manual', 'status' => 'posted'];
+        $original = ErpPayment::create($base + ['amount' => '40.0000', 'posted_at' => now()->subMonth()]);
+        ErpPaymentAllocation::create(['erp_payment_id' => $original->id, 'erp_obligation_id' => $saleObligation->id,
+            'amount' => '40.0000', 'posted_at' => now()->subMonth()]);
+        $reversal = ErpPayment::create(array_replace($base, ['amount' => '-40.0000', 'source_type' => 'payment_reversal',
+            'source_id' => $original->id, 'reversal_of_id' => $original->id, 'posted_at' => now()]));
+        $filters = $fixture['filters'] + ['direction' => 'payable'];
+        $this->withHeader('Idempotency-Key', 'reversal-ancestor-export');
+        $created = $this->postJson('/api/v1/erp/reports/financial/exports', $filters)->assertCreated();
+        $export = ErpReportExport::findOrFail($created->json('data.id'));
+        $created->assertJsonMissingPath('data.filters.authorized_commercial_ids');
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertOk()
+            ->assertJsonPath('data.report.ledgers.payments.row_count', 1)
+            ->assertJsonPath('data.report.ledgers.payments.rows.0.id', $reversal->id);
+        $this->assertContains($fixture['sale']->id, $export->filters['authorized_commercial_ids']['sales'] ?? []);
+        $attributes = $export->getAttributes();
+        $receipt = ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes();
+        $bytes = Storage::disk('local')->get($export->storage_path);
+
+        $fixture['membership']->update(['role' => 'operator', 'action_permissions' => ['erp.read', 'erp.write'], 'access_all_establishments' => false]);
+        $fixture['membership']->establishments()->attach($establishmentId, ['erp_company_id' => $fixture['sale']->erp_company_id]);
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertConflict()
+            ->assertJsonPath('code', 'export_requires_regeneration')->assertJsonMissingPath('data.report');
+        $this->postJson('/api/v1/erp/reports/financial/exports', $filters)->assertConflict()->assertJsonMissingPath('data');
+        $this->getJson('/api/v1/erp/operations/lookup?operation=erp.reports.exports.store')->assertConflict()->assertJsonMissingPath('data');
+        $this->assertSame($attributes, $export->fresh()->getAttributes());
+        $this->assertSame($receipt, ErpOperationReceipt::where('operation', 'erp.reports.exports.store')->sole()->getAttributes());
+        $this->assertSame($bytes, Storage::disk('local')->get($export->storage_path));
+        $this->assertDatabaseCount('erp_report_exports', 1);
+    }
+
+    public function test_legacy_commercial_export_without_dependency_proof_fails_closed(): void
+    {
+        $this->withHeader('Idempotency-Key', 'legacy-commercial');
+        $created = $this->postJson('/api/v1/erp/reports/sales/exports', [])->assertCreated();
+        $export = ErpReportExport::findOrFail($created->json('data.id'));
+        $export->update(['filters' => array_diff_key($export->filters, ['authorized_commercial_ids' => true])]);
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->id)->assertConflict()->assertJsonPath('code', 'export_requires_regeneration');
+        $this->postJson('/api/v1/erp/reports/sales/exports', [])->assertConflict();
+        $this->getJson('/api/v1/erp/operations/lookup?operation=erp.reports.exports.store')->assertConflict();
+    }
+
     public function test_same_key_replays_original_acknowledgement_without_republishing(): void
     {
         $this->withHeader('Idempotency-Key', 'report-lost-response');

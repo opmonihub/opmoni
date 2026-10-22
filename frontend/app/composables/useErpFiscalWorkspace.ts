@@ -10,6 +10,7 @@ import type {
   ErpFiscalSale
 } from '../../shared/types/erpFiscal'
 import type { ErpOperationNatureRecord, ErpPaginated } from '../../shared/types/erpCatalogs'
+import type { FetchOptions, ResponseType } from 'ofetch'
 import { apiErrorMessage, apiStatus } from './useApiError'
 import { useAccessApi } from './useAccessApi'
 import { useErpAdministrationContext } from './useErpAdministrationContext'
@@ -59,8 +60,8 @@ function definitiveBeforeDispatch(status: number | null): boolean {
 }
 
 export function useErpFiscalWorkspace() {
-  const { api } = useAccessApi()
-  const { user, currentCompany, currentAccount } = useAuth()
+  const { api: requestApi } = useAccessApi()
+  const { user, currentCompany, currentAccount, refreshWithStatus } = useAuth()
   const selectedEstablishmentId = ref<number | null>(null)
   const authority = useErpAdministrationContext(() => selectedEstablishmentId.value)
   const sessionGeneration = useState('access-session-generation', () => 0)
@@ -92,6 +93,8 @@ export function useErpFiscalWorkspace() {
   const recoverableEventDraft = ref<ErpFiscalEvent | null>(null)
   const operationEpoch = ref(0)
   const listEpoch = ref(0)
+  const authorityNeedsRefresh = ref(false)
+  let authorityRefreshEpoch = 0
   let detailSelectionEpoch = 0
   let sourceSelectionEpoch = 0
 
@@ -106,7 +109,7 @@ export function useErpFiscalWorkspace() {
     && Number(currentCompany.value?.delegated_office_id) === Number(currentAccount.value?.id)
     && ['admin', 'operador'].includes(String(currentAccount.value?.role)))
   const can = (permission: string) => {
-    if (noCompany.value) return false
+    if (noCompany.value || authorityNeedsRefresh.value) return false
     const isWrite = !/\.(index|show|read|xml|pdf)$/.test(permission)
     if (isWrite && !directWriter.value && !delegatedWriter.value) return false
     return erpCompanyHasPermission(grants.value, permission)
@@ -132,7 +135,67 @@ export function useErpFiscalWorkspace() {
   })
 
   function isCurrent(token: ReturnType<typeof authority.capture>, epoch: number): boolean {
-    return authority.isCurrent(token) && operationEpoch.value === epoch && !noCompany.value
+    return authority.isCurrent(token) && operationEpoch.value === epoch && !noCompany.value && !authorityNeedsRefresh.value
+  }
+
+  function authorityErrorPayload(error: unknown): unknown {
+    const failure = error as { data?: unknown, response?: { _data?: unknown } } | null
+    return failure?.data ?? failure?.response?._data
+  }
+
+  async function isNamedContextConflict(error: unknown): Promise<boolean> {
+    let data = authorityErrorPayload(error)
+    if (typeof Blob !== 'undefined' && data instanceof Blob && data.type.toLowerCase().includes('json')) {
+      try {
+        data = JSON.parse(await data.text())
+      } catch {
+        return false
+      }
+    }
+
+    return typeof data === 'object' && data !== null && (data as { code?: unknown }).code === 'company_context_changed'
+  }
+
+  async function refreshAfterAuthorityDenial(refreshEpoch: number) {
+    try {
+      const result = await refreshWithStatus()
+      if (authorityRefreshEpoch !== refreshEpoch || !result.committed || !result.identity) return
+      authorityNeedsRefresh.value = false
+      errorMessage.value = ''
+      currentRecovery()
+      readCertificateRecovery()
+    } catch {
+      // Only a committed identity may release this refusal; the durable journals remain untouched.
+    }
+  }
+
+  async function handleAuthorityDenial(error: unknown, token: ReturnType<typeof authority.capture>, epoch: number) {
+    if (!isCurrent(token, epoch)) return
+    const status = apiStatus(error)
+    let denied = status === 401 || status === 403
+    if (!denied && status === 409) {
+      denied = await isNamedContextConflict(error)
+      if (!isCurrent(token, epoch)) return
+    }
+    if (!denied) return
+    const refreshEpoch = ++authorityRefreshEpoch
+    authorityNeedsRefresh.value = true
+    clearContextState()
+    errorMessage.value = 'Sua autorização mudou. Os dados privados fiscais foram removidos. Atualize a sessão para continuar.'
+    void refreshAfterAuthorityDenial(refreshEpoch)
+  }
+
+  /** Every private read/mutation, including auxiliary/recovery/download requests, shares the refusal boundary. */
+  async function api<T, R extends ResponseType = 'json'>(path: string, options: FetchOptions<R> = {}): Promise<T> {
+    if (authorityNeedsRefresh.value) throw new Error('Atualize a autorização antes de continuar.')
+    const token = authority.capture()
+    const epoch = operationEpoch.value
+    try {
+      return await requestApi<T, R>(path, options)
+    } catch (error) {
+      await handleAuthorityDenial(error, token, epoch)
+      throw error
+    }
   }
 
   function clearContextState() {
@@ -166,10 +229,22 @@ export function useErpFiscalWorkspace() {
   }
 
   watch(authority.key, clearContextState, { flush: 'sync' })
-  watch([actorId, companyId, sessionGeneration], () => {
+  watch([actorId, companyId, sessionGeneration], (next, previous) => {
+    const authenticatedSessionChanged = next[2] !== previous[2] && next[0] > 0
+    if (authorityNeedsRefresh.value && !authenticatedSessionChanged) {
+      operationEpoch.value++
+      pendingRecovery.value = null
+      return
+    }
+    authorityRefreshEpoch++
+    authorityNeedsRefresh.value = false
     operationEpoch.value++
     pendingRecovery.value = null
   }, { flush: 'sync' })
+  onScopeDispose(() => {
+    authorityRefreshEpoch++
+    clearContextState()
+  })
 
   function storageKey(): string | null {
     if (actorId.value <= 0 || companyId.value <= 0) return null
@@ -189,6 +264,7 @@ export function useErpFiscalWorkspace() {
   }
 
   function readCertificateRecovery(): CertificateRecovery | null {
+    if (authorityNeedsRefresh.value) return null
     const key = certificateRecoveryKey()
     const target = storage()
     if (!key || !target) return pendingCertificateRecovery.value
@@ -244,6 +320,7 @@ export function useErpFiscalWorkspace() {
   }
 
   async function recoverCertificateMutation() {
+    if (authorityNeedsRefresh.value) return
     if (certificateMutationInFlight.value) return
     const record = readCertificateRecovery()
     if (!record || record.actorId !== actorId.value || record.companyId !== companyId.value || noCompany.value || !can(actionGrants.certificateRead)) return
@@ -263,6 +340,7 @@ export function useErpFiscalWorkspace() {
   }
 
   function confirmCertificateRecoveryReview() {
+    if (authorityNeedsRefresh.value) return
     if (certificateMutationInFlight.value) return
     const record = readCertificateRecovery()
     const review = certificateRecoveryReview.value
@@ -299,6 +377,7 @@ export function useErpFiscalWorkspace() {
   }
 
   function currentRecovery(): ErpFiscalRecoveryRecord | null {
+    if (authorityNeedsRefresh.value) return null
     if (pendingRecovery.value) return pendingRecovery.value
     const key = storageKey()
     const target = storage()
@@ -697,6 +776,7 @@ export function useErpFiscalWorkspace() {
   }
 
   async function recoverPendingOperations() {
+    if (authorityNeedsRefresh.value) return
     const recoveryAuthority = authority.capture()
     const recoveryEpoch = operationEpoch.value
     await recoverCertificateMutation()
@@ -1078,6 +1158,7 @@ export function useErpFiscalWorkspace() {
     establishments, selectedEstablishmentId, configuration, configurationForm, documents, sales, returns, certificates, events, invalidations, operationNatures,
     selectedDocument, selectedSale, selectedReturn, documentForm, fieldErrors, loading, saving, errorMessage, releaseMessage,
     recoveryMessage, artifactError, pendingRecovery, pendingCertificateRecovery, certificateRecoveryReview, certificateMutationInFlight, recoverableEventDraft, noCompany, canRead, readOnly, canWriteConfiguration,
+    authorityGeneration: operationEpoch, authorityNeedsRefresh,
     canUploadCertificates, canRotateCertificates,
     canCreateDocuments, productionBlocked, actionGrants,
     canQueue: computed(() => can(actionGrants.queue)), canTransmit: computed(() => can(actionGrants.transmit)),

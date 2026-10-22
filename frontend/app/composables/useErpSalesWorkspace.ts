@@ -13,6 +13,7 @@ import type {
   ErpSalesVariant
 } from '#shared/types/erpBusiness'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApiError'
+import type { FetchOptions, ResponseType } from 'ofetch'
 import { createPendingOperation, parsePendingOperation, pendingOperationLookup, writePendingOperation, type ErpPendingOperation } from '#shared/utils/erpOperationRecovery'
 import { erpSalePostPayload, erpSalesActionAllowed } from '#shared/utils/erpSales'
 
@@ -52,8 +53,9 @@ function operationMethod(operation: string): PendingSalesOperation['method'] {
 }
 const areaOf = (path: string): ErpSalesArea => path.includes('/sale-returns') ? 'returns' : path.includes('/quotes') ? 'quotes' : path.includes('/orders') ? 'orders' : 'sales'
 export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
-  const { api, refreshCsrf } = useAccessApi()
+  const { api: requestApi, refreshCsrf } = useAccessApi()
   const { user, currentCompany, refreshWithStatus } = useAuth()
+  const sessionGeneration = useState('access-session-generation', () => 0)
   const context = useErpAdministrationContext()
   const area = ref<ErpSalesArea>(initialArea)
   const rows = reactive<Record<ErpSalesArea, SalesRow[]>>({ quotes: [], orders: [], sales: [], returns: [] })
@@ -100,6 +102,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   let referenceSequence = 0
   let requestGeneration = 0
   let operationSequence = 0
+  let authorityRefreshEpoch = 0
 
   function operationIdentity(operation: string) {
     return `${user.value?.id ?? ''}:${currentCompany.value?.id ?? ''}:${operation}`
@@ -175,22 +178,52 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     canRetryExact.value = false
     resolvedOperation.value = null
     authorityGeneration.value++
+    filters.page = 1
+    filters.status = ''
   }
-  async function refreshAuthority(token: ReturnType<typeof context.capture>, generation = requestGeneration) {
-    if (!authorityCurrent(token, generation)) return
-    authorityNeedsRefresh.value = true
-    const result = await refreshWithStatus()
-    if (authorityCurrent(token, generation) && result.committed) authorityNeedsRefresh.value = false
+  function isAuthorityDenial(error: unknown) {
+    const status = apiStatus(error)
+    if (status === 401 || status === 403) return true
+    if (status !== 409) return false
+    const failure = error as { data?: unknown, response?: { _data?: unknown } }
+    const data = failure.data ?? failure.response?._data
+    return typeof data === 'object' && data !== null && (data as { code?: unknown }).code === 'company_context_changed'
   }
   async function handleDenial(action: string, error: unknown, token: ReturnType<typeof context.capture>) {
-    if (!context.isCurrent(token)) return false
-    const status = apiStatus(error)
-    if (status === 401 || status === 403) {
-      deniedActions.value = new Set(deniedActions.value).add(action)
-      await refreshAuthority(token)
-      return true
+    if (!context.isCurrent(token) || !isAuthorityDenial(error)) return false
+    if (authorityNeedsRefresh.value) return true
+    const refreshEpoch = ++authorityRefreshEpoch
+    deniedActions.value = new Set(deniedActions.value).add(action)
+    authorityNeedsRefresh.value = true
+    clearPrivateState()
+    mutationError.value = message(error, 'Sua autorização mudou. Os dados privados de vendas foram removidos.')
+    try {
+      const result = await refreshWithStatus()
+      if (authorityRefreshEpoch === refreshEpoch && result.committed && result.identity) {
+        deniedActions.value = new Set()
+        authorityNeedsRefresh.value = false
+        restorePending()
+        void loadReferences()
+        if (canRead.value) void load(area.value)
+      } else if (authorityRefreshEpoch === refreshEpoch) {
+        mutationError.value = 'A autorização ainda não foi confirmada. Os dados privados permanecem bloqueados.'
+      }
+    } catch {
+      // The refusal stays closed until a committed identity refresh succeeds.
+      if (authorityRefreshEpoch === refreshEpoch) mutationError.value = 'A autorização ainda não foi confirmada. Os dados privados permanecem bloqueados.'
     }
-    return false
+    return true
+  }
+  async function api<T, R extends ResponseType = 'json'>(path: string, options: FetchOptions<R> = {}): Promise<T> {
+    if (authorityNeedsRefresh.value) throw new Error('Atualize a autorização antes de continuar.')
+    const token = context.capture()
+    const generation = requestGeneration
+    try {
+      return await requestApi<T, R>(path, options)
+    } catch (error) {
+      if (requestGeneration === generation) void handleDenial('erp.authority', error, token)
+      throw error
+    }
   }
   function queryFor(areaName: ErpSalesArea, page: number) {
     const query = new URLSearchParams({ page: String(page), per_page: String(filters.per_page) })
@@ -594,6 +627,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     return execute(`/erp/sale-returns/${row.id}/post`, {}, 'erp.sale-returns.post')
   }
   async function reconcile() {
+    if (authorityNeedsRefresh.value) return
     const pending = selectedOperation.value ?? pendingRead()
     if (!pending || pending.identity !== operationIdentity(pending.operation) || mutating.value) return
     selectedOperation.value = pending
@@ -653,7 +687,13 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
       return null
     }
   }
-  watch(context.key, () => {
+  watch([context.key, sessionGeneration], (next, previous) => {
+    const authenticatedSessionChanged = next[1] !== previous[1] && Number(user.value?.id ?? 0) > 0
+    if (authorityNeedsRefresh.value && !authenticatedSessionChanged) {
+      clearPrivateState()
+      return
+    }
+    authorityRefreshEpoch++
     deniedActions.value = new Set()
     authorityNeedsRefresh.value = false
     clearPrivateState()
@@ -670,7 +710,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   return {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
     references, referenceLoading, referenceError, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
-    mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, operationIntentSequence,
+    mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, authorityNeedsRefresh, operationIntentSequence,
     completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,
     allowed, canRead, load, loadReferences, selectArea, setPage, setStatus, refreshArea, inspect, closeSelected, saveDraft, convertQuote,
     convertOrder, postSale, storeReturn, postReturn, reconcile, retryExact, loadReceipt, claimIntent

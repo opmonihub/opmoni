@@ -31,9 +31,10 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   return exports
 }
 
-function createSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, permissions = ['*'], refreshWithStatus = async () => ({ committed: true })) {
+function createSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, permissions = ['*'], refreshWithStatus: () => Promise<{ committed: boolean, identity?: unknown }> = async () => ({ committed: true, identity: { id: 91 } })) {
   const user = Vue.ref({ id: 91 })
   const currentCompany = Vue.ref({ id: 7, permissions, role: 'owner' })
+  const sessionGeneration = Vue.ref(0)
   const contextKey = Vue.computed(() => `${user.value.id}:${currentCompany.value.id}:${currentCompany.value.role}:${currentCompany.value.permissions.join(',')}`)
   const context = { key: contextKey, capture: () => ({ key: contextKey.value }), isCurrent: (token: { key: string }) => token.key === contextKey.value }
   const scope = Vue.effectScope()
@@ -44,13 +45,137 @@ function createSalesWorkspace(api: (path: string, options?: Record<string, unkno
     '#shared/utils/erpSales': { erpSalesActionAllowed, erpSalePostPayload }
   }, {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: (_callback: () => void) => {}, onScopeDispose: Vue.onScopeDispose,
+    useState: (_key: string, initializer: () => unknown) => _key === 'access-session-generation' ? sessionGeneration : Vue.ref(initializer()),
     useAccessApi: () => ({ api, refreshCsrf: async () => {} }),
     useAuth: () => ({ user, currentCompany, refreshWithStatus }),
     useErpAdministrationContext: () => context
   })
   const state = scope.run(() => (exports.useErpSalesWorkspace as (initialArea?: string) => Record<string, unknown>)('quotes'))!
-  return { state, user, currentCompany, stop: () => scope.stop() }
+  return { state, user, currentCompany, sessionGeneration, stop: () => scope.stop() }
 }
+
+describe('sales authoritative denial boundaries', () => {
+  const boundaries = [
+    ['list', '/erp/quotes?', 'load', []],
+    ['detail', '/erp/sales/5', 'inspect', ['sales', 5]],
+    ['references', '/erp/contacts?', 'loadReferences', []],
+    ['payment', '/erp/payments/8', 'inspect', ['sales', 6]],
+    ['obligation', '/erp/obligations/9', 'inspect', ['sales', 6]],
+    ['receipt', '/erp/payments/8/receipt', 'loadReceipt', [8]],
+    ['mutation', '/erp/quotes', 'saveDraft', ['quote', { erp_establishment_id: 3, currency: 'BRL', lines: [] }]],
+    ['recovery', '/erp/operations/lookup?', 'reconcile', []]
+  ] as const
+  for (const [index, [label, deniedPath, method, args]] of boundaries.entries()) {
+    it(`clears all private state before refresh at ${label} and keeps the durable original identity`, async () => {
+      const storage = installSessionStorage()
+      let settleIdentity!: (value: { committed: boolean, identity?: unknown }) => void
+      const identityResult = new Promise<{ committed: boolean, identity?: unknown }>((resolve) => { settleIdentity = resolve })
+      let refreshes = 0
+      let releaseOldReferences!: (value: unknown) => void
+      let oldReferenceRead = true
+      const status = [401, 403, 409][index % 3]!
+      const api = async (path: string) => {
+        if (oldReferenceRead && path.startsWith('/erp/establishments?')) {
+          oldReferenceRead = false
+          return new Promise((resolve) => { releaseOldReferences = resolve })
+        }
+        if (path === deniedPath || (path.startsWith(deniedPath) && deniedPath.endsWith('?'))) throw { response: { status, _data: { code: status === 409 ? 'company_context_changed' : 'denied' } } }
+        if (path === '/erp/sales/6') return { data: { id: 6, finance: { payment_ids: [8], original_obligation_id: 9 } } }
+        if (path === '/erp/payments/8') return { data: { id: 8 } }
+        if (path === '/erp/obligations/9') return { data: { id: 9 } }
+        return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+      }
+      const created = createSalesWorkspace(api, ['*'], async () => { refreshes++; return identityResult })
+      const state = Vue.proxyRefs(created.state)
+      const invoke = (name: string, ...values: unknown[]) => (state[name] as (...values: unknown[]) => Promise<unknown>)(...values)
+      const pending = { ...operationRecovery.createPendingOperation('91:7:erp.quotes.store', 'erp.quotes.store', '/erp/quotes', { private: 'durable-original' }, 'denied-original'), method: 'POST' }
+      storage.values.set('erp-sales:v1:91:7', JSON.stringify(pending))
+      state.selectedOperation = label === 'mutation' ? null : pending
+      state.selected = { id: 44, private: 'detail' }
+      state.paymentDetails = [{ id: 8 }]
+      state.selectedObligation = { id: 9 }
+      state.receipt = { private: 'receipt' }
+      ;(state.rows as Record<string, unknown[]>).quotes = [{ id: 44 }]
+      const references = state.references as { establishments: unknown[], contacts: unknown[] }
+      references.establishments = [{ id: 3, name: 'Private' }]
+      references.contacts = [{ id: 4 }]
+      const late = invoke('loadReferences')
+      const work = invoke(method, ...args)
+      await new Promise(resolve => setImmediate(resolve))
+      try {
+        assert.equal(refreshes, 1)
+        assert.equal(state.selected, null)
+        assert.deepEqual(state.paymentDetails, [])
+        assert.equal(state.selectedObligation, null)
+        assert.equal(state.receipt, null)
+        assert.deepEqual(references.establishments, [])
+        assert.deepEqual(references.contacts, [])
+        for (const name of ['quotes', 'orders', 'sales', 'returns']) assert.deepEqual((state.rows as Record<string, unknown>)[name], [])
+        assert.equal((state.allowed as (action: string) => boolean)('erp.quotes.store'), false)
+        assert.equal(state.selectedOperation, null, 'protected pending payload is not left in presentation state')
+        assert.ok(storage.values.get('erp-sales:v1:91:7'), 'the original operation journal survives')
+        await invoke('reconcile')
+        assert.equal(state.selectedOperation, null, 'recovery lookup cannot rehydrate the private journal while authority is refused')
+        releaseOldReferences({ data: [{ id: 100, name: 'Late private' }], meta: { last_page: 1 } })
+        await late
+        assert.deepEqual(references.establishments, [])
+        settleIdentity({ committed: false })
+        await work
+        assert.equal((state.allowed as (action: string) => boolean)('erp.quotes.store'), false)
+        assert.equal(state.mutating, false)
+      } finally {
+        settleIdentity({ committed: false })
+        created.stop()
+        storage.restore()
+      }
+    })
+  }
+
+  it('restores only the durable original operation after committed identity recovery', async () => {
+    const storage = installSessionStorage()
+    let settleIdentity!: (value: { committed: boolean, identity?: unknown }) => void
+    const identityResult = new Promise<{ committed: boolean, identity?: unknown }>((resolve) => { settleIdentity = resolve })
+    let denied = true
+    const api = async (path: string) => {
+      if (denied && path.startsWith('/erp/quotes?')) {
+        denied = false
+        throw { response: { status: 403, _data: { code: 'forbidden' } } }
+      }
+      return { data: [{ id: 12 }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+    }
+    const created = createSalesWorkspace(api, ['*'], () => identityResult)
+    const state = Vue.proxyRefs(created.state)
+    const journal = operationRecovery.createPendingOperation('91:7:erp.quotes.store', 'erp.quotes.store', '/erp/quotes', { private: 'durable-original' }, '00000000-0000-4000-8000-000000000091')
+    storage.values.set('erp-sales:v1:91:7', JSON.stringify({ ...journal, method: 'POST' }))
+    state.rows.quotes = [{ id: 1, private: 'old-list' }]
+    state.selected = { id: 1, private: 'old-detail' }
+    await (state.load as () => Promise<void>)()
+    assert.equal(state.authorityNeedsRefresh, true)
+    assert.deepEqual(state.rows.quotes, [])
+    assert.equal(state.selected, null)
+    assert.equal(state.selectedOperation, null)
+    settleIdentity({ committed: true, identity: { id: 91 } })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(state.authorityNeedsRefresh, false)
+    assert.equal((state.selectedOperation as { key?: string } | null)?.key, journal.key)
+    assert.notDeepEqual(state.rows.quotes, [{ id: 1, private: 'old-list' }])
+    created.stop()
+    storage.restore()
+  })
+
+  it('does not treat an ordinary business 409 as authority invalidation', async () => {
+    let refreshes = 0
+    const api = async () => { throw { response: { status: 409, _data: { code: 'draft_revision_conflict', message: 'Revision changed' } } } }
+    const created = createSalesWorkspace(api, ['*'], async () => { refreshes++; return { committed: true, identity: { id: 91 } } })
+    const state = Vue.proxyRefs(created.state)
+    state.rows.quotes = [{ id: 1 }]
+    await (state.load as () => Promise<void>)()
+    assert.equal(refreshes, 0)
+    assert.equal(state.authorityNeedsRefresh, false)
+    assert.deepEqual(state.rows.quotes, [{ id: 1 }])
+    created.stop()
+  })
+})
 
 function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes') {
   const { state, currentCompany, stop } = createSalesWorkspace(api)
@@ -881,6 +1006,12 @@ describe('sales authority and mounted draft form', () => {
       assert.equal(fieldValue('reason'), 'Motivo salvo')
 
       await closeReturn()
+      ;(mounted.state.authorityGeneration as Vue.Ref<number>).value++
+      await Vue.nextTick()
+      await openSale(23)
+      await openReturn()
+      assert.equal(fieldValue('reason'), '', 'same-identity authority invalidation unmounts the local return draft')
+      await closeReturn()
       mounted.currentCompany.value = { id: 8, permissions: ['*'], role: 'owner' }
       await Vue.nextTick()
       await (mounted.state.load as (area: string) => Promise<void>)('sales')
@@ -1471,11 +1602,12 @@ describe('commercial API lifecycle', () => {
       if (path.startsWith('/erp/establishments?') || path.startsWith('/erp/contacts?') || path.startsWith('/erp/units?') || path.startsWith('/erp/products?')) return { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
       throw new Error(`Unexpected API path ${path}`)
     }
-    const { state, currentCompany, stop } = createSalesWorkspace(api, ['*'], async () => { authorityStarted = true; return authorityRefresh })
+    const { state, currentCompany, sessionGeneration, stop } = createSalesWorkspace(api, ['*'], async () => { authorityStarted = true; return authorityRefresh })
     const payload = { erp_establishment_id: 3, currency: 'BRL' as const, lines: [] }
     try {
       const deniedInA = (state.saveDraft as (kind: string, value: typeof payload) => Promise<unknown>)('quote', payload)
       while (!authorityStarted) await new Promise(resolve => setImmediate(resolve))
+      sessionGeneration.value++
       currentCompany.value = { id: 8, permissions: ['*'], role: 'owner' }
       await Vue.nextTick()
       const uncertainInB = (state.saveDraft as (kind: string, value: typeof payload) => Promise<unknown>)('quote', payload)

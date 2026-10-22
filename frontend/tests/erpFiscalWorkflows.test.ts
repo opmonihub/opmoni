@@ -422,7 +422,7 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
   return { app, root }
 }
 
-function loadWorkspaceComposable(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, context: { actorId: number, companyId: number | null, grants: string[], accessKind?: 'direct' | 'delegated', companyRole?: string, accountRole?: string, accountId?: number, delegatedOfficeId?: number | null }) {
+function loadWorkspaceComposable(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, context: { actorId: number, companyId: number | null, grants: string[], accessKind?: 'direct' | 'delegated', companyRole?: string, accountRole?: string, accountId?: number, delegatedOfficeId?: number | null }, refreshWithStatus: () => Promise<{ committed: boolean, identity?: unknown }> = async () => ({ committed: true, identity: { id: context.actorId } })) {
   const source = readFileSync(workspaceComposableFile, 'utf8')
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
@@ -459,7 +459,7 @@ function loadWorkspaceComposable(api: (path: string, options?: Record<string, un
     watch: Vue.watch,
     onScopeDispose: Vue.onScopeDispose,
     useAccessApi: () => ({ api }),
-    useAuth: () => ({ user: Vue.computed(() => identity.value), currentCompany: Vue.computed(() => identity.value.current_company), currentAccount: Vue.computed(() => identity.value.current_account) }),
+    useAuth: () => ({ user: Vue.computed(() => identity.value), currentCompany: Vue.computed(() => identity.value.current_company), currentAccount: Vue.computed(() => identity.value.current_account), refreshWithStatus }),
     useErpAdministrationContext: useContext,
     useState: (_key: string, initializer: () => unknown) => Vue.ref(initializer())
   }
@@ -539,6 +539,241 @@ function fiscalConfiguration(model: '55' | '65' | '57' | '58', qrMode: 'online' 
     release_gates: { provider: 'unavailable', production_transmission_enabled: false, production_blocker: 'provider_unavailable' }
   }
 }
+
+describe('fiscal authoritative denial boundaries', () => {
+  const boundaries = [
+    ['list', '/erp/fiscal/documents?per_page=100', 'load', []],
+    ['configuration read', '/erp/fiscal/configuration/6', 'load', []],
+    ['certificate read', '/erp/fiscal/certificates?per_page=100', 'load', []],
+    ['source list', '/erp/sales?per_page=100&status=posted', 'load', []],
+    ['operation natures', '/erp/tax-settings/operation-natures?per_page=100', 'load', []],
+    ['detail', '/erp/fiscal/documents/5', 'loadDocument', [5]],
+    ['sale source', '/erp/sales/5', 'loadSaleSnapshot', [5]],
+    ['return source', '/erp/sale-returns/5', 'loadReturnSnapshot', [5]],
+    ['configuration mutation', '/erp/fiscal/configuration/6', 'saveConfiguration', [{ issuer: { private: 'draft' } }]],
+    ['certificate baseline', '/erp/fiscal/certificates?per_page=100', 'uploadCertificate', [{ label: 'Private', establishmentId: 6, certificate, password: 'secret' }]],
+    ['download', '/erp/fiscal/documents/5/xml', 'downloadArtifact', [{ id: 5, artifact_ready: true, status: 'authorized' }, 'xml']],
+    ['document mutation', '/erp/fiscal/documents', 'createDocumentDraft', [{ erp_establishment_id: 6, idempotency_key: 'durable-denied-draft' }]],
+    ['invalidation mutation', '/erp/fiscal/invalidations', 'createInvalidation', [{ erp_establishment_id: 6 }, 'durable-denied-range']]
+  ] as const
+  for (const [index, [label, deniedPath, method, args]] of boundaries.entries()) {
+    it(`clears before identity refresh and fences late responses at ${label}`, async (t) => {
+      const memory = installSessionStorage(t)
+      let settleIdentity!: (value: { committed: boolean, identity?: unknown }) => void
+      const identityResult = new Promise<{ committed: boolean, identity?: unknown }>((resolve) => {
+        settleIdentity = resolve
+      })
+      let refreshes = 0
+      let lateDetail!: (value: unknown) => void
+      let lateSource!: (value: unknown) => void
+      const status = [401, 403, 409][index % 3]!
+      const denial = { response: { status, _data: { code: status === 409 ? 'company_context_changed' : 'denied', message: 'Authority denied' } } }
+      const api = async (path: string) => {
+        if (path === '/erp/fiscal/documents/900') return new Promise((resolve) => {
+          lateDetail = resolve
+        })
+        if (path === '/erp/sales/901') return new Promise((resolve) => {
+          lateSource = resolve
+        })
+        if (path === deniedPath) throw denial
+        if (path.startsWith('/erp/fiscal/configuration/')) return { data: fiscalConfiguration('55') }
+        return { data: [] }
+      }
+      const { workspace, close } = loadWorkspaceComposable(api, { actorId: 41, companyId: 7, grants: ['*'] }, async () => {
+        refreshes++
+        return identityResult
+      })
+      const invoke = (name: string, ...values: unknown[]) => (workspace[name] as (...values: unknown[]) => Promise<unknown>)(...values)
+      workspace.selectedEstablishmentId = 6
+      workspace.documents = [{ id: 5, status: 'authorized' }]
+      workspace.selectedDocument = { id: 5, status: 'authorized' }
+      workspace.configuration = fiscalConfiguration('55')
+      workspace.configurationForm = { issuer: { private: 'private-issuer' } }
+      workspace.documentForm = { private: 'private-draft' }
+      workspace.certificates = [{ id: 8, label: 'private-label' }]
+      workspace.sales = [fiscalSale()]
+      workspace.selectedSale = fiscalSale()
+      workspace.events = [{ id: 9 }]
+      workspace.invalidations = [{ id: 10 }]
+      const oldDetail = invoke('loadDocument', 900)
+      const oldSource = invoke('loadSaleSnapshot', 901)
+      const work = invoke(method, ...args).catch(() => {})
+      await new Promise(resolve => setImmediate(resolve))
+      try {
+        assert.equal(refreshes, 1, 'the actual denial triggers identity refresh')
+        assert.deepEqual(workspace.documents, [])
+        assert.equal(workspace.selectedDocument, null)
+        assert.equal(workspace.selectedSale, null)
+        assert.equal(workspace.configuration, null)
+        assert.deepEqual(workspace.configurationForm, {})
+        assert.deepEqual(workspace.documentForm, {})
+        for (const key of ['certificates', 'sales', 'returns', 'events', 'invalidations', 'operationNatures', 'establishments']) assert.deepEqual(workspace[key], [], key)
+        assert.equal(workspace.canRead, false)
+        assert.equal(workspace.canCreateDocuments, false)
+        assert.equal(workspace.saving, false)
+        if (label === 'document mutation' || label === 'invalidation mutation') {
+          assert.ok(memory.get('opmoni:erp-fiscal:recovery:v1:41:7'), 'the unresolved original identity survives denial')
+        }
+        lateDetail({ data: { id: 900, private: 'late-detail' } })
+        lateSource({ data: fiscalSale() })
+        await Promise.all([oldDetail, oldSource])
+        assert.equal(workspace.selectedDocument, null)
+        assert.equal(workspace.selectedSale, null)
+        settleIdentity({ committed: false })
+        await work
+        assert.equal(workspace.canRead, false, 'superseded identity cannot release the refusal')
+        assert.deepEqual(workspace.documents, [])
+      } finally {
+        settleIdentity({ committed: false })
+        close()
+      }
+    })
+  }
+
+  it('keeps denial closed when identity refresh rejects', async (t) => {
+    installSessionStorage(t)
+    let rejectRefresh!: (error: unknown) => void
+    const refresh = new Promise<{ committed: boolean, identity?: unknown }>((_resolve, reject) => {
+      rejectRefresh = reject
+    })
+    const { workspace, close } = loadWorkspaceComposable(async () => {
+      throw { statusCode: 403 }
+    }, { actorId: 41, companyId: 7, grants: ['*'] }, () => refresh)
+    workspace.documents = [{ id: 5 }]
+    const work = (workspace.loadDocument as (id: number) => Promise<unknown>)(5)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(workspace.documents, [])
+    rejectRefresh(new Error('Identity unavailable'))
+    await work
+    assert.equal(workspace.canCreateDocuments, false)
+    close()
+  })
+
+  it('normalizes JSON Blob context conflicts from artifact downloads before refresh and fences old reads', async (t) => {
+    const outcomes = ['reject', 'uncommitted', 'committed'] as const
+    for (const outcome of outcomes) {
+      await t.test(`identity refresh ${outcome}`, async (st) => {
+        installSessionStorage(st)
+        const denial = { response: { status: 409, _data: new Blob([JSON.stringify({ code: 'company_context_changed', message: 'Company changed' })], { type: 'application/json' }) } }
+        let releaseIdentity!: (value: { committed: boolean, identity?: unknown }) => void
+        let rejectIdentity!: (error: unknown) => void
+        const identityResult = new Promise<{ committed: boolean, identity?: unknown }>((resolve, reject) => {
+          releaseIdentity = resolve
+          rejectIdentity = reject
+        })
+        let refreshes = 0
+        let releaseLateSource!: (value: unknown) => void
+        const api = async (path: string) => {
+          if (path === '/erp/sales/901') {
+            return new Promise((resolve) => {
+              releaseLateSource = resolve
+            })
+          }
+          if (path.endsWith('/xml')) throw denial
+          return { data: [] }
+        }
+        const { workspace, close } = loadWorkspaceComposable(api, { actorId: 41, companyId: 7, grants: ['*'] }, () => {
+          refreshes++
+          return identityResult
+        })
+        st.after(close)
+        workspace.selectedDocument = { id: 5, status: 'authorized', artifact_ready: true }
+        workspace.documents = [{ id: 5, private: 'document' }]
+        workspace.sales = [fiscalSale()]
+        workspace.selectedSale = fiscalSale()
+        const lateSource = (workspace.loadSaleSnapshot as (id: number) => Promise<unknown>)(901)
+        const artifact = (workspace.downloadArtifact as (document: unknown, format: 'xml') => Promise<void>)(workspace.selectedDocument, 'xml').catch(() => {})
+        for (let attempt = 0; attempt < 20 && refreshes === 0; attempt++) await new Promise(resolve => setImmediate(resolve))
+
+        assert.equal(refreshes, 1, 'application/json Blob named context conflicts trigger identity refresh')
+        assert.equal(workspace.authorityNeedsRefresh, true)
+        assert.deepEqual(workspace.documents, [])
+        assert.deepEqual(workspace.sales, [])
+        assert.equal(workspace.selectedDocument, null)
+        assert.equal(workspace.selectedSale, null)
+        releaseLateSource({ data: fiscalSale() })
+        await lateSource
+        if (outcome === 'reject') rejectIdentity(new Error('Identity unavailable'))
+        else releaseIdentity({ committed: outcome === 'committed', identity: outcome === 'committed' ? { id: 41 } : undefined })
+        await artifact
+        await new Promise(resolve => setImmediate(resolve))
+        assert.deepEqual(workspace.documents, [])
+        assert.deepEqual(workspace.sales, [])
+        assert.equal(workspace.selectedSale, null)
+        assert.equal(workspace.authorityNeedsRefresh, outcome !== 'committed')
+      })
+    }
+  })
+
+  it('retains private state for a JSON Blob business conflict from artifact download', async (t) => {
+    let refreshes = 0
+    const mounted = loadWorkspaceComposable(async (path) => {
+      if (path.endsWith('/xml')) throw { response: { status: 409, _data: new Blob([JSON.stringify({ code: 'draft_revision_conflict' })], { type: 'application/json' }) } }
+      return { data: [] }
+    }, { actorId: 41, companyId: 7, grants: ['*'] }, async () => {
+      refreshes++
+      return { committed: true, identity: { id: 41 } }
+    })
+    t.after(mounted.close)
+    mounted.workspace.selectedDocument = { id: 5, status: 'authorized', artifact_ready: true }
+    mounted.workspace.documents = [{ id: 5, private: 'last confirmed' }]
+    await (mounted.workspace.downloadArtifact as (document: unknown, format: 'xml') => Promise<void>)(mounted.workspace.selectedDocument, 'xml').catch(() => {})
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(refreshes, 0)
+    assert.equal(mounted.workspace.authorityNeedsRefresh, false)
+    assert.deepEqual(mounted.workspace.documents, [{ id: 5, private: 'last confirmed' }])
+  })
+
+  it('reopens only a blank workspace after committed identity recovery and preserves durable recovery identity', async (t) => {
+    const memory = installSessionStorage(t)
+    let settleIdentity!: (value: { committed: boolean, identity?: unknown }) => void
+    const identityResult = new Promise<{ committed: boolean, identity?: unknown }>((resolve) => {
+      settleIdentity = resolve
+    })
+    let lateList!: (value: unknown) => void
+    const api = async (path: string) => {
+      if (path === '/erp/fiscal/documents?per_page=100') throw { response: { status: 403, _data: { code: 'denied' } } }
+      if (path === '/erp/fiscal/documents/900') return new Promise((resolve) => {
+        lateList = resolve
+      })
+      return { data: [] }
+    }
+    const { workspace, close } = loadWorkspaceComposable(api, { actorId: 41, companyId: 7, grants: ['*'] }, () => identityResult)
+    workspace.documents = [{ id: 5, private: 'old' }]
+    const pending = { version: 1, actorId: 41, companyId: 7, action: 'document:draft', path: '/erp/fiscal/documents', idempotencyKey: 'durable-original', body: { private: 'durable payload' }, resourceId: null, recoveryMode: 'replay' }
+    memory.set('opmoni:erp-fiscal:recovery:v1:41:7', JSON.stringify(pending))
+    const oldRead = (workspace.loadDocument as (id: number) => Promise<unknown>)(900)
+    await (workspace.load as () => Promise<void>)()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(workspace.canRead, false)
+    assert.deepEqual(workspace.documents, [])
+    lateList({ data: { id: 900, private: 'late' } })
+    await oldRead
+    settleIdentity({ committed: true, identity: { id: 41 } })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(workspace.canRead, true)
+    assert.deepEqual(workspace.documents, [])
+    assert.equal(memory.get('opmoni:erp-fiscal:recovery:v1:41:7'), JSON.stringify(pending))
+    close()
+  })
+
+  it('keeps private state for ordinary business 409 responses', async () => {
+    let refreshes = 0
+    const api = async () => {
+      throw { response: { status: 409, _data: { code: 'draft_revision_conflict' } } }
+    }
+    const { workspace, close } = loadWorkspaceComposable(api, { actorId: 41, companyId: 7, grants: ['*'] }, async () => {
+      refreshes++
+      return { committed: true, identity: { id: 41 } }
+    })
+    workspace.documents = [{ id: 5, private: 'last confirmed' }]
+    await (workspace.load as () => Promise<void>)()
+    assert.equal(refreshes, 0)
+    assert.equal(workspace.canRead, true)
+    assert.deepEqual(workspace.documents, [{ id: 5, private: 'last confirmed' }])
+    close()
+  })
+})
 
 async function submitDocumentSfc(model: '55' | '65' | '57' | '58', fields: Record<string, string>, options: { qrMode?: 'online' | 'offline', originalModel?: '55' | '57', originalAccessKey?: string, selectedReturn?: ErpFiscalSale | null, returnRows?: ErpFiscalSale[], selectedSale?: ErpFiscalSale | null, fieldErrors?: Record<string, string> } = {}) {
   const emitted: Array<Record<string, unknown>> = []
@@ -1362,13 +1597,13 @@ describe('ERP fiscal durable workspace operations', () => {
     assert.equal(memory.size, 0)
   })
 
-  it('restores a recovered event draft after a definitive submit refusal and continues the same event explicitly', async (t) => {
+  it('keeps the exact recovered event identity after an authority refusal without replaying it', async (t) => {
     const memory = installSessionStorage(t)
     const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'event:draft', path: '/erp/fiscal/events', idempotencyKey: 'event-retry-key', body: { erp_fiscal_document_id: 91, event_type: 'cancel', idempotency_key: 'event-retry-key' }, resourceId: 31, recoveryMode: 'read' })
     memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
     const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
     const event = { id: 31, erp_fiscal_document_id: 91, event_type: 'cancel', status: 'queued', idempotency_key: 'event-retry-key' }
-    let refuseSubmit = true
+    const refuseSubmit = true
     const mounted = loadWorkspaceComposable(async (path, options) => {
       calls.push({ path, options })
       if (path === '/erp/fiscal/events/31') return { data: refuseSubmit ? event : { ...event, status: 'accepted', attempt: { id: 39, action: 'event:submit', status: 'accepted', idempotency_key: 'event-retry-key', safe_result: null } } }
@@ -1381,20 +1616,17 @@ describe('ERP fiscal durable workspace operations', () => {
     mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
 
     await mounted.workspace.recoverPendingOperations()
-    await assert.rejects(mounted.workspace.continueRecoveredEventDraft())
+    await mounted.workspace.continueRecoveredEventDraft()
+    await new Promise(resolve => setImmediate(resolve))
     const restoredRaw = [...memory.values()][0] ?? ''
     const restored = JSON.parse(restoredRaw) as { action: string, resourceId: number | null, idempotencyKey: string } | null
-    const restoredDraftId = mounted.workspace.recoverableEventDraft?.id
-    refuseSubmit = false
-    await mounted.workspace.continueRecoveredEventDraft()
 
     const submitCalls = calls.filter(call => call.path === '/erp/fiscal/events/31/submit')
-    assert.equal(restored?.action, 'event:draft')
+    assert.equal(restored?.action, 'event:submit')
     assert.equal(restored?.resourceId, 31)
     assert.equal(restored?.idempotencyKey, 'event-retry-key')
-    assert.equal(restoredDraftId, 31, 'the same created event is available for a fresh explicit confirmation')
-    assert.equal(submitCalls.length, 2, 'one definitive refusal is followed by one explicit retry of the same submit path')
-    assert.deepEqual(submitCalls.map(call => call.options?.body), [{ idempotency_key: 'event-retry-key' }, { idempotency_key: 'event-retry-key' }])
+    assert.equal(submitCalls.length, 1, 'an authority refusal does not replay the submit')
+    assert.deepEqual(submitCalls.map(call => call.options?.body), [{ idempotency_key: 'event-retry-key' }])
     assert.equal(calls.filter(call => call.path === '/erp/fiscal/events' && call.options?.method === 'POST').length, 0, 'continuation never creates a second event row')
   })
 
@@ -1449,7 +1681,8 @@ describe('ERP fiscal durable workspace operations', () => {
     mounted.workspace.configuration = { environment: 'homologation', release_gates: { provider: 'test-provider', production_transmission_enabled: false, production_blocker: null } }
 
     await mounted.workspace.recoverPendingOperations()
-    await assert.rejects(mounted.workspace.continueRecoveredEventDraft())
+    await mounted.workspace.continueRecoveredEventDraft()
+    assert.equal(mounted.workspace.authorityNeedsRefresh, false, 'the confirmed identity refresh can reopen access')
 
     const stored = JSON.parse([...memory.values()][0] ?? 'null') as { action: string, recoveryMode: string, idempotencyKey: string } | null
     assert.equal(calls.filter(call => call.path === '/erp/fiscal/events/31/submit').length, 1, 'the submit was dispatched exactly once')
@@ -2035,6 +2268,16 @@ describe('ERP fiscal durable workspace operations', () => {
     await jsonMounted.workspace.loadDocument(91)
     await assert.rejects(jsonMounted.workspace.downloadArtifact(jsonMounted.workspace.selectedDocument, 'xml'), /XML indisponível/i)
     assert.equal(created.length, 1, 'JSON error payload is never exposed as an XML download')
+
+    const pdfMounted = loadWorkspaceComposable(async (path) => {
+      if (path.endsWith('/pdf')) return new Blob(['%PDF-1.7'], { type: 'application/pdf' })
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['*'] })
+    t.after(pdfMounted.close)
+    pdfMounted.workspace.selectedDocument = { id: 92, status: 'authorized', artifact_ready: true }
+    await pdfMounted.workspace.downloadArtifact(pdfMounted.workspace.selectedDocument, 'pdf')
+    assert.equal(created.length, 2)
+    assert.equal(created[1]?.type, 'application/pdf')
   })
 
   it('preserves the complete unsaved model form and maps field-level 422 errors', async (t) => {
@@ -2112,6 +2355,7 @@ describe('ERP fiscal durable workspace operations', () => {
     const identity = Vue.ref({ id: 7, current_company: { id: 22, permissions: ['*'] } })
     const workspace = Vue.reactive({
       selectedEstablishmentId: 6, establishments: [{ id: 6, name: 'Matriz', cnpj: '11222333000181' }],
+      authorityGeneration: 0,
       documents: [document], selectedDocument: document, selectedSale: null, selectedReturn: null, sales: [], returns: [],
       configuration: { environment: 'homologation', release_gates: { provider: 'ready', production_transmission_enabled: false } },
       loading: false, saving: false, noCompany: false, canRead: true, readOnly: false, canCreateDocuments: false,
@@ -2133,13 +2377,49 @@ describe('ERP fiscal durable workspace operations', () => {
     assert.ok(confirm, 'the mounted workspace displays its explicit confirmation step')
     const confirmation = (confirm.props.onClick as () => Promise<void>)()
     identity.value.current_company.id = 23
+    workspace.authorityGeneration++
     await Vue.nextTick()
+    assert.equal(findNode(mounted.root, node => node.props['data-modal'] === 'Confirmar operação fiscal'), undefined, 'the company context change closes private confirmations')
     rejectTransmission(new Error('late company A failure'))
     await confirmation
     await Vue.nextTick()
 
     assert.equal(findNode(mounted.root, node => node.props['data-modal'] === 'Confirmar operação fiscal'), undefined)
     assert.equal(textContent(mounted.root).includes('late company A failure'), false, 'the stale error is not shown in company B')
+    mounted.app.unmount()
+  })
+
+  it('closes a pending fiscal confirmation and resets local drafts on same-identity authority invalidation', async () => {
+    let rejectTransmission!: (error: Error) => void
+    const document = { id: 91, model: '55', environment: 'homologation', status: 'queued' }
+    const identity = Vue.ref({ id: 7, current_company: { id: 22, permissions: ['*'] } })
+    const workspace = Vue.reactive({
+      authorityGeneration: 0, selectedEstablishmentId: 6, establishments: [{ id: 6, name: 'Matriz', cnpj: '11222333000181' }],
+      documents: [document], selectedDocument: document, selectedSale: null, selectedReturn: null, sales: [], returns: [],
+      configuration: { environment: 'homologation', release_gates: { provider: 'ready', production_transmission_enabled: false } },
+      loading: false, saving: false, noCompany: false, canRead: true, readOnly: false, canCreateDocuments: false,
+      canQueue: true, canTransmit: true, canConsult: true, canEnableContingency: false, canReconcileContingency: false,
+      canDownloadXml: true, canDownloadPdf: true, pendingRecovery: null, releaseMessage: '', errorMessage: '',
+      runDocumentAction: async () => undefined,
+      transmitDocument: () => new Promise((_resolve, reject) => { rejectTransmission = reject }),
+      load: async () => undefined, recoverPendingOperations: async () => undefined, loadDocument: async () => undefined
+    })
+    const mounted = mountWorkspaceSfc(workspace, identity)
+    await Vue.nextTick()
+    const request = findNode(mounted.root, node => node.props['data-action'] === 'request-transmit')
+    assert.ok(request)
+    ;(request.props.onClick as () => void)()
+    await Vue.nextTick()
+    const confirm = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Confirmar operação')
+    assert.ok(confirm)
+    const confirmation = (confirm.props.onClick as () => Promise<void>)()
+    workspace.authorityGeneration++
+    await Vue.nextTick()
+    assert.equal(findNode(mounted.root, node => node.props['data-modal'] === 'Confirmar operação fiscal'), undefined)
+    rejectTransmission(new Error('late same-context denial'))
+    await confirmation
+    await Vue.nextTick()
+    assert.equal(textContent(mounted.root).includes('late same-context denial'), false)
     mounted.app.unmount()
   })
 })
