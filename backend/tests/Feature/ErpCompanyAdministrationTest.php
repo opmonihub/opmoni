@@ -186,32 +186,32 @@ class ErpCompanyAdministrationTest extends TestCase
     public function test_inactive_finance_locations_deny_new_effects_but_preserve_accepted_results(): void
     {
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $payload = ['amount' => '100', 'method' => 'cash', 'erp_establishment_id' => $establishment->id, 'source_operation_key' => 'original-payment'];
+        $payload = ['direction' => 'in', 'amount' => '100', 'method' => 'manual', 'erp_establishment_id' => $establishment->id, 'source_operation_key' => 'original-payment'];
         $payment = $this->postJson('/api/v1/erp/payments', $payload)->assertCreated()->json('data.id');
-        $obligation = $this->postJson('/api/v1/erp/obligations', ['amount' => '100', 'direction' => 'receivable', 'category' => 'manual', 'erp_establishment_id' => $establishment->id])->assertCreated()->json('data.id');
+        $obligation = $this->postJson('/api/v1/erp/obligations', ['amount' => '100', 'direction' => 'receivable', 'category' => 'manual', 'erp_establishment_id' => $establishment->id], ['Idempotency-Key' => 'original-obligation'])->assertCreated()->json('data.id');
         $allocation = ['erp_obligation_id' => $obligation, 'amount' => '20'];
         $original = $this->postJson('/api/v1/erp/payments/'.$payment.'/allocate', $allocation, ['Idempotency-Key' => 'accepted'])->assertOk()->json();
         $establishment->update(['status' => 'inactive']);
         $this->postJson('/api/v1/erp/payments', array_replace($payload, ['source_operation_key' => 'new-payment']))->assertUnprocessable();
         $this->postJson('/api/v1/erp/payments/'.$payment.'/allocate', $allocation, ['Idempotency-Key' => 'new-allocation'])->assertUnprocessable();
-        $this->postJson('/api/v1/erp/payments', $payload)->assertOk()->assertJsonPath('data.id', $payment);
+        $this->postJson('/api/v1/erp/payments', $payload)->assertCreated()->assertJsonPath('data.id', $payment);
         $this->postJson('/api/v1/erp/payments/'.$payment.'/allocate', $allocation, ['Idempotency-Key' => 'accepted'])->assertOk()->assertExactJson($original);
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.payments.allocate', ['Idempotency-Key' => 'accepted'])->assertOk()->assertJsonPath('data.result', $original['data']);
         $this->getJson('/api/v1/erp/payments/'.$payment)->assertOk();
         $this->assertDatabaseCount('erp_payments', 1);
         $this->assertDatabaseCount('erp_payment_allocations', 1);
-        $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $this->assertDatabaseCount('erp_operation_receipts', 3);
     }
 
     public function test_inactive_obligation_location_alone_blocks_new_allocation(): void
     {
         $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $payment = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash'])->assertCreated()->json('data.id');
-        $obligation = $this->postJson('/api/v1/erp/obligations', ['amount' => '100', 'direction' => 'receivable', 'category' => 'manual', 'erp_establishment_id' => $establishment->id])->assertCreated()->json('data.id');
+        $payment = $this->postJson('/api/v1/erp/payments', ['direction' => 'in', 'amount' => '100', 'method' => 'manual'], ['Idempotency-Key' => 'original-payment'])->assertCreated()->json('data.id');
+        $obligation = $this->postJson('/api/v1/erp/obligations', ['amount' => '100', 'direction' => 'receivable', 'category' => 'manual', 'erp_establishment_id' => $establishment->id], ['Idempotency-Key' => 'original-obligation'])->assertCreated()->json('data.id');
         $establishment->update(['status' => 'inactive']);
         $this->postJson('/api/v1/erp/payments/'.$payment.'/allocate', ['erp_obligation_id' => $obligation, 'amount' => '20'], ['Idempotency-Key' => 'new-allocation'])->assertUnprocessable();
         $this->assertDatabaseCount('erp_payment_allocations', 0);
-        $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->assertDatabaseCount('erp_operation_receipts', 2);
     }
 
     public function test_super_admin_and_delegated_office_admin_have_no_owner_authority(): void

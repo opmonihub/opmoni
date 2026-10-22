@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp;
 
 use App\Enums\Erp\ErpEstablishmentResource;
+use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpCompanyAdministration;
 use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Controller;
@@ -16,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ErpEstablishmentController extends Controller
 {
-    public function __construct(private ErpCompanyAdministration $administration, private BrazilianTaxId $taxId, private ErpEstablishmentAccess $establishmentAccess) {}
+    public function __construct(private ErpCompanyAdministration $administration, private BrazilianTaxId $taxId, private ErpEstablishmentAccess $establishmentAccess, private ErpCatalogWriteService $writes) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -51,22 +52,28 @@ class ErpEstablishmentController extends Controller
     public function store(Request $request): Response
     {
         return $this->administration->mutate($request, false, function (int $companyId) use ($request): JsonResponse {
-            $this->establishmentAccess->assertAllScope(CurrentCompany::fromRequest($request));
-            $data = $this->establishmentData($request, true);
-            $establishment = ErpEstablishment::query()->create(['erp_company_id' => $companyId, ...$data]);
+            return $this->writes->run($request, function (CurrentCompany $context) use ($request, $companyId): JsonResponse {
+                $this->establishmentAccess->assertAllScope($context);
+                $data = $this->establishmentData($request, true);
+                $establishment = ErpEstablishment::query()->create(['erp_company_id' => $companyId, ...$data]);
+                $this->writes->record($request, $context, $establishment, 'created');
 
-            return response()->json(['data' => $this->administration->establishmentPayload($establishment)], 201);
+                return response()->json(['data' => $this->administration->establishmentPayload($establishment)], 201);
+            });
         });
     }
 
     public function update(Request $request, int $establishment): Response
     {
         return $this->administration->mutate($request, false, function (int $companyId) use ($request, $establishment): JsonResponse {
-            $model = $this->administration->establishment($companyId, $establishment, true);
-            $this->establishmentAccess->assertResource(CurrentCompany::fromRequest($request), $model);
-            $model->fill($this->establishmentData($request, false))->save();
+            return $this->writes->run($request, function (CurrentCompany $context) use ($request, $companyId, $establishment): JsonResponse {
+                $model = $this->administration->establishment($companyId, $establishment, true);
+                $this->establishmentAccess->assertResource($context, $model);
+                $model->fill($this->establishmentData($request, false))->save();
+                $this->writes->record($request, $context, $model, 'updated');
 
-            return response()->json(['data' => $this->administration->establishmentPayload($model)]);
+                return response()->json(['data' => $this->administration->establishmentPayload($model)]);
+            });
         });
     }
 

@@ -53,6 +53,7 @@ class ErpCatalogPrintController extends Controller
             $company = ErpCompany::query()->lockForUpdate()->findOrFail($context->company->id);
             $this->settings->mergeOperating($company, ['catalog_print' => $data]);
             $company->save();
+            $this->writes->record($request, $context, $company, 'print_settings_updated');
 
             return response()->json(['data' => $this->legacySettings($company)]);
         });

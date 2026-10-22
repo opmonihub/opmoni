@@ -39,6 +39,7 @@ class ErpCatalogPrintLayoutController extends Controller
                 'is_default' => false,
                 'status' => 'active',
             ]);
+            $this->writes->record($request, $context, $layout, 'created');
 
             return response()->json(['data' => $this->serialize($layout)], 201);
         });
@@ -62,6 +63,7 @@ class ErpCatalogPrintLayoutController extends Controller
 
             $record->fill($this->validatedData($request, $record));
             $record->save();
+            $this->writes->record($request, $context, $record, 'updated');
 
             return response()->json(['data' => $this->serialize($record->fresh())]);
         });
@@ -69,19 +71,25 @@ class ErpCatalogPrintLayoutController extends Controller
 
     public function makeDefault(Request $request, int $layout): JsonResponse
     {
-        return $this->writes->run($request, function (CurrentCompany $context) use ($layout): JsonResponse {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $layout): JsonResponse {
             $record = $this->findForCompany((int) $context->company->id, $layout);
             if ($record->status !== 'active') {
                 throw ValidationException::withMessages(['layout_id' => 'Uma configuração arquivada não pode ser padrão.']);
             }
 
-            ErpCatalogPrintLayout::query()
+            $previousDefaults = ErpCatalogPrintLayout::query()
                 ->where('erp_company_id', $context->company->id)
                 ->where('is_default', true)
-                ->update(['is_default' => false]);
-            $record->refresh();
+                ->whereKeyNot($record->id)
+                ->get();
+            foreach ($previousDefaults as $previous) {
+                $previous->is_default = false;
+                $previous->save();
+                $this->writes->record($request, $context, $previous, 'updated');
+            }
             $record->is_default = true;
             $record->save();
+            $this->writes->record($request, $context, $record, 'updated');
 
             return response()->json(['data' => $this->serialize($record->fresh())]);
         });
@@ -89,7 +97,7 @@ class ErpCatalogPrintLayoutController extends Controller
 
     public function archive(Request $request, int $layout): JsonResponse
     {
-        return $this->writes->run($request, function (CurrentCompany $context) use ($layout): JsonResponse {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $layout): JsonResponse {
             $record = $this->findForCompany((int) $context->company->id, $layout);
             if ($record->status === 'archived') {
                 return response()->json(['data' => $this->serialize($record)]);
@@ -98,6 +106,7 @@ class ErpCatalogPrintLayoutController extends Controller
             $record->is_default = false;
             $record->status = 'archived';
             $record->save();
+            $this->writes->record($request, $context, $record, 'archived');
 
             return response()->json(['data' => $this->serialize($record->fresh())]);
         });

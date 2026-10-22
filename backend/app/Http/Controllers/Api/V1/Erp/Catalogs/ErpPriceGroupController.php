@@ -40,7 +40,12 @@ class ErpPriceGroupController extends ErpCatalogController
             $data = $this->validated($request);
             $this->assertNameAvailable($data['name'], (int) $context->company->id);
             if (! empty($data['is_default'])) {
-                ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->update(['is_default' => false]);
+                $previousDefaults = ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->where('is_default', true)->get();
+                foreach ($previousDefaults as $previous) {
+                    $previous->is_default = false;
+                    $previous->save();
+                    $this->record($request, $context, $previous, 'updated');
+                }
             }
             $row = ErpPriceGroup::query()->create([
                 ...$data,
@@ -62,7 +67,12 @@ class ErpPriceGroupController extends ErpCatalogController
                 $this->assertNameAvailable($data['name'], (int) $context->company->id, $model);
             }
             if (! empty($data['is_default'])) {
-                ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->whereKeyNot($model->id)->update(['is_default' => false]);
+                $previousDefaults = ErpPriceGroup::query()->where('erp_company_id', $context->company->id)->whereKeyNot($model->id)->where('is_default', true)->get();
+                foreach ($previousDefaults as $previous) {
+                    $previous->is_default = false;
+                    $previous->save();
+                    $this->record($request, $context, $previous, 'updated');
+                }
             }
             $model->fill($data);
             $model->save();

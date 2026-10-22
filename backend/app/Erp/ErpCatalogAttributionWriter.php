@@ -6,11 +6,15 @@ use App\Models\Erp\ErpBrand;
 use App\Models\Erp\ErpCarrier;
 use App\Models\Erp\ErpCatalogAttribution;
 use App\Models\Erp\ErpCatalogImport;
+use App\Models\Erp\ErpCatalogPrinterProfile;
+use App\Models\Erp\ErpCatalogPrintLayout;
 use App\Models\Erp\ErpCategory;
+use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpCustomerGroup;
 use App\Models\Erp\ErpDiscountRule;
 use App\Models\Erp\ErpDriver;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpPriceGroup;
 use App\Models\Erp\ErpProduct;
@@ -43,6 +47,10 @@ class ErpCatalogAttributionWriter
         ErpCarrier::class => 'carrier',
         ErpVehicle::class => 'vehicle',
         ErpDriver::class => 'driver',
+        ErpCatalogPrintLayout::class => 'print_layout',
+        ErpCatalogPrinterProfile::class => 'printer_profile',
+        ErpCompany::class => 'company',
+        ErpEstablishment::class => 'establishment',
     ];
 
     public function record(Request $request, CurrentCompany $context, Model $resource, string $action, ?ErpCatalogImport $batch = null): void
@@ -65,12 +73,16 @@ class ErpCatalogAttributionWriter
 
         $type = self::RESOURCE_TYPES[$resource::class] ?? null;
         if ($type === null || ! $resource->exists || $resource->getKey() === null
-            || ! in_array($action, ['created', 'updated', 'archived', 'import_created'], true)) {
+            || ! in_array($action, $resource instanceof ErpCompany
+                ? ['company_settings_updated', 'print_settings_updated']
+                : ['created', 'updated', 'archived', 'import_created'], true)) {
             throw new LogicException('Unsupported catalog resource or action.');
         }
         $owned = $resource->newQuery()->whereKey($resource->getKey());
         if ($resource instanceof ErpProductVariant) {
             $owned->whereHas('product', fn ($query) => $query->where('erp_company_id', $context->company->id));
+        } elseif ($resource instanceof ErpCompany) {
+            $owned->whereKey($context->company->id);
         } else {
             $owned->where('erp_company_id', $context->company->id);
         }

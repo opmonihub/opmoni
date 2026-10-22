@@ -37,6 +37,7 @@ class ErpCatalogPrinterProfileController extends Controller
                 'erp_company_id' => $context->company->id,
                 'status' => 'active',
             ]);
+            $this->writes->record($request, $context, $profile, 'created');
 
             return response()->json(['data' => $this->serialize($profile)], 201);
         });
@@ -59,6 +60,7 @@ class ErpCatalogPrinterProfileController extends Controller
 
             $record->fill($this->validatedData($request, partial: true));
             $record->save();
+            $this->writes->record($request, $context, $record, 'updated');
 
             return response()->json(['data' => $this->serialize($record->fresh())]);
         });
@@ -66,10 +68,11 @@ class ErpCatalogPrinterProfileController extends Controller
 
     public function archive(Request $request, int $profile): JsonResponse
     {
-        return $this->writes->run($request, function (CurrentCompany $context) use ($profile): JsonResponse {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $profile): JsonResponse {
             $record = $this->findForCompany((int) $context->company->id, $profile);
             $record->status = 'archived';
             $record->save();
+            $this->writes->record($request, $context, $record, 'archived');
 
             return response()->json(['data' => $this->serialize($record->fresh())]);
         });

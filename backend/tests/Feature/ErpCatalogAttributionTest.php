@@ -3,17 +3,21 @@
 namespace Tests\Feature;
 
 use App\Erp\ErpCatalogAttributionWriter;
+use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\ErpBrand;
 use App\Models\Erp\ErpCatalogAttribution;
 use App\Models\Erp\ErpCatalogImport;
+use App\Models\Erp\ErpCatalogPrintLayout;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
+use App\Models\Erp\ErpPriceGroup;
+use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\ErpUnit;
@@ -421,5 +425,430 @@ class ErpCatalogAttributionTest extends TestCase
         $this->assertSame($line, $sale->lines()->sole()->getAttributes());
         $this->assertSame($obligation, ErpObligation::query()->sole()->getAttributes());
         $this->assertDatabaseCount('erp_catalog_attributions', 7);
+    }
+
+    private static function layoutPayload(): array
+    {
+        return [
+            'name' => 'Private layout name', 'description' => 'Private description',
+            'label_width_mm' => '50.0000', 'label_height_mm' => '30.0000',
+            'paper_width_mm' => '50.0000', 'paper_height_mm' => '30.0000',
+            'top_margin_mm' => '0.0000', 'left_margin_mm' => '0.0000',
+            'row_spacing_mm' => '0.0000', 'column_spacing_mm' => '0.0000',
+            'columns_per_row' => 1, 'labels_per_sheet' => 1, 'is_continuous' => false,
+        ];
+    }
+
+    public static function configurationCatalogs(): array
+    {
+        return [
+            'layout' => ['label-layouts', 'print_layout', self::layoutPayload(), ['description' => 'Changed private description']],
+            'printer' => ['printer-profiles', 'printer_profile', ['name' => 'Private printer', 'capability_profile' => 'simple'], ['capability_profile' => 'default']],
+        ];
+    }
+
+    #[DataProvider('configurationCatalogs')]
+    public function test_configuration_lifecycle_records_only_effective_changes(string $path, string $type, array $create, array $update): void
+    {
+        [$company, $user, $membership] = $this->owner(ambientOffice: true);
+        $url = '/api/v1/erp/catalog/'.$path;
+        $id = $this->postJson($url, $create)->assertCreated()->json('data.id');
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+        $first = DB::table('erp_catalog_attributions')->sole();
+        $this->assertSame($company->id, $first->erp_company_id);
+        $this->assertSame($user->id, $first->actor_user_id);
+        $this->assertSame($membership->id, $first->erp_company_membership_id);
+        $this->assertSame('direct', $first->access_kind);
+        $this->assertNull($first->account_id);
+        $this->assertNull($first->erp_office_delegation_id);
+        $this->assertNull($first->batch_id);
+        $this->assertNotNull($first->recorded_at);
+        $this->assertStringNotContainsString('Private', json_encode($first));
+        $this->getJson($url)->assertOk();
+        $this->getJson($url.'/'.$id)->assertOk();
+        $this->postJson($url, [])->assertUnprocessable();
+        $this->patchJson($url.'/'.$id, ['name' => null])->assertUnprocessable();
+        $this->travel(5)->seconds();
+        $this->patchJson($url.'/'.$id, [])->assertOk();
+        $this->patchJson($url.'/'.$id, $update)->assertOk();
+        $this->travel(5)->seconds();
+        $this->patchJson($url.'/'.$id, $update)->assertOk();
+        $this->deleteJson($url.'/'.$id)->assertOk();
+        $this->travel(5)->seconds();
+        $this->deleteJson($url.'/'.$id)->assertOk();
+        $this->patchJson($url.'/'.$id, $update)->assertUnprocessable();
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get();
+        $this->assertSame(['created', 'updated', 'archived'], $events->pluck('action')->all());
+        $this->assertSame([$type, $type, $type], $events->pluck('resource_type')->all());
+        $this->assertSame([$id, $id, $id], $events->pluck('resource_id')->all());
+        $this->assertEquals($first, DB::table('erp_catalog_attributions')->where('id', $first->id)->first());
+    }
+
+    public function test_configuration_layout_defaults_attribute_each_changed_identity_once_and_reselection_is_empty(): void
+    {
+        [$company] = $this->owner();
+        $previous = ErpCatalogPrintLayout::factory()->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $otherPrevious = ErpCatalogPrintLayout::factory()->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $selected = ErpCatalogPrintLayout::factory()->create(['erp_company_id' => $company->id, 'is_default' => false]);
+        $unchanged = ErpCatalogPrintLayout::factory()->create(['erp_company_id' => $company->id, 'is_default' => false]);
+        $foreign = ErpCatalogPrintLayout::factory()->create(['is_default' => true]);
+        $url = '/api/v1/erp/catalog/label-layouts/'.$selected->id;
+        $this->patchJson($url.'/default')->assertOk()->assertJsonPath('data.is_default', true);
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get();
+        $this->assertEqualsCanonicalizing([$previous->id, $otherPrevious->id, $selected->id], $events->pluck('resource_id')->all());
+        $this->assertSame(['updated', 'updated', 'updated'], $events->pluck('action')->all());
+        $this->assertSame(['print_layout', 'print_layout', 'print_layout'], $events->pluck('resource_type')->all());
+        $this->assertFalse($previous->fresh()->is_default);
+        $this->assertFalse($otherPrevious->fresh()->is_default);
+        $this->assertFalse($unchanged->fresh()->is_default);
+        $this->assertTrue($foreign->fresh()->is_default);
+        $history = $events->all();
+        $this->travel(5)->seconds();
+        $this->patchJson($url.'/default')->assertOk()->assertJsonPath('data.is_default', true);
+        $this->assertEquals($history, DB::table('erp_catalog_attributions')->orderBy('id')->get()->all());
+        $this->patchJson('/api/v1/erp/catalog/label-layouts/'.$foreign->id.'/default')->assertNotFound();
+        $this->deleteJson($url)->assertOk()->assertJsonPath('data.is_default', false);
+        $this->deleteJson($url)->assertOk();
+        $this->assertDatabaseCount('erp_catalog_attributions', 4);
+        $last = DB::table('erp_catalog_attributions')->orderByDesc('id')->first();
+        $this->assertSame($selected->id, $last->resource_id);
+        $this->assertSame('archived', $last->action);
+        $this->assertEquals($history, DB::table('erp_catalog_attributions')->orderBy('id')->limit(3)->get()->all());
+    }
+
+    public function test_configuration_price_defaults_capture_cleared_rows_on_create_and_update_without_duplicate_events(): void
+    {
+        [$company] = $this->owner();
+        $old = ErpPriceGroup::factory()->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $otherOld = ErpPriceGroup::factory()->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $unchanged = ErpPriceGroup::factory()->create(['erp_company_id' => $company->id, 'is_default' => false]);
+        $foreign = ErpPriceGroup::factory()->create(['is_default' => true]);
+        $url = '/api/v1/erp/price-groups';
+        $created = $this->postJson($url, ['name' => 'New default', 'is_default' => true])->assertCreated()->assertJsonPath('data.is_default', true)->json('data.id');
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get();
+        $this->assertEqualsCanonicalizing([$old->id, $otherOld->id, $created], $events->pluck('resource_id')->all());
+        $this->assertSame(['updated', 'updated', 'created'], $events->pluck('action')->all());
+        $this->assertSame(['price_group', 'price_group', 'price_group'], $events->pluck('resource_type')->all());
+        $this->travel(5)->seconds();
+        $this->patchJson($url.'/'.$created, ['is_default' => true])->assertOk();
+        $this->assertDatabaseCount('erp_catalog_attributions', 3);
+        $this->patchJson($url.'/'.$unchanged->id, ['is_default' => true, 'name' => 'Selected and renamed'])->assertOk();
+        $new = DB::table('erp_catalog_attributions')->orderBy('id')->get()->slice(3)->values();
+        $this->assertSame([$created, $unchanged->id], $new->pluck('resource_id')->all());
+        $this->assertSame(['updated', 'updated'], $new->pluck('action')->all());
+        $this->assertFalse($old->fresh()->is_default);
+        $this->assertFalse($otherOld->fresh()->is_default);
+        $this->assertFalse(ErpPriceGroup::findOrFail($created)->is_default);
+        $this->assertTrue($unchanged->fresh()->is_default);
+        $this->assertTrue($foreign->fresh()->is_default);
+        $this->assertEquals($events->all(), DB::table('erp_catalog_attributions')->orderBy('id')->limit(3)->get()->all());
+    }
+
+    public function test_configuration_settings_use_actual_company_preserve_merge_foundation_gate_and_output_is_not_mutation(): void
+    {
+        [$company, $user, $membership] = $this->owner(ambientOffice: true);
+        $company->update(['operating_settings' => ['untouched' => 'keep', 'catalog_print' => [
+            'label_width_mm' => 50, 'label_height_mm' => 30, 'show_price' => true, 'show_barcode' => true,
+        ]]]);
+        config(['erp.operating_writes_enabled' => false]);
+        $settings = '/api/v1/erp/company/settings';
+        $this->getJson($settings)->assertOk();
+        $this->patchJson($settings, ['name' => 'Private Company', 'tax_number_1' => 'private-tax'])->assertOk()
+            ->assertJsonPath('data.name', 'Private Company')->assertJsonPath('data.untouched', 'keep')
+            ->assertJsonPath('data.catalog_print.label_width_mm', 50);
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+        $first = DB::table('erp_catalog_attributions')->sole();
+        $this->assertSame('company', $first->resource_type);
+        $this->assertSame('company_settings_updated', $first->action);
+        $this->assertSame($company->id, $first->resource_id);
+        $this->assertSame($company->id, $first->erp_company_id);
+        $this->assertSame($user->id, $first->actor_user_id);
+        $this->assertSame($membership->id, $first->erp_company_membership_id);
+        $this->assertSame('direct', $first->access_kind);
+        $this->assertNull($first->account_id);
+        $this->assertNull($first->erp_office_delegation_id);
+        $this->assertStringNotContainsString('private', json_encode($first));
+        $this->travel(5)->seconds();
+        $this->patchJson($settings, ['name' => 'Private Company', 'tax_number_1' => 'private-tax'])->assertOk();
+        $this->patchJson($settings, [])->assertOk();
+        $this->patchJson($settings, ['cnpj' => 'invalid'])->assertUnprocessable();
+        $this->postJson('/api/v1/erp/catalog/printer-profiles', ['name' => 'Disabled', 'capability_profile' => 'simple'])->assertForbidden();
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+        config(['erp.operating_writes_enabled' => true]);
+        $print = ['label_width_mm' => 55, 'label_height_mm' => 32, 'show_price' => false, 'show_barcode' => true];
+        $this->patchJson('/api/v1/erp/catalog/print-settings', $print)->assertOk()->assertExactJson(['data' => $print]);
+        $this->travel(5)->seconds();
+        $this->patchJson('/api/v1/erp/catalog/print-settings', $print)->assertOk()->assertExactJson(['data' => $print]);
+        $this->getJson('/api/v1/erp/catalog/print-settings')->assertOk()->assertExactJson(['data' => $print]);
+        $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
+        $product = ErpProduct::factory()->create(['erp_company_id' => $company->id, 'erp_unit_id' => $unit->id, 'barcode' => 'A-100', 'barcode_type' => 'C128']);
+        $this->postJson('/api/v1/erp/catalog/product-labels', ['product_ids' => [$product->id]])->assertOk();
+        $this->assertDatabaseCount('erp_catalog_attributions', 2);
+        $last = DB::table('erp_catalog_attributions')->orderByDesc('id')->first();
+        $this->assertSame('print_settings_updated', $last->action);
+        $this->assertSame('company', $last->resource_type);
+        $this->assertSame($company->id, $last->resource_id);
+        $this->assertSame('keep', $company->fresh()->operating_settings['untouched']);
+        $this->assertSame('private-tax', $company->fresh()->operating_settings['tax_number_1']);
+        $this->assertEquals($first, DB::table('erp_catalog_attributions')->where('id', $first->id)->first());
+    }
+
+    public static function delegatedConfiguration(): array
+    {
+        return [
+            'layout' => ['POST', 'catalog/label-layouts', 'erp.catalog.label-layouts.store', self::layoutPayload(), 'print_layout', 'created', 201],
+            'printer' => ['POST', 'catalog/printer-profiles', 'erp.catalog.printer-profiles.store', ['name' => 'Printer', 'capability_profile' => 'simple'], 'printer_profile', 'created', 201],
+            'print settings' => ['PATCH', 'catalog/print-settings', 'erp.catalog.print-settings.update', ['label_width_mm' => 55, 'label_height_mm' => 32, 'show_price' => false, 'show_barcode' => true], 'company', 'print_settings_updated', 200],
+            'Company settings' => ['PATCH', 'company/settings', 'erp.company.settings.update', ['name' => 'Changed Company'], 'company', 'company_settings_updated', 200],
+            'establishment' => ['POST', 'establishments', 'erp.establishments.store', ['name' => 'Filial', 'status' => 'active'], 'establishment', 'created', 201],
+        ];
+    }
+
+    #[DataProvider('delegatedConfiguration')]
+    public function test_configuration_delegated_writes_bind_exact_grant_and_denials_emit_nothing(string $method, string $path, string $permission, array $payload, string $type, string $action, int $status): void
+    {
+        $company = $this->company();
+        $user = User::factory()->create();
+        $office = Account::factory()->create();
+        $member = AccountMembership::factory()->create(['account_id' => $office->id, 'user_id' => $user->id, 'role' => 'admin']);
+        $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id, 'permission_allowlist' => ['erp.read', $permission]]);
+        $this->login($user, $company);
+        $verb = strtolower($method).'Json';
+        $response = $this->{$verb}('/api/v1/erp/'.$path, $payload)->assertStatus($status);
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+        $event = DB::table('erp_catalog_attributions')->sole();
+        $this->assertSame($company->id, $event->erp_company_id);
+        $this->assertSame($user->id, $event->actor_user_id);
+        $this->assertSame('delegated', $event->access_kind);
+        $this->assertSame($office->id, $event->account_id);
+        $this->assertSame($delegation->id, $event->erp_office_delegation_id);
+        $this->assertNull($event->erp_company_membership_id);
+        $this->assertSame($type, $event->resource_type);
+        $this->assertSame($action, $event->action);
+        $this->assertSame($type === 'company' ? $company->id : $response->json('data.id'), $event->resource_id);
+        $this->postJson('/api/v1/erp/brands', ['name' => 'Not granted'])->assertForbidden();
+        $member->update(['role' => 'user']);
+        $this->{$verb}('/api/v1/erp/'.$path, $payload)->assertForbidden();
+        $member->update(['role' => 'admin']);
+        $delegation->update(['status' => 'revoked']);
+        $this->{$verb}('/api/v1/erp/'.$path, $payload)->assertForbidden();
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+        $this->assertEquals($event, DB::table('erp_catalog_attributions')->sole());
+    }
+
+    public function test_configuration_establishment_keeps_exact_operator_action_and_selected_scope_with_noop_inactivation(): void
+    {
+        [$company, $user, $membership] = $this->owner();
+        $id = $this->postJson('/api/v1/erp/establishments', ['name' => 'Filial', 'status' => 'active'])->assertCreated()->json('data.id');
+        $denied = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $membership->update(['role' => 'operator', 'action_permissions' => ['erp.establishments.update'], 'access_all_establishments' => false]);
+        $membership->establishments()->sync([$id => ['erp_company_id' => $company->id]]);
+        $url = '/api/v1/erp/establishments/'.$id;
+        $this->patchJson($url, ['name' => 'Changed'])->assertOk();
+        $this->travel(5)->seconds();
+        $this->patchJson($url, ['name' => 'Changed'])->assertOk();
+        $this->patchJson($url, ['status' => 'inactive'])->assertOk()->assertJsonPath('data.status', 'inactive');
+        $this->travel(5)->seconds();
+        $this->patchJson($url, ['status' => 'inactive'])->assertOk();
+        $this->patchJson('/api/v1/erp/establishments/'.$denied->id, ['name' => 'Not allowed'])->assertNotFound();
+        $this->postJson('/api/v1/erp/establishments', ['name' => 'Not all scope', 'status' => 'active'])->assertForbidden();
+        $membership->update(['action_permissions' => ['erp.write']]);
+        $this->patchJson($url, ['name' => 'Wildcard not exact'])->assertForbidden();
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get();
+        $this->assertSame(['created', 'updated', 'updated'], $events->pluck('action')->all());
+        $this->assertSame(['establishment', 'establishment', 'establishment'], $events->pluck('resource_type')->all());
+        $this->assertSame([$id, $id, $id], $events->pluck('resource_id')->all());
+        $this->assertSame([$user->id, $user->id, $user->id], $events->pluck('actor_user_id')->all());
+        $this->assertDatabaseHas('erp_establishments', ['id' => $id, 'name' => 'Changed', 'status' => 'inactive']);
+    }
+
+    public static function configurationFailures(): array
+    {
+        $cases = [];
+        foreach (['layout default', 'price default create', 'price default update', 'Company settings', 'print settings', 'establishment update', 'establishment create'] as $operation) {
+            foreach (['insertion', 'fence'] as $failure) {
+                $cases[$operation.' '.$failure] = [$operation, $failure];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('configurationFailures')]
+    public function test_configuration_failure_rolls_back_all_changed_resources_and_events(string $operation, string $failure): void
+    {
+        [$company] = $this->owner();
+        $company->update(['operating_settings' => ['tax_number_1' => 'original', 'catalog_print' => [
+            'label_width_mm' => 50, 'label_height_mm' => 30, 'show_price' => true, 'show_barcode' => true,
+        ]]]);
+        ErpCatalogPrintLayout::factory()->count(2)->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $selected = ErpCatalogPrintLayout::factory()->create(['erp_company_id' => $company->id, 'is_default' => false]);
+        ErpPriceGroup::factory()->count(2)->create(['erp_company_id' => $company->id, 'is_default' => true]);
+        $selectedPrice = ErpPriceGroup::factory()->create(['erp_company_id' => $company->id, 'is_default' => false]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'name' => 'Original', 'status' => 'active']);
+        $before = [];
+        foreach (['erp_companies', 'erp_catalog_print_layouts', 'erp_price_groups', 'erp_establishments'] as $table) {
+            $before[$table] = DB::table($table)->orderBy('id')->get()->all();
+        }
+        [$method, $path, $payload, $expectedEvents] = match ($operation) {
+            'layout default' => ['patchJson', 'catalog/label-layouts/'.$selected->id.'/default', [], 3],
+            'price default create' => ['postJson', 'price-groups', ['name' => 'New default', 'is_default' => true], 3],
+            'price default update' => ['patchJson', 'price-groups/'.$selectedPrice->id, ['is_default' => true], 3],
+            'Company settings' => ['patchJson', 'company/settings', ['name' => 'Changed', 'tax_number_1' => 'changed'], 1],
+            'print settings' => ['patchJson', 'catalog/print-settings', ['label_width_mm' => 55, 'label_height_mm' => 32, 'show_price' => false, 'show_barcode' => true], 1],
+            'establishment update' => ['patchJson', 'establishments/'.$establishment->id, ['name' => 'Changed', 'status' => 'inactive'], 1],
+            'establishment create' => ['postJson', 'establishments', ['name' => 'New', 'status' => 'active'], 1],
+        };
+        $event = 'eloquent.'.($failure === 'insertion' ? 'creating' : 'created').': '.ErpCatalogAttribution::class;
+        $seen = 0;
+        Event::listen($event, function () use ($failure, $expectedEvents, &$seen): void {
+            if (++$seen !== $expectedEvents) {
+                return;
+            }
+            if ($failure === 'insertion') {
+                throw new \RuntimeException('Injected event insertion failure');
+            }
+            request()->attributes->set('access.session_lock', new class
+            {
+                public function isOwnedByCurrentProcess(): bool
+                {
+                    return false;
+                }
+            });
+        });
+        try {
+            $this->{$method}('/api/v1/erp/'.$path, $payload)->assertStatus(503);
+        } finally {
+            Event::forget($event);
+        }
+        $this->assertSame($expectedEvents, $seen);
+        foreach ($before as $table => $rows) {
+            $this->assertEquals($rows, DB::table($table)->orderBy('id')->get()->all(), $table.' must be restored');
+        }
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
+    }
+
+    public function test_configuration_company_response_is_constructed_before_final_session_fence(): void
+    {
+        [$company] = $this->owner();
+        $original = $company->fresh()->getAttributes();
+        $saved = false;
+        $responseRead = false;
+        $protected = false;
+        $savedEvent = 'eloquent.saved: '.ErpCompany::class;
+        $readEvent = 'eloquent.retrieved: '.ErpCompany::class;
+        Event::listen($savedEvent, function () use (&$saved): void {
+            $saved = true;
+        });
+        Event::listen($readEvent, function () use (&$saved, &$responseRead, &$protected): void {
+            if ($saved) {
+                $responseRead = true;
+                $boundary = request()->attributes->get(ErpCatalogWriteService::class);
+                $protected = is_array($boundary)
+                    && ($boundary['context'] ?? null) === CurrentCompany::fromRequest()
+                    && ($boundary['connection'] ?? null) === DB::connection()
+                    && ($boundary['level'] ?? 0) > 0
+                    && $boundary['level'] <= DB::transactionLevel();
+                request()->attributes->set('access.session_lock', new class
+                {
+                    public function isOwnedByCurrentProcess(): bool
+                    {
+                        return false;
+                    }
+                });
+            }
+        });
+        try {
+            $this->patchJson('/api/v1/erp/company/settings', ['name' => 'Must roll back'])->assertStatus(503);
+        } finally {
+            Event::forget($savedEvent);
+            Event::forget($readEvent);
+        }
+        $this->assertTrue($responseRead);
+        $this->assertTrue($protected, 'The response read must remain inside the protected catalog boundary.');
+        $this->assertSame($original, $company->fresh()->getAttributes());
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
+    }
+
+    public function test_configuration_writer_rejects_a_persisted_foreign_company_inside_real_protected_write(): void
+    {
+        [$company] = $this->owner();
+        $foreign = ErpCompany::factory()->create();
+        $original = $company->fresh()->getAttributes();
+        $reason = null;
+        $event = 'eloquent.updated: '.ErpCompany::class;
+        Event::listen($event, function () use ($foreign, &$reason): void {
+            try {
+                app(ErpCatalogAttributionWriter::class)->record(request(), CurrentCompany::fromRequest(), $foreign, 'company_settings_updated');
+            } catch (\LogicException $failure) {
+                $reason = $failure->getMessage();
+                throw $failure;
+            }
+        });
+        try {
+            $this->patchJson('/api/v1/erp/company/settings', ['name' => 'Rejected foreign binding'])->assertStatus(503);
+        } finally {
+            Event::forget($event);
+        }
+        $this->assertSame('Catalog resource does not belong to the current Company.', $reason);
+        $this->assertSame($original, $company->fresh()->getAttributes());
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
+    }
+
+    public static function establishmentAuthorityLosses(): array
+    {
+        return [
+            'direct role loss' => ['role'],
+            'direct exact action loss' => ['action'],
+            'direct selected scope loss' => ['scope'],
+            'delegation revoked after context' => ['delegation'],
+        ];
+    }
+
+    #[DataProvider('establishmentAuthorityLosses')]
+    public function test_configuration_establishment_rechecks_authority_after_context_was_resolved(string $loss): void
+    {
+        if ($loss === 'delegation') {
+            $company = $this->company();
+            $user = User::factory()->create();
+            $office = Account::factory()->create();
+            AccountMembership::factory()->create(['account_id' => $office->id, 'user_id' => $user->id, 'role' => 'admin']);
+            $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id, 'permission_allowlist' => ['erp.read', 'erp.establishments.update']]);
+            $membership = null;
+            $this->login($user, $company);
+        } else {
+            [$company, $user, $membership] = $this->owner();
+            $delegation = null;
+        }
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'name' => 'Original']);
+        if ($loss === 'action') {
+            $membership->update(['role' => 'operator', 'action_permissions' => ['erp.establishments.update']]);
+        } elseif ($loss === 'scope') {
+            $membership->update(['role' => 'manager', 'access_all_establishments' => false]);
+            $membership->establishments()->sync([$establishment->id => ['erp_company_id' => $company->id]]);
+        }
+        $triggered = false;
+        $event = 'eloquent.retrieved: '.ErpCompany::class;
+        Event::listen($event, function () use ($loss, $membership, $delegation, &$triggered): void {
+            if ($triggered || ! request()->attributes->get(CurrentCompany::class) instanceof CurrentCompany) {
+                return;
+            }
+            $triggered = true;
+            match ($loss) {
+                'role' => $membership->update(['role' => 'viewer']),
+                'action' => $membership->update(['action_permissions' => ['erp.read']]),
+                'scope' => $membership->establishments()->detach(),
+                'delegation' => $delegation->update(['status' => 'revoked']),
+            };
+        });
+        try {
+            $this->patchJson('/api/v1/erp/establishments/'.$establishment->id, ['name' => 'Denied'])
+                ->assertStatus($loss === 'scope' ? 404 : 403);
+        } finally {
+            Event::forget($event);
+        }
+        $this->assertTrue($triggered, 'Authority loss must occur after resolving the original request context.');
+        $this->assertSame('Original', $establishment->fresh()->name);
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
     }
 }
