@@ -9,6 +9,8 @@ use RuntimeException;
 
 final class ErpFiscalArtifactStore
 {
+    public function __construct(private readonly ErpFiscalAuxiliaryRenderer $auxiliaryRenderer) {}
+
     public function persistAuthorizedXml(ErpFiscalDocument $document, string $xml): array
     {
         $this->assertCompleteXml($xml);
@@ -169,7 +171,28 @@ final class ErpFiscalArtifactStore
 
     public function renderPdfBytes(ErpFiscalDocument $document): string
     {
-        abort(503, 'Documento auxiliar indisponível: renderizador fiscal não implementado');
+        abort_unless($document->status === 'authorized' && $this->verifiedFiscalArtifactReady($document), 409);
+
+        $xml = $this->readXml($document);
+        abort_if($xml === null || strlen($xml) !== (int) $document->artifact_byte_length
+            || ! is_string($document->artifact_sha256)
+            || ! hash_equals($document->artifact_sha256, hash('sha256', $xml)), 409);
+
+        try {
+            app(ErpFiscalCorrelationValidator::class)->assertProcessedMatches($xml, [
+                'model' => $document->model,
+                'environment' => $document->environment,
+                'access_key' => $document->access_key,
+                'issuer_cnpj' => substr((string) $document->access_key, 6, 14),
+                'protocol' => $document->metadata['provider_protocol'] ?? null,
+                'series' => $document->series,
+                'number' => $document->number,
+            ]);
+        } catch (\Throwable) {
+            abort(409);
+        }
+
+        return $this->auxiliaryRenderer->render($document->model, $xml);
     }
 
     public function cleanupPath(?string $path): void

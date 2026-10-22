@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Erp\Accounting\ErpAccountingHandoffService;
+use App\Erp\Fiscal\Contracts\AttemptBoundErpFiscalProvider;
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
+use App\Erp\Fiscal\Contracts\ErpFiscalSubmittedRequestProvider;
 use App\Erp\Fiscal\Cte57DocumentBuilder;
 use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
@@ -137,20 +139,30 @@ class ProcessErpFiscalAttempt implements ShouldQueue
 
             return;
         }
-        $reconcile = $attempt->action === 'document:consult' || (int) $attempt->dispatch_attempts > 1
+        $attemptProvider = $provider;
+        if ($provider instanceof AttemptBoundErpFiscalProvider) {
+            try {
+                $attemptProvider = $provider->forAttempt($attempt, $signed);
+            } catch (Throwable) {
+                $attempts->complete($attempt->id, $token, 'attention_required', ['code' => 'provider_attempt_binding_failed']);
+
+                return;
+            }
+        }
+        $reconcile = in_array($attempt->action, ['document:consult', 'document:reconcile'], true) || (int) $attempt->dispatch_attempts > 1
             || in_array($document?->status, ['indeterminate', 'submitting', 'authorized'], true)
             || $document?->attempts()->whereKeyNot($attempt->id)->whereIn('action', ['document:transmit', 'document:reconcile'])->whereIn('status', ['submitting', 'indeterminate', 'artifact_pending', 'accepted'])->exists();
         try {
             if ($isDocument) {
-                $result = $reconcile ? $provider->consult($document) : $provider->transmit($document, ['signed_xml' => $signed, 'configuration_revision_id' => $attempt->erp_fiscal_configuration_revision_id, 'certificate_revision_id' => $attempt->erp_fiscal_certificate_revision_id, 'schema_release' => $attempt->schema_release]);
+                $result = $reconcile ? $attemptProvider->consult($document) : $attemptProvider->transmit($document, ['signed_xml' => $signed, 'configuration_revision_id' => $attempt->erp_fiscal_configuration_revision_id, 'certificate_revision_id' => $attempt->erp_fiscal_certificate_revision_id, 'schema_release' => $attempt->schema_release]);
             } elseif ($attempt->action === 'event:submit') {
                 $event = $attempt->event()->firstOrFail();
                 $event->payload_snapshot = ['signed_xml' => $signed];
-                $result = $provider->submitEvent($document, $event);
+                $result = $attemptProvider->submitEvent($document, $event);
             } else {
                 $invalidation = $attempt->invalidation()->firstOrFail();
                 $invalidation->payload_snapshot = ['signed_xml' => $signed];
-                $result = $provider->submitInvalidation($invalidation);
+                $result = $attemptProvider->submitInvalidation($invalidation);
             }
         } catch (Throwable) {
             $attempts->finalize($attempt->id, $token, 'indeterminate', ['code' => 'provider_outcome_unknown'], null, null, static function () use ($document, $isDocument): bool {
@@ -173,12 +185,20 @@ class ProcessErpFiscalAttempt implements ShouldQueue
             $rejected = in_array($result->outcome, ['event_rejected', 'rejected'], true);
             if ($accepted) {
                 try {
-                    if (! is_string($result->xml)) {
+                    $processedOperationXml = $result->xml ?? ($result->providerResponse['processed_xml'] ?? null);
+                    if (! is_string($processedOperationXml)) {
                         throw new \InvalidArgumentException('Evidência correlacionada ausente.');
                     }
-                    $schemas->assertValid($result->xml, $attempt->model, $attempt->action === 'event:submit' ? 'processed_event' : 'processed_invalidation', $source['event_type'] ?? null);
-                    app(ErpFiscalEventRegistry::class)->assertOperationResultMatches($result->xml, $signed, $source, (string) $result->protocol);
-                    if (! $signer->verify($result->xml, $pkcs12['cert'])) {
+                    $submittedOperationXml = $attemptProvider instanceof ErpFiscalSubmittedRequestProvider
+                        ? $attemptProvider->submittedRequestXml()
+                        : $signed;
+                    if (! is_string($submittedOperationXml) || $submittedOperationXml === '') {
+                        throw new \InvalidArgumentException('Solicitação enviada não comprovada.');
+                    }
+                    $schemas->assertValid($processedOperationXml, $attempt->model, $attempt->action === 'event:submit' ? 'processed_event' : 'processed_invalidation', $source['event_type'] ?? null);
+                    app(ErpFiscalEventRegistry::class)->assertOperationResultMatches($processedOperationXml, $submittedOperationXml, $source, (string) $result->protocol);
+                    app(ErpFiscalEventRegistry::class)->assertOperationResultMatches($processedOperationXml, $signed, $source, (string) $result->protocol);
+                    if (! $signer->verify($submittedOperationXml, $pkcs12['cert'])) {
                         throw new \InvalidArgumentException('Assinatura da operação não corresponde à revisão fixada.');
                     }
                 } catch (Throwable) {

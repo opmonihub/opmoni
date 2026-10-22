@@ -85,7 +85,8 @@ final class ErpFiscalCorrelationValidator
         $environmentCode = $protocol instanceof DOMElement ? $this->childValue($protocol, 'tpAmb') : null;
         $expectedAmb = ($expected['environment'] ?? null) === 'production' ? '1' : '2';
 
-        if ($receivedKey !== (string) ($expected['access_key'] ?? '') || $receipt !== (string) ($expected['protocol'] ?? '') || $status !== '100' || $environmentCode !== $expectedAmb) {
+        $authorizedStatuses = in_array($model, ['55', '65'], true) ? ['100', '150'] : ['100'];
+        if ($receivedKey !== (string) ($expected['access_key'] ?? '') || $receipt !== (string) ($expected['protocol'] ?? '') || ! in_array($status, $authorizedStatuses, true) || $environmentCode !== $expectedAmb) {
             throw new InvalidArgumentException('XML processado não traz protocolo autorizado correlacionado à tentativa.');
         }
         if ($document->documentElement?->localName !== $this->processedRoot($model)) {

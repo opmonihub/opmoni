@@ -90,7 +90,8 @@ final class ErpFiscalEventRegistry
             $event->setAttribute('versao', $version);
         }
         $info = $this->node($dom, $event, 'infEvento');
-        $info->setAttribute('Id', 'ID'.$definition['event_code'].$key.str_pad((string) $sequence, in_array($model, ['57', '58'], true) ? 3 : 2, '0', STR_PAD_LEFT));
+        $sequenceWidth = $model === '57' ? 3 : 2;
+        $info->setAttribute('Id', 'ID'.$definition['event_code'].$key.str_pad((string) $sequence, $sequenceWidth, '0', STR_PAD_LEFT));
         $this->nodes($dom, $info, ['cOrgao' => substr($key, 0, 2), 'tpAmb' => $source['environment'] === 'production' ? 1 : 2, 'CNPJ' => $cnpj,
             match ($model) {
                 '55', '65' => 'chNFe', '57' => 'chCTe', '58' => 'chMDFe'

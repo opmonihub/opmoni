@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
+use App\Erp\Fiscal\NfePhpErpFiscalProvider;
 use App\Erp\Fiscal\UnavailableErpFiscalProvider;
 use App\Models\Account;
 use App\Observers\AccountObserver;
@@ -28,7 +29,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(CurrentTenant::class);
         $this->app->scoped(ErpCompanyContext::class);
         $this->app->bind(FiscalConnectorRegistry::class);
-        $this->app->bind(ErpFiscalProvider::class, UnavailableErpFiscalProvider::class);
+        $this->app->bind(ErpFiscalProvider::class, function ($app): ErpFiscalProvider {
+            if (config('erp.fiscal_provider') === 'nfephp') {
+                return $app->make(NfePhpErpFiscalProvider::class);
+            }
+
+            return $app->make(UnavailableErpFiscalProvider::class);
+        });
     }
 
     /**
