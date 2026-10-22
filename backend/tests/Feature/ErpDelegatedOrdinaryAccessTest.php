@@ -16,11 +16,14 @@ use App\Models\User;
 use App\Support\ErpCompanyContext;
 use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\BuildsErpFiscalHarness;
 use Tests\TestCase;
 
 class ErpDelegatedOrdinaryAccessTest extends TestCase
 {
+    use BuildsErpFiscalHarness;
     use RefreshDatabase;
 
     private ErpCompany $company;
@@ -95,7 +98,7 @@ class ErpDelegatedOrdinaryAccessTest extends TestCase
         $this->delegation->update(['permission_allowlist' => ['*']]);
         $this->loginAndSelect();
         $permissions = $this->getJson('/api/v1/me')->assertOk()->json('current_company.permissions');
-        foreach (['*', 'erp.members.index', 'erp.accounting-mappings.index', 'erp.accounting-deliveries.store', 'erp.fiscal.certificates.store'] as $reserved) {
+        foreach (['*', 'erp.members.index', 'erp.accounting-mappings.index', 'erp.accounting-deliveries.store'] as $reserved) {
             $this->assertNotContains($reserved, $permissions);
         }
         $this->getJson('/api/v1/erp/members')->assertForbidden();
@@ -166,10 +169,71 @@ class ErpDelegatedOrdinaryAccessTest extends TestCase
     {
         ErpCompanyMembership::factory()->create(['erp_company_id' => $this->company->id, 'user_id' => $this->actor->id, 'role' => 'owner']);
         $this->loginAndSelect();
-        foreach (['*', 'erp.write', 'erp.members.store', 'erp.accounting-deliveries.store', 'erp.fiscal.certificates.store', 'unknown.permission'] as $permission) {
+        foreach (['*', 'erp.write', 'erp.members.store', 'erp.accounting-deliveries.store', 'unknown.permission'] as $permission) {
             $this->postJson('/api/v1/erp/delegations', ['company_id' => $this->company->id, 'account_id' => $this->office->id, 'permissions' => [$permission]])->assertUnprocessable();
         }
         $this->assertSame('active', $this->delegation->fresh()->status);
         $this->assertDatabaseCount('erp_office_delegations', 1);
+    }
+
+    public function test_new_exact_certificate_grant_allows_real_upload_in_the_selected_company(): void
+    {
+        Storage::fake('local');
+        config(['erp.fiscal_certificate_relaxed_validation' => false]);
+        $owner = ErpCompanyMembership::factory()->create(['erp_company_id' => $this->company->id, 'user_id' => $this->actor->id, 'role' => 'owner']);
+        $this->loginAndSelect();
+        $this->postJson('/api/v1/erp/delegations', ['company_id' => $this->company->id, 'account_id' => $this->office->id, 'permissions' => ['erp.fiscal.certificates.store']])->assertCreated();
+        $this->assertDatabaseCount('erp_office_delegations', 2);
+        $this->assertSame('revoked', $this->delegation->fresh()->status);
+        $owner->delete();
+        $this->loginAndSelect();
+        $identity = $this->getJson('/api/v1/me')->assertOk();
+        $identity->assertJsonPath('current_company.id', $this->company->id)->assertJsonPath('current_company.access_kind', 'delegated');
+        $this->assertSame(['erp.fiscal.certificates.store'], $identity->json('current_company.permissions'));
+        $issuer = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id, 'cnpj' => '30288513000100']);
+        $this->postJson('/api/v1/erp/fiscal/certificates', $this->fiscalCertificatePayload($issuer))->assertCreated()
+            ->assertJsonPath('data.erp_establishment_id', $issuer->id)->assertJsonPath('data.cnpj', $issuer->cnpj)->assertJsonPath('data.revision', 1)
+            ->assertJsonMissingPath('data.certificate_content')->assertJsonMissingPath('data.password');
+        $this->assertDatabaseCount('erp_fiscal_certificates', 1);
+        $this->assertDatabaseCount('erp_fiscal_certificate_revisions', 1);
+        $this->getJson('/api/v1/erp/fiscal/certificates')->assertForbidden();
+        $this->patchJson('/api/v1/erp/fiscal/configuration/'.$issuer->id, [])->assertForbidden();
+    }
+
+    #[DataProvider('deniedCertificateGrants')]
+    public function test_certificate_upload_requires_current_exact_grant_office_write_role_and_company_issuer(string $denial, int $status): void
+    {
+        Storage::fake('local');
+        config(['erp.fiscal_certificate_relaxed_validation' => false]);
+        $this->delegation->update(['permission_allowlist' => ['erp.read', 'erp.fiscal.certificates.store']]);
+        $this->loginAndSelect();
+        $issuer = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id, 'cnpj' => '30288513000100']);
+        if ($denial === 'missing-grant') {
+            $this->delegation->update(['permission_allowlist' => ['erp.read']]);
+        } elseif ($denial === 'office-user') {
+            $this->officeMembership->update(['role' => 'user']);
+        } elseif ($denial === 'revoked') {
+            $this->delegation->update(['status' => 'revoked']);
+        } elseif ($denial === 'foreign-establishment') {
+            $issuer = ErpEstablishment::factory()->create(['cnpj' => '30288513000100']);
+        }
+        $identity = $this->getJson('/api/v1/me')->assertOk();
+        if ($denial === 'revoked') {
+            $identity->assertJsonPath('current_company', null);
+        } else {
+            $identity->assertJsonPath('current_company.id', $this->company->id);
+            $this->assertSame($denial === 'foreign-establishment', in_array('erp.fiscal.certificates.store', $identity->json('current_company.permissions'), true));
+        }
+        $response = $this->postJson('/api/v1/erp/fiscal/certificates', $this->fiscalCertificatePayload($issuer))->assertStatus($status);
+        if ($denial === 'foreign-establishment') {
+            $response->assertJsonValidationErrors('erp_establishment_id')->assertJsonCount(1, 'errors');
+        }
+        $this->assertDatabaseCount('erp_fiscal_certificates', 0);
+        $this->assertDatabaseCount('erp_fiscal_certificate_revisions', 0);
+    }
+
+    public static function deniedCertificateGrants(): array
+    {
+        return [['missing-grant', 403], ['office-user', 403], ['revoked', 403], ['foreign-establishment', 422]];
     }
 }

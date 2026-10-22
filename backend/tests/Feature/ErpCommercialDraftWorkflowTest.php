@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Erp\Fiscal\ErpFiscalNumberAllocator;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\ErpCompanyMembership;
@@ -21,10 +22,13 @@ use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\BuildsErpFiscalHarness;
 use Tests\Support\ErpCommercialTestCase;
 
 class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 {
+    use BuildsErpFiscalHarness;
+
     public function test_http_quote_order_sale_preserve_authoritative_lines_without_reserving_stock(): void
     {
         $body = ['erp_establishment_id' => $this->establishment->id, 'lines' => [
@@ -246,20 +250,31 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 
     public function test_fiscal_request_copies_frozen_evidence_after_catalog_and_party_edits(): void
     {
+        $nature = $this->configureFiscalHarness($this->establishment, nextNumber: 17);
+        $this->prepareFiscalVariant($this->variant);
         $this->variant->update(['sale_price' => '12']);
         $this->variant->product->update(['kind' => 'service', 'track_stock' => false, 'ncm' => '12345678']);
-        $contact = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_customer' => true, 'name' => 'Original']);
-        $id = $this->send('sales', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $contact->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1']]])->assertCreated()->json('data.id');
+        $contact = $this->fiscalHarnessCustomer($this->establishment, 'Original');
+        $id = $this->send('sales', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $contact->id, 'erp_operation_nature_id' => $nature->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1']]])->assertCreated()->json('data.id');
         $this->variant->update(['sale_price' => '99']);
         $contact->update(['name' => 'Changed']);
         $this->send('sales/'.$id.'/post', ['draft_revision' => 1])->assertOk();
         $sale = ErpSale::findOrFail($id);
         $frozen = $sale->commercial_snapshot;
+        $source = $this->fiscalSourceFromAcceptedSale($sale);
         $this->variant->product->update(['ncm' => null, 'status' => 'archived']);
         $contact->update(['status' => 'archived']);
         $this->company->update(['name' => 'Changed company']);
-        $document = $this->send('fiscal/documents', ['erp_sale_id' => $id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'number' => 17, 'idempotency_key' => 'frozen-fiscal'])->assertCreated()->json('data.id');
+        $body = ['erp_sale_id' => $id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'number' => 17, 'idempotency_key' => 'frozen-fiscal'];
+        $this->send('fiscal/documents', $body)->assertUnprocessable()->assertJsonValidationErrors('source');
+        $divergent = $source;
+        $divergent['items'][0]['ncm'] = '87654321';
+        $this->send('fiscal/documents', $body + ['source' => $divergent])->assertUnprocessable()->assertJsonValidationErrors('source.items.0');
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $document = $this->send('fiscal/documents', $body + ['source' => $source])->assertCreated()->json('data.id');
         $copy = ErpFiscalDocument::findOrFail($document)->commercial_snapshot;
+        $this->assertSame($frozen, $copy);
         $this->assertSame($frozen['lines'], $copy['lines']);
         $this->assertSame('Original', $copy['party']['name']);
         $this->assertSame('12345678', $copy['lines'][0]['product_snapshot']['product']['ncm']);
@@ -284,6 +299,23 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
         $member->update(['role' => 'owner', 'action_permissions' => ['*']]);
         $this->send('sales', $this->serviceBody(['erp_establishment_id' => $foreign->id]))->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
         $this->assertDatabaseCount('erp_sales', 1);
+    }
+
+    public function test_fiscal_source_cannot_adopt_a_commercial_sale_that_was_not_posted(): void
+    {
+        $nature = $this->configureFiscalHarness($this->establishment, nextNumber: 17);
+        $accepted = $this->postFiscalHarnessSale($this->establishment, $nature, 'source-provenance');
+        $source = $this->fiscalSourceFromAcceptedSale($accepted);
+        $draft = $this->send('sales', $this->serviceBody())->assertCreated()->json('data.id');
+        $before = ErpSale::findOrFail($draft)->getAttributes();
+        $this->send('fiscal/documents', ['erp_sale_id' => $draft, 'erp_establishment_id' => $this->establishment->id,
+            'model' => '55', 'number' => 17, 'idempotency_key' => 'unposted-fiscal-source', 'source' => $source])
+            ->assertUnprocessable()->assertJsonValidationErrors('erp_sale_id');
+        $this->assertSame($before, ErpSale::findOrFail($draft)->getAttributes());
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $this->assertDatabaseCount('erp_obligations', 1);
+        $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
     }
 
     public function test_final_session_fence_failure_rolls_back_sale_finance_and_receipt(): void

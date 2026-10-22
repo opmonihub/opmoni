@@ -12,10 +12,12 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\BuildsErpFiscalHarness;
 use Tests\TestCase;
 
 class ErpLegacyPortTest extends TestCase
 {
+    use BuildsErpFiscalHarness;
     use RefreshDatabase;
 
     private const DEST_CNPJ = '11222333000181';
@@ -54,7 +56,7 @@ class ErpLegacyPortTest extends TestCase
             'erp_plan_id' => $plan->id,
             'status' => 'active',
         ]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $companyCnpj]);
         $this->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
             ->assertOk();
@@ -77,13 +79,16 @@ class ErpLegacyPortTest extends TestCase
 <?xml version="1.0" encoding="UTF-8"?>
 <nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
   <NFe>
-    <infNFe Id="NFe35251030288513000100550010000000011000000012" versao="4.00">
+    <infNFe Id="NFe35251030288513000100550010000000011000000016" versao="4.00">
       <ide>
         <cUF>35</cUF>
         <natOp>Venda</natOp>
         <mod>55</mod>
         <serie>1</serie>
         <nNF>1</nNF>
+        <tpEmis>1</tpEmis>
+        <cNF>00000001</cNF>
+        <cDV>6</cDV>
         <dhEmi>2025-10-01T10:00:00-03:00</dhEmi>
         <tpNF>1</tpNF>
         <idDest>1</idDest>
@@ -259,7 +264,7 @@ XML;
         $parser = new LegacyNfeXmlParser;
         $parsed = $parser->parse($this->sampleNfeXml());
 
-        $this->assertSame('35251030288513000100550010000000011000000012', $parsed['chave']);
+        $this->assertSame('35251030288513000100550010000000011000000016', $parsed['chave']);
         $this->assertSame('1', $parsed['ide']['nNF']);
         $this->assertSame('30.288.513/0001-00', $parsed['emit']['cpf_cnpj']);
         $this->assertSame('11.222.333/0001-81', $parsed['dest']['cpf_cnpj']);
@@ -285,7 +290,7 @@ XML;
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $ctx['establishment']->id, 'xml' => $this->sampleNfeXml()])
             ->assertOk()
-            ->assertJsonPath('data.chave', '35251030288513000100550010000000011000000012')
+            ->assertJsonPath('data.chave', '35251030288513000100550010000000011000000016')
             ->assertJsonPath('data.emit.cpf_cnpj', '30.288.513/0001-00')
             ->assertJsonPath('data.dest.cpf_cnpj', '11.222.333/0001-81')
             ->assertJsonPath('data.det.0.CFOP', '5102')
@@ -300,16 +305,41 @@ XML;
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $ctx['establishment']->id, 'xml' => $this->sampleNfeXml()])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'validation_error');
+            ->assertJsonPath('code', 'validation_error')
+            ->assertJsonValidationErrors('dest.CNPJ')
+            ->assertJsonCount(1, 'errors');
+        $this->assertDatabaseCount('erp_purchases', 0);
     }
 
-    public function test_fiscal_document_store_generates_access_key_via_legacy_engine(): void
+    public function test_purchase_xml_preview_rejects_invalid_key_and_divergent_identity_without_purchase_effects(): void
+    {
+        $ctx = $this->ownerContext();
+        $headers = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        foreach ([
+            [str_replace('NFe35251030288513000100550010000000011000000016', 'NFe35251030288513000100550010000000011000000012', $this->sampleNfeXml()), 'chave'],
+            [str_replace('<nNF>1</nNF>', '<nNF>2</nNF>', $this->sampleNfeXml()), 'ide.nNF'],
+        ] as [$xml, $field]) {
+            $this->withHeaders($headers)->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $ctx['establishment']->id, 'xml' => $xml])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->assertDatabaseCount('erp_purchases', 0);
+        $this->assertDatabaseCount('erp_purchase_lines', 0);
+        $this->assertDatabaseCount('erp_stock_movements', 0);
+        $this->assertDatabaseCount('erp_obligations', 0);
+    }
+
+    public function test_current_fiscal_payload_access_key_is_compatible_with_legacy_engine_dv(): void
     {
         $ctx = $this->ownerContext('30288513000100');
+        $nature = $this->configureFiscalHarness($ctx['establishment'], nextNumber: 42);
+        $sale = $this->postFiscalHarnessSale($ctx['establishment'], $nature, 'legacy-key-preview');
+        $source = $this->fiscalSourceFromAcceptedSale($sale);
 
         $response = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/fiscal/documents', [
                 'erp_establishment_id' => $ctx['establishment']->id,
+                'erp_sale_id' => $sale->id,
+                'source' => $source,
                 'model' => '55',
                 'number' => 42,
                 'uf' => 'SP',
@@ -321,6 +351,10 @@ XML;
         $accessKey = $response->json('data.access_key');
         $this->assertIsString($accessKey);
         $this->assertSame(44, strlen($accessKey));
+        $this->assertSame('30288513000100', substr($accessKey, 6, 14));
+        $this->assertSame('55', substr($accessKey, 20, 2));
+        $this->assertSame('001', substr($accessKey, 22, 3));
+        $this->assertSame('000000042', substr($accessKey, 25, 9));
         $this->assertSame(
             (new LegacyFiscalEngine)->calculaDV(substr($accessKey, 0, 43)),
             substr($accessKey, -1),

@@ -27,10 +27,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Support\BuildsErpFiscalHarness;
 use Tests\TestCase;
 
 class ErpReviewRegressionTest extends TestCase
 {
+    use BuildsErpFiscalHarness;
     use RefreshDatabase;
 
     private ?ErpContact $purchaseSupplier = null;
@@ -71,11 +73,11 @@ class ErpReviewRegressionTest extends TestCase
         return $this->commercialPost('/api/v1/erp/purchases', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $this->manualPurchaseSupplier()->id, 'lines' => [[...['erp_product_variant_id' => $this->variant->id, 'quantity' => '10', 'unit_cost' => '5'], ...$line]]])->assertCreated()->json('data.id');
     }
 
-    private function postedSale(): int
+    private function postedSale(array $extra = []): int
     {
         $purchase = $this->purchase();
         $this->commercialPost("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
-        $sale = $this->commercialPost('/api/v1/erp/sales', ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'S-1', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
+        $sale = $this->commercialPost('/api/v1/erp/sales', $extra + ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'S-1', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
         $this->commercialPost("/api/v1/erp/sales/{$sale}/post")->assertOk();
 
         return $sale;
@@ -199,9 +201,20 @@ class ErpReviewRegressionTest extends TestCase
 
     public function test_fiscal_document_copies_posted_sale_snapshot(): void
     {
-        $sale = $this->postedSale();
-        $id = $this->commercialPost('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $this->establishment->id, 'erp_sale_id' => $sale, 'model' => '55', 'number' => 1, 'idempotency_key' => 'snapshot'])->assertCreated()->json('data.id');
-        $this->assertSame('20.0000', ErpFiscalDocument::query()->findOrFail($id)->commercial_snapshot['total_amount'] ?? null);
+        $nature = $this->configureFiscalHarness($this->establishment);
+        $this->prepareFiscalVariant($this->variant);
+        $customer = $this->fiscalHarnessCustomer($this->establishment);
+        $sale = $this->postedSale(['erp_contact_id' => $customer->id, 'erp_operation_nature_id' => $nature->id]);
+        $accepted = ErpSale::findOrFail($sale);
+        $frozen = $accepted->commercial_snapshot;
+        $source = $this->fiscalSourceFromAcceptedSale($accepted);
+        $this->variant->product->update(['ncm' => null, 'status' => 'archived']);
+        $customer->update(['name' => 'Changed recipient', 'status' => 'archived']);
+        $id = $this->commercialPost('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $this->establishment->id, 'erp_sale_id' => $sale, 'model' => '55', 'number' => 1, 'idempotency_key' => 'snapshot', 'source' => $source])->assertCreated()->json('data.id');
+        $copy = ErpFiscalDocument::query()->findOrFail($id)->commercial_snapshot;
+        $this->assertSame('20.0000', $copy['totals']['total_amount']);
+        $this->assertSame($frozen, $copy);
+        $this->assertSame($frozen, $accepted->fresh()->commercial_snapshot);
     }
 
     public function test_production_invalidation_cannot_dispatch_when_gate_disabled(): void
@@ -209,8 +222,11 @@ class ErpReviewRegressionTest extends TestCase
         $provider = $this->mock(ErpFiscalProvider::class);
         $provider->shouldReceive('submitInvalidation')->never()->andReturn(ErpFiscalProviderResult::eventRejected('Blocked'));
         config(['erp.fiscal_production_enabled' => false, 'erp.fiscal_canary_scope' => []]);
-        $id = $this->commercialPost('/api/v1/erp/fiscal/invalidations', ['erp_establishment_id' => $this->establishment->id, 'model' => '55', 'environment' => 'production', 'series' => 1, 'number_from' => 2, 'number_to' => 2, 'justification' => 'Unused document number for correction', 'idempotency_key' => 'production-invalidation'])->assertCreated()->json('data.id');
+        $this->configureFiscalHarness($this->establishment, 'production', 2);
+        $id = $this->commercialPost('/api/v1/erp/fiscal/invalidations', ['erp_establishment_id' => $this->establishment->id, 'model' => '55', 'environment' => 'production', 'year' => (int) now()->format('Y'), 'series' => 1, 'number_from' => 2, 'number_to' => 2, 'justification' => 'Unused document number for correction', 'idempotency_key' => 'production-invalidation'])->assertCreated()->json('data.id');
         $this->commercialPost("/api/v1/erp/fiscal/invalidations/{$id}/submit")->assertForbidden();
+        $this->assertSame('queued', ErpFiscalInvalidation::findOrFail($id)->status);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 1);
     }
 
     public function test_purchase_unit_conversion_changes_stock_and_unit_cost(): void
@@ -246,8 +262,20 @@ class ErpReviewRegressionTest extends TestCase
 
     public function test_pdf_is_unavailable_until_a_real_renderer_exists(): void
     {
-        $document = ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'number' => 9, 'idempotency_key' => 'pdf', 'status' => 'authorized']);
+        $document = $this->currentFiscalHarnessDocument('homologation', 9, 'pdf');
+        $this->publishSyntheticFiscalEvidence($document);
+        $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id)->assertOk()->assertJsonPath('data.artifact_ready', true);
         $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id.'/pdf')->assertStatus(503);
+        $this->assertSame('authorized', $document->fresh()->status);
+    }
+
+    public function test_legacy_authorized_document_without_evidence_cannot_reach_pdf_renderer(): void
+    {
+        $document = ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'number' => 9, 'idempotency_key' => 'pdf', 'status' => 'authorized']);
+        $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id.'/pdf')->assertConflict();
+        $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id)->assertOk()->assertJsonPath('data.artifact_ready', false)->assertJsonPath('data.legacy_attention_required', true);
+        $this->assertSame('authorized', $document->fresh()->status);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
     }
 
     public function test_default_provider_cannot_fabricate_authorization(): void
@@ -337,10 +365,40 @@ class ErpReviewRegressionTest extends TestCase
         $provider = $this->mock(ErpFiscalProvider::class);
         $provider->shouldReceive('submitEvent')->never()->andReturn(ErpFiscalProviderResult::eventRejected('Blocked'));
         config(['erp.fiscal_production_enabled' => false]);
-        $document = ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'environment' => 'production', 'number' => 100, 'idempotency_key' => 'event-production', 'status' => 'authorized']);
+        $document = $this->currentFiscalHarnessDocument('production', 100, 'event-production');
+        $this->publishSyntheticFiscalEvidence($document);
+        $original = $document->fresh()->getAttributes();
         $event = $this->commercialPost('/api/v1/erp/fiscal/events', ['erp_fiscal_document_id' => $document->id, 'event_type' => 'cancel', 'idempotency_key' => 'event-cancel', 'justification' => 'Cancel production document'])->assertCreated()->json('data.id');
         $this->commercialPost("/api/v1/erp/fiscal/events/{$event}/submit")->assertForbidden();
         $this->assertSame('authorized', $document->fresh()->status);
+        $this->assertSame($original, $document->fresh()->getAttributes());
+        $this->assertSame('queued', ErpFiscalEvent::findOrFail($event)->status);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 3);
+    }
+
+    public function test_legacy_production_document_without_original_draft_cannot_be_promoted_by_an_event(): void
+    {
+        config(['erp.fiscal_production_enabled' => false]);
+        $this->configureFiscalHarness($this->establishment, 'production', 100);
+        $legacy = ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id,
+            'model' => '55', 'environment' => 'production', 'number' => 99, 'idempotency_key' => 'legacy-production', 'status' => 'authorized']);
+        $original = $legacy->fresh()->getAttributes();
+        $this->commercialPost('/api/v1/erp/fiscal/events', ['erp_fiscal_document_id' => $legacy->id, 'event_type' => 'cancel', 'idempotency_key' => 'legacy-cancel', 'justification' => 'Legacy document requires reconciliation'])->assertConflict();
+        $this->assertSame($original, $legacy->fresh()->getAttributes());
+        $this->assertDatabaseCount('erp_fiscal_events', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+    }
+
+    private function currentFiscalHarnessDocument(string $environment, int $number, string $key): ErpFiscalDocument
+    {
+        $nature = $this->configureFiscalHarness($this->establishment, $environment, $number);
+        $sale = $this->postFiscalHarnessSale($this->establishment, $nature, $key);
+        $id = $this->commercialPost('/api/v1/erp/fiscal/documents', [
+            'erp_establishment_id' => $this->establishment->id, 'erp_sale_id' => $sale->id, 'model' => '55', 'environment' => $environment,
+            'number' => $number, 'idempotency_key' => $key, 'source' => $this->fiscalSourceFromAcceptedSale($sale),
+        ])->assertCreated()->json('data.id');
+
+        return ErpFiscalDocument::findOrFail($id);
     }
 
     public function test_adjustment_replay_reuses_operation_without_second_stock_effect(): void
