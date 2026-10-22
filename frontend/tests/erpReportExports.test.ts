@@ -16,6 +16,7 @@ import * as erp from '../shared/utils/erp.ts'
 import * as ingress from '../shared/utils/ingress.ts'
 import type { Identity } from '../shared/types/access.ts'
 import * as recovery from '../shared/utils/erpOperationRecovery.ts'
+import * as admission from '../app/utils/accessApiAdmissionQueue.ts'
 
 const filters = { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: 7 }
 const report = { category: 'sales', filters, totals: { document_count: 2, posted_total: '9007199254740993.1234' } }
@@ -340,12 +341,17 @@ describe('private report exports', () => {
     it(`does not dispatch an old POST after delayed real CSRF and ${invalidation}`, async (t) => {
       const csrfSeen = deferred()
       let releaseCsrf!: () => void
+      let csrfRequests = 0
       const posts: { company: string | undefined, body: string }[] = []
       const server = createServer((request, response) => {
         response.setHeader('Content-Type', 'application/json')
         if (request.url === '/api/v1/csrf') {
-          releaseCsrf = () => response.end(JSON.stringify({ csrf_token: 'test-csrf' }))
-          csrfSeen.resolve(null)
+          csrfRequests++
+          const respond = () => response.end(JSON.stringify({ csrf_token: 'test-csrf' }))
+          if (csrfRequests === 1) {
+            releaseCsrf = respond
+            csrfSeen.resolve(null)
+          } else respond()
           return
         }
         let body = ''
@@ -371,7 +377,9 @@ describe('private report exports', () => {
       const company = { id: 1, name: 'Company one', status: 'active', access_kind: 'direct', role: 'owner', permissions: ['*'], delegated_office_id: null } as const
       const identity = Vue.ref<Identity>({ id: 1, name: 'Actor', email: 'actor@example.test', is_super_admin: false, accounts: [], current_account: null, companies: [{ ...company, permissions: ['*'] }], current_company: { ...company, permissions: ['*'] } })
       const states = new Map<string, Vue.Ref<unknown>>([['access-user', identity]])
+      const nuxtApp = {}
       const bindings = {
+        useNuxtApp: () => nuxtApp,
         useRequestFetch: () => request,
         useRequestEvent: () => null,
         useState: (key: string, initial: () => unknown) => {
@@ -382,7 +390,7 @@ describe('private report exports', () => {
       const source = readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8').replaceAll('import.meta.server', 'false')
       const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
       const module: { useAccessApi?: () => { api: TestApi } } = {}
-      const imports: Record<string, unknown> = { '#shared/utils/business': business, '#shared/utils/erp': erp, '#shared/utils/ingress': ingress }
+      const imports: Record<string, unknown> = { '#shared/utils/business': business, '#shared/utils/erp': erp, '#shared/utils/ingress': ingress, '~/utils/accessApiAdmissionQueue': admission }
       new Function('require', 'exports', ...Object.keys(bindings), output)((path: string) => imports[path], module, ...Object.values(bindings))
       const transport = module.useAccessApi!()
       const app = view('ErpReportExportPanel', transport.api, { filters: { date_from: '2026-10-01', date_to: '2026-10-31', erp_establishment_id: null } })
@@ -397,10 +405,12 @@ describe('private report exports', () => {
       } else app.stop()
       releaseCsrf()
       await pending
+      assert.equal(csrfRequests, 1, 'The old intent only bootstrapped CSRF once')
       assert.deepEqual(posts, [], 'No old intent may reach the real HTTP server under the next company')
       assert.equal(app.state.exportRecord.value, null)
       if (invalidation === 'company switch') {
         await app.state.createExport()
+        assert.equal(csrfRequests, 2, 'The current company bootstraps a fresh token after the stale response')
         assert.equal(posts.length, 1, 'The current context gets a fresh, usable cancellation signal')
         assert.equal(posts[0]?.company, '2')
         assert.equal(JSON.parse(posts[0]!.body).erp_establishment_id, null)

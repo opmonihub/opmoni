@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import test from 'node:test'
 import ts from 'typescript'
-import { createFetch } from '../node_modules/.pnpm/ofetch@1.5.1/node_modules/ofetch/dist/index.mjs'
 import * as Vue from 'vue'
 import { createAccessApiAdmissionQueue, snapshotAccessApiBody, snapshotAccessApiQuery, useAccessApiAdmissionQueue } from '../app/utils/accessApiAdmissionQueue.ts'
 import type { Identity } from '../shared/types/access.ts'
 import * as business from '../shared/utils/business.ts'
 import * as erp from '../shared/utils/erp.ts'
 import * as ingress from '../shared/utils/ingress.ts'
+
+const require = createRequire(import.meta.resolve('nuxt/package.json'))
+const { createFetch } = require('ofetch') as typeof import('ofetch')
 
 function deferred<T>() {
   let resolve!: (value: T) => void
