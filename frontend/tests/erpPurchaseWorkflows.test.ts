@@ -89,7 +89,7 @@ function realPurchaseRecovery() {
   return compileModule(script.content, { vue: Vue }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
 }
 
-function mountPurchaseWorkspace(initialHash = '#purchases') {
+function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Record<string, unknown>) {
   const route = Vue.reactive({ path: '/erp/compras', query: {}, hash: initialHash })
   const replacements: Array<Record<string, unknown>> = []
   const authorityGeneration = Vue.ref(0)
@@ -100,12 +100,13 @@ function mountPurchaseWorkspace(initialHash = '#purchases') {
   const state: Record<string, unknown> = {
     purchases: Vue.ref([]), returns: Vue.ref([]), meta: Vue.ref({ current_page: 1, last_page: 1, per_page: 15, total: 0 }), returnMeta: Vue.ref({ current_page: 1, last_page: 1, per_page: 15, total: 0 }),
     suppliers: Vue.ref([]), establishments: Vue.ref([]), variants: Vue.ref([]), units: Vue.ref([]), selected: Vue.ref(null), selectedReturn: Vue.ref(null), previewState: Vue.ref(null),
-    listLoading: Vue.ref(false), returnsLoading: Vue.ref(false), referencesLoading: Vue.ref(false), mutating: Vue.ref(false), loadingDetail: Vue.ref(false), pageError: Vue.ref(''), referenceError: Vue.ref(''), mutationError, detailError: Vue.ref(''), fieldErrors: Vue.ref({}),
+    listLoading: Vue.ref(false), returnsLoading: Vue.ref(false), referencesLoading: Vue.ref(false), mutating: Vue.ref(false), loadingDetail: Vue.ref(false), listError: Vue.ref(''), returnListError: Vue.ref(''), referenceError: Vue.ref(''), mutationError, detailError: Vue.ref(''), fieldErrors: Vue.ref({}),
     selectedOperation: Vue.ref(null), needsReconciliation: Vue.ref(false), canRetryExact: Vue.ref(false), staleRevisionRefreshed: Vue.ref(null), resolvedOperation: Vue.ref(null), authorityGeneration, filters: Vue.reactive({ status: '', search: '', page: 1, per_page: 15 }), returnFilters: Vue.reactive({ status: '', page: 1, per_page: 15 }),
     allowed: () => true, isPurchaseConfirmedPosted: () => false,
     load: async () => { loads.push('purchases') }, loadReturns: async () => { loads.push('returns') }, loadReferences: async () => {}, inspect: async () => null, closeDetail: () => {}, saveDraft: async () => { const result = draftSaveResults.shift() ?? null; if (!result) mutationError.value = 'A conexão caiu; confira a operação.'; return result },
     postReceipt: async () => null, inspectXml: async () => null, refreshXmlPreview: async () => null, cancelXmlPreview: () => {}, confirmXml: async () => null, createReturn: async () => null, inspectReturn: async () => null, postReturn: async () => null, reconcile: async () => {}, retryExact: async () => null, clearOperationNotice: () => { mutationError.value = '' }
   }
+  Object.assign(state, workspaceState)
   const file = readFileSync(new URL('../app/components/erp/ErpPurchaseWorkspace.vue', import.meta.url), 'utf8')
   const { descriptor } = parse(file)
   const script = compileScript(descriptor, { id: 'ErpPurchaseWorkspace', inlineTemplate: true })
@@ -124,11 +125,13 @@ function mountPurchaseWorkspace(initialHash = '#purchases') {
     UButton: { props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, onClick: context.attrs.onClick }, context.slots.default?.() ?? String(props.label ?? '')) },
     UModal: { props: ['open', 'title'], setup: (props, context) => () => props.open ? Vue.h('section', { 'data-modal': props.title }, context.slots.body?.()) : Vue.createCommentVNode() },
     UNavigationMenu: { setup: (_props, context) => () => { navItems.value = context.attrs.items as Array<Array<Record<string, unknown>>>; return Vue.h('nav') } },
-    UTable: { props: ['data', 'columns'], setup: (props, context) => () => Vue.h('div', {}, (props.data as Array<Record<string, unknown>> ?? []).flatMap((original) => {
-      const row = { original }
-      return [context.slots['actions-cell']?.({ row }) ?? null, context.slots['amount-cell']?.({ row }) ?? null]
-    })) },
-    UAlert: { props: ['title'], setup: (props, _context) => () => Vue.h('aside', { 'data-alert': props.title }, String(props.title ?? '')) },
+    UTable: { props: ['data', 'columns', 'empty'], setup: (props, context) => () => Vue.h('div', {}, (props.data as Array<Record<string, unknown>> ?? []).length === 0
+      ? String(props.empty ?? '')
+      : (props.data as Array<Record<string, unknown>>).flatMap((original) => {
+          const row = { original }
+          return [context.slots['actions-cell']?.({ row }) ?? null, context.slots['amount-cell']?.({ row }) ?? null]
+        })) },
+    UAlert: { props: ['title', 'description'], setup: props => () => Vue.h('aside', { 'data-alert': props.title }, `${props.title ?? ''}${props.description ?? ''}`) },
     UBadge: { setup: (_props, context) => () => Vue.h('span', {}, context.slots.default?.()) },
     ErpPurchaseForm: {
       props: ['modelValue', 'operationError'],
@@ -217,6 +220,175 @@ function installSessionStorage() {
     restore() { if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous); else Reflect.deleteProperty(globalThis, 'sessionStorage') }
   }
 }
+
+describe('resource-owned purchase list read errors', () => {
+  for (const resource of ['purchases', 'returns'] as const) {
+    it(`keeps the ${resource} failure visible through an unrelated pending and successful read`, async (t) => {
+      const unrelated = deferred<unknown>()
+      const recovery = deferred<unknown>()
+      const failure = resource === 'returns' ? 'Devoluções indisponíveis.' : 'Compras indisponíveis.'
+      const ownPath = resource === 'returns' ? '/erp/purchase-returns?' : '/erp/purchases?'
+      const paths: string[] = []
+      let ownReads = 0
+      const workspace = createWorkspace(async (path) => {
+        paths.push(path)
+        if (!path.startsWith(ownPath)) return unrelated.promise
+        if (++ownReads === 1) throw { statusCode: 503, data: { message: failure } }
+        return recovery.promise
+      })
+      t.after(() => workspace.stop())
+      const app = mountPurchaseWorkspace(`#${resource}`, workspace.state)
+      t.after(() => app.app.unmount())
+      await Vue.nextTick()
+      await Vue.nextTick()
+      assert.deepEqual(app.renderErrors, [])
+      assert.ok(app.textContent(app.root).includes(failure), 'the actual initial failure is visible')
+      assert.equal(app.textContent(app.root).includes('Nenhuma'), false, 'initial failure is not a successful empty list')
+      assert.equal(workspace.state[resource === 'returns' ? 'returnMeta' : 'meta'].value, null)
+      const siblingRead = resource === 'returns' ? workspace.state.load() : workspace.state.loadReturns()
+      await Vue.nextTick()
+      assert.ok(app.textContent(app.root).includes(failure), 'an unrelated pending read must not hide the failure')
+      unrelated.resolve({ data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } })
+      await siblingRead
+      await Vue.nextTick()
+      assert.ok(app.textContent(app.root).includes(failure), 'an unrelated success is not resource recovery')
+      assert.equal(ownReads, 1, 'the sibling retry does not force another read of the failed resource')
+      assert.equal(paths.length, 2)
+      const retry = resource === 'returns' ? workspace.state.loadReturns() : workspace.state.load()
+      await Vue.nextTick()
+      assert.ok(app.textContent(app.root).includes(failure), 'a pending same-resource retry is not yet recovery')
+      recovery.resolve({ data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } })
+      await retry
+      await Vue.nextTick()
+      assert.equal(app.textContent(app.root).includes(failure), false, 'only confirmed same-resource success clears the failure')
+      assert.deepEqual(app.renderErrors, [])
+    })
+
+    it(`retains the last confirmed ${resource} snapshot and marks it stale after refresh failure`, async (t) => {
+      const row = { id: 41, erp_purchase_id: 31, status: 'posted', currency: 'BRL', total_amount: '123.4567', document_no: 'NF-41' }
+      const page = { current_page: 2, last_page: 3, per_page: 15, total: 31 }
+      const ownPath = resource === 'returns' ? '/erp/purchase-returns?' : '/erp/purchases?'
+      let reads = 0
+      const workspace = createWorkspace(async (path) => {
+        if (!path.startsWith(ownPath)) return { data: [], meta: { ...page, current_page: 1, last_page: 1, total: 0 } }
+        if (++reads === 1) return { data: [row], meta: page }
+        throw { statusCode: 503, data: { message: 'Atualização indisponível.' } }
+      })
+      t.after(() => workspace.stop())
+      const read = resource === 'returns' ? workspace.state.loadReturns : workspace.state.load
+      await read()
+      const app = mountPurchaseWorkspace(`#${resource}`, workspace.state)
+      t.after(() => app.app.unmount())
+      await Vue.nextTick()
+      await Vue.nextTick()
+      await (resource === 'returns' ? workspace.state.load() : workspace.state.loadReturns())
+      await Vue.nextTick()
+      assert.deepEqual(workspace.state[resource].value, [row])
+      assert.deepEqual(workspace.state[resource === 'returns' ? 'returnMeta' : 'meta'].value, page)
+      const text = app.textContent(app.root)
+      assert.ok(text.includes('BRL 123,4567'), 'the actual SFC retains the last confirmed row')
+      assert.equal(text.split('Atualização indisponível.').length - 1, 1, 'the relevant error is rendered once')
+      assert.match(text, /última lista confirmada/i)
+      assert.deepEqual(app.renderErrors, [])
+    })
+
+    for (const lateResult of ['success', 'error'] as const) {
+      it(`fences superseded ${resource} ${lateResult} without replacing the current error or snapshot`, async (t) => {
+        const old = deferred<unknown>()
+        let reads = 0
+        const workspace = createWorkspace(async () => {
+          if (++reads === 1) return old.promise
+          if (lateResult === 'success') throw { statusCode: 503, data: { message: 'Falha atual.' } }
+          return { data: [{ id: 42 }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+        })
+        t.after(() => workspace.stop())
+        const read = resource === 'returns' ? workspace.state.loadReturns : workspace.state.load
+        const oldRead = read()
+        await read()
+        const error = resource === 'returns' ? workspace.state.returnListError : workspace.state.listError
+        assert.equal(error.value, lateResult === 'success' ? 'Falha atual.' : '')
+        if (lateResult === 'success') old.resolve({ data: [{ id: 1 }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } })
+        else old.reject({ statusCode: 503, data: { message: 'Falha antiga.' } })
+        await oldRead
+        assert.equal(error.value, lateResult === 'success' ? 'Falha atual.' : '')
+        assert.deepEqual(workspace.state[resource].value, lateResult === 'success' ? [] : [{ id: 42 }])
+        assert.equal(workspace.state[resource === 'returns' ? 'returnsLoading' : 'listLoading'].value, false)
+      })
+    }
+  }
+
+  for (const invalidation of ['company', 'actor', 'session'] as const) {
+    for (const lateResult of ['success', 'error'] as const) {
+      it(`clears both lists and errors on ${invalidation} invalidation and fences late ${lateResult}`, async (t) => {
+        const latePurchases = deferred<unknown>()
+        const lateReturns = deferred<unknown>()
+        const counts = { purchases: 0, returns: 0 }
+        const workspace = createWorkspace(async (path) => {
+          if (path === '/erp/purchases/99') throw { statusCode: 401 }
+          if (!path.startsWith('/erp/purchases?') && !path.startsWith('/erp/purchase-returns?')) return { data: [] }
+          const resource = path.startsWith('/erp/purchases?') ? 'purchases' : 'returns'
+          const count = ++counts[resource]
+          if (count === 1) return { data: [{ id: resource === 'purchases' ? 41 : 90 }], meta: { current_page: 1, last_page: 1, per_page: 15, total: 1 } }
+          if (count === 2) throw { statusCode: 503, data: { message: `${resource} indisponível` } }
+          if (count > 3) return deferred<unknown>().promise
+          return resource === 'purchases' ? latePurchases.promise : lateReturns.promise
+        })
+        t.after(() => workspace.stop())
+        await workspace.state.load()
+        await workspace.state.loadReturns()
+        await workspace.state.load()
+        await workspace.state.loadReturns()
+        assert.ok(workspace.state.listError.value)
+        assert.ok(workspace.state.returnListError.value)
+        const oldPurchaseRead = workspace.state.load()
+        const oldReturnRead = workspace.state.loadReturns()
+        if (invalidation === 'company') workspace.currentCompany.value = { id: 8, permissions: [], role: 'owner' }
+        else if (invalidation === 'actor') workspace.user.value = { id: 92 }
+        else await workspace.state.inspect(99)
+        for (const field of ['purchases', 'returns']) assert.deepEqual(workspace.state[field].value, [])
+        for (const field of ['meta', 'returnMeta']) assert.equal(workspace.state[field].value, null)
+        for (const field of ['listError', 'returnListError']) assert.equal(workspace.state[field].value, '')
+        if (lateResult === 'success') {
+          latePurchases.resolve({ data: [{ id: 1 }] })
+          lateReturns.resolve({ data: [{ id: 2 }] })
+        } else {
+          latePurchases.reject({ statusCode: 503, data: { message: 'Falha antiga de compras' } })
+          lateReturns.reject({ statusCode: 503, data: { message: 'Falha antiga de devoluções' } })
+        }
+        await Promise.all([oldPurchaseRead, oldReturnRead])
+        for (const field of ['purchases', 'returns']) assert.deepEqual(workspace.state[field].value, [])
+        for (const field of ['meta', 'returnMeta']) assert.equal(workspace.state[field].value, null)
+        for (const field of ['listError', 'returnListError']) assert.equal(workspace.state[field].value, '')
+      })
+    }
+  }
+
+  it('routes one relevant alert to each list area while preserving XML operation failures', async (t) => {
+    const app = mountPurchaseWorkspace()
+    t.after(() => app.app.unmount())
+    ;(app.state.listError as Vue.Ref<string>).value = 'Falha de compras.'
+    ;(app.state.returnListError as Vue.Ref<string>).value = 'Falha de devoluções.'
+    for (const [hash, relevant, irrelevant] of [
+      ['#purchases', 'Falha de compras.', 'Falha de devoluções.'],
+      ['#returns', 'Falha de devoluções.', 'Falha de compras.'],
+      ['#purchases', 'Falha de compras.', 'Falha de devoluções.']
+    ]) {
+      app.route.hash = hash!
+      await Vue.nextTick()
+      const text = app.textContent(app.root)
+      assert.equal(text.split(relevant!).length - 1, 1)
+      assert.equal(text.includes(irrelevant!), false)
+    }
+    app.route.hash = '#xml-preview'
+    app.mutationError.value = 'Falha ao atualizar prévia XML.'
+    await Vue.nextTick()
+    const text = app.textContent(app.root)
+    assert.equal(text.includes('Falha de compras.'), false)
+    assert.equal(text.includes('Falha de devoluções.'), false)
+    assert.ok(text.includes('Falha ao atualizar prévia XML.'))
+    assert.deepEqual(app.renderErrors, [])
+  })
+})
 
 describe('purchase decimal and source helpers', () => {
   it('keeps four-place money and quantity strings exact through conversion and line totals', () => {

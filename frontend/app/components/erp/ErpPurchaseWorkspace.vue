@@ -498,7 +498,12 @@ onMounted(() => {
         />
       </div>
     </template>
-    <UAlert v-if="purchase.pageError.value && selectedArea !== 'xml-preview'" color="error" :title="purchase.pageError.value" />
+    <UAlert
+      v-if="selectedArea === 'purchases' && purchase.listError.value"
+      color="error"
+      :title="purchase.listError.value"
+      :description="purchase.meta.value ? 'A atualização falhou. Exibindo a última lista confirmada.' : 'A lista ainda não foi carregada com sucesso.'"
+    />
     <UAlert v-if="purchase.referenceError.value" color="warning" :title="purchase.referenceError.value">
       <template #actions>
         <UButton
@@ -608,7 +613,6 @@ onMounted(() => {
       <h2 class="font-semibold text-highlighted">
         Conferir documento fiscal de entrada
       </h2>
-      <UAlert v-if="purchase.pageError.value" color="error" :title="purchase.pageError.value" />
       <ErpPurchaseXmlPreview
         v-model="purchase.previewState.value"
         v-model:establishment-id="xmlEstablishmentId"
@@ -628,7 +632,12 @@ onMounted(() => {
     </section>
 
     <section v-if="selectedArea === 'returns'" class="space-y-4">
-      <UAlert v-if="purchase.pageError.value" color="error" :title="purchase.pageError.value" />
+      <UAlert
+        v-if="purchase.returnListError.value"
+        color="error"
+        :title="purchase.returnListError.value"
+        :description="purchase.returnMeta.value ? 'A atualização falhou. Exibindo a última lista confirmada.' : 'A lista ainda não foi carregada com sucesso.'"
+      />
       <div class="overflow-hidden rounded-lg border border-default">
         <UTable
           :data="purchase.returns.value"

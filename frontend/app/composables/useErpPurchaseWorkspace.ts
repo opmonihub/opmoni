@@ -67,7 +67,8 @@ export function useErpPurchaseWorkspace() {
   const referencesLoading = ref(false)
   const mutating = ref(false)
   const loadingDetail = ref(false)
-  const pageError = ref('')
+  const listError = ref('')
+  const returnListError = ref('')
   const referenceError = ref('')
   const mutationError = ref('')
   const detailError = ref('')
@@ -140,7 +141,8 @@ export function useErpPurchaseWorkspace() {
     returnsLoading.value = false
     referencesLoading.value = false
     loadingDetail.value = false
-    pageError.value = ''
+    listError.value = ''
+    returnListError.value = ''
     referenceError.value = ''
     mutationError.value = ''
     detailError.value = ''
@@ -308,15 +310,15 @@ export function useErpPurchaseWorkspace() {
     const generation = requestGeneration
     const sequence = ++listSequence
     listLoading.value = true
-    pageError.value = ''
     try {
       const result = await api<ErpPurchasePage>(`/erp/purchases?${makeQuery()}`)
       if (!current(token, generation) || sequence !== listSequence) return
       purchases.value = result.data
       meta.value = result.meta
+      listError.value = ''
     } catch (error) {
       if (!current(token, generation) || sequence !== listSequence) return
-      pageError.value = errorMessage(error, 'Não foi possível carregar as compras.')
+      listError.value = errorMessage(error, 'Não foi possível carregar as compras.')
       await handleDenial('erp.purchases.index', error, token)
     } finally {
       if (current(token, generation) && sequence === listSequence) listLoading.value = false
@@ -330,15 +332,15 @@ export function useErpPurchaseWorkspace() {
     const query = new URLSearchParams({ page: String(returnFilters.page), per_page: String(returnFilters.per_page) })
     if (returnFilters.status) query.set('status', returnFilters.status)
     returnsLoading.value = true
-    pageError.value = ''
     try {
       const result = await api<ErpPurchasePage>(`/erp/purchase-returns?${query}`)
       if (!current(token, generation) || sequence !== returnListSequence) return
       returns.value = result.data as unknown as ErpPurchaseReturn[]
       returnMeta.value = result.meta
+      returnListError.value = ''
     } catch (error) {
       if (!current(token, generation) || sequence !== returnListSequence) return
-      pageError.value = errorMessage(error, 'Não foi possível carregar as devoluções de fornecedor.')
+      returnListError.value = errorMessage(error, 'Não foi possível carregar as devoluções de fornecedor.')
       await handleDenial('erp.purchase-returns.index', error, token)
     } finally {
       if (current(token, generation) && sequence === returnListSequence) returnsLoading.value = false
@@ -877,7 +879,7 @@ export function useErpPurchaseWorkspace() {
 
   return {
     purchases, returns, meta, returnMeta, returnFilters, suppliers, establishments, variants, units, selected, selectedReturn, previewState,
-    listLoading, returnsLoading, referencesLoading, mutating, loadingDetail, pageError, referenceError, mutationError, detailError, fieldErrors,
+    listLoading, returnsLoading, referencesLoading, mutating, loadingDetail, listError, returnListError, referenceError, mutationError, detailError, fieldErrors,
     selectedOperation, needsReconciliation, canRetryExact, staleRevisionRefreshed, resolvedOperation, isPurchaseConfirmedPosted,
     authorityGeneration, filters, allowed,
     load, loadReturns, loadReferences, inspect, closeDetail, saveDraft, postReceipt, inspectXml, refreshXmlPreview, cancelXmlPreview, confirmXml,
