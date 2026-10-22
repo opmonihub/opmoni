@@ -45,7 +45,7 @@ class ErpContactController extends ErpCatalogController
     public function store(Request $request): JsonResponse
     {
         return $this->writes->run($request, function (CurrentCompany $context) use ($request): JsonResponse {
-            $contact = $this->writes->createContact($context->company->id, $request->all());
+            $contact = $this->writes->createContact($request, $context, $request->all());
 
             return response()->json(['data' => $this->serialize($contact)], 201);
         });
@@ -55,7 +55,7 @@ class ErpContactController extends ErpCatalogController
     {
         return $this->writes->run($request, function (CurrentCompany $context) use ($request, $contact): JsonResponse {
             $model = $this->findForCompany($request, $contact);
-            $model = $this->writes->updateContact($context, $model, $request->all());
+            $model = $this->writes->updateContact($request, $context, $model, $request->all());
 
             return response()->json(['data' => $this->serialize($model)]);
         });

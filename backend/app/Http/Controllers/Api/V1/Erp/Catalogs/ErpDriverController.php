@@ -40,6 +40,7 @@ class ErpDriverController extends ErpCatalogController
         return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
             $data = $this->validated($request);
             $row = ErpDriver::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -47,11 +48,12 @@ class ErpDriverController extends ErpCatalogController
 
     public function update(Request $request, int $driver): JsonResponse
     {
-        return $this->write($request, function () use ($request, $driver): JsonResponse {
+        return $this->write($request, function (CurrentCompany $context) use ($request, $driver): JsonResponse {
             $model = $this->findForCompany($request, $driver);
             $data = $this->validated($request, partial: true);
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

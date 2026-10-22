@@ -80,10 +80,11 @@ abstract class ErpCatalogController extends Controller
 
     public function archive(Request $request, int $id): JsonResponse
     {
-        return app(ErpCatalogWriteService::class)->run($request, function () use ($request, $id): JsonResponse {
+        return app(ErpCatalogWriteService::class)->run($request, function (CurrentCompany $context) use ($request, $id): JsonResponse {
             $model = $this->findForCompany($request, $id);
             $model->status = 'archived';
             $model->save();
+            $this->record($request, $context, $model, 'archived');
 
             return response()->json(['data' => $this->serialize($model)]);
         });
@@ -122,5 +123,10 @@ abstract class ErpCatalogController extends Controller
     protected function write(Request $request, Closure $operation): JsonResponse
     {
         return app(ErpCatalogWriteService::class)->run($request, $operation);
+    }
+
+    protected function record(Request $request, CurrentCompany $context, Model $resource, string $action): void
+    {
+        app(ErpCatalogWriteService::class)->record($request, $context, $resource, $action);
     }
 }

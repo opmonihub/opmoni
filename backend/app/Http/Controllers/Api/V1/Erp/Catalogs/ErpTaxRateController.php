@@ -45,6 +45,7 @@ class ErpTaxRateController extends ErpCatalogController
             $data = $this->validated($request, $context->company->id);
             app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id'] ?? null);
             $row = ErpTaxRate::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -65,6 +66,7 @@ class ErpTaxRateController extends ErpCatalogController
             }
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

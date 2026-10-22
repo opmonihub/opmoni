@@ -66,16 +66,19 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $this->confirm($data['token'], $unit->id)->assertUnprocessable();
         $this->assertDatabaseCount('erp_products', 0);
         $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
     }
 
     public function test_invalid_unit_can_be_corrected_with_same_token_and_key_and_creates_exact_default_variant(): void
     {
-        [$company] = $this->actor();
+        [$company, $user] = $this->actor();
         $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
         $other = ErpCompany::factory()->create(['cnpj' => '11222333000181']);
         $foreign = ErpUnit::factory()->create(['erp_company_id' => $other->id]);
         $token = $this->preview("name,sku,sale_price,barcode,ncm,kind,track_stock\n Serviço ,0,0001.2300,0000123,00123456,service,1\n")->assertOk()->json('data.token');
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
         $this->confirm($token, $foreign->id)->assertUnprocessable();
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
         $this->confirm($token, $unit->id)->assertExactJson(['data' => ['created' => 1]]);
         $product = ErpProduct::firstOrFail();
         $this->assertSame(' Serviço ', $product->name);
@@ -87,6 +90,15 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $this->assertSame('0000123', $variant->barcode);
         $this->assertSame('C128', $variant->barcode_type);
         $this->assertSame('1.2300', $variant->sale_price);
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get();
+        $this->assertSame(['product', 'product_variant'], $events->pluck('resource_type')->all());
+        $this->assertSame([$product->id, $variant->id], $events->pluck('resource_id')->all());
+        $this->assertSame(['import_created', 'import_created'], $events->pluck('action')->all());
+        $this->assertSame([$company->id], $events->pluck('erp_company_id')->unique()->all());
+        $this->assertSame([$user->id], $events->pluck('actor_user_id')->unique()->all());
+        $this->assertSame([DB::table('erp_catalog_imports')->value('id')], $events->pluck('batch_id')->unique()->all());
+        $this->assertStringNotContainsString('Serviço', json_encode($events));
+        $this->assertStringNotContainsString($token, json_encode($events));
     }
 
     public static function badCsv(): array
@@ -122,30 +134,34 @@ class ErpCatalogImportConfirmationTest extends TestCase
 
     public static function rollbackStatuses(): array
     {
-        return [[422], [503]];
+        return [[422, 'products'], [503, 'products'], [422, 'contacts'], [503, 'contacts']];
     }
 
     #[DataProvider('rollbackStatuses')]
-    public function test_rendered_row_two_failure_rolls_back_rows_variants_receipt_and_completion(int $status): void
+    public function test_rendered_row_two_failure_rolls_back_rows_variants_receipt_and_completion(int $status, string $kind): void
     {
         [$company] = $this->actor();
         $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
-        $token = $this->preview("name,sku\nFirst,ONE\nSecond,TWO\n")->assertOk()->json('data.token');
-        ErpProduct::created(function (ErpProduct $row) use ($status): void {
+        $token = $this->preview($kind === 'products' ? "name,sku\nFirst,ONE\nSecond,TWO\n" : "name\nFirst\nSecond\n", $kind)->assertOk()->json('data.token');
+        $modelClass = $kind === 'products' ? ErpProduct::class : ErpContact::class;
+        $modelClass::created(function ($row) use ($status): void {
             if ($row->name === 'Second') {
                 abort($status, 'Injected row2');
             }
         });
         try {
-            $this->confirm($token, $unit->id)->assertStatus($status);
+            $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertStatus($status);
         } finally {
-            ErpProduct::flushEventListeners();
+            $modelClass::flushEventListeners();
         }
         $this->assertDatabaseCount('erp_products', 0);
         $this->assertDatabaseCount('erp_product_variants', 0);
+        $this->assertDatabaseCount('erp_contacts', 0);
         $this->assertDatabaseCount('erp_operation_receipts', 0);
         $this->assertNull(DB::table('erp_catalog_imports')->value('completed_at'));
-        $this->confirm($token, $unit->id)->assertOk()->assertJsonPath('data.created', 2);
+        $this->assertDatabaseCount('erp_catalog_attributions', 0);
+        $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertOk()->assertJsonPath('data.created', 2);
+        $this->assertDatabaseCount('erp_catalog_attributions', $kind === 'products' ? 4 : 2);
     }
 
     public function test_durable_read_replay_and_lookup_keep_original_result_and_changed_choices_conflict(): void
@@ -156,6 +172,8 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $token = $this->preview("name,sku\nFirst,ONE\nSecond,TWO\n")->assertOk()->json('data.token');
         $this->postJson('/api/v1/erp/catalog/import/products/preview/read', ['token' => $token])->assertOk()->assertJsonCount(2, 'data.rows');
         $original = $this->confirm($token, $unit->id)->assertOk()->json();
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get()->all();
+        $this->assertCount(4, $events);
         ErpProduct::query()->update(['status' => 'archived']);
         $unit->update(['status' => 'archived']);
         $this->travel(2)->hours();
@@ -166,11 +184,12 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $this->postJson('/api/v1/erp/catalog/import/products/preview/read', ['token' => $token])->assertOk()->assertJsonPath('data.state', 'completed')->assertJsonPath('data.result.created', 2);
         $this->assertDatabaseCount('erp_products', 2);
         $this->assertDatabaseCount('erp_operation_receipts', 1);
+        $this->assertEquals($events, DB::table('erp_catalog_attributions')->orderBy('id')->get()->all());
     }
 
     public function test_contacts_support_both_roles_and_exact_address_and_normalized_document_policy(): void
     {
-        $this->actor();
+        [$company, $user] = $this->actor();
         $token = $this->preview("name,tax_id,email,phone,is_customer,is_supplier,address_number,address_postal_code\nFornecedor,390.533.447-05,a@example.com,001122,1,1,0007,00123456\n", 'contacts')->assertOk()->json('data.token');
         $this->confirm($token, kind: 'contacts')->assertOk();
         $contact = ErpContact::sole();
@@ -178,9 +197,36 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $this->assertSame('001122', $contact->phone);
         $this->assertTrue($contact->is_customer && $contact->is_supplier);
         $this->assertSame('0007', $contact->address['number']);
+        $event = DB::table('erp_catalog_attributions')->sole();
+        $this->assertSame('contact', $event->resource_type);
+        $this->assertSame($contact->id, $event->resource_id);
+        $this->assertSame('import_created', $event->action);
+        $this->assertSame($company->id, $event->erp_company_id);
+        $this->assertSame($user->id, $event->actor_user_id);
+        $this->assertSame(DB::table('erp_catalog_imports')->value('id'), $event->batch_id);
+        $this->assertStringNotContainsString('39053344705', json_encode($event));
+        $this->confirm($token, kind: 'contacts')->assertOk()->assertJsonPath('data.created', 1);
+        $this->confirm($token, key: 'another-key', kind: 'contacts')->assertConflict();
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.catalog.import.contacts.confirm', ['Idempotency-Key' => 'import-key'])->assertOk()->assertJsonPath('data.result.created', 1);
         $this->preview("name,tax_id\nDup,39053344705\n", 'contacts')->assertOk()->assertJsonPath('data.totals.invalid', 1);
         $this->preview("name,tax_id\nA,30288513000100\nB,30.288.513/0001-00\n", 'contacts')->assertOk()->assertJsonPath('data.totals.invalid', 2);
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
+    }
+
+    #[DataProvider('importKinds')]
+    public function test_completed_preview_early_return_never_reattributes_created_resources(string $kind): void
+    {
+        [$company] = $this->actor();
+        $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
+        $token = $this->preview("name\nFirst\nSecond\n", $kind)->assertOk()->json('data.token');
+        $original = $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertOk()->json();
+        $events = DB::table('erp_catalog_attributions')->orderBy('id')->get()->all();
+        $this->assertCount($kind === 'products' ? 4 : 2, $events);
+        DB::table('erp_operation_receipts')->delete();
+        $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertExactJson($original);
+        $this->assertEquals($events, DB::table('erp_catalog_attributions')->orderBy('id')->get()->all());
+        $this->assertDatabaseCount('erp_operation_receipts', 1);
     }
 
     public function test_preview_ownership_expiry_and_strict_confirm_identity_do_not_consume(): void
@@ -209,11 +255,17 @@ class ErpCatalogImportConfirmationTest extends TestCase
         $this->preview("name,sku\nA,OLD\nB,DUP\nC,DUP\nD,old\n")->assertOk()->assertJsonPath('data.totals.invalid', 3)->assertJsonPath('data.rows.3.sku', 'old');
     }
 
-    public function test_after_receipt_and_final_access_fence_failure_roll_back_the_atomic_import(): void
+    public static function importKinds(): array
+    {
+        return [['products'], ['contacts']];
+    }
+
+    #[DataProvider('importKinds')]
+    public function test_after_receipt_and_final_access_fence_failure_roll_back_the_atomic_import(string $kind): void
     {
         [$company] = $this->actor();
         $unit = ErpUnit::factory()->create(['erp_company_id' => $company->id]);
-        $token = $this->preview("name,sku\nA,FENCE\n")->assertOk()->json('data.token');
+        $token = $this->preview("name\nA\n", $kind)->assertOk()->json('data.token');
         foreach (['receipt', 'fence'] as $boundary) {
             ErpOperationReceipt::created(function () use ($boundary): void {
                 if ($boundary === 'receipt') {
@@ -228,16 +280,19 @@ class ErpCatalogImportConfirmationTest extends TestCase
                 });
             });
             try {
-                $this->confirm($token, $unit->id)->assertStatus(503);
+                $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertStatus(503);
             } finally {
                 ErpOperationReceipt::flushEventListeners();
             }
             $this->assertDatabaseCount('erp_products', 0);
             $this->assertDatabaseCount('erp_product_variants', 0);
+            $this->assertDatabaseCount('erp_contacts', 0);
             $this->assertDatabaseCount('erp_operation_receipts', 0);
             $this->assertNull(DB::table('erp_catalog_imports')->value('completed_at'));
+            $this->assertDatabaseCount('erp_catalog_attributions', 0);
         }
-        $this->confirm($token, $unit->id)->assertOk();
+        $this->confirm($token, $kind === 'products' ? $unit->id : null, kind: $kind)->assertOk();
+        $this->assertDatabaseCount('erp_catalog_attributions', $kind === 'products' ? 2 : 1);
     }
 
     public function test_pending_expiry_and_foreign_company_never_consume_the_original_preview(): void

@@ -3,6 +3,7 @@
 namespace App\Erp;
 
 use App\Models\Erp\ErpBrand;
+use App\Models\Erp\ErpCatalogImport;
 use App\Models\Erp\ErpCategory;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpContact;
@@ -14,6 +15,7 @@ use App\Services\BrazilianTaxId;
 use App\Support\AccessSession;
 use App\Support\CurrentCompany;
 use Closure;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -25,6 +27,7 @@ final class ErpCatalogWriteService
     public function __construct(
         private ErpCatalogScope $scope,
         private BrazilianTaxId $taxId,
+        private ErpCatalogAttributionWriter $attributions,
     ) {}
 
     /** @param Closure(CurrentCompany): Response $write */
@@ -37,16 +40,34 @@ final class ErpCatalogWriteService
             ErpCompany::query()->lockForUpdate()->findOrFail($context->company->id);
             $context->assertCanMutate();
 
-            $response = $write($context);
-            AccessSession::assertOwnership($request);
+            $previous = $request->attributes->get(self::class);
+            $request->attributes->set(self::class, [
+                'context' => $context, 'connection' => DB::connection(), 'level' => DB::transactionLevel(),
+            ]);
+            try {
+                $response = $write($context);
+                AccessSession::assertOwnership($request);
 
-            return $response;
+                return $response;
+            } finally {
+                if ($previous === null) {
+                    $request->attributes->remove(self::class);
+                } else {
+                    $request->attributes->set(self::class, $previous);
+                }
+            }
         });
     }
 
-    /** @param array<string, mixed> $payload */
-    public function createProduct(int $companyId, array $payload): ErpProduct
+    public function record(Request $request, CurrentCompany $context, Model $resource, string $action, ?ErpCatalogImport $batch = null): void
     {
+        $this->attributions->record($request, $context, $resource, $action, $batch);
+    }
+
+    /** @param array<string, mixed> $payload */
+    public function createProduct(Request $request, CurrentCompany $context, array $payload, ?ErpCatalogImport $batch = null): ErpProduct
+    {
+        $companyId = $context->company->id;
         $data = $this->productData($payload, $companyId);
         $data['barcode_type'] ??= 'C128';
         $variants = $data['variants'] ?? [];
@@ -60,16 +81,19 @@ final class ErpCatalogWriteService
             'erp_company_id' => $companyId,
             'status' => 'active',
         ]);
+        $action = $batch === null ? 'created' : 'import_created';
+        $this->record($request, $context, $product, $action, $batch);
         foreach ($variants as $variant) {
             unset($variant['id'], $variant['status']);
-            $product->variants()->create($variant);
+            $row = $product->variants()->create($variant);
+            $this->record($request, $context, $row, $action, $batch);
         }
 
         return $product->load('variants');
     }
 
     /** @param array<string, mixed> $payload */
-    public function updateProduct(CurrentCompany $context, ErpProduct $product, array $payload): ErpProduct
+    public function updateProduct(Request $request, CurrentCompany $context, ErpProduct $product, array $payload): ErpProduct
     {
         $companyId = $context->company->id;
         $data = $this->productData($payload, $companyId, partial: true, current: $product);
@@ -86,6 +110,7 @@ final class ErpCatalogWriteService
         if ($data !== []) {
             $product->fill($data);
             $product->save();
+            $this->record($request, $context, $product, 'updated');
         }
         if (is_array($variants)) {
             foreach ($variants as $variant) {
@@ -93,9 +118,11 @@ final class ErpCatalogWriteService
                     $row = $product->variants()->whereKey($variant['id'])->firstOrFail();
                     $row->fill(collect($variant)->except('id')->all());
                     $row->save();
+                    $this->record($request, $context, $row, $row->wasChanged('status') && $row->status === 'archived' ? 'archived' : 'updated');
                 } else {
                     unset($variant['status']);
-                    $product->variants()->create($variant);
+                    $row = $product->variants()->create($variant);
+                    $this->record($request, $context, $row, 'created');
                 }
             }
         }
@@ -104,22 +131,27 @@ final class ErpCatalogWriteService
     }
 
     /** @param array<string, mixed> $payload */
-    public function createContact(int $companyId, array $payload): ErpContact
+    public function createContact(Request $request, CurrentCompany $context, array $payload, ?ErpCatalogImport $batch = null): ErpContact
     {
+        $companyId = $context->company->id;
         $data = $this->contactData($payload, $companyId);
 
-        return ErpContact::query()->create([
+        $contact = ErpContact::query()->create([
             ...$data,
             'erp_company_id' => $companyId,
             'status' => 'active',
         ]);
+        $this->record($request, $context, $contact, $batch === null ? 'created' : 'import_created', $batch);
+
+        return $contact;
     }
 
     /** @param array<string, mixed> $payload */
-    public function updateContact(CurrentCompany $context, ErpContact $contact, array $payload): ErpContact
+    public function updateContact(Request $request, CurrentCompany $context, ErpContact $contact, array $payload): ErpContact
     {
         $contact->fill($this->contactData($payload, (int) $context->company->id, partial: true, current: $contact));
         $contact->save();
+        $this->record($request, $context, $contact, 'updated');
 
         return $contact->fresh();
     }

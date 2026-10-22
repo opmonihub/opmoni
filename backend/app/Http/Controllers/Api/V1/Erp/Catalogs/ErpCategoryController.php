@@ -36,6 +36,7 @@ class ErpCategoryController extends ErpCatalogController
         return $this->writes->run($request, function (CurrentCompany $context) use ($request): JsonResponse {
             $data = $this->validated($request, $context->company->id);
             $row = ErpCategory::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -48,6 +49,7 @@ class ErpCategoryController extends ErpCatalogController
             $data = $this->validated($request, $context->company->id, partial: true, current: $model);
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

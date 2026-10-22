@@ -47,6 +47,7 @@ class ErpPriceGroupController extends ErpCatalogController
                 'erp_company_id' => $context->company->id,
                 'status' => 'active',
             ]);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -65,6 +66,7 @@ class ErpPriceGroupController extends ErpCatalogController
             }
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

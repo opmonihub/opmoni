@@ -42,6 +42,7 @@ class ErpDiscountRuleController extends ErpCatalogController
             $data = $this->validated($request);
             $this->assertCouponAvailable($data['coupon_code'] ?? null, (int) $context->company->id);
             $row = ErpDiscountRule::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -57,6 +58,7 @@ class ErpDiscountRuleController extends ErpCatalogController
             }
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

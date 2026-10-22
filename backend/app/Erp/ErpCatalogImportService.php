@@ -102,12 +102,13 @@ final class ErpCatalogImportService
         if ($duplicates !== []) {
             throw ValidationException::withMessages(['rows' => array_column($duplicates, 'message')]);
         }
+        $context = CurrentCompany::fromRequest($request);
         foreach ($preview->rows as $row) {
             unset($row['line'], $row['record']);
             if ($preview->kind === 'products') {
-                $this->writes->createProduct($preview->erp_company_id, [...$row, 'erp_unit_id' => $payload['erp_unit_id']]);
+                $this->writes->createProduct($request, $context, [...$row, 'erp_unit_id' => $payload['erp_unit_id']], $preview);
             } else {
-                $this->writes->createContact($preview->erp_company_id, $row);
+                $this->writes->createContact($request, $context, $row, $preview);
             }
         }
         $result = ['created' => count($preview->rows)];

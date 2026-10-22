@@ -92,7 +92,7 @@ class ErpProductController extends ErpCatalogController
     public function store(Request $request): JsonResponse
     {
         return $this->writes->run($request, function (CurrentCompany $context) use ($request): JsonResponse {
-            $product = $this->writes->createProduct($context->company->id, $request->all());
+            $product = $this->writes->createProduct($request, $context, $request->all());
 
             return response()->json(['data' => $this->serialize($product)], 201);
         });
@@ -102,7 +102,7 @@ class ErpProductController extends ErpCatalogController
     {
         return $this->writes->run($request, function (CurrentCompany $context) use ($request, $product): JsonResponse {
             $model = $this->findForCompany($request, $product);
-            $model = $this->writes->updateProduct($context, $model, $request->all());
+            $model = $this->writes->updateProduct($request, $context, $model, $request->all());
 
             return response()->json(['data' => $this->serialize($model)]);
         });
@@ -110,13 +110,14 @@ class ErpProductController extends ErpCatalogController
 
     public function archive(Request $request, int $id): JsonResponse
     {
-        return $this->writes->run($request, function () use ($request, $id): JsonResponse {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $id): JsonResponse {
             $model = $this->findForCompany($request, $id);
             if ($model->status === 'archived') {
                 throw ValidationException::withMessages(['status' => 'Produto já arquivado']);
             }
             $model->status = 'archived';
             $model->save();
+            $this->writes->record($request, $context, $model, 'archived');
 
             return response()->json(['data' => $this->serialize($model->fresh('variants'))]);
         });

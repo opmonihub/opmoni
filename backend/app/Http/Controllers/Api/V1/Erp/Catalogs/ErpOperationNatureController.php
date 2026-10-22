@@ -44,6 +44,7 @@ class ErpOperationNatureController extends ErpCatalogController
             $data = $this->validated($request, $context->company->id);
             app(ErpEstablishmentAccess::class)->assertNullableCatalogRelated($context, $data['erp_establishment_id'] ?? null);
             $row = ErpOperationNature::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
             return response()->json(['data' => $this->serialize($row)], 201);
         });
@@ -64,6 +65,7 @@ class ErpOperationNatureController extends ErpCatalogController
             }
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

@@ -35,6 +35,7 @@ class ErpBrandController extends ErpCatalogController
         return $this->writes->run($request, function (CurrentCompany $context) use ($request): JsonResponse {
             $data = $this->validated($request, $context->company->id);
             $brand = ErpBrand::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $brand, 'created');
 
             return response()->json(['data' => $this->serialize($brand)], 201);
         });
@@ -47,6 +48,7 @@ class ErpBrandController extends ErpCatalogController
             $data = $this->validated($request, $context->company->id, partial: true, current: $model);
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });

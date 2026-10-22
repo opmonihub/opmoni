@@ -46,6 +46,7 @@ class ErpUnitController extends ErpCatalogController
             $companyId = $context->company->id;
             $data = $this->validated($request, $companyId);
             $unit = ErpUnit::query()->create([...$data, 'erp_company_id' => $companyId, 'status' => 'active']);
+            $this->record($request, $context, $unit, 'created');
 
             return response()->json(['data' => $this->serialize($unit)], 201);
         });
@@ -58,6 +59,7 @@ class ErpUnitController extends ErpCatalogController
             $data = $this->validated($request, $context->company->id, partial: true, current: $model);
             $model->fill($data);
             $model->save();
+            $this->record($request, $context, $model, 'updated');
 
             return response()->json(['data' => $this->serialize($model->fresh())]);
         });
