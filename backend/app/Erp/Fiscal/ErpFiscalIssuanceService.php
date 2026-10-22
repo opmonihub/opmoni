@@ -222,8 +222,11 @@ class ErpFiscalIssuanceService
     public function eventDraft(Request $request, array $data): array
     {
         $context = CurrentCompany::fromRequest($request);
-        $document = ErpFiscalDocument::query()->where('erp_company_id', $context->company->id)->whereKey($data['erp_fiscal_document_id'])->firstOrFail();
-        app(ErpEstablishmentAccess::class)->assertResource($context, $document);
+        $document = ErpFiscalDocument::query()->where('erp_company_id', $context->company->id)->whereKey($data['erp_fiscal_document_id'])->first();
+        if (! $document) {
+            throw ValidationException::withMessages(['erp_fiscal_document_id' => 'Documento fiscal inválido para esta empresa.']);
+        }
+        app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $document, 'erp_fiscal_document_id');
         $replay = $this->replay($context, 'event:draft', $data['idempotency_key'], $data, (int) $request->user()->id);
         if ($replay) {
             return [$replay->event()->firstOrFail(), false];
@@ -417,7 +420,7 @@ class ErpFiscalIssuanceService
         if (! $attempt) {
             return null;
         }
-        app(ErpEstablishmentAccess::class)->assertRelated($context, (int) $attempt->erp_establishment_id);
+        app(ErpEstablishmentAccess::class)->assertResource($context, $attempt->establishment()->firstOrFail());
         $snapshot = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($attempt);
         abort_unless((int) $attempt->actor_user_id === $actor && $this->canonical($snapshot['request']['body'] ?? []) === $this->canonical($body), 409, 'Chave de idempotência reutilizada com ator ou solicitação diferente.');
 

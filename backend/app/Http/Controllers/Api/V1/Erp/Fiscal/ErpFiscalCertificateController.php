@@ -43,7 +43,10 @@ class ErpFiscalCertificateController extends ErpOperationsController
         $context->assertCanMutate();
         try {
             $data = $request->validated();
-            $issuer = $this->issuerEstablishment($request, (int) $data['erp_establishment_id']);
+            $issuer = app(ErpEstablishmentAccess::class)->assertRelated($context, (int) $data['erp_establishment_id']);
+            if ($issuer->status !== 'active') {
+                throw ValidationException::withMessages(['erp_establishment_id' => 'Estabelecimento emissor inativo.']);
+            }
             $rawCertificate = $this->certificateBytes($request, $data);
             $certificate = $this->revisions->store($issuer, $data['label'], $rawCertificate, $data['password'], $request->user()?->id);
         } catch (InvalidArgumentException $exception) {

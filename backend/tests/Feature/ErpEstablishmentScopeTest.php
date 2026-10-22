@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Erp\ErpCommercialCatalog;
 use App\Erp\ErpEstablishmentAccess;
+use App\Erp\Fiscal\ErpFiscalAttemptService;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
@@ -560,7 +561,8 @@ class ErpEstablishmentScopeTest extends TestCase
         Storage::fake('local');
         $allowed = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $hidden = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $member = $this->selectedMember([$allowed->id]);
+        $inactive = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id, 'status' => 'inactive']);
+        $member = $this->selectedMember([$allowed->id, $inactive->id]);
         $artifactPath = 'erp/fiscal/hidden-document.xml';
         $xml = '<secret>hidden fiscal bytes</secret>';
         Storage::disk('local')->put($artifactPath, $xml);
@@ -610,6 +612,18 @@ class ErpEstablishmentScopeTest extends TestCase
             'status' => 'blocked',
             'reason_code' => 'fiscal_document_not_authorized',
         ]);
+        $foreignCompany = ErpCompany::factory()->create();
+        $foreignEstablishment = ErpEstablishment::factory()->create(['erp_company_id' => $foreignCompany->id]);
+        $foreignDocument = ErpFiscalDocument::query()->create([
+            'erp_company_id' => $foreignCompany->id,
+            'erp_establishment_id' => $foreignEstablishment->id,
+            'model' => '55',
+            'environment' => 'homologation',
+            'series' => 1,
+            'number' => 9401,
+            'status' => 'authorized',
+            'idempotency_key' => 'foreign-fiscal-document',
+        ]);
 
         $this->actingAs($member, 'web');
         $this->getJson('/api/v1/erp/fiscal/documents')->assertOk()->assertJsonPath('meta.total', 0);
@@ -625,7 +639,8 @@ class ErpEstablishmentScopeTest extends TestCase
         $this->getJson('/api/v1/erp/fiscal/invalidations/'.$invalidation->id)->assertNotFound();
         $this->getJson('/api/v1/erp/fiscal/certificates')->assertOk()->assertJsonPath('meta.total', 0);
         $this->getJson('/api/v1/erp/fiscal/certificates/'.$certificate->id)->assertNotFound();
-        $this->postJson('/api/v1/erp/fiscal/certificates/'.$certificate->id.'/rotate', [])->assertNotFound();
+        $certificateData = ['label' => 'New certificate', 'certificate_content' => base64_encode('not a valid certificate'), 'password' => 'secret'];
+        $this->postJson('/api/v1/erp/fiscal/certificates/'.$certificate->id.'/rotate', $certificateData)->assertNotFound();
         $this->getJson('/api/v1/erp/accounting-deliveries')->assertOk()->assertJsonPath('meta.total', 0);
         $this->postJson('/api/v1/erp/accounting-deliveries/'.$delivery->id.'/retry')->assertNotFound();
 
@@ -633,14 +648,94 @@ class ErpEstablishmentScopeTest extends TestCase
             'erp_establishment_id' => $hidden->id,
             'model' => '55',
             'number' => 9310,
+            'source' => ['identity' => ['operation_nature' => 'Venda']],
             'idempotency_key' => 'new-hidden-document',
         ])->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
-        $this->postJson('/api/v1/erp/fiscal/documents', [
+        $attempt = app(ErpFiscalAttemptService::class)->createIntent([
+            'erp_company_id' => $this->company->id,
+            'erp_establishment_id' => $hidden->id,
+            'erp_fiscal_document_id' => $document->id,
+            'action' => 'document:draft',
+            'model' => '55',
+            'environment' => 'homologation',
+            'actor_user_id' => $this->owner->id,
+            'idempotency_key' => 'hidden-fiscal-document',
+            'request' => ['body' => [
+                'erp_establishment_id' => $hidden->id,
+                'model' => '55',
+                'number' => 9301,
+                'source' => ['identity' => ['operation_nature' => 'Venda']],
+                'idempotency_key' => 'hidden-fiscal-document',
+            ]],
+        ]);
+        $unchangedModels = [$document, $foreignDocument, $event, $invalidation, $certificate, $delivery, $attempt, $inactive];
+        $originalAttributes = array_map(fn ($model): array => $model->fresh()->getAttributes(), $unchangedModels);
+        $expectedCounts = [
+            'erp_fiscal_documents' => 2,
+            'erp_fiscal_attempts' => 1,
+            'erp_fiscal_events' => 1,
+            'erp_fiscal_invalidations' => 1,
+            'erp_fiscal_certificates' => 1,
+            'erp_fiscal_number_sequences' => 0,
+            'erp_fiscal_configuration_revisions' => 0,
+            'erp_fiscal_certificate_revisions' => 0,
+            'erp_accounting_deliveries' => 1,
+            'erp_stock_movements' => 0,
+            'erp_obligations' => 0,
+            'erp_operation_receipts' => 0,
+            'jobs' => 0,
+        ];
+        foreach ($expectedCounts as $table => $count) {
+            $this->assertDatabaseCount($table, $count);
+        }
+        $replayBody = [
             'erp_establishment_id' => $allowed->id,
             'model' => '55',
             'number' => 9301,
+            'source' => ['identity' => ['operation_nature' => 'Venda']],
             'idempotency_key' => 'hidden-fiscal-document',
-        ])->assertNotFound();
+        ];
+        foreach ([$replayBody, [...$replayBody, 'number' => 9302]] as $body) {
+            $this->postJson('/api/v1/erp/fiscal/documents', $body)->assertNotFound()
+                ->assertJsonMissingPath('data')
+                ->assertDontSee($xml, false)
+                ->assertDontSee($artifactPath, false)
+                ->assertDontSee($hidden->name, false)
+                ->assertDontSee($attempt->encrypted_source_snapshot, false)
+                ->assertDontSee('encrypted_source_snapshot', false)
+                ->assertDontSee('request_sha256', false);
+        }
+        foreach ($expectedCounts as $table => $count) {
+            $this->assertDatabaseCount($table, $count);
+        }
+        foreach ($unchangedModels as $index => $model) {
+            $this->assertSame($originalAttributes[$index], $model->fresh()->getAttributes());
+        }
+        $relatedDocumentResponses = [];
+        foreach (['missing' => $foreignDocument->id + 1, 'foreign' => $foreignDocument->id, 'hidden' => $document->id] as $case => $documentId) {
+            $relatedDocumentResponses[$case] = $this->postJson('/api/v1/erp/fiscal/events', [
+                'erp_fiscal_document_id' => $documentId,
+                'event_type' => 'cancel',
+                'idempotency_key' => 'new-'.$case.'-related-event',
+            ]);
+        }
+        $this->assertSame(
+            ['missing' => 422, 'foreign' => 422, 'hidden' => 422],
+            array_map(fn ($response): int => $response->status(), $relatedDocumentResponses),
+        );
+        foreach ($relatedDocumentResponses as $response) {
+            $response->assertUnprocessable()->assertJsonValidationErrors('erp_fiscal_document_id')
+                ->assertJsonMissingPath('data')
+                ->assertDontSee($xml, false)
+                ->assertDontSee($artifactPath, false)
+                ->assertDontSee($hidden->name, false)
+                ->assertDontSee($foreignEstablishment->name, false)
+                ->assertDontSee($foreignDocument->idempotency_key, false)
+                ->assertDontSee($attempt->encrypted_source_snapshot, false)
+                ->assertDontSee('encrypted_source_snapshot', false)
+                ->assertDontSee('request_sha256', false);
+        }
+        $this->assertSame($relatedDocumentResponses['missing']->json(), $relatedDocumentResponses['foreign']->json());
         $this->postJson('/api/v1/erp/fiscal/events', [
             'erp_fiscal_document_id' => $document->id,
             'event_type' => 'cancel',
@@ -649,19 +744,44 @@ class ErpEstablishmentScopeTest extends TestCase
         $this->postJson('/api/v1/erp/fiscal/invalidations', [
             'erp_establishment_id' => $hidden->id,
             'model' => '55',
+            'year' => now()->year,
             'series' => 1,
             'number_from' => 9311,
             'number_to' => 9311,
             'justification' => 'Hidden location numbering',
             'idempotency_key' => 'new-hidden-invalidation',
         ])->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
-        $certificateData = ['label' => 'New certificate', 'certificate_content' => base64_encode('not a valid certificate'), 'password' => 'secret'];
+        $relatedIssuerResponses = [];
+        foreach (['missing' => $foreignEstablishment->id + 1, 'foreign' => $foreignEstablishment->id, 'hidden' => $hidden->id, 'inactive' => $inactive->id] as $case => $establishmentId) {
+            $relatedIssuerResponses[$case] = $this->postJson('/api/v1/erp/fiscal/certificates', $certificateData + ['erp_establishment_id' => $establishmentId]);
+        }
+        $this->assertSame(
+            ['missing' => 422, 'foreign' => 422, 'hidden' => 422, 'inactive' => 422],
+            array_map(fn ($response): int => $response->status(), $relatedIssuerResponses),
+        );
+        foreach ($relatedIssuerResponses as $response) {
+            $response->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id')
+                ->assertJsonCount(1, 'errors')
+                ->assertJsonMissingPath('data')
+                ->assertDontSee($hidden->name, false)
+                ->assertDontSee($foreignEstablishment->name, false)
+                ->assertDontSee($certificate->encrypted_certificate, false)
+                ->assertDontSee($certificate->encrypted_password, false)
+                ->assertDontSee($certificateData['certificate_content'], false);
+        }
         $this->postJson('/api/v1/erp/fiscal/certificates', $certificateData + ['erp_establishment_id' => $hidden->id])
             ->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
         $this->postJson('/api/v1/erp/fiscal/certificates', $certificateData)
             ->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
         $this->postJson('/api/v1/erp/purchases/xml-preview', ['erp_establishment_id' => $hidden->id, 'xml' => '<invalid'])
             ->assertUnprocessable()->assertJsonValidationErrors('erp_establishment_id');
+        foreach ($expectedCounts as $table => $count) {
+            $this->assertDatabaseCount($table, $count);
+        }
+        foreach ($unchangedModels as $index => $model) {
+            $this->assertSame($originalAttributes[$index], $model->fresh()->getAttributes());
+        }
+        $this->assertSame($xml, Storage::disk('local')->get($artifactPath));
     }
 
     public function test_allocation_receipt_replay_and_lookup_stop_after_membership_scope_narrows(): void
