@@ -165,7 +165,7 @@ function mountStockWorkspace(workspace: Record<string, unknown>, initialHash = '
   app.component('ErpStockMovementDetail', movementDetailComponent)
   app.component('ErpStockTransferDetail', transferDetailComponent)
   app.component('UAlert', { props: ['title'], setup: (props: { title?: string }, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', { 'data-alert-title': props.title }, [props.title ?? '', context.slots.description?.(), context.slots.actions?.()]) })
-  app.component('UTable', { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('table', { 'data-stock-table': 'true' }, context.slots.default?.()) })
+  app.component('UTable', { props: ['data'], setup: (props: { data?: unknown[] }, context: { slots: Record<string, (scope?: unknown) => unknown[]> }) => () => Vue.h('table', { 'data-stock-table': 'true' }, (props.data ?? []).map(original => Vue.h('tr', {}, ['record', 'context', 'value', 'actions'].map(name => Vue.h('td', {}, context.slots[`${name}-cell`]?.({ row: { original } }) ?? []))))) })
   app.component('ErpCatalogPageShell', { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) })
   app.component('ErpStockAdjustmentForm', { inheritAttrs: false, setup: (_props: unknown, context: { attrs: Record<string, unknown>, expose: (value: unknown) => void }) => {
     const child = Vue.ref(null as unknown as { state: Record<string, string>, submit: () => void })
@@ -939,6 +939,27 @@ describe('mounted stock operation forms', () => {
 })
 
 describe('mounted stock workspace recovery lifecycle', () => {
+  it('labels known and unrecognized movement sources and lot cost states in Portuguese', async (t) => {
+    const workspace = createStockWorkspace(async () => emptyPage, ['*'])
+    const mounted = mountStockWorkspace(workspace.state, '#movements')
+    t.after(() => { mounted.stop(); workspace.stop() })
+    await Vue.nextTick()
+    workspace.state.movements.value = [{ id: 51, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'in', quantity: '1.0000', source_type: 'erp_purchase', source_id: 10, cost_status: 'known', total_cost: '12.0000', known_cost: '12.0000', unvalued_quantity: '0.0000', currency: 'BRL', cost_breakdown: null }]
+    await Vue.nextTick()
+    assert.match(renderedText(mounted.root as unknown as Record<string, unknown>), /Origem: Compra #10/)
+    workspace.state.movements.value = [{ ...workspace.state.movements.value[0], source_type: 'future_source' }]
+    await Vue.nextTick()
+    assert.match(renderedText(mounted.root as unknown as Record<string, unknown>), /Origem não reconhecida \(future_source\)/)
+    mounted.route.hash = '#lots'
+    await Vue.nextTick()
+    workspace.state.lots.value = [{ id: 61, erp_establishment_id: 8, erp_product_variant_id: 21, erp_stock_movement_id: 51, quantity: '1.0000', available_quantity: '1.0000', total_cost: '12.0000', currency: 'BRL', cost_status: 'known' }]
+    await Vue.nextTick()
+    assert.match(renderedText(mounted.root as unknown as Record<string, unknown>), /Conhecido/)
+    workspace.state.lots.value = [{ ...workspace.state.lots.value[0], cost_status: 'future_cost' }]
+    await Vue.nextTick()
+    assert.match(renderedText(mounted.root as unknown as Record<string, unknown>), /Situação de custo não reconhecida \(future_cost\)/)
+  })
+
   it('follows a transfer source policy into the authorized paired transfer detail', async () => {
     const movement = {
       id: 31, erp_establishment_id: 8, erp_product_variant_id: 21, direction: 'out', quantity: '2.0000', unit_cost: null,

@@ -10,6 +10,7 @@ const props = defineProps<{
   canOverridePrice: boolean
   canOverrideDiscount: boolean
   disabled?: boolean
+  editing?: boolean
 }>()
 const emit = defineEmits<{ 'update:draft': [payload: ErpCommercialDraftPayload], 'save': [payload: ErpCommercialDraftPayload], 'cancel': [] }>()
 const draft = ref(JSON.parse(JSON.stringify(props.draft)) as ErpCommercialDraftPayload)
@@ -138,7 +139,12 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
         label="Número do orçamento"
         :error="formName('quote_no')"
       >
-        <UInput v-model="draft.quote_no" class="w-full" :disabled="disabled || saving" />
+        <UInput
+          v-model="draft.quote_no"
+          class="w-full"
+          :disabled="disabled || saving"
+          :readonly="editing"
+        />
       </UFormField>
       <UFormField
         v-else-if="kind === 'order'"
@@ -146,7 +152,12 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
         label="Número do pedido"
         :error="formName('order_no')"
       >
-        <UInput v-model="draft.order_no" class="w-full" :disabled="disabled || saving" />
+        <UInput
+          v-model="draft.order_no"
+          class="w-full"
+          :disabled="disabled || saving"
+          :readonly="editing"
+        />
       </UFormField>
       <UFormField
         v-else
@@ -154,7 +165,12 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
         label="Documento de balcão"
         :error="formName('invoice_no')"
       >
-        <UInput v-model="draft.invoice_no" class="w-full" :disabled="disabled || saving" />
+        <UInput
+          v-model="draft.invoice_no"
+          class="w-full"
+          :disabled="disabled || saving"
+          :readonly="editing"
+        />
       </UFormField>
       <div v-if="draft.erp_discount_rule_id" class="self-end text-xs text-muted">
         Regra de desconto do documento #{{ draft.erp_discount_rule_id }} será mantida.

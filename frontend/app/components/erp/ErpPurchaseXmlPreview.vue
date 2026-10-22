@@ -76,6 +76,15 @@ function amount(value: string | null | undefined, currency: string) {
     return `${currency} ${value}`
   }
 }
+function totalLabel(value: string) {
+  const labels: Record<string, string> = {
+    currency: 'Moeda', vBC: 'Base de cálculo do ICMS', vICMS: 'ICMS', vICMSDeson: 'ICMS desonerado', vFCP: 'Fundo de Combate à Pobreza',
+    vBCST: 'Base de cálculo do ICMS-ST', vST: 'ICMS-ST', vFCPST: 'FCP-ST', vFCPSTRet: 'FCP-ST retido', vProd: 'Produtos', vFrete: 'Frete',
+    vSeg: 'Seguro', vDesc: 'Descontos', vII: 'Imposto de Importação', vIPI: 'IPI', vIPIDevol: 'IPI devolvido', vPIS: 'PIS', vCOFINS: 'COFINS',
+    vOutro: 'Outras despesas', vNF: 'Total do documento', vTotTrib: 'Tributos aproximados'
+  }
+  return labels[value] ?? `Campo do XML não reconhecido (${value})`
+}
 </script>
 
 <template>
@@ -171,7 +180,7 @@ function amount(value: string | null | undefined, currency: string) {
         </div>
         <div v-for="(value, key) in state.preview.total" :key="key">
           <dt class="text-muted">
-            {{ key }}
+            {{ totalLabel(String(key)) }}
           </dt><dd class="tabular-nums">
             {{ value ?? '—' }}
           </dd>

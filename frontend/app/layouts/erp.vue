@@ -82,7 +82,7 @@ const navbarTitle = computed(() => {
       <template #header>
         <UDashboardNavbar
           :title="navbarTitle"
-          :ui="{ left: 'min-w-0', title: 'hidden truncate lg:block', right: 'min-w-0' }"
+          :ui="{ left: 'min-w-0 flex-1', title: 'min-w-0 truncate', right: 'min-w-0 shrink-0' }"
         >
           <template #toggle>
             <UDashboardSidebarToggle aria-label="Abrir menu ERP" data-erp-sidebar-trigger />

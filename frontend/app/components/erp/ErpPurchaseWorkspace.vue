@@ -61,7 +61,8 @@ async function setArea(area: PurchaseArea, updateHash = true) {
   if (area === 'purchases') void purchase.load()
   else if (area === 'returns') void purchase.loadReturns()
 }
-function errorColor() {
+function errorColor(): 'success' | 'error' | 'warning' {
+  if (!purchase.mutationError.value && purchase.selectedOperation.value) return 'warning'
   return purchase.mutationError.value.startsWith('Operação confirmada') ? 'success' : 'error'
 }
 function money(value: string | null | undefined, currency: string) {
@@ -516,7 +517,7 @@ onMounted(() => {
         />
       </template>
     </UAlert>
-    <UAlert v-if="purchase.mutationError.value" :color="errorColor()" :title="purchase.mutationError.value">
+    <UAlert v-if="purchase.mutationError.value && !createOpen && !editOpen && !returnOpen && !postOpen" :color="errorColor()" :title="purchase.mutationError.value">
       <template #actions>
         <div v-if="purchase.selectedOperation.value" class="flex flex-wrap gap-2">
           <UButton
@@ -698,13 +699,13 @@ onMounted(() => {
           :variants="purchase.variants.value"
           :units="purchase.units.value"
           :field-errors="purchase.fieldErrors.value"
-          :operation-error="purchase.mutationError.value"
           :loading="purchase.mutating.value"
           @submit="saveDraft($event, false)"
           @cancel="createOpen = false"
         />
         <ErpPurchaseOperationRecovery
           :message="purchase.mutationError.value"
+          :color="errorColor()"
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
@@ -725,7 +726,6 @@ onMounted(() => {
           :variants="purchase.variants.value"
           :units="purchase.units.value"
           :field-errors="purchase.fieldErrors.value"
-          :operation-error="purchase.mutationError.value"
           :loading="purchase.mutating.value"
           :xml-origin="Boolean(purchase.selected.value.source_access_key)"
           @submit="saveDraft($event, true)"
@@ -733,6 +733,7 @@ onMounted(() => {
         />
         <ErpPurchaseOperationRecovery
           :message="purchase.mutationError.value"
+          :color="errorColor()"
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
@@ -878,7 +879,6 @@ onMounted(() => {
           :purchase="purchase.selected.value"
           :return-draft="purchase.selectedReturn.value"
           :field-errors="purchase.fieldErrors.value"
-          :operation-error="purchase.mutationError.value"
           :loading="purchase.mutating.value || purchase.loadingDetail.value"
           :return-allowed="allowed('erp.purchase-returns.store')"
           :post-allowed="allowed('erp.purchase-returns.post')"
@@ -889,6 +889,7 @@ onMounted(() => {
         <ErpPurchaseOperationRecovery
           v-if="purchase.selected.value && (!purchase.selectedReturn.value || purchase.selected.value.id === purchase.selectedReturn.value.erp_purchase_id)"
           :message="purchase.mutationError.value"
+          :color="errorColor()"
           :pending="Boolean(purchase.selectedOperation.value)"
           :can-retry="purchase.canRetryExact.value"
           :busy="purchase.mutating.value"
@@ -899,6 +900,7 @@ onMounted(() => {
         <section v-if="purchase.selectedReturn.value && (!purchase.selected.value || purchase.selected.value.id !== purchase.selectedReturn.value.erp_purchase_id)" class="space-y-4 rounded-lg border border-default p-4" aria-label="Detalhes da devolução">
           <ErpPurchaseOperationRecovery
             :message="purchase.mutationError.value"
+            :color="errorColor()"
             :pending="Boolean(purchase.selectedOperation.value)"
             :can-retry="purchase.canRetryExact.value"
             :busy="purchase.mutating.value"
@@ -937,6 +939,7 @@ onMounted(() => {
           </UAlert>
           <ErpPurchaseOperationRecovery
             :message="purchase.mutationError.value"
+            :color="errorColor()"
             :pending="Boolean(purchase.selectedOperation.value)"
             :can-retry="purchase.canRetryExact.value"
             :busy="purchase.mutating.value"

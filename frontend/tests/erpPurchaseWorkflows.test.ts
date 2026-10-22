@@ -89,6 +89,33 @@ function realPurchaseRecovery() {
   return compileModule(script.content, { vue: Vue }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
 }
 
+function mountXmlPreview(total: Record<string, string>) {
+  const source = readFileSync(new URL('../app/components/erp/ErpPurchaseXmlPreview.vue', import.meta.url), 'utf8')
+  const script = compileScript(parse(source).descriptor, { id: 'ErpPurchaseXmlPreview', inlineTemplate: true })
+  const component = compileModule(script.content, {
+    'vue': Vue, '#shared/types/erpBusiness': {}, '#shared/utils/erpPurchase': { formatPurchaseDecimal, purchaseUnitFactor }
+  }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
+  type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
+  const root: Node = { tag: 'root', children: [], parent: null, props: {} }
+  const renderer = Vue.createRenderer<Node>({
+    patchProp(node, key, _previous, next) { node.props[key] = next },
+    insert(node, parent, anchor) { node.parent = parent; const index = anchor ? parent.children.indexOf(anchor) : -1; if (index < 0) parent.children.push(node); else parent.children.splice(index, 0, node) },
+    remove(node) { if (node.parent) { const index = node.parent.children.indexOf(node); if (index >= 0) node.parent.children.splice(index, 1) } },
+    createElement(tag) { return { tag, children: [], parent: null, props: {} } },
+    createText(text) { return { text, children: [], parent: null, props: {} } }, createComment(text) { return { text, children: [], parent: null, props: {} } },
+    setText(node, text) { node.text = text }, setElementText(node, text) { node.children = []; node.text = text }, parentNode(node) { return node.parent }, nextSibling(node) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
+  })
+  const previewState = { token: 'token', preview: { state: 'pending', chave: 'key', expires_at: 'later', emit: { name: 'Fornecedor', cpf_cnpj: '1' }, dest: { name: 'Empresa', cpf_cnpj: '2' }, det: [], total, errors: [], duplicate: false, duplicate_purchase_id: null }, mappings: [], erp_contact_id: null }
+  const app = renderer.createApp({ render: () => Vue.h(component, {
+    'modelValue': previewState, 'onUpdate:modelValue': () => {}, 'establishmentId': 3, 'onUpdate:establishmentId': () => {},
+    'establishments': [], 'suppliers': [], 'variants': [], 'units': []
+  }) })
+  for (const name of ['UFormField', 'UInputMenu', 'UInput', 'UAlert', 'UButton']) app.component(name, { props: ['label', 'title'], setup: (props, context) => () => Vue.h('div', {}, [props.label ?? props.title ?? '', ...(context.slots.default?.() ?? [])]) })
+  app.mount(root)
+  const textContent = (node: Node): string => `${node.text ?? ''}${node.children.map(textContent).join('')}`
+  return { text: textContent(root), dispose: () => app.unmount() }
+}
+
 function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Record<string, unknown>) {
   const route = Vue.reactive({ path: '/erp/compras', query: {}, hash: initialHash })
   const replacements: Array<Record<string, unknown>> = []
@@ -131,7 +158,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
           const row = { original }
           return [context.slots['actions-cell']?.({ row }) ?? null, context.slots['amount-cell']?.({ row }) ?? null]
         })) },
-    UAlert: { props: ['title', 'description'], setup: props => () => Vue.h('aside', { 'data-alert': props.title }, `${props.title ?? ''}${props.description ?? ''}`) },
+    UAlert: { props: ['title', 'description', 'color'], setup: props => () => Vue.h('aside', { 'data-alert': props.title, 'data-color': props.color }, `${props.title ?? ''}${props.description ?? ''}`) },
     UBadge: { setup: (_props, context) => () => Vue.h('span', {}, context.slots.default?.()) },
     ErpPurchaseForm: {
       props: ['modelValue', 'operationError'],
@@ -159,7 +186,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
       onSelect: (value: unknown) => context.emit('update:modelValue', value)
     })
   }
-  components.UAlert ??= { props: ['title'], setup: props => () => Vue.h('aside', { 'data-alert': props.title }, String(props.title ?? '')) }
+  components.UAlert ??= { props: ['title', 'color'], setup: props => () => Vue.h('aside', { 'data-alert': props.title, 'data-color': props.color }, String(props.title ?? '')) }
   const root = { children: [] as unknown[] }
   const renderer = Vue.createRenderer({
     patchProp(node: { props: Record<string, unknown> }, key, _previous, next) { node.props[key] = next },
@@ -196,7 +223,12 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
     const modal = find(root, node => node.props?.['data-modal'] === title)
     return modal ? find(modal, predicate) : null
   }
-  return { app, route, replacements, authorityGeneration, mutationError, draftSaveResults, loads, navItems, root, state, find, findInModal, textContent, renderErrors }
+  function findAll(node: unknown, predicate: (node: { tag?: string, props?: Record<string, unknown> }) => boolean): Array<{ tag?: string, props?: Record<string, unknown> }> {
+    if (typeof node !== 'object' || node === null) return []
+    const record = node as { tag?: string, props?: Record<string, unknown>, children?: unknown[] }
+    return [...(predicate(record) ? [record] : []), ...(record.children ?? []).flatMap(child => findAll(child, predicate))]
+  }
+  return { app, route, replacements, authorityGeneration, mutationError, draftSaveResults, loads, navItems, root, state, find, findAll, findInModal, textContent, renderErrors }
 }
 
 function deferred<T>() {
@@ -391,6 +423,28 @@ describe('resource-owned purchase list read errors', () => {
 })
 
 describe('purchase decimal and source helpers', () => {
+  it('keeps a pending recovery notice in the attention color before any message arrives', async (t) => {
+    const mutationError = Vue.ref('')
+    const selectedOperation = Vue.ref({ key: 'pending', operation: 'erp.purchases.store', method: 'POST', path: '/erp/purchases', payload: {} })
+    const app = mountPurchaseWorkspace('#purchases', { mutationError, selectedOperation })
+    t.after(() => app.app.unmount())
+    await Vue.nextTick()
+    app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Nova compra')?.props?.['onClick']?.()
+    await Vue.nextTick()
+    const notice = app.find(app.root, node => node.props?.['aria-label'] === 'Estado da operação de compra')
+    assert.ok(notice)
+    assert.match(String(notice.props?.class), /border-warning\/40/)
+  })
+
+  it('shows Portuguese XML total labels while preserving values and exposing unknown fields', (t) => {
+    const mounted = mountXmlPreview({ currency: 'BRL', vProd: '10.0000', vNF: '12.0000', futureTotal: '12.0000' })
+    t.after(mounted.dispose)
+    assert.match(mounted.text, /MoedaBRL/)
+    assert.match(mounted.text, /Produtos10\.0000/)
+    assert.match(mounted.text, /Total do documento12\.0000/)
+    assert.match(mounted.text, /Campo do XML não reconhecido \(futureTotal\)12\.0000/)
+  })
+
   it('keeps four-place money and quantity strings exact through conversion and line totals', () => {
     assert.equal(convertPurchaseQuantity('1.2345', '2.00000000'), '2.4690')
     assert.equal(purchaseUnitFactor(9, 2, [
@@ -1194,6 +1248,14 @@ describe('purchase decimal and source helpers', () => {
     app.find(app.root, node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
     await Vue.nextTick()
     assert.match(app.textContent(app.root as { text?: string, children?: unknown[] }), /A conexão caiu; confira a operação/)
+    const operationAlerts = app.findAll(app.root, node => node.props?.['data-alert'] === 'A conexão caiu; confira a operação.')
+    assert.equal(operationAlerts.length, 1, 'the recovery modal presents one contextual notice')
+    assert.equal(operationAlerts[0]?.props?.['data-color'], 'error')
+    app.mutationError.value = 'Operação confirmada após consulta.'
+    await Vue.nextTick()
+    const confirmedAlerts = app.findAll(app.root, node => node.props?.['data-alert'] === 'Operação confirmada após consulta.')
+    assert.equal(confirmedAlerts.length, 1)
+    assert.equal(confirmedAlerts[0]?.props?.['data-color'], 'success')
     app.authorityGeneration.value++
     await Vue.nextTick()
     open()?.props?.onClick?.()

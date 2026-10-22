@@ -102,6 +102,11 @@ describe('ERP mobile shell and contract', () => {
     assert.ok(slots.body, 'Page content belongs in the scrollable body')
     const header = slots.header!()[0]!
     assert.equal(header.props?.title, 'Empresa A')
+    const navbar = named(header, 'UDashboardNavbar')[0]!
+    const navbarUi = navbar.props?.ui as { left?: string, title?: string, right?: string }
+    assert.doesNotMatch(navbarUi.title ?? '', /hidden/)
+    assert.match(navbarUi.left ?? '', /flex-1/)
+    assert.match(navbarUi.right ?? '', /shrink-0/)
     assert.ok(named(header, 'CompanyMenu').length, 'Company switch must be available with sidebar closed')
     assert.ok(named(header, 'UserMenu').length, 'User controls must be available with sidebar closed')
     const toggles = named(header, 'UDashboardSidebarToggle')
@@ -247,7 +252,7 @@ describe('ERP mobile shell and contract', () => {
   it('uses a native panel, page title, context controls and one marked sidebar toggle for catalogs', (t) => {
     const view = surface('components/erp/ErpCatalogPageShell.vue', {}, { title: 'Contatos' })
     t.after(view.close)
-    const root = view.render({ default: () => [Vue.h('main', { 'data-catalog-page': true })] })
+    const root = view.render({ actions: () => [Vue.h('button', { 'aria-label': 'Criar contato' }, 'Novo contato')], default: () => [Vue.h('main', { 'data-catalog-page': true })] })
     const panels = named(root, 'UDashboardPanel')
     assert.equal(panels.length, 1)
     const slots = panels[0]!.children as Record<string, () => Vue.VNode[]>
@@ -257,6 +262,8 @@ describe('ERP mobile shell and contract', () => {
     assert.equal(named(header, 'UDashboardSidebarToggle').length, 1)
     assert.equal(named(header, 'CompanyMenu').length, 1)
     assert.equal(named(header, 'UserMenu').length, 1)
+    const headerSlots = header.children as Record<string, () => Vue.VNode[]>
+    assert.ok(nodes(Vue.h(Vue.Fragment, {}, headerSlots.right!())).some(node => node.props?.['aria-label'] === 'Criar contato'), 'Page actions remain in the same reachable mobile header row')
     assert.ok(nodes(slots.body!()[0]!).some(node => node.type === 'main'))
   })
   it('renders overview content inside the ERP layout panel', (t) => {

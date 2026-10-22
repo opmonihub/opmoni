@@ -256,6 +256,21 @@ function balanceCost(balance: ErpStockBalance) {
 function movementSummary(movement: ErpStockMovement) {
   return stockCostDescription(movement)
 }
+function sourceTypeLabel(value: string) {
+  const labels: Record<string, string> = {
+    erp_purchase: 'Compra', erp_sale: 'Venda', erp_purchase_return: 'Devolução de compra', erp_sale_return: 'Devolução de venda',
+    erp_stock_adjustment: 'Ajuste de estoque', erp_stock_transfer: 'Transferência', erp_stock_transfer_return: 'Retorno de transferência', erp_stock_reversal: 'Correção de movimento'
+  }
+  return labels[value] ?? `Origem não reconhecida (${value})`
+}
+function costStatusLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = { known: 'Conhecido', unvalued: 'Sem valoração', mixed_currency: 'Moedas diferentes', legacy_unknown: 'Legado desconhecido' }
+  return value ? labels[value] ?? `Situação de custo não reconhecida (${value})` : 'Situação de custo não informada'
+}
+function transferStatusLabel(value: string) {
+  const labels: Record<string, string> = { posted: 'Lançada' }
+  return labels[value] ?? `Situação da transferência não reconhecida (${value})`
+}
 function mutationColor() {
   return workspace.mutationError.value.startsWith('Operação confirmada') ? 'success' : 'error'
 }
@@ -508,7 +523,7 @@ function previousPage() {
           <template v-else-if="area === 'movements'">
             <p>{{ establishmentNames.get((row.original as ErpStockMovement).erp_establishment_id) ?? `Estabelecimento #${(row.original as ErpStockMovement).erp_establishment_id}` }} · {{ variantNames.get((row.original as ErpStockMovement).erp_product_variant_id) ?? `Variante #${(row.original as ErpStockMovement).erp_product_variant_id}` }}</p>
             <p class="text-sm text-muted">
-              Origem {{ (row.original as ErpStockMovement).source_type }} #{{ (row.original as ErpStockMovement).source_id }}
+              Origem: {{ sourceTypeLabel((row.original as ErpStockMovement).source_type) }} #{{ (row.original as ErpStockMovement).source_id }}
             </p>
           </template>
           <template v-else-if="area === 'lots'">
@@ -526,7 +541,7 @@ function previousPage() {
           <template v-else>
             <p>{{ establishmentNames.get((row.original as ErpStockTransfer).from_establishment_id) ?? `#${(row.original as ErpStockTransfer).from_establishment_id}` }} → {{ establishmentNames.get((row.original as ErpStockTransfer).to_establishment_id) ?? `#${(row.original as ErpStockTransfer).to_establishment_id}` }}</p>
             <p class="text-sm text-muted">
-              {{ variantNames.get((row.original as ErpStockTransfer).erp_product_variant_id) ?? `Variante #${(row.original as ErpStockTransfer).erp_product_variant_id}` }} · {{ (row.original as ErpStockTransfer).status }}
+              {{ variantNames.get((row.original as ErpStockTransfer).erp_product_variant_id) ?? `Variante #${(row.original as ErpStockTransfer).erp_product_variant_id}` }} · {{ transferStatusLabel((row.original as ErpStockTransfer).status) }}
             </p>
           </template>
         </template>
@@ -555,7 +570,7 @@ function previousPage() {
               {{ (row.original as ErpStockLot).available_quantity }} / {{ (row.original as ErpStockLot).quantity }}
             </p>
             <p class="text-sm text-muted">
-              {{ (row.original as ErpStockLot).total_cost ?? 'Custo desconhecido' }} {{ (row.original as ErpStockLot).currency ?? 'moeda não identificada' }} · {{ (row.original as ErpStockLot).cost_status }}
+              {{ (row.original as ErpStockLot).total_cost ?? 'Custo desconhecido' }} {{ (row.original as ErpStockLot).currency ?? 'moeda não identificada' }} · {{ costStatusLabel((row.original as ErpStockLot).cost_status) }}
             </p>
             <p class="text-xs text-muted">
               Lote pai {{ (row.original as ErpStockLot).parent_lot_id ?? 'nenhum' }} · alocação pai {{ (row.original as ErpStockLot).parent_allocation_id ?? 'nenhuma' }} · conciliação pai {{ (row.original as ErpStockLot).parent_settlement_id ?? 'nenhuma' }}

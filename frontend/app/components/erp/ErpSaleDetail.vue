@@ -36,6 +36,14 @@ function lineDescription(line: ErpCommercialLine & { source_line_id?: number }) 
 }
 const numberLabel = computed(() => props.area === 'quotes' ? commercial.value.quote_no : props.area === 'orders' ? commercial.value.order_no : commercial.value.invoice_no)
 const paid = computed(() => props.area === 'sales' && props.obligation?.status === 'settled' && props.obligation.open_amount === '0.0000')
+function fiscalStatusLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = { none: 'Não iniciada', authorized: 'Autorizada' }
+  return value ? labels[value] ?? `Situação fiscal não reconhecida (${value})` : 'Situação fiscal não informada'
+}
+function paymentStatusLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = { posted: 'Lançado', reversed: 'Estornado', compensation: 'Compensação' }
+  return value ? labels[value] ?? `Situação do pagamento não reconhecida (${value})` : 'Situação do pagamento não informada'
+}
 const statusLabel = computed(() => isReturn.value
   ? returned.value.status === 'posted' ? 'Devolução lançada' : 'Rascunho de devolução'
   : commercial.value.status === 'posted'
@@ -61,7 +69,7 @@ const statusLabel = computed(() => isReturn.value
           {{ statusLabel }}
         </UBadge>
         <UBadge v-if="area === 'sales' && !isReturn" color="info" variant="subtle">
-          Fiscal: {{ commercial.fiscal_status || 'não informado' }}
+          Fiscal: {{ fiscalStatusLabel(commercial.fiscal_status) }}
         </UBadge>
         <UBadge v-if="paid" color="success" variant="subtle">
           Recebível liquidado
@@ -241,7 +249,7 @@ const statusLabel = computed(() => isReturn.value
           Recebimentos vinculados
         </h4>
         <div v-for="paymentId in paymentIds" :key="paymentId" class="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md bg-elevated px-3 py-2 text-sm">
-          <span v-if="canReadPayments && payments.find(payment => payment.id === paymentId)" class="break-words">Pagamento #{{ paymentId }} · {{ payments.find(payment => payment.id === paymentId)?.amount }} {{ payments.find(payment => payment.id === paymentId)?.currency }} · {{ payments.find(payment => payment.id === paymentId)?.effective_status }}</span>
+          <span v-if="canReadPayments && payments.find(payment => payment.id === paymentId)" class="break-words">Pagamento #{{ paymentId }} · {{ payments.find(payment => payment.id === paymentId)?.amount }} {{ payments.find(payment => payment.id === paymentId)?.currency }} · {{ paymentStatusLabel(payments.find(payment => payment.id === paymentId)?.effective_status) }}</span>
           <span v-else>Pagamento #{{ paymentId }}</span>
           <UButton
             v-if="canReceipt"

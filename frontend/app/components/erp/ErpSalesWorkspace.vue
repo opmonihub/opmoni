@@ -668,7 +668,7 @@ onMounted(() => {
       :description="sales.referenceError.value"
     />
     <UAlert
-      v-if="sales.resolvedOperation.value && !sales.needsReconciliation.value && sales.mutationError.value"
+      v-if="sales.resolvedOperation.value && !sales.needsReconciliation.value && sales.mutationError.value && modalKind === null"
       color="success"
       title="Operação confirmada"
       :description="sales.mutationError.value"
@@ -828,6 +828,7 @@ onMounted(() => {
             :can-override-price="sales.allowed('erp.sales.price.override')"
             :can-override-discount="sales.allowed('erp.sales.discount.override')"
             :disabled="sales.needsReconciliation.value"
+            :editing="true"
             @update:draft="updateEditDraft"
             @save="saveDraft"
             @cancel="closeModal"

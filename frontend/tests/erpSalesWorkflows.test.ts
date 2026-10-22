@@ -307,6 +307,27 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   return { root, state, currentCompany, stop, app, walk, findButton, click, textContent, submitDraft: () => submitDraft(), submitReturn: () => submitReturn(), dispose: () => { app.unmount(); stop() } }
 }
 
+function mountSaleDetail(props: Record<string, unknown>) {
+  const source = readFileSync(new URL('../app/components/erp/ErpSaleDetail.vue', import.meta.url), 'utf8')
+  const script = VueCompiler.compileScript(VueCompiler.parse(source).descriptor, { id: 'sale-detail', inlineTemplate: true })
+  const component = compileModule(script.content, { vue: Vue }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
+  type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
+  const root: Node = { tag: 'root', children: [], parent: null, props: {} }
+  const renderer = Vue.createRenderer<Node>({
+    patchProp(node, key, _previous, next) { node.props[key] = next },
+    insert(node, parent, anchor) { node.parent = parent; const index = anchor ? parent.children.indexOf(anchor) : -1; if (index < 0) parent.children.push(node); else parent.children.splice(index, 0, node) },
+    remove(node) { if (node.parent) { const index = node.parent.children.indexOf(node); if (index >= 0) node.parent.children.splice(index, 1) } },
+    createElement(tag) { return { tag, children: [], parent: null, props: {} } },
+    createText(text) { return { text, children: [], parent: null, props: {} } }, createComment(text) { return { text, children: [], parent: null, props: {} } },
+    setText(node, text) { node.text = text }, setElementText(node, text) { node.children = []; node.text = text }, parentNode(node) { return node.parent }, nextSibling(node) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
+  })
+  const app = renderer.createApp({ render: () => Vue.h(component, props) })
+  for (const name of ['UBadge', 'UAlert', 'UButton', 'NuxtLink']) app.component(name, { setup: (_props, context) => () => Vue.h('span', context.slots.default?.() ?? context.slots.description?.() ?? []) })
+  app.mount(root)
+  const textContent = (node: Node): string => `${node.text ?? ''}${node.children.map(textContent).join('')}`
+  return { text: textContent(root), dispose: () => app.unmount() }
+}
+
 function installSessionStorage() {
   const values = new Map<string, string>()
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
@@ -319,6 +340,39 @@ function installSessionStorage() {
 }
 
 describe('sales authority and mounted draft form', () => {
+  it('keeps document numbers editable on create', async (t) => {
+    const api = async (path: string) => path.startsWith('/erp/') ? { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } } : { data: [] }
+    const mounted = mountSalesWorkspace(api)
+    t.after(() => mounted.dispose())
+    await mounted.click('Novo registro')
+    const createField = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'quote_no')
+    const createNumber = createField && mounted.walk(createField).find(node => node.tag === 'input')
+    assert.ok(createNumber)
+    assert.notEqual(createNumber.props.readonly, true, 'creation keeps the document number editable')
+    await mounted.click('Cancelar')
+  })
+
+  it('labels known fiscal and payment states and keeps unknown values explicit', (t) => {
+    const detail = mountSaleDetail({
+      area: 'sales', document: { id: 23, status: 'posted', fiscal_status: 'authorized', currency: 'BRL', subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000', lines: [], finance: {} },
+      payments: [{ id: 7, amount: '10.0000', currency: 'BRL', effective_status: 'posted' }], paymentIds: [7], obligation: null, receipt: null,
+      canEdit: false, canConvert: false, canPostSale: false, canReturn: false, canPostReturn: false, canReceipt: false,
+      canReadPayments: true, canPaymentsIndex: false, canObligationsIndex: false, canFiscal: false, busy: false
+    })
+    t.after(detail.dispose)
+    assert.match(detail.text, /Fiscal: Autorizada/)
+    assert.match(detail.text, /Lançado/)
+    const unknown = mountSaleDetail({
+      area: 'sales', document: { id: 24, status: 'posted', fiscal_status: 'mystery', currency: 'BRL', subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', total_amount: '10.0000', lines: [], finance: {} },
+      payments: [{ id: 8, amount: '10.0000', currency: 'BRL', effective_status: 'pending_future' }], paymentIds: [8], obligation: null, receipt: null,
+      canEdit: false, canConvert: false, canPostSale: false, canReturn: false, canPostReturn: false, canReceipt: false,
+      canReadPayments: true, canPaymentsIndex: false, canObligationsIndex: false, canFiscal: false, busy: false
+    })
+    t.after(unknown.dispose)
+    assert.match(unknown.text, /Situação fiscal não reconhecida \(mystery\)/)
+    assert.match(unknown.text, /Situação do pagamento não reconhecida \(pending_future\)/)
+  })
+
   it('uses nonempty status options in every mounted area and clears API filters without sending the UI sentinel', async () => {
     const storage = installSessionStorage()
     const calls: string[] = []
@@ -406,6 +460,10 @@ describe('sales authority and mounted draft form', () => {
       await Vue.nextTick()
       await new Promise(resolve => setImmediate(resolve))
       await mounted.click('Editar rascunho')
+      const numberField = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'quote_no')
+      const quoteNumber = numberField && mounted.walk(numberField).find(node => node.tag === 'input')
+      assert.ok(quoteNumber)
+      assert.equal(quoteNumber.props.readonly, true, 'editing cannot change the assigned document number')
       function unitSelect() {
         const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'lines.0.erp_unit_id')
         assert.ok(field)

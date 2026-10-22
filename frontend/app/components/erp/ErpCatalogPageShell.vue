@@ -11,7 +11,7 @@ defineProps<{
       <UDashboardNavbar
         :title="title"
         :toggle="false"
-        :ui="{ left: 'min-w-0', title: 'truncate', right: 'min-w-0 gap-1' }"
+        :ui="{ left: 'min-w-0 flex-1', title: 'min-w-0 truncate', right: 'min-w-0 shrink-0 gap-1' }"
       >
         <template #leading>
           <UDashboardSidebarCollapse aria-label="Recolher menu ERP" />
