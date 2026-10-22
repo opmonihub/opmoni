@@ -15,6 +15,7 @@ use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpOperationReceipt;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\FiscalDocument;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\DB;
@@ -207,6 +208,104 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
                 $this->assertNull($dispatch->lease_token);
                 $this->assertSame(0, DB::table('jobs')->where('queue', $queue)->count());
             }
+        }
+    }
+
+    public function test_queued_consumer_after_committed_owner_api_revocation_blocks_without_publication(): void
+    {
+        $protected = [];
+        foreach (['jobs', 'failed_jobs', 'fiscal_documents', 'clients', 'erp_office_delegations', 'erp_accounting_mappings', 'account_memberships', 'erp_company_memberships', 'erp_subscriptions'] as $table) {
+            $rows = DB::table($table)->orderBy('id')->get();
+            $protected[$table] = ['ids' => $rows->pluck('id')->all(), 'hash' => hash('sha256', $rows->toJson())];
+        }
+        $storageRoot = sys_get_temp_dir().'/erp-task20-revoke-'.bin2hex(random_bytes(8));
+        $queue = 'erp-task20-revoke-'.bin2hex(random_bytes(8));
+        mkdir($storageRoot.'/local', 0770, true);
+        mkdir($storageRoot.'/fiscal', 0770, true);
+        $ready = $storageRoot.'/consumer-ready.json';
+        $worker = null;
+        config([
+            'queue.default' => 'database', 'queue.connections.database.queue' => $queue,
+            'filesystems.disks.local.root' => $storageRoot.'/local', 'filesystems.disks.fiscal.root' => $storageRoot.'/fiscal',
+            'erp.operating_writes_enabled' => true, 'erp.release_enabled' => true,
+        ]);
+        Storage::forgetDisk('local');
+        Storage::forgetDisk('fiscal');
+        try {
+            $fixture = $this->handoffFixture($storageRoot.'/local');
+            $document = $fixture['delivery']->erpFiscalDocument()->firstOrFail();
+            $documentBefore = $document->getAttributes();
+            $sourceBytes = Storage::disk('local')->get($document->storage_path);
+            $delegation = ErpOfficeDelegation::findOrFail($fixture['delivery']->delegation_id);
+            $this->assertSame($fixture['company']->id, $delegation->erp_company_id);
+            $this->assertFalse(in_array($delegation->id, $protected['erp_office_delegations']['ids'], true));
+            ErpCompanyMembership::factory()->create(['erp_company_id' => $fixture['company']->id, 'user_id' => $fixture['actor']->id, 'role' => 'owner']);
+            ErpSubscription::factory()->create(['erp_company_id' => $fixture['company']->id,
+                'erp_plan_id' => app(ErpCommercialCatalog::class)->ensureBasicPlan()->id, 'status' => 'active']);
+
+            DB::transaction(fn () => app(ErpAccountingHandoffService::class)->queueAfterCommit($fixture['delivery']));
+            $this->assertSame(0, DB::transactionLevel());
+            $job = DB::table('jobs')->where('queue', $queue)->sole();
+            $this->assertFalse(in_array($job->id, $protected['jobs']['ids'], true));
+            $this->assertStringContainsString('DeliverErpAccountingDocument', $job->payload);
+            $dispatch = ErpAccountingDeliveryDispatch::where('erp_accounting_delivery_id', $fixture['delivery']->id)->sole();
+            $this->assertSame('leased', $dispatch->status);
+            $this->assertSame(1, $dispatch->dispatch_attempts);
+            $this->assertSame('pending', $fixture['delivery']->fresh()->status);
+
+            $ingress = ['X-Opmoni-Ingress-Key' => 'integration-test-only-key', 'X-Opmoni-Client-IP' => '127.0.0.1',
+                'X-Opmoni-Client-Proto' => 'http', 'Origin' => 'http://localhost:3000'];
+            $csrf = $this->withHeaders($ingress)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+            $this->withHeaders([...$ingress, 'X-CSRF-Token' => $csrf])->postJson('/api/v1/login', [
+                'email' => $fixture['actor']->email, 'password' => 'password',
+            ])->assertOk();
+            $csrf = $this->withHeaders($ingress)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+            $this->withHeaders([...$ingress, 'X-CSRF-Token' => $csrf])->postJson('/api/v1/erp/company/switch', ['company_id' => $fixture['company']->id])
+                ->assertOk()->assertJsonPath('current_company.id', $fixture['company']->id);
+            $csrf = $this->withHeaders($ingress)->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+            $this->withHeaders([...$ingress, 'X-CSRF-Token' => $csrf, 'X-Company-Id' => (string) $fixture['company']->id])
+                ->deleteJson('/api/v1/erp/delegations/'.$delegation->id)->assertOk()->assertJsonPath('data.status', 'revoked');
+            $this->assertSame(0, DB::transactionLevel());
+            $this->assertSame('revoked', $delegation->fresh()->status);
+            $this->assertNotNull($delegation->fresh()->revoked_at);
+            $this->assertSame(1, DB::table('jobs')->where('queue', $queue)->count());
+
+            $worker = $this->worker(null, $queue, 'erp-task20-after-revoke', $ready, 'work', $storageRoot.'/local', $storageRoot.'/fiscal');
+            $result = $this->response($worker);
+            $this->assertTrue($result['queued']);
+            $this->assertNotSame(getmypid(), $result['pid']);
+            $this->assertNotSame(DB::selectOne('select pg_backend_pid() as pid')->pid, $result['pg_pid']);
+            $this->assertFileExists($ready);
+            $workerIdentity = json_decode(file_get_contents($ready), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($result['pg_pid'], $workerIdentity['pg_pid']);
+            $this->assertSame('blocked', $fixture['delivery']->fresh()->status);
+            $this->assertSame('delegation_revoked', $fixture['delivery']->fresh()->reason_code);
+            $this->assertSame(0, $fixture['delivery']->fresh()->attempts);
+            $this->assertNull($fixture['delivery']->fresh()->fiscal_document_id);
+            $this->assertSame('completed', $dispatch->fresh()->status);
+            $this->assertSame(0, DB::table('jobs')->where('queue', $queue)->count());
+            $this->assertSame(0, FiscalDocument::withoutGlobalScope('account')->where('account_id', $delegation->account_id)->count());
+            $this->assertSame([], Storage::disk('fiscal')->allFiles());
+            $this->assertSame($sourceBytes, Storage::disk('local')->get($document->storage_path));
+            $this->assertSame($documentBefore, $document->fresh()->getAttributes());
+            fwrite(STDERR, 'Task20 queued consumer after committed revoke: '.json_encode([
+                'company' => $fixture['company']->id, 'actor' => $fixture['actor']->id, 'delegation' => $delegation->id,
+                'delivery' => $fixture['delivery']->id, 'dispatch' => $dispatch->id, 'queued_job' => $job->id, 'queue' => $queue,
+                'worker_pid' => $result['pid'], 'worker_pg_pid' => $result['pg_pid'], 'transaction_level' => $result['transaction_level'],
+                'delivery_status' => $fixture['delivery']->fresh()->status, 'attempts' => $fixture['delivery']->fresh()->attempts,
+            ], JSON_THROW_ON_ERROR)."\n");
+        } finally {
+            if ($worker instanceof Process && $worker->isRunning()) {
+                $worker->stop(1);
+            }
+            DB::table('jobs')->where('queue', $queue)->delete();
+            Storage::forgetDisk('local');
+            Storage::forgetDisk('fiscal');
+            File::deleteDirectory($storageRoot);
+            foreach ($protected as $table => $baseline) {
+                $this->assertSame($baseline['hash'], hash('sha256', DB::table($table)->whereIn('id', $baseline['ids'])->orderBy('id')->get()->toJson()), 'Task20 changed retained '.$table);
+            }
+            fwrite(STDERR, 'Task20 additional retained accounting baseline: '.count($protected).' tables, '.array_sum(array_map(fn (array $baseline): int => count($baseline['ids']), $protected)).' rows, SHA256 '.hash('sha256', json_encode($protected, JSON_THROW_ON_ERROR))."\n");
         }
     }
 

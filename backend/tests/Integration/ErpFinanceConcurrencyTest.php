@@ -538,6 +538,45 @@ class ErpFinanceConcurrencyTest extends TestCase
         $this->assertSame('60.0000', ErpObligation::findOrFail($obligation)->open_amount);
     }
 
+    public function test_actual_http_same_key_changed_allocation_payload_race_records_only_the_winner(): void
+    {
+        [$a, $b] = $this->sessions();
+        $obligation = $this->obligation($a);
+        $payment = $this->payment($a);
+        $key = 'task20-payload-race-'.bin2hex(random_bytes(8));
+        $first = $this->postInput($a, "payments/{$payment}/allocate", ['erp_obligation_id' => $obligation, 'amount' => '40'], $key);
+        $second = $this->postInput($b, "payments/{$payment}/allocate", ['erp_obligation_id' => $obligation, 'amount' => '41'], $key);
+        $this->assertSame($first['headers']['Idempotency-Key'], $second['headers']['Idempotency-Key']);
+        $this->assertSame($first['headers']['X-Company-Id'], $second['headers']['X-Company-Id']);
+        $this->assertSame($this->firstActor['user']->id, $this->secondActor['user']->id);
+
+        $results = $this->race($first, $second);
+
+        $this->assertSame([200, 409], $this->statuses($results));
+        $winner = $results[$results[0]['status'] === 200 ? 0 : 1];
+        $winnerAmount = $winner['body']['data']['amount'];
+        $this->assertContains($winnerAmount, ['40.0000', '41.0000']);
+        $remaining = bcsub('100.0000', $winnerAmount, 4);
+        $allocation = ErpPaymentAllocation::where('erp_payment_id', $payment)->sole();
+        $this->assertSame($winner['body']['data']['id'], $allocation->id);
+        $this->assertSame($obligation, $allocation->erp_obligation_id);
+        $this->assertSame($winnerAmount, $allocation->amount);
+        $this->assertSame($remaining, ErpObligation::findOrFail($obligation)->open_amount);
+        $this->assertSame($remaining, $winner['body']['data']['obligation_open_amount']);
+        $receipt = DB::table('erp_operation_receipts')->where('erp_company_id', $this->company->id)
+            ->where('actor_user_id', $this->firstActor['user']->id)->where('operation', 'erp.payments.allocate')->where('key_digest', hash('sha256', $key))->sole();
+        $this->assertSame(200, $receipt->response_status);
+        $this->assertSame($winner['body'], json_decode($receipt->response_body, true, flags: JSON_THROW_ON_ERROR));
+        $this->assertSame(1, DB::table('erp_operation_receipts')->where('erp_company_id', $this->company->id)->where('operation', 'erp.payments.allocate')->count());
+        $this->assertSame('100.0000', ErpPayment::findOrFail($payment)->amount);
+        fwrite(STDERR, 'Task20 conflicting payload race: '.json_encode([
+            'company' => $this->company->id, 'actor' => $this->firstActor['user']->id, 'operation' => 'erp.payments.allocate',
+            'key_sha256' => hash('sha256', $key), 'worker_pids' => array_column($results, 'pid'), 'pg_pids' => array_column($results, 'pg_pid'),
+            'statuses' => array_column($results, 'status'), 'winner_allocation' => $allocation->id, 'winner_amount' => $winnerAmount,
+            'remaining' => $remaining, 'receipt' => $receipt->id,
+        ], JSON_THROW_ON_ERROR)."\n");
+    }
+
     public function test_actual_http_partial_reversals_share_original_bound(): void
     {
         [$a, $b] = $this->sessions();
