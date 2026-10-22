@@ -36,7 +36,7 @@ async function page(name: string, api: (...args: Runtime[]) => Promise<Runtime>,
     useRoute: () => ({ path: routePath }),
     ref: Vue.ref, computed: Vue.computed, reactive: Vue.reactive, watch: Vue.watch, definePageMeta() {
     }, useNuxtApp: () => ({ $api: api }), useAccessApi: () => ({ api }),
-    useAuth: () => ({ user: Vue.ref({ is_super_admin: true }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
+    useAuth: () => ({ user: Vue.ref({ is_super_admin: true }), currentAccount: Vue.ref({ id: 1, status: 'active', role: 'user' }), canManageMembers: Vue.ref(true), accounts: Vue.ref([{ id: 1, status: 'active', role: 'user' }]), switchAccount: api }),
     useToast: () => ({ add() {
     } }), refDebounced: (value: unknown) => value,
     useAccountFilters: require('../app/composables/useAccountFilters.ts').useAccountFilters,
