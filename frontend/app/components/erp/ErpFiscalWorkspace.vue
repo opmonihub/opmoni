@@ -40,6 +40,8 @@ const canSubmitEvent = computed(() => workspace.canCreateEvents
   && (workspace.configuration?.environment === 'homologation' || workspace.configuration?.release_gates.production_transmission_enabled === true))
 const contextFormKey = computed(() => `${uiAuthority.key.value}:${workspace.authorityGeneration}`)
 
+const visibleListState = computed(() => activeArea.value === 'configuration' ? null : workspace.listStates?.[activeArea.value as 'documents' | 'certificates' | 'events' | 'invalidations'])
+
 function beginUiAction() {
   return { epoch: ++uiEpoch, context: uiAuthority.capture(), establishmentId: workspace.selectedEstablishmentId, documentId: focusedDocument.value?.id ?? null }
 }
@@ -307,13 +309,38 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
         </UButton>
       </nav>
 
+      <UAlert
+        v-if="visibleListState?.error"
+        color="warning"
+        variant="subtle"
+        title="Listagem fiscal indisponível"
+        :description="visibleListState.confirmed ? 'Os dados exibidos podem estar desatualizados. Tente atualizar a listagem.' : 'Não foi possível confirmar a listagem. Tente novamente.'"
+      >
+        <template #actions>
+          <UButton
+            size="sm"
+            variant="outline"
+            :loading="workspace.loading"
+            @click="workspace.load()"
+          >
+            Tentar novamente
+          </UButton>
+        </template>
+      </UAlert>
+      <p v-else-if="visibleListState?.loading" role="status" class="text-sm text-muted">
+        {{ visibleListState.confirmed ? 'Atualizando a listagem…' : 'Carregando a listagem…' }}
+      </p>
+      <p v-else-if="visibleListState && !visibleListState.confirmed" role="status" class="text-sm text-muted">
+        {{ visibleListState.permitted ? 'Listagem ainda não confirmada.' : 'Listagem não disponível para seu acesso atual.' }}
+      </p>
+
       <template v-if="activeArea === 'documents'">
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
           <section class="space-y-4">
             <div class="flex items-center justify-between">
               <h2 class="text-lg font-semibold">
                 Documentos fiscais
-              </h2><span class="text-sm text-muted">{{ workspace.documents.length }} registro(s)</span>
+              </h2><span v-if="workspace.listStates?.documents.confirmed" class="text-sm text-muted">{{ workspace.documents.length }} registro(s){{ workspace.listStates.documents.error ? ' · desatualizados' : '' }}</span>
             </div>
             <div class="max-h-[34rem] space-y-2 overflow-auto pr-1">
               <button
@@ -327,7 +354,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                 <span class="flex items-center justify-between gap-2"><span class="font-medium">{{ row.model }} · {{ row.number ? `Nº ${row.number}` : `Documento #${row.id}` }}</span><UBadge variant="subtle" :color="row.status === 'authorized' ? 'success' : row.status === 'rejected' ? 'error' : 'warning'">{{ fiscalStatus(row.status) }}</UBadge></span>
                 <span class="mt-1 block text-xs text-muted">{{ row.environment === 'production' ? 'Produção' : 'Homologação' }} · Série {{ row.series ?? '—' }}</span>
               </button>
-              <p v-if="!workspace.documents.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
+              <p v-if="workspace.listStates?.documents.confirmed && !workspace.listStates.documents.loading && !workspace.listStates.documents.error && !workspace.documents.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
                 Nenhum documento fiscal foi encontrado para esta empresa.
               </p>
             </div>
@@ -493,7 +520,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
               >
                 Substituir arquivo
               </UButton>
-            </article><p v-if="!workspace.certificates.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
+            </article><p v-if="workspace.listStates?.certificates.confirmed && !workspace.listStates.certificates.loading && !workspace.listStates.certificates.error && !workspace.certificates.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
               Nenhum certificado foi encontrado. A senha e o arquivo enviados nunca são exibidos nem reidratados.
             </p>
           </section>
@@ -527,7 +554,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
             Revisar e confirmar envio
           </UButton>
         </UCard>
-        <p v-if="!workspace.events.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
+        <p v-if="workspace.listStates?.events.confirmed && !workspace.listStates.events.loading && !workspace.listStates.events.error && !workspace.events.length" class="rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted">
           Nenhum evento fiscal registrado.
         </p>
         <p class="text-sm text-muted">

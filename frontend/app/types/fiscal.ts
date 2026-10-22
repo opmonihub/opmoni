@@ -9,7 +9,7 @@
 /**
  * O modelo do documento fiscal, o campo `mod` da chave de acesso.
  *
- * O enum do backend tem seis membros e esta união tem seis: `nfe` e `nfce` são
+ * O enum do backend inclui os modelos emitidos e capturados: `nfe` e `nfce` são
  * os modelos `55` e `65`, `cte` e `cte_os` são o `57` e o `67`, e `gtve` é o
  * `64`. O CT-e simplificado é `57` como o regular e por isso divide o caso com
  * ele — dois documentos de layouts diferentes, uma identidade de modelo só.
@@ -17,7 +17,7 @@
  * Um membro aqui que o backend não tem, ou o contrário, é um filtro que a
  * API recusa com 422 e um chip que nunca aparece.
  */
-export type FiscalModel = 'nfe' | 'nfce' | 'cte' | 'cte_os' | 'gtve' | 'nfse'
+export type FiscalModel = 'nfe' | 'nfce' | 'cte' | 'cte_os' | 'gtve' | 'nfse' | 'mdfe'
 
 /**
  * Documento ou evento. Eixo diferente de `FiscalStage`: o resumo e o documento

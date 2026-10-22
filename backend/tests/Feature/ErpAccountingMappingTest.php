@@ -23,11 +23,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpAccountingMappingTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -347,6 +349,7 @@ class ErpAccountingMappingTest extends TestCase
         $placeholder = $handoff->deliver($handoff->ensureDeliveryIntent($s['document']));
         $this->assertNull($placeholder->mapping_id);
         $first = $this->approveAccountingMapping($s['delegation'], $s['establishment'], $s['client']);
+        $originalXml = Storage::disk('local')->get($s['document']->storage_path);
         Storage::disk('local')->delete($s['document']->storage_path);
         $failed = $handoff->retry($placeholder);
         $this->assertSame('storage_unavailable', $failed->reason_code);
@@ -355,7 +358,7 @@ class ErpAccountingMappingTest extends TestCase
         $this->assertSame(0, $failed->attempts);
         $nextClient = resolve(CurrentTenant::class)->run($s['account']->id, fn () => Client::factory()->create(['account_id' => $s['account']->id]));
         $next = $this->approveAccountingMapping($s['delegation'], $s['establishment'], $nextClient);
-        Storage::disk('local')->put($s['document']->storage_path, '<nfeProc/>');
+        Storage::disk('local')->put($s['document']->storage_path, $originalXml);
         $blocked = $handoff->retry($failed);
         $this->assertSame('mapping_revoked', $blocked->reason_code);
         $this->assertSame($first->id, $blocked->mapping_id);
@@ -483,6 +486,8 @@ class ErpAccountingMappingTest extends TestCase
             'idempotency_key' => fake()->uuid(), 'storage_path' => 'erp/fiscal/mapping.xml',
             'artifact_byte_length' => 10, 'artifact_sha256' => hash('sha256', '<nfeProc/>'), 'authorized_at' => now(),
         ]);
+
+        $this->attachVerifiedFiscalEvidence($document);
 
         return compact('account', 'company', 'client', 'delegation', 'establishment', 'document');
     }

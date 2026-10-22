@@ -28,11 +28,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpAccountingRetryOutboxTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -418,7 +420,7 @@ class ErpAccountingRetryOutboxTest extends TestCase
         $path = 'erp/fiscal/retry-'.$number.'.xml';
         Storage::disk('local')->put($path, '<nfeProc/>');
 
-        return ErpFiscalDocument::query()->create([
+        $document = ErpFiscalDocument::query()->create([
             'erp_company_id' => $company->id,
             'erp_establishment_id' => $establishment->id,
             'model' => '55',
@@ -433,5 +435,8 @@ class ErpAccountingRetryOutboxTest extends TestCase
             'artifact_sha256' => hash('sha256', Storage::disk('local')->get($path)),
             'authorized_at' => now(),
         ]);
+        $this->attachVerifiedFiscalEvidence($document);
+
+        return $document;
     }
 }

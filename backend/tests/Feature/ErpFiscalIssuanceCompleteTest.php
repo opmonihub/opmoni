@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Erp\Accounting\ErpAccountingHandoffService;
 use App\Erp\ErpCommercialCatalog;
 use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalActionCatalog;
@@ -14,6 +15,7 @@ use App\Erp\Fiscal\ErpFiscalSchemaValidator;
 use App\Erp\Fiscal\ErpFiscalXmlSigner;
 use App\Jobs\ProcessErpFiscalAttempt;
 use App\Models\Account;
+use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
 use App\Models\Erp\ErpCompany;
@@ -24,7 +26,9 @@ use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Erp\Fiscal\ErpFiscalAttempt;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Models\Erp\Sales\ErpSale;
+use App\Models\FiscalDocument;
 use App\Models\User;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -131,6 +135,11 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->assertNotEmpty($rows);
         $this->assertTrue(collect($rows)->contains(fn (array $row): bool => $row['model'] === '55' && $row['action'] === 'transmit'));
         $this->assertTrue(collect($rows)->contains(fn (array $row): bool => $row['model'] === '65' && $row['action'] === 'contingency'));
+        foreach (['complement', 'substitution'] as $kind) {
+            $route = collect($rows)->first(fn (array $row): bool => $row['model'] === '57' && $row['action'] === $kind)['route'];
+            $this->assertStringContainsString('/api/v1/erp/fiscal/documents', $route);
+            $this->assertStringContainsString('document_kind='.$kind, $route);
+        }
     }
 
     #[DataProvider('fiscalModelProvider')]
@@ -609,6 +618,106 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->executeDocumentAction($ctx, $created->json('data.id'), 'queue')->assertJsonPath('data.status', 'queued')->assertJsonPath('data.attempt.status', 'accepted')->assertJsonPath('data.attempt.safe_result.provider_outcome', 'not_dispatched');
     }
 
+    #[DataProvider('acceptedAccountingEventModels')]
+    public function test_accepted_event_keeps_encrypted_evidence_and_projects_after_delivered_document(string $model): void
+    {
+        $ctx = $this->ownerContext();
+        Storage::fake('fiscal');
+        $office = Account::factory()->create();
+        $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $ctx['company']->id, 'account_id' => $office->id]);
+        $client = Client::factory()->company()->create(['account_id' => $office->id, 'tax_id' => self::VALID_CNPJ]);
+        $this->approveAccountingMapping($delegation, $ctx['establishment'], $client);
+        $draft = $this->createQueuedDocument($ctx, $model, 'event-projection-'.$model);
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.artifact_ready', true);
+        $handoff = app(ErpAccountingHandoffService::class);
+        $original = $handoff->deliver(ErpAccountingDelivery::query()->sole());
+        $this->assertSame('delivered', $original->status);
+        $history = $original->getAttributes();
+        $eventXml = null;
+        $provider = \Mockery::mock(ErpFiscalProvider::class);
+        $provider->shouldReceive('submitEvent')->once()->andReturnUsing(function ($actual, $event) use (&$eventXml, $model) {
+            $request = new \DOMDocument;
+            $request->loadXML($event->payload_snapshot['signed_xml']);
+            $mdfe = $model === '58';
+            $node = $mdfe ? $request->documentElement : (new \DOMXPath($request))->query('//*[local-name()="evento"]')->item(0);
+            $root = $mdfe ? 'procEventoMDFe' : 'procEventoNFe';
+            $ret = $mdfe ? 'retEventoMDFe' : 'retEvento';
+            $key = $mdfe ? 'chMDFe' : 'chNFe';
+            $version = $mdfe ? '3.00' : '1.00';
+            $namespace = $mdfe ? 'http://www.portalfiscal.inf.br/mdfe' : 'http://www.portalfiscal.inf.br/nfe';
+            $eventXml = '<'.$root.' xmlns="'.$namespace.'" versao="'.$version.'">'.$request->saveXML($node).'<'.$ret.' versao="'.$version.'"><infEvento><tpAmb>2</tpAmb><verAplic>TESTE</verAplic><cOrgao>35</cOrgao><cStat>135</cStat><xMotivo>Evento registrado e vinculado</xMotivo><'.$key.'>'.$actual->access_key.'</'.$key.'><tpEvento>'.($mdfe ? '110112' : '110111').'</tpEvento><nSeqEvento>1</nSeqEvento><dhRegEvento>2026-10-21T10:00:01-03:00</dhRegEvento><nProt>135260000000002</nProt></infEvento></'.$ret.'></'.$root.'>';
+
+            return new ErpFiscalProviderResult('event_accepted', '135260000000002', xml: $eventXml);
+        });
+        $this->app->instance(ErpFiscalProvider::class, $provider);
+        $eventId = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/events', [
+            'erp_fiscal_document_id' => $draft['id'], 'event_type' => $model === '58' ? 'close' : 'cancel',
+            'justification' => 'Cancelamento com evidencia original preservada', 'idempotency_key' => 'event-projection',
+            'closed_on' => now()->toDateString(), 'closing_uf' => 'SP', 'closing_city_code' => '3550308',
+        ])->assertCreated()->json('data.id');
+        $this->executeEventAction($ctx, $eventId)->assertJsonPath('data.status', 'accepted');
+        $event = ErpFiscalEvent::findOrFail($eventId);
+        $this->assertSame($eventXml, $event->accepted_xml);
+        $this->assertStringNotContainsString($eventXml, (string) $event->getRawOriginal('accepted_xml'));
+        $this->assertArrayNotHasKey('accepted_xml', $event->toArray());
+        $delivery = ErpAccountingDelivery::query()->where('erp_fiscal_event_id', $eventId)->sole();
+        $projected = $handoff->deliver($delivery);
+        $this->assertSame('delivered', $projected->status, (string) $projected->reason_code);
+        $this->assertSame($history, $original->fresh()->getAttributes());
+        $timeline = FiscalDocument::withoutGlobalScope('account')->where('stage', 'event')->sole();
+        $this->assertSame(($model === '58' ? '110112' : '110111').'-1', $timeline->event_id);
+        $this->assertSame($eventXml, Storage::disk('fiscal')->get($timeline->storage_path));
+        $this->assertSame($delivery->id, $handoff->ensureEventDeliveryIntent(ErpFiscalDocument::findOrFail($draft['id']), $event)->id);
+        $this->assertSame($projected->getAttributes(), $handoff->deliver($projected)->getAttributes());
+        $this->assertDatabaseCount('erp_accounting_deliveries', 2);
+        $deliveredHistory = $projected->fresh()->getAttributes();
+        $delegation->update(['status' => 'revoked']);
+        $next = ErpOfficeDelegation::factory()->create(['erp_company_id' => $ctx['company']->id, 'account_id' => $office->id]);
+        $this->approveAccountingMapping($next, $ctx['establishment'], $client);
+        $body = ['erp_fiscal_document_id' => $draft['id'], 'erp_fiscal_event_id' => $eventId];
+        $requestHeaders = [...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()];
+        $newId = $this->withHeaders($requestHeaders)->postJson('/api/v1/erp/accounting-deliveries', $body)->assertCreated()->json('data.id');
+        $this->assertNotSame($delivery->id, $newId);
+        $this->withHeaders($requestHeaders)->postJson('/api/v1/erp/accounting-deliveries', $body)->assertOk()->assertJsonPath('data.id', $newId);
+        $this->assertSame('delivered', $handoff->deliver(ErpAccountingDelivery::findOrFail($newId))->status);
+        $this->assertSame($deliveredHistory, $projected->fresh()->getAttributes());
+        $this->assertSame(1, FiscalDocument::withoutGlobalScope('account')->where('stage', 'event')->count());
+        $officeUser = User::findOrFail(AccountMembership::where('account_id', $office->id)->where('role', 'admin')->firstOrFail()->user_id);
+        $this->login($officeUser);
+        $this->withHeader('X-Account-Id', (string) $office->id);
+        $officeModel = $model === '58' ? 'mdfe' : 'nfe';
+        $this->getJson('/api/v1/fiscal/documents?'.http_build_query(['model' => [$officeModel]]))->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.model', $officeModel)->assertJsonPath('data.0.event_count', 1);
+        $this->getJson('/api/v1/fiscal/documents/'.$original->fiscal_document_id)->assertOk()
+            ->assertJsonPath('data.events.0.event_id', ($model === '58' ? '110112' : '110111').'-1')
+            ->assertJsonMissingPath('data.storage_path');
+        $this->get('/api/v1/fiscal/documents/'.$original->fiscal_document_id.'/xml')->assertOk()
+            ->assertHeader('Content-Type', 'application/xml');
+    }
+
+    public static function acceptedAccountingEventModels(): array
+    {
+        return [['55'], ['58']];
+    }
+
+    public function test_verified_acceptance_with_storage_failure_remains_authorized_in_reports(): void
+    {
+        $ctx = $this->ownerContext();
+        $draft = $this->createQueuedDocument($ctx, '55', 'verified-storage-failure');
+        $disk = Storage::disk('local');
+        $proxy = \Mockery::mock(FilesystemAdapter::class);
+        $proxy->shouldReceive('exists')->andReturnUsing(fn ($path) => $disk->exists($path));
+        $proxy->shouldReceive('put')->andReturn(false);
+        Storage::shouldReceive('disk')->with('local')->andReturn($proxy);
+        $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.attempt.status', 'artifact_pending');
+        $attempt = ErpFiscalAttempt::where('action', 'document:transmit')->sole();
+        $this->assertTrue($attempt->safe_result['authorization_verified'] ?? false);
+        $this->withHeaders($ctx['headers'])->getJson('/api/v1/erp/reports/fiscal')->assertOk()
+            ->assertJsonPath('data.totals.authorized_count', 1)
+            ->assertJsonPath('data.totals.authorized_artifact_pending_count', 1)
+            ->assertJsonPath('data.ledgers.documents.rows.0.authorization_state', 'artifact_pending');
+    }
+
     public function test_review_artifact_pending_repair_creates_the_first_accounting_handoff_exactly_once(): void
     {
         $ctx = $this->ownerContext();
@@ -627,6 +736,8 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->app->instance(ErpFiscalProvider::class, $provider);
         $this->executeDocumentAction($ctx, $draft['id'], 'transmit')->assertJsonPath('data.attempt.status', 'artifact_pending');
         $this->assertSame(0, ErpAccountingDelivery::query()->count());
+        $this->withHeaders($ctx['headers'])->getJson('/api/v1/erp/reports/fiscal')->assertOk()
+            ->assertJsonPath('data.totals.authorized_count', 0)->assertJsonPath('data.totals.unverified_authorization_count', 1);
         $this->executeDocumentAction($ctx, $draft['id'], 'consult')->assertJsonPath('data.artifact_ready', true);
         $delivery = ErpAccountingDelivery::query()->sole();
         $attempt = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents/'.$draft['id'].'/consult', ['idempotency_key' => 'review-repair-again'])->assertOk()->json('data.attempt.id');

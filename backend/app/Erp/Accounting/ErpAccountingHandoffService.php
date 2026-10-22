@@ -11,6 +11,7 @@ use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalSource;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
+use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Exceptions\AccountingPublicationFailed;
 use App\Models\Account;
@@ -22,6 +23,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Models\FiscalDocument;
 use App\Services\BrazilianTaxId;
 use App\Services\Fiscal\Capture\FiscalXmlPath;
@@ -42,7 +44,19 @@ class ErpAccountingHandoffService
 
     public function ensureDeliveryIntent(ErpFiscalDocument $document, ?int $requestedByUserId = null): ?ErpAccountingDelivery
     {
-        return DB::transaction(function () use ($document, $requestedByUserId): ?ErpAccountingDelivery {
+        return $this->ensureProjectionIntent($document, $requestedByUserId);
+    }
+
+    public function ensureEventDeliveryIntent(ErpFiscalDocument $document, ErpFiscalEvent $event, ?int $requestedByUserId = null): ?ErpAccountingDelivery
+    {
+        abort_unless((int) $event->erp_fiscal_document_id === (int) $document->id && $event->status === 'accepted' && $event->accepted_event_identity !== null, 409);
+
+        return $this->ensureProjectionIntent($document, $requestedByUserId, $event);
+    }
+
+    private function ensureProjectionIntent(ErpFiscalDocument $document, ?int $requestedByUserId, ?ErpFiscalEvent $event = null): ?ErpAccountingDelivery
+    {
+        return DB::transaction(function () use ($document, $requestedByUserId, $event): ?ErpAccountingDelivery {
             $document = ErpFiscalDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
             $delegation = ErpOfficeDelegation::query()->where('erp_company_id', $document->erp_company_id)->where('status', 'active')->first();
             if ($delegation === null) {
@@ -55,6 +69,7 @@ class ErpAccountingHandoffService
                 'erp_fiscal_document_id' => $document->id,
                 'account_id' => $delegation->account_id,
                 'delegation_id' => $delegation->id,
+                'projection_identity' => $event === null ? 'document' : 'event:'.$event->id,
             ];
             $existing = ErpAccountingDelivery::query()->where($identity)->where('mapping_id', $mapping?->id)->first();
             if ($existing !== null) {
@@ -64,7 +79,7 @@ class ErpAccountingHandoffService
                 $placeholder = ErpAccountingDelivery::query()->where($identity)->whereNull('mapping_id')
                     ->where(function ($query): void {
                         $query->whereIn('status', ['pending', 'failed'])
-                            ->orWhere(fn ($query) => $query->where('status', 'blocked')->whereIn('reason_code', ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized']));
+                            ->orWhere(fn ($query) => $query->where('status', 'blocked')->whereIn('reason_code', ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized', 'fiscal_authorization_unverified']));
                     })->first();
                 if ($placeholder !== null) {
                     return $placeholder;
@@ -72,6 +87,7 @@ class ErpAccountingHandoffService
             }
 
             return ErpAccountingDelivery::query()->firstOrCreate($identity + ['mapping_id' => $mapping?->id], [
+                'erp_fiscal_event_id' => $event?->id,
                 'mapping_revision' => $mapping?->revision,
                 'requested_by_user_id' => $requestedByUserId,
                 'status' => ErpAccountingDelivery::STATUS_PENDING,
@@ -153,11 +169,15 @@ class ErpAccountingHandoffService
             if ($ready === null) {
                 return $this->recordDispatchResult($dispatch, $locked->fresh());
             }
-            [$document, $client, $bytes] = $ready;
+            [$document, $client, $bytes, $eventProof] = $ready;
             $locked->increment('attempts');
             try {
                 $officeDocument = resolve(CurrentTenant::class)->run((int) $locked->account_id,
-                    fn () => $this->publishToOffice($locked, $document, $client, $company, $bytes));
+                    function () use ($locked, $document, $client, $company, $bytes, $eventProof): FiscalDocument {
+                        $original = $this->publishToOffice($locked, $document, $client, $company, $bytes);
+
+                        return $eventProof === null ? $original : $this->publishEventToOffice($locked, $document, $client, $eventProof);
+                    });
             } catch (AccountingPublicationFailed $error) {
                 if ($error->reason === 'artifact_conflict') {
                     return $this->recordDispatchResult($dispatch, $this->markBlocked($locked, 'artifact_conflict'));
@@ -227,10 +247,10 @@ class ErpAccountingHandoffService
         });
     }
 
-    /** @return array{ErpFiscalDocument, Client, string}|null */
+    /** @return array{ErpFiscalDocument, Client, string, ?array}|null */
     private function revalidate(ErpAccountingDelivery $delivery, ErpCompany $company, ?Account $account): ?array
     {
-        if ($delivery->status === ErpAccountingDelivery::STATUS_BLOCKED && ! in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized'], true)) {
+        if ($delivery->status === ErpAccountingDelivery::STATUS_BLOCKED && ! in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized', 'fiscal_authorization_unverified'], true)) {
             return null;
         }
         $reason = match (true) {
@@ -281,7 +301,9 @@ class ErpAccountingHandoffService
 
             return null;
         }
-        if ($document->status !== ErpFiscalDocumentStateMachine::AUTHORIZED) {
+        $isEvent = $delivery->erp_fiscal_event_id !== null;
+        if ((! $isEvent && $document->status !== ErpFiscalDocumentStateMachine::AUTHORIZED)
+            || ($isEvent && ! in_array($document->status, ['authorized', 'canceled'], true))) {
             $this->markBlocked($delivery, 'fiscal_document_not_authorized');
 
             return null;
@@ -312,7 +334,28 @@ class ErpAccountingHandoffService
             return null;
         }
 
-        return [$document, $client, $bytes];
+        if (! resolve(ErpFiscalArtifactStore::class)->verifiedAuthorizedXmlReady($document)) {
+            $this->markBlocked($delivery, 'fiscal_authorization_unverified');
+
+            return null;
+        }
+
+        $eventProof = null;
+        if ($isEvent) {
+            $event = ErpFiscalEvent::query()->whereKey($delivery->erp_fiscal_event_id)->where('erp_fiscal_document_id', $document->id)->first();
+            $eventProof = $event === null ? null : resolve(ErpFiscalArtifactStore::class)->verifiedAcceptedEvent($event, $document);
+            if ($eventProof === null || $delivery->projection_identity !== 'event:'.$event->id) {
+                $this->markBlocked($delivery, 'fiscal_event_unverified');
+
+                return null;
+            }
+        } elseif ($delivery->projection_identity !== 'document') {
+            $this->markBlocked($delivery, 'fiscal_event_unverified');
+
+            return null;
+        }
+
+        return [$document, $client, $bytes, $eventProof];
     }
 
     private function publishToOffice(
@@ -332,8 +375,8 @@ class ErpAccountingHandoffService
             abort_unless((int) $existing->account_id === (int) $delivery->account_id, 422, 'Documento fiscal já publicado em outro escritório');
 
             if (! hash_equals($existing->sha256, $document->artifact_sha256) || (int) $existing->xml_bytes !== (int) $document->artifact_byte_length
-                || $existing->model !== (FiscalModel::fromDocumentModel($document->model) ?? FiscalModel::Nfe)
-                || ($existing->emitente_cnpj !== null && $existing->emitente_cnpj !== $this->taxId->normalize($company->cnpj ?? ''))
+                || $existing->model !== (FiscalModel::fromDocumentModel($document->model))
+                || ($existing->emitente_cnpj !== null && $existing->emitente_cnpj !== substr((string) $document->access_key, 6, 14))
                 || ($existing->delivery_environment !== null && $existing->delivery_environment !== ($document->environment === 'production' ? 'producao' : 'homologacao'))) {
                 $existing->forceFill(['processing_state' => FiscalProcessingState::Attention, 'processing_reason' => FiscalProcessingReason::ArtifactConflict])->save();
                 throw new AccountingPublicationFailed('Existing fiscal artifact identity differs.', 'artifact_conflict');
@@ -347,9 +390,9 @@ class ErpAccountingHandoffService
             }
         }
 
-        $model = FiscalModel::fromDocumentModel($document->model) ?? FiscalModel::Nfe;
+        $model = FiscalModel::fromDocumentModel($document->model);
 
-        return resolve(CurrentTenant::class)->run((int) $delivery->account_id, function () use ($delivery, $client, $document, $company, $model, $bytes, $existing): FiscalDocument {
+        return resolve(CurrentTenant::class)->run((int) $delivery->account_id, function () use ($delivery, $client, $document, $model, $bytes, $existing): FiscalDocument {
             $path = FiscalXmlPath::for((int) $delivery->account_id, (int) $client->id, $document->access_key, '', FiscalStage::Document);
             if (! Storage::disk('fiscal')->put($path, $bytes)) {
                 throw new AccountingPublicationFailed('Fiscal XML publication unavailable.');
@@ -367,7 +410,7 @@ class ErpAccountingHandoffService
                     'chave_acesso' => $document->access_key,
                     'event_id' => '',
                     'nsu' => (int) $document->id,
-                    'emitente_cnpj' => $this->taxId->normalize($company->cnpj ?? ''),
+                    'emitente_cnpj' => substr((string) $document->access_key, 6, 14),
                     'destinatario_cnpj' => null,
                     'valor_total' => $document->commercial_snapshot['total_amount'] ?? null,
                     'emissao_at' => $document->authorized_at,
@@ -394,6 +437,51 @@ class ErpAccountingHandoffService
 
             return $published;
         });
+    }
+
+    private function publishEventToOffice(ErpAccountingDelivery $delivery, ErpFiscalDocument $document, Client $client, array $proof): FiscalDocument
+    {
+        $xml = $proof['xml'];
+        $hash = hash('sha256', $xml);
+        $existing = FiscalDocument::withoutGlobalScope('account')->where('account_id', $delivery->account_id)
+            ->where('client_id', $client->id)->where('chave_acesso', $document->access_key)
+            ->where('stage', FiscalStage::Event)->where('event_id', $proof['event_identity'])->lockForUpdate()->first();
+        $model = FiscalModel::fromDocumentModel($document->model);
+        $environment = $document->environment === 'production' ? 'producao' : 'homologacao';
+        if ($existing !== null && (! hash_equals((string) $existing->sha256, $hash) || (int) $existing->xml_bytes !== strlen($xml)
+            || $existing->model !== $model || ($existing->emitente_cnpj !== null && $existing->emitente_cnpj !== $proof['issuer_cnpj'])
+            || ($existing->delivery_environment !== null && $existing->delivery_environment !== $environment))) {
+            $existing->forceFill(['processing_state' => FiscalProcessingState::Attention, 'processing_reason' => FiscalProcessingReason::ArtifactConflict])->save();
+            throw new AccountingPublicationFailed('Existing fiscal event identity differs.', 'artifact_conflict');
+        }
+        $readiness = resolve(FiscalDocumentReadiness::class);
+        if ($existing !== null) {
+            $existing->forceFill(['storage_state' => $readiness->stateOf($existing), 'storage_verified_at' => now()])->saveQuietly();
+            if ($existing->storage_state === FiscalStorageState::Available) {
+                return $existing;
+            }
+        }
+        $path = $existing?->storage_path ?? FiscalXmlPath::for((int) $delivery->account_id, (int) $client->id, $document->access_key, $proof['event_identity'], FiscalStage::Event);
+        if (! Storage::disk('fiscal')->put($path, $xml)) {
+            throw new AccountingPublicationFailed('Fiscal event publication unavailable.');
+        }
+        $published = $existing ?? new FiscalDocument;
+        $published->account_id = $delivery->account_id;
+        if ($existing === null) {
+            $published->fill(['account_id' => $delivery->account_id, 'client_id' => $client->id, 'source' => FiscalSource::ErpIssued,
+                'model' => $model, 'kind' => FiscalKind::Event, 'stage' => FiscalStage::Event, 'chave_acesso' => $document->access_key,
+                'event_id' => $proof['event_identity'], 'nsu' => (int) $delivery->erp_fiscal_event_id, 'emitente_cnpj' => $proof['issuer_cnpj'],
+                'evento_ocorrido_em_at' => $proof['occurred_at'], 'delivery_origin' => FiscalDeliveryOrigin::ErpIssued,
+                'delivery_environment' => $environment, 'storage_path' => $path, 'sha256' => $hash, 'xml_bytes' => strlen($xml),
+                'mascarado' => false, 'captured_at' => now(), 'storage_state' => FiscalStorageState::Unverified]);
+        }
+        $published->save();
+        $published->forceFill(['storage_state' => $readiness->stateOf($published), 'storage_verified_at' => now()])->saveQuietly();
+        if ($published->storage_state !== FiscalStorageState::Available) {
+            throw new AccountingPublicationFailed('Fiscal event integrity could not be verified.');
+        }
+
+        return $published;
     }
 
     private function markBlocked(ErpAccountingDelivery $delivery, string $reason): ErpAccountingDelivery

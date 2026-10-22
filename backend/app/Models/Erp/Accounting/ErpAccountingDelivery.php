@@ -25,6 +25,8 @@ class ErpAccountingDelivery extends Model
     protected $fillable = [
         'erp_company_id',
         'erp_fiscal_document_id',
+        'projection_identity',
+        'erp_fiscal_event_id',
         'account_id',
         'client_id',
         'delegation_id',

@@ -27,11 +27,13 @@ use App\Tenant\CurrentTenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpAccountingAndReportsTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     private const VALID_CNPJ = '30288513000100';
@@ -109,7 +111,7 @@ class ErpAccountingAndReportsTest extends TestCase
         $path = 'erp/fiscal/test-doc.xml';
         Storage::disk('local')->put($path, '<nfeProc/>');
 
-        return ErpFiscalDocument::query()->create([
+        $document = ErpFiscalDocument::query()->create([
             'erp_company_id' => $company->id,
             'erp_establishment_id' => $establishment->id,
             'model' => '55',
@@ -125,6 +127,9 @@ class ErpAccountingAndReportsTest extends TestCase
             'commercial_snapshot' => ['total_amount' => '150.00'],
             'authorized_at' => now(),
         ]);
+        $this->attachVerifiedFiscalEvidence($document);
+
+        return $document;
     }
 
     public function test_accounting_handoff_delivers_to_mapped_office_client(): void
@@ -188,13 +193,15 @@ class ErpAccountingAndReportsTest extends TestCase
             'authorized_at' => now(),
         ]);
 
+        $originalXml = $this->attachVerifiedFiscalEvidence($document);
+        Storage::disk('local')->delete($document->storage_path);
         $handoff = app(ErpAccountingHandoffService::class);
         $delivery = $handoff->ensureDeliveryIntent($document);
         $failed = $handoff->deliver($delivery);
         $this->assertSame(ErpAccountingDelivery::STATUS_FAILED, $failed->status);
         $this->assertSame('storage_unavailable', $failed->reason_code);
 
-        Storage::disk('local')->put('erp/fiscal/missing.xml', '<nfeProc/>');
+        Storage::disk('local')->put($document->storage_path, $originalXml);
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => 'accounting-retry-storage-1'])
             ->postJson('/api/v1/erp/accounting-deliveries/'.$failed->id.'/retry')

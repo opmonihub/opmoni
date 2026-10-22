@@ -22,11 +22,13 @@ use App\Models\FiscalDocument;
 use App\Tenant\CurrentTenant;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\Support\ErpCommercialTestCase;
 
 class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
 
     public function test_xml_purchase_transfer_paid_sale_full_return_and_synthetic_authorized_input_handoff_reconcile(): void
     {
@@ -99,6 +101,10 @@ class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
         $this->assertSame('30.0000', ErpPaymentAllocation::findOrFail($allocationId)->amount);
         $this->send('cash-sessions/'.$session.'/close', ['declared_closing_amount' => '30'], 'story-cash-close')->assertOk()
             ->assertJsonPath('data.expected_closing_amount', '30.0000')->assertJsonPath('data.closing_difference', '0.0000');
+        $this->handoffAlreadyAuthorizedSyntheticInput($destination, $sale);
+        $fiscalDocument = ErpFiscalDocument::sole();
+        $originalFiscal = $fiscalDocument->getAttributes();
+        $originalAttempts = $fiscalDocument->attempts()->orderBy('id')->get()->map->getAttributes()->all();
         $originalSale = $sale->fresh()->getAttributes();
         $originalReceivable = $receivable->fresh()->getAttributes();
         $originalPayment = ErpPayment::findOrFail($payment)->getAttributes();
@@ -129,7 +135,10 @@ class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
         $this->assertSame('0.0000', ErpStockBalance::where('erp_establishment_id', $this->establishment->id)->sole()->quantity_on_hand);
         $this->assertSame('1.0000', ErpStockBalance::where('erp_establishment_id', $destination->id)->sole()->quantity_on_hand);
 
-        $this->handoffAlreadyAuthorizedSyntheticInput($destination, $sale);
+        $this->assertSame($originalFiscal, $fiscalDocument->fresh()->getAttributes());
+        $this->assertSame($originalAttempts, $fiscalDocument->attempts()->orderBy('id')->get()->map->getAttributes()->all());
+        $this->assertSame('authorized', $fiscalDocument->fresh()->status);
+        $this->assertSame(0, $fiscalDocument->events()->count());
 
         $purchaseReport = $this->getJson('/api/v1/erp/reports/purchases')->assertOk()->assertJsonPath('data.totals.document_count', 1)
             ->assertJsonPath('data.totals.posted_total', '1.0000')->assertJsonPath('data.ledgers.documents.rows.0.id', $purchase->id);
@@ -162,7 +171,7 @@ class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
             'authorized_by_user_id' => $this->user->id, 'permission_allowlist' => ['erp.read']]);
         $mapping = $this->approveAccountingMapping($delegation, $issuer, $client);
 
-        // Explicit already-authorized handoff input, not issuance or XML/schema acceptance evidence.
+        // Locally signed, schema-valid accepted evidence; no provider call.
         $bytes = '<nfeProc/>';
         $path = 'erp/fiscal/story-already-authorized-input.xml';
         Storage::disk('local')->put($path, $bytes);
@@ -173,6 +182,7 @@ class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
             'idempotency_key' => 'story-authorized-input', 'storage_path' => $path, 'artifact_byte_length' => strlen($bytes),
             'artifact_sha256' => hash('sha256', $bytes), 'commercial_snapshot' => ['total_amount' => $sale->total_amount],
         ]);
+        $bytes = $this->attachVerifiedFiscalEvidence($document);
         $handoff = app(ErpAccountingHandoffService::class);
         $intent = $handoff->ensureDeliveryIntent($document, $this->user->id);
         $this->assertNotNull($intent);

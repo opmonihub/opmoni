@@ -181,6 +181,7 @@ class ProcessErpFiscalAttempt implements ShouldQueue
             return;
         }
         if (! $isDocument) {
+            $processedOperationXml = null;
             $accepted = $result->outcome === 'event_accepted';
             $rejected = in_array($result->outcome, ['event_rejected', 'rejected'], true);
             if ($accepted) {
@@ -208,10 +209,18 @@ class ProcessErpFiscalAttempt implements ShouldQueue
                 }
             }
             $status = $accepted ? 'accepted' : ($rejected ? 'rejected' : 'indeterminate');
-            $attempts->finalize($attempt->id, $token, $status, ['provider_outcome' => $result->outcome], $result->receipt, $result->protocol, static function () use ($attempt, $accepted, $status, $document, $source, $result): void {
+            $attempts->finalize($attempt->id, $token, $status, ['provider_outcome' => $result->outcome], $result->receipt, $result->protocol, static function () use ($attempt, $accepted, $status, $document, $source, $result, $processedOperationXml, $artifacts): void {
                 $document?->refresh();
                 $operation = $attempt->action === 'event:submit' ? $attempt->event()->firstOrFail() : $attempt->invalidation()->firstOrFail();
                 $operation->fill(['status' => $status, 'protocol' => $result->protocol, 'submitted_at' => now(), 'completed_at' => now()])->save();
+                if ($accepted && $attempt->action === 'event:submit') {
+                    $artifacts->retainAcceptedEvent($operation, $attempt, $processedOperationXml, $source, (string) $result->protocol);
+                    $handoff = app(ErpAccountingHandoffService::class);
+                    $delivery = $handoff->ensureEventDeliveryIntent($document, $operation, (int) $attempt->actor_user_id);
+                    if ($delivery !== null) {
+                        $handoff->queueAfterCommit($delivery);
+                    }
+                }
                 if ($accepted && $attempt->action === 'event:submit' && in_array($source['event_type'], ['cancel', 'substitution_cancel'], true) && $document->status === 'authorized') {
                     $document->status = 'canceled';
                     $document->save();
@@ -243,6 +252,8 @@ class ProcessErpFiscalAttempt implements ShouldQueue
 
             return;
         }
+        $authorizationVerified = false;
+        $validatedArtifact = [];
         try {
             $processed = $result->xml ?? '';
             $schemas->assertValid($processed, $attempt->model, 'processed');
@@ -253,12 +264,14 @@ class ProcessErpFiscalAttempt implements ShouldQueue
             if (! $signer->verify($processed, $pkcs12['cert'])) {
                 throw new \InvalidArgumentException('Assinatura do XML processado incoerente.');
             }
+            $authorizationVerified = true;
+            $validatedArtifact = ['artifact_sha256' => hash('sha256', $processed), 'artifact_byte_length' => strlen($processed)];
             $document->refresh();
             $expectedArtifact = $document->only(['storage_path', 'artifact_sha256', 'artifact_byte_length']);
             $publishedArtifactIntact = $artifacts->verifyIntegrity($document);
             $artifact = $artifacts->persistAuthorizedXml($document, $processed);
         } catch (Throwable) {
-            $attempts->finalize($attempt->id, $token, 'artifact_pending', ['code' => 'authorized_artifact_not_ready', 'provider_outcome' => 'authorized', 'artifact_ready' => false], $result->receipt, $result->protocol, static function () use ($document, $result): bool {
+            $attempts->finalize($attempt->id, $token, 'artifact_pending', ['code' => 'authorized_artifact_not_ready', 'provider_outcome' => 'authorized', 'artifact_ready' => false, 'authorization_verified' => $authorizationVerified, ...$validatedArtifact], $result->receipt, $result->protocol, static function () use ($document, $result): bool {
                 $document->refresh();
                 if (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local'], true) || $document->authorized_at !== null) {
                     return false;
@@ -270,7 +283,7 @@ class ProcessErpFiscalAttempt implements ShouldQueue
 
             return;
         }
-        $attempts->finalize($attempt->id, $token, 'accepted', ['document_status' => 'authorized', 'artifact_ready' => true, 'artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']], $result->receipt, $result->protocol, static function () use ($document, $artifact, $result, $expectedArtifact, $publishedArtifactIntact): bool {
+        $attempts->finalize($attempt->id, $token, 'accepted', ['document_status' => 'authorized', 'authorization_verified' => true, 'artifact_ready' => true, 'artifact_sha256' => $artifact['artifact_sha256'], 'artifact_byte_length' => $artifact['artifact_byte_length']], $result->receipt, $result->protocol, static function () use ($document, $artifact, $result, $expectedArtifact, $publishedArtifactIntact): bool {
             $document->refresh();
             if (! in_array($document->status, ['draft', 'queued', 'submitting', 'indeterminate', 'rejected', 'contingency_local', 'authorized'], true) || isset($document->metadata['closed_at']) || $document->only(array_keys($expectedArtifact)) !== $expectedArtifact || $document->status === 'authorized' && $publishedArtifactIntact) {
                 return false;

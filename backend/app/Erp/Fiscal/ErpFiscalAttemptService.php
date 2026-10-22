@@ -226,14 +226,14 @@ final class ErpFiscalAttemptService
     private function sanitizeResult(array $result): array
     {
         $safe = [];
-        foreach (['code', 'document_status', 'document_transition', 'artifact_ready', 'artifact_sha256', 'artifact_byte_length', 'provider_outcome', 'blocker'] as $key) {
+        foreach (['code', 'document_status', 'document_transition', 'artifact_ready', 'authorization_verified', 'artifact_sha256', 'artifact_byte_length', 'provider_outcome', 'blocker'] as $key) {
             if (! array_key_exists($key, $result) || ! is_scalar($result[$key]) || is_string($result[$key]) && strlen($result[$key]) > 512) {
                 continue;
             }
             if ($key === 'document_transition' && ! in_array($result[$key], ['superseded'], true)
                 || $key === 'provider_outcome' && ! in_array($result[$key], ['authorized', 'rejected', 'indeterminate', 'event_accepted', 'event_rejected', 'unknown', 'not_dispatched'], true)
                 || in_array($key, ['code', 'blocker'], true) && ! preg_match('/^[a-z0-9_]{1,64}$/', (string) $result[$key])
-                || $key === 'artifact_ready' && ! is_bool($result[$key])
+                || in_array($key, ['artifact_ready', 'authorization_verified'], true) && ! is_bool($result[$key])
                 || $key === 'artifact_sha256' && ! preg_match('/^[a-f0-9]{64}$/', (string) $result[$key])) {
                 continue;
             }

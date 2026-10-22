@@ -24,10 +24,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpReportsFilterContractTest extends TestCase
 {
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     private User $user;
@@ -127,16 +129,33 @@ class ErpReportsFilterContractTest extends TestCase
         $this->getJson('/api/v1/erp/reports/financial?status=paid')->assertUnprocessable();
     }
 
+    public function test_verified_authorization_and_unproved_history_reconcile_in_safe_report_and_export(): void
+    {
+        $this->freezeTime();
+        $document = ErpFiscalDocument::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id,
+            'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => 101, 'idempotency_key' => 'verified-report']);
+        $this->attachVerifiedFiscalEvidence($document);
+        ErpFiscalDocument::create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id,
+            'model' => '55', 'number' => 102, 'status' => 'authorized', 'idempotency_key' => 'unproved-report']);
+        $report = $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.authorized_count', 1)
+            ->assertJsonPath('data.totals.unverified_authorization_count', 1)->assertJsonPath('data.ledgers.documents.rows.0.authorization_verified', true)
+            ->assertJsonPath('data.ledgers.documents.rows.1.authorization_state', 'unverified_attention');
+        $this->assertArrayNotHasKey('storage_path', $report->json('data.ledgers.documents.rows.0'));
+        $this->assertArrayNotHasKey('metadata', $report->json('data.ledgers.documents.rows.0'));
+        $export = $this->postJson('/api/v1/erp/reports/fiscal/exports', [])->assertCreated();
+        $this->getJson('/api/v1/erp/reports/exports/'.$export->json('data.id'))->assertOk()->assertJsonPath('data.report', $report->json('data'));
+    }
+
     public function test_fiscal_outcomes_remain_separate_and_status_filter_is_authoritative(): void
     {
         foreach (['authorized', 'draft', 'rejected', 'indeterminate', 'contingency_local'] as $number => $status) {
             ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => $number + 1, 'status' => $status, 'idempotency_key' => 'reports-'.$status]);
         }
-        $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.authorized_count', 1)->assertJsonPath('data.totals.indeterminate_count', 1)->assertJsonPath('data.totals.contingency_local_count', 1)
+        $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.authorized_count', 0)->assertJsonPath('data.totals.unverified_authorization_count', 1)->assertJsonPath('data.totals.indeterminate_count', 1)->assertJsonPath('data.totals.contingency_local_count', 1)
             ->assertJsonPath('data.ledgers.documents.timestamp_field', 'created_at')
             ->assertJsonPath('data.ledgers.documents.basis', 'current_status_for_created_cohort')
             ->assertJsonPath('data.ledgers.documents.row_count', 5)
-            ->assertJsonPath('data.ledgers.documents.totals.authorized_count', 1);
+            ->assertJsonPath('data.ledgers.documents.totals.authorized_count', 0);
         $this->getJson('/api/v1/erp/reports/fiscal?status=rejected')->assertOk()->assertJsonPath('data.totals.authorized_count', 0)->assertJsonPath('data.totals.rejected_count', 1)->assertJsonPath('data.filters.status', 'rejected');
     }
 

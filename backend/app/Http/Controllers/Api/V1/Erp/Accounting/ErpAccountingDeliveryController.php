@@ -7,6 +7,7 @@ use App\Erp\Accounting\AccountingMappingFence;
 use App\Erp\Accounting\ErpAccountingHandoffService;
 use App\Erp\ErpOperationJournal;
 use App\Erp\ErpReleaseGate;
+use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Account;
 use App\Models\Erp\Accounting\ErpAccountingDelivery;
@@ -14,6 +15,7 @@ use App\Models\Erp\Accounting\ErpAccountingDeliveryDispatch;
 use App\Models\Erp\Accounting\ErpAccountingMapping;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
+use App\Models\Erp\Fiscal\ErpFiscalEvent;
 use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -85,15 +87,21 @@ class ErpAccountingDeliveryController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
         abort_unless($context->accessKind === 'direct' && $context->membership?->roleEnum() === ErpCompanyRole::Owner, 403);
-        $data = $request->validate(['erp_fiscal_document_id' => ['required', 'integer', 'min:1']]);
+        $data = $request->validate(['erp_fiscal_document_id' => ['required', 'integer', 'min:1'], 'erp_fiscal_event_id' => ['sometimes', 'nullable', 'integer', 'min:1']]);
         $document = $this->findForCompany($request, ErpFiscalDocument::class, $data['erp_fiscal_document_id']);
-        abort_unless($document->status === 'authorized', 422);
+        $event = isset($data['erp_fiscal_event_id']) ? ErpFiscalEvent::query()->whereKey($data['erp_fiscal_event_id'])->where('erp_fiscal_document_id', $document->id)->first() : null;
+        abort_if(isset($data['erp_fiscal_event_id']) && $event === null, 422);
+        $artifacts = app(ErpFiscalArtifactStore::class);
+        abort_unless(($event === null ? $document->status === 'authorized' : in_array($document->status, ['authorized', 'canceled'], true))
+            && $artifacts->verifiedAuthorizedXmlReady($document)
+            && ($event === null || $artifacts->verifiedAcceptedEvent($event, $document) !== null), 422);
         $delegation = ErpOfficeDelegation::query()->where('erp_company_id', $context->company->id)->where('status', 'active')->first();
         abort_unless($delegation && ErpAccountingMapping::query()->where('delegation_id', $delegation->id)->where('erp_establishment_id', $document->erp_establishment_id)->where('status', 'active')->exists(), 422);
 
-        return DB::transaction(function () use ($request, $document, $delegation): JsonResponse {
+        return DB::transaction(function () use ($request, $document, $delegation, $event): JsonResponse {
             resolve(AccountingMappingFence::class)->acquire(Account::query()->whereKey($delegation->account_id));
-            $intent = $this->handoff->ensureDeliveryIntent($document, (int) $request->user()->id);
+            $intent = $event === null ? $this->handoff->ensureDeliveryIntent($document, (int) $request->user()->id)
+                : $this->handoff->ensureEventDeliveryIntent($document, $event, (int) $request->user()->id);
             $created = $intent->wasRecentlyCreated;
             $result = $created ? $this->handoff->retry($intent) : $intent->fresh(['erpFiscalDocument']);
             abort_if($created && ! in_array($result->status, ['pending', 'delivered'], true), 422);
@@ -120,6 +128,8 @@ class ErpAccountingDeliveryController extends ErpOperationsController
         return [
             'id' => $delivery->id,
             'erp_fiscal_document_id' => $delivery->erp_fiscal_document_id,
+            'projection_identity' => $delivery->projection_identity,
+            'erp_fiscal_event_id' => $delivery->erp_fiscal_event_id,
             'account_id' => $delivery->account_id,
             'client_id' => $delivery->client_id,
             'fiscal_document_id' => $delivery->fiscal_document_id,
@@ -130,7 +140,7 @@ class ErpAccountingDeliveryController extends ErpOperationsController
                 && $delivery->status !== 'delivered'
                 && in_array($delivery->getAttribute('latest_dispatch_status'), [null, 'completed'], true)
                 && (in_array($delivery->status, ['pending', 'failed'], true)
-                    || ($delivery->status === 'blocked' && in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized'], true))),
+                    || ($delivery->status === 'blocked' && in_array($delivery->reason_code, ['client_mapping_missing', 'mapping_pending_approval', 'fiscal_document_not_authorized', 'fiscal_authorization_unverified'], true))),
             'status' => $delivery->status,
             'reason_code' => $delivery->reason_code,
             'attempts' => $delivery->attempts,

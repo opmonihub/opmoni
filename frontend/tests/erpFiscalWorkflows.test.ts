@@ -410,7 +410,7 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
       ])
     }
   }))
-  for (const name of ['UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm']) {
+  for (const name of ['UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm', 'ErpFiscalInvalidationForm']) {
     app.component(name, Vue.defineComponent({
       setup(_props, { slots }) {
         return () => Vue.h('div', slots.default?.())
@@ -2421,5 +2421,138 @@ describe('ERP fiscal durable workspace operations', () => {
     await Vue.nextTick()
     assert.equal(textContent(mounted.root).includes('late same-context denial'), false)
     mounted.app.unmount()
+  })
+})
+
+describe('confirmed fiscal list states', () => {
+  it('never renders a fabricated zero or empty state after the first fiscal index failure', async (t) => {
+    installSessionStorage(t)
+    const fiscal = loadWorkspaceComposable(async () => {
+      throw new Error('synthetic index unavailable')
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+    t.after(fiscal.close)
+    const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+    t.after(() => mounted.app.unmount())
+    for (let index = 0; index < 15; index++) await Vue.nextTick()
+    const text = textContent(mounted.root)
+    assert.doesNotMatch(text, /0 registro\(s\)|Nenhum documento fiscal/)
+    assert.match(text, /Não foi possível confirmar a listagem/)
+  })
+
+  it('retains mounted known-document recovery independently from the failed index without false empty text', async (t) => {
+    const memory = installSessionStorage(t)
+    const record = createErpFiscalRecoveryRecord({ actorId: 7, companyId: 22, action: 'document:transmit', path: '/erp/fiscal/documents/91/transmit', idempotencyKey: 'mounted-index-failure', body: { idempotency_key: 'mounted-index-failure' }, resourceId: 91, recoveryMode: 'read' })
+    memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
+    let detailReads = 0
+    const fiscal = loadWorkspaceComposable(async (path) => {
+      if (path === '/erp/fiscal/documents?per_page=100') throw new Error('synthetic index unavailable')
+      if (path === '/erp/fiscal/documents/91') {
+        detailReads++
+        return { data: { id: 91, idempotency_key: record.idempotencyKey, model: '55', status: 'queued', attempts: [{ id: 1, action: record.action, status: 'pending', idempotency_key: record.idempotencyKey, safe_result: null }] } }
+      }
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index', 'erp.fiscal.documents.show'] })
+    t.after(fiscal.close)
+    const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+    t.after(() => mounted.app.unmount())
+    for (let index = 0; index < 20; index++) await Vue.nextTick()
+    assert.equal(detailReads, 1)
+    assert.ok(fiscal.workspace.pendingRecovery)
+    assert.match(textContent(mounted.root), /Operação fiscal pendente de confirmação/)
+    assert.doesNotMatch(textContent(mounted.root), /0 registro\(s\)|Nenhum documento fiscal/)
+    const recover = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Recuperar operação original')!
+    await (recover.props.onClick as () => Promise<void>)()
+    assert.equal(detailReads, 2)
+  })
+
+  it('does not claim empty certificates or events when their independent list read fails', async (t) => {
+    installSessionStorage(t)
+    for (const area of [{ label: 'Certificados', empty: 'Nenhum certificado' }, { label: 'Eventos', empty: 'Nenhum evento' }]) {
+      const fiscal = loadWorkspaceComposable(async (path) => {
+        if (path.includes('/certificates?') || path.includes('/events?')) throw new Error('synthetic list unavailable')
+        return { data: [] }
+      }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index', 'erp.fiscal.certificates.index', 'erp.fiscal.events.index'] })
+      t.after(fiscal.close)
+      const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+      t.after(() => mounted.app.unmount())
+      for (let index = 0; index < 15; index++) await Vue.nextTick()
+      assert.match(textContent(mounted.root), /Nenhum documento fiscal/, 'independent successful document list stays confirmed')
+      const tab = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === area.label)!
+      ;(tab.props.onClick as () => void)()
+      await Vue.nextTick()
+      assert.doesNotMatch(textContent(mounted.root), new RegExp(area.empty))
+      assert.match(textContent(mounted.root), /Não foi possível confirmar a listagem/)
+      mounted.app.unmount()
+    }
+  })
+
+  it('renders confirmed empty only after success and keeps confirmed rows explicitly stale after refresh failure', async (t) => {
+    installSessionStorage(t)
+    let fail = false
+    let data: unknown[] = []
+    const fiscal = loadWorkspaceComposable(async () => {
+      if (fail) throw new Error('synthetic refresh unavailable')
+      return { data }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+    t.after(fiscal.close)
+    const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+    t.after(() => mounted.app.unmount())
+    for (let index = 0; index < 15; index++) await Vue.nextTick()
+    assert.match(textContent(mounted.root), /Nenhum documento fiscal/)
+    data = [{ id: 91, model: '55', number: 12, status: 'authorized', environment: 'homologation', series: 1 }]
+    await fiscal.workspace.load()
+    await Vue.nextTick()
+    assert.match(textContent(mounted.root), /Nº 12/)
+    fail = true
+    await fiscal.workspace.load()
+    await Vue.nextTick()
+    assert.match(textContent(mounted.root), /Nº 12/)
+    assert.match(textContent(mounted.root), /desatualizados/)
+    assert.doesNotMatch(textContent(mounted.root), /Nenhum documento fiscal/)
+  })
+
+  it('labels a previously confirmed empty result stale and clears confirmation when list authority is removed', async (t) => {
+    installSessionStorage(t)
+    let fail = false
+    const fiscal = loadWorkspaceComposable(async () => {
+      if (fail) throw new Error('synthetic refresh unavailable')
+      return { data: [] }
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index', 'erp.fiscal.documents.show'] })
+    t.after(fiscal.close)
+    const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity)
+    t.after(() => mounted.app.unmount())
+    for (let index = 0; index < 15; index++) await Vue.nextTick()
+    assert.match(textContent(mounted.root), /0 registro\(s\)/)
+    fail = true
+    await fiscal.workspace.load()
+    await Vue.nextTick()
+    assert.match(textContent(mounted.root), /0 registro\(s\) · desatualizados/)
+    assert.doesNotMatch(textContent(mounted.root), /Nenhum documento fiscal/)
+    fiscal.identity.value.current_company!.permissions = ['erp.fiscal.documents.show']
+    assert.equal((fiscal.workspace.listStates as Record<string, { confirmed: boolean }>).documents.confirmed, false)
+    await Vue.nextTick()
+    assert.doesNotMatch(textContent(mounted.root), /0 registro\(s\)|Nenhum documento fiscal/)
+  })
+
+  it('clears list confirmation synchronously on context change and rejects its late successful callback', async (t) => {
+    installSessionStorage(t)
+    let resolveRead!: (value: unknown) => void
+    let pending = false
+    const fiscal = loadWorkspaceComposable(async () => pending
+      ? new Promise((resolve) => {
+          resolveRead = resolve
+        })
+      : { data: [{ id: 91, number: 12, model: '55', status: 'authorized' }] }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+    t.after(fiscal.close)
+    await fiscal.workspace.load()
+    pending = true
+    const read = fiscal.workspace.load()
+    fiscal.identity.value.current_company!.id = 23
+    assert.deepEqual(fiscal.workspace.documents, [])
+    assert.equal((fiscal.workspace.listStates as Record<string, { confirmed: boolean }>).documents.confirmed, false)
+    resolveRead({ data: [{ id: 92, number: 13 }] })
+    await read
+    assert.deepEqual(fiscal.workspace.documents, [])
+    assert.equal((fiscal.workspace.listStates as Record<string, { confirmed: boolean }>).documents.confirmed, false)
   })
 })

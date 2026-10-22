@@ -24,11 +24,13 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpAccountingOutboxConcurrencyTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
 
     /** @var array<string, array{ids: list<int>, hash: string}> */
     private array $baseline = [];
@@ -486,6 +488,7 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
             'commercial_snapshot' => ['total_amount' => '150.00'],
             'authorized_at' => now(),
         ]);
+        $this->attachVerifiedFiscalEvidence($document);
         $delivery = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($document, $actor->id);
 
         return compact('company', 'delivery', 'actor');

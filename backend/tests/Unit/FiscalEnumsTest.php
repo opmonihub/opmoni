@@ -31,6 +31,9 @@ class FiscalEnumsTest extends TestCase
         $this->assertSame(FiscalModel::Nfe, FiscalModel::fromDocumentModel('55'));
         $this->assertSame(FiscalModel::Nfce, FiscalModel::fromDocumentModel('65'));
         $this->assertSame(FiscalModel::Cte, FiscalModel::fromDocumentModel('57'));
+        $this->assertSame('mdfe', FiscalModel::fromDocumentModel('58')?->value);
+        $this->assertSame('MDF-e', FiscalModel::fromDocumentModel('58')?->label());
+        $this->assertSame([FiscalModel::fromDocumentModel('58')], FiscalModel::fromDocumentModel('58')?->family());
         $this->assertNull(FiscalModel::fromDocumentModel('99'));
     }
 

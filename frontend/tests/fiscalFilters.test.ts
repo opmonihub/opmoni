@@ -281,3 +281,10 @@ describe('as opções de modelo do filtro', () => {
     )
   })
 })
+
+it('roundtrips self-issued MDF-e model through office Fiscal filters', () => {
+  assert.equal(isFiscalModel('mdfe'), true)
+  const filters = parseFiscalFilters({ model: 'mdfe' })
+  assert.deepEqual(filters.model, ['mdfe'])
+  assert.deepEqual(parseFiscalFilters(fiscalQuery(filters)).model, ['mdfe'])
+})

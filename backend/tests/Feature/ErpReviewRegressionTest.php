@@ -260,12 +260,16 @@ class ErpReviewRegressionTest extends TestCase
         $this->assertSame($other->id, $payment->erp_company_id);
     }
 
-    public function test_pdf_is_unavailable_until_a_real_renderer_exists(): void
+    public function test_verified_authorized_document_returns_private_valid_pdf_without_state_change(): void
     {
         $document = $this->currentFiscalHarnessDocument('homologation', 9, 'pdf');
         $this->publishSyntheticFiscalEvidence($document);
         $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id)->assertOk()->assertJsonPath('data.artifact_ready', true);
-        $this->getJson('/api/v1/erp/fiscal/documents/'.$document->id.'/pdf')->assertStatus(503);
+        $before = $document->fresh()->getAttributes();
+        $response = $this->get('/api/v1/erp/fiscal/documents/'.$document->id.'/pdf')->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+        $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
+        $this->assertSame($before, $document->fresh()->getAttributes());
         $this->assertSame('authorized', $document->fresh()->status);
     }
 

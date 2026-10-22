@@ -17,6 +17,9 @@ import { useErpAdministrationContext } from './useErpAdministrationContext'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 import { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey, fiscalApiFieldErrors, parseErpFiscalRecoveryRecord } from '#shared/utils/erpFiscal'
 
+type FiscalListKey = 'documents' | 'certificates' | 'events' | 'invalidations'
+type FiscalListState = { confirmed: boolean, loading: boolean, error: string, permitted: boolean }
+
 type ApiEnvelope<T> = { data: T, meta?: Record<string, unknown> }
 type CertificateRecovery = { version: 1, actorId: number, companyId: number, establishmentId: number, mode: 'upload' | 'rotate', certificateId: number | null, previousRevision: number | null, baseline: Array<{ id: number, revision: number }>, label: string, savedAt: string, operationId?: string }
 type CertificateOperationOwner = { operationId: string, authorityKey: string, actorId: number, companyId: number }
@@ -73,6 +76,8 @@ export function useErpFiscalWorkspace() {
   const certificates = ref<ErpFiscalCertificate[]>([])
   const events = ref<ErpFiscalEvent[]>([])
   const invalidations = ref<ErpFiscalInvalidation[]>([])
+  const newListState = (): FiscalListState => ({ confirmed: false, loading: false, error: '', permitted: false })
+  const listStates = reactive<Record<FiscalListKey, FiscalListState>>({ documents: newListState(), certificates: newListState(), events: newListState(), invalidations: newListState() })
   const operationNatures = ref<ErpOperationNatureRecord[]>([])
   const selectedDocument = ref<ErpFiscalDocument | null>(null)
   const selectedSale = ref<ErpFiscalSale | null>(null)
@@ -210,6 +215,7 @@ export function useErpFiscalWorkspace() {
     certificates.value = []
     events.value = []
     invalidations.value = []
+    for (const key of Object.keys(listStates) as FiscalListKey[]) listStates[key] = newListState()
     operationNatures.value = []
     selectedDocument.value = null
     selectedSale.value = null
@@ -438,35 +444,28 @@ export function useErpFiscalWorkspace() {
     loading.value = true
     errorMessage.value = ''
     try {
-      const reads: Array<Promise<unknown>> = []
-      const wantsEstablishments = can('erp.establishments.index')
-      if (wantsEstablishments) reads.push(api('/erp/establishments?per_page=100'))
-      const wantsDocuments = can(actionGrants.documentRead)
-      const wantsConfiguration = can(actionGrants.configurationRead) && id !== null
-      const wantsCertificates = can(actionGrants.certificateRead)
-      const wantsEvents = can(actionGrants.eventRead)
-      const wantsInvalidations = can(actionGrants.invalidationRead)
-      if (wantsDocuments) reads.push(api('/erp/fiscal/documents?per_page=100'))
-      if (wantsConfiguration) reads.push(api(`/erp/fiscal/configuration/${id}`))
-      if (wantsCertificates) reads.push(api('/erp/fiscal/certificates?per_page=100'))
-      if (wantsEvents) reads.push(api('/erp/fiscal/events?per_page=100'))
-      if (wantsInvalidations) reads.push(api('/erp/fiscal/invalidations?per_page=100'))
-      const settled = await Promise.allSettled(reads)
+      const reads: Array<{ key: FiscalListKey | 'establishments' | 'configuration', request: Promise<unknown> }> = []
+      if (can('erp.establishments.index')) reads.push({ key: 'establishments', request: api('/erp/establishments?per_page=100') })
+      const listGrants = { documents: actionGrants.documentRead, certificates: actionGrants.certificateRead, events: actionGrants.eventRead, invalidations: actionGrants.invalidationRead }
+      for (const key of Object.keys(listGrants) as FiscalListKey[]) {
+        const permitted = can(listGrants[key])
+        listStates[key] = { ...listStates[key], permitted, loading: permitted, error: '' }
+        if (permitted) reads.push({ key, request: api(`/erp/fiscal/${key}?per_page=100`) })
+      }
+      if (can(actionGrants.configurationRead) && id !== null) reads.push({ key: 'configuration', request: api(`/erp/fiscal/configuration/${id}`) })
+      const settled = await Promise.allSettled(reads.map(read => read.request))
       if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
-      let index = 0
-      if (wantsEstablishments) {
-        const establishmentsResult = settled[index++]
-        if (establishmentsResult?.status === 'fulfilled') acceptRows(establishmentsResult.value as ApiEnvelope<Array<{ id: number, name: string, cnpj: string | null, status: string }>>, establishments)
-        else throw establishmentsResult?.reason
-      }
-      if (wantsDocuments) {
-        const result = settled[index++]
-        if (result?.status === 'fulfilled') acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documents)
-        else throw result?.reason
-      }
-      if (wantsConfiguration) {
-        const result = settled[index++]
-        if (result?.status === 'fulfilled') {
+      settled.forEach((result, index) => {
+        const key = reads[index]!.key
+        if (result.status === 'rejected') {
+          const message = apiErrorMessage(result.reason) ?? 'Não foi possível carregar os dados fiscais.'
+          if (key !== 'establishments' && key !== 'configuration') listStates[key] = { ...listStates[key], loading: false, error: message }
+          if (!errorMessage.value) errorMessage.value = message
+          return
+        }
+        if (key === 'establishments') {
+          acceptRows(result.value as ApiEnvelope<Array<{ id: number, name: string, cnpj: string | null, status: string }>>, establishments)
+        } else if (key === 'configuration') {
           configuration.value = rowData(result.value as ApiEnvelope<ErpFiscalConfiguration>)
           releaseMessage.value = configuration.value.release_gates.provider === 'unavailable'
             ? 'Emissão bloqueada: o serviço fiscal configurado está indisponível.'
@@ -474,23 +473,14 @@ export function useErpFiscalWorkspace() {
               ? ''
               : `Transmissão de produção bloqueada: ${configuration.value.release_gates.production_blocker ?? 'gate desabilitado'}`
           configurationForm.value = JSON.parse(JSON.stringify(configuration.value.issuer ? configuration.value : emptyConfigurationForm(configuration.value))) as Record<string, unknown>
-        } else throw result?.reason
-      }
-      if (wantsCertificates) {
-        const result = settled[index++]
-        if (result?.status === 'fulfilled') acceptRows(result.value as ApiEnvelope<ErpFiscalCertificate[]>, certificates)
-        else throw result?.reason
-      }
-      if (wantsEvents) {
-        const result = settled[index++]
-        if (result?.status === 'fulfilled') acceptRows(result.value as ApiEnvelope<ErpFiscalEvent[]>, events)
-        else throw result?.reason
-      }
-      if (wantsInvalidations) {
-        const result = settled[index]
-        if (result?.status === 'fulfilled') acceptRows(result.value as ApiEnvelope<ErpFiscalInvalidation[]>, invalidations)
-        else throw result?.reason
-      }
+        } else {
+          if (key === 'documents') acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documents)
+          if (key === 'certificates') acceptRows(result.value as ApiEnvelope<ErpFiscalCertificate[]>, certificates)
+          if (key === 'events') acceptRows(result.value as ApiEnvelope<ErpFiscalEvent[]>, events)
+          if (key === 'invalidations') acceptRows(result.value as ApiEnvelope<ErpFiscalInvalidation[]>, invalidations)
+          listStates[key] = { confirmed: true, loading: false, error: '', permitted: true }
+        }
+      })
       const sourceReads: Array<{ key: 'sales' | 'returns', request: Promise<unknown> }> = []
       if (can('erp.sales.index')) sourceReads.push({ key: 'sales', request: api('/erp/sales?per_page=100&status=posted') })
       if (can('erp.sale-returns.index')) sourceReads.push({ key: 'returns', request: api('/erp/sale-returns?per_page=100&status=posted') })
@@ -1155,7 +1145,7 @@ export function useErpFiscalWorkspace() {
   }
 
   return {
-    establishments, selectedEstablishmentId, configuration, configurationForm, documents, sales, returns, certificates, events, invalidations, operationNatures,
+    establishments, selectedEstablishmentId, configuration, configurationForm, listStates, documents, sales, returns, certificates, events, invalidations, operationNatures,
     selectedDocument, selectedSale, selectedReturn, documentForm, fieldErrors, loading, saving, errorMessage, releaseMessage,
     recoveryMessage, artifactError, pendingRecovery, pendingCertificateRecovery, certificateRecoveryReview, certificateMutationInFlight, recoverableEventDraft, noCompany, canRead, readOnly, canWriteConfiguration,
     authorityGeneration: operationEpoch, authorityNeedsRefresh,

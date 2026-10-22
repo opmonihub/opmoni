@@ -5,6 +5,7 @@ namespace App\Erp\Reports;
 use App\Erp\ErpCatalogScope;
 use App\Erp\ErpCommercialReturnService;
 use App\Erp\Finance\ErpFinanceReadService;
+use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Sales\ErpCommercialDraftService;
 use App\Models\Erp\Finance\ErpCashMovement;
 use App\Models\Erp\Finance\ErpObligation;
@@ -590,11 +591,21 @@ class ErpLedgerReportService
         }
 
         $counts = array_fill_keys(array_map(fn (string $status): string => $status.'_count',
-            ['authorized', 'draft', 'rejected', 'queued', 'submitting', 'indeterminate', 'canceled', 'contingency_local']), 0);
-        $documents = $this->readLedger($query, ['id', 'erp_establishment_id', 'erp_sale_id', 'model', 'environment', 'series', 'number', 'status', 'created_at', 'authorized_at'],
-            $filters, 'current_status_for_created_cohort', 'created_at', fn (Model $row): array => $row->attributesToArray(), $counts,
+            ['authorized', 'draft', 'rejected', 'queued', 'submitting', 'indeterminate', 'canceled', 'contingency_local', 'unverified_authorization', 'authorized_artifact_pending']), 0);
+        $documents = $this->readLedger($query, ['id', 'erp_establishment_id', 'erp_sale_id', 'model', 'environment', 'series', 'number', 'status', 'created_at', 'authorized_at', 'erp_company_id', 'access_key', 'erp_fiscal_certificate_id', 'metadata', 'storage_path', 'artifact_sha256', 'artifact_byte_length'],
+            $filters, 'current_status_for_created_cohort', 'created_at', function (Model $row): array {
+                $store = app(ErpFiscalArtifactStore::class);
+                $verified = $store->verifiedAuthorizationEvidence($row) !== null;
+                $ready = $verified && $store->verifiedAuthorizedXmlReady($row);
+
+                return $row->only(['id', 'erp_establishment_id', 'erp_sale_id', 'model', 'environment', 'series', 'number', 'status', 'created_at', 'authorized_at'])
+                    + ['authorization_verified' => $verified, 'authorization_state' => $verified ? ($ready ? 'verified' : 'artifact_pending') : ($row->status === 'authorized' ? 'unverified_attention' : 'not_authorized')];
+            }, $counts,
             function (array $totals, array $row): array {
-                $key = $row['status'].'_count';
+                $key = $row['status'] === 'authorized' && ! $row['authorization_verified'] ? 'unverified_authorization_count' : $row['status'].'_count';
+                if ($row['status'] === 'authorized' && $row['authorization_state'] === 'artifact_pending') {
+                    $totals['authorized_artifact_pending_count']++;
+                }
                 if (array_key_exists($key, $totals)) {
                     $totals[$key]++;
                 }

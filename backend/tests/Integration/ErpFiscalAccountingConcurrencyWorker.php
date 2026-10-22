@@ -64,8 +64,8 @@ try {
             $client = Client::withoutGlobalScope('account')->findOrFail($input['client_id']);
             $document = new PulledDocument(
                 model: FiscalModel::Nfe, kind: FiscalKind::Document, stage: FiscalStage::Document,
-                chave: $input['key'], eventId: '', emitenteCnpj: null, destinatarioCnpj: null, valorTotal: null, digVal: null,
-                nsu: 101, schema: 'procNFe_v4.00.xsd', emissaoAt: null, eventoOcorridoEmAt: null, xml: $input['bytes'] ?? '<nfeProc/>',
+                chave: $input['key'], eventId: '', emitenteCnpj: $input['issuer'] ?? null, destinatarioCnpj: null, valorTotal: null, digVal: null,
+                nsu: 101, schema: 'procNFe_v4.00.xsd', emissaoAt: null, eventoOcorridoEmAt: null, xml: $input['bytes'],
             );
             $row = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $document);
 
