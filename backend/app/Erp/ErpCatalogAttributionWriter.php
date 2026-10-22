@@ -11,6 +11,8 @@ use App\Models\Erp\ErpCatalogPrintLayout;
 use App\Models\Erp\ErpCategory;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpContact;
+use App\Models\Erp\ErpContactAttachment;
+use App\Models\Erp\ErpContactNote;
 use App\Models\Erp\ErpCustomerGroup;
 use App\Models\Erp\ErpDiscountRule;
 use App\Models\Erp\ErpDriver;
@@ -34,6 +36,8 @@ class ErpCatalogAttributionWriter
     /** @var array<class-string<Model>, string> */
     private const RESOURCE_TYPES = [
         ErpContact::class => 'contact',
+        ErpContactNote::class => 'contact_note',
+        ErpContactAttachment::class => 'contact_note_attachment',
         ErpProduct::class => 'product',
         ErpProductVariant::class => 'product_variant',
         ErpUnit::class => 'unit',
@@ -72,10 +76,14 @@ class ErpCatalogAttributionWriter
         }
 
         $type = self::RESOURCE_TYPES[$resource::class] ?? null;
+        $actions = match ($resource::class) {
+            ErpCompany::class => ['company_settings_updated', 'print_settings_updated'],
+            ErpContactNote::class => ['created', 'updated', 'deletion_requested'],
+            ErpContactAttachment::class => ['attachment_ready_created', 'attachment_unavailable_created', 'deletion_requested'],
+            default => ['created', 'updated', 'archived', 'import_created'],
+        };
         if ($type === null || ! $resource->exists || $resource->getKey() === null
-            || ! in_array($action, $resource instanceof ErpCompany
-                ? ['company_settings_updated', 'print_settings_updated']
-                : ['created', 'updated', 'archived', 'import_created'], true)) {
+            || ! in_array($action, $actions, true)) {
             throw new LogicException('Unsupported catalog resource or action.');
         }
         $owned = $resource->newQuery()->whereKey($resource->getKey());
@@ -126,12 +134,27 @@ class ErpCatalogAttributionWriter
             }
         }
 
-        if (in_array($action, ['created', 'import_created'], true)) {
+        if (in_array($action, ['created', 'import_created', 'attachment_ready_created', 'attachment_unavailable_created'], true)) {
             if (! $resource->wasRecentlyCreated) {
                 throw new LogicException('Creation attribution requires a newly persisted resource.');
             }
+            if ($resource instanceof ErpContactAttachment) {
+                $status = $action === 'attachment_ready_created' ? 'ready' : 'unavailable';
+                if ($resource->status !== $status || ! (clone $owned)->where('status', $status)->exists()) {
+                    throw new LogicException('Attachment creation attribution requires its persisted storage outcome.');
+                }
+            }
         } elseif (array_diff(array_keys($resource->getChanges()), ['created_at', 'updated_at']) === []) {
             return;
+        } elseif ($action === 'deletion_requested') {
+            $field = $resource instanceof ErpContactNote ? 'state' : 'status';
+            $before = $resource instanceof ErpContactNote ? ['active'] : ['ready', 'unavailable'];
+            if (! $resource->wasChanged($field)
+                || ! in_array($resource->getRawOriginal($field), $before, true)
+                || $resource->getAttribute($field) !== 'deletion_pending'
+                || ! (clone $owned)->where($field, 'deletion_pending')->exists()) {
+                throw new LogicException('Deletion attribution requires an actual persisted pending transition.');
+            }
         } elseif ($action === 'archived' && (! $resource->wasChanged('status') || $resource->status !== 'archived')) {
             throw new LogicException('Archive attribution requires an actual archive transition.');
         }

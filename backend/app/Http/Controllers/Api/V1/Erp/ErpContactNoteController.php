@@ -90,6 +90,7 @@ class ErpContactNoteController extends Controller
         return $this->write($request, function (CurrentCompany $context) use ($request, $contact, $data): JsonResponse {
             $contactRow = $this->findActiveContact((int) $context->company->id, $contact);
             $note = $this->notes->createNote((int) $context->company->id, (int) $contactRow->getKey(), $this->actor($request), $data);
+            $this->writes->record($request, $context, $note, 'created');
 
             return response()->json(['data' => $this->serializeNote($note, 0, (int) $request->user()->getAuthIdentifier())], 201);
         });
@@ -149,6 +150,7 @@ class ErpContactNoteController extends Controller
         return $this->write($request, function (CurrentCompany $context) use ($request, $contact, $note, $data): JsonResponse {
             $noteRow = $this->findVisibleNote($request, (int) $context->company->id, $contact, $note);
             $updated = $this->notes->updateNote($noteRow, $this->actor($request), $data);
+            $this->writes->record($request, $context, $noteRow, 'updated');
             $activeAttachmentCount = ErpContactAttachment::query()
                 ->where('erp_company_id', $context->company->id)
                 ->where('erp_contact_note_id', $updated->getKey())
@@ -167,8 +169,19 @@ class ErpContactNoteController extends Controller
     {
         return $this->write($request, function (CurrentCompany $context) use ($request, $contact, $note): JsonResponse {
             $companyId = (int) $context->company->id;
-            $noteRow = $this->findVisibleNote($request, $companyId, $contact, $note);
+            $noteRow = $this->findVisibleNote($request, $companyId, $contact, $note, lock: true);
+            $attachments = ErpContactAttachment::query()
+                ->where('erp_company_id', $companyId)
+                ->where('erp_contact_note_id', $noteRow->getKey())
+                ->whereIn('status', ['ready', 'unavailable'])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id', 'erp_company_id', 'erp_contact_note_id', 'status']);
             $this->notes->archiveNote($companyId, $noteRow);
+            $this->recordPendingTransition($request, $context, $noteRow);
+            foreach ($attachments as $attachmentRow) {
+                $this->recordPendingTransition($request, $context, $attachmentRow);
+            }
 
             return response()->json([
                 'code' => 'deletion_requested',
@@ -194,6 +207,9 @@ class ErpContactNoteController extends Controller
             $this->findActiveContact($companyId, $contact);
             $noteRow = $this->findVisibleNote($request, $companyId, $contact, $note);
             $result = $this->notes->storeAttachment($companyId, $noteRow, $data['file']);
+            $this->writes->record($request, $context, $result['attachment'], $result['available']
+                ? 'attachment_ready_created'
+                : 'attachment_unavailable_created');
             $responseData = $this->serializeAttachment($result['attachment']);
 
             if (! $result['available']) {
@@ -247,8 +263,9 @@ class ErpContactNoteController extends Controller
         return $this->write($request, function (CurrentCompany $context) use ($request, $contact, $note, $attachment): JsonResponse {
             $companyId = (int) $context->company->id;
             $noteRow = $this->findVisibleNote($request, $companyId, $contact, $note);
-            $attachmentRow = $this->findAttachment($companyId, $noteRow, $attachment);
+            $attachmentRow = $this->findAttachment($companyId, $noteRow, $attachment, lock: true);
             $this->notes->archiveAttachment($companyId, $noteRow, $attachmentRow);
+            $this->recordPendingTransition($request, $context, $attachmentRow);
 
             return response()->json([
                 'code' => 'deletion_requested',
@@ -306,7 +323,7 @@ class ErpContactNoteController extends Controller
             ->firstOrFail();
     }
 
-    private function findVisibleNote(Request $request, int $companyId, int $contactId, int $noteId): ErpContactNote
+    private function findVisibleNote(Request $request, int $companyId, int $contactId, int $noteId, bool $lock = false): ErpContactNote
     {
         $this->findContact($companyId, $contactId);
 
@@ -315,16 +332,40 @@ class ErpContactNoteController extends Controller
             ->where('erp_contact_id', $contactId)
             ->whereKey($noteId)
             ->visibleTo((int) $request->user()->getAuthIdentifier())
+            ->when($lock, fn (Builder $query) => $query->lockForUpdate())
             ->firstOrFail();
     }
 
-    private function findAttachment(int $companyId, ErpContactNote $note, int $attachmentId): ErpContactAttachment
+    private function findAttachment(int $companyId, ErpContactNote $note, int $attachmentId, bool $lock = false): ErpContactAttachment
     {
         return ErpContactAttachment::query()
             ->where('erp_company_id', $companyId)
             ->where('erp_contact_note_id', $note->getKey())
             ->whereKey($attachmentId)
+            ->when($lock, fn (Builder $query) => $query->lockForUpdate())
             ->firstOrFail();
+    }
+
+    private function recordPendingTransition(Request $request, CurrentCompany $context, ErpContactNote|ErpContactAttachment $resource): void
+    {
+        $isNote = $resource instanceof ErpContactNote;
+        $field = $isNote ? 'state' : 'status';
+        if (! in_array($resource->getRawOriginal($field), $isNote ? ['active'] : ['ready', 'unavailable'], true)) {
+            return;
+        }
+
+        $persisted = $resource->newQuery()
+            ->where('erp_company_id', $context->company->id)
+            ->where($isNote ? 'erp_contact_id' : 'erp_contact_note_id', $resource->getAttribute($isNote ? 'erp_contact_id' : 'erp_contact_note_id'))
+            ->whereKey($resource->getKey())
+            ->value($field);
+        if ($persisted !== 'deletion_pending') {
+            return;
+        }
+
+        $resource->setAttribute($field, $persisted);
+        $resource->syncChanges();
+        $this->writes->record($request, $context, $resource, 'deletion_requested');
     }
 
     private function actor(Request $request): User

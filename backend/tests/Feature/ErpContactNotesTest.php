@@ -794,6 +794,7 @@ class ErpContactNotesTest extends TestCase
     {
         FailAccessSessionOwnershipAfterNextMiddleware::$responseStatusBeforeFence = null;
         FailAccessSessionOwnershipAfterNextMiddleware::$attachmentCountBeforeFence = null;
+        FailAccessSessionOwnershipAfterNextMiddleware::$attributionCountBeforeFence = null;
         FailAccessSessionOwnershipAfterNextMiddleware::$filesBeforeFence = [];
         $this->usePrivateAttachmentTestDisk();
         $disk = Storage::disk('erp-contact-attachments');
@@ -811,9 +812,11 @@ class ErpContactNotesTest extends TestCase
 
         $this->assertSame(201, FailAccessSessionOwnershipAfterNextMiddleware::$responseStatusBeforeFence);
         $this->assertSame(1, FailAccessSessionOwnershipAfterNextMiddleware::$attachmentCountBeforeFence);
+        $this->assertSame(2, FailAccessSessionOwnershipAfterNextMiddleware::$attributionCountBeforeFence);
         $this->assertCount(2, FailAccessSessionOwnershipAfterNextMiddleware::$filesBeforeFence);
         $this->assertSame(['accepted-sentinel'], $disk->allFiles());
         $this->assertSame(0, ErpContactAttachment::query()->where('erp_contact_note_id', $note['id'])->count());
+        $this->assertDatabaseCount('erp_catalog_attributions', 1);
         $this->assertSame('%PDF-accepted', $disk->get('accepted-sentinel'));
     }
 
@@ -821,6 +824,7 @@ class ErpContactNotesTest extends TestCase
     {
         FailAccessSessionOwnershipAfterNextMiddleware::$responseStatusBeforeFence = null;
         FailAccessSessionOwnershipAfterNextMiddleware::$attachmentStatusBeforeFence = null;
+        FailAccessSessionOwnershipAfterNextMiddleware::$attributionCountBeforeFence = null;
         FailAccessSessionOwnershipAfterNextMiddleware::$filesBeforeFence = [];
         $disk = $this->usePrivateAttachmentTestDisk();
         $context = $this->ownerContext();
@@ -842,8 +846,10 @@ class ErpContactNotesTest extends TestCase
 
         $this->assertSame(202, FailAccessSessionOwnershipAfterNextMiddleware::$responseStatusBeforeFence);
         $this->assertSame('deletion_pending', FailAccessSessionOwnershipAfterNextMiddleware::$attachmentStatusBeforeFence);
+        $this->assertSame(3, FailAccessSessionOwnershipAfterNextMiddleware::$attributionCountBeforeFence);
         $this->assertContains($attachment->storage_key, FailAccessSessionOwnershipAfterNextMiddleware::$filesBeforeFence);
         $this->assertSame('ready', $attachment->fresh()->status);
+        $this->assertDatabaseCount('erp_catalog_attributions', 2);
         $stored = $disk->get($attachment->storage_key);
         $this->assertSame(strlen($bytes), strlen($stored));
         $this->assertSame(hash('sha256', $bytes), hash('sha256', $stored));
@@ -964,6 +970,8 @@ class FailAccessSessionOwnershipAfterNextMiddleware
 
     public static ?int $attachmentCountBeforeFence = null;
 
+    public static ?int $attributionCountBeforeFence = null;
+
     /** @var list<string> */
     public static array $filesBeforeFence = [];
 
@@ -972,6 +980,7 @@ class FailAccessSessionOwnershipAfterNextMiddleware
         $response = $next($request);
         self::$responseStatusBeforeFence = $response->getStatusCode();
         self::$attachmentCountBeforeFence = DB::table('erp_contact_attachments')->count();
+        self::$attributionCountBeforeFence = DB::table('erp_catalog_attributions')->count();
         self::$filesBeforeFence = Storage::disk('erp-contact-attachments')->allFiles();
         $attachmentId = $request->route('attachment');
         self::$attachmentStatusBeforeFence = $attachmentId === null
