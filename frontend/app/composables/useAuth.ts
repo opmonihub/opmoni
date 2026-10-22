@@ -13,7 +13,7 @@ export function useAuth() {
   function clearAccountData() {
     nuxtApp.runWithContext(() => {
       clearNuxtData()
-      clearNuxtState(key => !key.startsWith('access-') && key !== '__nuxt_devtools__')
+      clearNuxtState(key => !key.startsWith('access-') && key !== '__nuxt_devtools__' && key !== 'color-mode')
     })
   }
   function clearSession() {
