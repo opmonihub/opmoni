@@ -101,9 +101,9 @@
 
 **Interfaces:** implement `formatErpDecimalDisplay(value: string | number | null | undefined, options?: { minimumFractionDigits?: number }): string` exactly as design section 7; default minimum is 0, prices pass 2, and absent values return `—`.
 
-- [ ] 7.1 Add failing tests for `12.5000 → 12,50` with minimum 2, `0 → 0,00` with minimum 2, `-10.1250 → -10,125`, `12345678901234567890.1234 → 12.345.678.901.234.567.890,1234`, null/undefined/empty `→ —`, and a non-canonical string retained unchanged; verify the input strings are not modified.
-- [ ] 7.2 Implement the string-based display helper without converting decimal strings to floating point; verify every formatting case passes and no rounding or guessed currency symbol appears.
-- [ ] 7.3 Use the display helper only in the listed read-only cells and verify actual form submissions still contain the original canonical decimal strings. Run new decimal tests, `erpCoreCatalogs.test.ts`, `erpCatalogForms.test.ts`, and relevant pricing/unit/fiscal presentation coverage plus changed-path lint.
+- [x] 7.1 Add failing tests for `12.5000 → 12,50` with minimum 2, `0 → 0,00` with minimum 2, `-10.1250 → -10,125`, `12345678901234567890.1234 → 12.345.678.901.234.567.890,1234`, null/undefined/empty `→ —`, and a non-canonical string retained unchanged; verify the input strings are not modified.
+- [x] 7.2 Implement the string-based display helper without converting decimal strings to floating point; verify every formatting case passes and no rounding or guessed currency symbol appears.
+- [x] 7.3 Use the display helper only in the listed read-only cells and verify actual form submissions still contain the original canonical decimal strings. Run new decimal tests, `erpCoreCatalogs.test.ts`, `erpCatalogForms.test.ts`, and relevant pricing/unit/fiscal presentation coverage plus changed-path lint.
 
 ## 8. Complete the route/form/overlay coverage map
 
