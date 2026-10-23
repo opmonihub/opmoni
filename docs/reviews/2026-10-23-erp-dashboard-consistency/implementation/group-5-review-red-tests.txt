@@ -1,0 +1,122 @@
+▶ settings rejected save feedback
+  ✖ section clears old feedback on a same-context 401 authority refusal (473.416981ms)
+  ✖ section clears old feedback on a same-context 403 authority refusal (129.762002ms)
+  ✖ section clears old feedback on a same-context 409 authority refusal (98.671825ms)
+  ✖ email clears old feedback on a same-context 401 authority refusal (161.963316ms)
+  ✖ email clears old feedback on a same-context 403 authority refusal (104.443663ms)
+  ✖ email clears old feedback on a same-context 409 authority refusal (117.282142ms)
+✖ settings rejected save feedback (1089.181399ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 0
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1878.763824
+
+✖ failing tests:
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ section clears old feedback on a same-context 401 authority refusal (473.416981ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 5)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ section clears old feedback on a same-context 403 authority refusal (129.762002ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ section clears old feedback on a same-context 409 authority refusal (98.671825ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.    v-if  Nome Nome exibido pela empresa. Obrigatório    Valor recusado.     Regime           Ativo        ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ email clears old feedback on a same-context 401 authority refusal (161.963316ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ email clears old feedback on a same-context 403 authority refusal (104.443663ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:377:7
+✖ email clears old feedback on a same-context 409 authority refusal (117.282142ms)
+  AssertionError [ERR_ASSERTION]: The input was expected to not match the regular expression /Valor recusado|Confira os dados/. Input:
+
+  '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:396:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   v-if Seu acesso não permite consultar ou alterar estas configurações. v-if Confira os dados informados.   Host SMTP      Valor recusado.  Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado|Confira os dados/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }

@@ -1,22 +1,19 @@
 <script setup lang="ts">
-import type { ErpCompanySettingsPayload } from '#shared/types/erp-company-settings'
+import { apiFailure } from '#shared/utils/access'
+import type { ErpSettingsField } from '~/utils/erpCompanySettingsFields'
 
 const props = defineProps<{
   title: string
   description?: string
-  fields: Array<{
-    key: keyof ErpCompanySettingsPayload | string
-    label: string
-    type?: 'text' | 'number' | 'select' | 'checkbox'
-    options?: Array<{ label: string, value: string | number }>
-    required?: boolean
-  }>
+  fields: ErpSettingsField[]
 }>()
 
 const { state, meta, pending, canRead, canWrite, authorityKey, refresh, save } = useErpCompanySettings()
 const toast = useToast()
 const form = reactive<Record<string, unknown>>({})
 const loadError = ref('')
+const saveError = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
 
 onMounted(async () => {
   if (!state.value && canRead.value) await refreshSettings()
@@ -24,6 +21,16 @@ onMounted(async () => {
 })
 
 watch(state, syncForm, { flush: 'sync' })
+watch([authorityKey, canRead, canWrite], () => {
+  loadError.value = ''
+  clearSaveFeedback()
+  syncForm()
+}, { flush: 'sync' })
+
+function clearSaveFeedback() {
+  saveError.value = ''
+  fieldErrors.value = {}
+}
 
 function syncForm() {
   if (!state.value) {
@@ -37,17 +44,20 @@ function syncForm() {
 }
 
 async function refreshSettings() {
+  if (!canRead.value || pending.value) return
+  const authority = authorityKey.value
   loadError.value = ''
   try {
     await refresh()
   } catch {
-    loadError.value = 'Não foi possível carregar as configurações.'
+    if (canRead.value && authority === authorityKey.value) loadError.value = 'Não foi possível carregar as configurações.'
   }
 }
 
 async function onSubmit() {
   if (!canWrite.value || pending.value || !state.value) return
   const authority = authorityKey.value
+  clearSaveFeedback()
   const patch: Record<string, unknown> = {}
   for (const field of props.fields)
     patch[field.key as string] = form[field.key as string]
@@ -55,9 +65,11 @@ async function onSubmit() {
     const response = await save(patch)
     if (!response || !canWrite.value || authority !== authorityKey.value) return
     toast.add({ title: 'Configurações salvas', color: 'success', icon: 'i-lucide-check' })
-  } catch {
+  } catch (error) {
     if (!canWrite.value || authority !== authorityKey.value) return
-    toast.add({ title: 'Não foi possível salvar', color: 'error', icon: 'i-lucide-x' })
+    const failure = apiFailure(error)
+    fieldErrors.value = failure.errors ?? {}
+    saveError.value = failure.message
   }
 }
 
@@ -96,7 +108,7 @@ function selectOptions(field: (typeof props.fields)[number]) {
 </script>
 
 <template>
-  <UForm :disabled="!canWrite || pending || !state" @submit.prevent="onSubmit">
+  <UForm :state="form" :disabled="!canWrite || pending || !state" @submit="onSubmit">
     <UPageCard
       :title="title"
       :description="description"
@@ -130,6 +142,9 @@ function selectOptions(field: (typeof props.fields)[number]) {
         @click="refreshSettings"
       />
     </div>
+    <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
+      {{ saveError }}
+    </p>
     <UPageCard variant="subtle" class="space-y-0">
       <template v-for="(field, index) in fields" :key="field.key">
         <USeparator v-if="index > 0" />
@@ -137,6 +152,9 @@ function selectOptions(field: (typeof props.fields)[number]) {
           :name="String(field.key)"
           :label="field.label"
           :required="field.required"
+          :description="field.description"
+          :hint="field.hint"
+          :error="fieldErrors[String(field.key)]?.[0]"
           class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <UCheckbox

@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Prefixos"
-    description="settings_prefixes.blade.php — use JSON ref_no_prefixes via API avançada futuramente."
+    description="Defina o prefixo dos códigos SKU dos produtos. Os demais prefixos ainda não têm editor nesta tela."
     :fields="[
       { key: 'sku_prefix', label: 'Prefixo SKU (atalho)' }
     ]"

@@ -10,6 +10,7 @@ import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/u
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const workspaceNav = loadAppComposable('utils/erpWorkspaceNav.ts')
+const erpPresentation = loadAppComposable('components/erp/erpPresentation.ts')
 
 const routeFile = new URL('../app/pages/erp/configuracoes.vue', import.meta.url)
 const companyAdministrationFile = new URL('../app/components/erp/ErpCompanyAdministration.vue', import.meta.url)
@@ -340,7 +341,7 @@ function settingsLinks(company: {
     useAuth: () => ({ currentCompany: Vue.ref(company), currentAccount: Vue.ref(account), canManageMembers: Vue.computed(() => account?.role === 'admin') })
   }
   new Function('require', 'exports', ...Object.keys(globals), compiled.outputText)(
-    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpWorkspaceNav' ? workspaceNav : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : name === '~/utils/settingsNav' ? { settingsTabs } : (() => { throw new Error(`Unexpected import: ${name}`) })(),
+    (name: string) => name === 'vue' ? Vue : name === '~/utils/erpWorkspaceNav' ? workspaceNav : name === '~/utils/erpModulesNav' ? { erpCompanyHasPermission } : name === '~/utils/settingsNav' ? { settingsTabs } : name === '~/components/erp/erpPresentation' ? erpPresentation : (() => { throw new Error(`Unexpected import: ${name}`) })(),
     exports,
     ...Object.values(globals)
   )

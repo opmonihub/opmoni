@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Compras"
-    description="settings_purchase.blade.php"
+    description="Configure moeda, edição de produtos, status e controle de lotes nas compras."
     :fields="[
       { key: 'purchase_in_diff_currency', label: 'Compra em outra moeda', type: 'checkbox' },
       { key: 'purchase_currency_id', label: 'Moeda compra (ID)', type: 'number' },

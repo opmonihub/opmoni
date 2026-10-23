@@ -1,0 +1,63 @@
+▶ useErpCompanySettings API wire
+  ✔ calls GET/PATCH /erp/company/settings via useAccessApi (5.847531ms)
+✔ useErpCompanySettings API wire (7.198441ms)
+▶ native acceptance settings authority
+  ✔ renders operator/viewer without write grants as read-only and rejects programmatic submit (1561.994768ms)
+  ✔ admits current writers and drops late PATCH/GET after authority or session changes (509.585925ms)
+✔ native acceptance settings authority (2072.110596ms)
+▶ native acceptance settings writer roles and refusals
+  ✔ preserves owner/manager and explicitly granted operator writes, with viewer remaining read-only (911.887825ms)
+  ✔ intersects delegated write grants with active matching office writer role (284.668673ms)
+  ✔ clears data and blocks a definitive current refusal, and disables unknown failed reads (518.386302ms)
+✔ native acceptance settings writer roles and refusals (1715.626067ms)
+▶ native acceptance email consumer review correction
+  ✔ renders the actual email page read-only and performs no denied programmatic PATCH or confirmation (189.574891ms)
+  ✔ blocks unknown and busy email submissions without a request or skipped-save success toast (101.800045ms)
+  ✔ clears private email inputs synchronously and emits no toast for obsolete PATCH success or failure (890.102849ms)
+  ✔ submits the accepted nested email_settings fields and confirms only an authorized actual response (114.395914ms)
+  ✔ keeps an unknown failed email read disabled and offers an authorized read retry (87.752265ms)
+✔ native acceptance email consumer review correction (1384.333646ms)
+▶ settings rejected save feedback
+  ✔ section binds current form state and preserves field metadata (25.990783ms)
+  ✔ section renders the first named 422 error, retains edits and clears feedback on retry (164.427484ms)
+  ✔ section visibly reports a form or transport failure (98.361093ms)
+  ✔ section visibly reports a form or transport failure (22.435786ms)
+  ✔ section visibly reports a form or transport failure (81.991606ms)
+  ✔ section discards late success and clears feedback on company changes (102.173701ms)
+  ✔ section discards late failure and clears feedback on company changes (203.65382ms)
+  ✔ section discards late success and clears feedback on account changes (389.315638ms)
+  ✔ section discards late failure and clears feedback on account changes (103.490686ms)
+  ✔ section discards late success and clears feedback on session changes (105.895845ms)
+  ✔ section discards late failure and clears feedback on session changes (100.830657ms)
+  ✔ section discards late success and clears feedback on permission changes (21.971406ms)
+  ✔ section discards late failure and clears feedback on permission changes (167.727687ms)
+  ✔ section discards late success and clears feedback on role changes (31.454177ms)
+  ✔ section discards late failure and clears feedback on role changes (22.438512ms)
+  ✔ email binds current form state and preserves field metadata (83.090982ms)
+  ✔ email renders the first named 422 error, retains edits and clears feedback on retry (17.726822ms)
+  ✔ email visibly reports a form or transport failure (81.380358ms)
+  ✔ email visibly reports a form or transport failure (116.325391ms)
+  ✔ email visibly reports a form or transport failure (85.401915ms)
+  ✔ email discards late success and clears feedback on company changes (22.662065ms)
+  ✔ email discards late failure and clears feedback on company changes (73.675466ms)
+  ✔ email discards late success and clears feedback on account changes (18.900096ms)
+  ✔ email discards late failure and clears feedback on account changes (91.173295ms)
+  ✔ email discards late success and clears feedback on session changes (106.397486ms)
+  ✔ email discards late failure and clears feedback on session changes (81.683563ms)
+  ✔ email discards late success and clears feedback on permission changes (17.980674ms)
+  ✔ email discards late failure and clears feedback on permission changes (90.310842ms)
+  ✔ email discards late success and clears feedback on role changes (96.614844ms)
+  ✔ email discards late failure and clears feedback on role changes (100.119458ms)
+✔ settings rejected save feedback (2792.658506ms)
+▶ erpCompanySettingsFields
+  ✔ maps business tab keys from reference settings_business (0.904192ms)
+  ✔ maps tax tab keys from reference settings_tax (0.814724ms)
+✔ erpCompanySettingsFields (4.018927ms)
+ℹ tests 43
+ℹ suites 6
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9366.805649

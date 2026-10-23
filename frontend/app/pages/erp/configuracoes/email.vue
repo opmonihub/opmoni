@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { apiFailure } from '#shared/utils/access'
+
 definePageMeta({ middleware: 'auth' })
 
 const { state, pending, canRead, canWrite, authorityKey, refresh, save } = useErpCompanySettings()
 const toast = useToast()
 const loadError = ref('')
+const saveError = ref('')
+const fieldErrors = ref<Record<string, string[]>>({})
 const form = reactive({
   mail_host: '',
   mail_port: '',
@@ -17,10 +21,20 @@ onMounted(async () => {
 })
 
 watch(state, sync, { flush: 'sync' })
-watch(authorityKey, () => {
+watch([authorityKey, canRead, canWrite], () => {
   loadError.value = ''
+  clearSaveFeedback()
   sync()
 }, { flush: 'sync' })
+
+function clearSaveFeedback() {
+  saveError.value = ''
+  fieldErrors.value = {}
+}
+
+function fieldError(key: string) {
+  return fieldErrors.value[`email_settings.${key}`]?.[0] ?? fieldErrors.value[key]?.[0]
+}
 
 function sync() {
   const email = (state.value?.email_settings ?? {}) as Record<string, string>
@@ -44,22 +58,25 @@ async function refreshSettings() {
 async function onSubmit() {
   if (!canWrite.value || pending.value || !state.value) return
   const authority = authorityKey.value
+  clearSaveFeedback()
   try {
     const response = await save({ email_settings: { ...form } })
     if (!response || !canWrite.value || authority !== authorityKey.value) return
     toast.add({ title: 'E-mail salvo', color: 'success', icon: 'i-lucide-check' })
-  } catch {
+  } catch (error) {
     if (!canWrite.value || authority !== authorityKey.value) return
-    toast.add({ title: 'Erro ao salvar', color: 'error', icon: 'i-lucide-x' })
+    const failure = apiFailure(error)
+    fieldErrors.value = failure.errors ?? {}
+    saveError.value = failure.message
   }
 }
 </script>
 
 <template>
-  <UForm :disabled="!canWrite || pending || !state" @submit.prevent="onSubmit">
+  <UForm :state="form" :disabled="!canWrite || pending || !state" @submit="onSubmit">
     <UPageCard
       title="E-mail"
-      description="settings_email.blade.php"
+      description="Configure o servidor SMTP e os dados do remetente dos e-mails da empresa."
       variant="naked"
       orientation="horizontal"
       class="mb-4"
@@ -89,17 +106,20 @@ async function onSubmit() {
         @click="refreshSettings"
       />
     </div>
+    <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
+      {{ saveError }}
+    </p>
     <UPageCard variant="subtle" class="space-y-4">
-      <UFormField label="Host SMTP" name="mail_host">
+      <UFormField label="Host SMTP" name="mail_host" :error="fieldError('mail_host')">
         <UInput v-model="form.mail_host" class="max-w-md" :disabled="!canWrite || pending || !state" />
       </UFormField>
-      <UFormField label="Porta" name="mail_port">
+      <UFormField label="Porta" name="mail_port" :error="fieldError('mail_port')">
         <UInput v-model="form.mail_port" class="max-w-md" :disabled="!canWrite || pending || !state" />
       </UFormField>
-      <UFormField label="Remetente (e-mail)" name="mail_from_address">
+      <UFormField label="Remetente (e-mail)" name="mail_from_address" :error="fieldError('mail_from_address')">
         <UInput v-model="form.mail_from_address" class="max-w-md" :disabled="!canWrite || pending || !state" />
       </UFormField>
-      <UFormField label="Nome remetente" name="mail_from_name">
+      <UFormField label="Nome remetente" name="mail_from_name" :error="fieldError('mail_from_name')">
         <UInput v-model="form.mail_from_name" class="max-w-md" :disabled="!canWrite || pending || !state" />
       </UFormField>
     </UPageCard>

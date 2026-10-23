@@ -7,7 +7,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Taxas"
-    description="Espelha business/partials/settings_tax.blade.php (referência sistema)."
+    description="Defina os nomes e números de identificação dos impostos usados pela empresa."
     :fields="erpSettingsTaxFields"
   />
 </template>

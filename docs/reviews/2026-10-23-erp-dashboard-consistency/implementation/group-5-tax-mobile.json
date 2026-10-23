@@ -1,0 +1,9 @@
+{
+  "width": 390,
+  "height": 844,
+  "formAlert": "Confira os dados informados. Resposta sintética de teste.",
+  "input": "Teste de validação preservado",
+  "invalid": "true",
+  "fieldError": "Valor recusado na validação sintética.",
+  "horizontalOverflow": false
+}

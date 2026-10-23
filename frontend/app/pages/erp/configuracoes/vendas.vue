@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Vendas"
-    description="settings_sales.blade.php"
+    description="Defina os valores padrão de desconto, tributação e inclusão de itens nas vendas."
     :fields="[
       { key: 'default_sales_discount', label: 'Desconto padrão venda' },
       { key: 'default_sales_tax', label: 'Imposto padrão venda (ID)' },

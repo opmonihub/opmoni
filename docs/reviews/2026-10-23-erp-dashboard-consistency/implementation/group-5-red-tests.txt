@@ -1,0 +1,590 @@
+▶ useErpCompanySettings API wire
+  ✔ calls GET/PATCH /erp/company/settings via useAccessApi (5.058867ms)
+✔ useErpCompanySettings API wire (6.429946ms)
+▶ native acceptance settings authority
+  ✔ renders operator/viewer without write grants as read-only and rejects programmatic submit (608.027288ms)
+  ✔ admits current writers and drops late PATCH/GET after authority or session changes (211.037594ms)
+✔ native acceptance settings authority (819.495899ms)
+▶ native acceptance settings writer roles and refusals
+  ✔ preserves owner/manager and explicitly granted operator writes, with viewer remaining read-only (380.1436ms)
+  ✔ intersects delegated write grants with active matching office writer role (112.574342ms)
+  ✔ clears data and blocks a definitive current refusal, and disables unknown failed reads (197.452353ms)
+✔ native acceptance settings writer roles and refusals (690.855121ms)
+▶ native acceptance email consumer review correction
+  ✔ renders the actual email page read-only and performs no denied programmatic PATCH or confirmation (201.542389ms)
+  ✔ blocks unknown and busy email submissions without a request or skipped-save success toast (100.361759ms)
+  ✔ clears private email inputs synchronously and emits no toast for obsolete PATCH success or failure (583.775269ms)
+  ✔ submits the accepted nested email_settings fields and confirms only an authorized actual response (37.91995ms)
+  ✔ keeps an unknown failed email read disabled and offers an authorized read retry (66.726219ms)
+✔ native acceptance email consumer review correction (991.688447ms)
+▶ settings rejected save feedback
+  ✖ section binds current form state and preserves field metadata (24.841344ms)
+  ✖ section renders the first named 422 error, retains edits and clears feedback on retry (93.629827ms)
+  ✖ section visibly reports a form or transport failure (76.727351ms)
+  ✖ section visibly reports a form or transport failure (91.061112ms)
+  ✖ section visibly reports a form or transport failure (21.096739ms)
+  ✖ section discards late success and clears feedback on company changes (21.697898ms)
+  ✖ section discards late failure and clears feedback on company changes (61.673363ms)
+  ✖ section discards late success and clears feedback on account changes (30.325447ms)
+  ✖ section discards late failure and clears feedback on account changes (170.540149ms)
+  ✖ section discards late success and clears feedback on session changes (93.097508ms)
+  ✖ section discards late failure and clears feedback on session changes (22.056748ms)
+  ✖ section discards late success and clears feedback on permission changes (18.130237ms)
+  ✖ section discards late failure and clears feedback on permission changes (74.704146ms)
+  ✖ section discards late success and clears feedback on role changes (32.176114ms)
+  ✖ section discards late failure and clears feedback on role changes (56.800348ms)
+  ✖ email binds current form state and preserves field metadata (13.985402ms)
+  ✖ email renders the first named 422 error, retains edits and clears feedback on retry (14.087507ms)
+  ✖ email visibly reports a form or transport failure (14.472165ms)
+  ✖ email visibly reports a form or transport failure (14.408143ms)
+  ✖ email visibly reports a form or transport failure (51.695353ms)
+  ✖ email discards late success and clears feedback on company changes (24.562216ms)
+  ✖ email discards late failure and clears feedback on company changes (14.439184ms)
+  ✖ email discards late success and clears feedback on account changes (60.063844ms)
+  ✖ email discards late failure and clears feedback on account changes (17.699031ms)
+  ✖ email discards late success and clears feedback on session changes (13.881166ms)
+  ✖ email discards late failure and clears feedback on session changes (14.207784ms)
+  ✖ email discards late success and clears feedback on permission changes (53.29174ms)
+  ✖ email discards late failure and clears feedback on permission changes (34.634574ms)
+  ✖ email discards late success and clears feedback on role changes (66.493518ms)
+  ✖ email discards late failure and clears feedback on role changes (15.026265ms)
+✖ settings rejected save feedback (1313.797399ms)
+▶ erpCompanySettingsFields
+  ✔ maps business tab keys from reference settings_business (0.884516ms)
+  ✔ maps tax tab keys from reference settings_tax (64.429696ms)
+✔ erpCompanySettingsFields (66.676455ms)
+ℹ tests 43
+ℹ suites 6
+ℹ pass 13
+ℹ fail 30
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4802.53679
+
+✖ failing tests:
+
+test at tests/erpCompanySettingsApi.test.ts:316:5
+✖ section binds current form state and preserves field metadata (24.841344ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - {
+  -   enabled: 1,
+  -   name: 'Empresa autorizada',
+  -   regime: 'normal'
+  - }
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:320:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: [Object],
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:329:5
+✖ section renders the first named 422 error, retains edits and clears feedback on retry (93.629827ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  ' Nome      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:347:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: ' Nome      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ section visibly reports a form or transport failure (76.727351ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Confira os dados informados\./. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Confira os dados informados\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ section visibly reports a form or transport failure (91.061112ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Tente novamente após atualizar\./. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Tente novamente após atualizar\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ section visibly reports a form or transport failure (21.096739ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Serviço temporariamente indisponível\. Tente novamente\./. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Serviço temporariamente indisponível\. Tente novamente\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late success and clears feedback on company changes (21.697898ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late failure and clears feedback on company changes (61.673363ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late success and clears feedback on account changes (30.325447ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late failure and clears feedback on account changes (170.540149ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late success and clears feedback on session changes (93.097508ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late failure and clears feedback on session changes (22.056748ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late success and clears feedback on permission changes (18.130237ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late failure and clears feedback on permission changes (74.704146ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late success and clears feedback on role changes (32.176114ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ section discards late failure and clears feedback on role changes (56.800348ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if    v-if  Nome           Regime           Ativo        ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:316:5
+✖ email binds current form state and preserves field metadata (13.985402ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - {
+  -   mail_from_address: '',
+  -   mail_from_name: '',
+  -   mail_host: 'smtp.example.test',
+  -   mail_port: ''
+  - }
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:320:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: [Object],
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:329:5
+✖ email renders the first named 422 error, retains edits and clears feedback on retry (14.087507ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  ' Host SMTP      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:347:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: ' Host SMTP      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ email visibly reports a form or transport failure (14.472165ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Confira os dados informados\./. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Confira os dados informados\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ email visibly reports a form or transport failure (14.408143ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Tente novamente após atualizar\./. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Tente novamente após atualizar\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:363:7
+✖ email visibly reports a form or transport failure (51.695353ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Serviço temporariamente indisponível\. Tente novamente\./. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:370:18)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Serviço temporariamente indisponível\. Tente novamente\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late success and clears feedback on company changes (24.562216ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late failure and clears feedback on company changes (14.439184ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late success and clears feedback on account changes (60.063844ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late failure and clears feedback on account changes (17.699031ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late success and clears feedback on session changes (13.881166ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late failure and clears feedback on session changes (14.207784ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late success and clears feedback on permission changes (53.29174ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late failure and clears feedback on permission changes (34.634574ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late success and clears feedback on role changes (66.493518ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCompanySettingsApi.test.ts:379:9
+✖ email discards late failure and clears feedback on role changes (15.026265ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Valor recusado/. Input:
+
+  '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      '
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCompanySettingsApi.test.ts:392:20)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '   Salvar v-if v-if   Host SMTP        Porta        Remetente (e-mail)        Nome remetente      ',
+    expected: /Valor recusado/,
+    operator: 'match',
+    diff: 'simple'
+  }

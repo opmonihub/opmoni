@@ -1,0 +1,9 @@
+{
+  "width": 390,
+  "height": 844,
+  "formAlert": "Confira os dados informados. Resposta sintética de teste.",
+  "host": "smtp.synthetic.example.test",
+  "invalid": "true",
+  "fieldError": "Valor recusado na validação sintética.",
+  "horizontalOverflow": false
+}

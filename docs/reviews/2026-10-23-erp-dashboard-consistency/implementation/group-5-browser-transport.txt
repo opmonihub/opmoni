@@ -1,0 +1,6 @@
+{"interceptor":"ready","scope":"exact dev-origin settings URL","readRequests":"continued","writeRequests":"synthetically fulfilled or aborted"}
+{"interceptor":"removed"}
+{"interceptor":"ready","scope":"exact dev-origin settings URL","readRequests":"continued","writeRequests":"synthetically fulfilled or aborted"}
+{"method":"PATCH","path":"/api/v1/erp/company/settings","status":422,"field":"tax_label_1","synthetic":true,"upstreamDispatched":false}
+{"method":"PATCH","path":"/api/v1/erp/company/settings","status":422,"field":"email_settings.mail_host","synthetic":true,"upstreamDispatched":false}
+{"interceptor":"removed"}

@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Sistema"
-    description="settings_system.blade.php + settings_dashboard"
+    description="Defina as preferências do sistema e os valores fiscais padrão da empresa."
     :fields="[
       { key: 'theme_color', label: 'Cor do tema' },
       { key: 'enable_tooltip', label: 'Tooltips', type: 'checkbox' },

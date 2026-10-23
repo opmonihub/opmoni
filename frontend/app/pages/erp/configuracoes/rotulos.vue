@@ -4,6 +4,6 @@ definePageMeta({ middleware: 'auth' })
 
 <template>
   <p class="text-muted text-sm">
-    Rótulos personalizados (<code>custom_labels</code>) — editor estruturado virá com cadastros (change 3).
+    A edição de rótulos personalizados ainda não está disponível nesta tela.
   </p>
 </template>

@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Produto"
-    description="settings_product.blade.php (campos principais)"
+    description="Configure a identificação, a classificação e as regras de validade dos produtos."
     :fields="[
       { key: 'sku_prefix', label: 'Prefixo SKU' },
       { key: 'default_unit', label: 'Unidade padrão (ID)' },

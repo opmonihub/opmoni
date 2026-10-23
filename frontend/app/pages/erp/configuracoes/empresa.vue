@@ -7,7 +7,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Dados da empresa"
-    description="Espelha business/partials/settings_business.blade.php (referência sistema)."
+    description="Mantenha os dados cadastrais, o endereço e os parâmetros fiscais da empresa."
     :fields="erpSettingsBusinessFields"
   />
 </template>

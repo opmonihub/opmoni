@@ -5,7 +5,7 @@ definePageMeta({ middleware: 'auth' })
 <template>
   <ErpSettingsSectionForm
     title="Pontos de recompensa"
-    description="settings_reward_point.blade.php"
+    description="Defina as regras de acúmulo, resgate e validade dos pontos de recompensa."
     :fields="[
       { key: 'enable_rp', label: 'Habilitar pontos', type: 'checkbox' },
       { key: 'rp_name', label: 'Nome do programa' },

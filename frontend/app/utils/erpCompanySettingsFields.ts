@@ -4,6 +4,9 @@ export type ErpSettingsField = {
   key: keyof ErpCompanySettingsPayload | string
   label: string
   type?: 'text' | 'number' | 'select' | 'checkbox'
+  options?: Array<{ label: string, value: string | number }>
+  description?: string
+  hint?: string
   required?: boolean
 }
 
