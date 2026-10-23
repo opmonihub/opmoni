@@ -47,9 +47,9 @@
 
 **Interfaces:** preserve the finance composable API, toolbar action, selected tab/hash, current rows/meta, retry/reconciliation, and all mutating handlers.
 
-- [ ] 2.1 Add focused mounted-workspace cases for unknown, pending, failed, confirmed-empty, populated, and failed-refresh states; verify they expose the current defect or missing empty-state branch before implementation and never treat unavailable data as zero.
-- [ ] 2.2 Render native `UEmpty` outside the table's 48rem minimum-width content only for a confirmed empty result; retain populated table scrolling, prior confirmed rows, and failure feedback. Verify all state cases pass without changing finance request/payload behavior.
-- [ ] 2.3 Run `node --experimental-strip-types --test tests/erpFinanceWorkflows.test.ts` from `frontend/` and changed-file ESLint; at 390px verify the complete empty message fits the visible frame, a populated wide table remains locally scrollable, and page `scrollWidth` does not exceed `clientWidth` by more than 1px. Use isolated synthetic populated data rather than post a real financial operation.
+- [x] 2.1 Add focused mounted-workspace cases for unknown, pending, failed, confirmed-empty, populated, and failed-refresh states; verify they expose the current defect or missing empty-state branch before implementation and never treat unavailable data as zero.
+- [x] 2.2 Render native `UEmpty` outside the table's 48rem minimum-width content only for a confirmed empty result; retain populated table scrolling, prior confirmed rows, and failure feedback. Verify all state cases pass without changing finance request/payload behavior.
+- [x] 2.3 Run `node --experimental-strip-types --test tests/erpFinanceWorkflows.test.ts` from `frontend/` and changed-file ESLint; at 390px verify the complete empty message fits the visible frame, a populated wide table remains locally scrollable, and page `scrollWidth` does not exceed `clientWidth` by more than 1px. Use isolated synthetic populated data rather than post a real financial operation.
 
 ## 3. Centralize gutters and align catalog filters — D02-D03
 
