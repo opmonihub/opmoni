@@ -1,0 +1,61 @@
+{
+  "company": null,
+  "focused": {
+    "insideDialog": false,
+    "label": null,
+    "name": null,
+    "tag": "BODY"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": null,
+  "frame": null,
+  "header": null,
+  "headings": [
+    "Financeiro"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 320,
+    "width": 320,
+    "x": 0,
+    "y": 0
+  },
+  "navigation": null,
+  "office": null,
+  "pageButtons": [],
+  "pageWidth": 320,
+  "pager": null,
+  "path": "/erp/financeiro",
+  "root": "16px",
+  "search": {
+    "bottom": 493,
+    "height": 32,
+    "right": 112,
+    "width": 96,
+    "x": 16,
+    "y": 461
+  },
+  "sidebar": null,
+  "statuses": [],
+  "table": null,
+  "tableHeadColor": null,
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Abrir menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 48,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 844,
+    "width": 320
+  }
+}

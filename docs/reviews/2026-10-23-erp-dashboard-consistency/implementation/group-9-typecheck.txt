@@ -1,0 +1,39 @@
+$ nuxt typecheck && tsc --project tsconfig.contracts.json
+ℹ Nuxt Icon server bundle mode is set to local
+[nuxt:icon] ✔ Nuxt Icon discovered local-installed 2 collections: lucide, simple-icons
+[nuxt] ℹ Compiled #build/ui/progress.ts in 569.9ms
+[nuxt] ℹ Compiled #build/ui/progress-group.ts in 571.11ms
+[nuxt] ℹ Compiled #build/ui/radio-group.ts in 573.55ms
+[nuxt] ℹ Compiled #build/ui/scroll-area.ts in 573.99ms
+[nuxt] ℹ Compiled #build/ui/select.ts in 574.42ms
+[nuxt] ℹ Compiled #build/ui/select-menu.ts in 574.51ms
+[nuxt] ℹ Compiled #build/ui/separator.ts in 574.61ms
+[nuxt] ℹ Compiled #build/ui/sidebar.ts in 575.06ms
+[nuxt] ℹ Compiled #build/ui/skeleton.ts in 575.26ms
+[nuxt] ℹ Compiled #build/ui/slideover.ts in 575.72ms
+[nuxt] ℹ Compiled #build/ui/slider.ts in 576.08ms
+[nuxt] ℹ Compiled #build/ui/splitter.ts in 576.86ms
+[nuxt] ℹ Compiled #build/ui/stepper.ts in 577.6ms
+[nuxt] ℹ Compiled #build/ui/switch.ts in 577.9ms
+[nuxt] ℹ Compiled #build/ui/table.ts in 578.24ms
+[nuxt] ℹ Compiled #build/ui/tabs.ts in 578.82ms
+[nuxt] ℹ Compiled #build/ui/textarea.ts in 579.32ms
+[nuxt] ℹ Compiled #build/ui/timeline.ts in 579.57ms
+[nuxt] ℹ Compiled #build/ui/toast.ts in 579.87ms
+[nuxt] ℹ Compiled #build/ui/toaster.ts in 580.31ms
+[nuxt] ℹ Compiled #build/ui/tooltip.ts in 580.9ms
+[nuxt] ℹ Compiled #build/ui/tree.ts in 581.37ms
+[nuxt] ℹ Compiled #build/ui/user.ts in 581.6ms
+[nuxt] ℹ Compiled #build/ui.css in 583.89ms
+[nuxt] ℹ Compiled #build/nuxt-icon-server-bundle.mjs in 503.27ms
+[nuxt] ℹ Compiled #build/imports.mjs in 504.16ms
+[nuxt] ℹ Compiled #build/imports.d.ts in 504.35ms
+[nuxt] ℹ Compiled #build/types/nitro-nuxt.d.ts in 688.15ms
+[nuxt] ℹ Compiled #build/server-routes.d.ts in 799.05ms
+[nuxt] ℹ Compiled #build/types/runtime-config.d.ts in 801.2ms
+[nuxt] ℹ Compiled #build/types/imports.d.ts in 790.53ms
+[nuxt] ℹ Compiled #build/types/shared-imports.d.ts in 794.79ms
+[nuxt] ℹ Compiled #build/router.options.mjs in 813.6ms
+ℹ Nuxt Icon client bundle consist of 43 icons with 10.40KB(uncompressed) in size
+[nuxt] ℹ Compiled #build/nuxt-icon-client-bundle.mjs in 891.22ms
+[nuxt] ℹ Compiled #build/nuxt.config.mjs in 1102.71ms

@@ -1,0 +1,7 @@
+{
+  "command": "pnpm --dir frontend build",
+  "exitCode": 0,
+  "seconds": 248.09,
+  "log": "group-9-build-final.txt",
+  "execution": "Serial after all tests/typecheck/browser/reference resources finished"
+}

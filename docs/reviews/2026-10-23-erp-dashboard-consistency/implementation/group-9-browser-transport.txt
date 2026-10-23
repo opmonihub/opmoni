@@ -1,0 +1,3 @@
+{"interceptor":"ready","scope":"dev-origin products prefix; only numeric detail PATCH fulfilled, other writes aborted","readRequests":"continued","writeRequests":"synthetically fulfilled or aborted"}
+{"method":"PATCH","path":"/api/v1/erp/products/4","status":422,"field":"name","synthetic":true,"upstreamDispatched":false}
+{"interceptor":"removed"}

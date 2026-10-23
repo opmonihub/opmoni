@@ -1,0 +1,104 @@
+{
+  "company": {
+    "bottom": 66,
+    "height": 32,
+    "right": 223,
+    "width": 207,
+    "x": 16,
+    "y": 34
+  },
+  "firstRow": "Produto sint\u00e9tico de aceita\u00e7\u00e3oSYNTHETIC-ONLYMercadoria12.345.678.901.234.567.890,1234Ativo",
+  "focused": {
+    "insideDialog": false,
+    "label": null,
+    "name": null,
+    "tag": "BODY"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": null,
+  "frame": {
+    "bottom": 302,
+    "height": 102,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 200
+  },
+  "header": {
+    "bottom": 78,
+    "height": 78,
+    "right": 239,
+    "width": 239,
+    "x": 0,
+    "y": 0
+  },
+  "headings": [
+    "Produtos"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 1366,
+    "width": 1126,
+    "x": 240,
+    "y": 0
+  },
+  "navigation": {
+    "bottom": 118,
+    "height": 32,
+    "right": 223,
+    "width": 207,
+    "x": 16,
+    "y": 86
+  },
+  "office": null,
+  "pageButtons": [],
+  "pageWidth": 1366,
+  "pager": null,
+  "path": "/erp/cadastros/produtos",
+  "root": "16px",
+  "search": {
+    "bottom": 184,
+    "height": 32,
+    "right": 712,
+    "width": 448,
+    "x": 264,
+    "y": 152
+  },
+  "sidebar": {
+    "bottom": 900,
+    "height": 900,
+    "right": 240,
+    "width": 240,
+    "x": 0,
+    "y": 0
+  },
+  "statuses": [],
+  "table": {
+    "bottom": 302,
+    "height": 102,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 200
+  },
+  "tableHeadColor": "rgba(0, 0, 0, 0)",
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Recolher menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 296,
+        "width": 32,
+        "x": 264,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 900,
+    "width": 1366
+  }
+}

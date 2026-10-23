@@ -1,0 +1,152 @@
+{
+  "company": null,
+  "firstRow": "Produto de auditoria 01AUD-001N\u00e3o informado",
+  "focused": {
+    "insideDialog": false,
+    "label": "Selecionar Produto de auditoria 01",
+    "name": null,
+    "tag": "BUTTON"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": null,
+  "frame": {
+    "bottom": 1733,
+    "height": 1472,
+    "right": 373,
+    "width": 356,
+    "x": 17,
+    "y": 261
+  },
+  "header": null,
+  "headings": [
+    "Etiquetas e impress\u00e3o"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 390,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "navigation": null,
+  "office": null,
+  "pageButtons": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "First Page",
+      "rect": {
+        "bottom": 1782,
+        "height": 32,
+        "right": 48,
+        "width": 32,
+        "x": 16,
+        "y": 1750
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "Previous Page",
+      "rect": {
+        "bottom": 1782,
+        "height": 32,
+        "right": 84,
+        "width": 32,
+        "x": 52,
+        "y": 1750
+      }
+    },
+    {
+      "background": "rgb(10, 83, 49)",
+      "color": "rgb(255, 255, 255)",
+      "current": "page",
+      "disabled": false,
+      "label": "Page 1",
+      "rect": {
+        "bottom": 1782,
+        "height": 32,
+        "right": 120,
+        "width": 32,
+        "x": 88,
+        "y": 1750
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Next Page",
+      "rect": {
+        "bottom": 1782,
+        "height": 32,
+        "right": 156,
+        "width": 32,
+        "x": 124,
+        "y": 1750
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Last Page",
+      "rect": {
+        "bottom": 1782,
+        "height": 32,
+        "right": 192,
+        "width": 32,
+        "x": 160,
+        "y": 1750
+      }
+    }
+  ],
+  "pageWidth": 390,
+  "pager": null,
+  "path": "/erp/cadastros/etiquetas",
+  "root": "16px",
+  "search": {
+    "bottom": 244,
+    "height": 32,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 212
+  },
+  "sidebar": null,
+  "statuses": [],
+  "table": {
+    "bottom": 1733,
+    "height": 1472,
+    "right": 373,
+    "width": 356,
+    "x": 17,
+    "y": 261
+  },
+  "tableHeadColor": "rgba(0, 0, 0, 0)",
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Abrir menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 48,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

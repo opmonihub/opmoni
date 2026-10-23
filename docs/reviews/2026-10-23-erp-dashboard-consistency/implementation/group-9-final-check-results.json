@@ -1,0 +1,29 @@
+[
+  {
+    "command": "pnpm --dir frontend test",
+    "exitCode": 0,
+    "seconds": 891.06,
+    "log": "group-9-test-final.txt",
+    "reason": "Final rerun after real footer registration in Contact permissions harness"
+  },
+  {
+    "command": "pnpm --dir frontend lint",
+    "exitCode": 0,
+    "seconds": 47.12,
+    "log": "group-9-lint-final.txt",
+    "reason": "Final exact lint after narrow Contact harness registration"
+  },
+  {
+    "command": "pnpm --dir frontend typecheck",
+    "exitCode": 0,
+    "seconds": 707.48,
+    "log": "group-9-typecheck.txt"
+  },
+  {
+    "command": "pnpm --dir frontend build",
+    "exitCode": 0,
+    "seconds": 248.09,
+    "log": "group-9-build-final.txt",
+    "execution": "Serial after all tests/typecheck/browser/reference resources finished"
+  }
+]

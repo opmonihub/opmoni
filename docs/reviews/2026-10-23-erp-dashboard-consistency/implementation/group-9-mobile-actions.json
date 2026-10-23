@@ -1,0 +1,136 @@
+{
+  "company": null,
+  "firstRow": "Produto de auditoria 16AUD-016Mercadoria200,00Ativo",
+  "focused": {
+    "insideDialog": false,
+    "label": null,
+    "name": null,
+    "tag": "DIV"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": {
+    "bottom": 884,
+    "height": 49,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 835
+  },
+  "frame": {
+    "bottom": 819,
+    "height": 752,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 67
+  },
+  "header": null,
+  "headings": [
+    "Produtos"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 390,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "navigation": null,
+  "office": null,
+  "pageButtons": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Primeira p\u00e1gina",
+      "rect": {
+        "bottom": 884,
+        "height": 32,
+        "right": 194,
+        "width": 32,
+        "x": 162,
+        "y": 852
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "Pr\u00f3xima p\u00e1gina",
+      "rect": {
+        "bottom": 884,
+        "height": 32,
+        "right": 338,
+        "width": 32,
+        "x": 306,
+        "y": 852
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "\u00daltima p\u00e1gina",
+      "rect": {
+        "bottom": 884,
+        "height": 32,
+        "right": 374,
+        "width": 32,
+        "x": 342,
+        "y": 852
+      }
+    }
+  ],
+  "pageWidth": 390,
+  "pager": {
+    "bottom": 884,
+    "height": 32,
+    "right": 374,
+    "width": 212,
+    "x": 162,
+    "y": 852
+  },
+  "path": "/erp/cadastros/produtos",
+  "root": "16px",
+  "search": {
+    "bottom": 51,
+    "height": 32,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 19
+  },
+  "sidebar": null,
+  "statuses": [],
+  "table": {
+    "bottom": 819,
+    "height": 752,
+    "right": 373.953125,
+    "width": 601.953125,
+    "x": -228,
+    "y": 67
+  },
+  "tableHeadColor": "rgba(0, 0, 0, 0)",
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Abrir menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 48,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

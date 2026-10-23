@@ -1,0 +1,98 @@
+[
+  {
+    "stage": "settled-after-async422",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": false,
+        "label": "Escrit\u00f3rios Opmoni Empresas Auditoria visual ERP 2026-10-23Vis\u00e3o geralCadastrosC",
+        "name": null,
+        "tag": "BODY"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  },
+  {
+    "stage": "recovery-tab",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": true,
+        "label": "Fechar",
+        "name": null,
+        "tag": "BUTTON"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  },
+  {
+    "stage": "reverse",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": true,
+        "label": "Salvar produto",
+        "name": null,
+        "tag": "BUTTON"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  },
+  {
+    "stage": "forward",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": true,
+        "label": "Fechar",
+        "name": null,
+        "tag": "BUTTON"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  },
+  {
+    "stage": "end-wrap",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": true,
+        "label": "Fechar",
+        "name": null,
+        "tag": "BUTTON"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  },
+  {
+    "stage": "start-wrap",
+    "state": {
+      "errors": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "focused": {
+        "inside": true,
+        "label": "Fechar",
+        "name": null,
+        "tag": "BUTTON"
+      },
+      "invalid": "true",
+      "retained": "Valida\u00e7\u00e3o sint\u00e9tica preservada"
+    }
+  }
+]

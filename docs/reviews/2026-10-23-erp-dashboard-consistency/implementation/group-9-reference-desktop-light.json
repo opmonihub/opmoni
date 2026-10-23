@@ -1,0 +1,148 @@
+{
+  "company": null,
+  "firstRow": "1Alex Smith@Alex Smithalex.smith@example.comNew York, USAsubscribed",
+  "focused": {
+    "insideDialog": false,
+    "label": null,
+    "name": null,
+    "tag": "BODY"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": null,
+  "frame": {
+    "bottom": 923,
+    "height": 779,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 144
+  },
+  "header": null,
+  "headings": [
+    "Customers"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 1366,
+    "width": 1126,
+    "x": 240,
+    "y": 0
+  },
+  "navigation": null,
+  "office": null,
+  "pageButtons": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "First Page",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1162,
+        "width": 32,
+        "x": 1130,
+        "y": 964
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "Previous Page",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1198,
+        "width": 32,
+        "x": 1166,
+        "y": 964
+      }
+    },
+    {
+      "background": "rgb(0, 193, 106)",
+      "color": "rgb(255, 255, 255)",
+      "current": "page",
+      "disabled": false,
+      "label": "Page 1",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1234,
+        "width": 32,
+        "x": 1202,
+        "y": 964
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Page 2",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1270,
+        "width": 32,
+        "x": 1238,
+        "y": 964
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Next Page",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1306,
+        "width": 32,
+        "x": 1274,
+        "y": 964
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Last Page",
+      "rect": {
+        "bottom": 996,
+        "height": 32,
+        "right": 1342,
+        "width": 32,
+        "x": 1310,
+        "y": 964
+      }
+    }
+  ],
+  "pageWidth": 1366,
+  "pager": null,
+  "path": "/customers",
+  "root": "16px",
+  "search": null,
+  "sidebar": null,
+  "statuses": [],
+  "table": {
+    "bottom": 923,
+    "height": 779,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 144
+  },
+  "tableHeadColor": "rgba(0, 0, 0, 0)",
+  "theme": "light",
+  "toggles": [],
+  "viewport": {
+    "height": 900,
+    "width": 1366
+  }
+}

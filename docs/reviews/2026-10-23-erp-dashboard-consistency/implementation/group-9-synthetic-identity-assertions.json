@@ -1,0 +1,62 @@
+[
+  {
+    "scenario": "company-only",
+    "syntheticClientIdentity": true,
+    "realAuthSsr": false,
+    "result": {
+      "companyVisible": true,
+      "createVisible": true,
+      "feedback": [],
+      "officeVisible": false,
+      "rows": 1
+    }
+  },
+  {
+    "scenario": "viewer",
+    "syntheticClientIdentity": true,
+    "realAuthSsr": false,
+    "result": {
+      "companyVisible": true,
+      "createVisible": false,
+      "feedback": [],
+      "officeVisible": true,
+      "rows": 1
+    }
+  },
+  {
+    "scenario": "denied",
+    "syntheticClientIdentity": true,
+    "realAuthSsr": false,
+    "result": {
+      "companyVisible": true,
+      "createVisible": false,
+      "feedback": [],
+      "officeVisible": true,
+      "rows": 0
+    }
+  },
+  {
+    "scenario": "delegated-viewer",
+    "syntheticClientIdentity": true,
+    "realAuthSsr": false,
+    "result": {
+      "companyVisible": true,
+      "createVisible": false,
+      "feedback": [],
+      "officeVisible": true,
+      "rows": 1
+    }
+  },
+  {
+    "scenario": "context-switched",
+    "syntheticClientIdentity": true,
+    "realAuthSsr": false,
+    "result": {
+      "companyVisible": true,
+      "createVisible": true,
+      "feedback": [],
+      "officeVisible": true,
+      "rows": 1
+    }
+  }
+]

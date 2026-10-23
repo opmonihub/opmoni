@@ -1,0 +1,63 @@
+{
+  "company": null,
+  "focused": {
+    "insideDialog": false,
+    "label": "Abrir menu ERP",
+    "name": null,
+    "tag": "BUTTON"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": null,
+  "frame": null,
+  "header": null,
+  "headings": [
+    "Produtos"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 390,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "navigation": null,
+  "office": null,
+  "pageButtons": [],
+  "pageWidth": 390,
+  "pager": null,
+  "path": "/erp/cadastros/produtos",
+  "root": "16px",
+  "search": {
+    "bottom": 176,
+    "height": 32,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 144
+  },
+  "sidebar": null,
+  "statuses": [
+    "Nenhum registro encontrado."
+  ],
+  "table": null,
+  "tableHeadColor": null,
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Abrir menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 48,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

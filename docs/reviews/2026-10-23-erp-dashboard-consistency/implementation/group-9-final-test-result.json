@@ -1,0 +1,7 @@
+{
+  "command": "pnpm --dir frontend test",
+  "exitCode": 0,
+  "seconds": 891.06,
+  "log": "group-9-test-final.txt",
+  "reason": "Final rerun after real footer registration in Contact permissions harness"
+}

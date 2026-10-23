@@ -1,0 +1,127 @@
+[
+  {
+    "capture": "integrated-desktop-light",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "light",
+    "tableX": 264,
+    "frameX": 264,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "integrated-desktop-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 264,
+    "frameX": 264,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "integrated-mobile-light",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "light",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "integrated-mobile-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "integrated-320-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "reference-desktop-light",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "light",
+    "tableX": 264,
+    "frameX": 264,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "reference-desktop-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 264,
+    "frameX": 264,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "reference-mobile-light",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "light",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "reference-mobile-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "reference-320-dark",
+    "noPageOverflow": true,
+    "confirmedTable": true,
+    "theme": "dark",
+    "tableX": 16,
+    "frameX": 16,
+    "oneHeader": true,
+    "navbarHeight": 64
+  },
+  {
+    "capture": "integrated-desktop-alignment",
+    "sidebarWidth": 240,
+    "contextContained": true,
+    "navigationOverlap": 0
+  },
+  {
+    "capture": "mobile-sidebar",
+    "sidebarWidth": 390,
+    "contextContained": true,
+    "navigationOverlap": 0
+  },
+  {
+    "capture": "synthetic-identity-company-only",
+    "sidebarWidth": 240,
+    "contextContained": true,
+    "navigationOverlap": 0
+  },
+  {
+    "capture": "page2-colors-final",
+    "activePage2": true,
+    "activeColor": "rgb(10, 83, 49)",
+    "inactivePage1": "rgb(255, 255, 255)",
+    "colorsDiffer": true
+  }
+]

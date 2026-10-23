@@ -1,0 +1,46 @@
+▶ Contact mutation permissions and input preservation
+  ✔ allows delegated creation only with the effective exact action from the server (9885.462717ms)
+  ✔ allows a direct owner with actual server grants * (3425.387092ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.store (2380.475558ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.* (1607.782243ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.write (1489.173324ms)
+  ✔ allows a direct owner with actual server grants erp.write (1011.183858ms)
+  ✔ hides and guards mutation for {"role":"viewer","permissions":["*"]} (1287.243402ms)
+  ✔ hides and guards mutation for {"access_kind":"delegated","role":"delegated","permissions":["*"]} (913.836024ms)
+  ✔ hides and guards mutation for {"role":"operator","permissions":["erp.read"]} (1183.434501ms)
+  ✔ hides and guards mutation for {"role":"owner","permissions":["erp.catalog.write"]} (1106.264502ms)
+  ✔ hides and guards mutation for {"role":"owner","permissions":[]} (996.033836ms)
+  ✔ hides and guards mutation for {"status":"suspended"} (1018.955689ms)
+  ✔ does not infer a delegated store action from * (797.433037ms)
+  ✔ does not infer a delegated store action from erp.contacts.* (791.468395ms)
+  ✔ does not infer a delegated store action from erp.contacts.write (815.247843ms)
+  ✔ does not infer a delegated store action from erp.write (1503.691703ms)
+  ✔ requires the real active delegated office writer {"role":"user"} (894.463314ms)
+  ✔ requires the real active delegated office writer {"status":"suspended"} (1103.739492ms)
+  ✔ requires the real active delegated office writer {"id":88} (1088.749729ms)
+  ✔ retains all entered fields and actionable feedback after HTTP 422 (786.498301ms)
+  ✔ retains all entered fields and actionable feedback after HTTP 503 (517.295645ms)
+  ✔ unmounts protected fields after authority loss HTTP 401 until real recovery (698.439726ms)
+  ✔ unmounts protected fields after authority loss HTTP 403 until real recovery (520.174527ms)
+  ✔ unmounts protected fields after authority loss HTTP 409 until real recovery (970.159252ms)
+  ✔ rechecks permission after CSRF and never submits after revocation (1711.478327ms)
+  ✔ ignores a late POST success after Account switch (1993.600913ms)
+  ✔ ignores a late POST failure after Account switch (1313.587812ms)
+  ✔ ignores a late POST success after actor switch (1876.634109ms)
+  ✔ ignores a late POST failure after actor switch (1818.635873ms)
+  ✔ ignores a late POST success after Company switch (1183.553572ms)
+  ✔ ignores a late POST failure after Company switch (717.935996ms)
+  ✔ ignores a late POST success after office role switch (573.383154ms)
+  ✔ ignores a late POST failure after office role switch (627.116841ms)
+  ✔ ignores a late POST success after session switch (486.050993ms)
+  ✔ ignores a late POST failure after session switch (510.420462ms)
+  ✔ clears private draft fields and ignores late mutation success across company context (694.609355ms)
+✔ Contact mutation permissions and input preservation (50303.520407ms)
+ℹ tests 36
+ℹ suites 1
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56504.950805

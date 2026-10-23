@@ -1,0 +1,16 @@
+$ nuxt build
+Building Nuxt for production...
+● Loading Nuxt config
+● Loading Nuxt config (6.28s)
+● Nuxt 4.6.0 (with Nitro 2.13.4, Vite 8.3.2 and Vue 3.5.43)
+● Setting up modules
+● Setting up modules (11.0s · 18.5s)
+● Setting up modules (16.0s · 23.5s)
+● Setting up modules (21.4s · 28.9s)
+● Preparing app
+● Preparing app (9.29s · 41.2s)
+ℹ Nuxt Icon server bundle mode is set to local
+[nuxt:icon] ✔ Nuxt Icon discovered local-installed 2 collections: lucide, simple-icons
+● Preparing app (16.9s · 48.9s)
+● Nitro preset: node-server
+[ELIFECYCLE] Command failed with exit code 130.

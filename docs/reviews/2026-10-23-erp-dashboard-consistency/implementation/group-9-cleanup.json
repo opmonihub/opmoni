@@ -1,0 +1,14 @@
+{
+  "ownedListenersClosed": true,
+  "ownedWorktreeListenerPidGone": true,
+  "browsers": [
+    "erp-ui-group1 closed",
+    "erp-ui-reference closed"
+  ],
+  "interceptors": [
+    "product Request-stage disabled/detached",
+    "synthetic all-api Request-stage disabled/detached"
+  ],
+  "mainDockerStopped": false,
+  "worktreeAndSddPreserved": true
+}

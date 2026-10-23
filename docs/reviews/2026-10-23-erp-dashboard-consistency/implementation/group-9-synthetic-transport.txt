@@ -1,0 +1,7 @@
+{"interceptor":"ready","scope":"all API requests on owned origin; synthetic GETs only","readRequests":"synthetically fulfilled","writeRequests":"aborted"}
+{"method":"GET","path":"/api/v1/erp/products","status":200,"synthetic":true,"upstreamDispatched":false}
+{"method":"GET","path":"/api/v1/erp/products","status":200,"synthetic":true,"upstreamDispatched":false}
+{"method":"GET","path":"/api/v1/erp/products","status":200,"synthetic":true,"upstreamDispatched":false}
+{"method":"GET","path":"/api/v1/erp/products","status":200,"synthetic":true,"upstreamDispatched":false}
+{"method":"GET","path":"/api/v1/erp/products","status":200,"synthetic":true,"upstreamDispatched":false}
+{"interceptor":"removed"}

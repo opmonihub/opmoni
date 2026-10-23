@@ -1,0 +1,26 @@
+[
+  {
+    "command": "pnpm --dir frontend test",
+    "exitCode": 0,
+    "seconds": 338.81,
+    "log": "group-9-test.txt"
+  },
+  {
+    "command": "pnpm --dir frontend lint",
+    "exitCode": 0,
+    "seconds": 131.51,
+    "log": "group-9-lint.txt"
+  },
+  {
+    "command": "pnpm --dir frontend typecheck",
+    "exitCode": 0,
+    "seconds": 707.48,
+    "log": "group-9-typecheck.txt"
+  },
+  {
+    "command": "pnpm --dir frontend build",
+    "exitCode": 130,
+    "seconds": 59.22,
+    "log": "group-9-build.txt"
+  }
+]

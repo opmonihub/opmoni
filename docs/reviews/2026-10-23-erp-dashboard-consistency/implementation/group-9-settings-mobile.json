@@ -1,0 +1,36 @@
+{
+  "field": {
+    "bottom": 488,
+    "height": 32,
+    "left": 32,
+    "right": 358,
+    "top": 456,
+    "width": 326,
+    "x": 32,
+    "y": 456
+  },
+  "form": {
+    "bottom": 988,
+    "height": 805,
+    "left": 16,
+    "right": 374,
+    "top": 183,
+    "width": 358,
+    "x": 16,
+    "y": 183
+  },
+  "pageWidth": 390,
+  "root": "16px",
+  "viewport": 390,
+  "nearestDataSlotRoot": {
+    "bottom": 844,
+    "height": 844,
+    "left": 0,
+    "right": 390,
+    "top": 0,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "note": "form x16 and first native input x32 prove outer/inner gutter; nearestDataSlotRoot is full panel, not the settings card"
+}

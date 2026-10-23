@@ -1,0 +1,216 @@
+{
+  "company": {
+    "bottom": 132,
+    "height": 32,
+    "right": 223,
+    "width": 207,
+    "x": 16,
+    "y": 100
+  },
+  "firstRow": "Produto de auditoria 16AUD-016Mercadoria200,00Ativo",
+  "focused": {
+    "insideDialog": false,
+    "label": null,
+    "name": null,
+    "tag": "BODY"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "footer": {
+    "bottom": 876,
+    "height": 49,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 827
+  },
+  "frame": {
+    "bottom": 811,
+    "height": 752,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 59
+  },
+  "header": {
+    "bottom": 144,
+    "height": 144,
+    "right": 239,
+    "width": 239,
+    "x": 0,
+    "y": 0
+  },
+  "headings": [
+    "Produtos"
+  ],
+  "navbar": {
+    "bottom": 64,
+    "height": 64,
+    "right": 1366,
+    "width": 1126,
+    "x": 240,
+    "y": 0
+  },
+  "navigation": {
+    "bottom": 184,
+    "height": 32,
+    "right": 223,
+    "width": 207,
+    "x": 16,
+    "y": 152
+  },
+  "office": {
+    "bottom": 66,
+    "height": 32,
+    "right": 223,
+    "width": 207,
+    "x": 16,
+    "y": 34
+  },
+  "pageButtons": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "Primeira p\u00e1gina",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1162,
+        "width": 32,
+        "x": 1130,
+        "y": 844
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "P\u00e1gina anterior",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1198,
+        "width": 32,
+        "x": 1166,
+        "y": 844
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": false,
+      "label": "P\u00e1gina 1",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1234,
+        "width": 32,
+        "x": 1202,
+        "y": 844
+      }
+    },
+    {
+      "background": "rgb(10, 83, 49)",
+      "color": "rgb(255, 255, 255)",
+      "current": "page",
+      "disabled": false,
+      "label": "P\u00e1gina 2",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1270,
+        "width": 32,
+        "x": 1238,
+        "y": 844
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "Pr\u00f3xima p\u00e1gina",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1306,
+        "width": 32,
+        "x": 1274,
+        "y": 844
+      }
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "current": null,
+      "disabled": true,
+      "label": "\u00daltima p\u00e1gina",
+      "rect": {
+        "bottom": 876,
+        "height": 32,
+        "right": 1342,
+        "width": 32,
+        "x": 1310,
+        "y": 844
+      }
+    }
+  ],
+  "pageWidth": 1366,
+  "pager": {
+    "bottom": 876,
+    "height": 32,
+    "right": 1342,
+    "width": 212,
+    "x": 1130,
+    "y": 844
+  },
+  "path": "/erp/cadastros/produtos",
+  "root": "16px",
+  "search": {
+    "bottom": 43,
+    "height": 32,
+    "right": 712,
+    "width": 448,
+    "x": 264,
+    "y": 11
+  },
+  "sidebar": {
+    "bottom": 900,
+    "height": 900,
+    "right": 240,
+    "width": 240,
+    "x": 0,
+    "y": 0
+  },
+  "statuses": [],
+  "table": {
+    "bottom": 811,
+    "height": 752,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 59
+  },
+  "tableHeadColor": "rgba(0, 0, 0, 0)",
+  "theme": "light",
+  "toggles": [
+    {
+      "label": "Recolher menu ERP",
+      "rect": {
+        "bottom": 47.5,
+        "height": 32,
+        "right": 296,
+        "width": 32,
+        "x": 264,
+        "y": 15.5
+      }
+    }
+  ],
+  "viewport": {
+    "height": 900,
+    "width": 1366
+  }
+}

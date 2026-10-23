@@ -1,0 +1,839 @@
+{
+  "actions": [
+    {
+      "disabled": false,
+      "label": "Fechar",
+      "rect": {
+        "bottom": 48,
+        "height": 32,
+        "right": 374,
+        "width": 32,
+        "x": 342,
+        "y": 16
+      },
+      "visible": true
+    },
+    {
+      "disabled": false,
+      "label": "Mercadoria",
+      "rect": {
+        "bottom": -555,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -587
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Unidade",
+      "rect": {
+        "bottom": -383,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -415
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Marca",
+      "rect": {
+        "bottom": -311,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -343
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Categoria",
+      "rect": {
+        "bottom": -239,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -271
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Controla estoque",
+      "rect": {
+        "bottom": -205,
+        "height": 16,
+        "right": 32,
+        "width": 16,
+        "x": 16,
+        "y": -221
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Code 128",
+      "rect": {
+        "bottom": 85,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 53
+      },
+      "visible": true
+    },
+    {
+      "disabled": false,
+      "label": "Adicionar variante",
+      "rect": {
+        "bottom": 1445,
+        "height": 32,
+        "right": 154.34375,
+        "width": 138.34375,
+        "x": 16,
+        "y": 1413
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Herdar formato do produto",
+      "rect": {
+        "bottom": 1846,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1814
+      },
+      "visible": false
+    },
+    {
+      "disabled": true,
+      "label": "Remover variante nova",
+      "rect": {
+        "bottom": 1890,
+        "height": 32,
+        "right": 196.734375,
+        "width": 167.734375,
+        "x": 29,
+        "y": 1858
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Salvar produto",
+      "rect": {
+        "bottom": 1955,
+        "height": 32,
+        "right": 374,
+        "width": 116.53125,
+        "x": 257.46875,
+        "y": 1923
+      },
+      "visible": false
+    },
+    {
+      "disabled": false,
+      "label": "Fechar",
+      "rect": {
+        "bottom": 828,
+        "height": 32,
+        "right": 374,
+        "width": 65.125,
+        "x": 308.875,
+        "y": 796
+      },
+      "visible": true
+    }
+  ],
+  "controls": [
+    {
+      "describedby": "v-0-69-error",
+      "disabled": false,
+      "errorText": [
+        "Valor recusado na valida\u00e7\u00e3o sint\u00e9tica."
+      ],
+      "invalid": "true",
+      "label": "Nome",
+      "name": "name",
+      "rect": {
+        "bottom": -727,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -759
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "SKU",
+      "name": "sku",
+      "rect": {
+        "bottom": -627,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -659
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Tipo",
+      "name": null,
+      "rect": {
+        "bottom": -555,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -587
+      },
+      "tag": "BUTTON",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "kind",
+      "rect": {
+        "bottom": -588,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": -589
+      },
+      "tag": "SELECT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Pre\u00e7o de venda",
+      "name": "sale_price",
+      "rect": {
+        "bottom": -455,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -487
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "erp_unit_id",
+      "rect": {
+        "bottom": -416,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": -417
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "erp_brand_id",
+      "rect": {
+        "bottom": -344,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": -345
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "erp_category_id",
+      "rect": {
+        "bottom": -272,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": -273
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "track_stock",
+      "rect": {
+        "bottom": -224,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": -225
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Garantia (meses)",
+      "name": "warranty_months",
+      "rect": {
+        "bottom": -131,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -163
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Descri\u00e7\u00e3o da garantia",
+      "name": "warranty_description",
+      "rect": {
+        "bottom": -59,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -91
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "C\u00f3digo de barras",
+      "name": "barcode",
+      "rect": {
+        "bottom": 13,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": -19
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Simbologia do c\u00f3digo de barras",
+      "name": null,
+      "rect": {
+        "bottom": 85,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 53
+      },
+      "tag": "BUTTON",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "barcode_type",
+      "rect": {
+        "bottom": 52,
+        "height": 1,
+        "right": 15,
+        "width": 1,
+        "x": 14,
+        "y": 51
+      },
+      "tag": "SELECT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "NCM",
+      "name": "ncm",
+      "rect": {
+        "bottom": 265,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 233
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CEST",
+      "name": "cest",
+      "rect": {
+        "bottom": 337,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 305
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Origem",
+      "name": "origin_code",
+      "rect": {
+        "bottom": 409,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 377
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CST do ICMS",
+      "name": "icms_cst",
+      "rect": {
+        "bottom": 505,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 473
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CSOSN",
+      "name": "icms_csosn",
+      "rect": {
+        "bottom": 577,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 545
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Al\u00edquota de ICMS (%)",
+      "name": "icms_rate",
+      "rect": {
+        "bottom": 649,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 617
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Cr\u00e9dito do Simples Nacional (%)",
+      "name": "simple_national_credit_rate",
+      "rect": {
+        "bottom": 721,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 689
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CST do PIS",
+      "name": "pis_cst",
+      "rect": {
+        "bottom": 817,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 785
+      },
+      "tag": "INPUT",
+      "visible": true
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Al\u00edquota do PIS (%)",
+      "name": "pis_rate",
+      "rect": {
+        "bottom": 889,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 857
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CST da COFINS",
+      "name": "cofins_cst",
+      "rect": {
+        "bottom": 961,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 929
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Al\u00edquota da COFINS (%)",
+      "name": "cofins_rate",
+      "rect": {
+        "bottom": 1033,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 1001
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CST do IPI",
+      "name": "ipi_cst",
+      "rect": {
+        "bottom": 1105,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 1073
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Al\u00edquota do IPI (%)",
+      "name": "ipi_rate",
+      "rect": {
+        "bottom": 1177,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 1145
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "CST IBS/CBS",
+      "name": "ibs_cbs_cst",
+      "rect": {
+        "bottom": 1273,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 1241
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Classifica\u00e7\u00e3o IBS/CBS",
+      "name": "ibs_cbs_classification_code",
+      "rect": {
+        "bottom": 1345,
+        "height": 32,
+        "right": 374,
+        "width": 358,
+        "x": 16,
+        "y": 1313
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Nome da variante",
+      "name": "variants.0.name",
+      "rect": {
+        "bottom": 1554,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1522
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "SKU da variante",
+      "name": "variants.0.sku",
+      "rect": {
+        "bottom": 1622,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1590
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "Pre\u00e7o da variante",
+      "name": "variants.0.sale_price",
+      "rect": {
+        "bottom": 1690,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1658
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": "false",
+      "label": "C\u00f3digo de barras da variante",
+      "name": "variants.0.barcode",
+      "rect": {
+        "bottom": 1758,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1726
+      },
+      "tag": "INPUT",
+      "visible": false
+    },
+    {
+      "describedby": "v-0-102-description",
+      "disabled": false,
+      "errorText": [
+        "Herdar usa a simbologia definida no produto."
+      ],
+      "invalid": "false",
+      "label": "Simbologia da variante",
+      "name": null,
+      "rect": {
+        "bottom": 1846,
+        "height": 32,
+        "right": 361,
+        "width": 332,
+        "x": 29,
+        "y": 1814
+      },
+      "tag": "BUTTON",
+      "visible": false
+    },
+    {
+      "describedby": null,
+      "disabled": false,
+      "errorText": [],
+      "invalid": null,
+      "label": null,
+      "name": "variants.0.barcode_type",
+      "rect": {
+        "bottom": 1813,
+        "height": 1,
+        "right": 28,
+        "width": 1,
+        "x": 27,
+        "y": 1812
+      },
+      "tag": "SELECT",
+      "visible": false
+    }
+  ],
+  "description": [
+    "Preencha os dados e salve para atualizar o cadastro."
+  ],
+  "dialog": {
+    "bottom": 844,
+    "height": 844,
+    "right": 390,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "focused": {
+    "inside": true,
+    "label": null,
+    "name": null,
+    "tag": "BUTTON"
+  },
+  "pageWidth": 390,
+  "root": "16px",
+  "scrollers": [
+    {
+      "clientHeight": 698,
+      "rect": {
+        "bottom": 780,
+        "height": 699,
+        "right": 390,
+        "width": 390,
+        "x": 0,
+        "y": 81
+      },
+      "scrollHeight": 2876,
+      "scrollTop": 986,
+      "tag": "DIV"
+    }
+  ],
+  "title": [
+    "Editar \u00b7 Produto de auditoria 01"
+  ],
+  "url": "/erp/cadastros/produtos",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

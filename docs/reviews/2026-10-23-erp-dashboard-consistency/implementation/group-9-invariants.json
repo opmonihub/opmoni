@@ -1,0 +1,23 @@
+{
+  "base": "5b752b1",
+  "rows": 97,
+  "uniqueFiles": 97,
+  "kinds": {
+    "component": 57,
+    "page": 40
+  },
+  "dispositions": {
+    "justified exception": 8,
+    "changed": 29,
+    "already conforming": 37,
+    "inherited shared correction": 23
+  },
+  "exactOrderedInventoryMatch": true,
+  "protectedPathsDiff": [],
+  "immutableAuditDiff": [],
+  "instructionDirtyWorkPreserved": [
+    " M AGENTS.md",
+    "?? frontend/AGENTS.md"
+  ],
+  "inventorySha256": "a7fd42ce1f516f88a772b0f02e7a9e8b055b0a8c82d917efc9c705d5f2398a58"
+}

@@ -106,6 +106,7 @@ function contacts(company: Partial<CompanyMembership> = {}, failStatus = 0, csrf
     }
   })
   const app = host.createApp(page)
+  app.component('ErpListFooter', compileVueComponent('components/erp/ErpListFooter.vue', bindings))
   const surface = Vue.defineComponent({
     setup: (_props, { attrs, slots }) => () => Vue.h('div', attrs, Object.values(slots).flatMap(slot => slot?.()))
   })

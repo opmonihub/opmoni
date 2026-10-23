@@ -1,0 +1,28 @@
+{
+  "initialFullSuite": {
+    "[Vue warn]: Failed to resolve component: ErpListFooter": 106,
+    "[Vue warn]: Extraneous non-props attributes (color, variant)": 16,
+    "[Vue warn]: Failed to resolve component: USelect": 1,
+    "[Vue warn]: Failed to resolve component: UAlert": 1,
+    "ExperimentalWarning": 1
+  },
+  "introducedWarning": "ErpListFooter missing in Contact permission harness; actual compiled component registered, focused36/36 with no Vue warnings",
+  "remainingFiscalSourcesAndHarnessUnchanged": {
+    "frontend/app/components/erp/ErpFiscalConfigurationForm.vue": true,
+    "frontend/app/components/erp/ErpFiscalCertificateForm.vue": true,
+    "frontend/tests/erpFiscalWorkflows.test.ts": true
+  },
+  "fiscalWarnings": "Existing native UI test doubles; no global suppression or assertion weakening",
+  "experimentalWarning": "Node experimental TypeScript stripping; retained",
+  "finalFullSuite": {
+    "[Vue warn]: Failed to resolve component: ErpListFooter": 0,
+    "[Vue warn]: Extraneous non-props attributes (color, variant)": 16,
+    "[Vue warn]: Failed to resolve component: USelect": 1,
+    "[Vue warn]: Failed to resolve component: UAlert": 1,
+    "ExperimentalWarning": 1
+  },
+  "finalBuildWarnings": [
+    "PLUGIN_TIMINGS: JavaScript callbacks40.8s/44.9s91%",
+    "PLUGIN_TIMINGS: JavaScript callbacks41.4s/43.4s95%"
+  ]
+}
