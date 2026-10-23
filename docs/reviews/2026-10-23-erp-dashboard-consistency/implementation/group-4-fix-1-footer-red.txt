@@ -1,0 +1,43 @@
+▶ ERP controlled list footer
+  ✔ keeps the confirmed 0 count without pagination for a single page (274.150936ms)
+  ✔ keeps the confirmed 1 count without pagination for a single page (27.080831ms)
+  ✔ keeps the confirmed 15 count without pagination for a single page (63.841814ms)
+  ✔ uses server total and page size and emits exactly one changed valid transition (21.914641ms)
+  ✔ does not emit on metadata replacement or synchronize the model automatically (21.291901ms)
+  ✔ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (62.069961ms)
+  ✖ renders Portuguese accessible navigation and page names through native pagination slots (17.076472ms)
+  ✔ allows a consumer summary without changing authoritative pagination (77.848086ms)
+✖ ERP controlled list footer (566.994853ms)
+ℹ tests 8
+ℹ suites 1
+ℹ pass 7
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1181.654412
+
+✖ failing tests:
+
+test at tests/erpListFooter.test.ts:132:3
+✖ renders Portuguese accessible navigation and page names through native pagination slots (17.076472ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'Paginação de registros'
+  
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:136:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'Paginação de registros',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

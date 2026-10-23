@@ -5,7 +5,7 @@ import { compileVueComponent } from './helpers/compileVueComponent.ts'
 import type { ErpPaginated } from '../shared/types/erpCatalogs.ts'
 
 type Meta = ErpPaginated<unknown>['meta']
-type Node = { text?: string, children: Node[], parent?: Node, props: Record<string, unknown> }
+type Node = { tag?: string, text?: string, children: Node[], parent?: Node, props: Record<string, unknown> }
 const meta = (total: number, perPage = 15, currentPage = 1): Meta => ({ total, per_page: perPage, current_page: currentPage, last_page: Math.max(1, Math.ceil(total / perPage)) })
 
 function mountFooter(initial: Meta, pending = false, summary?: string) {
@@ -23,7 +23,7 @@ function mountFooter(initial: Meta, pending = false, summary?: string) {
     remove(node) {
       if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1)
     },
-    createElement: () => ({ children: [], props: {} }),
+    createElement: tag => ({ tag, children: [], props: {} }),
     createText: text => ({ text, children: [], props: {} }),
     createComment: () => ({ children: [], props: {} }),
     setText(node, text) { node.text = text },
@@ -45,18 +45,31 @@ function mountFooter(initial: Meta, pending = false, summary?: string) {
   app.component('UPagination', Vue.defineComponent({
     props: ['page', 'total', 'itemsPerPage', 'disabled'],
     inheritAttrs: false,
-    setup(props, { attrs }) {
+    setup(props, { attrs, slots }) {
       pagination = new Proxy({}, { get: (_, key) => Reflect.get(props, key) ?? Reflect.get(attrs, key) })
       Vue.onUnmounted(() => {
         pagination = undefined
       })
-      return () => Vue.h('nav')
+      return () => Vue.h('nav', { 'aria-label': attrs['aria-label'] }, [
+        ...(slots.first?.() ?? [Vue.h('button', { 'aria-label': 'First Page' })]),
+        ...(slots.prev?.() ?? [Vue.h('button', { 'aria-label': 'Previous Page' })]),
+        ...(slots.item?.({ item: { type: 'page', value: props.page }, page: props.page, pageCount: 3, index: 0 }) ?? [Vue.h('button', { 'aria-label': `Page ${props.page}` })]),
+        ...(slots.next?.() ?? [Vue.h('button', { 'aria-label': 'Next Page' })]),
+        ...(slots.last?.() ?? [Vue.h('button', { 'aria-label': 'Last Page' })])
+      ])
+    }
+  }))
+  app.component('UButton', Vue.defineComponent({
+    props: ['label'],
+    setup(props, { attrs }) {
+      return () => Vue.h('button', attrs, String(props.label ?? ''))
     }
   }))
   const root: Node = { children: [], props: {} }
   app.mount(root)
   const text = (node: Node): string => (node.text ?? '') + node.children.map(text).join('')
-  return { props, events, text: () => text(root), pagination: () => pagination, change: (page: number) => (pagination?.['onUpdate:page'] as (value: number) => void)(page), stop: () => app.unmount() }
+  const nodes = (node: Node): Node[] => [node, ...node.children.flatMap(nodes)]
+  return { props, events, nodes: () => nodes(root), text: () => text(nodes(root).find(node => node.tag === 'p')!), pagination: () => pagination, change: (page: number) => (pagination?.['onUpdate:page'] as (value: number) => void)(page), stop: () => app.unmount() }
 }
 
 describe('ERP controlled list footer', () => {
@@ -114,6 +127,18 @@ describe('ERP controlled list footer', () => {
     assert.deepEqual(footer.events, [])
     footer.change(3)
     assert.deepEqual(footer.events, [3])
+  })
+
+  it('renders Portuguese accessible navigation and page names through native pagination slots', async (t) => {
+    const footer = mountFooter(meta(35))
+    t.after(footer.stop)
+    const labels = () => footer.nodes().filter(node => node.tag === 'button').map(node => node.props['aria-label'])
+    assert.equal(footer.nodes().find(node => node.tag === 'nav')?.props['aria-label'], 'Paginação de registros')
+    assert.deepEqual(labels(), ['Primeira página', 'Página anterior', 'Página 1', 'Próxima página', 'Última página'])
+    footer.change(2)
+    await Vue.nextTick()
+    assert.deepEqual(labels(), ['Primeira página', 'Página anterior', 'Página 2', 'Próxima página', 'Última página'])
+    assert.deepEqual(footer.events, [2])
   })
 
   it('allows a consumer summary without changing authoritative pagination', (t) => {

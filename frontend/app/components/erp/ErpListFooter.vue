@@ -22,6 +22,7 @@ function changePage(value: number) {
     </p>
     <UPagination
       v-if="meta.last_page > 1"
+      aria-label="Paginação de registros"
       :page="page"
       :total="meta.total"
       :items-per-page="meta.per_page"
@@ -29,6 +30,50 @@ function changePage(value: number) {
       :sibling-count="1"
       :ui="{ list: 'flex-wrap' }"
       @update:page="changePage"
-    />
+    >
+      <template #first>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-chevrons-left"
+          aria-label="Primeira página"
+        />
+      </template>
+      <template #prev>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-chevron-left"
+          aria-label="Página anterior"
+        />
+      </template>
+      <template #item="{ item, page: currentPage }">
+        <UButton
+          v-if="item.type === 'page'"
+          :color="currentPage === item.value ? 'primary' : 'neutral'"
+          :variant="currentPage === item.value ? 'solid' : 'outline'"
+          :label="String(item.value)"
+          :aria-label="`Página ${item.value}`"
+          :ui="{ label: 'min-w-5 text-center' }"
+          square
+        />
+      </template>
+      <template #next>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-chevron-right"
+          aria-label="Próxima página"
+        />
+      </template>
+      <template #last>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-chevrons-right"
+          aria-label="Última página"
+        />
+      </template>
+    </UPagination>
   </div>
 </template>

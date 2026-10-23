@@ -1,0 +1,36 @@
+▶ ERP labels real composable authority and mutations
+  ✔ releases the mutation fence after success and preserves exact fractional input after field422 (1407.146928ms)
+  ✔ blocks denied generation and refuses download callbacks after authority loss (684.850094ms)
+  ✔ cancels pending requests and clears selections/drafts when session generation changes (310.131469ms)
+✔ ERP labels real composable authority and mutations (2404.469959ms)
+▶ ERP labels mounted real SFC
+  ✔ keeps shell, search, ordered product/variant selection and quantities across pagination (1008.895805ms)
+  ✔ retains decimal layout text and field errors in mounted controls, and removes access on permission change (600.066462ms)
+  ✔ shows real renderer errors without opening a preview and prevents stale completion after context changes (423.890277ms)
+✔ ERP labels mounted real SFC (2033.389734ms)
+▶ ERP label output callbacks and stale rendering
+  ✔ downloads and prints the owned output, then revokes it synchronously on edits and disposes callbacks (254.068377ms)
+  ✔ refuses a Blob URL when Company context changes during actual JsBarcode rendering (214.208243ms)
+✔ ERP label output callbacks and stale rendering (468.646221ms)
+▶ ERP labels independent review regressions
+  ✔ allows exact generate-only grants, consumes the output snapshot and recovers same-context authority (522.398269ms)
+  ✔ keeps target-specific422 fields out of unrelated settings, layout, profile and selection controls (685.161652ms)
+✔ ERP labels independent review regressions (1207.831215ms)
+▶ ERP controlled list footer
+  ✔ keeps the confirmed 0 count without pagination for a single page (922.348108ms)
+  ✔ keeps the confirmed 1 count without pagination for a single page (281.464285ms)
+  ✔ keeps the confirmed 15 count without pagination for a single page (103.170432ms)
+  ✔ uses server total and page size and emits exactly one changed valid transition (96.598717ms)
+  ✔ does not emit on metadata replacement or synchronize the model automatically (94.001845ms)
+  ✔ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (106.931449ms)
+  ✔ renders Portuguese accessible navigation and page names through native pagination slots (194.003843ms)
+  ✔ allows a consumer summary without changing authoritative pagination (23.462224ms)
+✔ ERP controlled list footer (1824.708612ms)
+ℹ tests 18
+ℹ suites 5
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7507.366018

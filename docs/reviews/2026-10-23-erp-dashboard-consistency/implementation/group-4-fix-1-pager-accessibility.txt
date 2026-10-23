@@ -1,0 +1,8 @@
+- navigation "Paginação de registros" [ref=e644]
+  - button "Primeira página" [disabled, ref=e645]
+  - button "Página anterior" [disabled, ref=e646]
+  - button "Página 1" [ref=e647]
+  - button "Página 2" [ref=e648]
+  - button "Página 3" [ref=e649]
+  - button "Próxima página" [ref=e650]
+  - button "Última página" [ref=e651]

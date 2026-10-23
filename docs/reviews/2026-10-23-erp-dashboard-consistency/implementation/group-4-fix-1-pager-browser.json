@@ -1,0 +1,349 @@
+{
+  "first": {
+    "buttons": [
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Primeira página",
+        "right": 158,
+        "selected": null,
+        "width": 32,
+        "x": 126,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Página anterior",
+        "right": 194,
+        "selected": null,
+        "width": 32,
+        "x": 162,
+        "y": 1237
+      },
+      {
+        "background": "rgb(10, 83, 49)",
+        "color": "rgb(255, 255, 255)",
+        "current": "page",
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 1",
+        "right": 230,
+        "selected": "true",
+        "width": 32,
+        "x": 198,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 2",
+        "right": 266,
+        "selected": null,
+        "width": 32,
+        "x": 234,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 3",
+        "right": 302,
+        "selected": null,
+        "width": 32,
+        "x": 270,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Próxima página",
+        "right": 338,
+        "selected": null,
+        "width": 32,
+        "x": 306,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Última página",
+        "right": 374,
+        "selected": null,
+        "width": 32,
+        "x": 342,
+        "y": 1237
+      }
+    ],
+    "documentWidth": 390,
+    "footer": {
+      "height": 49,
+      "right": 374,
+      "width": 358,
+      "x": 16,
+      "y": 1220
+    },
+    "landmark": {
+      "label": "Paginação de registros",
+      "role": "nav"
+    },
+    "viewport": 390
+  },
+  "pending": {
+    "buttons": [
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Primeira página",
+        "right": 158,
+        "selected": null,
+        "width": 32,
+        "x": 126,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Página anterior",
+        "right": 194,
+        "selected": null,
+        "width": 32,
+        "x": 162,
+        "y": 1237
+      },
+      {
+        "background": "rgb(10, 83, 49)",
+        "color": "oklab(0.999994 0.0000455678 0.0000200868)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Página 1",
+        "right": 230,
+        "selected": null,
+        "width": 32,
+        "x": 198,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklab(0.37 0.00354074 -0.0125085)",
+        "current": "page",
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Página 2",
+        "right": 266,
+        "selected": "true",
+        "width": 32,
+        "x": 234,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Página 3",
+        "right": 302,
+        "selected": null,
+        "width": 32,
+        "x": 270,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Próxima página",
+        "right": 338,
+        "selected": null,
+        "width": 32,
+        "x": 306,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": true,
+        "height": 32,
+        "icon": null,
+        "label": "Última página",
+        "right": 374,
+        "selected": null,
+        "width": 32,
+        "x": 342,
+        "y": 1237
+      }
+    ],
+    "documentWidth": 390,
+    "footer": {
+      "height": 49,
+      "right": 374,
+      "width": 358,
+      "x": 16,
+      "y": 1220
+    },
+    "landmark": {
+      "label": "Paginação de registros",
+      "role": "nav"
+    },
+    "viewport": 390
+  },
+  "restored": true,
+  "scenario": "actual native footer with synthetic confirmed metadata and controlled page/pending props only; no API mutation",
+  "second": {
+    "buttons": [
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Primeira página",
+        "right": 158,
+        "selected": null,
+        "width": 32,
+        "x": 126,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página anterior",
+        "right": 194,
+        "selected": null,
+        "width": 32,
+        "x": 162,
+        "y": 1237
+      },
+      {
+        "background": "rgb(10, 83, 49)",
+        "color": "oklab(0.999994 0.0000455678 0.0000200868)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 1",
+        "right": 230,
+        "selected": null,
+        "width": 32,
+        "x": 198,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklab(0.37 0.00354074 -0.0125085)",
+        "current": "page",
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 2",
+        "right": 266,
+        "selected": "true",
+        "width": 32,
+        "x": 234,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Página 3",
+        "right": 302,
+        "selected": null,
+        "width": 32,
+        "x": 270,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Próxima página",
+        "right": 338,
+        "selected": null,
+        "width": 32,
+        "x": 306,
+        "y": 1237
+      },
+      {
+        "background": "rgb(255, 255, 255)",
+        "color": "oklch(0.37 0.013 285.805)",
+        "current": null,
+        "disabled": false,
+        "height": 32,
+        "icon": null,
+        "label": "Última página",
+        "right": 374,
+        "selected": null,
+        "width": 32,
+        "x": 342,
+        "y": 1237
+      }
+    ],
+    "documentWidth": 390,
+    "footer": {
+      "height": 49,
+      "right": 374,
+      "width": 358,
+      "x": 16,
+      "y": 1220
+    },
+    "landmark": {
+      "label": "Paginação de registros",
+      "role": "nav"
+    },
+    "viewport": 390
+  }
+}

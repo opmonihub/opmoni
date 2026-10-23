@@ -1,0 +1,4 @@
+PASS focused checks: 18 tests / 5 suites; 0 failures; 0 Vue warnings; unresolved shell warnings removed without global suppression
+PASS browser names/geometry: Portuguese landmark and 7 button names; native 32px controls; no global overflow; all controls within mobile frame
+PASS native semantics: edge disabling, active aria-current, pending disabling, green active/neutral inactive colors retained
+PASS icon dimensions: four native 20px leading icons retained
