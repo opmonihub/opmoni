@@ -57,9 +57,9 @@
 
 **Interfaces:** export `erpPageBodyClass = 'space-y-5 p-4 sm:p-6'`; preserve page-shell props and `actions`/`toolbar`/default slots and all catalog resource props/events.
 
-- [ ] 3.1 Implement the shared page-body token, make the settings native panel body padding-free, and keep one padded wrapper plus normal inner card padding; verify at 390px settings card/content x-coordinates are 16px/32px within 1px, while preserving `max-w-4xl`.
-- [ ] 3.2 Replace the nested catalog dashboard toolbar with an aligned responsive body filter row, retaining the labeled search, debounce/search lifecycle, counts, and stale/error/retry announcements; verify catalog search/table frame edges at x=16px mobile and x=264px at 1366px with a 240px sidebar.
-- [ ] 3.3 Run catalog list presentation/lifecycle, mobile shell, and settings API suites; run changed-file ESLint and record desktop/mobile measurements proving one gutter. Do not add source-string class tests or alter contract/public-registration exceptions.
+- [x] 3.1 Implement the shared page-body token, make the settings native panel body padding-free, and keep one padded wrapper plus normal inner card padding; verify at 390px settings card/content x-coordinates are 16px/32px within 1px, while preserving `max-w-4xl`.
+- [x] 3.2 Replace the nested catalog dashboard toolbar with an aligned responsive body filter row, retaining the labeled search, debounce/search lifecycle, counts, and stale/error/retry announcements; verify catalog search/table frame edges at x=16px mobile and x=264px at 1366px with a 240px sidebar.
+- [x] 3.3 Run catalog list presentation/lifecycle, mobile shell, and settings API suites; run changed-file ESLint and record desktop/mobile measurements proving one gutter. Do not add source-string class tests or alter contract/public-registration exceptions.
 
 ## 4. Standardize active tables and controlled footers — D04
 
