@@ -23,7 +23,7 @@ class ErpPurchase extends Model
         'posted_by_user_id',
         'supplier_snapshot',
         'metadata',
-        'posted_at',
+        'posted_at', 'source_import_id', 'source_access_key', 'source_sha256', 'source_byte_length', 'source_snapshot', 'draft_revision', 'commercial_snapshot',
     ];
 
     /** @return array<string, string> */
@@ -32,7 +32,7 @@ class ErpPurchase extends Model
         return [
             'total_amount' => 'decimal:4',
             'supplier_snapshot' => 'array',
-            'metadata' => 'array',
+            'metadata' => 'array', 'source_snapshot' => 'array', 'commercial_snapshot' => 'array', 'draft_revision' => 'integer',
             'posted_at' => 'datetime',
         ];
     }

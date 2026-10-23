@@ -1,7 +1,13 @@
 {
   "participant": "App\\Erp\\Stock\\ErpStockParticipant::issueForSale",
   "consumer": "erp_sale_post",
-  "lock_order": ["erp_sale", "erp_stock_balances_sorted", "erp_finance_obligations"],
+  "lock_order": [
+    "erp_company",
+    "erp_sale",
+    "erp_stock_balances_sorted",
+    "erp_stock_lots_sorted",
+    "erp_finance_obligations"
+  ],
   "requires_caller_transaction": true,
   "acquires_source_document_lock": false,
   "source_type": "erp_sale",
@@ -16,7 +22,8 @@
       {
         "line_id": 1,
         "erp_product_variant_id": 501,
-        "quantity": "3.0000"
+        "quantity": "3.0000",
+        "unit_conversion_factor": "1.00000000"
       }
     ]
   }

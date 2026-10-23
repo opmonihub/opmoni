@@ -50,6 +50,7 @@ use Illuminate\Support\Facades\Route;
 
 // Business scaffold: include inside the existing authenticated /api/v1 group after reconciliation.
 Route::middleware([ResolveAccount::class])->group(function (): void {
+    Route::get('account/erp-accounting-mappings/context', [ErpAccountingMappingController::class, 'context']);
     Route::get('account/erp-accounting-mappings', [ErpAccountingMappingController::class, 'index']);
     Route::post('account/erp-accounting-mappings', [ErpAccountingMappingController::class, 'store']);
     Route::delete('account/erp-accounting-mappings/{mapping}', [ErpAccountingMappingController::class, 'destroy'])->whereNumber('mapping');

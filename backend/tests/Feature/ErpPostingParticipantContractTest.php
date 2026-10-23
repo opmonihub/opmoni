@@ -39,7 +39,7 @@ class ErpPostingParticipantContractTest extends TestCase
         $this->assertSame('erp_sale', $fixture['source_type']);
         $this->assertSame('out', $fixture['movement_direction']);
         $this->assertSame(
-            ['erp_sale', 'erp_stock_balances_sorted', 'erp_finance_obligations'],
+            ['erp_company', 'erp_sale', 'erp_stock_balances_sorted', 'erp_stock_lots_sorted', 'erp_finance_obligations'],
             $fixture['lock_order'],
         );
     }
@@ -123,7 +123,8 @@ class ErpPostingParticipantContractTest extends TestCase
         $payment = ErpPayment::query()->create([
             'erp_company_id' => $company->id,
             'amount' => '50.0000',
-            'method' => 'cash',
+            'method' => 'manual',
+            'direction' => 'in',
             'source_type' => 'manual',
             'source_id' => 0,
             'source_operation_key' => 'payment-1',

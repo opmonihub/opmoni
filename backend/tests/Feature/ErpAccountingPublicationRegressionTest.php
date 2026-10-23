@@ -25,12 +25,15 @@ use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpAccountingPublicationRegressionTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -41,6 +44,29 @@ class ErpAccountingPublicationRegressionTest extends TestCase
         Storage::fake('fiscal');
     }
 
+    public function test_unproved_legacy_authorized_stub_cannot_be_published_to_accounting(): void
+    {
+        [$document] = $this->scenario(false);
+        $result = app(ErpAccountingHandoffService::class)->deliver(app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($document));
+        $this->assertSame('blocked', $result->status);
+        $this->assertSame('fiscal_authorization_unverified', $result->reason_code);
+        $this->assertDatabaseCount('fiscal_documents', 0);
+        $this->assertSame('authorized', $document->fresh()->status);
+    }
+
+    public function test_unverified_source_can_be_repaired_then_retry_projection_without_reissuance(): void
+    {
+        [$document] = $this->scenario(false);
+        $handoff = app(ErpAccountingHandoffService::class);
+        $delivery = $handoff->deliver($handoff->ensureDeliveryIntent($document));
+        $this->assertSame('fiscal_authorization_unverified', $delivery->reason_code);
+        $this->attachVerifiedFiscalEvidence($document);
+        $this->assertSame('pending', $handoff->retry($delivery)->status);
+        $this->assertSame('delivered', $handoff->deliver($delivery->fresh())->status);
+        $this->assertDatabaseCount('erp_accounting_deliveries', 1);
+        $this->assertSame(1, $document->attempts()->where('action', 'document:transmit')->count());
+    }
+
     public function test_delivery_publishes_original_verified_bytes_to_private_fiscal_storage(): void
     {
         [$document, $client] = $this->scenario();
@@ -48,7 +74,7 @@ class ErpAccountingPublicationRegressionTest extends TestCase
         $result = $handoff->deliver($handoff->ensureDeliveryIntent($document));
         $office = FiscalDocument::withoutGlobalScope('account')->findOrFail($result->fiscal_document_id);
         $this->assertTrue(resolve(FiscalDocumentReadiness::class)->isReadyRow($office));
-        $this->assertSame('<nfeProc/>', Storage::disk('fiscal')->get($office->storage_path));
+        $this->assertSame(Storage::disk('local')->get($document->storage_path), Storage::disk('fiscal')->get($office->storage_path));
         $this->assertSame('erp_issued', $office->delivery_origin->value);
         $this->assertSame($client->id, $office->client_id);
     }
@@ -88,7 +114,7 @@ class ErpAccountingPublicationRegressionTest extends TestCase
             nsu: 999, schema: 'procNFe_v4.00.xsd', emissaoAt: null, eventoOcorridoEmAt: null, xml: '<conflicting/>',
         );
         $result = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $capture);
-        $this->assertSame('<nfeProc/>', Storage::disk('fiscal')->get($accepted->storage_path));
+        $this->assertSame(Storage::disk('local')->get($document->storage_path), Storage::disk('fiscal')->get($accepted->storage_path));
         $this->assertSame($accepted->id, $result->id);
         $this->assertSame($hash, $result->sha256);
         $this->assertSame('erp_issued', $result->delivery_origin->value);
@@ -103,7 +129,7 @@ class ErpAccountingPublicationRegressionTest extends TestCase
         $handoff = resolve(ErpAccountingHandoffService::class);
         $delivered = $handoff->deliver($handoff->ensureDeliveryIntent($document));
         $accepted = FiscalDocument::withoutGlobalScope('account')->findOrFail($delivered->fiscal_document_id);
-        $capture = $this->captured($document->access_key, '<nfeProc/>');
+        $capture = $this->captured($document->access_key, Storage::disk('local')->get($document->storage_path));
         foreach ([null, '<corrupt/>'] as $bytes) {
             if ($bytes === null) {
                 Storage::disk('fiscal')->delete($accepted->storage_path);
@@ -112,7 +138,7 @@ class ErpAccountingPublicationRegressionTest extends TestCase
             }
             $result = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $capture);
             $this->assertSame($accepted->id, $result->id);
-            $this->assertSame('<nfeProc/>', Storage::disk('fiscal')->get($accepted->storage_path));
+            $this->assertSame(Storage::disk('local')->get($document->storage_path), Storage::disk('fiscal')->get($accepted->storage_path));
             $this->assertTrue(app(FiscalDocumentReadiness::class)->isReadyRow($result));
             $this->assertSame('erp_issued', $result->delivery_origin->value);
             $this->assertSame($accepted->sha256, $result->sha256);
@@ -146,11 +172,11 @@ class ErpAccountingPublicationRegressionTest extends TestCase
             $client->account_id, $client->id, FiscalSource::NfeDistribuicao,
             'producao', $client->tax_id, CarbonImmutable::now(), 'test-capture',
         );
-        $result = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $this->captured($document->access_key, '<nfeProc/>'), $context);
+        $result = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $this->captured($document->access_key, Storage::disk('local')->get($document->storage_path)), $context);
         $this->assertSame('artifact_conflict', $result->processing_reason->value);
         $this->assertSame('homologacao', $result->delivery_environment);
         $this->assertSame('erp_issued', $result->delivery_origin->value);
-        $this->assertSame('<nfeProc/>', Storage::disk('fiscal')->get($accepted->storage_path));
+        $this->assertSame(Storage::disk('local')->get($document->storage_path), Storage::disk('fiscal')->get($accepted->storage_path));
     }
 
     public function test_publication_failure_restores_context_and_attempt_limit_is_inspectable(): void
@@ -198,6 +224,49 @@ class ErpAccountingPublicationRegressionTest extends TestCase
         $this->assertSame('attention', $equal->processing_state->value);
     }
 
+    #[DataProvider('branchCaptureOrders')]
+    public function test_real_branch_capture_first_and_handoff_first_keep_same_note_and_issuer(bool $captureFirst): void
+    {
+        [$document, $client] = $this->scenario(true, true);
+        $this->assertNotSame($document->company->cnpj, $document->establishment->cnpj);
+        $xml = Storage::disk('local')->get($document->storage_path);
+        if ($captureFirst) {
+            app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $this->captured($document->access_key, $xml));
+        }
+        $handoff = app(ErpAccountingHandoffService::class);
+        $delivered = $handoff->deliver($handoff->ensureDeliveryIntent($document));
+        $this->assertSame('delivered', $delivered->status);
+        $note = FiscalDocument::withoutGlobalScope('account')->findOrFail($delivered->fiscal_document_id);
+        if (! $captureFirst) {
+            $this->assertSame('11222333000181', $note->emitente_cnpj);
+        }
+        $equal = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao, $this->captured($document->access_key, $xml));
+        $this->assertSame($note->id, $equal->id);
+        $this->assertNotSame('artifact_conflict', $equal->processing_reason?->value);
+    }
+
+    public static function branchCaptureOrders(): array
+    {
+        return [[true], [false]];
+    }
+
+    public function test_branch_issuer_and_post_issuance_rotation_use_frozen_identity(): void
+    {
+        [$document, $client] = $this->scenario();
+        $issuer = substr($document->access_key, 6, 14);
+        $document->company->update(['cnpj' => '11222333000181']);
+        $document->establishment->update(['cnpj' => '11222333000181']);
+        $handoff = app(ErpAccountingHandoffService::class);
+        $result = $handoff->deliver($handoff->ensureDeliveryIntent($document));
+        $this->assertSame('delivered', $result->status);
+        $office = FiscalDocument::withoutGlobalScope('account')->findOrFail($result->fiscal_document_id);
+        $this->assertSame($issuer, $office->emitente_cnpj);
+        $captured = app(FiscalDocumentWriter::class)->store($client, FiscalSource::NfeDistribuicao,
+            $this->captured($document->access_key, Storage::disk('local')->get($document->storage_path)));
+        $this->assertSame($office->id, $captured->id);
+        $this->assertNotSame('artifact_conflict', $captured->processing_reason?->value);
+    }
+
     private function captured(string $key, string $bytes): PulledDocument
     {
         return new PulledDocument(
@@ -207,14 +276,14 @@ class ErpAccountingPublicationRegressionTest extends TestCase
         );
     }
 
-    private function scenario(): array
+    private function scenario(bool $verified = true, bool $branch = false): array
     {
         $account = Account::factory()->create();
         resolve(CurrentTenant::class)->accountId = $account->id;
         $company = ErpCompany::factory()->create(['cnpj' => '30288513000100']);
         $client = Client::factory()->company()->create(['account_id' => $account->id, 'tax_id' => $company->cnpj]);
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $account->id]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $branch ? '11222333000181' : $company->cnpj]);
         $this->approveAccountingMapping($delegation, $establishment, $client);
         Storage::disk('local')->put('erp/fiscal/publication.xml', '<nfeProc/>');
         $document = ErpFiscalDocument::query()->create([
@@ -224,6 +293,10 @@ class ErpAccountingPublicationRegressionTest extends TestCase
             'idempotency_key' => fake()->uuid(), 'storage_path' => 'erp/fiscal/publication.xml',
             'artifact_byte_length' => 10, 'artifact_sha256' => hash('sha256', '<nfeProc/>'), 'authorized_at' => now(),
         ]);
+
+        if ($verified) {
+            $this->attachVerifiedFiscalEvidence($document);
+        }
 
         return [$document, $client];
     }

@@ -10,7 +10,7 @@ import { equipeSidebarChildren } from '~/utils/equipeNav'
 import { monitoringSidebarChildren } from '~/utils/monitoringNav'
 
 const route = useRoute()
-const { user, canManageMembers } = useAuth()
+const { user, currentAccount, canManageMembers } = useAuth()
 
 const open = ref(false)
 const routeGroup = computed(() => sidebarOpenGroupFromPath(route.path))
@@ -47,7 +47,7 @@ const links = computed(() => [[{
   { label: 'Work', value: 'work', icon: 'i-lucide-list-checks', to: '/work', children: workSidebarChildren(route.path) },
   { label: 'Equipe', value: 'equipe', icon: 'i-lucide-users-round', to: '/equipe', children: equipeSidebarChildren(route.path) },
   { label: 'Settings', value: 'configuracoes', icon: 'i-lucide-settings', to: '/settings', children: [
-    ...settingsSidebarChildren(route.path, canManageMembers.value),
+    ...settingsSidebarChildren(route.path, canManageMembers.value, currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'),
     { label: 'Members', to: '/settings/members', active: sidebarParentActive('/settings/members', route.path) }
   ] }
 ].map(item => ({

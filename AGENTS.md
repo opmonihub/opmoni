@@ -1,5 +1,10 @@
 # Codex workspace rules
 
+## Frontend UI
+
+- For every frontend UI change, apply `/home/obsidian/.codex/skills/nuxt-ui/SKILL.md` before editing. Read the relevant references and consult the Nuxt UI MCP for actual component APIs and official examples.
+- Compose pages and forms with the existing Nuxt UI components, dashboard patterns, and project shells. Verify compatibility with the installed version and inspect the relevant official page or component example before introducing a custom UI primitive.
+
 ## Git worktrees
 
 - Create worktrees for this repository under `/home/obsidian/dev/opmoni/.worktrees/`.

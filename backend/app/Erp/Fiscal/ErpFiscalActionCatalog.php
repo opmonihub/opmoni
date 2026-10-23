@@ -15,6 +15,12 @@ final class ErpFiscalActionCatalog
         $document = '/api/v1/erp/fiscal/documents/{document}';
 
         return [
+            ['model' => '*', 'action' => 'configuration_show', 'route' => 'GET /api/v1/erp/fiscal/configuration/{establishment}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'configuration_update', 'route' => 'PATCH /api/v1/erp/fiscal/configuration/{establishment}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_index', 'route' => 'GET /api/v1/erp/fiscal/certificates', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_show', 'route' => 'GET /api/v1/erp/fiscal/certificates/{certificate}', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_store', 'route' => 'POST /api/v1/erp/fiscal/certificates', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
+            ['model' => '*', 'action' => 'certificate_rotate', 'route' => 'POST /api/v1/erp/fiscal/certificates/{certificate}/rotate', 'fixture' => 'ErpFiscalIssuerConfigurationTest'],
             ['model' => '55', 'action' => 'create', 'route' => 'POST /api/v1/erp/fiscal/documents', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '55', 'action' => 'queue', 'route' => 'POST '.$document.'/queue', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '55', 'action' => 'transmit', 'route' => 'POST '.$document.'/transmit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
@@ -28,8 +34,8 @@ final class ErpFiscalActionCatalog
             ['model' => '65', 'action' => 'contingency', 'route' => 'POST '.$document.'/contingency', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '65', 'action' => 'reconcile_contingency', 'route' => 'POST '.$document.'/reconcile-contingency', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '57', 'action' => 'transmit', 'route' => 'POST '.$document.'/transmit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
-            ['model' => '57', 'action' => 'complement', 'route' => 'POST /api/v1/erp/fiscal/events + submit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
-            ['model' => '57', 'action' => 'substitution', 'route' => 'POST /api/v1/erp/fiscal/events + submit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
+            ['model' => '57', 'action' => 'complement', 'route' => 'POST /api/v1/erp/fiscal/documents (document_kind=complement, source_document_id, source.transport_service) + transmit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
+            ['model' => '57', 'action' => 'substitution', 'route' => 'POST /api/v1/erp/fiscal/documents (document_kind=substitution, source_document_id, source.transport_service); transmit blocked: cte_substitution_disagreement_evidence_unavailable', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '58', 'action' => 'transmit', 'route' => 'POST '.$document.'/transmit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '58', 'action' => 'close', 'route' => 'POST /api/v1/erp/fiscal/events + submit', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],
             ['model' => '*', 'action' => 'certificate_upload', 'route' => 'POST /api/v1/erp/fiscal/certificates', 'fixture' => 'ErpFiscalIssuanceCompleteTest'],

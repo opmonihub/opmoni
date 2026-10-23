@@ -1,21 +1,43 @@
 <script setup lang="ts">
-import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
+import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
+import ErpBrandCatalogForm from '~/components/erp/catalogs/ErpBrandCatalogForm.vue'
+import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+
+const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
-type Row = { id: number, name: string, status: string }
-const { search, page, pending, state, error, refresh } = useErpCatalogList<Row>(erpCatalogRoutes.brands)
+useHead({ title: 'Marcas · Cadastros ERP' })
+
+const columns = [
+  { accessorKey: 'name', header: 'Marca' },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
+]
+const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '')
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Marcas">
-    <UInput v-model="search" placeholder="Buscar" class="max-w-md" />
-    <UTable :loading="pending" :data="state?.data ?? []" :columns="[{ accessorKey: 'name', header: 'Marca' }, { accessorKey: 'status', header: 'Status' }]" />
-    <ErpCatalogPagination
-      v-model:page="page"
-      :meta="state?.meta"
-      :pending="pending"
-      :error="error"
-      @retry="refresh"
+  <ErpCatalogPageShell title="Marcas" description="Marcas comerciais disponíveis para os produtos da empresa.">
+    <template #actions>
+      <UButton
+        v-if="catalogResource?.createAction.allowed"
+        :aria-label="catalogResource.createAction.label"
+        icon="i-lucide-plus"
+        :disabled="catalogResource.createAction.busy"
+        @click="catalogResource.createAction.trigger"
+      >
+        <span class="hidden sm:inline">{{ catalogResource.createAction.label }}</span>
+      </UButton>
+    </template>
+    <ErpCatalogResource
+      ref="catalogResource"
+      :path="erpCatalogRoutes.brands"
+      title="Marcas"
+      :show-heading="false"
+      search-placeholder="Buscar marca"
+      :form="ErpBrandCatalogForm"
+      :columns="columns"
+      :record-label="recordLabel"
     />
   </ErpCatalogPageShell>
 </template>

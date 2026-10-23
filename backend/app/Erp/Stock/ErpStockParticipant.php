@@ -3,142 +3,70 @@
 namespace App\Erp\Stock;
 
 use App\Erp\ErpCatalogScope;
-use App\Erp\Finance\ErpDecimal;
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
+use App\Support\CurrentCompany;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 final class ErpStockParticipant
 {
-    /**
-     * @param  list<array{line_id: int, erp_product_variant_id: int|null, quantity: string}>  $lines
-     */
-    public function issueForSale(
-        int $companyId,
-        int $establishmentId,
-        int $saleId,
-        string $operationKeyPrefix,
-        array $lines,
-        ?int $postedByUserId,
-    ): void {
+    /** @param list<array{line_id:int,erp_product_variant_id:?int,quantity:string,unit_conversion_factor?:string}> $lines */
+    public function issueForSale(int $companyId, int $establishmentId, int $saleId, string $operationKeyPrefix, array $lines, ?int $postedByUserId, ?string $sourceCurrency = null): void
+    {
         $this->assertInCallerTransaction();
-        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
-
-        $issueLines = array_values(array_filter(
-            $lines,
-            fn (array $line): bool => $line['erp_product_variant_id'] !== null,
-        ));
-        usort(
-            $issueLines,
-            fn (array $left, array $right): int => $left['erp_product_variant_id'] <=> $right['erp_product_variant_id'],
-        );
-
-        DB::table('erp_companies')->where('id', $companyId)->lockForUpdate()->first();
-
-        foreach ($issueLines as $line) {
-            $variantId = (int) $line['erp_product_variant_id'];
-            $needed = ErpDecimal::parse($line['quantity']);
-            abort_unless(ErpDecimal::isPositive($needed), 422, 'Quantidade deve ser positiva');
-            app(ErpCatalogScope::class)->assertVariantBelongsToCompany($companyId, $variantId);
-
-            $balance = ErpStockBalance::query()
-                ->where('erp_establishment_id', $establishmentId)
-                ->where('erp_product_variant_id', $variantId)
-                ->lockForUpdate()
-                ->first();
-
-            $available = $balance ? ErpDecimal::parse((string) $balance->quantity_on_hand) : ErpDecimal::zero();
-            if (ErpDecimal::compare($available, $needed) === -1) {
-                throw new InvalidArgumentException('Estoque insuficiente');
+        $company = ErpCompany::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
+        usort($lines, fn (array $a, array $b): int => [$a['erp_product_variant_id'], $a['line_id']] <=> [$b['erp_product_variant_id'], $b['line_id']]);
+        foreach ($lines as $line) {
+            if ($line['erp_product_variant_id'] === null) {
+                continue;
             }
-
-            if ($balance) {
-                $balance->quantity_on_hand = ErpDecimal::sub($available, $needed);
-                $balance->save();
+            app(ErpCatalogScope::class)->assertVariantBelongsToCompany($companyId, $line['erp_product_variant_id']);
+            $variant = ErpProductVariant::query()->findOrFail($line['erp_product_variant_id']);
+            $profile = $line['product_snapshot']['product'] ?? ['kind' => $variant->product->kind, 'track_stock' => $variant->product->track_stock];
+            $physical = self::physicalProfile($profile);
+            abort_if($physical === null, response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
+            if (! $physical) {
+                continue;
             }
-
-            ErpStockMovement::query()->create([
-                'erp_company_id' => $companyId,
-                'erp_establishment_id' => $establishmentId,
-                'erp_product_variant_id' => $variantId,
-                'direction' => 'out',
-                'quantity' => $needed,
-                'unit_cost' => $balance?->average_cost,
-                'source_type' => 'erp_sale',
-                'source_id' => $saleId,
-                'source_operation_key' => $operationKeyPrefix.'-line-'.$line['line_id'],
-                'posted_by_user_id' => $postedByUserId,
-                'posted_at' => now(),
-            ]);
+            $quantity = ErpStockDecimal::base($line['quantity'], $line['unit_conversion_factor'] ?? '1.00000000', 'quantity');
+            $available = ErpStockBalance::query()->where('erp_company_id', $companyId)->where('erp_establishment_id', $establishmentId)->where('erp_product_variant_id', $variant->id)->value('quantity_on_hand') ?? '0';
+            $allow = false;
+            if (bccomp((string) $available, $quantity, 4) < 0 && ($company->operating_settings['stock_overselling_enabled'] ?? false) === true) {
+                $context = CurrentCompany::fromRequest();
+                $permissions = $context->accessKind === 'delegated' ? ($context->delegation?->effectivePermissions() ?? []) : $context->permissions();
+                abort_unless(in_array('erp.stock.oversell', $permissions, true) || in_array('*', $permissions, true), 403, 'Permissão explícita de venda sem estoque necessária.');
+                $context->assertPermission('erp.stock.oversell', true);
+                $allow = true;
+            }
+            app(ErpStockLedger::class)->issue($companyId, $establishmentId, $variant->id, $quantity, ['source_type' => 'erp_sale', 'source_id' => $saleId, 'source_line_id' => $line['line_id'], 'posted_by_user_id' => $postedByUserId, 'source_currency' => $sourceCurrency], $operationKeyPrefix.'-line-'.$line['line_id'], $allow);
         }
     }
 
-    /**
-     * @param  list<ErpStockMovement>  $originalMovements
-     */
-    public function reverseSaleIssues(
-        int $companyId,
-        int $establishmentId,
-        int $saleReturnId,
-        string $operationKeyPrefix,
-        iterable $originalMovements,
-        ?int $postedByUserId,
-    ): void {
+    /** @param iterable<ErpStockMovement> $originalMovements */
+    public function reverseSaleIssues(int $companyId, int $establishmentId, int $saleReturnId, string $operationKeyPrefix, iterable $originalMovements, ?int $postedByUserId): void
+    {
         $this->assertInCallerTransaction();
-        app(ErpStockValuation::class)->assertSupportedCompany($companyId);
-
-        DB::table('erp_companies')->where('id', $companyId)->lockForUpdate()->first();
-
-        $movements = [];
+        ErpCompany::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
         foreach ($originalMovements as $movement) {
-            $movements[] = $movement;
+            abort_unless($movement->erp_company_id === $companyId && $movement->erp_establishment_id === $establishmentId, 422);
+            app(ErpStockLedger::class)->reverse($movement, (string) $movement->quantity, 'Devolução de venda', $operationKeyPrefix.'-reverse-'.$movement->id, ['source_type' => 'erp_sale_return', 'source_id' => $saleReturnId, 'source_line_id' => $movement->source_line_id, 'posted_by_user_id' => $postedByUserId]);
         }
-        usort(
-            $movements,
-            fn (ErpStockMovement $left, ErpStockMovement $right): int => $left->erp_product_variant_id <=> $right->erp_product_variant_id,
-        );
+    }
 
-        foreach ($movements as $movement) {
-            if ($movement->direction !== 'out' || $movement->erp_product_variant_id === null) {
-                continue;
-            }
-
-            abort_if(ErpStockMovement::query()->where('reversal_of_id', $movement->id)->exists(), 422, 'Movimento já devolvido');
-            $quantity = ErpDecimal::parse((string) $movement->quantity);
-            $balance = ErpStockBalance::query()->firstOrCreate(
-                [
-                    'erp_establishment_id' => $establishmentId,
-                    'erp_product_variant_id' => $movement->erp_product_variant_id,
-                ],
-                [
-                    'erp_company_id' => $companyId,
-                    'quantity_on_hand' => ErpDecimal::zero(),
-                ],
-            );
-            app(ErpStockValuation::class)->assertCompatibleReceipt($balance, (string) $movement->unit_cost);
-            $balance->average_cost = $movement->unit_cost;
-            $balance->quantity_on_hand = ErpDecimal::add(
-                ErpDecimal::parse((string) $balance->quantity_on_hand),
-                $quantity,
-            );
-            $balance->save();
-
-            ErpStockMovement::query()->create([
-                'erp_company_id' => $companyId,
-                'erp_establishment_id' => $establishmentId,
-                'erp_product_variant_id' => $movement->erp_product_variant_id,
-                'direction' => 'in',
-                'quantity' => $quantity,
-                'unit_cost' => $movement->unit_cost,
-                'source_type' => 'erp_sale_return',
-                'source_id' => $saleReturnId,
-                'source_operation_key' => $operationKeyPrefix.'-reverse-'.$movement->id,
-                'reversal_of_id' => $movement->id,
-                'posted_by_user_id' => $postedByUserId,
-                'posted_at' => now(),
-            ]);
+    /** Null means that saved physical semantics are not proved. */
+    public static function physicalProfile(?array $profile): ?bool
+    {
+        if (($profile['kind'] ?? null) === 'service') {
+            return false;
         }
+        if (($profile['kind'] ?? null) === 'goods' && is_bool($profile['track_stock'] ?? null)) {
+            return $profile['track_stock'];
+        }
+
+        return null;
     }
 
     private function assertInCallerTransaction(): void

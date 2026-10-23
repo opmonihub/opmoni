@@ -80,6 +80,7 @@ function setupLayout(path: string, superAdmin = true) {
     watch: Vue.watch,
     useRoute: () => route,
     useAuth: () => ({
+      currentAccount: Vue.ref({ id: 1, name: 'Escritório teste', status: 'active', role: 'user' }),
       user: Vue.ref({ is_super_admin: superAdmin }),
       canManageMembers: Vue.ref(false)
     })

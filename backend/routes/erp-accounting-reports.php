@@ -10,6 +10,9 @@ Route::post('/accounting-deliveries', [ErpAccountingDeliveryController::class, '
 
 Route::get('/accounting-deliveries', [ErpAccountingDeliveryController::class, 'index'])
     ->name('erp.accounting-deliveries.index');
+Route::get('/accounting-deliveries/{delivery}', [ErpAccountingDeliveryController::class, 'show'])
+    ->whereNumber('delivery')
+    ->name('erp.accounting-deliveries.show');
 Route::post('/accounting-deliveries/{delivery}/retry', [ErpAccountingDeliveryController::class, 'retry'])
     ->whereNumber('delivery')
     ->name('erp.accounting-deliveries.retry');

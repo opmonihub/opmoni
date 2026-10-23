@@ -1,0 +1,357 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "dark": false,
+  "documentWidth": 390,
+  "firstTableRow": {
+    "height": 56,
+    "width": 891.390625,
+    "x": 17,
+    "y": 1386
+  },
+  "fontFaces": [
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: BlinkMacSystemFont",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Segoe UI",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Helvetica Neue",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Arial",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Noto Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    }
+  ],
+  "forms": [
+    {
+      "inputs": 7,
+      "rect": {
+        "height": 528,
+        "width": 324,
+        "x": 33,
+        "y": 414
+      }
+    }
+  ],
+  "headings": [
+    {
+      "rect": {
+        "height": 24,
+        "width": 79.078125,
+        "x": 54,
+        "y": 19.5
+      },
+      "text": "Financeiro"
+    },
+    {
+      "rect": {
+        "height": 28,
+        "width": 202.328125,
+        "x": 16,
+        "y": 205
+      },
+      "text": "Obriga\u00e7\u00f5es"
+    },
+    {
+      "rect": {
+        "height": 24,
+        "width": 324,
+        "x": 33,
+        "y": 334
+      },
+      "text": "Nova obriga\u00e7\u00e3o"
+    }
+  ],
+  "nestedForms": 0,
+  "primary": {
+    "background": "rgb(10, 83, 49)",
+    "color": "rgb(255, 255, 255)",
+    "label": "Ir para nova obriga\u00e7\u00e3o",
+    "rect": {
+      "height": 32,
+      "width": 190.34375,
+      "x": 16,
+      "y": 265
+    }
+  },
+  "title": "Opmoni",
+  "tokens": {
+    "--font-sans": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+    "--ui-primary": "#0a5331",
+    "--ui-success": "#016538",
+    "--ui-text-muted": "oklch(44.2% .017 285.786)"
+  },
+  "url": "/erp/financeiro",
+  "viewport": [
+    390,
+    844
+  ],
+  "visibleButtons": [
+    {
+      "label": "Abrir menu ERP",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "Selecionar empresa",
+      "rect": {
+        "height": 32,
+        "width": 112.15625,
+        "x": 178,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "Menu do usu\u00e1rio",
+      "rect": {
+        "height": 32,
+        "width": 79.84375,
+        "x": 294.15625,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "Contas",
+      "rect": {
+        "height": 32,
+        "width": 65.953125,
+        "x": 16,
+        "y": 140
+      }
+    },
+    {
+      "label": "Obriga\u00e7\u00f5es",
+      "rect": {
+        "height": 32,
+        "width": 94.703125,
+        "x": 89.953125,
+        "y": 140
+      }
+    },
+    {
+      "label": "Pagamentos",
+      "rect": {
+        "height": 32,
+        "width": 101.40625,
+        "x": 192.65625,
+        "y": 140
+      }
+    },
+    {
+      "label": "Ir para nova obriga\u00e7\u00e3o",
+      "rect": {
+        "height": 32,
+        "width": 190.34375,
+        "x": 16,
+        "y": 265
+      }
+    },
+    {
+      "label": "Atualizar",
+      "rect": {
+        "height": 32,
+        "width": 104.75,
+        "x": 214.34375,
+        "y": 265
+      }
+    },
+    {
+      "label": "A receber",
+      "rect": {
+        "height": 32,
+        "width": 119.015625,
+        "x": 33,
+        "y": 438
+      }
+    },
+    {
+      "label": "Toda a empresa",
+      "rect": {
+        "height": 32,
+        "width": 162.78125,
+        "x": 33,
+        "y": 798
+      }
+    },
+    {
+      "label": "Sem v\u00ednculo de conta",
+      "rect": {
+        "height": 32,
+        "width": 203.609375,
+        "x": 33,
+        "y": 866
+      }
+    },
+    {
+      "label": "Criar obriga\u00e7\u00e3o",
+      "rect": {
+        "height": 32,
+        "width": 146.375,
+        "x": 33,
+        "y": 910
+      }
+    },
+    {
+      "label": "Todas",
+      "rect": {
+        "height": 32,
+        "width": 89.84375,
+        "x": 16,
+        "y": 1003
+      }
+    },
+    {
+      "label": "Todas",
+      "rect": {
+        "height": 32,
+        "width": 89.84375,
+        "x": 117.84375,
+        "y": 1003
+      }
+    },
+    {
+      "label": "Todos",
+      "rect": {
+        "height": 32,
+        "width": 90.078125,
+        "x": 219.6875,
+        "y": 1003
+      }
+    },
+    {
+      "label": "Todas",
+      "rect": {
+        "height": 32,
+        "width": 89.84375,
+        "x": 16,
+        "y": 1071
+      }
+    },
+    {
+      "label": "#1",
+      "rect": {
+        "height": 20,
+        "width": 14.28125,
+        "x": 33,
+        "y": 1404
+      }
+    },
+    {
+      "label": "Detalhes",
+      "rect": {
+        "height": 24,
+        "width": 65.96875,
+        "x": 826.421875,
+        "y": 1402
+      }
+    }
+  ]
+}

@@ -3,8 +3,9 @@
 namespace App\Http\Middleware;
 
 use App\Erp\ErpCommercialGate;
+use App\Erp\ErpCompanyAdministration;
 use App\Erp\ErpCompanyAuthorization;
-use App\Erp\Finance\ErpPaymentAllocationOperation;
+use App\Erp\ErpOperationJournal;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Fiscal\ErpFiscalEvent;
@@ -44,7 +45,7 @@ class ResolveCompany
                 abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));
             }
 
-            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId);
+            $access = $this->authorization->resolveAccess($request->user(), $company, $officeId, ! $request->isMethodSafe() || $request->routeIs('erp.operations.lookup', 'erp.payments.allocation-candidates'));
             if ($access === null) {
                 abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
             }
@@ -78,9 +79,9 @@ class ResolveCompany
 
             $operationLookup = $request->routeIs('erp.operations.lookup');
             if ($operationLookup) {
-                $request->validate(['operation' => ['required', 'string', Rule::in([ErpPaymentAllocationOperation::NAME])]]);
+                $request->validate(['operation' => ['required', 'string', Rule::in(ErpOperationJournal::operations())]]);
             }
-            $effectiveWrite = ! $request->isMethodSafe() || $operationLookup;
+            $effectiveWrite = ! $request->isMethodSafe() || $operationLookup || $request->routeIs('erp.payments.allocation-candidates');
             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
             if ($effectiveWrite && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
                 abort(response()->json(['code' => 'erp_subscription_inactive', 'message' => 'Contrato ERP inativo'], 403));
@@ -99,15 +100,21 @@ class ResolveCompany
                 $access['kind'] === 'direct' ? $access['membership'] : null,
                 $access['kind'] === 'delegated' ? $access['delegation'] : null,
                 $access['kind'] === 'delegated' ? $access['office_id'] : null,
+                $access['kind'] === 'delegated' ? $access['office_role'] : null,
             );
             $request->attributes->set(CurrentCompany::class, $context);
             try {
-                $context->assertPermission($operationLookup ? ErpPaymentAllocationOperation::NAME : (string) $request->route()?->getName(), $effectiveWrite);
+                if ($request->routeIs('erp.members.index', 'erp.members.show', 'erp.members.permissions', 'erp.members.identity-lookup', 'erp.members.store', 'erp.members.update', 'erp.members.destroy')) {
+                    app(ErpCompanyAdministration::class)->assertOwner($request);
+                } else {
+                    $context->assertPermission($operationLookup ? $request->input('operation') : $this->effectiveAction($request), $effectiveWrite);
+                }
+                $action = $operationLookup ? $request->input('operation') : (string) $request->route()?->getName();
                 $module = match (true) {
-                    $request->routeIs('erp.purchases.*', 'erp.purchase-returns.*') => 'purchases',
-                    $request->routeIs('erp.sales.*', 'erp.sale-returns.*', 'erp.quotes.*', 'erp.orders.*') => 'add_sale',
-                    $request->routeIs('erp.stock.transfers.*') => 'stock_transfers',
-                    $request->routeIs('erp.stock.adjustments.*') => 'stock_adjustment',
+                    str_starts_with($action, 'erp.purchases.') || str_starts_with($action, 'erp.purchase-returns.') => 'purchases',
+                    str_starts_with($action, 'erp.sales.') || str_starts_with($action, 'erp.sale-returns.') || str_starts_with($action, 'erp.quotes.') || str_starts_with($action, 'erp.orders.') => 'add_sale',
+                    str_starts_with($action, 'erp.stock.transfers.') => 'stock_transfers',
+                    str_starts_with($action, 'erp.stock.adjustments.') || $action === 'erp.stock.movements.reverse' => 'stock_adjustment',
                     default => null,
                 };
                 $module ??= $this->fiscalModule($request, $companyId);
@@ -126,6 +133,17 @@ class ResolveCompany
                 $request->attributes->remove(CurrentCompany::class);
             }
         });
+    }
+
+    private function effectiveAction(Request $request): string
+    {
+        return match ((string) $request->route()?->getName()) {
+            'erp.payments.allocation-candidates' => 'erp.payments.allocate',
+            'erp.purchases.xml-preview.read' => 'erp.purchases.xml-confirm',
+            'erp.catalog.import.products.read' => 'erp.catalog.import.products.confirm',
+            'erp.catalog.import.contacts.read' => 'erp.catalog.import.contacts.confirm',
+            default => (string) $request->route()?->getName(),
+        };
     }
 
     private function fiscalModule(Request $request, int $companyId): ?string

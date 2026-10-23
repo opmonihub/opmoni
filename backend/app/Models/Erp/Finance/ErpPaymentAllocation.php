@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ErpPaymentAllocation extends Model
 {
     protected $fillable = [
+        'reason',
+
         'erp_payment_id',
         'erp_obligation_id',
         'amount',

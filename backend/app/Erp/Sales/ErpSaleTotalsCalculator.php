@@ -33,7 +33,7 @@ final class ErpSaleTotalsCalculator
             $type = $discount['discount_type'] ?? 'fixed';
             $raw = ErpDecimal::parse($discount['discount_amount'] ?? '0');
             $discountAmount = $type === 'percentage'
-                ? ErpDecimal::mul($subtotal, bcdiv($raw, '100', ErpDecimal::SCALE))
+                ? bcdiv(bcmul($subtotal, $raw, 8), '100', ErpDecimal::SCALE)
                 : $raw;
         }
 
@@ -41,7 +41,7 @@ final class ErpSaleTotalsCalculator
         $taxable = ErpDecimal::sub($subtotal, $discountAmount);
         $taxAmount = ErpDecimal::zero();
         if ($taxRatePercent !== null && ErpDecimal::compare(ErpDecimal::parse($taxRatePercent), ErpDecimal::zero()) === 1) {
-            $taxAmount = ErpDecimal::mul($taxable, bcdiv(ErpDecimal::parse($taxRatePercent), '100', ErpDecimal::SCALE));
+            $taxAmount = bcdiv(bcmul($taxable, ErpDecimal::parse($taxRatePercent), 8), '100', ErpDecimal::SCALE);
         }
 
         $total = ErpDecimal::add(ErpDecimal::sub($subtotal, $discountAmount), $taxAmount);

@@ -49,6 +49,13 @@ return [
 
         'certificates' => ['driver' => 'local', 'root' => storage_path('app/private/certificates'), 'serve' => false, 'throw' => true, 'report' => true],
         'fiscal' => ['driver' => 'local', 'root' => storage_path('app/private/fiscal'), 'serve' => false, 'throw' => true, 'report' => true],
+        'erp-contact-attachments' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/erp/contact-attachments'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
 
         's3' => [
             'driver' => 's3',

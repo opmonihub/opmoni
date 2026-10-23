@@ -22,6 +22,7 @@ class ErpFiscalCertificate extends Model
         'valid_from',
         'valid_until',
         'revision',
+        'current_revision_id',
         'status',
         'uploaded_by_user_id',
     ];
@@ -50,8 +51,18 @@ class ErpFiscalCertificate extends Model
         return $this->belongsTo(User::class, 'uploaded_by_user_id');
     }
 
+    public function currentRevision(): BelongsTo
+    {
+        return $this->belongsTo(ErpFiscalCertificateRevision::class, 'current_revision_id');
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(ErpFiscalDocument::class, 'erp_fiscal_certificate_id');
+    }
+
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(ErpFiscalCertificateRevision::class, 'erp_fiscal_certificate_id');
     }
 }

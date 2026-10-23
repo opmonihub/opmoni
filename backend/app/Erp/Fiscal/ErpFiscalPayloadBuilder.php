@@ -46,12 +46,14 @@ final class ErpFiscalPayloadBuilder
             throw new InvalidArgumentException('Data de emissão inválida.');
         }
 
-        $cnpj = $this->digits($input['cnpj'] ?? '', 14);
-        $series = max(1, (int) ($input['series'] ?? 1));
-        $number = max(1, (int) ($input['number'] ?? 1));
+        $cnpj = (string) ($input['cnpj'] ?? '');
+        $series = (int) ($input['series'] ?? 1);
+        $number = (int) ($input['number'] ?? 1);
         $tpEmis = (int) ($input['tp_emis'] ?? 1);
-        $cnf = $input['cnf'] ?? random_int(11111111, 99999999);
-        $cnfDigits = str_pad(substr(preg_replace('/\D+/', '', (string) $cnf) ?? '', -8), 8, '0', STR_PAD_LEFT);
+        $cnfDigits = (string) ($input['cnf'] ?? random_int(11111111, 99999999));
+        if (! preg_match('/^\d{14}$/', $cnpj) || $series < 0 || $series > 999 || $number < 1 || $number > 999999999 || $tpEmis < 1 || $tpEmis > 9 || ! preg_match('/^\d{8}$/', $cnfDigits)) {
+            throw new InvalidArgumentException('Identidade fiscal inválida ou formato de identificador não suportado; nenhum dígito foi descartado.');
+        }
 
         $base = sprintf(
             '%02d%02d%02d%s%02d%03d%09d%01d%08s',

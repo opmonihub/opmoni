@@ -1,0 +1,437 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "dark": true,
+  "documentWidth": 390,
+  "firstTableRow": {
+    "height": 73,
+    "width": 816.328125,
+    "x": 16,
+    "y": 216
+  },
+  "fontFaces": [
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: BlinkMacSystemFont",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Segoe UI",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Helvetica Neue",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Arial",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans Fallback: Noto Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded"
+    }
+  ],
+  "forms": [],
+  "headings": [
+    {
+      "rect": {
+        "height": 24,
+        "width": 82.15625,
+        "x": 54,
+        "y": 19.5
+      },
+      "text": "Customers"
+    }
+  ],
+  "nestedForms": 0,
+  "primary": {
+    "background": "rgb(0, 220, 130)",
+    "color": "oklch(0.21 0.006 285.885)",
+    "label": "New customer",
+    "rect": {
+      "height": 32,
+      "width": 140.3125,
+      "x": 233.6875,
+      "y": 15.5
+    }
+  },
+  "title": "Nuxt Dashboard Template",
+  "tokens": {
+    "--font-sans": "'Public Sans', \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+    "--ui-primary": "#00DC82",
+    "--ui-success": "#00DC82",
+    "--ui-text-muted": "oklch(70.5% 0.015 286.067)"
+  },
+  "url": "/customers",
+  "viewport": [
+    390,
+    844
+  ],
+  "visibleButtons": [
+    {
+      "label": "Open sidebar",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 16,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "New customer",
+      "rect": {
+        "height": 32,
+        "width": 140.3125,
+        "x": 233.6875,
+        "y": 15.5
+      }
+    },
+    {
+      "label": "Delete1",
+      "rect": {
+        "height": 32,
+        "width": 114.75,
+        "x": 16,
+        "y": 118
+      }
+    },
+    {
+      "label": "All",
+      "rect": {
+        "height": 32,
+        "width": 112,
+        "x": 136.75,
+        "y": 118
+      }
+    },
+    {
+      "label": "Display",
+      "rect": {
+        "height": 32,
+        "width": 94.3125,
+        "x": 254.75,
+        "y": 118
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 33,
+        "y": 183
+      }
+    },
+    {
+      "label": "Email",
+      "rect": {
+        "height": 32,
+        "width": 82.53125,
+        "x": 285.234375,
+        "y": 175
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 244
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 236
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 317
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 309
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 390
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 382
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 463
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 455
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 536
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 528
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 609
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 601
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 682
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 674
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 755
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 747
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 828
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 820
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 16,
+        "width": 16,
+        "x": 32,
+        "y": 901
+      }
+    },
+    {
+      "label": "",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 784.328125,
+        "y": 893
+      }
+    },
+    {
+      "label": "First Page",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 162,
+        "y": 982
+      }
+    },
+    {
+      "label": "Previous Page",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 198,
+        "y": 982
+      }
+    },
+    {
+      "label": "Page 1",
+      "rect": {
+        "height": 32,
+        "width": 32,
+        "x": 234,
+        "y": 982
+      }
+    }
+  ]
+}

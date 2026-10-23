@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Reports;
 
+use App\Erp\ErpEstablishmentAccess;
+use App\Erp\ErpOperationJournal;
 use App\Erp\ErpReleaseGate;
 use App\Erp\Reports\ErpLedgerReportService;
+use App\Erp\Reports\ErpReportExportOperation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
 use App\Models\Erp\Reports\ErpReportExport;
 use App\Support\CurrentCompany;
@@ -25,7 +28,11 @@ class ErpReportController extends ErpOperationsController
     public function show(Request $request, string $category): JsonResponse
     {
         $this->releaseGate->assertReleased($this->companyId($request), $request->user()?->id);
-        $companyId = $this->companyId($request);
+        $context = CurrentCompany::fromRequest($request);
+        $companyId = $context->company->id;
+        $access = app(ErpEstablishmentAccess::class);
+        $allowedEstablishmentIds = $access->allowedIds($context);
+        $includeCompanywideFinance = $access->allowsCompanywideNullableRecords($context);
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
@@ -36,7 +43,7 @@ class ErpReportController extends ErpOperationsController
         ]);
 
         try {
-            $payload = $this->reports->report($companyId, $category, $filters);
+            $payload = $this->reports->report($companyId, $category, $filters, $allowedEstablishmentIds, $includeCompanywideFinance, $request);
         } catch (InvalidArgumentException $exception) {
             return response()->json([
                 'code' => 'validation_error',
@@ -56,6 +63,10 @@ class ErpReportController extends ErpOperationsController
         }
 
         $companyId = $this->companyId($request);
+        $context = CurrentCompany::fromRequest($request);
+        $access = app(ErpEstablishmentAccess::class);
+        $allowedEstablishmentIds = $access->allowedIds($context);
+        $includeCompanywideFinance = $access->allowsCompanywideNullableRecords($context);
         $filters = $request->validate([
             'date_from' => ['sometimes', 'date'],
             'date_to' => ['sometimes', 'date'],
@@ -65,60 +76,73 @@ class ErpReportController extends ErpOperationsController
             'direction' => ['sometimes', 'string'],
         ]);
 
-        try {
-            $normalized = $this->reports->normalizeFilters($companyId, $filters, $category);
-            $payload = $this->reports->report($companyId, $category, $normalized);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json([
-                'code' => 'validation_error',
-                'message' => $exception->getMessage(),
-            ], 422);
-        }
-
-        $path = sprintf(
-            'erp/report-exports/%d/%s-%s.json',
-            $companyId,
-            $category,
-            now()->format('YmdHis').'-'.bin2hex(random_bytes(4)),
-        );
-        $export = ErpReportExport::query()->create([
-            'erp_company_id' => $companyId,
-            'user_id' => $request->user()->id,
-            'report_type' => $category,
-            'filters' => $normalized,
-            'status' => 'pending',
-            'expires_at' => now()->addDay(),
-        ]);
-
-        $failureCode = null;
-        try {
-            $bytes = json_encode($payload, JSON_THROW_ON_ERROR);
-            $disk = Storage::disk('local');
-            if ($disk->put($path, $bytes, ['visibility' => 'private']) !== true) {
-                $failureCode = 'export_storage_unavailable';
-            } elseif ($disk->get($path) !== $bytes) {
-                $failureCode = 'export_artifact_invalid';
+        return app(ErpOperationJournal::class)->executeReportExport($request, $category, $filters, function () use ($request, $category, $companyId, $filters, $allowedEstablishmentIds, $includeCompanywideFinance): JsonResponse {
+            try {
+                $normalized = $this->reports->normalizeFilters($companyId, $filters, $category, $allowedEstablishmentIds, $includeCompanywideFinance);
+                $payload = $this->reports->report($companyId, $category, $normalized, $allowedEstablishmentIds, $includeCompanywideFinance, $request);
+                $normalized['authorized_commercial_ids'] = $this->reports->commercialReferences();
+                if (in_array($category, ['financial', 'overview'], true)) {
+                    $normalized['authorized_payment_ids'] = $this->reports->paymentReferences();
+                }
+            } catch (InvalidArgumentException $exception) {
+                return response()->json([
+                    'code' => 'validation_error',
+                    'message' => $exception->getMessage(),
+                ], 422);
             }
-        } catch (JsonException) {
-            $failureCode = 'export_artifact_invalid';
-        } catch (FilesystemException) {
-            $failureCode = 'export_storage_unavailable';
-        }
 
-        if ($failureCode !== null) {
-            $this->failExport($export, $failureCode, $path);
+            $authorizedEstablishmentIds = $allowedEstablishmentIds;
+            if ($normalized['erp_establishment_id'] !== null) {
+                $authorizedEstablishmentIds = [$normalized['erp_establishment_id']];
+            }
+            $path = sprintf(
+                'erp/report-exports/%d/%s-%s.json',
+                $companyId,
+                $category,
+                now()->format('YmdHis').'-'.bin2hex(random_bytes(4)),
+            );
+            $export = ErpReportExport::query()->create([
+                'erp_company_id' => $companyId,
+                'user_id' => $request->user()->id,
+                'report_type' => $category,
+                'filters' => $normalized,
+                'authorized_establishment_scope' => $normalized['authorized_establishment_scope'],
+                'authorized_establishment_ids' => $authorizedEstablishmentIds,
+                'authorized_companywide_finance' => $normalized['authorized_companywide_finance'],
+                'status' => 'pending',
+                'expires_at' => now()->addDay(),
+            ]);
 
-            return $this->exportError($export, $failureCode, 503);
-        }
+            $failureCode = null;
+            try {
+                $bytes = json_encode($payload, JSON_THROW_ON_ERROR);
+                $disk = Storage::disk('local');
+                if ($disk->put($path, $bytes, ['visibility' => 'private']) !== true) {
+                    $failureCode = 'export_storage_unavailable';
+                } elseif ($disk->get($path) !== $bytes) {
+                    $failureCode = 'export_artifact_invalid';
+                }
+            } catch (JsonException) {
+                $failureCode = 'export_artifact_invalid';
+            } catch (FilesystemException) {
+                $failureCode = 'export_storage_unavailable';
+            }
 
-        $export->update([
-            'status' => 'completed',
-            'storage_path' => $path,
-            'content_sha256' => hash('sha256', $bytes),
-            'content_bytes' => strlen($bytes),
-        ]);
+            if ($failureCode !== null) {
+                $this->failExport($export, $failureCode, $path);
 
-        return response()->json(['data' => $this->serializeExport($export)], 201);
+                return $this->exportError($export, $failureCode, 503);
+            }
+
+            $export->update([
+                'status' => 'completed',
+                'storage_path' => $path,
+                'content_sha256' => hash('sha256', $bytes),
+                'content_bytes' => strlen($bytes),
+            ]);
+
+            return response()->json(['data' => $this->serializeExport($export)], 201);
+        });
     }
 
     public function showExport(Request $request, int $export): JsonResponse
@@ -135,6 +159,12 @@ class ErpReportController extends ErpOperationsController
             return $this->exportError($model, $model->failure_code ?? 'export_not_available', 409);
         }
         if ($model->content_sha256 === null || $model->content_bytes === null) {
+            return $this->exportError($model, 'export_requires_regeneration', 409);
+        }
+        $access = app(ErpEstablishmentAccess::class);
+        $context = CurrentCompany::fromRequest($request);
+        if (! $this->exportScopeAllows($model, $access->allowedIds($context), $access->allowsCompanywideNullableRecords($context))
+            || ! app(ErpReportExportOperation::class)->dependenciesAllow($request, $model)) {
             return $this->exportError($model, 'export_requires_regeneration', 409);
         }
 
@@ -189,6 +219,24 @@ class ErpReportController extends ErpOperationsController
         }
     }
 
+    /** @param list<int>|null $currentIds Null means all locations. */
+    private function exportScopeAllows(ErpReportExport $export, ?array $currentIds, bool $currentCompanywideFinance): bool
+    {
+        if ($export->authorized_companywide_finance === null && ! $currentCompanywideFinance) {
+            return false;
+        }
+        if ($export->authorized_companywide_finance === true && ! $currentCompanywideFinance) {
+            return false;
+        }
+
+        if ($export->authorized_establishment_scope === null || $export->authorized_establishment_scope === 'all') {
+            return $currentIds === null;
+        }
+        $authorizedIds = $export->authorized_establishment_ids ?? [];
+
+        return $currentIds === null || array_diff($authorizedIds, $currentIds) === [];
+    }
+
     private function exportError(ErpReportExport $export, string $code, int $status): JsonResponse
     {
         return response()->json([
@@ -206,7 +254,7 @@ class ErpReportController extends ErpOperationsController
         return [
             'id' => $export->id,
             'report_type' => $export->report_type,
-            'filters' => $export->filters,
+            'filters' => array_diff_key($export->filters ?? [], array_flip(['authorized_payment_ids', 'authorized_commercial_ids'])),
             'status' => $export->status,
             'expires_at' => $export->expires_at?->toIso8601String(),
             ...($export->failure_code !== null ? ['failure_code' => $export->failure_code] : []),

@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Read;
 
+use App\Enums\FiscalProcessingReason;
 use App\Enums\FiscalProcessingState;
 use App\Enums\FiscalStage;
 use App\Enums\FiscalStorageState;
@@ -125,11 +126,16 @@ final class FiscalProcessing
                         });
                 })->orWhere(function (Builder $document): void {
                     $document->where('stage', FiscalStage::Document)
-                        ->whereIn('storage_state', [
-                            FiscalStorageState::Missing,
-                            FiscalStorageState::Corrupt,
-                            FiscalStorageState::Unverified,
-                        ]);
+                        ->where(function (Builder $attention): void {
+                            $attention->whereIn('storage_state', [
+                                FiscalStorageState::Missing,
+                                FiscalStorageState::Corrupt,
+                                FiscalStorageState::Unverified,
+                            ])->orWhere(function (Builder $conflict): void {
+                                $conflict->where('processing_state', FiscalProcessingState::Attention)
+                                    ->where('processing_reason', FiscalProcessingReason::ArtifactConflict);
+                            });
+                        });
                 });
             });
     }

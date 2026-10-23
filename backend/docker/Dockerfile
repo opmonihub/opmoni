@@ -4,8 +4,9 @@ ARG APP_UID=1000
 ARG APP_GID=1000
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends git unzip libpq-dev libicu-dev libzip-dev \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql intl zip pcntl bcmath \
+    && apt-get install --yes --no-install-recommends git unzip libpq-dev libicu-dev libzip-dev libcurl4-openssl-dev libxml2-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql intl zip pcntl bcmath curl soap gd \
     && pecl install redis-6.3.0 \
     && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/* \

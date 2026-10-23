@@ -1,55 +1,95 @@
 <script setup lang="ts">
-import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
+import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
+import ErpCarrierCatalogForm from '~/components/erp/catalogs/ErpCarrierCatalogForm.vue'
+import ErpDriverCatalogForm from '~/components/erp/catalogs/ErpDriverCatalogForm.vue'
+import ErpVehicleCatalogForm from '~/components/erp/catalogs/ErpVehicleCatalogForm.vue'
+import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import type { ComponentPublicInstance } from 'vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
-type Carrier = { id: number, legal_name: string, tax_id: string | null, status: string }
-type Vehicle = { id: number, plate: string, model: string | null, brand: string | null, status: string }
-type Driver = { id: number, name: string, tax_id: string | null, status: string }
-const carriers = useErpCatalogList<Carrier>(erpCatalogRoutes.carriers)
-const vehicles = useErpCatalogList<Vehicle>(erpCatalogRoutes.vehicles)
-const drivers = useErpCatalogList<Driver>(erpCatalogRoutes.drivers)
+useHead({ title: 'Logística · Cadastros ERP' })
+
+const carrierColumns = [
+  { accessorKey: 'legal_name', header: 'Razão social' },
+  { accessorKey: 'tax_id', header: 'CNPJ/CPF' },
+  { accessorKey: 'ie', header: 'Inscrição estadual' },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
+]
+const vehicleColumns = [
+  { accessorKey: 'plate', header: 'Placa' },
+  { accessorKey: 'model', header: 'Modelo' },
+  { accessorKey: 'brand', header: 'Marca' },
+  { accessorKey: 'uf', header: 'UF' },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
+]
+const driverColumns = [
+  { accessorKey: 'name', header: 'Nome' },
+  { accessorKey: 'tax_id', header: 'CPF' },
+  { accessorKey: 'license_number', header: 'CNH' },
+  { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
+]
+const carrierLabel = (record: Record<string, unknown>) => String(record.legal_name ?? '')
+const vehicleLabel = (record: Record<string, unknown>) => String(record.plate ?? '')
+const driverLabel = (record: Record<string, unknown>) => String(record.name ?? '')
+type CatalogResourceHandle = InstanceType<typeof ErpCatalogResource>
+type CatalogCreateAction = CatalogResourceHandle['createAction']
+const carrierResource = ref<CatalogResourceHandle | null>(null)
+const vehicleResource = ref<CatalogResourceHandle | null>(null)
+const driverResource = ref<CatalogResourceHandle | null>(null)
+const createMenuTrigger = ref<ComponentPublicInstance | null>(null)
+let pendingCreateFocusAction: CatalogCreateAction | null = null
+const createActions = computed(() => [carrierResource.value?.createAction, vehicleResource.value?.createAction, driverResource.value?.createAction]
+  .filter((action): action is CatalogCreateAction => !!action && action.allowed))
+function handoffCreateMenuFocus(event: Event) {
+  const action = pendingCreateFocusAction
+  if (!action)
+    return
+  pendingCreateFocusAction = null
+  event.preventDefault()
+}
+const createMenuItems = computed(() => [createActions.value.map(action => ({
+  label: action.label,
+  disabled: action.busy,
+  onSelect: () => {
+    if (action.trigger(createMenuTrigger.value?.$el as HTMLElement | undefined))
+      pendingCreateFocusAction = action
+  }
+}))])
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Logística" description="Transportadoras, veículos e motoristas para CT-e/MDF-e.">
-    <UCard>
-      <template #header>
-        Transportadoras
-      </template>
-      <UTable :loading="carriers.pending.value" :data="carriers.state.value?.data ?? []" :columns="[{ accessorKey: 'legal_name', header: 'Razão social' }, { accessorKey: 'tax_id', header: 'CNPJ/CPF' }]" />
-      <ErpCatalogPagination
-        v-model:page="carriers.page.value"
-        :meta="carriers.state.value?.meta"
-        :pending="carriers.pending.value"
-        :error="carriers.error.value"
-        @retry="carriers.refresh"
-      />
-    </UCard>
-    <UCard>
-      <template #header>
-        Veículos
-      </template>
-      <UTable :loading="vehicles.pending.value" :data="vehicles.state.value?.data ?? []" :columns="[{ accessorKey: 'plate', header: 'Placa' }, { accessorKey: 'model', header: 'Modelo' }]" />
-      <ErpCatalogPagination
-        v-model:page="vehicles.page.value"
-        :meta="vehicles.state.value?.meta"
-        :pending="vehicles.pending.value"
-        :error="vehicles.error.value"
-        @retry="vehicles.refresh"
-      />
-    </UCard>
-    <UCard>
-      <template #header>
-        Motoristas
-      </template>
-      <UTable :loading="drivers.pending.value" :data="drivers.state.value?.data ?? []" :columns="[{ accessorKey: 'name', header: 'Nome' }, { accessorKey: 'tax_id', header: 'CPF' }]" />
-      <ErpCatalogPagination
-        v-model:page="drivers.page.value"
-        :meta="drivers.state.value?.meta"
-        :pending="drivers.pending.value"
-        :error="drivers.error.value"
-        @retry="drivers.refresh"
-      />
-    </UCard>
+  <ErpCatalogPageShell title="Logística" description="Transportadoras, veículos e motoristas para operações de transporte.">
+    <template #actions>
+      <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
+        <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro de logística" icon="i-lucide-plus">
+          <span class="hidden sm:inline">Adicionar</span>
+        </UButton>
+      </UDropdownMenu>
+    </template>
+    <ErpCatalogResource
+      ref="carrierResource"
+      :path="erpCatalogRoutes.carriers"
+      title="Transportadoras"
+      :form="ErpCarrierCatalogForm"
+      :columns="carrierColumns"
+      :record-label="carrierLabel"
+    />
+    <ErpCatalogResource
+      ref="vehicleResource"
+      :path="erpCatalogRoutes.vehicles"
+      title="Veículos"
+      :form="ErpVehicleCatalogForm"
+      :columns="vehicleColumns"
+      :record-label="vehicleLabel"
+    />
+    <ErpCatalogResource
+      ref="driverResource"
+      :path="erpCatalogRoutes.drivers"
+      title="Motoristas"
+      :form="ErpDriverCatalogForm"
+      :columns="driverColumns"
+      :record-label="driverLabel"
+    />
   </ErpCatalogPageShell>
 </template>

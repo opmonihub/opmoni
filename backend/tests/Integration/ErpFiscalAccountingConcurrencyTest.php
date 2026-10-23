@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Erp\Accounting\ErpAccountingHandoffService;
 use App\Erp\ErpCommercialCatalog;
+use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Models\Account;
 use App\Models\AccountMembership;
@@ -27,11 +28,13 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 use Tests\Support\ApprovesErpAccountingMappings;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpFiscalAccountingConcurrencyTest extends TestCase
 {
     use ApprovesErpAccountingMappings;
+    use BuildsVerifiedErpFiscalEvidence;
 
     private static bool $schemaReady = false;
 
@@ -67,7 +70,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function assertConcurrentDeliveryPublishesSingleOfficeDocument(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $company->id,
@@ -98,18 +101,9 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $deliveryId = (int) DB::table('erp_accounting_deliveries')->insertGetId([
-            'erp_company_id' => $company->id,
-            'erp_fiscal_document_id' => $documentId,
-            'account_id' => $office->id,
-            'delegation_id' => $delegation->id,
-            'mapping_id' => $mapping->id,
-            'mapping_revision' => $mapping->revision,
-            'status' => ErpAccountingDelivery::STATUS_PENDING,
-            'attempts' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $verifiedDocument = ErpFiscalDocument::findOrFail($documentId);
+        $this->attachVerifiedFiscalEvidence($verifiedDocument);
+        $deliveryId = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($verifiedDocument)->id;
 
         $results = $this->concurrent([
             ['operation' => 'deliver', 'delivery_id' => $deliveryId],
@@ -119,43 +113,48 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $successes, json_encode($results, JSON_THROW_ON_ERROR));
 
         $this->assertSame(1, ErpAccountingDelivery::query()->whereKey($deliveryId)->where('status', ErpAccountingDelivery::STATUS_DELIVERED)->count());
-        $this->assertSame(1, FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', '35251030288513000100550010000091001234567890')->count());
+        $this->assertSame(1, FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', $verifiedDocument->access_key)->count());
     }
 
     private function assertConcurrentTransmitAuthorizesOnce(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj(), 'operating_settings' => ['uf' => 'SP']]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
-        $documentId = (int) DB::table('erp_fiscal_documents')->insertGetId([
-            'erp_company_id' => $company->id,
-            'erp_establishment_id' => $establishment->id,
-            'model' => '55',
-            'environment' => 'homologation',
-            'series' => 1,
-            'number' => random_int(30000, 39999),
-            'access_key' => '35251030288513000100550010000090011234567890',
-            'status' => ErpFiscalDocumentStateMachine::QUEUED,
-            'idempotency_key' => 'fiscal-transmit-race-1',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $results = $this->concurrent([
-            ['operation' => 'fiscal-transmit', 'document_id' => $documentId],
-            ['operation' => 'fiscal-transmit', 'document_id' => $documentId],
-        ]);
-        $successes = count(array_filter($results, fn (array $row): bool => ($row['ok'] ?? false) === true));
-        $this->assertGreaterThanOrEqual(1, $successes, json_encode($results, JSON_THROW_ON_ERROR));
-        $this->assertSame(
-            ErpFiscalDocumentStateMachine::AUTHORIZED,
-            ErpFiscalDocument::query()->findOrFail($documentId)->status,
-        );
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
+        $document = ErpFiscalDocument::create(['erp_company_id' => $company->id, 'erp_establishment_id' => $establishment->id,
+            'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => random_int(30000, 39999), 'idempotency_key' => 'fiscal-transmit-race-1']);
+        $this->attachVerifiedFiscalEvidence($document);
+        $attempt = $document->attempts()->where('action', 'document:transmit')->sole();
+        ErpCompanyMembership::factory()->create(['erp_company_id' => $company->id, 'user_id' => $attempt->actor_user_id, 'role' => 'owner']);
+        $plan = app(ErpCommercialCatalog::class)->ensureBasicPlan();
+        ErpSubscription::factory()->create(['erp_company_id' => $company->id, 'erp_plan_id' => $plan->id, 'status' => 'active']);
+        Storage::disk('local')->delete($document->storage_path);
+        $document->update(['status' => 'queued', 'authorized_at' => null, 'storage_path' => null, 'artifact_sha256' => null,
+            'artifact_byte_length' => null, 'metadata' => []]);
+        $attempt->forceFill(['status' => 'pending', 'outbox_state' => 'new', 'safe_result' => null, 'provider_protocol' => null,
+            'dispatch_attempts' => 0, 'available_at' => now()])->save();
+        $calls = sys_get_temp_dir().'/opmoni-fiscal-provider-calls-'.bin2hex(random_bytes(8));
+        try {
+            $results = $this->concurrent([
+                ['operation' => 'fiscal-transmit', 'attempt_id' => $attempt->id, 'provider_calls' => $calls],
+                ['operation' => 'fiscal-transmit', 'attempt_id' => $attempt->id, 'provider_calls' => $calls],
+            ]);
+            $this->assertTrue(collect($results)->every(fn (array $row): bool => $row['ok']), json_encode($results));
+            $this->assertCount(2, array_unique(array_column($results, 'backend_pid')));
+            $this->assertSame(1, $attempt->fresh()->dispatch_attempts);
+            $this->assertSame('accepted', $attempt->fresh()->status);
+            $this->assertSame('completed', $attempt->fresh()->outbox_state);
+            $this->assertCount(1, file($calls, FILE_IGNORE_NEW_LINES));
+            $this->assertSame('authorized', $document->fresh()->status);
+            $this->assertTrue(app(ErpFiscalArtifactStore::class)->verifiedFiscalArtifactReady($document->fresh()));
+        } finally {
+            @unlink($calls);
+        }
     }
 
     private function assertDeliveryBlockedWhenDelegationRevoked(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $company->id,
@@ -183,6 +182,8 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             'artifact_sha256' => hash('sha256', Storage::disk('local')->get($path)),
             'authorized_at' => now(),
         ]);
+        $verifiedXml = $this->attachVerifiedFiscalEvidence($document);
+        $key = $document->access_key;
         $delivery = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($document);
         $this->assertNotNull($delivery);
         $delegation->update(['status' => 'revoked']);
@@ -243,7 +244,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     public function test_initial_concurrent_office_approvals_create_one_mapping(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
         $client = resolve(CurrentTenant::class)->run($office->id, fn () => Client::factory()->company()->create(['account_id' => $office->id]));
@@ -416,7 +417,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         $rows = FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', $s['key'])->get();
         $this->assertCount(1, $rows);
         $this->assertTrue(app(FiscalDocumentReadiness::class)->isReadyRow($rows->sole()));
-        $this->assertSame('<nfeProc/>', Storage::disk('fiscal')->get($rows->sole()->storage_path));
+        $this->assertSame($s['bytes'], Storage::disk('fiscal')->get($rows->sole()->storage_path));
     }
 
     public function test_real_queue_defers_busy_crossing_without_attempt_then_delivers(): void
@@ -467,7 +468,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             Account::whereKey($s['account_id'])->lockForUpdate()->firstOrFail();
             $busy = $this->httpRequest(array_replace_recursive($ownerSession, [
                 'method' => 'POST', 'path' => '/api/v1/erp/accounting-deliveries/'.$s['delivery_id'].'/retry',
-                'headers' => ['X-Company-Id' => (string) $s['company_id']],
+                'headers' => ['X-Company-Id' => (string) $s['company_id'], 'Idempotency-Key' => 'accounting-busy-retry'],
             ]));
             $this->assertSame(503, $busy['status'], json_encode($busy));
             $this->assertSame('accounting_mapping_busy', $busy['body']['code']);
@@ -517,7 +518,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     public function test_conflicting_capture_race_preserves_first_accepted_artifact(): void
     {
         $s = $this->mappingScenario();
-        $results = $this->concurrent([$s + ['operation' => 'capture', 'bytes' => '<conflicting/>'], $s + ['operation' => 'deliver']]);
+        $results = $this->concurrent([array_replace($s, ['operation' => 'capture', 'bytes' => '<conflicting/>']), $s + ['operation' => 'deliver']]);
         $this->assertOnlySuccessOrBusy($results);
         app(ErpAccountingHandoffService::class)->deliver(ErpAccountingDelivery::findOrFail($s['delivery_id']));
         $row = FiscalDocument::withoutGlobalScope('account')->where('chave_acesso', $s['key'])->sole();
@@ -526,7 +527,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
         $bytes = Storage::disk('fiscal')->get($row->storage_path);
         $this->assertSame($row->sha256, hash('sha256', $bytes));
         $this->assertSame($row->xml_bytes, strlen($bytes));
-        $this->assertContains($bytes, ['<nfeProc/>', '<conflicting/>']);
+        $this->assertContains($bytes, [$s['bytes'], '<conflicting/>']);
     }
 
     private function assertOnlySuccessOrBusy(array $results): void
@@ -560,7 +561,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function mappingScenario(): array
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
         $client = resolve(CurrentTenant::class)->run($office->id, fn () => Client::factory()->company()->create(['account_id' => $office->id]));
@@ -579,17 +580,19 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             'access_key' => $key, 'status' => 'authorized', 'idempotency_key' => fake()->uuid(),
             'storage_path' => $path, 'artifact_byte_length' => 10, 'artifact_sha256' => hash('sha256', '<nfeProc/>'), 'authorized_at' => now(),
         ]);
+        $verifiedXml = $this->attachVerifiedFiscalEvidence($document);
+        $key = $document->access_key;
         $delivery = app(ErpAccountingHandoffService::class)->ensureDeliveryIntent($document);
         $membershipId = AccountMembership::where('account_id', $office->id)->where('user_id', $mapping->approved_by_user_id)->value('id');
 
         return ['company_id' => $company->id, 'establishment_id' => $establishment->id, 'account_id' => $office->id,
             'delegation_id' => $delegation->id, 'client_id' => $client->id, 'mapping_id' => $mapping->id,
-            'delivery_id' => $delivery->id, 'document_id' => $document->id, 'membership_id' => $membershipId, 'key' => $key];
+            'delivery_id' => $delivery->id, 'document_id' => $document->id, 'membership_id' => $membershipId, 'key' => $key, 'bytes' => $verifiedXml, 'issuer' => substr($key, 6, 14)];
     }
 
     private function uniqueCnpj(): string
     {
-        return str_pad((string) random_int(1_000_000_000_000_0, 9_999_999_999_999_9), 14, '0', STR_PAD_LEFT);
+        return fake('pt_BR')->unique()->cnpj(false);
     }
 
     /** @param array<string, mixed> $input */

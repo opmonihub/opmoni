@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
+use App\Erp\ErpCatalogDecimal;
 use App\Models\Erp\ErpDiscountRule;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ErpDiscountRuleController extends ErpCatalogController
 {
@@ -36,24 +38,30 @@ class ErpDiscountRuleController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $data = $this->validated($request);
-        $row = ErpDiscountRule::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+        return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $data = $this->validated($request);
+            $this->assertCouponAvailable($data['coupon_code'] ?? null, (int) $context->company->id);
+            $row = ErpDiscountRule::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
-        return response()->json(['data' => $this->serialize($row)], 201);
+            return response()->json(['data' => $this->serialize($row)], 201);
+        });
     }
 
     public function update(Request $request, int $discountRule): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $discountRule);
-        $data = $this->validated($request, partial: true);
-        $model->fill($data);
-        $model->save();
+        return $this->write($request, function (CurrentCompany $context) use ($request, $discountRule): JsonResponse {
+            $model = $this->findForCompany($request, $discountRule);
+            $data = $this->validated($request, partial: true);
+            if (array_key_exists('coupon_code', $data)) {
+                $this->assertCouponAvailable($data['coupon_code'], (int) $context->company->id, $model);
+            }
+            $model->fill($data);
+            $model->save();
+            $this->record($request, $context, $model, 'updated');
 
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model->fresh())]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -62,9 +70,27 @@ class ErpDiscountRuleController extends ErpCatalogController
         return $request->validate([
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
             'kind' => [$partial ? 'sometimes' : 'required', 'in:percentage,fixed'],
-            'value' => [$partial ? 'sometimes' : 'required', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'value' => [$partial ? 'sometimes' : 'required', ...ErpCatalogDecimal::widthRule(16, 4)],
             'coupon_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'conditions' => ['sometimes', 'nullable', 'array'],
         ]);
+    }
+
+    private function assertCouponAvailable(?string $coupon, int $companyId, ?ErpDiscountRule $current = null): void
+    {
+        if ($coupon === null || $coupon === '') {
+            return;
+        }
+        if ($current !== null && $current->coupon_code !== null && mb_strtolower($current->coupon_code) === mb_strtolower($coupon)) {
+            return;
+        }
+        if (ErpDiscountRule::query()
+            ->where('erp_company_id', $companyId)
+            ->where('status', 'active')
+            ->whereRaw('lower(coupon_code) = ?', [mb_strtolower($coupon)])
+            ->when($current, fn ($query) => $query->whereKeyNot($current->id))
+            ->exists()) {
+            throw ValidationException::withMessages(['coupon_code' => 'Este cupom já está em uso nesta empresa.']);
+        }
     }
 }

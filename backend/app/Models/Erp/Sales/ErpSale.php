@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ErpSale extends Model
 {
     protected $fillable = [
+        'conversion_source_id', 'draft_revision', 'commercial_snapshot', 'draft_input', 'erp_price_group_id', 'erp_operation_nature_id', 'reason', 'currency', 'subtotal_amount', 'discount_amount', 'tax_amount',
         'erp_company_id',
         'erp_establishment_id',
         'erp_order_id',
@@ -37,6 +38,8 @@ class ErpSale extends Model
     protected function casts(): array
     {
         return [
+            'draft_revision' => 'integer', 'commercial_snapshot' => 'array', 'draft_input' => 'array',
+            'subtotal_amount' => 'decimal:4', 'discount_amount' => 'decimal:4', 'tax_amount' => 'decimal:4',
             'subtotal_amount' => 'decimal:4',
             'discount_amount' => 'decimal:4',
             'tax_amount' => 'decimal:4',

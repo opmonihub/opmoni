@@ -575,7 +575,8 @@ const modelLabels: Record<string, string> = {
   cte: 'CT-e',
   cte_os: 'CT-e OS',
   gtve: 'GTV-e',
-  nfse: 'NFS-e'
+  nfse: 'NFS-e',
+  mdfe: 'MDF-e'
 }
 
 export function modelLabel(model: string): string {

@@ -71,6 +71,7 @@ function setupSurface(file: string, path: string, options: { manageClients?: boo
     definePageMeta() {},
     useRoute: () => route,
     useAuth: () => ({
+      currentAccount: Vue.ref({ id: 1, name: 'Escritório teste', status: 'active', role: 'user' }),
       canManageClients,
       canManageMembers: Vue.ref(options.manageMembers ?? false),
       user: Vue.ref({ is_super_admin: options.superAdmin ?? false })

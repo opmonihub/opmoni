@@ -8,6 +8,7 @@ import { it } from 'node:test'
 import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
+import * as admission from '../app/utils/accessApiAdmissionQueue.ts'
 
 // The SFC compiler returns dynamic setup bindings; execute the real form and API boundaries.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +38,8 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
   const unmounted: (() => unknown)[] = []
   const toasts: Runtime[] = []
   const states = new Map()
+  // Nuxt returns one app, and its plugin installs the real transport once.
+  const nuxtApp: { $api?: Runtime } = {}
   const globals: Record<string, Runtime> = {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch,
     onMounted: (fn: () => unknown) => mounted.push(fn), onBeforeUnmount: (fn: () => unknown) => unmounted.push(fn),
@@ -46,7 +49,7 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
       if (!states.has(key))
         states.set(key, Vue.ref(key === 'access-csrf' ? 'test-csrf' : initial()))
       return states.get(key)
-    }, useNuxtApp: () => ({ $api: globals.useAccessApi().api })
+    }, useNuxtApp: () => nuxtApp
 
   }
   function evaluate(source: string): Runtime {
@@ -55,6 +58,9 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
     new Function('require', 'exports', ...Object.keys(globals), compiled)((name: string) => {
       if (name === 'vue')
         return { ...Vue, withAsyncContext: (run: () => unknown) => [run(), () => {}], resolveComponent: (name: string) => ({ name }) }
+      if (name === '~/utils/accessApiAdmissionQueue')
+        // Keep the real module's WeakMap shared across composable evaluations.
+        return admission
       if (name.startsWith('~/'))
         return evaluate(readFileSync(new URL(`../app/${name.slice(2)}.ts`, import.meta.url), 'utf8'))
       if (name.startsWith('#shared/'))
@@ -66,6 +72,7 @@ async function page(request: (path: string, options?: Runtime) => Promise<Runtim
     return exports
   }
   globals.useAccessApi = evaluate(readFileSync(new URL('../app/composables/useAccessApi.ts', import.meta.url), 'utf8')).useAccessApi
+  nuxtApp.$api = globals.useAccessApi().api
   globals.useSerpro = evaluate(readFileSync(new URL('../app/composables/useSerpro.ts', import.meta.url), 'utf8')).useSerpro
   const { descriptor } = parse(readFileSync(new URL('../app/pages/admin/serpro.vue', import.meta.url), 'utf8'))
   const script = compileScript(descriptor, { id: 'serpro' })
@@ -126,7 +133,11 @@ it('404/500 initial reads are errors; only a successful configured=false shows t
 })
 it('refresh retains last safe metadata and rejects stale reads and unmounted responses', async () => {
   let response: Runtime = { data: saved }
-  const view = await page(async () => await response)
+  let seen = deferred()
+  const view = await page(async () => {
+    seen.resolve(null)
+    return await response
+  })
   await view.start()
   response = Promise.reject({ statusCode: 500 })
   await view.state.load()
@@ -135,15 +146,23 @@ it('refresh retains last safe metadata and rejects stale reads and unmounted res
   assert.ok(view.nodes().some(node => name(node) === 'UCard'))
   const old = deferred()
   response = old.promise
+  seen = deferred()
   const first = view.state.load()
-  response = { data: { ...saved, consumer_key_hint: 'latest' } }
-  await view.state.load()
+  await seen.promise
+  const latestResponse = deferred()
+  response = latestResponse.promise
+  const latest = view.state.load()
   old.resolve({ data: empty })
   await first
+  assert.equal(view.state.metadata.value.consumer_key_hint, saved.consumer_key_hint, 'The obsolete read cannot replace metadata while the current read is queued')
+  latestResponse.resolve({ data: { ...saved, consumer_key_hint: 'latest' } })
+  await latest
   assert.equal(view.state.metadata.value.consumer_key_hint, 'latest')
   const late = deferred()
   response = late.promise
+  seen = deferred()
   const pending = view.state.load()
+  await seen.promise
   view.stop()
   late.resolve({ data: empty })
   await pending
@@ -181,6 +200,8 @@ it('missing/suspended sources block save; source/catalog requests reject obsolet
   let missing = true
   let suspended = false
   const old = deferred()
+  const oldSeen = deferred()
+  let currentDetail: Runtime = null
   let writes = 0
   const view = await page(async (path, options) => {
     if (options?.method) {
@@ -188,11 +209,13 @@ it('missing/suspended sources block save; source/catalog requests reject obsolet
       return { data: saved }
     }
     if (path.endsWith('/accounts/27'))
-      return { data: account(27, suspended ? 'suspended' : 'active') }
+      return currentDetail ?? { data: account(27, suspended ? 'suspended' : 'active') }
     if (path.endsWith('/contracting-certificate'))
       return { data: { ...vault, configured: !missing } }
-    if (path.endsWith('/accounts/28'))
+    if (path.endsWith('/accounts/28')) {
+      oldSeen.resolve(null)
       return old.promise
+    }
     return standard(path)
   })
   await view.start()
@@ -206,10 +229,16 @@ it('missing/suspended sources block save; source/catalog requests reject obsolet
   await view.state.onSubmit({ data: { consumer_key: 'new', consumer_secret: 'dummy' } })
   assert.equal(writes, 0)
   const pending = view.state.selectAccount(28)
+  await oldSeen.promise
   suspended = false
-  await view.state.selectAccount(27)
+  const latestDetail = deferred()
+  currentDetail = latestDetail.promise
+  const latest = view.state.selectAccount(27)
   old.resolve({ data: account(28) })
   await pending
+  assert.equal(view.state.selectedAccount.value, null, 'The obsolete source cannot populate the pending selection')
+  latestDetail.resolve({ data: account(27) })
+  await latest
   assert.equal(view.state.selectedAccount.value.id, 27)
   view.stop()
 })
@@ -377,6 +406,7 @@ it('connectivity guards duplicate/overlapping actions, ignores stale results and
 })
 it('catalog and selected-source loading block form submission; missing Account retries and catalog discards old errors', async () => {
   let catalog: Runtime = { data: [account()], meta: { page: 1, last_page: 1, per_page: 15, total: 1 } }
+  let catalogSeen = deferred()
   let missing = true
   let writes = 0
   const view = await page(async (path, options) => {
@@ -384,8 +414,10 @@ it('catalog and selected-source loading block form submission; missing Account r
       writes++
       return { data: saved }
     }
-    if (path.endsWith('/admin/accounts'))
+    if (path.endsWith('/admin/accounts')) {
+      catalogSeen.resolve(null)
       return await catalog
+    }
     if (path.endsWith('/accounts/27') && missing)
       throw { statusCode: 404 }
     return standard(path)
@@ -400,16 +432,22 @@ it('catalog and selected-source loading block form submission; missing Account r
   assert.equal(view.state.sourceUsable.value, true)
   const stale = deferred()
   catalog = stale.promise
+  catalogSeen = deferred()
   view.state.accountQuery.value = 'old'
   const first = view.state.searchAccounts()
+  await catalogSeen.promise
   assert.equal(view.state.formDisabled.value, true)
   await view.state.onSubmit({ data: { consumer_key: 'key', consumer_secret: 'dummy' } })
   assert.equal(writes, 0)
-  catalog = { data: [account(31)], meta: { page: 1, last_page: 1, per_page: 15, total: 1 } }
+  const latestResponse = deferred()
+  catalog = latestResponse.promise
   view.state.accountQuery.value = 'new'
-  await view.state.searchAccounts()
+  const latest = view.state.searchAccounts()
   stale.reject(Error('obsolete catalog failure'))
   await first
+  assert.equal(view.state.catalogError.value, '', 'The obsolete failure cannot surface while the current catalog is pending')
+  latestResponse.resolve({ data: [account(31)], meta: { page: 1, last_page: 1, per_page: 15, total: 1 } })
+  await latest
   assert.equal(view.state.accountResults.value[0].id, 31)
   assert.equal(view.state.catalogError.value, '')
   view.stop()

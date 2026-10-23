@@ -16,6 +16,16 @@ import {
 } from '../app/utils/erpModulesNav.ts'
 
 describe('erpModulesNav', () => {
+  it('shows modules for exact effective reads without broadening narrow delegated grants', () => {
+    const visible = erpVisibleNavModules(['erp.payments.index', 'erp.contacts.show'])
+    assert.ok(visible.some(module => module.to === '/erp/financeiro'))
+    assert.ok(visible.some(module => module.to === '/erp/cadastros'))
+    assert.equal(visible.some(module => module.to === '/erp/fiscal'), false)
+    assert.equal(erpCompanyHasPermission(['erp.payments.store'], erpPermissions.financeRead), false)
+    assert.equal(erpCompanyHasPermission(['erp.payments.index'], erpPermissions.financeWrite), false)
+    assert.ok(erpVisibleNavModules(['erp.customer-groups.index']).some(module => module.to === '/erp/cadastros'))
+    assert.equal(erpCompanyHasPermission(['erp.customer-groups.store'], erpPermissions.catalogRead), false)
+  })
   it('resolve permissões com wildcard, grant específico e fallback erp.read', () => {
     assert.equal(erpCompanyHasPermission(['*'], erpPermissions.financeWrite), true)
     assert.equal(erpCompanyHasPermission(['erp.finance.read'], erpPermissions.financeRead), true)

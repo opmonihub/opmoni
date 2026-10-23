@@ -13,7 +13,7 @@ class ErpProductVariant extends Model
     use HasFactory;
 
     protected $fillable = [
-        'erp_product_id', 'sku', 'name', 'sale_price', 'barcode', 'status',
+        'erp_product_id', 'sku', 'name', 'sale_price', 'barcode', 'barcode_type', 'status',
     ];
 
     /** @return array<string, string> */

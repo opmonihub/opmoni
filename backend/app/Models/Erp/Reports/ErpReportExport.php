@@ -21,6 +21,9 @@ class ErpReportExport extends Model
         'content_sha256',
         'content_bytes',
         'failure_code',
+        'authorized_establishment_scope',
+        'authorized_establishment_ids',
+        'authorized_companywide_finance',
         'expires_at',
     ];
 
@@ -31,6 +34,8 @@ class ErpReportExport extends Model
             'filters' => 'array',
             'expires_at' => 'datetime',
             'content_bytes' => 'integer',
+            'authorized_establishment_ids' => 'array',
+            'authorized_companywide_finance' => 'boolean',
         ];
     }
 

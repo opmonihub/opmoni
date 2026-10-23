@@ -55,7 +55,7 @@ export function appliedFiscalFilters(
  * filtro de modelo passa: um `cte_os` gravado no banco e ausente aqui seria um
  * documento capturado, listado e não filtrável, em silêncio.
  */
-const models: readonly FiscalModel[] = ['nfe', 'nfce', 'cte', 'cte_os', 'gtve', 'nfse']
+const models: readonly FiscalModel[] = ['nfe', 'nfce', 'cte', 'cte_os', 'gtve', 'nfse', 'mdfe']
 const kinds: readonly FiscalKind[] = ['document', 'event']
 const sorts: readonly FiscalSort[] = ['emissao_at', 'valor_total', 'captured_at']
 const directions: readonly FiscalSortDirection[] = ['asc', 'desc']

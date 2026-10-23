@@ -14,6 +14,7 @@ class ErpStockMovement extends Model
         'erp_company_id',
         'erp_establishment_id',
         'erp_product_variant_id',
+        'source_line_id', 'currency', 'source_currency', 'cost_breakdown', 'total_cost', 'known_cost', 'unvalued_quantity', 'cost_status', 'reason',
         'direction',
         'quantity',
         'unit_cost',
@@ -31,9 +32,10 @@ class ErpStockMovement extends Model
     protected function casts(): array
     {
         return [
+            'total_cost' => 'decimal:4', 'known_cost' => 'decimal:4', 'unvalued_quantity' => 'decimal:4',
             'quantity' => 'decimal:4',
             'unit_cost' => 'decimal:4',
-            'allocation_snapshot' => 'array',
+            'allocation_snapshot' => 'array', 'cost_breakdown' => 'array',
             'posted_at' => 'datetime',
         ];
     }

@@ -27,6 +27,7 @@ class ErpProductFactory extends Factory
             'warranty_months' => null,
             'warranty_description' => null,
             'barcode' => null,
+            'barcode_type' => 'C128',
             'status' => 'active',
         ];
     }

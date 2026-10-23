@@ -1,0 +1,16 @@
+{
+  "viewport": [
+    1366,
+    768
+  ],
+  "path": "/customers",
+  "fontsReady": "loaded",
+  "resources": 250,
+  "navigation": [
+    {
+      "domContentLoadedMs": 3156,
+      "loadMs": 3161
+    }
+  ],
+  "elements": 1031
+}

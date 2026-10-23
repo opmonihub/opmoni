@@ -8,7 +8,7 @@
 
 **Tech Stack:** Installed PHP 8.4.26, Laravel 13.35.0, PHPUnit 12.5.39, Guzzle 8.2.0, OpenSSL 3.0.22 and cURL; Nuxt 4.6.0, Vue 3.5.43, Nuxt UI 4.11.3, TypeScript, existing node:test runner; PostgreSQL 18 and Redis 8.
 
-**Spec:** Read `openspec/changes/add-super-admin-platform/proposal.md`, `design.md`, `tasks.md`, and all five `specs/*/spec.md` together. Compatibility baseline: `openspec/specs/{auth,accounts,isolation,access-pages}/spec.md` and `openspec/changes/archive/2026-10-12-add-access-accounts-foundation/`. Presentation inventory: `docs/architecture/super-admin-frontend-map.md` and `/home/obsidian/dev/legacy/frontend/app`.
+**Spec:** Read `openspec/changes/archive/2026-10-20-add-super-admin-platform/proposal.md`, `design.md`, `tasks.md`, and all five `specs/*/spec.md` together. Compatibility baseline: `openspec/specs/{auth,accounts,isolation,access-pages}/spec.md` and `openspec/changes/archive/2026-10-12-add-access-accounts-foundation/`. Presentation inventory: `docs/architecture/super-admin-frontend-map.md` and `/home/obsidian/dev/legacy/frontend/app`.
 
 ## Global Constraints
 
@@ -432,7 +432,7 @@ Use actual File fixture; pin account-source ID serialization and no manual docum
 
 ## Task 16: Complete provisioning races, whole-change verification and handoff
 
-**Files:** Create `backend/tests/Integration/PlatformProvisioningConcurrencyTest.php`. Modify the execution ledger, `backend/README.md`, `frontend/README.md`, `docs/architecture/product-decisions.md`; update `openspec/changes/add-super-admin-platform/tasks.md` only for verified items. Keep this plan synchronized if a justified contract change was needed.
+**Files:** Create `backend/tests/Integration/PlatformProvisioningConcurrencyTest.php`. Modify the execution ledger, `backend/README.md`, `frontend/README.md`, `docs/architecture/product-decisions.md`; update `openspec/changes/archive/2026-10-20-add-super-admin-platform/tasks.md` only for verified items. Keep this plan synchronized if a justified contract change was needed.
 
 **Interfaces:** Consume all preceding deliverables. Produce reproducible validation evidence, operational initialization/rollback instructions and completed OpenSpec task mapping, without claiming an actual live Serpro account has been tested.
 

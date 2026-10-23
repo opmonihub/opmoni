@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const { canManageMembers } = useAuth()
+const { canManageMembers, currentAccount } = useAuth()
 const links = computed(() => [[{
   label: 'General', icon: 'i-lucide-user', to: '/settings', exact: true
 }, {
@@ -16,6 +16,8 @@ const links = computed(() => [[{
     }, {
       label: 'Canal WhatsApp', icon: 'i-lucide-message-circle', to: '/settings/whatsapp'
     }]
+  : []), ...(currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'
+  ? [{ label: 'Integração ERP', icon: 'i-lucide-landmark', to: '/settings/integracoes-erp' }]
   : [])]] satisfies NavigationMenuItem[][])
 </script>
 

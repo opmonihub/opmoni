@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Erp\ErpCommercialCatalog;
 use App\Erp\ErpReleaseGate;
+use App\Erp\Fiscal\Contracts\ErpFiscalProvider;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
@@ -11,11 +12,14 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\BuildsErpFiscalHarness;
 use Tests\TestCase;
 
 class ErpReleaseLaunchAcceptanceTest extends TestCase
 {
+    use BuildsErpFiscalHarness;
     use RefreshDatabase;
 
     private const VALID_CNPJ = '30288513000100';
@@ -57,6 +61,9 @@ class ErpReleaseLaunchAcceptanceTest extends TestCase
 
         $ctx = $this->ownerContext();
         $document = $this->createQueuedProductionDocument($ctx, '55', 'release-scope-1');
+        $provider = $this->mock(ErpFiscalProvider::class);
+        $provider->shouldNotReceive('transmit');
+        $provider->shouldNotReceive('consult');
 
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/fiscal/documents/'.$document['id'].'/transmit')
@@ -161,10 +168,15 @@ class ErpReleaseLaunchAcceptanceTest extends TestCase
      */
     private function createQueuedProductionDocument(array $ctx, string $model, string $idempotencyKey): array
     {
-        $number = random_int(10000, 99999);
+        Queue::fake();
+        $number = 10001;
+        $nature = $this->configureFiscalHarness($ctx['establishment'], 'production', $number);
+        $sale = $this->postFiscalHarnessSale($ctx['establishment'], $nature, $idempotencyKey);
         $draft = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])
             ->postJson('/api/v1/erp/fiscal/documents', [
                 'erp_establishment_id' => $ctx['establishment']->id,
+                'erp_sale_id' => $sale->id,
+                'source' => $this->fiscalSourceFromAcceptedSale($sale),
                 'model' => $model,
                 'environment' => 'production',
                 'series' => 1,

@@ -26,19 +26,29 @@ const whatsappChannelPage: SettingsPage = {
   to: '/settings/whatsapp'
 }
 
+const erpApprovalPage: SettingsPage = {
+  label: 'Integração ERP',
+  icon: 'i-lucide-landmark',
+  to: '/settings/integracoes-erp'
+}
+
 /**
  * As abas de Configurações. O e-CNPJ e o Canal WhatsApp do escritório entram
  * no fim para quem administra a Account (`admin` ou super_admin em suporte),
  * espelhando `AccountCertificatePolicy`, `WhatsAppChannelPolicy` e o
  * middleware `account-admin` nas duas rotas.
  */
-export function settingsPages(canManageOfficeCertificate: boolean): readonly SettingsPage[] {
-  return canManageOfficeCertificate ? [...settingsPagesBase, certificatePage, whatsappChannelPage] : settingsPagesBase
+export function settingsPages(canManageOfficeCertificate: boolean, canManageErpApproval = false): readonly SettingsPage[] {
+  return [
+    ...settingsPagesBase,
+    ...(canManageOfficeCertificate ? [certificatePage, whatsappChannelPage] : []),
+    ...(canManageErpApproval ? [erpApprovalPage] : [])
+  ]
 }
 
 /** A barra de abas da tela de Configurações, no formato que o `UNavigationMenu` espera. */
-export function settingsTabs(canManageOfficeCertificate: boolean): NavigationMenuItem[][] {
-  return [settingsPages(canManageOfficeCertificate).map(page => ({
+export function settingsTabs(canManageOfficeCertificate: boolean, canManageErpApproval = false): NavigationMenuItem[][] {
+  return [settingsPages(canManageOfficeCertificate, canManageErpApproval).map(page => ({
     label: page.label,
     icon: page.icon,
     to: page.to,
@@ -59,8 +69,8 @@ export function settingsPageActive(path: string, page: SettingsPage): boolean {
  * O ícone continua na barra de abas, via `settingsTabs`.
  * `active` segue os outros módulos: sem ele, o grupo some ao abrir outro accordion.
  */
-export function settingsSidebarChildren(path: string, canManageOfficeCertificate: boolean): NavigationMenuItem[] {
-  return settingsPages(canManageOfficeCertificate).map(page => ({
+export function settingsSidebarChildren(path: string, canManageOfficeCertificate: boolean, canManageErpApproval = false): NavigationMenuItem[] {
+  return settingsPages(canManageOfficeCertificate, canManageErpApproval).map(page => ({
     label: page.label,
     to: page.to,
     exact: page.exact ?? false,

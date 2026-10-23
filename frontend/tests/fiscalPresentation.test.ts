@@ -948,3 +948,8 @@ describe('a reancoragem do relógio das janelas', () => {
     assert.match(page, /useState\('fiscal-panel-now'/)
   })
 })
+
+it('labels a self-issued MDF-e without changing its model identity', () => {
+  assert.equal(modelLabel('mdfe'), 'MDF-e')
+  assert.deepEqual(modelVolumes({ mdfe: 1 }), [{ model: 'mdfe', label: 'MDF-e', total: 1 }])
+})

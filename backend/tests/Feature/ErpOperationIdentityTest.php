@@ -84,8 +84,8 @@ class ErpOperationIdentityTest extends TestCase
     {
         $ctx = $this->ownerContext();
         $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()]);
-        $obligation = $this->postJson('/api/v1/erp/obligations', ['direction' => 'receivable', 'category' => 'manual', 'amount' => '100'])->assertCreated()->json('data.id');
-        $payment = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash'])->assertCreated()->json('data.id');
+        $obligation = ErpObligation::create(['erp_company_id' => $ctx['company']->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100', 'open_amount' => '100'])->id;
+        $payment = ErpPayment::create(['erp_company_id' => $ctx['company']->id, 'amount' => '100', 'method' => 'manual', 'direction' => 'in'])->id;
 
         return $ctx + ['payment' => $payment, 'obligation' => $obligation];
     }
@@ -145,7 +145,7 @@ class ErpOperationIdentityTest extends TestCase
         $path = '/api/v1/erp/payments/'.$ctx['payment'].'/allocate';
         $this->postJson($path, ['erp_obligation_id' => $ctx['obligation'], 'amount' => '10'])->assertConflict()->assertJsonPath('code', 'legacy_operation_requires_reconciliation');
         $this->getJson('/api/v1/erp/operations/lookup?operation=erp.payments.allocate')->assertOk()->assertJsonPath('data.state', 'legacy_observed')->assertJsonPath('data.result', null);
-        $other = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash'])->assertCreated()->json('data.id');
+        $other = ErpPayment::create(['erp_company_id' => $ctx['company']->id, 'amount' => '100', 'method' => 'manual', 'direction' => 'in'])->id;
         $this->postJson('/api/v1/erp/payments/'.$other.'/allocate', ['erp_obligation_id' => $ctx['obligation'], 'amount' => '10'])->assertConflict();
         $legacy->update(['posted_by_user_id' => null]);
         $this->postJson($path, ['erp_obligation_id' => $ctx['obligation'], 'amount' => '10'])->assertConflict();
@@ -243,8 +243,8 @@ class ErpOperationIdentityTest extends TestCase
         $path = '/api/v1/erp/payments/'.$ctx['payment'].'/allocate';
         $body = ['erp_obligation_id' => $ctx['obligation'], 'amount' => '10'];
         $this->postJson($path, $body)->assertOk();
-        $otherPayment = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash'])->assertCreated()->json('data.id');
-        $otherObligation = $this->postJson('/api/v1/erp/obligations', ['amount' => '100', 'direction' => 'receivable', 'category' => 'manual'])->assertCreated()->json('data.id');
+        $otherPayment = ErpPayment::create(['erp_company_id' => $ctx['company']->id, 'amount' => '100', 'method' => 'manual', 'direction' => 'in'])->id;
+        $otherObligation = ErpObligation::create(['erp_company_id' => $ctx['company']->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100', 'open_amount' => '100'])->id;
         $this->postJson('/api/v1/erp/payments/'.$otherPayment.'/allocate', $body)->assertConflict();
         $this->postJson($path, ['erp_obligation_id' => $otherObligation, 'amount' => '10'])->assertConflict();
         $foreign = ErpCompany::factory()->create();
@@ -269,7 +269,7 @@ class ErpOperationIdentityTest extends TestCase
     public function test_ambiguous_or_other_actor_legacy_keys_do_not_disclose_or_reallocate(): void
     {
         $ctx = $this->allocationContext();
-        $second = $this->postJson('/api/v1/erp/payments', ['amount' => '100', 'method' => 'cash'])->assertCreated()->json('data.id');
+        $second = ErpPayment::create(['erp_company_id' => $ctx['company']->id, 'amount' => '100', 'method' => 'manual', 'direction' => 'in'])->id;
         foreach ([$ctx['payment'], $second] as $payment) {
             ErpPaymentAllocation::create(['erp_payment_id' => $payment, 'erp_obligation_id' => $ctx['obligation'], 'amount' => '10', 'source_operation_key' => 'ambiguous', 'posted_by_user_id' => $ctx['user']->id, 'posted_at' => now()]);
         }

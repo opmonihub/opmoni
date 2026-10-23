@@ -2,22 +2,18 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
-use App\Erp\ErpCatalogScope;
-use App\Models\Erp\ErpBrand;
-use App\Models\Erp\ErpCategory;
+use App\Erp\ErpCatalogWriteService;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
-use App\Models\Erp\ErpUnit;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ErpProductController extends ErpCatalogController
 {
-    public function __construct(private ErpCatalogScope $scope) {}
+    public function __construct(private ErpCatalogWriteService $writes) {}
 
     protected function modelClass(): string
     {
@@ -27,6 +23,11 @@ class ErpProductController extends ErpCatalogController
     protected function searchableColumns(): array
     {
         return ['name', 'sku', 'barcode'];
+    }
+
+    protected function indexRelations(): array
+    {
+        return ['variants'];
     }
 
     protected function serialize(Model $model): array
@@ -45,6 +46,22 @@ class ErpProductController extends ErpCatalogController
             'warranty_months' => $model->warranty_months,
             'warranty_description' => $model->warranty_description,
             'barcode' => $model->barcode,
+            'barcode_type' => $model->barcode_type,
+            'ncm' => $model->ncm,
+            'cest' => $model->cest,
+            'origin_code' => $model->origin_code,
+            'icms_cst' => $model->icms_cst,
+            'icms_csosn' => $model->icms_csosn,
+            'pis_cst' => $model->pis_cst,
+            'cofins_cst' => $model->cofins_cst,
+            'ipi_cst' => $model->ipi_cst,
+            'icms_rate' => $this->nullableDecimalString($model->icms_rate),
+            'pis_rate' => $this->nullableDecimalString($model->pis_rate),
+            'cofins_rate' => $this->nullableDecimalString($model->cofins_rate),
+            'ipi_rate' => $this->nullableDecimalString($model->ipi_rate),
+            'simple_national_credit_rate' => $this->nullableDecimalString($model->simple_national_credit_rate),
+            'ibs_cbs_cst' => $model->ibs_cbs_cst,
+            'ibs_cbs_classification_code' => $model->ibs_cbs_classification_code,
             'status' => $model->status,
             'variants' => $model->relationLoaded('variants')
                 ? $model->variants->map(fn (ErpProductVariant $v): array => [
@@ -53,6 +70,7 @@ class ErpProductController extends ErpCatalogController
                     'name' => $v->name,
                     'sale_price' => $v->sale_price !== null ? $this->decimalString($v->sale_price) : null,
                     'barcode' => $v->barcode,
+                    'barcode_type' => $v->barcode_type,
                     'status' => $v->status,
                 ])->all()
                 : [],
@@ -73,113 +91,40 @@ class ErpProductController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $data = $this->validated($request, $companyId);
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $product = $this->writes->createProduct($request, $context, $request->all());
 
-        $product = DB::transaction(function () use ($data, $companyId): ErpProduct {
-            $variants = $data['variants'] ?? [];
-            unset($data['variants']);
-            $product = ErpProduct::query()->create([
-                ...$data,
-                'erp_company_id' => $companyId,
-                'status' => 'active',
-            ]);
-            foreach ($variants as $variant) {
-                $product->variants()->create($variant);
-            }
-
-            return $product->load('variants');
+            return response()->json(['data' => $this->serialize($product)], 201);
         });
-
-        return response()->json(['data' => $this->serialize($product)], 201);
     }
 
     public function update(Request $request, int $product): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $model = $this->findForCompany($request, $product);
-        $data = $this->validated($request, $companyId, partial: true);
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $product): JsonResponse {
+            $model = $this->findForCompany($request, $product);
+            $model = $this->writes->updateProduct($request, $context, $model, $request->all());
 
-        DB::transaction(function () use ($model, $data): void {
-            $variants = $data['variants'] ?? null;
-            unset($data['variants']);
-            if ($data !== []) {
-                $model->fill($data);
-                $model->save();
-            }
-            if (is_array($variants)) {
-                foreach ($variants as $variant) {
-                    if (isset($variant['id'])) {
-                        $row = $model->variants()->whereKey($variant['id'])->first();
-                        if ($row) {
-                            $row->fill(collect($variant)->except('id')->all());
-                            $row->save();
-                        }
-                    } else {
-                        $model->variants()->create($variant);
-                    }
-                }
-            }
+            return response()->json(['data' => $this->serialize($model)]);
         });
-
-        return response()->json(['data' => $this->serialize($model->fresh('variants'))]);
-    }
-
-    /** @return array<string, mixed> */
-    private function validated(Request $request, int $companyId, bool $partial = false): array
-    {
-        $data = $request->validate([
-            'sku' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
-            'kind' => ['sometimes', 'in:goods,service'],
-            'track_stock' => ['sometimes', 'boolean'],
-            'erp_unit_id' => [$partial ? 'sometimes' : 'required', 'integer'],
-            'erp_brand_id' => ['sometimes', 'nullable', 'integer'],
-            'erp_category_id' => ['sometimes', 'nullable', 'integer'],
-            'sale_price' => ['sometimes', 'nullable', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'warranty_months' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:600'],
-            'warranty_description' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'variants' => ['sometimes', 'array'],
-            'variants.*.id' => ['sometimes', 'integer'],
-            'variants.*.sku' => ['sometimes', 'nullable', 'string', 'max:64'],
-            'variants.*.name' => ['required_with:variants', 'string', 'max:255'],
-            'variants.*.sale_price' => ['sometimes', 'nullable', 'regex:/^\d+(\.\d{1,4})?$/'],
-            'variants.*.barcode' => ['sometimes', 'nullable', 'string', 'max:64'],
-        ]);
-
-        if (isset($data['erp_unit_id'])) {
-            $this->scope->assertBelongsToCompany(ErpUnit::class, $companyId, (int) $data['erp_unit_id'], 'erp_unit_id');
-        }
-        if (array_key_exists('erp_brand_id', $data) && $data['erp_brand_id'] !== null) {
-            $this->scope->assertBelongsToCompany(ErpBrand::class, $companyId, (int) $data['erp_brand_id'], 'erp_brand_id');
-        }
-        if (array_key_exists('erp_category_id', $data) && $data['erp_category_id'] !== null) {
-            $this->scope->assertBelongsToCompany(ErpCategory::class, $companyId, (int) $data['erp_category_id'], 'erp_category_id');
-        }
-
-        if (isset($data['kind']) && $data['kind'] === 'service') {
-            $data['track_stock'] = false;
-        }
-
-        return $data;
     }
 
     public function archive(Request $request, int $id): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $id);
-        if ($model->status === 'archived') {
-            throw ValidationException::withMessages(['status' => 'Produto já arquivado']);
-        }
-        $model->status = 'archived';
-        $model->save();
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $id): JsonResponse {
+            $model = $this->findForCompany($request, $id);
+            if ($model->status === 'archived') {
+                throw ValidationException::withMessages(['status' => 'Produto já arquivado']);
+            }
+            $model->status = 'archived';
+            $model->save();
+            $this->writes->record($request, $context, $model, 'archived');
 
-        return response()->json(['data' => $this->serialize($model->fresh('variants'))]);
+            return response()->json(['data' => $this->serialize($model->fresh('variants'))]);
+        });
+    }
+
+    private function nullableDecimalString(mixed $value): ?string
+    {
+        return $value === null ? null : $this->decimalString($value);
     }
 }

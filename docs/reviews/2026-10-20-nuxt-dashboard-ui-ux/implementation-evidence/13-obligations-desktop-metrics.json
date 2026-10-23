@@ -1,0 +1,40 @@
+{
+  "activeLinks": [
+    {
+      "href": "/erp/financeiro#obligations",
+      "text": "Obrigações"
+    },
+    {
+      "href": "/erp/financeiro#obligations",
+      "text": "Obrigações"
+    }
+  ],
+  "dialogs": [],
+  "documentWidth": 1366,
+  "expanded": [
+    "Financeiro"
+  ],
+  "firstRow": {
+    "height": 56,
+    "width": 1076,
+    "x": 265,
+    "y": 460
+  },
+  "focus": {
+    "name": "Empresas Task 4 ERP Company yo2e81dkVisão geralCadastrosFinanceiroContasObrigaçõesPagament",
+    "tag": "BODY"
+  },
+  "font": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "headings": [
+    "Financeiro",
+    "Obrigações"
+  ],
+  "nestedForms": 0,
+  "theme": "light",
+  "url": "http://localhost:3334/erp/financeiro#obligations",
+  "viewport": {
+    "height": 768,
+    "width": 1366
+  },
+  "visibleForms": []
+}

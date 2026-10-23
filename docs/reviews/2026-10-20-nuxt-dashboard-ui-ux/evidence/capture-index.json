@@ -1,0 +1,82 @@
+[
+  {
+    "capture": "template-light-1366",
+    "actual_dark": false,
+    "viewport": [
+      1366,
+      768
+    ],
+    "document_width": 1366,
+    "screenshot": "template-light-1366.png"
+  },
+  {
+    "capture": "template-light-390",
+    "actual_dark": false,
+    "viewport": [
+      390,
+      844
+    ],
+    "document_width": 390,
+    "screenshot": "template-light-390.png"
+  },
+  {
+    "capture": "template-dark-1366",
+    "actual_dark": true,
+    "viewport": [
+      1366,
+      768
+    ],
+    "document_width": 1366,
+    "screenshot": "template-dark-1366.png"
+  },
+  {
+    "capture": "template-dark-390",
+    "actual_dark": true,
+    "viewport": [
+      390,
+      844
+    ],
+    "document_width": 390,
+    "screenshot": "template-dark-390.png"
+  },
+  {
+    "capture": "erp-finance-light-1366",
+    "actual_dark": false,
+    "viewport": [
+      1366,
+      768
+    ],
+    "document_width": 1366,
+    "screenshot": "erp-finance-light-1366.png"
+  },
+  {
+    "capture": "erp-finance-light-390",
+    "actual_dark": false,
+    "viewport": [
+      390,
+      844
+    ],
+    "document_width": 390,
+    "screenshot": "erp-finance-light-390.png"
+  },
+  {
+    "capture": "erp-finance-dark-1366",
+    "actual_dark": true,
+    "viewport": [
+      1366,
+      768
+    ],
+    "document_width": 1366,
+    "screenshot": "erp-finance-dark-1366.png"
+  },
+  {
+    "capture": "erp-finance-dark-390",
+    "actual_dark": true,
+    "viewport": [
+      390,
+      844
+    ],
+    "document_width": 390,
+    "screenshot": "erp-finance-dark-390.png"
+  }
+]

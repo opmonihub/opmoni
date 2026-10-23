@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sanitized structural renderer sample derived from nfephp-org/sped-da commit 93ae550adcf5dd0c43598f27e323a8af84ceba22; not provider acceptance evidence. -->
+<mdfeProc xmlns="http://www.portalfiscal.inf.br/mdfe" versao="3.00">
+<MDFe>
+<infMDFe Id="MDFe24201230288513000100580010000010891973448535" versao="3.00">
+<ide>
+<cUF>24</cUF>
+<tpAmb>2</tpAmb>
+<tpEmit>1</tpEmit>
+<mod>58</mod>
+<serie>1</serie>
+<nMDF>1089</nMDF>
+<cMDF>97344853</cMDF>
+<cDV>0</cDV>
+<modal>1</modal>
+<dhEmi>2020-12-16T11:26:27-00:00</dhEmi>
+<tpEmis>1</tpEmis>
+<procEmi>0</procEmi>
+<verProc>1.0.0</verProc>
+<UFIni>RN</UFIni>
+<UFFim>RN</UFFim>
+<infMunCarrega>
+<cMunCarrega>2408003</cMunCarrega>
+<xMunCarrega>MossorÃ³</xMunCarrega>
+</infMunCarrega>
+</ide>
+<emit>
+<CNPJ>30288513000100</CNPJ>
+<IE>000000000</IE>
+<xNome>EMPRESA DE TESTE LTDA</xNome>
+<xFant>EMPRESA DE TESTE LTDA</xFant>
+<enderEmit>
+<xLgr>ENDERECO DE TESTE</xLgr>
+<nro>345</nro>
+<xCpl>SALA 10, 11 E 12</xCpl>
+<xBairro>ENDERECO DE TESTE</xBairro>
+<cMun>2408003</cMun>
+<xMun>ENDERECO DE TESTE</xMun>
+<CEP>00000000</CEP>
+<UF>RN</UF>
+<fone>0000000000</fone>
+<email>teste@example.invalid</email>
+</enderEmit>
+</emit>
+<infModal versaoModal="3.00">
+<rodo>
+<infANTT>
+<infContratante>
+<CNPJ>30288513000100</CNPJ>
+</infContratante>
+</infANTT>
+<veicTracao>
+<cInt>000000001</cInt>
+<placa>ABC1D23</placa>
+<RENAVAM>0000000000</RENAVAM>
+<tara>0</tara>
+<prop>
+<CNPJ>30288513000100</CNPJ>
+<RNTRC>00000000</RNTRC>
+<xNome>EMPRESA DE TESTE LTDA</xNome>
+<IE>000000000</IE>
+<UF>BA</UF>
+<tpProp>0</tpProp>
+</prop>
+<condutor>
+<xNome>EMPRESA DE TESTE LTDA</xNome>
+<CPF>12345678909</CPF>
+</condutor>
+<tpRod>03</tpRod>
+<tpCar>00</tpCar>
+<UF>BA</UF>
+</veicTracao>
+</rodo>
+</infModal>
+<infDoc>
+<infMunDescarga>
+<cMunDescarga>2408003</cMunDescarga>
+<xMunDescarga>MossorÃ³</xMunDescarga>
+<infCTe>
+<chCTe>24201230288513000100570010000010821799163840</chCTe>
+</infCTe>
+</infMunDescarga>
+</infDoc>
+<seg>
+<infResp>
+<respSeg>1</respSeg>
+<CNPJ>30288513000100</CNPJ>
+</infResp>
+<infSeg>
+<xSeg>LEMOS E MARQUES LTDA</xSeg>
+<CNPJ>30288513000100</CNPJ>
+</infSeg>
+<nApol>01243542151</nApol>
+<nAver>12348721387841</nAver>
+</seg>
+<prodPred>
+<tpCarga>01</tpCarga>
+<xProd>ITEM DE TESTE</xProd>
+<NCM>25010011</NCM>
+<infLotacao>
+<infLocalCarrega>
+<CEP>00000000</CEP>
+</infLocalCarrega>
+<infLocalDescarrega>
+<CEP>00000000</CEP>
+</infLocalDescarrega>
+</infLotacao>
+</prodPred>
+<tot>
+<qCTe>1</qCTe>
+<vCarga>1562.50</vCarga>
+<cUnid>01</cUnid>
+<qCarga>15625.0000</qCarga>
+</tot>
+<infAdic />
+</infMDFe>
+<infMDFeSupl>
+<qrCodMDFe>https://www.fazenda.gov.br/consulta?chave=TESTE</qrCodMDFe>
+</infMDFeSupl>
+</MDFe>
+<protMDFe versao="3.00">
+<infProt Id="MDFe924200000006190">
+<tpAmb>2</tpAmb>
+<verAplic>RS20200824094303</verAplic>
+<chMDFe>24201230288513000100580010000010891973448535</chMDFe>
+<dhRecbto>2020-12-16T11:26:28-03:00</dhRecbto>
+<nProt>135260000000001</nProt>
+<digVal>s79KgTZrBWppcypCIJbf+xfsD9k=</digVal>
+<cStat>100</cStat>
+<xMotivo>Autorizado o uso do MDF-e</xMotivo>
+</infProt>
+</protMDFe>
+</mdfeProc>

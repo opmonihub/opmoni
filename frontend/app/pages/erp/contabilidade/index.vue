@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { erpContabilidadeContract } from '~/utils/erpModulesNav'
-
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 </script>
 
 <template>
-  <ErpModuleHub :contract="erpContabilidadeContract" />
+  <ErpCatalogPageShell
+    title="Contabilidade"
+    description="Acompanhe documentos fiscais autorizados que foram projetados no histórico do escritório delegado."
+  >
+    <ErpAccountingDeliveries />
+  </ErpCatalogPageShell>
 </template>

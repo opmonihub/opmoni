@@ -3,6 +3,7 @@ import type { ErpContactRecord, ErpProductRecord } from '../types/erpCatalogs'
 /** Frozen decimal/reference fixtures for downstream ERP modules (change 3.1). */
 export const sampleErpContactFixture = {
   id: 101,
+  erp_customer_group_id: null,
   name: 'Cliente Fixture',
   trade_name: null,
   tax_id: '39053344705',
@@ -28,6 +29,22 @@ export const sampleErpProductFixture = {
   warranty_months: 12,
   warranty_description: 'Garantia legal',
   barcode: '7891000100103',
+  barcode_type: 'EAN13',
+  ncm: null,
+  cest: null,
+  origin_code: null,
+  icms_cst: null,
+  icms_csosn: null,
+  pis_cst: null,
+  cofins_cst: null,
+  ipi_cst: null,
+  icms_rate: null,
+  pis_rate: null,
+  cofins_rate: null,
+  ipi_rate: null,
+  simple_national_credit_rate: null,
+  ibs_cbs_cst: null,
+  ibs_cbs_classification_code: null,
   status: 'active',
   variants: [{
     id: 301,
@@ -35,6 +52,7 @@ export const sampleErpProductFixture = {
     name: 'P',
     sale_price: '10.5000',
     barcode: null,
+    barcode_type: null,
     status: 'active'
   }]
 } satisfies ErpProductRecord

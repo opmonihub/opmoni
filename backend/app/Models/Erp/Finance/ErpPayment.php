@@ -12,6 +12,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ErpPayment extends Model
 {
     protected $fillable = [
+        'direction',
+        'erp_cash_session_id',
+        'reason',
+        'ledger_version',
+
         'erp_company_id',
         'erp_establishment_id',
         'erp_financial_account_id',

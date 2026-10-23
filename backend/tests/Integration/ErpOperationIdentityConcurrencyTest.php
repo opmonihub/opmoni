@@ -40,7 +40,7 @@ class ErpOperationIdentityConcurrencyTest extends TestCase
         $this->company = ErpCompany::factory()->create();
         ErpCompanyMembership::factory()->create(['erp_company_id' => $this->company->id, 'user_id' => $this->actor->id, 'role' => 'owner']);
         ErpSubscription::factory()->create(['erp_company_id' => $this->company->id, 'erp_plan_id' => app(ErpCommercialCatalog::class)->ensureBasicPlan()->id, 'status' => 'active']);
-        $this->payment = ErpPayment::create(['erp_company_id' => $this->company->id, 'amount' => '100', 'currency' => 'BRL', 'method' => 'cash', 'status' => 'posted']);
+        $this->payment = ErpPayment::create(['erp_company_id' => $this->company->id, 'amount' => '100', 'currency' => 'BRL', 'method' => 'cash', 'direction' => 'in', 'status' => 'posted']);
         $this->obligation = ErpObligation::create(['erp_company_id' => $this->company->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '100', 'open_amount' => '100', 'currency' => 'BRL', 'status' => 'open']);
     }
 

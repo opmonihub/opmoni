@@ -13,35 +13,50 @@ const props = defineProps<{
   }>
 }>()
 
-const { state, meta, pending, refresh, save } = useErpCompanySettings()
+const { state, meta, pending, canRead, canWrite, authorityKey, refresh, save } = useErpCompanySettings()
 const toast = useToast()
 const form = reactive<Record<string, unknown>>({})
+const loadError = ref('')
 
 onMounted(async () => {
-  if (!state.value)
-    await refresh()
+  if (!state.value && canRead.value) await refreshSettings()
   syncForm()
 })
 
-watch(state, syncForm)
+watch(state, syncForm, { flush: 'sync' })
 
 function syncForm() {
-  if (!state.value)
+  if (!state.value) {
+    for (const key of Object.keys(form)) Reflect.deleteProperty(form, key)
     return
+  }
   for (const field of props.fields) {
     const key = field.key as string
     form[key] = state.value[key] ?? (field.type === 'checkbox' ? 0 : '')
   }
 }
 
+async function refreshSettings() {
+  loadError.value = ''
+  try {
+    await refresh()
+  } catch {
+    loadError.value = 'Não foi possível carregar as configurações.'
+  }
+}
+
 async function onSubmit() {
+  if (!canWrite.value || pending.value || !state.value) return
+  const authority = authorityKey.value
   const patch: Record<string, unknown> = {}
   for (const field of props.fields)
     patch[field.key as string] = form[field.key as string]
   try {
-    await save(patch)
+    const response = await save(patch)
+    if (!response || !canWrite.value || authority !== authorityKey.value) return
     toast.add({ title: 'Configurações salvas', color: 'success', icon: 'i-lucide-check' })
   } catch {
+    if (!canWrite.value || authority !== authorityKey.value) return
     toast.add({ title: 'Não foi possível salvar', color: 'error', icon: 'i-lucide-x' })
   }
 }
@@ -81,7 +96,7 @@ function selectOptions(field: (typeof props.fields)[number]) {
 </script>
 
 <template>
-  <UForm @submit.prevent="onSubmit">
+  <UForm :disabled="!canWrite || pending || !state" @submit.prevent="onSubmit">
     <UPageCard
       :title="title"
       :description="description"
@@ -90,13 +105,31 @@ function selectOptions(field: (typeof props.fields)[number]) {
       class="mb-4"
     >
       <UButton
+        v-if="canWrite"
         type="submit"
+        :disabled="pending || !state"
         label="Salvar"
         color="primary"
         :loading="pending"
         class="w-fit lg:ms-auto"
       />
     </UPageCard>
+    <p v-if="!canWrite" class="mb-4 text-sm text-muted">
+      {{ canRead ? 'Seu acesso permite apenas consultar estas configurações.' : 'Seu acesso não permite consultar ou alterar estas configurações.' }}
+    </p>
+    <div v-if="!state && canRead" class="mb-4 space-y-2">
+      <p class="text-sm text-muted" role="status">
+        {{ loadError || (pending ? 'Carregando configurações…' : 'As configurações ainda não foram confirmadas.') }}
+      </p>
+      <UButton
+        v-if="!pending"
+        type="button"
+        color="neutral"
+        variant="outline"
+        label="Atualizar configurações"
+        @click="refreshSettings"
+      />
+    </div>
     <UPageCard variant="subtle" class="space-y-0">
       <template v-for="(field, index) in fields" :key="field.key">
         <USeparator v-if="index > 0" />
@@ -108,11 +141,13 @@ function selectOptions(field: (typeof props.fields)[number]) {
         >
           <UCheckbox
             v-if="field.type === 'checkbox'"
+            :disabled="!canWrite || pending || !state"
             :model-value="Boolean(Number(form[field.key as string] ?? 0))"
             @update:model-value="form[field.key as string] = $event ? 1 : 0"
           />
           <USelect
             v-else-if="field.type === 'select'"
+            :disabled="!canWrite || pending || !state"
             :model-value="selectModelValue(field.key as string)"
             :items="selectOptions(field)"
             value-key="value"
@@ -122,6 +157,7 @@ function selectOptions(field: (typeof props.fields)[number]) {
           />
           <UInput
             v-else
+            :disabled="!canWrite || pending || !state"
             :model-value="String(form[field.key as string] ?? '')"
             :type="field.type === 'number' ? 'number' : 'text'"
             class="w-full sm:max-w-md"

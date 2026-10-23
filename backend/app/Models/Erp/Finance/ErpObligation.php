@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ErpObligation extends Model
 {
     protected $fillable = [
+        'return_of_id',
+
         'erp_company_id',
         'erp_establishment_id',
         'erp_contact_id',

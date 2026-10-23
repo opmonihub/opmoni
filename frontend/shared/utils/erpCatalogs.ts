@@ -8,6 +8,7 @@ export const erpCatalogRoutes = {
   categories: '/erp/categories',
   brands: '/erp/brands',
   priceGroups: '/erp/price-groups',
+  customerGroups: '/erp/customer-groups',
   discountRules: '/erp/discount-rules',
   taxRates: '/erp/tax-settings/tax-rates',
   operationNatures: '/erp/tax-settings/operation-natures',
@@ -19,7 +20,9 @@ export const erpCatalogRoutes = {
   importContactsPreview: '/erp/catalog/import/contacts/preview',
   importContactsConfirm: '/erp/catalog/import/contacts/confirm',
   printSettings: '/erp/catalog/print-settings',
-  productLabels: '/erp/catalog/product-labels'
+  productLabels: '/erp/catalog/product-labels',
+  labelLayouts: '/erp/catalog/label-layouts',
+  printerProfiles: '/erp/catalog/printer-profiles'
 } as const satisfies Record<string, string>
 
 export function erpCatalogListQuery(search: string, page = 1) {
@@ -33,6 +36,16 @@ export function formatErpDecimal(value: string | number | null | undefined): str
   if (value === null || value === undefined || value === '')
     return '0'
   return String(value)
+}
+
+export function formatErpCatalogStatus(status: unknown): string {
+  if (status === 'active')
+    return 'Ativo'
+  if (status === 'archived')
+    return 'Arquivado'
+  if (status === 'inactive')
+    return 'Inativo'
+  return status === null || status === undefined || status === '' ? '—' : String(status)
 }
 
 export function emptyPaginated<T>(): ErpPaginated<T> {
@@ -55,6 +68,7 @@ export const erpCadastrosPages = {
   brands: '/erp/cadastros/marcas',
   categories: '/erp/cadastros/categorias',
   pricing: '/erp/cadastros/precos',
+  customerGroups: '/erp/cadastros/grupos-clientes',
   fiscal: '/erp/cadastros/fiscal',
   logistics: '/erp/cadastros/logistica',
   import: '/erp/cadastros/importacao',

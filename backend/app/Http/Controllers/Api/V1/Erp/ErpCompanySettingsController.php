@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Erp;
 
+use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpCompanyOperatingSettings;
 use App\Erp\LegacyBusinessReference;
 use App\Http\Controllers\Controller;
@@ -10,7 +11,6 @@ use App\Services\BrazilianTaxId;
 use App\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ErpCompanySettingsController extends Controller
@@ -18,6 +18,7 @@ class ErpCompanySettingsController extends Controller
     public function __construct(
         private ErpCompanyOperatingSettings $settings,
         private BrazilianTaxId $taxId,
+        private ErpCatalogWriteService $writes,
     ) {}
 
     public function show(Request $request): JsonResponse
@@ -37,6 +38,8 @@ class ErpCompanySettingsController extends Controller
         $context->assertCanMutate();
 
         $request->validate([
+            'accounting_method' => ['sometimes', 'in:fifo,lifo'],
+            'stock_overselling_enabled' => ['sometimes', 'boolean'],
             'name' => ['sometimes', 'string', 'max:255'],
             'cnpj' => ['sometimes', 'string', 'max:20'],
             'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:120'],
@@ -46,6 +49,9 @@ class ErpCompanySettingsController extends Controller
         ]);
 
         $persist = $this->settings->extractPersistable($request->all());
+        if ($request->exists('stock_overselling_enabled')) {
+            $persist['operating_settings']['stock_overselling_enabled'] = $request->boolean('stock_overselling_enabled');
+        }
 
         if (isset($persist['cnpj'])) {
             $cnpj = $this->taxId->normalize((string) $persist['cnpj']);
@@ -55,7 +61,7 @@ class ErpCompanySettingsController extends Controller
             $persist['cnpj'] = $cnpj;
         }
 
-        DB::transaction(function () use ($context, $persist): void {
+        return $this->writes->run($request, function (CurrentCompany $context) use ($request, $persist): JsonResponse {
             /** @var ErpCompany $company */
             $company = ErpCompany::query()->lockForUpdate()->findOrFail($context->company->id);
 
@@ -74,14 +80,14 @@ class ErpCompanySettingsController extends Controller
             }
 
             $company->save();
+            $this->writes->record($request, $context, $company, 'company_settings_updated');
+            $company = $company->fresh();
+
+            return response()->json([
+                'data' => $this->settings->toPayload($company),
+                'meta' => $this->formMeta(),
+            ]);
         });
-
-        $company = ErpCompany::query()->findOrFail($context->company->id);
-
-        return response()->json([
-            'data' => $this->settings->toPayload($company),
-            'meta' => $this->formMeta(),
-        ]);
     }
 
     /** @return array<string, mixed> */

@@ -6,13 +6,13 @@ use App\Erp\BrazilianStateCode;
 use App\Erp\ErpCatalogScope;
 use App\Erp\Fiscal\ErpFiscalArtifactStore;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
+use App\Erp\Fiscal\ErpFiscalEventRegistry;
 use App\Erp\Fiscal\ErpFiscalIssuanceService;
 use App\Erp\LegacyPort\LegacyFiscalEngine;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
-use App\Models\Erp\ErpCompany;
-use App\Models\Erp\Fiscal\ErpFiscalCertificate;
+use App\Http\Requests\Erp\Fiscal\StoreErpFiscalDocumentRequest;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
-use App\Models\Erp\Sales\ErpSale;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -47,80 +47,14 @@ class ErpFiscalDocumentController extends ErpOperationsController
         return response()->json(['data' => $this->serialize($model)]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreErpFiscalDocumentRequest $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $companyId = $context->company->id;
-        $data = $request->validate([
-            'erp_establishment_id' => ['required', 'integer'],
-            'erp_fiscal_certificate_id' => ['sometimes', 'nullable', 'integer'],
-            'erp_sale_id' => ['sometimes', 'nullable', 'integer'],
-            'model' => ['required', 'in:55,65,57,58'],
-            'environment' => ['sometimes', 'in:homologation,production'],
-            'series' => ['sometimes', 'integer', 'min:1'],
-            'number' => ['required', 'integer', 'min:1'],
-            'access_key' => ['sometimes', 'nullable', 'string', 'size:44'],
-            'uf' => ['sometimes', 'nullable', 'string', 'size:2'],
-            'cnf' => ['sometimes', 'nullable', 'string', 'max:8'],
-            'tp_emis' => ['sometimes', 'integer', 'min:1', 'max:9'],
-            'idempotency_key' => ['required', 'string', 'max:128'],
-            'source_document_id' => ['sometimes', 'nullable', 'integer'],
-            'document_kind' => ['sometimes', 'nullable', 'string', 'max:32'],
-        ]);
-        $data = $this->normalizeIdentifiers($data);
-        $this->scope->assertEstablishmentBelongsToCompany($companyId, $data['erp_establishment_id']);
-        $this->scope->assertBelongsToCompany(
-            ErpFiscalCertificate::class,
-            $companyId,
-            $data['erp_fiscal_certificate_id'] ?? null,
-            'erp_fiscal_certificate_id',
-        );
-        if (isset($data['erp_sale_id'])) {
-            $this->scope->assertBelongsToCompany(ErpSale::class, $companyId, $data['erp_sale_id'], 'erp_sale_id');
-        }
+        CurrentCompany::fromRequest($request)->assertCanMutate();
+        $data = $request->validated();
+        $data['source'] = $request->input('source');
+        [$document, $created] = $this->issuance->draft($request, $data);
 
-        $existing = ErpFiscalDocument::query()
-            ->where('erp_company_id', $companyId)
-            ->where('idempotency_key', $data['idempotency_key'])
-            ->first();
-        if ($existing) {
-            return response()->json(['data' => $this->serialize($existing)]);
-        }
-
-        try {
-            $accessKey = $this->resolveAccessKey($context->company, $data);
-        } catch (InvalidArgumentException $exception) {
-            abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
-        }
-
-        $snapshot = null;
-        if (isset($data['erp_sale_id'])) {
-            $sale = ErpSale::query()->where('erp_company_id', $companyId)->whereKey($data['erp_sale_id'])->with('lines')->firstOrFail();
-            abort_unless($sale->status === 'posted' && $sale->erp_establishment_id === $data['erp_establishment_id'], 422, 'Venda precisa estar lançada no estabelecimento emissor');
-            $snapshot = ['sale_id' => $sale->id, 'total_amount' => (string) $sale->total_amount, 'subtotal_amount' => (string) $sale->subtotal_amount, 'discount_amount' => (string) $sale->discount_amount, 'tax_amount' => (string) $sale->tax_amount, 'currency' => $sale->currency, 'lines' => $sale->lines->toArray()];
-        }
-        $metadata = [];
-        if (($data['document_kind'] ?? null) === 'return' && isset($data['source_document_id'])) {
-            $source = ErpFiscalDocument::query()
-                ->where('erp_company_id', $companyId)
-                ->whereKey($data['source_document_id'])
-                ->firstOrFail();
-            $metadata['return'] = ['source_document_id' => $source->id, 'source_access_key' => $source->access_key];
-        }
-
-        $document = ErpFiscalDocument::query()->create([
-            ...$data,
-            'erp_company_id' => $companyId,
-            'access_key' => $accessKey,
-            'status' => ErpFiscalDocumentStateMachine::DRAFT,
-            'environment' => $data['environment'] ?? 'homologation',
-            'series' => $data['series'] ?? 1,
-            'metadata' => $metadata === [] ? null : $metadata,
-            'commercial_snapshot' => $snapshot,
-        ]);
-
-        return response()->json(['data' => $this->serialize($document)], 201);
+        return response()->json(['data' => $this->serialize($document)], $created ? 201 : 200);
     }
 
     public function queue(Request $request, int $document): JsonResponse
@@ -128,32 +62,13 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
-
-        if ($model->status === ErpFiscalDocumentStateMachine::QUEUED) {
-            return response()->json(['data' => $this->serialize($model)]);
-        }
-
-        if ($model->access_key === null || $model->access_key === '') {
-            try {
-                $model->access_key = $this->resolveAccessKey($context->company, [
-                    'model' => $model->model,
-                    'series' => $model->series,
-                    'number' => $model->number,
-                    'uf' => $request->input('uf'),
-                ]);
-            } catch (InvalidArgumentException $exception) {
-                abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
-            }
-        }
-
         try {
-            $model->status = $this->stateMachine->queueFromDraft($model->status);
+            $result = $this->issuance->queue($model, $context->company, (int) $request->user()->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
-        $model->save();
 
-        return response()->json(['data' => $this->serialize($model)]);
+        return response()->json(['data' => $this->serialize($result)]);
     }
 
     public function transmit(Request $request, int $document): JsonResponse
@@ -161,9 +76,12 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        if ($model->status !== ErpFiscalDocumentStateMachine::AUTHORIZED) {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         try {
-            $result = $this->issuance->transmit($model, $context->company, $request->user()?->id);
+            $result = $this->issuance->transmit($model, $context->company, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -176,9 +94,10 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         try {
-            $result = $this->issuance->consult($model, $context->company);
+            $result = $this->issuance->consult($model, $context->company, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -191,9 +110,12 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        if ($model->status !== ErpFiscalDocumentStateMachine::CONTINGENCY_LOCAL) {
+            app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
+        }
 
         try {
-            $result = $this->issuance->enableContingency($model, $context->company);
+            $result = $this->issuance->enableContingency($model, $context->company, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -206,9 +128,10 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $context = CurrentCompany::fromRequest($request);
         $context->assertCanMutate();
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
+        app(ErpCatalogScope::class)->assertActiveEstablishment($context->company->id, $model->erp_establishment_id);
 
         try {
-            $result = $this->issuance->reconcileContingency($model, $context->company, $request->user()?->id);
+            $result = $this->issuance->reconcileContingency($model, $context->company, $request->user()?->id, $request->all());
         } catch (InvalidArgumentException $exception) {
             abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
         }
@@ -227,7 +150,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
             ], true),
             404,
         );
-        abort_unless($this->artifacts->verifyIntegrity($model), 409);
+        abort_unless($this->artifacts->verifiedFiscalArtifactReady($model), 409);
 
         $xml = $this->artifacts->readXml($model);
         abort_if($xml === null, 404);
@@ -244,6 +167,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
         $model = $this->findForCompany($request, ErpFiscalDocument::class, $document);
         abort_unless($model->status === ErpFiscalDocumentStateMachine::AUTHORIZED, 404);
 
+        abort_unless($this->artifacts->verifiedFiscalArtifactReady($model), 409);
         $pdf = $this->artifacts->renderPdfBytes($model);
 
         return response($pdf, 200, [
@@ -255,21 +179,21 @@ class ErpFiscalDocumentController extends ErpOperationsController
     /**
      * @param  array<string, mixed>  $data
      */
-    private function resolveAccessKey(ErpCompany $company, array $data): ?string
+    private function resolveAccessKey(ErpEstablishment $establishment, array $data): ?string
     {
         $provided = $data['access_key'] ?? null;
         if (is_string($provided) && $provided !== '') {
             return $provided;
         }
 
-        $ufCode = BrazilianStateCode::ibgeFromUf((string) ($data['uf'] ?? $this->companyUf($company) ?? 'SP'));
+        $ufCode = BrazilianStateCode::ibgeFromUf(strtoupper((string) ($data['uf'] ?? $establishment->uf ?? '')));
         if ($ufCode === null) {
             throw new InvalidArgumentException('UF inválida para montagem da chave.');
         }
 
-        $cnpj = preg_replace('/\D+/', '', (string) $company->cnpj) ?? '';
-        if (strlen($cnpj) !== 14) {
-            throw new InvalidArgumentException('CNPJ da empresa inválido para montagem da chave.');
+        $cnpj = (string) $establishment->cnpj;
+        if (! preg_match('/^\d{14}$/', $cnpj)) {
+            throw new InvalidArgumentException('CNPJ numérico do estabelecimento emissor inválido para montagem da chave.');
         }
 
         $issuedAt = now();
@@ -290,23 +214,22 @@ class ErpFiscalDocumentController extends ErpOperationsController
         );
     }
 
-    private function companyUf(ErpCompany $company): ?string
-    {
-        $settings = is_array($company->operating_settings) ? $company->operating_settings : [];
-        $uf = $settings['uf'] ?? ($settings['common_settings']['uf'] ?? null);
-
-        return is_string($uf) && $uf !== '' ? strtoupper($uf) : null;
-    }
-
     /** @return array<string, mixed> */
     private function serialize(Model $model): array
     {
         /** @var ErpFiscalDocument $model */
         $metadata = is_array($model->metadata) ? $model->metadata : [];
         $contingency = is_array($metadata['contingency'] ?? null) ? $metadata['contingency'] : null;
+        $attempt = $model->attempts()->latest('id')->first();
+        $actorId = request()->user()?->id;
+        $timeline = $model->attempts()->latest('id')->limit(20)->get()->map(static fn ($row): array => [...$row->only(['id', 'action', 'status', 'safe_result', 'model', 'series', 'number']), 'idempotency_key' => (int) $row->actor_user_id === (int) $actorId ? $row->idempotency_key : null])->all();
 
         return [
             'id' => $model->id,
+            'attempt' => $timeline[0] ?? null,
+            'attempts' => $timeline,
+            'supported_events' => app(ErpFiscalEventRegistry::class)->supportedEvents($model->model, (string) ($metadata['document_kind'] ?? '')),
+            'legacy_attention_required' => ! $model->attempts()->where('action', 'document:draft')->exists(),
             'erp_establishment_id' => $model->erp_establishment_id,
             'erp_fiscal_certificate_id' => $model->erp_fiscal_certificate_id,
             'erp_sale_id' => $model->erp_sale_id,
@@ -318,9 +241,7 @@ class ErpFiscalDocumentController extends ErpOperationsController
             'status' => $model->status,
             'idempotency_key' => $model->idempotency_key,
             'certificate_revision' => $model->certificate_revision,
-            'artifact_ready' => $model->storage_path !== null
-                && $model->artifact_sha256 !== null
-                && $model->artifact_byte_length !== null,
+            'artifact_ready' => $model->status === 'authorized' && $this->artifacts->verifiedFiscalArtifactReady($model),
             'claims_provider_authorization' => match ($model->status) {
                 ErpFiscalDocumentStateMachine::AUTHORIZED => true,
                 ErpFiscalDocumentStateMachine::CONTINGENCY_LOCAL => false,

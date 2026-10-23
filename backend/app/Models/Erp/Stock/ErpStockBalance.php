@@ -14,13 +14,14 @@ class ErpStockBalance extends Model
         'erp_establishment_id',
         'erp_product_variant_id',
         'quantity_on_hand',
-        'average_cost',
+        'average_cost', 'ledger_initialized_at', 'ledger_reconciliation',
     ];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
         return [
+            'ledger_initialized_at' => 'datetime', 'ledger_reconciliation' => 'array',
             'quantity_on_hand' => 'decimal:4',
             'average_cost' => 'decimal:4',
         ];

@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
+use App\Enums\Erp\ErpEstablishmentResource;
 use App\Erp\ErpCatalogScope;
+use App\Erp\ErpCatalogWriteService;
+use App\Erp\ErpEstablishmentAccess;
 use App\Http\Controllers\Controller;
 use App\Support\CurrentCompany;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +24,12 @@ abstract class ErpCatalogController extends Controller
 
     abstract protected function serialize(Model $model): array;
 
+    /** @return list<string> */
+    protected function indexRelations(): array
+    {
+        return [];
+    }
+
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyId($request);
@@ -27,8 +37,13 @@ abstract class ErpCatalogController extends Controller
 
         /** @var Builder<Model> $query */
         $query = $this->modelClass()::query()
+            ->with($this->indexRelations())
             ->where('erp_company_id', $companyId)
             ->orderBy('id');
+        $resource = ErpEstablishmentResource::forModel($this->modelClass());
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+        }
 
         if ($params['status'] !== null) {
             $query->where('status', $params['status']);
@@ -65,14 +80,14 @@ abstract class ErpCatalogController extends Controller
 
     public function archive(Request $request, int $id): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
+        return app(ErpCatalogWriteService::class)->run($request, function (CurrentCompany $context) use ($request, $id): JsonResponse {
+            $model = $this->findForCompany($request, $id);
+            $model->status = 'archived';
+            $model->save();
+            $this->record($request, $context, $model, 'archived');
 
-        $model = $this->findForCompany($request, $id);
-        $model->status = 'archived';
-        $model->save();
-
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model)]);
+        });
     }
 
     protected function companyId(Request $request): int
@@ -84,10 +99,15 @@ abstract class ErpCatalogController extends Controller
     {
         $companyId = $this->companyId($request);
 
-        return $this->modelClass()::query()
+        $query = $this->modelClass()::query()
             ->where('erp_company_id', $companyId)
-            ->whereKey($id)
-            ->firstOrFail();
+            ->whereKey($id);
+        $resource = ErpEstablishmentResource::forModel($this->modelClass());
+        if ($resource !== null) {
+            app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+        }
+
+        return $query->firstOrFail();
     }
 
     protected function decimalString(mixed $value): string
@@ -97,5 +117,16 @@ abstract class ErpCatalogController extends Controller
         }
 
         return is_string($value) ? $value : (string) $value;
+    }
+
+    /** @param Closure(CurrentCompany): JsonResponse $operation */
+    protected function write(Request $request, Closure $operation): JsonResponse
+    {
+        return app(ErpCatalogWriteService::class)->run($request, $operation);
+    }
+
+    protected function record(Request $request, CurrentCompany $context, Model $resource, string $action): void
+    {
+        app(ErpCatalogWriteService::class)->record($request, $context, $resource, $action);
     }
 }

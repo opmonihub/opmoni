@@ -144,106 +144,105 @@ const previewColumns = computed((): TableColumn<Record<string, unknown>>[] => {
 </script>
 
 <template>
-  <UDashboardPanel :id="`erp-${contract.id}`">
-    <template #header>
-      <UDashboardNavbar :title="contract.title">
-        <template #leading>
-          <UDashboardSidebarToggle />
-        </template>
-        <template #trailing>
-          <UBadge
-            v-if="canRead"
-            color="neutral"
-            variant="subtle"
-            label="Consulta"
-          />
-        </template>
-      </UDashboardNavbar>
-      <UDashboardToolbar>
-        <UNavigationMenu :items="tabLinks" highlight class="-mx-1 flex-1 overflow-x-auto" />
-      </UDashboardToolbar>
+  <ErpCatalogPageShell :title="contract.title" :description="contract.description">
+    <template #toolbar>
+      <UNavigationMenu :items="tabLinks" highlight class="-mx-1 flex-1 overflow-x-auto" />
     </template>
-    <template #body>
-      <div class="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 sm:p-6">
-        <p class="text-muted text-sm">
-          {{ contract.description }}
-        </p>
-        <UAlert
-          v-if="!canRead"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-shield-alert"
-          title="Sem permissão para este módulo"
-          description="Solicite ao responsável da empresa a permissão necessária ou troque de empresa."
+    <template #actions>
+      <UBadge
+        v-if="canRead"
+        color="neutral"
+        variant="subtle"
+        label="Consulta"
+      />
+    </template>
+    <div class="flex flex-col gap-4">
+      <UAlert
+        v-if="!canRead"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-shield-alert"
+        title="Sem permissão para este módulo"
+        description="Solicite ao responsável da empresa a permissão necessária ou troque de empresa."
+      />
+
+      <template v-else>
+        <section v-if="activeTab?.mode === 'xml-preview'" class="rounded-lg border border-default p-4">
+          <p class="text-sm text-muted">
+            A prévia XML de compras e o mapeamento explícito de itens estão disponíveis na área nativa de compras.
+          </p>
+          <UButton
+            class="mt-3"
+            color="neutral"
+            variant="outline"
+            label="Abrir prévia XML de compras"
+            to="/erp/compras#xml-preview"
+          />
+        </section>
+
+        <form v-else-if="activeTab?.mode === 'report'" class="flex flex-wrap items-end gap-3" @submit.prevent="load">
+          <UFormField label="De" name="date_from">
+            <UInput v-model="dateFrom" type="date" />
+          </UFormField>
+          <UFormField label="Até" name="date_to">
+            <UInput v-model="dateTo" type="date" />
+          </UFormField>
+          <UButton type="submit" label="Atualizar" :loading="loading" />
+        </form>
+
+        <ErrorRetryAlert
+          v-if="showError"
+          :title="apiErrorMessage(loadError) ?? `Não foi possível carregar ${contract.title.toLowerCase()}`"
+          :loading="isLoading"
+          @retry="retry"
         />
 
-        <template v-else>
-          <ErpPurchaseXmlPreview v-if="activeTab?.mode === 'xml-preview'" />
-
-          <form v-else-if="activeTab?.mode === 'report'" class="flex flex-wrap items-end gap-3" @submit.prevent="load">
-            <UFormField label="De" name="date_from">
-              <UInput v-model="dateFrom" type="date" />
-            </UFormField>
-            <UFormField label="Até" name="date_to">
-              <UInput v-model="dateTo" type="date" />
-            </UFormField>
-            <UButton type="submit" label="Atualizar" :loading="loading" />
-          </form>
-
-          <ErrorRetryAlert
-            v-if="showError"
-            :title="apiErrorMessage(loadError) ?? `Não foi possível carregar ${contract.title.toLowerCase()}`"
-            :loading="isLoading"
-            @retry="retry"
+        <template v-else-if="activeTab?.mode !== 'xml-preview'">
+          <UAlert
+            v-if="apiUnavailable"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-construction"
+            title="API ainda não publicada"
+            description="A listagem ficará disponível quando o backend deste domínio for liberado. Nenhum total foi inventado."
           />
 
-          <template v-else-if="activeTab?.mode !== 'xml-preview'">
-            <UAlert
-              v-if="apiUnavailable"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-construction"
-              title="API ainda não publicada"
-              description="A listagem ficará disponível quando o backend deste domínio for liberado. Nenhum total foi inventado."
+          <UPageGrid v-else-if="listTotal !== null && !isLoading" class="gap-3 lg:grid-cols-3">
+            <MetricCard
+              icon="i-lucide-list"
+              title="Registros nesta aba"
+              :loading="false"
+              :value="String(listTotal)"
             />
+          </UPageGrid>
 
-            <UPageGrid v-else-if="listTotal !== null && !isLoading" class="gap-3 lg:grid-cols-3">
-              <MetricCard
-                icon="i-lucide-list"
-                title="Registros nesta aba"
-                :loading="false"
-                :value="String(listTotal)"
-              />
-            </UPageGrid>
+          <ErpReportMetrics v-if="report" :report="report" />
 
-            <ErpReportMetrics v-if="report" :report="report" />
+          <UEmpty
+            v-else-if="!isLoading && !apiUnavailable && rows.length === 0"
+            :icon="contract.icon"
+            :title="activeTab?.emptyTitle ?? 'Nenhum registro'"
+            :description="activeTab?.emptyDescription"
+          />
 
-            <UEmpty
-              v-else-if="!isLoading && !apiUnavailable && rows.length === 0"
-              :icon="contract.icon"
-              :title="activeTab?.emptyTitle ?? 'Nenhum registro'"
-              :description="activeTab?.emptyDescription"
+          <UCard v-else-if="!apiUnavailable && rows.length > 0" variant="subtle">
+            <UTable
+              :data="rows"
+              :columns="previewColumns"
+              :loading="isLoading"
+              :ui="panelTableUi"
             />
-
-            <UCard v-else-if="!apiUnavailable && rows.length > 0" variant="subtle">
-              <UTable
-                :data="rows"
-                :columns="previewColumns"
-                :loading="isLoading"
-                :ui="panelTableUi"
-              />
-            </UCard>
-            <div v-if="listTotal !== null && listTotal > perPage" class="flex justify-end">
-              <UPagination
-                v-model:page="page"
-                :total="listTotal"
-                :items-per-page="perPage"
-                :disabled="loading"
-              />
-            </div>
-          </template>
+          </UCard>
+          <div v-if="listTotal !== null && listTotal > perPage" class="flex justify-end">
+            <UPagination
+              v-model:page="page"
+              :total="listTotal"
+              :items-per-page="perPage"
+              :disabled="loading"
+            />
+          </div>
         </template>
-      </div>
-    </template>
-  </UDashboardPanel>
+      </template>
+    </div>
+  </ErpCatalogPageShell>
 </template>

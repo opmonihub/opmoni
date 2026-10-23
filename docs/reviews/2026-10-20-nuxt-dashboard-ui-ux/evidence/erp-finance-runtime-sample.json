@@ -1,0 +1,16 @@
+{
+  "viewport": [
+    1366,
+    768
+  ],
+  "path": "/erp/financeiro",
+  "fontsReady": "loaded",
+  "resources": 135,
+  "navigation": [
+    {
+      "domContentLoadedMs": 1513,
+      "loadMs": 1712
+    }
+  ],
+  "elements": 557
+}

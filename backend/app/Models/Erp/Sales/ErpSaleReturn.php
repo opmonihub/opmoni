@@ -7,10 +7,12 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ErpSaleReturn extends Model
 {
     protected $fillable = [
+        'commercial_snapshot', 'reason', 'currency', 'subtotal_amount', 'discount_amount', 'tax_amount',
         'erp_sale_id',
         'erp_company_id',
         'erp_establishment_id',
@@ -25,6 +27,8 @@ class ErpSaleReturn extends Model
     protected function casts(): array
     {
         return [
+            'commercial_snapshot' => 'array',
+            'subtotal_amount' => 'decimal:4', 'discount_amount' => 'decimal:4', 'tax_amount' => 'decimal:4',
             'total_amount' => 'decimal:4',
             'posted_at' => 'datetime',
         ];
@@ -48,5 +52,10 @@ class ErpSaleReturn extends Model
     public function postedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'posted_by_user_id');
+    }
+
+    public function lines(): HasMany
+    {
+        return $this->hasMany(ErpSaleReturnLine::class, 'erp_sale_return_id');
     }
 }

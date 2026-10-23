@@ -1,21 +1,13 @@
 <script setup lang="ts">
-import { erpCadastrosPages } from '#shared/utils/erpCatalogs'
+import { erpWorkspaceCatalogGroups } from '~/utils/erpWorkspaceNav'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
 useHead({ title: 'Cadastros · ERP' })
 
-const sections = [
-  { label: 'Contatos', to: erpCadastrosPages.contacts, icon: 'i-lucide-users' },
-  { label: 'Produtos', to: erpCadastrosPages.products, icon: 'i-lucide-package' },
-  { label: 'Unidades', to: erpCadastrosPages.units, icon: 'i-lucide-ruler' },
-  { label: 'Marcas', to: erpCadastrosPages.brands, icon: 'i-lucide-tag' },
-  { label: 'Categorias', to: erpCadastrosPages.categories, icon: 'i-lucide-folder-tree' },
-  { label: 'Preços e descontos', to: erpCadastrosPages.pricing, icon: 'i-lucide-badge-percent' },
-  { label: 'Fiscal', to: erpCadastrosPages.fiscal, icon: 'i-lucide-receipt' },
-  { label: 'Logística', to: erpCadastrosPages.logistics, icon: 'i-lucide-truck' },
-  { label: 'Importação', to: erpCadastrosPages.import, icon: 'i-lucide-upload' },
-  { label: 'Etiquetas', to: erpCadastrosPages.labels, icon: 'i-lucide-barcode' }
-]
+const route = useRoute()
+const { currentCompany } = useAuth()
+const groups = computed(() => erpWorkspaceCatalogGroups(route.path, currentCompany.value))
+const hasDestinations = computed(() => groups.value.some(group => group[0]?.children?.length))
 </script>
 
 <template>
@@ -23,18 +15,20 @@ const sections = [
     title="Cadastros"
     description="Catálogos comerciais e referências fiscais/logísticas da empresa."
   >
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <UButton
-        v-for="item in sections"
-        :key="item.to"
-        :to="item.to"
-        variant="subtle"
-        color="neutral"
-        class="justify-start"
-        :icon="item.icon"
-      >
-        {{ item.label }}
-      </UButton>
-    </div>
+    <template #toolbar>
+      <UNavigationMenu
+        :items="groups"
+        orientation="horizontal"
+        highlight
+        class="w-full flex-1 flex-wrap"
+      />
+    </template>
+    <UAlert
+      v-if="!hasDestinations"
+      color="neutral"
+      variant="subtle"
+      title="Nenhum cadastro disponível"
+      description="Esta empresa ainda não concedeu acesso a um catálogo."
+    />
   </ErpCatalogPageShell>
 </template>

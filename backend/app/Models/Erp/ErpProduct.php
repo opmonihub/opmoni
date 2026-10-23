@@ -17,7 +17,11 @@ class ErpProduct extends Model
     protected $fillable = [
         'erp_company_id', 'sku', 'name', 'kind', 'track_stock', 'erp_unit_id',
         'erp_brand_id', 'erp_category_id', 'sale_price', 'warranty_months',
-        'warranty_description', 'barcode', 'status',
+        'warranty_description', 'barcode', 'barcode_type', 'ncm', 'cest', 'origin_code',
+        'icms_cst', 'icms_csosn', 'pis_cst', 'cofins_cst', 'ipi_cst',
+        'icms_rate', 'pis_rate', 'cofins_rate', 'ipi_rate',
+        'simple_national_credit_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code',
+        'status',
     ];
 
     /** @return array<string, string> */
@@ -26,6 +30,11 @@ class ErpProduct extends Model
         return [
             'track_stock' => 'boolean',
             'sale_price' => 'decimal:4',
+            'icms_rate' => 'decimal:4',
+            'pis_rate' => 'decimal:4',
+            'cofins_rate' => 'decimal:4',
+            'ipi_rate' => 'decimal:4',
+            'simple_national_credit_rate' => 'decimal:4',
             'warranty_months' => 'integer',
         ];
     }

@@ -2,55 +2,37 @@
 
 namespace App\Http\Controllers\Api\V1\Erp\Stock;
 
-use App\Erp\LegacyPort\LegacyNfeXmlParser;
+use App\Erp\ErpOperationJournal;
+use App\Erp\Stock\ErpPurchaseImportService;
+use App\Erp\Stock\ErpPurchaseOperation;
 use App\Http\Controllers\Api\V1\Erp\ErpOperationsController;
-use App\Support\CurrentCompany;
+use App\Support\AccessSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use InvalidArgumentException;
+use Illuminate\Support\Facades\DB;
 
 class ErpPurchaseXmlPreviewController extends ErpOperationsController
 {
-    public function __construct(private LegacyNfeXmlParser $parser) {}
-
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
+        return DB::transaction(function () use ($request): JsonResponse {
+            $data = app(ErpPurchaseImportService::class)->preview($request);
+            AccessSession::assertOwnership($request);
 
-        $data = $request->validate([
-            'xml' => ['required', 'string'],
-        ]);
-
-        try {
-            $parsed = $this->parser->parse($data['xml']);
-        } catch (InvalidArgumentException $exception) {
-            abort(response()->json(['code' => 'validation_error', 'message' => $exception->getMessage()], 422));
-        }
-
-        $companyCnpj = $this->digitsOnly($context->company->cnpj ?? '');
-        $destCnpj = $this->digitsOnly($parsed['dest']['cpf_cnpj'] ?? '');
-        if ($companyCnpj === '' || $destCnpj === '' || $destCnpj !== $companyCnpj) {
-            abort(response()->json([
-                'code' => 'validation_error',
-                'message' => 'Destinatário do XML não corresponde ao CNPJ da empresa.',
-            ], 422));
-        }
-
-        return response()->json([
-            'data' => [
-                'chave' => $parsed['chave'],
-                'emit' => $parsed['emit'],
-                'dest' => $parsed['dest'],
-                'det' => $parsed['itens'],
-                'total' => $parsed['totais'],
-                'duplicatas' => $parsed['fatura'],
-            ],
-        ]);
+            return response()->json(['data' => $data]);
+        });
     }
 
-    private function digitsOnly(string $value): string
+    public function read(Request $request): JsonResponse
     {
-        return preg_replace('/\D+/', '', $value) ?? '';
+        $service = app(ErpPurchaseImportService::class);
+        $preview = $service->find($request);
+
+        return response()->json(['data' => $service->serialize($request, $preview, $request->input('token'))]);
+    }
+
+    public function confirm(Request $request): JsonResponse
+    {
+        return app(ErpOperationJournal::class)->executePurchase($request, ErpPurchaseOperation::CONFIRM);
     }
 }

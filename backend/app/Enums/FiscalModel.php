@@ -10,6 +10,7 @@ enum FiscalModel: string
     case CteOs = 'cte_os';
     case Gtve = 'gtve';
     case Nfse = 'nfse';
+    case Mdfe = 'mdfe';
 
     /**
      * O código de modelo do documento fiscal (campo `mod` da chave de acesso).
@@ -24,6 +25,7 @@ enum FiscalModel: string
             '55' => self::Nfe,
             '65' => self::Nfce,
             '57' => self::Cte,
+            '58' => self::Mdfe,
             '67' => self::CteOs,
             '64' => self::Gtve,
             default => null,
@@ -52,6 +54,7 @@ enum FiscalModel: string
             self::Nfe => [self::Nfe],
             self::Nfce => [self::Nfce],
             self::Nfse => [self::Nfse],
+            self::Mdfe => [self::Mdfe],
         };
     }
 
@@ -64,6 +67,7 @@ enum FiscalModel: string
             self::CteOs => 'CT-e OS',
             self::Gtve => 'GTV-e',
             self::Nfse => 'NFS-e',
+            self::Mdfe => 'MDF-e',
         };
     }
 }

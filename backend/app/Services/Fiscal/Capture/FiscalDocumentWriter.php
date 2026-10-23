@@ -55,7 +55,7 @@ final class FiscalDocumentWriter
         PulledDocument $document,
         ?FiscalTrustedDeliveryContext $delivery = null,
     ): FiscalDocument {
-        if ($document->stage !== FiscalStage::Document) {
+        if (! in_array($document->stage, [FiscalStage::Document, FiscalStage::Event], true)) {
             return $this->storeDocument($client, $source, $document, $delivery);
         }
 
@@ -66,7 +66,7 @@ final class FiscalDocumentWriter
 
             return resolve(CurrentTenant::class)->run((int) $client->account_id, function () use ($client, $source, $document, $delivery): FiscalDocument {
                 $accepted = FiscalDocument::query()->where('client_id', $client->id)->where('chave_acesso', $document->chave)
-                    ->where('stage', FiscalStage::Document)->where('event_id', $document->eventId)->lockForUpdate()->first();
+                    ->where('stage', $document->stage)->where('event_id', $document->eventId)->lockForUpdate()->first();
                 if ($accepted !== null && ($accepted->processing_reason === FiscalProcessingReason::ArtifactConflict
                     || $accepted->delivery_origin === FiscalDeliveryOrigin::ErpIssued
                     || $accepted->source === FiscalSource::ErpIssued
@@ -101,14 +101,14 @@ final class FiscalDocumentWriter
             return $accepted;
         }
         $readiness = resolve(FiscalDocumentReadiness::class);
-        $readiness->reconcileOne($accepted);
-        if (! $readiness->isReadyRow($accepted)) {
+        $accepted->forceFill(['storage_state' => $readiness->stateOf($accepted), 'storage_verified_at' => now()])->saveQuietly();
+        if ($accepted->storage_state !== FiscalStorageState::Available) {
             if (! Storage::disk('fiscal')->put($accepted->storage_path, $incoming->xml)) {
                 return $accepted;
             }
-            $readiness->reconcileOne($accepted);
+            $accepted->forceFill(['storage_state' => $readiness->stateOf($accepted), 'storage_verified_at' => now()])->saveQuietly();
         }
-        if ($readiness->isReadyRow($accepted)) {
+        if ($accepted->stage === FiscalStage::Document && $readiness->isReadyRow($accepted)) {
             resolve(FiscalProcessingCoordinator::class)->afterCompleteDocumentStored($accepted);
         }
 

@@ -38,24 +38,26 @@ class ErpCarrierController extends ErpCatalogController
 
     public function store(Request $request): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $data = $this->validated($request);
-        $row = ErpCarrier::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+        return $this->write($request, function (CurrentCompany $context) use ($request): JsonResponse {
+            $data = $this->validated($request);
+            $row = ErpCarrier::query()->create([...$data, 'erp_company_id' => $context->company->id, 'status' => 'active']);
+            $this->record($request, $context, $row, 'created');
 
-        return response()->json(['data' => $this->serialize($row)], 201);
+            return response()->json(['data' => $this->serialize($row)], 201);
+        });
     }
 
     public function update(Request $request, int $carrier): JsonResponse
     {
-        $context = CurrentCompany::fromRequest($request);
-        $context->assertCanMutate();
-        $model = $this->findForCompany($request, $carrier);
-        $data = $this->validated($request, partial: true);
-        $model->fill($data);
-        $model->save();
+        return $this->write($request, function (CurrentCompany $context) use ($request, $carrier): JsonResponse {
+            $model = $this->findForCompany($request, $carrier);
+            $data = $this->validated($request, partial: true);
+            $model->fill($data);
+            $model->save();
+            $this->record($request, $context, $model, 'updated');
 
-        return response()->json(['data' => $this->serialize($model)]);
+            return response()->json(['data' => $this->serialize($model->fresh())]);
+        });
     }
 
     /** @return array<string, mixed> */
