@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
@@ -24,6 +26,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const exports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     if (!(path in imports)) throw new Error(`Unexpected test import ${path}`)
     return imports[path]
   }, exports, ...Object.values(bindings))
@@ -149,6 +152,8 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
     useRouter: () => ({ replace(location: Record<string, unknown>) { replacements.push(location); route.hash = String(location.hash ?? ''); return Promise.resolve() } })
   })
   const components: Record<string, Vue.Component> = {
+    ErpListFooter: compileVueComponent('components/erp/ErpListFooter.vue'),
+    UPagination: { setup: (_props, context) => () => Vue.h('nav', { ...context.attrs, 'data-pagination': true }) },
     ErpCatalogPageShell: { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) },
     UButton: { props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, onClick: context.attrs.onClick }, context.slots.default?.() ?? String(props.label ?? '')) },
     UModal: { props: ['open', 'title'], emits: ['after:leave', 'update:open'], setup: (props, context) => { Vue.watch(() => props.open, (open, previous) => { if (previous && !open) modalLeaves.push(() => context.emit('after:leave')) }); return () => props.open ? Vue.h('section', { 'data-modal': props.title }, context.slots.body?.()) : Vue.createCommentVNode() } },
@@ -1833,4 +1838,61 @@ describe('native acceptance purchase dialog handoff', () => {
       assert.deepEqual(mounted.renderErrors, [])
     } finally { mounted.app.unmount() }
   })
+})
+
+describe('real purchase list footers', () => {
+  for (const area of ['purchases', 'returns'] as const) {
+    it(`pages ${area} once, preserving the active area and filters through pending and denial`, async (t) => {
+      const calls: string[] = []
+      const pending = deferred<unknown>()
+      let denied = false
+      const workspace = createWorkspace(async (path) => {
+        calls.push(path)
+        if (denied) throw { statusCode: 403 }
+        const current = Number(new URL(path, 'http://test').searchParams.get('page') ?? 1)
+        if (current === 2) return pending.promise
+        return { data: [], meta: { current_page: current, last_page: 3, per_page: 15, total: 35 } }
+      })
+      t.after(workspace.stop)
+      const filters = area === 'purchases' ? workspace.state.filters : workspace.state.returnFilters
+      Object.assign(filters, { status: 'draft', ...(area === 'purchases' ? { search: 'fornecedor' } : {}) })
+      await (area === 'purchases' ? workspace.state.load() : workspace.state.loadReturns())
+      const mounted = mountPurchaseWorkspace(`#${area}`, workspace.state)
+      t.after(() => mounted.app.unmount())
+      await Vue.nextTick()
+      await Vue.nextTick()
+      const pagination = () => (mounted.find(mounted.root, node => (node.props as Record<string, unknown>)?.['data-pagination'] === true) as { props: Record<string, unknown> }).props
+      const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+      const before = calls.length
+      change(1)
+      change(0)
+      assert.equal(calls.length, before)
+      change(2)
+      await Vue.nextTick()
+      assert.equal(calls.length, before + 1)
+      const url = new URL(calls.at(-1)!, 'http://test')
+      assert.equal(url.pathname, area === 'purchases' ? '/erp/purchases' : '/erp/purchase-returns')
+      for (const [key, value] of Object.entries(filters)) assert.equal(url.searchParams.get(key), String(value))
+      change(3)
+      await Vue.nextTick()
+      assert.equal(calls.length, before + 1)
+      pending.resolve({ data: [], meta: { current_page: 2, last_page: 3, per_page: 15, total: 35 } })
+      await pending.promise
+      await Vue.nextTick()
+      await Vue.nextTick()
+      assert.equal(pagination().page, 2)
+      assert.equal(mounted.route.hash, `#${area}`)
+      assert.match(textContent(mounted.root), area === 'purchases' ? /35 compras/ : /35 devoluções/)
+      denied = true
+      change(3)
+      for (let turn = 0; turn < 8; turn++) { await Promise.resolve(); await Vue.nextTick() }
+      const deniedPageRequests = calls.filter((path) => { const url = new URL(path, 'http://test'); return url.pathname === (area === 'purchases' ? '/erp/purchases' : '/erp/purchase-returns') && url.searchParams.get('page') === '3' })
+      assert.equal(deniedPageRequests.length, 1)
+      assert.equal(calls.length, before + 3, 'the existing denial watcher checks the other permitted list once')
+      assert.equal(mounted.findAll(mounted.root, node => (node.props as Record<string, unknown>)?.['data-pagination'] === true).length, 0)
+      assert.equal(mounted.route.hash, '#xml-preview', 'existing authority handling falls back after both list denials')
+      assert.equal(filters.status, 'draft')
+      assert.deepEqual(mounted.renderErrors, [])
+    })
+  }
 })

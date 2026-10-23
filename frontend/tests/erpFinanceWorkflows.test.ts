@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
@@ -17,6 +19,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const moduleExports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     const value = imports[path]
     if (!value) throw new Error(`Unexpected test import ${path}`)
     return value
@@ -85,6 +88,8 @@ function createFinanceRoute(hash = '') {
 
 function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute()) {
   const components: Record<string, Vue.Component> = {}
+  components.ErpListFooter = compileVueComponent('components/erp/ErpListFooter.vue')
+
   const modalOpenStates: boolean[] = []
   const overlayProps = new Map<string, { props: Record<string, unknown>, attrs: Record<string, unknown> }>()
   let mountedFinance: Record<string, unknown> = {}
@@ -141,6 +146,7 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
   } }
   for (const name of ['UAlert', 'UForm', 'UFormField', 'UInput', 'USelect', 'UTextarea', 'UBadge', 'USkeleton', 'UEmpty', 'UPagination'])
     components[name] = { inheritAttrs: false, setup: (_props, context) => () => Vue.h('div', context.attrs, context.slots.default?.()) }
+  components.UPagination = { setup: (_props, context) => () => Vue.h('nav', { ...context.attrs, 'data-pagination': true }) }
   const root = { children: [] as unknown[], parent: null as unknown }
   const renderer = Vue.createRenderer({
     patchProp(node: { props: Record<string, unknown> }, key, _previous, next) { node.props[key] = next },
@@ -1790,5 +1796,51 @@ describe('finance workspace', { concurrency: 1 }, () => {
     pending.resolve(page([obligation]))
     await request
     assert.equal(state.rows.value.length, 0)
+  })
+})
+
+describe('real finance list footer', () => {
+  it('admits one page request with all filters, blocks pending transitions and clears on denial', async (t) => {
+    const calls: string[] = []
+    const pending = deferred<unknown>()
+    let denied = false
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (denied) throw { statusCode: 403 }
+      const current = Number(new URL(path, 'http://test').searchParams.get('page') ?? 1)
+      if (current === 2) return pending.promise
+      return { data: [], meta: { current_page: current, last_page: 3, per_page: 15, total: 35, totals: [] } }
+    })
+    t.after(app.stop)
+    const state = app.state as { filters: Record<string, string | number>, tab: Vue.Ref<string>, load: () => Promise<void> }
+    Object.assign(state.filters, { erp_establishment_id: '3', currency: 'BRL', direction: 'receivable', status: 'open', date_from: '2026-10-01', date_to: '2026-10-31' })
+    await state.load()
+    const mounted = mountFinanceWorkspace(app.state)
+    t.after(mounted.unmount)
+    const pagination = () => mounted.control(props => props['data-pagination'] === true)
+    const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+    const before = calls.length
+    change(1)
+    change(-1)
+    assert.equal(calls.length, before)
+    change(2)
+    await settle()
+    assert.equal(calls.length, before + 1)
+    const query = new URL(calls.at(-1)!, 'http://test').searchParams
+    for (const [key, value] of Object.entries(state.filters)) if (value !== '') assert.equal(query.get(key), String(value))
+    change(3)
+    await settle()
+    assert.equal(calls.length, before + 1)
+    pending.resolve({ data: [], meta: { current_page: 2, last_page: 3, per_page: 15, total: 35, totals: [] } })
+    await settle()
+    assert.equal(pagination().page, 2)
+    assert.equal(state.tab.value, 'obligations')
+    assert.equal(mounted.hasText('35 registros'), true)
+    denied = true
+    change(3)
+    await settleUntil(() => !mounted.componentProps('ErpListFooter').length)
+    assert.equal(calls.length, before + 2)
+    assert.equal(state.tab.value, 'obligations')
+    assert.equal(state.filters.currency, 'BRL')
   })
 })

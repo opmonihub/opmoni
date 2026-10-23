@@ -1,0 +1,4 @@
+PASS catalog-mobile: no global horizontal overflow; all footer controls inside frame; table scrolls locally; expected gutter
+PASS catalog-desktop: no global horizontal overflow; all footer controls inside frame; table scrolls locally; expected gutter
+PASS cash-mobile: no global horizontal overflow; all footer controls inside frame; table scrolls locally; expected gutter
+PASS label-mobile: long content wraps; selection checkbox stays reachable; selected count updates; no global overflow

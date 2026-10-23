@@ -1,0 +1,79 @@
+{
+  "documentScrollWidth": 1366,
+  "footer": {
+    "height": 49,
+    "right": 1342,
+    "width": 1078,
+    "x": 264,
+    "y": 318
+  },
+  "footerButtons": [
+    {
+      "height": 32,
+      "right": 1126,
+      "width": 32,
+      "x": 1094,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1162,
+      "width": 32,
+      "x": 1130,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1198,
+      "width": 32,
+      "x": 1166,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1234,
+      "width": 32,
+      "x": 1202,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1270,
+      "width": 32,
+      "x": 1238,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1306,
+      "width": 32,
+      "x": 1274,
+      "y": 335
+    },
+    {
+      "height": 32,
+      "right": 1342,
+      "width": 32,
+      "x": 1310,
+      "y": 335
+    }
+  ],
+  "scroll": {
+    "clientWidth": 1078,
+    "height": 102,
+    "right": 1342,
+    "scrollWidth": 1313,
+    "width": 1078,
+    "x": 264,
+    "y": 200
+  },
+  "synthetic": true,
+  "table": {
+    "height": 102,
+    "right": 1576.515625,
+    "width": 1312.515625,
+    "x": 264,
+    "y": 200
+  },
+  "viewport": 1366
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import { h, nextTick, onScopeDispose, resolveComponent, useSlots } from 'vue'
 import type { Component, ComponentPublicInstance } from 'vue'
 import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
@@ -383,13 +384,11 @@ defineExpose({ createAction })
           class="w-full"
         />
       </UFormField>
-      <p v-if="hasLoaded && state?.meta" class="text-muted shrink-0 pb-2 text-sm" aria-live="polite">
-        {{ state.meta.total }} {{ state.meta.total === 1 ? 'registro' : 'registros' }}
-      </p>
     </div>
     <div class="space-y-4">
       <UTable
         v-if="hasLoaded && rows.length"
+        :ui="erpOperationalTableUi"
         :data="rows"
         :columns="tableColumns"
         :loading="pending"

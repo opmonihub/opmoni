@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpCashMovement, ErpCashRegister, ErpCashSession } from '#shared/types/erpBusiness'
 import { formatErpMoney, type ErpFinanceAction } from '#shared/utils/erpFinance'
@@ -27,6 +28,19 @@ onMounted(() => {
   const hash = `#${cash.selectedPage.value}`
   if (route.hash !== hash) void router.replace({ path: route.path, query: route.query, hash })
 })
+
+// Presentation guard only; the composable retains session, query and authority ownership.
+const movementPagePending = ref(false)
+async function changeMovementPage(page: number) {
+  const session = cash.selectedSession.value
+  if (!session || movementPagePending.value) return
+  movementPagePending.value = true
+  try {
+    await cash.loadMovementPage(session.id, page)
+  } finally {
+    movementPagePending.value = false
+  }
+}
 
 const registerOpen = ref(false)
 const openSessionOpen = ref(false)
@@ -289,6 +303,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           :title="cash.pageErrors.registers"
         />
         <UTable
+          :ui="erpOperationalTableUi"
           :data="cash.registers.value"
           :columns="registerColumns"
           :loading="cash.loading.registers"
@@ -315,27 +330,13 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
             />
           </template>
         </UTable>
-        <div v-if="cash.listMeta.registers && cash.listMeta.registers.last_page > 1" class="flex items-center justify-between text-sm text-muted">
-          <span>Página {{ cash.listMeta.registers.current_page }} de {{ cash.listMeta.registers.last_page }}</span>
-          <div class="flex gap-2">
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Anterior"
-              :disabled="cash.listMeta.registers.current_page <= 1 || cash.loading.registers"
-              @click="cash.loadList('registers', cash.listMeta.registers!.current_page - 1)"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Próxima"
-              :disabled="cash.listMeta.registers.current_page >= cash.listMeta.registers.last_page || cash.loading.registers"
-              @click="cash.loadList('registers', cash.listMeta.registers!.current_page + 1)"
-            />
-          </div>
-        </div>
+        <ErpListFooter
+          v-if="cash.listMeta.registers"
+          :page="cash.listMeta.registers.current_page"
+          :meta="cash.listMeta.registers"
+          :pending="cash.loading.registers"
+          @update:page="cash.loadList('registers', $event)"
+        />
       </template>
 
       <template v-else>
@@ -375,6 +376,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           :title="cash.pageErrors.sessions"
         />
         <UTable
+          :ui="erpOperationalTableUi"
           :data="cash.sessions.value"
           :columns="sessionColumns"
           :loading="cash.loading.sessions"
@@ -393,27 +395,13 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
             />
           </template>
         </UTable>
-        <div v-if="cash.listMeta.sessions && cash.listMeta.sessions.last_page > 1" class="flex items-center justify-between text-sm text-muted">
-          <span>Página {{ cash.listMeta.sessions.current_page }} de {{ cash.listMeta.sessions.last_page }}</span>
-          <div class="flex gap-2">
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Anterior"
-              :disabled="cash.listMeta.sessions.current_page <= 1 || cash.loading.sessions"
-              @click="cash.loadList('sessions', cash.listMeta.sessions!.current_page - 1)"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Próxima"
-              :disabled="cash.listMeta.sessions.current_page >= cash.listMeta.sessions.last_page || cash.loading.sessions"
-              @click="cash.loadList('sessions', cash.listMeta.sessions!.current_page + 1)"
-            />
-          </div>
-        </div>
+        <ErpListFooter
+          v-if="cash.listMeta.sessions"
+          :page="cash.listMeta.sessions.current_page"
+          :meta="cash.listMeta.sessions"
+          :pending="cash.loading.sessions"
+          @update:page="cash.loadList('sessions', $event)"
+        />
       </template>
 
       <section v-if="cash.selectedSession.value" class="space-y-4 border-t border-default pt-5" aria-labelledby="cash-session-detail-title">
@@ -520,29 +508,21 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           :title="cash.movementError.value"
         />
         <div class="overflow-x-auto">
-          <UTable :data="cash.movements.value" :columns="movementColumns" :empty="cash.movementMeta.value ? 'Nenhum movimento registrado nesta sessão.' : 'Histórico indisponível.'" />
+          <UTable
+            :ui="erpOperationalTableUi"
+            :data="cash.movements.value"
+            :columns="movementColumns"
+            :empty="cash.movementMeta.value ? 'Nenhum movimento registrado nesta sessão.' : 'Histórico indisponível.'"
+          />
         </div>
-        <div v-if="cash.movementMeta.value" class="flex items-center justify-between text-sm text-muted">
-          <span>Histórico: {{ cash.movementMeta.value.total }} movimentos</span>
-          <div class="flex gap-2">
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Anterior"
-              :disabled="cash.movementMeta.value.current_page <= 1"
-              @click="cash.loadMovementPage(cash.selectedSession.value.id, cash.movementMeta.value.current_page - 1)"
-            />
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="outline"
-              label="Próxima"
-              :disabled="cash.movementMeta.value.current_page >= cash.movementMeta.value.last_page"
-              @click="cash.loadMovementPage(cash.selectedSession.value.id, cash.movementMeta.value.current_page + 1)"
-            />
-          </div>
-        </div>
+        <ErpListFooter
+          v-if="cash.movementMeta.value"
+          :page="cash.movementMeta.value.current_page"
+          :meta="cash.movementMeta.value"
+          :pending="movementPagePending"
+          :summary="`Histórico: ${cash.movementMeta.value.total.toLocaleString('pt-BR')} movimentos`"
+          @update:page="changeMovementPage"
+        />
       </section>
     </div>
 

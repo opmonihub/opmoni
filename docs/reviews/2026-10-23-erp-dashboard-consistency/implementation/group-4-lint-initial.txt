@@ -1,0 +1,11 @@
+
+/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts
+  1001:69  error  This line has 3 statements. Maximum allowed is 1  @stylistic/max-statements-per-line
+
+/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts
+  30:52  error  This line has 2 statements. Maximum allowed is 1  @stylistic/max-statements-per-line
+  37:61  error  This line has 2 statements. Maximum allowed is 1  @stylistic/max-statements-per-line
+  44:31  error  This line has 2 statements. Maximum allowed is 1  @stylistic/max-statements-per-line
+
+✖ 4 problems (4 errors, 0 warnings)
+

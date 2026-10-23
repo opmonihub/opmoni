@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { TableColumn } from '@nuxt/ui'
 import type { ErpProductRecord } from '#shared/types/erpCatalogs'
 import type { ErpCatalogLabelLayoutDraft } from '~/composables/useErpCatalogLabels'
@@ -135,7 +136,7 @@ watch(labels.contextKey, () => {
             :data="productLines"
             :columns="columns"
             :loading="pending || searchPending"
-            :ui="{ td: 'whitespace-normal', empty: 'py-8' }"
+            :ui="{ ...erpOperationalTableUi, td: `${erpOperationalTableUi.td} whitespace-normal`, empty: 'py-8' }"
           >
             <template #selection-cell="{ row }">
               <UCheckbox

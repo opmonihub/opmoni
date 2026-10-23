@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import * as vue from 'vue'
 import ts from 'typescript'
+import { loadAppComposable } from './loadAppComposable.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -47,7 +48,7 @@ export function compileVueComponent(
       if (modulePath.endsWith('.vue'))
         return asDefaultModule(compileVueComponent(modulePath, bindings, moduleMocks))
       const sourcePath = modulePath.endsWith('.ts') ? modulePath : `${modulePath}.ts`
-      return require(fileURLToPath(new URL(`../../app/${sourcePath}`, import.meta.url)))
+      return loadAppComposable(sourcePath, bindings)
     }
     if (specifier.startsWith('#shared/')) {
       const modulePath = specifier.slice('#shared/'.length)

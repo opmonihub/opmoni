@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { once } from 'node:events'
 import * as Vue from 'vue'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { renderToString } from 'vue/server-renderer'
@@ -94,7 +95,7 @@ describe('authoritative report workspace', () => {
     const script = compileScript(descriptor, { id: 'metrics-detail', inlineTemplate: true })
     const output = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
     const exports: { default?: Vue.Component } = {}
-    new Function('require', 'exports', 'computed', output)((path: string) => path === 'vue' ? Vue : undefined, exports, Vue.computed)
+    new Function('require', 'exports', 'computed', output)((path: string) => path === 'vue' ? Vue : path === '~/components/erp/erpPresentation' ? loadAppComposable('components/erp/erpPresentation.ts') : undefined, exports, Vue.computed)
     const app = Vue.createSSRApp(exports.default!, { report: {
       category: 'financial', filters, generated_at: '2026-10-22T12:00:00+00:00', historical_position: 'unavailable',
       totals: { obligations_open_amount: '9007199254740993.1234' },

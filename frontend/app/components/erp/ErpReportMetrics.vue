@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { ErpReportLedger, ErpReportSnapshot, ErpReportValue } from '#shared/types/erpReports'
 
 const props = defineProps<{ report: ErpReportSnapshot }>()
@@ -143,6 +144,7 @@ function display(value: ErpReportValue | undefined): string {
         </template>
       </p>
       <UTable
+        :ui="erpOperationalTableUi"
         :data="item.rows"
         :columns="item.columns"
         :caption="item.title"

@@ -5,9 +5,9 @@ import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
-import * as erpPresentation from '../app/components/erp/erpPresentation.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
+const erpPresentation = loadAppComposable('components/erp/erpPresentation.ts')
 const workspaceNav = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
 
 function evaluate(code: string, globals: Record<string, unknown> = {}) {

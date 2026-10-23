@@ -1,0 +1,112 @@
+{
+  "buttons": [
+    {
+      "height": 32,
+      "right": 48,
+      "width": 32,
+      "x": 16,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 84,
+      "width": 32,
+      "x": 52,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 120,
+      "width": 32,
+      "x": 88,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 156,
+      "width": 32,
+      "x": 124,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 192,
+      "width": 32,
+      "x": 160,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 228,
+      "width": 32,
+      "x": 196,
+      "y": 1110
+    },
+    {
+      "height": 32,
+      "right": 264,
+      "width": 32,
+      "x": 232,
+      "y": 1110
+    }
+  ],
+  "cellAlignments": [
+    {
+      "align": "start",
+      "text": "2026-10-23T12:00:00Z"
+    },
+    {
+      "align": "start",
+      "text": "manual_in"
+    },
+    {
+      "align": "start",
+      "text": "in"
+    },
+    {
+      "align": "start",
+      "text": "1234567.1200"
+    },
+    {
+      "align": "start",
+      "text": "Descrição extensa para conferir valores e rolagem local do histórico"
+    },
+    {
+      "align": "start",
+      "text": "—"
+    }
+  ],
+  "count": {
+    "height": 20,
+    "right": 189.515625,
+    "width": 173.515625,
+    "x": 16,
+    "y": 1078
+  },
+  "documentScrollWidth": 390,
+  "footer": {
+    "height": 81,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 1061
+  },
+  "scenario": "synthetic movement history, actual closed-session display",
+  "scroll": {
+    "clientWidth": 358,
+    "height": 90,
+    "right": 374,
+    "scrollWidth": 1052,
+    "width": 358,
+    "x": 16,
+    "y": 955
+  },
+  "table": {
+    "height": 90,
+    "right": 1068.15625,
+    "width": 1052.15625,
+    "x": 16,
+    "y": 955
+  },
+  "viewport": 390
+}

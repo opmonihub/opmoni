@@ -1,0 +1,78 @@
+▶ real cash list footers
+  ✔ pages registers once with its filters, suppresses pending requests and respects revoked authority (2415.676592ms)
+  ✔ pages sessions once with its filters, suppresses pending requests and respects revoked authority (1608.354197ms)
+  ✖ guards the real movement loader throughout the awaited page, retaining the session and server total (994.251646ms)
+✖ real cash list footers (5019.857359ms)
+✔ pages the real catalog footer once, retaining search and refusing pending or unauthorized requests (5227.348377ms)
+▶ real finance list footer
+  ✔ admits one page request with all filters, blocks pending transitions and clears on denial (4179.163492ms)
+✔ real finance list footer (4180.27044ms)
+▶ real purchase list footers
+  ✖ pages purchases once, preserving the active area and filters through pending and denial (3468.337091ms)
+  ✖ pages returns once, preserving the active area and filters through pending and denial (1008.900529ms)
+✖ real purchase list footers (4478.626602ms)
+✖ pages the real stock footer once for the selected area, preserving filters and denying revoked access (3697.090074ms)
+ℹ tests 8
+ℹ suites 3
+ℹ pass 4
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13245.615742
+
+✖ failing tests:
+
+test at tests/erpCashWorkflows.test.ts:971:3
+✖ guards the real movement loader throughout the awaited page, retaining the session and server total (994.251646ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1002:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/erpPurchaseWorkflows.test.ts:1845:5
+✖ pages purchases once, preserving the active area and filters through pending and denial (3468.337091ms)
+  TypeError: Cannot read properties of null (reading 'props')
+      at pagination (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1863:164)
+      at change (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1864:42)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1866:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at tests/erpPurchaseWorkflows.test.ts:1845:5
+✖ pages returns once, preserving the active area and filters through pending and denial (1008.900529ms)
+  TypeError: Cannot read properties of null (reading 'props')
+      at pagination (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1863:164)
+      at change (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1864:42)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpPurchaseWorkflows.test.ts:1866:7)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at tests/erpStockWorkflows.test.ts:1107:1
+✖ pages the real stock footer once for the selected area, preserving filters and denying revoked access (3697.090074ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  8 !== 9
+  
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpStockWorkflows.test.ts:1130:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 8,
+    expected: 9,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

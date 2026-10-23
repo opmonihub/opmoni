@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
@@ -28,6 +30,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const moduleExports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     const value = imports[path]
     if (!value) throw new Error(`Unexpected test import ${path}`)
     return value
@@ -105,11 +108,11 @@ function createCashWorkspace(api: Api, company = Vue.ref({ id: 7, permissions: [
   return { state, company, mount: () => mounted?.(), stop: () => scope.stop() }
 }
 
-function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown> } = {}) {
-  const route = Vue.reactive({ path: '/erp/caixa', query: {}, hash: '#sessions' })
+function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown>, workspaceState?: Record<string, unknown>, initialHash?: string } = {}) {
+  const route = Vue.reactive({ path: '/erp/caixa', query: {}, hash: options.initialHash ?? '#sessions' })
   const replacements: Record<string, unknown>[] = []
-  const selectedPage = Vue.ref<'registers' | 'sessions'>('registers')
-  const selectedSession = Vue.ref<Record<string, unknown> | null>(null)
+  const selectedPage = options.workspaceState?.selectedPage as Vue.Ref<'registers' | 'sessions'> ?? Vue.ref<'registers' | 'sessions'>('registers')
+  const selectedSession = options.workspaceState?.selectedSession as Vue.Ref<Record<string, unknown> | null> ?? Vue.ref<Record<string, unknown> | null>(null)
   const authorityGeneration = Vue.ref(0)
   const state = {
     registers: Vue.ref([activeRegister]), registerOptions: Vue.ref([activeRegister]), registerOptionsMeta: Vue.ref(null), registerOptionsLoading: Vue.ref(false),
@@ -126,6 +129,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
     payCashPayment: options.paymentResult ?? (async () => null), reconcile: async () => {}, retryExact: async () => null, activeCashSession: () => null,
     loadMovementPage: async () => {}, loadRegisterOptions: async () => {}, loadMoreRegisterOptions: async () => {}
   }
+  Object.assign(state, options.workspaceState)
   let initialPageArgument: unknown
   const modalIds = new Map<string, number>()
   const tableRows: unknown[][] = []
@@ -154,6 +158,8 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
     })
   })
   const components: Record<string, Vue.Component> = {}
+  components.ErpListFooter = compileVueComponent('components/erp/ErpListFooter.vue')
+
   components.ErpCatalogPageShell = { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) }
   components.UButton = { props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'data-label': props.label }, context.slots.default?.()) }
   components.UNavigationMenu = { props: ['items'], setup: props => () => Vue.h('nav', {}, (props.items as Record<string, unknown>[][]).flat().map(item => Vue.h('span', { 'data-active': item.active }, String(item.label)))) }
@@ -166,6 +172,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
     modalIds.set(String(props.title), id)
     return () => Vue.h('section')
   } }
+  components.UPagination = { setup: (_props, context) => () => Vue.h('nav', { ...context.attrs, 'data-pagination': true }) }
   components.ErpCashSessionForm = { setup: () => () => Vue.h('div') }
   components.ErpCashMovementForm = { setup: () => () => Vue.h('div') }
   components.ErpCashPaymentForm = { setup: () => () => Vue.h('div') }
@@ -903,5 +910,104 @@ describe('cash workspace API workflow', () => {
     const retry = calls.find(call => call.path === pending.path && call.options?.method === 'POST')
     assert.deepEqual(retry?.options?.body, { declared_closing_amount: '119.0000' })
     assert.deepEqual(retry?.options?.headers, { 'Idempotency-Key': pending.key })
+  })
+})
+
+function cashPagination(root: unknown): Record<string, unknown>[] {
+  if (!root || typeof root !== 'object') return []
+  const node = root as { props?: Record<string, unknown>, children?: unknown[] }
+  return [...(node.props?.['data-pagination'] === true ? [node.props] : []), ...(node.children ?? []).flatMap(cashPagination)]
+}
+
+describe('real cash list footers', () => {
+  for (const kind of ['registers', 'sessions'] as const) {
+    it(`pages ${kind} once with its filters, suppresses pending requests and respects revoked authority`, async (t) => {
+      const calls: string[] = []
+      const pending = deferred<unknown>()
+      const workspace = createCashWorkspace(async (path) => {
+        calls.push(path)
+        const current = Number(new URL(path, 'http://test').searchParams.get('page') ?? 1)
+        if (current === 2) return pending.promise
+        return { data: [], meta: { current_page: current, last_page: 3, per_page: 15, total: 35, totals: [] } }
+      })
+      t.after(workspace.stop)
+      const state = workspace.state as { selectedPage: Vue.Ref<string>, filters: Record<string, unknown>, loadList: (kind: string, page?: number) => Promise<void> }
+      state.selectedPage.value = kind
+      Object.assign(state.filters, { status: 'open', currency: 'BRL', erp_cash_register_id: '11', erp_establishment_id: '3', date_from: '2026-10-01', date_to: '2026-10-31' })
+      await state.loadList(kind)
+      const mounted = mountCashWorkspace({ workspaceState: workspace.state, initialHash: `#${kind}` })
+      t.after(() => mounted.app.unmount())
+      await Vue.nextTick()
+      const pagination = () => cashPagination(mounted.root)[0]!
+      const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+      change(1)
+      change(0)
+      assert.equal(calls.length, 1)
+      change(2)
+      await Vue.nextTick()
+      assert.equal(calls.length, 2)
+      const query = new URL(calls[1]!, 'http://test').searchParams
+      assert.equal(query.get('page'), '2')
+      if (kind === 'sessions') for (const [key, value] of Object.entries(state.filters)) if (!['page', 'per_page'].includes(key) && value !== '') assert.equal(query.get(key), value)
+      change(3)
+      await Vue.nextTick()
+      assert.equal(calls.length, 2)
+      pending.resolve({ data: [], meta: { current_page: 2, last_page: 3, per_page: 15, total: 35, totals: [] } })
+      await pending.promise
+      await Vue.nextTick()
+      await Vue.nextTick()
+      assert.equal(pagination().page, 2)
+      assert.equal(state.selectedPage.value, kind)
+      assert.match(textContent(mounted.root), /35 registros/)
+      workspace.company.value = { ...workspace.company.value, role: 'viewer', permissions: [] }
+      await Vue.nextTick()
+      assert.equal(cashPagination(mounted.root).length, 0)
+      const before = calls.length
+      await state.loadList(kind, 3)
+      assert.equal(calls.length, before)
+    })
+  }
+
+  it('guards the real movement loader throughout the awaited page, retaining the session and server total', async (t) => {
+    const calls: string[] = []
+    const pending = deferred<unknown>()
+    const workspace = createCashWorkspace(async (path) => {
+      calls.push(path)
+      if (path === '/erp/cash-sessions/21') return { data: openSession }
+      const current = Number(new URL(path, 'http://test').searchParams.get('page') ?? 1)
+      if (current === 2) return pending.promise
+      return { data: [], meta: { current_page: current, last_page: 3, per_page: 15, total: 35 }, totals: { movements_in: '90.0000' } }
+    })
+    t.after(workspace.stop)
+    const state = workspace.state as { inspectSession: (id: number) => Promise<void>, selectedSession: Vue.Ref<{ id: number }> }
+    await state.inspectSession(21)
+    const mounted = mountCashWorkspace({ workspaceState: workspace.state })
+    t.after(() => mounted.app.unmount())
+    await Vue.nextTick()
+    const pagination = () => cashPagination(mounted.root).at(-1)!
+    const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+    const before = calls.length
+    change(2)
+    change(2) // Synchronous repeated native events must also hit the wrapper guard.
+    await Vue.nextTick()
+    change(3)
+    assert.equal(calls.length, before + 1)
+    assert.equal(calls.at(-1), '/erp/cash-sessions/21/movements?per_page=15&page=2')
+    assert.equal(pagination().disabled, true)
+    pending.resolve({ data: [], meta: { current_page: 2, last_page: 3, per_page: 15, total: 35 } })
+    await pending.promise
+    await Vue.nextTick()
+    await Vue.nextTick()
+    for (let turn = 0; turn < 8 && pagination().disabled; turn++) {
+      await Promise.resolve()
+      await Vue.nextTick()
+    }
+    assert.equal(pagination().page, 2)
+    assert.equal(pagination().disabled, false)
+    assert.equal(state.selectedSession.value.id, 21)
+    assert.match(textContent(mounted.root), /Histórico: 35 movimentos/)
+    workspace.company.value = { ...workspace.company.value, role: 'viewer', permissions: [] }
+    await Vue.nextTick()
+    assert.equal(cashPagination(mounted.root).length, 0)
   })
 })

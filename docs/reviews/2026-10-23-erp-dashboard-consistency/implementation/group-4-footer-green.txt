@@ -1,0 +1,17 @@
+▶ ERP controlled list footer
+  ✔ keeps the confirmed 0 count without pagination for a single page (445.696733ms)
+  ✔ keeps the confirmed 1 count without pagination for a single page (28.664858ms)
+  ✔ keeps the confirmed 15 count without pagination for a single page (18.014014ms)
+  ✔ uses server total and page size and emits exactly one changed valid transition (65.035617ms)
+  ✔ does not emit on metadata replacement or synchronize the model automatically (25.698216ms)
+  ✔ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (54.955146ms)
+  ✔ allows a consumer summary without changing authoritative pagination (17.043025ms)
+✔ ERP controlled list footer (656.708282ms)
+ℹ tests 7
+ℹ suites 1
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1340.554046

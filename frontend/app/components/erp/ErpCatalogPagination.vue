@@ -44,13 +44,11 @@ defineEmits<{ retry: [] }>()
         />
       </template>
     </UAlert>
-    <div v-if="meta && meta.last_page > 1" class="flex justify-end">
-      <UPagination
-        v-model:page="page"
-        :total="meta.total"
-        :items-per-page="meta.per_page"
-        :disabled="pending"
-      />
-    </div>
+    <ErpListFooter
+      v-if="meta && loaded"
+      v-model:page="page"
+      :meta="meta"
+      :pending="pending || searchPending || authorityBlocked"
+    />
   </div>
 </template>

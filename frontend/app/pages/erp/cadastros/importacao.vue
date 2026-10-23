@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { TableColumn } from '@nuxt/ui'
 import type { ErpImportRow } from '#shared/types/erpCatalogImport'
 import { erpImportHeaders } from '#shared/types/erpCatalogImport'
@@ -142,7 +143,12 @@ function rowErrors(record: number) {
           Aguarde a confirmação do resultado ou consulte a operação antes de repetir.
         </p>
       </template>
-      <UTable :data="preview.rows" :columns="columns" class="max-h-96">
+      <UTable
+        :ui="erpOperationalTableUi"
+        :data="preview.rows"
+        :columns="columns"
+        class="max-h-96"
+      >
         <template #validation-cell="{ row }">
           <span :class="preview.errors.some(error => error.record === row.original.record) ? 'text-error' : 'text-muted'">{{ rowErrors(row.original.record) }}</span>
         </template>

@@ -306,10 +306,11 @@ function mountCatalogPage(path: string) {
       return () => Vue.h('button', { ...attrs, type: props.type ?? 'button' }, slots.default?.() ?? String(props.label ?? ''))
     }
   }))
+  app.component('ErpListFooter', compileVueComponent('components/erp/ErpListFooter.vue'))
   app.component('UPagination', Vue.defineComponent({
     name: 'UPagination',
     props: ['page', 'total', 'itemsPerPage', 'disabled'],
-    setup() { return () => Vue.h('nav', {}, 'Paginação') }
+    setup(props, { attrs }) { return () => Vue.h('nav', { ...props, ...attrs, 'data-pagination': true }, 'Paginação') }
   }))
   const root = createNode('root')
   app.mount(root)
@@ -444,4 +445,45 @@ describe('ERP catalog list SFC states', () => {
     await settle()
     assert.equal(page.buttons().filter(button => button.props['data-menu-action']).length, 0, 'the create menu disappears when its resource grant is removed')
   })
+})
+
+it('pages the real catalog footer once, retaining search and refusing pending or unauthorized requests', async (t) => {
+  const page = mountCatalogPage('pages/erp/cadastros/produtos.vue')
+  t.after(page.unmount)
+  const response = (current_page: number) => ({ data: [{ id: 1, name: 'Confirmado', sale_price: '10.00', status: 'active' }], meta: { current_page, last_page: 3, total: 35, per_page: 15 } })
+  page.requests[0]!.resolve(response(1))
+  await settle()
+  // The list owns search/debounce; resolve its current search before paging.
+  const list = page.lists[0] as unknown as { search: Vue.Ref<string>, searchPending: Vue.Ref<boolean> }
+  list.search.value = 'café'
+  await new Promise(resolve => setTimeout(resolve, 350))
+  assert.equal(page.requests.length, 2)
+  page.requests[1]!.resolve(response(1))
+  await settle()
+  const pagination = () => findHostNodes(page.root, node => node.props['data-pagination'] === true)[0]!.props
+  const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+  assert.match(page.text(), /35 registros/)
+  assert.equal(pagination().total, 35)
+  change(1)
+  change(0)
+  assert.equal(page.requests.length, 2)
+  change(2)
+  await settle()
+  assert.equal(page.requests.length, 3)
+  const url = new URL(page.requests[2]!.url, 'http://test')
+  assert.equal(url.searchParams.get('page'), '2')
+  assert.equal(url.searchParams.get('search'), 'café')
+  change(3)
+  await settle()
+  assert.equal(page.requests.length, 3)
+  page.requests[2]!.resolve(response(2))
+  await settle()
+  change(2)
+  assert.equal(page.requests.length, 3)
+  change(3)
+  await settle()
+  page.requests[3]!.reject({ statusCode: 403 })
+  await settle()
+  assert.match(page.text(), /acesso|autoriz/i)
+  assert.equal(findHostNodes(page.root, node => node.props['data-pagination'] === true).length, 0)
 })

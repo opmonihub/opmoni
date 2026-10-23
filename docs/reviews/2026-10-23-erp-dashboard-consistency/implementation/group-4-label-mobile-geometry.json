@@ -1,0 +1,30 @@
+{
+  "checkbox": {
+    "checked": "true",
+    "height": 16,
+    "right": 49,
+    "width": 16,
+    "x": 33,
+    "y": 417
+  },
+  "documentScrollWidth": 390,
+  "scenario": "synthetic long product name, actual label selection component",
+  "scroll": {
+    "clientWidth": 356,
+    "height": 250,
+    "right": 373,
+    "scrollWidth": 356,
+    "width": 356,
+    "x": 17,
+    "y": 261
+  },
+  "selection": "Seleção: 1 etiqueta",
+  "table": {
+    "height": 250,
+    "right": 373,
+    "width": 356,
+    "x": 17,
+    "y": 261
+  },
+  "viewport": 390
+}

@@ -378,6 +378,7 @@ function setupResource(options: { accessKind?: 'direct' | 'delegated', permissio
       }
     }))
   }
+  app.component('ErpListFooter', compileVueComponent('components/erp/ErpListFooter.vue'))
   app.component('UPagination', Vue.defineComponent({ setup: () => () => Vue.h('div') }))
   app.component('UTable', table)
   const root = makeNode('root')
@@ -813,18 +814,11 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(resource.requests.filter(request => request.options.method === 'DELETE').length, 1, 'the company B record was not archived')
   })
 
-  it('uses a wrapping full-width toolbar and shows only the confirmed server count', async (t) => {
+  it('keeps search available and shows only the confirmed server count in the real footer', async (t) => {
     const resource = setupResource()
     t.after(resource.stop)
-    const toolbar = descendants(resource.root).find(node => node.props['data-nuxt-ui-component'] === 'UDashboardToolbar')
-    assert.ok(toolbar)
-    assert.match(String(toolbar.props['data-ui-root']), /flex-col/)
-    assert.match(String(toolbar.props['data-ui-root']), /sm:flex-row/)
-    assert.match(String(toolbar.props['data-ui-left']), /min-w-0/)
-    assert.match(String(toolbar.props['data-ui-right']), /w-full/)
     const search = descendants(resource.root).find(node => node.props.placeholder === 'Buscar unidades')
     assert.ok(search)
-    assert.match(String(search.props.class), /w-full/)
     assert.equal(descendants(resource.root).some(node => node.tag === 'p' && /^\d+ registros?$/.test(node.text)), false)
 
     const listRequest = resource.requests.find(request => request.url === '/erp/units?page=1')

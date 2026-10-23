@@ -1,0 +1,152 @@
+▶ ERP controlled list footer
+  ✖ keeps the confirmed 0 count without pagination for a single page (2.342609ms)
+  ✖ keeps the confirmed 1 count without pagination for a single page (0.203075ms)
+  ✖ keeps the confirmed 15 count without pagination for a single page (0.163329ms)
+  ✖ uses server total and page size and emits exactly one changed valid transition (0.3384ms)
+  ✖ does not emit on metadata replacement or synchronize the model automatically (0.262178ms)
+  ✖ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (0.257278ms)
+  ✖ allows a consumer summary without changing authoritative pagination (0.236207ms)
+✖ ERP controlled list footer (5.191577ms)
+ℹ tests 7
+ℹ suites 1
+ℹ pass 0
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 689.134878
+
+✖ failing tests:
+
+test at tests/erpListFooter.test.ts:55:5
+✖ keeps the confirmed 0 count without pagination for a single page (2.342609ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:56:22)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at node:internal/test_runner/test:1792:71
+      at node:internal/per_context/primordials:466:82 {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:55:5
+✖ keeps the confirmed 1 count without pagination for a single page (0.203075ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:56:22)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:55:5
+✖ keeps the confirmed 15 count without pagination for a single page (0.163329ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:56:22)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:64:3
+✖ uses server total and page size and emits exactly one changed valid transition (0.3384ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:65:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:79:3
+✖ does not emit on metadata replacement or synchronize the model automatically (0.262178ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:80:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:96:3
+✖ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (0.257278ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:97:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }
+
+test at tests/erpListFooter.test.ts:110:3
+✖ allows a consumer summary without changing authoritative pagination (0.236207ms)
+  Error: ENOENT: no such file or directory, open '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+      at readFileSync (node:fs:441:20)
+      at vueSource (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:12:10)
+      at compileVueComponent (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/helpers/compileVueComponent.ts:21:18)
+      at mountFooter (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:34:18)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:111:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/app/components/erp/ErpListFooter.vue'
+  }

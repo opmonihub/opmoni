@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { TableColumn } from '@nuxt/ui'
 import type { ErpPurchase, ErpPurchaseDraftPayload, ErpPurchaseReturn } from '#shared/types/erpBusiness'
 import { formatPurchaseDecimal } from '#shared/utils/erpPurchase'
@@ -574,6 +575,7 @@ onMounted(() => {
     </UAlert>
     <div v-if="selectedArea === 'purchases'" class="overflow-hidden rounded-lg border border-default">
       <UTable
+        :ui="erpOperationalTableUi"
         :data="purchase.purchases.value"
         :columns="columns"
         :loading="purchase.listLoading.value"
@@ -614,27 +616,14 @@ onMounted(() => {
         </template>
       </UTable>
     </div>
-    <div v-if="selectedArea === 'purchases'" class="flex items-center justify-between gap-3 text-sm text-muted">
-      <span>{{ purchase.meta.value?.total ?? purchase.purchases.value.length }} compras · página {{ purchase.meta.value?.current_page ?? 1 }} de {{ purchase.meta.value?.last_page ?? 1 }}</span>
-      <div class="flex gap-2">
-        <UButton
-          color="neutral"
-          variant="outline"
-          size="sm"
-          label="Anterior"
-          :disabled="!purchase.meta.value || purchase.meta.value.current_page <= 1 || purchase.listLoading.value"
-          @click="purchase.filters.page--; purchase.load()"
-        />
-        <UButton
-          color="neutral"
-          variant="outline"
-          size="sm"
-          label="Próxima"
-          :disabled="!purchase.meta.value || purchase.meta.value.current_page >= purchase.meta.value.last_page || purchase.listLoading.value"
-          @click="purchase.filters.page++; purchase.load()"
-        />
-      </div>
-    </div>
+    <ErpListFooter
+      v-if="selectedArea === 'purchases' && purchase.meta.value"
+      :page="purchase.meta.value.current_page"
+      :meta="purchase.meta.value"
+      :pending="purchase.listLoading.value"
+      :summary="`${purchase.meta.value.total.toLocaleString('pt-BR')} compras`"
+      @update:page="purchase.filters.page = $event; purchase.load()"
+    />
 
     <section v-if="selectedArea === 'xml-preview'" class="space-y-3 rounded-lg border border-default p-4">
       <h2 class="font-semibold text-highlighted">
@@ -667,6 +656,7 @@ onMounted(() => {
       />
       <div class="overflow-hidden rounded-lg border border-default">
         <UTable
+          :ui="erpOperationalTableUi"
           :data="purchase.returns.value"
           :columns="[{ accessorKey: 'id', header: 'Devolução' }, { accessorKey: 'erp_purchase_id', header: 'Compra de origem' }, { accessorKey: 'reason', header: 'Motivo' }, { accessorKey: 'status', header: 'Situação' }, { id: 'amount', header: 'Total' }, { id: 'actions' }]"
           :loading="purchase.returnsLoading.value"
@@ -692,27 +682,14 @@ onMounted(() => {
           </template>
         </UTable>
       </div>
-      <div class="flex items-center justify-between gap-3 text-sm text-muted">
-        <span>{{ purchase.returnMeta.value?.total ?? purchase.returns.value.length }} devoluções · página {{ purchase.returnMeta.value?.current_page ?? 1 }} de {{ purchase.returnMeta.value?.last_page ?? 1 }}</span>
-        <div class="flex gap-2">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            label="Anterior"
-            :disabled="!purchase.returnMeta.value || purchase.returnMeta.value.current_page <= 1 || purchase.returnsLoading.value"
-            @click="purchase.returnFilters.page--; purchase.loadReturns()"
-          />
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            label="Próxima"
-            :disabled="!purchase.returnMeta.value || purchase.returnMeta.value.current_page >= purchase.returnMeta.value.last_page || purchase.returnsLoading.value"
-            @click="purchase.returnFilters.page++; purchase.loadReturns()"
-          />
-        </div>
-      </div>
+      <ErpListFooter
+        v-if="purchase.returnMeta.value"
+        :page="purchase.returnMeta.value.current_page"
+        :meta="purchase.returnMeta.value"
+        :pending="purchase.returnsLoading.value"
+        :summary="`${purchase.returnMeta.value.total.toLocaleString('pt-BR')} devoluções`"
+        @update:page="purchase.returnFilters.page = $event; purchase.loadReturns()"
+      />
     </section>
 
     <UModal v-model:open="createOpen" title="Nova compra" :ui="{ content: 'sm:max-w-5xl' }">

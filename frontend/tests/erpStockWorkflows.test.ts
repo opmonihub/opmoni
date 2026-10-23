@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import * as Vue from 'vue'
+import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import * as VueCompiler from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
@@ -21,6 +23,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const exports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     if (!(path in imports)) throw new Error(`Unexpected test import ${path}`)
     return imports[path]
   }, exports, ...Object.values(bindings))
@@ -158,6 +161,8 @@ function mountStockWorkspace(workspace: Record<string, unknown>, initialHash = '
     parentNode(node: { parent?: unknown }) { return node.parent ?? null }, nextSibling(node: { parent?: { children: unknown[] } }) { return node.parent ? node.parent.children[node.parent.children.indexOf(node) + 1] ?? null : null }
   })
   const app = renderer.createApp(workspaceComponent)
+  app.component('ErpListFooter', compileVueComponent('components/erp/ErpListFooter.vue'))
+  app.component('UPagination', { setup: (_props, context) => () => Vue.h('nav', { ...context.attrs, 'data-pagination': true }) })
   let adjustmentFormInstance: { state: Record<string, string>, submit: () => void, locked: boolean } | null = null
   let transferFormInstance: { state: Record<string, string>, submit: () => void, locked: boolean } | null = null
   const passthrough = { setup: (_props: unknown, context: { slots: Record<string, () => unknown[]> }) => () => Vue.h('div', context.slots.body?.() ?? context.slots.default?.()) }
@@ -1097,4 +1102,51 @@ describe('mounted stock workspace recovery lifecycle', () => {
       mounted.stop()
     }
   })
+})
+
+it('pages the real stock footer once for the selected area, preserving filters and denying revoked access', async (t) => {
+  const calls: string[] = []
+  const pending = deferred<unknown>()
+  const workspace = createStockWorkspace(async (path) => {
+    calls.push(path)
+    const url = new URL(path, 'http://test')
+    if (url.pathname === '/erp/stock/movements' && url.searchParams.get('page') === '2') return pending.promise
+    return { data: [], meta: { current_page: 1, last_page: 3, per_page: 15, total: 35 } }
+  })
+  t.after(workspace.stop)
+  Object.assign(workspace.state.filters, { erp_establishment_id: '3', erp_product_variant_id: '21', date_from: '2026-10-01', date_to: '2026-10-31' })
+  await workspace.state.load('movements', 1)
+  const mounted = mountStockWorkspace(workspace.state, '#movements')
+  t.after(mounted.stop)
+  for (let turn = 0; turn < 8; turn++) { await Promise.resolve(); await Vue.nextTick() }
+  const pagination = () => (walkNodes(mounted.root).find(node => (node.props as Record<string, unknown>)?.['data-pagination'] === true)!.props as Record<string, unknown>)
+  const change = (value: number) => (pagination()['onUpdate:page'] as (page: number) => void)(value)
+  const before = calls.length
+  change(1)
+  change(0)
+  assert.equal(calls.length, before)
+  change(2)
+  await Vue.nextTick()
+  assert.equal(calls.length, before + 1)
+  const url = new URL(calls.at(-1)!, 'http://test')
+  assert.equal(url.pathname, '/erp/stock/movements')
+  assert.equal(url.searchParams.get('page'), '2')
+  for (const key of ['erp_establishment_id', 'erp_product_variant_id', 'date_from', 'date_to']) assert.equal(url.searchParams.get(key), workspace.state.filters[key])
+  change(3)
+  await Vue.nextTick()
+  assert.equal(calls.length, before + 1)
+  pending.resolve({ data: [], meta: { current_page: 2, last_page: 3, per_page: 15, total: 35 } })
+  await pending.promise
+  await Vue.nextTick()
+  await Vue.nextTick()
+  assert.equal(pagination().page, 2)
+  assert.match(renderedText(mounted.root), /35 registros/)
+  assert.equal(mounted.route.hash, '#movements')
+  workspace.currentCompany.value = { ...workspace.currentCompany.value, role: 'viewer', permissions: [] }
+  await Vue.nextTick()
+  assert.equal(walkNodes(mounted.root).some(node => (node.props as Record<string, unknown>)?.['data-pagination'] === true), false)
+  const deniedBefore = calls.length
+  await workspace.state.load('movements', 3)
+  assert.equal(calls.length, deniedBefore)
+  assert.deepEqual(mounted.renderErrors, [])
 })

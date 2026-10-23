@@ -1,0 +1,25 @@
+▶ real cash list footers
+  ✔ pages registers once with its filters, suppresses pending requests and respects revoked authority (3889.636175ms)
+  ✔ pages sessions once with its filters, suppresses pending requests and respects revoked authority (1200.861865ms)
+  ✔ guards the real movement loader throughout the awaited page, retaining the session and server total (1012.615545ms)
+✔ real cash list footers (6104.230744ms)
+✔ pages the real catalog footer once, retaining search and refusing pending or unauthorized requests (6911.74948ms)
+▶ ERP catalog shared resource authority
+  ✔ keeps search available and shows only the confirmed server count in the real footer (5503.086914ms)
+✔ ERP catalog shared resource authority (5507.62877ms)
+▶ real finance list footer
+  ✔ admits one page request with all filters, blocks pending transitions and clears on denial (4984.657481ms)
+✔ real finance list footer (4985.641186ms)
+▶ real purchase list footers
+  ✔ pages purchases once, preserving the active area and filters through pending and denial (5485.684548ms)
+  ✔ pages returns once, preserving the active area and filters through pending and denial (992.263116ms)
+✔ real purchase list footers (6479.369939ms)
+✔ pages the real stock footer once for the selected area, preserving filters and denying revoked access (4594.84956ms)
+ℹ tests 9
+ℹ suites 4
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17590.57788

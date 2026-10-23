@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpFinancialAccount, ErpObligation, ErpPayment, ErpPaymentAllocation } from '#shared/types/erpBusiness'
 import { formatErpMoney, decimalTextIsValid, type ErpFinanceAction } from '#shared/utils/erpFinance'
@@ -483,6 +484,7 @@ function downloadReceipt() {
       />
       <div v-else class="overflow-x-auto rounded-lg border border-muted">
         <UTable
+          :ui="erpOperationalTableUi"
           :data="finance.rows.value as FinanceRow[]"
           :columns="columns"
           :loading="finance.loading.value"
@@ -566,15 +568,13 @@ function downloadReceipt() {
           </template>
         </UTable>
       </div>
-      <div v-if="finance.meta.value && finance.meta.value.last_page > 1" class="flex justify-end">
-        <UPagination
-          :page="finance.meta.value.current_page"
-          :total="finance.meta.value.total"
-          :items-per-page="finance.meta.value.per_page"
-          show-edges
-          @update:page="changePage"
-        />
-      </div>
+      <ErpListFooter
+        v-if="finance.meta.value"
+        :page="finance.meta.value.current_page"
+        :meta="finance.meta.value"
+        :pending="finance.loading.value"
+        @update:page="changePage"
+      />
 
       <section v-if="selectedPayment" class="space-y-3 border-t border-muted pt-5" aria-label="Detalhes do pagamento">
         <div class="flex flex-wrap items-start justify-between gap-3">

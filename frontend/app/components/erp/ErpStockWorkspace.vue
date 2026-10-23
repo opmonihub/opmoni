@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import type { TableColumn } from '@nuxt/ui'
 import type { ErpStockAdjustment, ErpStockBalance, ErpStockLot, ErpStockMovement, ErpStockTransfer } from '#shared/types/erpBusiness'
 import { stockCostDescription } from '#shared/utils/erpStock'
@@ -274,14 +275,6 @@ function transferStatusLabel(value: string) {
 function mutationColor() {
   return workspace.mutationError.value.startsWith('Operação confirmada') ? 'success' : 'error'
 }
-function nextPage() {
-  const meta = activeMeta.value
-  if (meta && meta.current_page < meta.last_page) workspace.setPage(area.value, meta.current_page + 1)
-}
-function previousPage() {
-  const meta = activeMeta.value
-  if (meta && meta.current_page > 1) workspace.setPage(area.value, meta.current_page - 1)
-}
 </script>
 
 <template>
@@ -489,6 +482,7 @@ function previousPage() {
     />
     <div v-else class="overflow-hidden rounded-lg border border-default" aria-live="polite">
       <UTable
+        :ui="erpOperationalTableUi"
         :data="activeRows"
         :columns="columns"
         :loading="workspace.loading[area]"
@@ -634,27 +628,13 @@ function previousPage() {
           </div>
         </template>
       </UTable>
-      <div v-if="activeMeta" class="flex items-center justify-between border-t border-default px-4 py-3">
-        <span class="text-sm text-muted">{{ activeMeta.total }} registros · página {{ activeMeta.current_page }} de {{ activeMeta.last_page }}</span>
-        <div class="flex gap-2">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            label="Anterior"
-            :disabled="activeMeta.current_page <= 1 || workspace.loading[area]"
-            @click="previousPage"
-          />
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            label="Próxima"
-            :disabled="activeMeta.current_page >= activeMeta.last_page || workspace.loading[area]"
-            @click="nextPage"
-          />
-        </div>
-      </div>
+      <ErpListFooter
+        v-if="activeMeta"
+        :page="activeMeta.current_page"
+        :meta="activeMeta"
+        :pending="workspace.loading[area]"
+        @update:page="workspace.setPage(area, $event)"
+      />
     </div>
 
     <UModal

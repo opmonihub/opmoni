@@ -1,0 +1,89 @@
+{
+  "documentScrollWidth": 390,
+  "footer": {
+    "height": 49,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 310
+  },
+  "footerButtons": [
+    {
+      "height": 32,
+      "label": "First Page",
+      "right": 158,
+      "width": 32,
+      "x": 126,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Previous Page",
+      "right": 194,
+      "width": 32,
+      "x": 162,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Page 1",
+      "right": 230,
+      "width": 32,
+      "x": 198,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Page 2",
+      "right": 266,
+      "width": 32,
+      "x": 234,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Page 3",
+      "right": 302,
+      "width": 32,
+      "x": 270,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Next Page",
+      "right": 338,
+      "width": 32,
+      "x": 306,
+      "y": 327
+    },
+    {
+      "height": 32,
+      "label": "Last Page",
+      "right": 374,
+      "width": 32,
+      "x": 342,
+      "y": 327
+    }
+  ],
+  "priceAlign": "start",
+  "rootFont": "16px",
+  "scenario": "synthetic catalog long row, actual worktree components",
+  "scroll": {
+    "clientWidth": 358,
+    "height": 102,
+    "overflowX": "auto",
+    "right": 374,
+    "scrollWidth": 1313,
+    "width": 358,
+    "x": 16,
+    "y": 192
+  },
+  "table": {
+    "height": 102,
+    "right": 1328.515625,
+    "width": 1312.515625,
+    "x": 16,
+    "y": 192
+  },
+  "viewport": 390
+}
