@@ -35,7 +35,7 @@ pnpm --dir frontend exec eslint app/components/erp/ErpCompanyAdministration.vue 
 git diff --check
 ```
 
-Final focused run **124 tests,7 suites,124 pass,0 failures/skips,exit0** (`group-8-focused-green.txt`). Catalog-only run98/98 and administration26/26 are also retained as narrow evidence. Changed-path lint exit0/no diagnostics (`group-8-eslint.txt`); initial formatting/attribute-order errors were fixed before final verification. Diff check clean. No unrelated purchase/stock/sales/fiscal runtime file changed; their prior group4 focused evidence is reused, without claiming a new workflow rerun. Full suite/typecheck/build/detector and broader browser matrix remain parent group9-owned by the task boundary.
+Final focused run **124 tests,7 suites,124 pass,0 failures/skips,exit0** (`group-8-focused-green.txt`). Catalog-only run98/98 and administration26/26 are also retained as narrow evidence. Changed-path lint exit0/no diagnostics (`group-8-eslint.txt`); initial formatting/attribute-order errors were fixed before final verification. Final diff check clean after normalizing CSV CRLF and console trailing whitespace in retained evidence; audit baseline unchanged. No unrelated purchase/stock/sales/fiscal runtime file changed; their prior group4 focused evidence is reused, without claiming a new workflow rerun. Full suite/typecheck/build/detector and broader browser matrix remain parent group9-owned by the task boundary.
 
 ## Actual browser overlays
 
