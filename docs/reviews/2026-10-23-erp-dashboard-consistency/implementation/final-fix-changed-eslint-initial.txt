@@ -1,0 +1,6 @@
+
+/home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts
+  1035:41  error  Unexpected separator (,)  @stylistic/member-delimiter-style
+  1035:71  error  Unexpected separator (,)  @stylistic/member-delimiter-style
+
+✖ 2 problems (2 errors, 0 warnings)

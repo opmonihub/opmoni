@@ -1,0 +1,46 @@
+{
+  "boundary": "5b752b1",
+  "historicalWhitespaceFailure": "git diff --check 5b752b1 4f8646d exits2 with29 diagnostics in these five logs",
+  "changes": [
+    {
+      "file": "group-4-fix-1-footer-red.txt",
+      "raw": "group-4-fix-1-footer-red.txt.raw.gz",
+      "originalCapturedBytesSha256": "14438fdf2bb91d6770419ea371c4af5762830619930b06036f5ac6b99b88da96",
+      "rawRestoresExactOriginal": true,
+      "normalizedReadableBytesSha256": "e72dca8b7b1350089a9b625f2825e17f9ded2e49cddfa25d2738ffb5c4a09bdf",
+      "matchesCommittedCheckpoint4f8646d": true
+    },
+    {
+      "file": "group-4-focused-green.txt",
+      "raw": "group-4-focused-green.txt.raw.gz",
+      "originalCapturedBytesSha256": "1eaaa755cf154b192bf8680232e35fc8ab0d6100b950c730b813eeab270aa88a",
+      "rawRestoresExactOriginal": true,
+      "normalizedReadableBytesSha256": "2563a8bcb50d6e62366de00c946444b56822d4a772f475adaa91a36388bd4761",
+      "matchesCommittedCheckpoint4f8646d": true
+    },
+    {
+      "file": "group-4-focused-initial.txt",
+      "raw": "group-4-focused-initial.txt.raw.gz",
+      "originalCapturedBytesSha256": "03bd625c413505933365c0ba6897faf37e75d58739283380b0c1c95e9555d7ec",
+      "rawRestoresExactOriginal": true,
+      "normalizedReadableBytesSha256": "6b3ce1a3692bce29559b23315a668bbdcb92c56a8c7e667551c01e60a9c66a3e",
+      "matchesCommittedCheckpoint4f8646d": true
+    },
+    {
+      "file": "group-4-integration-initial.txt",
+      "raw": "group-4-integration-initial.txt.raw.gz",
+      "originalCapturedBytesSha256": "82227407f27c53606a35dddf73104f5828a0a2065c38871fd72c1a685a2c9627",
+      "rawRestoresExactOriginal": true,
+      "normalizedReadableBytesSha256": "25b576eb8236b41f527ece7aea3549777df3ebc9831ebd48e7f1f86c33cd44da",
+      "matchesCommittedCheckpoint4f8646d": true
+    },
+    {
+      "file": "group-4-lint-initial.txt",
+      "raw": "group-4-lint-initial.txt.raw.gz",
+      "originalCapturedBytesSha256": "bbfe4ea76e9ae5454b64a9fb771049632efda25002f0e05f0449da771f34667a",
+      "rawRestoresExactOriginal": true,
+      "normalizedReadableBytesSha256": "18a59822042731e8ab3d1d8d6bf7706f6ca6a32bccd3cd879b8351a181a63b58",
+      "matchesCommittedCheckpoint4f8646d": true
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "planningBoundary": "5b752b1",
+  "priorCheckpoint": "4f8646d",
+  "protectedPathsDiff": [],
+  "immutableAuditDiff": [],
+  "runtimePathsChangedSincePriorCheckpoint": [
+    "frontend/app/components/erp/ErpCashWorkspace.vue",
+    "frontend/app/components/erp/ErpFinanceWorkspace.vue"
+  ],
+  "checkboxesUnchangedByFix": true,
+  "resourcesReopened": [],
+  "ownedListenersStillClosed": true,
+  "mainDockerTouched": false,
+  "openspecStrictExitCode": 0,
+  "finalWorkingTreeRangeCheck": {
+    "command": "git diff --check 5b752b1",
+    "exitCode": 0
+  },
+  "stagedRangeCheck": {
+    "command": "git diff --cached --check 5b752b1",
+    "exitCode": 0
+  },
+  "exactCommittedRangeCheck": "pending correction commit; will record git diff --check 5b752b1 HEAD",
+  "currentDiffChecks": [
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --cached --check",
+      "exitCode": 0
+    }
+  ]
+}

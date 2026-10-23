@@ -427,6 +427,7 @@ function downloadReceipt() {
         color="error"
         variant="subtle"
         :title="finance.pageError.value"
+        :description="finance.meta.value ? 'A atualização falhou. Exibindo a última lista confirmada.' : 'A lista ainda não foi carregada com sucesso.'"
         :actions="[{ label: 'Tentar novamente', onClick: finance.load }]"
       />
       <UAlert

@@ -1,0 +1,234 @@
+▶ cash failed refresh guidance
+  ✖ identifies registers failure with prior none and clears stale feedback on recovery (1493.87913ms)
+  ✖ identifies registers failure with prior rows and clears stale feedback on recovery (612.776316ms)
+  ✖ identifies registers failure with prior empty and clears stale feedback on recovery (313.077266ms)
+  ✖ identifies sessions failure with prior none and clears stale feedback on recovery (558.016123ms)
+  ✖ identifies sessions failure with prior rows and clears stale feedback on recovery (228.414611ms)
+  ✖ identifies sessions failure with prior empty and clears stale feedback on recovery (469.757181ms)
+  ✖ identifies movements failure with prior none and clears stale feedback on recovery (306.162086ms)
+  ✖ identifies movements failure with prior rows and clears stale feedback on recovery (127.624685ms)
+  ✖ identifies movements failure with prior empty and clears stale feedback on recovery (182.069634ms)
+✖ cash failed refresh guidance (4293.415502ms)
+▶ finance workspace
+  ✖ identifies the last confirmed finance result after failure with prior none and clears it on recovery (1341.579291ms)
+  ✖ identifies the last confirmed finance result after failure with prior rows and clears it on recovery (568.427907ms)
+  ✖ identifies the last confirmed finance result after failure with prior empty and clears it on recovery (482.056253ms)
+✖ finance workspace (2394.317213ms)
+ℹ tests 12
+ℹ suites 2
+ℹ pass 0
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8563.16172
+
+✖ failing tests:
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies registers failure with prior none and clears stale feedback on recovery (1493.87913ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /lista ainda não foi carregada com sucesso/. Input:
+
+  'Novo caixav-ifCaixasSessõesCaixas Resultado indisponível v-ifCaixa indisponívelResultado indisponível.v-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Novo caixav-ifCaixasSessõesCaixas Resultado indisponível v-ifCaixa indisponívelResultado indisponível.v-ifv-if',
+    expected: /lista ainda não foi carregada com sucesso/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies registers failure with prior rows and clears stale feedback on recovery (612.776316ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'Novo caixav-ifCaixasSessõesCaixas1 registros v-ifCaixa indisponível1 registrov-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Novo caixav-ifCaixasSessõesCaixas1 registros v-ifCaixa indisponível1 registrov-ifv-if',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies registers failure with prior empty and clears stale feedback on recovery (313.077266ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'Novo caixav-ifCaixasSessõesCaixas0 registros v-ifCaixa indisponívelNenhum caixa cadastrado.0 registrosv-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Novo caixav-ifCaixasSessõesCaixas0 registros v-ifCaixa indisponívelNenhum caixa cadastrado.0 registrosv-ifv-if',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies sessions failure with prior none and clears stale feedback on recovery (558.016123ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /lista ainda não foi carregada com sucesso/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixa Resultado indisponível v-ifv-ifCaixa indisponívelResultado indisponível.v-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixa Resultado indisponível v-ifv-ifCaixa indisponívelResultado indisponível.v-ifv-if',
+    expected: /lista ainda não foi carregada com sucesso/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies sessions failure with prior rows and clears stale feedback on recovery (228.414611ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixa1 registros v-ifv-ifCaixa indisponível1 registrov-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixa1 registros v-ifv-ifCaixa indisponível1 registrov-ifv-if',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies sessions failure with prior empty and clears stale feedback on recovery (469.757181ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixa0 registros v-ifv-ifCaixa indisponívelNenhuma sessão de caixa encontrada.0 registrosv-ifv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixa0 registros v-ifv-ifCaixa indisponívelNenhuma sessão de caixa encontrada.0 registrosv-ifv-if',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies movements failure with prior none and clears stale feedback on recovery (306.162086ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /histórico ainda não foi carregado com sucesso/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelHistórico indisponível.v-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelHistórico indisponível.v-if',
+    expected: /histórico ainda não foi carregado com sucesso/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies movements failure with prior rows and clears stale feedback on recovery (127.624685ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /último histórico confirmado/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelHistórico: 1 movimentosv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelHistórico: 1 movimentosv-if',
+    expected: /último histórico confirmado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpCashWorkflows.test.ts:1019:7
+✖ identifies movements failure with prior empty and clears stale feedback on recovery (182.069634ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /último histórico confirmado/. Input:
+
+  'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelNenhum movimento registrado nesta sessão.Histórico: 0 movimentosv-if'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1048:16)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v-ifAbrir sessãoCaixasSessõesSessões de caixav-ifCaixa indisponívelv-ifv-ifResultado indisponível.v-if Sessão #21Operador · BRL · Aberta Saldo esperado Indisponível Entradas Indisponível Saídas Indisponível Movimento líquido Indisponívelv-ifCaixa indisponívelNenhum movimento registrado nesta sessão.Histórico: 0 movimentosv-if',
+    expected: /último histórico confirmado/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpFinanceWorkflows.test.ts:527:5
+✖ identifies the last confirmed finance result after failure with prior none and clears it on recovery (1341.579291ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /ainda não foi carregada com sucesso/. Input:
+
+  'undefined'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:547:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 8)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: /ainda não foi carregada com sucesso/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpFinanceWorkflows.test.ts:527:5
+✖ identifies the last confirmed finance result after failure with prior rows and clears it on recovery (568.427907ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'undefined'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:547:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at tests/erpFinanceWorkflows.test.ts:527:5
+✖ identifies the last confirmed finance result after failure with prior empty and clears it on recovery (482.056253ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /última lista confirmada/. Input:
+
+  'undefined'
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:547:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: /última lista confirmada/,
+    operator: 'match',
+    diff: 'simple'
+  }

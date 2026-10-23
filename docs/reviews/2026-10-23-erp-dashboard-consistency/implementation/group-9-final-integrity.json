@@ -5,9 +5,19 @@
   "gitDiffCheckExitCode": 0,
   "stagedDiffCheckExitCode": 0,
   "openspecStrictExitCode": 0,
-  "runtimeApplicationDiffSinceGroup8": [],
+  "runtimeApplicationDiffSinceGroup8": [
+    "frontend/app/components/erp/ErpCashWorkspace.vue",
+    "frontend/app/components/erp/ErpFinanceWorkspace.vue"
+  ],
   "group9FrontendDiff": [
     "frontend/tests/erpContactPermission.test.ts"
   ],
-  "checkboxesUnchangedByGroup9": true
+  "checkboxesUnchangedByGroup9": true,
+  "currentSourceCheckpoint": "combined final-review correction after4f8646d",
+  "explicitStagedImplementationRangeCheck": {
+    "command": "git diff --cached --check 5b752b1",
+    "exitCode": 0
+  },
+  "exactCommittedImplementationRangeCheck": "pending correction commit; follows in final-fix-integrity.json",
+  "detailedFixIntegrity": "final-fix-integrity.json"
 }

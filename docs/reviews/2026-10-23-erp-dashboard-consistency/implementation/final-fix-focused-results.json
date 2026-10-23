@@ -1,0 +1,34 @@
+[
+  {
+    "command": "pnpm --dir frontend exec node --experimental-strip-types --test --test-concurrency=1 --test-name-pattern='last confirmed finance result|cash failed refresh guidance' tests/erpFinanceWorkflows.test.ts tests/erpCashWorkflows.test.ts",
+    "stage": "RED before runtime edits",
+    "exitCode": 1,
+    "tests": 12,
+    "pass": 0,
+    "fail": 12,
+    "log": "final-fix-red.txt"
+  },
+  {
+    "command": "pnpm --dir frontend exec node --experimental-strip-types --test --test-concurrency=1 tests/erpFinanceWorkflows.test.ts tests/erpCashWorkflows.test.ts",
+    "stage": "GREEN",
+    "exitCode": 0,
+    "tests": 104,
+    "suites": 10,
+    "pass": 104,
+    "fail": 0,
+    "log": "final-fix-focused-green.txt"
+  },
+  {
+    "command": "pnpm --dir frontend exec eslint app/components/erp/ErpFinanceWorkspace.vue app/components/erp/ErpCashWorkspace.vue tests/erpFinanceWorkflows.test.ts tests/erpCashWorkflows.test.ts",
+    "stage": "final changed-file lint",
+    "exitCode": 0,
+    "log": "final-fix-changed-eslint.txt"
+  },
+  {
+    "command": "/home/obsidian/.codex/skills/impeccable/scripts/impeccable detect --json frontend/app/components/erp/ErpFinanceWorkspace.vue frontend/app/components/erp/ErpCashWorkspace.vue",
+    "stage": "one detector pass on final changed UI",
+    "exitCode": 0,
+    "findings": [],
+    "log": "final-fix-impeccable.json"
+  }
+]

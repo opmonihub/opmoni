@@ -2,28 +2,33 @@
   {
     "command": "pnpm --dir frontend test",
     "exitCode": 0,
-    "seconds": 891.06,
-    "log": "group-9-test-final.txt",
-    "reason": "Final rerun after real footer registration in Contact permissions harness"
+    "seconds": 240.46,
+    "log": "final-fix-test.txt",
+    "raw": "final-fix-test.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
   },
   {
     "command": "pnpm --dir frontend lint",
     "exitCode": 0,
-    "seconds": 47.12,
-    "log": "group-9-lint-final.txt",
-    "reason": "Final exact lint after narrow Contact harness registration"
+    "seconds": 46.42,
+    "log": "final-fix-lint.txt",
+    "raw": "final-fix-lint.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
   },
   {
     "command": "pnpm --dir frontend typecheck",
     "exitCode": 0,
-    "seconds": 707.48,
-    "log": "group-9-typecheck.txt"
+    "seconds": 62.02,
+    "log": "final-fix-typecheck.txt",
+    "raw": "final-fix-typecheck.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
   },
   {
     "command": "pnpm --dir frontend build",
     "exitCode": 0,
-    "seconds": 248.09,
-    "log": "group-9-build-final.txt",
-    "execution": "Serial after all tests/typecheck/browser/reference resources finished"
+    "seconds": 144.94,
+    "log": "final-fix-build.txt",
+    "raw": "final-fix-build.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
   }
 ]

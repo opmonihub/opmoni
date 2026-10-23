@@ -1,0 +1,24 @@
+{
+  "priorCheckpoint": "4f8646d",
+  "purpose": "Final changed-source hashes; group8 source manifest remains its dated checkpoint, not current-source assertion",
+  "sources": [
+    {
+      "file": "frontend/app/components/erp/ErpFinanceWorkspace.vue",
+      "sha256": "65471b265c066275917636dff81790924bee31e7eab73e38d9f17c3734614d62"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashWorkspace.vue",
+      "sha256": "9a7adad462e56fe9f92373102de5f9468036ebf1865692dfb53f8c71e5a8fe55"
+    },
+    {
+      "file": "frontend/tests/erpFinanceWorkflows.test.ts",
+      "sha256": "fd72fa1e761bec884062ef728b236b674eabf0715dd12820de7011fb421b72f9"
+    },
+    {
+      "file": "frontend/tests/erpCashWorkflows.test.ts",
+      "sha256": "cc8517d665464203ec72577838282250936111ec1742f36f0e163bf9a1911019"
+    }
+  ],
+  "coverageSha256": "261f3c35c80e1bbcf604e4bda74efe6d2315aefe63f4450fa78e1d76a0be4dd6",
+  "inventoryRows": 97
+}

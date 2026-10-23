@@ -522,6 +522,42 @@ describe('finance workspace', { concurrency: 1 }, () => {
     })
   }
 
+  // A raw error beside retained financial data must not imply the requested read succeeded.
+  for (const prior of ['none', 'rows', 'empty'] as const) {
+    it(`identifies the last confirmed finance result after failure with prior ${prior} and clears it on recovery`, async (t) => {
+      let fail = false
+      const calls: string[] = []
+      const confirmed = prior === 'rows' ? [obligation] : []
+      const app = createWorkspace(async (path, options) => {
+        assert.equal(options?.method, undefined, 'presentation checks perform reads only')
+        calls.push(path)
+        if (fail) throw { statusCode: 503, data: { message: 'Financeiro indisponível' } }
+        return page(confirmed)
+      })
+      t.after(app.stop)
+      const state = app.state as { load: () => Promise<void>, rows: Vue.Ref<unknown[]>, meta: Vue.Ref<unknown> }
+      const mounted = mountFinanceWorkspace(app.state)
+      t.after(mounted.unmount)
+      if (prior !== 'none') await state.load()
+      fail = true
+      await state.load()
+      await settle()
+      const alert = mounted.componentProps('UAlert').find(props => props.title === 'Financeiro indisponível')
+      assert.ok(alert)
+      assert.match(String(alert.description), prior === 'none' ? /ainda não foi carregada com sucesso/ : /última lista confirmada/)
+      assert.deepEqual(state.rows.value, confirmed)
+      assert.equal(state.meta.value !== null, prior !== 'none')
+      assert.equal(mounted.componentProps('UEmpty').length, 0, 'failed confirmed-empty refresh is not a new successful empty read')
+      assert.equal((alert.actions as { label: string }[])[0]?.label, 'Tentar novamente')
+      fail = false
+      await ((alert.actions as { onClick: () => Promise<void> }[])[0]!.onClick)()
+      await settle()
+      assert.equal(mounted.componentProps('UAlert').some(props => props.title === 'Financeiro indisponível'), false)
+      assert.equal(mounted.componentProps('UEmpty').length, confirmed.length ? 0 : 1)
+      assert.equal(new Set(calls).size, 1, 'retry keeps the original query')
+    })
+  }
+
   it('offers an explicit list-first create action for the selected finance area', async (t) => {
     const app = createWorkspace(async () => page([]))
     t.after(app.stop)

@@ -1,0 +1,17 @@
+{
+  "mcpTool": "nuxt_ui.get_component",
+  "componentName": "Alert",
+  "sections": [
+    "usage",
+    "api"
+  ],
+  "officialPage": "https://ui.nuxt.com/docs/components/alert",
+  "installedVersion": "4.11.3",
+  "installedImplementation": "frontend/node_modules/@nuxt/ui/dist/runtime/components/Alert.vue",
+  "generatedTheme": "frontend/node_modules/.cache/nuxt/.nuxt/ui/alert.ts",
+  "verifiedApi": {
+    "description": "optional string; native description slot/element renders it",
+    "example": "<UAlert title=\"Heads up!\" description=\"You can change the primary color in your app config.\" />"
+  },
+  "scope": "Only existing alert descriptions and Cash failed-empty text change; no custom primitive/style override"
+}

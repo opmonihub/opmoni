@@ -26,9 +26,9 @@
 test at tests/erpCashWorkflows.test.ts:971:3
 ✖ guards the real movement loader throughout the awaited page, retaining the session and server total (994.251646ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
+
   true !== false
-  
+
       at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCashWorkflows.test.ts:1002:12)
       at async Test.run (node:internal/test_runner/test:1332:7)
       at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
@@ -63,9 +63,9 @@ test at tests/erpPurchaseWorkflows.test.ts:1845:5
 test at tests/erpStockWorkflows.test.ts:1107:1
 ✖ pages the real stock footer once for the selected area, preserving filters and denying revoked access (3697.090074ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
+
   8 !== 9
-  
+
       at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpStockWorkflows.test.ts:1130:10)
       at async Test.run (node:internal/test_runner/test:1332:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {

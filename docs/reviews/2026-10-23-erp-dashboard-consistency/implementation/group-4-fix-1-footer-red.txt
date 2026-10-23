@@ -23,10 +23,10 @@ test at tests/erpListFooter.test.ts:132:3
 ✖ renders Portuguese accessible navigation and page names through native pagination slots (17.076472ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   + actual - expected
-  
+
   + undefined
   - 'Paginação de registros'
-  
+
       at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpListFooter.test.ts:136:12)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1325:25)

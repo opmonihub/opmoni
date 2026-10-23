@@ -47,12 +47,12 @@
   ✔ honors toggles and aborts late render jobs before returning bytes (313.122376ms)
 ✔ ERP standalone label renderer with real pinned JsBarcode (4192.015293ms)
 [Vue warn]: Failed to resolve component: UDashboardSidebarCollapse
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardToolbar
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 ▶ ERP labels real composable authority and mutations
   ✔ releases the mutation fence after success and preserves exact fractional input after field422 (2302.588295ms)
@@ -60,36 +60,36 @@ If this is a native custom element, make sure to exclude it from component resol
   ✔ cancels pending requests and clears selections/drafts when session generation changes (892.487384ms)
 ✔ ERP labels real composable authority and mutations (3999.478433ms)
 [Vue warn]: Failed to resolve component: UDashboardSidebarCollapse
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardToolbar
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardSidebarCollapse
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardToolbar
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardSidebarCollapse
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardToolbar
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardSidebarCollapse
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 [Vue warn]: Failed to resolve component: UDashboardToolbar
-If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
-  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." > 
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão." >
   at <Etiquetas>
 ▶ ERP labels mounted real SFC
   ✔ keeps shell, search, ordered product/variant selection and quantities across pagination (3098.406746ms)

@@ -1,0 +1,16 @@
+{
+  "testLog": "final-fix-test.txt",
+  "vueWarnings": {
+    "[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.": 16,
+    "[Vue warn]: Failed to resolve component: USelect": 1,
+    "[Vue warn]: Failed to resolve component: UAlert": 1
+  },
+  "nodeExperimentalWarnings": 1,
+  "fiscalSourcesUnchangedSinceFixBase": true,
+  "focusedVueWarnings": 0,
+  "buildWarnings": [
+    " WARN  [PLUGIN_TIMINGS] JavaScript callbacks ran for 21.5s of this 22.9s build (94%).",
+    " WARN  [PLUGIN_TIMINGS] JavaScript callbacks ran for 25.1s of this 26.5s build (94%)."
+  ],
+  "buildErrors": []
+}

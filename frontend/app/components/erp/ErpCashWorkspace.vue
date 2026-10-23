@@ -301,13 +301,14 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           color="error"
           variant="subtle"
           :title="cash.pageErrors.registers"
+          :description="cash.listMeta.registers ? 'A atualização falhou. Exibindo a última lista confirmada.' : 'A lista ainda não foi carregada com sucesso.'"
         />
         <UTable
           :ui="erpOperationalTableUi"
           :data="cash.registers.value"
           :columns="registerColumns"
           :loading="cash.loading.registers"
-          :empty="cash.listMeta.registers ? 'Nenhum caixa cadastrado.' : 'Resultado indisponível.'"
+          :empty="!cash.pageErrors.registers && cash.listMeta.registers ? 'Nenhum caixa cadastrado.' : 'Resultado indisponível.'"
         >
           <template #erp_establishment_id-cell="{ row }">
             <span>Unidade #{{ row.original.erp_establishment_id }}</span>
@@ -374,13 +375,14 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           color="error"
           variant="subtle"
           :title="cash.pageErrors.sessions"
+          :description="cash.listMeta.sessions ? 'A atualização falhou. Exibindo a última lista confirmada.' : 'A lista ainda não foi carregada com sucesso.'"
         />
         <UTable
           :ui="erpOperationalTableUi"
           :data="cash.sessions.value"
           :columns="sessionColumns"
           :loading="cash.loading.sessions"
-          :empty="cash.listMeta.sessions ? 'Nenhuma sessão de caixa encontrada.' : 'Resultado indisponível.'"
+          :empty="!cash.pageErrors.sessions && cash.listMeta.sessions ? 'Nenhuma sessão de caixa encontrada.' : 'Resultado indisponível.'"
         >
           <template #expected_balance-cell="{ row }">
             <span>{{ sessionBalance(row.original) }}</span>
@@ -506,13 +508,14 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           color="error"
           variant="subtle"
           :title="cash.movementError.value"
+          :description="cash.movementMeta.value ? 'A atualização falhou. Exibindo o último histórico confirmado.' : 'O histórico ainda não foi carregado com sucesso.'"
         />
         <div class="overflow-x-auto">
           <UTable
             :ui="erpOperationalTableUi"
             :data="cash.movements.value"
             :columns="movementColumns"
-            :empty="cash.movementMeta.value ? 'Nenhum movimento registrado nesta sessão.' : 'Histórico indisponível.'"
+            :empty="!cash.movementError.value && cash.movementMeta.value ? 'Nenhum movimento registrado nesta sessão.' : 'Histórico indisponível.'"
           />
         </div>
         <ErpListFooter

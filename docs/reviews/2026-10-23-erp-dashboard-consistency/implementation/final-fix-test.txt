@@ -1,0 +1,2868 @@
+$ node --experimental-strip-types --test --test-concurrency=4 tests-access.test.ts tests/*.test.ts
+✔ multi-office login enters home without a profile-card gate (1.296015ms)
+✔ missing authorized context never renders tenant home (0.173587ms)
+✔ selected active office survives reload routing (0.187133ms)
+✔ zero active offices remain unavailable (0.176021ms)
+✔ suspended selection remains unavailable with alternate memberships (0.28611ms)
+✔ company-only login enters ERP without office membership (0.210447ms)
+✔ active office still wins over company for default destination (0.292393ms)
+✔ suspended company with no office remains unavailable (0.293964ms)
+✔ temporary service failure is not invalid credentials (0.572079ms)
+✔ rate limits have distinct retry feedback (1.308088ms)
+✔ Unicode password bounds count characters and preserve exact whitespace (0.292252ms)
+✔ logout completes when the server session already expired and preserves state on service failure (88.331766ms)
+✔ focus returns a reactivated office to home and preserves active settings routes (1.441771ms)
+✔ account status changes reset pagination and clear filters loads only once (4.412193ms)
+✔ preserves raw plans and both real pagination envelopes (1.344366ms)
+✔ no-office Super Admin keeps all Admin destinations on focus; lost privilege uses ordinary access (1.863115ms)
+✔ revoked Super Admin leaves every Admin route even with an active real office (0.438868ms)
+▶ admin list filters
+  ✔ omits empty search and the all option (1.633552ms)
+  ✔ trims search and sends the selected filter using its API key (0.175191ms)
+  ✔ moves a page back when removing its final filtered result (0.263657ms)
+  ✔ reads Laravel paginator meta from nested meta (0.257104ms)
+  ✔ commits and settles only the latest request when responses arrive out of order (0.388603ms)
+✔ admin list filters (4.141393ms)
+✔ reads canonical platform account pagination without changing Laravel resource pagination (0.208513ms)
+▶ the collapsible Admin menu
+  ✔ groups all admin routes under one native trigger (1.905154ms)
+  ✔ projects text-only children while keeping the Admin root icon (0.637292ms)
+  ✔ preserves shared page metadata icons on Admin tabs after projecting sidebar children (0.547793ms)
+  ✔ starts closed outside administrative routes (0.321386ms)
+  ✔ opens and marks its parent on the admin index and nested routes (0.189006ms)
+  ✔ highlights the selected child without highlighting Resumo on a nested route (0.181893ms)
+✔ the collapsible Admin menu (5.42801ms)
+▶ the office certificate entry
+  ✔ is not in the global panel: it moved to Configurações (2.143684ms)
+✔ the office certificate entry (2.440074ms)
+▶ the Serpro screen
+  ✔ stays in the global panel, where the platform credential lives (0.228341ms)
+  ✔ lights its own tab, and only its own (0.253087ms)
+  ✔ claims a sub-path of the screen without claiming the module index (1.150239ms)
+  ✔ names the screen in the navbar (0.167816ms)
+  ✔ marks the position in the sidebar (0.284928ms)
+✔ the Serpro screen (2.414476ms)
+✔ summary begins pending, consumes one summary endpoint and keeps data beside refresh failure (1720.426166ms)
+✔ usuarios retains list, resets filter page, recovers last page and rejects stale errors (1379.12289ms)
+✔ assinaturas retains list, resets filter page, recovers last page and rejects stale errors (1712.528948ms)
+✔ support uses one numeric detail and one text page, guards entry and rejects old audit results (298.462655ms)
+✔ plans submit explicit nullable limits once while busy and preserve invalid input (305.777487ms)
+✔ accounts preserve results on refresh error and temporary link clears on close (808.769632ms)
+✔ Admin shell renders exactly one panel/navbar for Account and nested ERP, and layout adds none (882.616724ms)
+✔ summary initial failure offers retry and a successful empty result remains distinct (193.477166ms)
+✔ subscription catalog retries independently, guards duplicate saves and retains field input/error (203.584328ms)
+✔ Account clipboard denial keeps temporary link available and validation keeps contact inputs (406.682258ms)
+✔ support distinguishes empty/404 from failure and drops reversed search responses and rejected audit (392.662725ms)
+✔ in-flight user response cannot modify state after unmount; catalog is read only (120.166424ms)
+✔ rendered Plan number inputs normalize cleared undefined before form validation and reload (586.195761ms)
+✔ Users keeps prior rows and count when out-of-range page recovery fails (189.66577ms)
+✔ commercial editor clears/reloads on reopen, rejects stale details and preserves inline validation (613.220615ms)
+✔ 404/500 initial reads are errors; only a successful configured=false shows the form (8595.147656ms)
+✔ refresh retains last safe metadata and rejects stale reads and unmounted responses (1286.158649ms)
+✔ search paginates, selects a non-first Account via detail, reads dedicated metadata and sends only explicit source (1303.80046ms)
+✔ missing/suspended sources block save; source/catalog requests reject obsolete responses (517.115568ms)
+✔ real passwordless PKCS12 bytes survive both upload boundaries with explicit empty password (2886.718591ms)
+✔ legacy metadata stays truthful and secret-only updates omit all source selectors (916.960011ms)
+✔ invalid files and mapped 422/413 failures retain nonsecret input, guard duplicate submit and clear sensitive material (1197.095794ms)
+✔ connectivity guards duplicate/overlapping actions, ignores stale results and exposes 409/429 retry (684.296922ms)
+✔ catalog and selected-source loading block form submission; missing Account retries and catalog discards old errors (312.25784ms)
+✔ inline vault upload guards duplicate actions, maps field failures and cannot repopulate after navigation (386.882864ms)
+✔ an asynchronous SSR 401 clears tenant state using the captured Nuxt request context (7.231613ms)
+✔ session invalidation clears tenant state while preserving Nuxt DevTools runtime state (1.032748ms)
+✔ Company switch preserves a fresh theme consumer while CSRF rotation is pending (1.896279ms)
+✔ Account switch preserves a fresh theme consumer while CSRF rotation is pending (3.702765ms)
+✔ logout on success preserves theme while clearing session and private state (0.729516ms)
+✔ logout with a 401 preserves theme while clearing session and private state (0.503861ms)
+✔ a superseded refresh still returns null for its 401 while preserving the newer identity (73.601346ms)
+✔ business requests use current membership, same-origin proxy and csrf for multipart writes without retries (314.264924ms)
+✔ tenant permissions require a matching active membership even for platform administrators (0.597998ms)
+✔ global navigation admits platform administration without an office and protects tenant modules (76.003838ms)
+✔ business authentication failures clear only the session that issued the request (11.412019ms)
+✔ real auth transitions share transport admission and fence stale work before fresh context requests (101.964986ms)
+▶ calendar layout (template port)
+  ✔ maps a due_on day to exclusive all-day bounds (6.791961ms)
+  ✔ packs single-day all-day events into one column each (0.997533ms)
+✔ calendar layout (template port) (13.292597ms)
+▶ calendar UI helpers
+  ✔ counts only selected operational filters (0.860834ms)
+  ✔ formats a calendar date as an accessible Portuguese label (91.999001ms)
+  ✔ splits month title like the Nuxt calendar template (1.172622ms)
+  ✔ keeps select options compatible with Reka UI (0.672639ms)
+✔ calendar UI helpers (96.337776ms)
+(node:1633021) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ cadastro completo desde a abertura
+  ✔ mantém identificação, cadastro e contato no mesmo formulário sem etapa de consulta (2.251536ms)
+  ✔ exige razão social já na abertura sem depender de uma escolha manual (209.711283ms)
+  ✔ descarta endereço de PF e campos oficiais do payload de empresa (83.20416ms)
+  ✔ pessoa física mantém endereço opcional e regime não aplicável (210.835728ms)
+✔ cadastro completo desde a abertura (507.850484ms)
+▶ consulta auxiliar sem perda de trabalho
+  ✔ preserva contatos digitados antes da consulta e a escolha de regime não oficial (6.882875ms)
+  ✔ preserva contatos editados e apagados enquanto a consulta está pendente (180.260795ms)
+  ✔ preenche contatos vazios e mostra o nome oficial sem substituir a razão social manual (8.065515ms)
+  ✔ invalida nome e contatos oficiais ao mudar CNPJ sem apagar contatos alterados (4.779657ms)
+  ✔ reformatar o mesmo CNPJ não invalida a consulta (5.310259ms)
+  ✔ não chama a fonte pública para CNPJ alfanumérico (95.776537ms)
+  ✔ ignora a resposta antiga depois de documento (88.072676ms)
+  ✔ ignora a resposta antiga depois de tipo de pessoa (212.932381ms)
+  ✔ ignora a resposta antiga depois de fechamento e reabertura (5.706656ms)
+  ✔ resposta antiga não encerra o carregamento da consulta que a substituiu (7.340809ms)
+  ✔ mantém o cadastro manual e informa a indisponibilidade específica (180.351218ms)
+✔ consulta auxiliar sem perda de trabalho (796.50869ms)
+▶ recusas do servidor mantêm o formulário
+  ✔ mostra duplicidade no documento sem perder os valores digitados (91.736187ms)
+✔ recusas do servidor mantêm o formulário (94.987369ms)
+▶ guardas do cadastro e acessibilidade
+  ✔ mantém obrigatórios e opcionais corretos antes da consulta (105.158399ms)
+  ✔ leva o foco ao primeiro erro dentro do corpo rolável (92.423434ms)
+  ✔ não aceita uma consulta de outro CNPJ mesmo sem outra requisição da tela (14.342167ms)
+  ✔ ignora falha antiga quando uma nova consulta está carregando (6.196249ms)
+  ✔ impede submissão duplicada enquanto o cadastro está pendente (3.71051ms)
+  ✔ não cadastra durante consulta pendente e não modifica seu carregamento (80.566354ms)
+  ✔ empresa não administrável encerra sem carregar obrigações (11.078159ms)
+  ✔ PF para PJ não envia endereço ou regime não aplicável (12.730326ms)
+✔ guardas do cadastro e acessibilidade (422.12167ms)
+▶ fechamento depois de cadastrar o cliente
+  ✔ emite saved uma vez pelo fechamento do modal durante o carregamento dos módulos (897.953949ms)
+  ✔ emite saved quando o pai fecha o modal e não duplica ao concluir (75.733987ms)
+  ✔ confirmar as obrigações mantém uma única emissão de saved (3.592559ms)
+  ✔ concluir sem associar mantém uma única emissão de saved (3.861315ms)
+  ✔ pessoa física encerra o cadastro sem duplicar saved (4.129871ms)
+  ✔ ignora a confirmação antiga depois de fechar e reabrir o modal (5.327089ms)
+  ✔ fechar antes de salvar não emite saved (91.998209ms)
+  ✔ notifica o cadastro que termina depois do fechamento sem reabrir o modal (9.524567ms)
+✔ fechamento depois de cadastrar o cliente (1095.008952ms)
+▶ alerta de erro na associação das obrigações
+  ✔ tenta de novo chamando confirmModules, com o botão em carregando (0.66225ms)
+✔ alerta de erro na associação das obrigações (0.810499ms)
+▶ confirmar obrigações com nada marcado
+  ✔ conclui sem associar em vez de postar um payload vazio (0.321878ms)
+✔ confirmar obrigações com nada marcado (0.403069ms)
+▶ filtro salvo da carteira no painel
+  ✔ mostra no painel o que foi gravado e grava de volta o operador que a API aceita (1.761583ms)
+  ✔ guarda inclui todos como é qualquer um de, que é o operador que o salvamento aceita (0.222661ms)
+✔ filtro salvo da carteira no painel (3.565406ms)
+▶ client filters
+  ✔ counts only categories that differ from the default (0.93804ms)
+  ✔ applies the draft without changing the previous selection until confirmed (1.378991ms)
+  ✔ discards an unconfirmed draft by keeping the applied filters (0.542583ms)
+  ✔ removes one chip and leaves the others (0.231588ms)
+  ✔ clears every category back to the default (0.186843ms)
+  ✔ builds chips only for active categories (0.292782ms)
+✔ client filters (5.45499ms)
+▶ clientListMenuItems
+  ✔ junta filtros salvos e tags em seções rotuladas (1.708503ms)
+  ✔ liga cada item à sua ação (0.343468ms)
+  ✔ mostra o vazio e bloqueia salvar sem busca nem filtro (0.389676ms)
+  ✔ omite a seção de filtros fora de Todos (0.17454ms)
+  ✔ omite as tags para quem não gerencia clientes (0.276462ms)
+  ✔ fica vazio quando nenhuma seção se aplica (0.173928ms)
+✔ clientListMenuItems (80.776362ms)
+▶ client portfolio panel truthful load states
+  ✔ hides regularity and zero indicators when summary fails, then recovers both reads on retry (1300.165041ms)
+  ✔ hides regularity and zero indicators when analytics fails, then recovers both reads on retry (303.341745ms)
+  ✔ keeps a failed retry in the error state instead of converting it to an empty portfolio (388.254152ms)
+✔ client portfolio panel truthful load states (1993.342512ms)
+✔ client mutation handlers refresh displayed rows and their independently cached counters together (6.28662ms)
+▶ MetricCard compact opt-in
+  ✔ preserves the original dashboard defaults, tone, size and slot (97.427965ms)
+  ✔ renders a compact selected card as a single focusable current-page link (2.475961ms)
+  ✔ does not mark Todos or another unselected card current (1.541248ms)
+  ✔ shows a skeleton rather than an old or zero count during summary loading (1.303459ms)
+  ✔ shows an accessible unavailable indicator instead of a stale or fabricated count (88.066453ms)
+✔ MetricCard compact opt-in (193.804756ms)
+▶ route-backed client status cards
+  ✔ uses Todos total and the correct independent document buckets in the approved order (191.765327ms)
+  ✔ selects exactly one route status and clears Todos while a status view is open (100.450987ms)
+  ✔ leaves unavailable summary counts undefined, including after a failed refresh with cached data (87.94725ms)
+  ✔ keeps summary search and column scope but excludes the selected list view (5.558677ms)
+  ✔ drives skeleton and unavailable states from summary, never row loading (0.470116ms)
+✔ route-backed client status cards (386.679344ms)
+▶ shared responsive quick-filter and list-control structure
+  ✔ renders five equal desktop columns and one bounded mobile scrolling row (13.541677ms)
+  ✔ places one permission-aware saved-filter/tag menu in the shared action row without mobile chips (0.574424ms)
+✔ shared responsive quick-filter and list-control structure (14.328561ms)
+▶ client selection
+  ✔ keeps explicit ids independent of the row index (2.961066ms)
+  ✔ selects and clears only the visible page (0.407239ms)
+  ✔ checks the header only when every filtered client is selected (0.505113ms)
+  ✔ tracks exclusions without dropping the filtered snapshot (0.400366ms)
+  ✔ returns to an empty explicit selection when every match is excluded (0.371821ms)
+✔ client selection (10.017399ms)
+▶ filtered client selection request ownership
+  ✔ ignores a snapshot after filters change while the selection count is still zero (1182.988575ms)
+  ✔ ignores a snapshot after explicit clear and preserves a subsequent manual selection (218.50704ms)
+  ✔ lets a new selection start after clear without letting an old finally end its loading (187.559575ms)
+  ✔ ignores stale failures without ending a newer filtered selection or showing a toast (104.977488ms)
+  ✔ invalidates in-place filter arrays and completed explicit selections without a page watcher (189.081207ms)
+  ✔ keeps snapshots, exclusions and explicit additions when the filter values do not change (308.006295ms)
+  ✔ ignores pending responses after the owning scope is disposed (96.505634ms)
+  ✔ still reports a current failure and permits retry (102.531572ms)
+✔ filtered client selection request ownership (2392.597029ms)
+▶ collapsed Clients disclosure
+  ✔ passes no parent destination to native link props while retaining the module icon, active context and accessible name (1814.633826ms)
+  ✔ keeps native ULinkBase a no-href button whose click leaves the current document/status route unchanged (1073.829973ms)
+  ✔ retains child destinations and mobile close callbacks without changing other sidebar items or Admin (514.639507ms)
+  ✔ keeps the complete search and popover catalogues while every active module is folded (1985.838447ms)
+  ✔ preserves the active node, folded state within a module and full icon popovers, reopening on module changes (306.961134ms)
+✔ collapsed Clients disclosure (5698.292334ms)
+▶ Clients sidebar navigation
+  ✔ places Painel and Meus clientes under a native collapsible Clients trigger (978.866435ms)
+  ✔ keeps Clients children text-only like the established module submenus (487.616254ms)
+  ✔ marks only the current submenu across dashboard, both lists, statuses and client details (426.723558ms)
+  ✔ exposes the current child on direct entry and reopens Clients after a route transition (499.155966ms)
+  ✔ uses stable single group values and preserves Fiscal, Members and specialized obligation activity (185.048217ms)
+  ✔ highlights only the active child in expanded groups while retaining icon activity (1507.145816ms)
+  ✔ keeps a single fully open group through opening, closing and toggling the pinned module (193.123462ms)
+  ✔ keeps group models explicitly controlled even with no expanded module (402.846191ms)
+  ✔ preserves Settings permission gates and unconditional Members visibility when folded (398.720727ms)
+  ✔ preserves collapsed popovers and closes the mobile sidebar from either Clients child (292.872716ms)
+  ✔ keeps both Clients destinations in the command palette alongside the gated Admin menu (617.816898ms)
+✔ Clients sidebar navigation (5995.029059ms)
+▶ Clients document selector and header
+  ✔ uses only two compact document links on list routes, selected from the route and targeting Todos (188.556798ms)
+  ✔ hides document selection outside the lists and preserves the detail back action (193.705471ms)
+  ✔ preserves permission-gated creation and navigation-before-create on Painel (16.491843ms)
+  ✔ lets the compact header wrap instead of restoring a full navigation toolbar (81.192635ms)
+✔ Clients document selector and header (480.211106ms)
+▶ dados existentes na ficha do cliente
+  ✔ distingue falha dos Contatos de envio na visão geral e recupera a lista ao tentar novamente (2211.252587ms)
+  ✔ preserva telefone e e-mail do cadastro com destinos vazios (990.735627ms)
+  ✔ preserva telefone e e-mail do cadastro com destinos desativados (404) (612.158185ms)
+  ✔ apresenta a família estabelecida sem vencimento como outorga confirmada (1491.804233ms)
+  ✔ identifica a família recusada que precisa de nova outorga (706.447408ms)
+✔ dados existentes na ficha do cliente (6014.097437ms)
+▶ deadline badge presentation
+  ✔ keeps the missing state neutral and without a date (1.605128ms)
+  ✔ shows the date and status context for an expired document (0.503199ms)
+  ✔ uses the warning treatment for an expiring document without a date (0.163258ms)
+✔ deadline badge presentation (3.776244ms)
+▶ ERP accounting delivery workspace
+  ✔ renders API-shaped safe status fields and distinguishes a failed initial read from empty (3689.996458ms)
+  ✔ reuses the persisted retry identity and refreshes canonical detail after receipt acknowledgement (1292.439118ms)
+  ✔ allows the server-authorized first dispatch for a legacy pending row without an outbox record (716.764295ms)
+  ✔ confirms a retry with the authorized index when the actor has no show grant (497.658135ms)
+  ✔ finishes completed receipt recovery with the authorized index when the actor has no show grant (485.200095ms)
+  ✔ preserves the original key and last confirmed rows when no-show recovery cannot refresh the index (309.743937ms)
+  ✔ does not expose detail or retry controls to an index-only read-only actor (195.742426ms)
+  ✔ keeps and replays the exact original request after lookup 404 when the active outbox blocks a new retry (593.557249ms)
+  ✔ keeps a newer delivery selection when an older retry resolves late (399.571245ms)
+  ✔ ignores same-delivery detail success and error responses started before retry confirmation (800.533313ms)
+  ✔ clears Company A state and ignores its delayed retry after switching to Company B (402.069232ms)
+  ✔ retains the last confirmed rows after a transient refresh failure (401.262033ms)
+  ✔ ignores a delayed retry error from Company A after Company B becomes current (209.787319ms)
+✔ ERP accounting delivery workspace (9997.910043ms)
+▶ ERP company administration navigation
+  ✔ includes the office approval header tab only for the selected active Account administrator (393.423488ms)
+  ✔ shows owner controls only for a direct owner company context (107.906026ms)
+  ✔ does not infer owner-only controls from a wildcard grant or a delegated office admin (114.427067ms)
+✔ ERP company administration navigation (617.141935ms)
+▶ ERP administration context request fence
+  ✔ invalidates the real composable token on session, actor, Account, Company authority, grants, and disposal (89.499787ms)
+✔ ERP administration context request fence (89.69769ms)
+▶ ERP administration rendered SFC interactions
+  ✔ retains establishment fields and server validation feedback after a 422 submit (1800.639679ms)
+  ✔ associates visible member lookup and permission errors with their native controls (798.553757ms)
+  ✔ associates rejected delegation ID feedback without submitting a delegation (899.776587ms)
+  ✔ associates office mapping field errors with the current native selectors and search (601.853624ms)
+  ✔ does not issue establishment writes for a read-only delegated member (407.183302ms)
+  ✔ separates establishment store and update grants and respects the real scope (1373.442811ms)
+  ✔ keeps selected establishment IDs while moving through the member picker pages (527.489129ms)
+  ✔ searches member establishments without saving edits on click or Enter (483.273767ms)
+  ✔ ignores an older same-context list response after a newer request completes (504.055506ms)
+  ✔ keeps the owner row immutable and submits selected empty scope for a newly looked-up member (493.917605ms)
+  ✔ shows office approval state to the owner without exposing office client details (996.649235ms)
+  ✔ prevents duplicate owner delegation writes and requires the confirmation button (203.794029ms)
+  ✔ approves a selected establishment against an active Account-owned client without switching ERP Company (589.460418ms)
+  ✔ discards client search results and errors when the query changes during a request (826.733027ms)
+  ✔ marks same-office client results stale on transient errors and clears protected results on authorization loss (295.480738ms)
+  ✔ clears establishment rows and blocks controls after a forbidden list refresh (289.042462ms)
+  ✔ clears protected member rows and identity results after a forbidden exact-email lookup (598.680202ms)
+  ✔ blocks a stale company editor on context conflict while preserving ordinary conflict edits (1019.39041ms)
+  ✔ clears protected establishment state after a forbidden write response (396.094438ms)
+  ✔ clears office establishment and mapping context after a forbidden explicit context read (488.150316ms)
+  ✔ clears office candidates after a forbidden accounting approval write (611.707808ms)
+  ✔ clears owner delegation state after a forbidden grant response (286.216382ms)
+✔ ERP administration rendered SFC interactions (14496.186772ms)
+▶ cash workspace shell
+  ✔ keeps #sessions on initial mount and remounts retained forms when session or authority changes (4579.749198ms)
+  ✔ shows the frozen recovery target and declared amount only while recovery authority is current (2421.585169ms)
+✔ cash workspace shell (7016.765468ms)
+▶ cash workflow forms
+  ✔ requires an establishment and keeps opening amount text including zero (178.297251ms)
+  ✔ requires a selected active establishment to register a cash drawer (13.377307ms)
+  ✔ pairs manual movement kind and direction while preserving decimal text (11.869273ms)
+  ✔ requires explicit count confirmation and retains close amount until success (79.007544ms)
+✔ cash workflow forms (283.007137ms)
+▶ cash permissions and operation recovery
+  ✔ treats close as a write and does not let a viewer use broad read grants (0.34417ms)
+  ✔ validates persisted operations by company actor identity and freezes payload and key (0.321917ms)
+✔ cash permissions and operation recovery (0.903845ms)
+▶ cash workspace API workflow
+  ✔ posts a cash payment with an explicit selected session and exact amount (510.832229ms)
+  ✔ opens a session from an active cash register on a later picker page (408.252632ms)
+  ✔ keeps an already selected session while a direct opening loads its new session in the background (673.757785ms)
+  ✔ keeps the selected session while reconciling a completed opening for another session (226.418384ms)
+  ✔ recovers a close after reload with the same key and does not require an open session (194.691936ms)
+  ✔ uses server ledger totals instead of totals from the current movement page (190.685618ms)
+  ✔ keeps cash payment values and refreshes the session after a closed-session rejection (207.277451ms)
+  ✔ returns stale after a completed write loses Company authority during the detail refresh (507.209607ms)
+  ✔ does not let an earlier successful close select session A after the user chose B (480.154584ms)
+  ✔ does not let a delayed close error replace a newer selected session (114.963531ms)
+  ✔ reconciles a completed payment with a fresh GET for its frozen session without replacing a newer selection (100.190335ms)
+  ✔ reconciles a completed opening from the bare lookup result id using current session detail (94.967042ms)
+  ✔ loads and pages register filter options during the read lifecycle without opening the session form (189.403177ms)
+  ✔ clears private cash data on a definitive listing denial and fences a late response (117.066887ms)
+  ✔ keeps session B ledger rows and server totals when a delayed session A movement response arrives (180.144708ms)
+  ✔ keeps private views cleared and the operation identity after an uncommitted write-403 refresh (111.58082ms)
+  ✔ fences an in-flight write-403 refresh after switching Company context (400.545861ms)
+  ✔ handles a definitive denial from a background recovery detail read before checking the selected session (107.25287ms)
+  ✔ keeps a newer lookup denial authoritative over an older auth refresh success or rejection (302.729757ms)
+  ✔ isolates Company A pending identity and filters from Company B, then restores A identity on return (199.74093ms)
+  ✔ keeps recovery blocked when a completed lookup cannot remove its stored identity (379.51627ms)
+  ✔ retries a missing close with the original body and key despite a changed live close draft (111.455956ms)
+✔ cash workspace API workflow (5810.674595ms)
+▶ real cash list footers
+  ✔ pages registers once with its filters, suppresses pending requests and respects revoked authority (1386.006778ms)
+  ✔ pages sessions once with its filters, suppresses pending requests and respects revoked authority (705.844363ms)
+  ✔ guards the real movement loader throughout the awaited page, retaining the session and server total (511.271734ms)
+✔ real cash list footers (2603.387917ms)
+▶ cash failed refresh guidance
+  ✔ identifies registers failure with prior none and clears stale feedback on recovery (800.009795ms)
+  ✔ identifies registers failure with prior rows and clears stale feedback on recovery (702.323974ms)
+  ✔ identifies registers failure with prior empty and clears stale feedback on recovery (989.332278ms)
+  ✔ identifies sessions failure with prior none and clears stale feedback on recovery (809.571757ms)
+  ✔ identifies sessions failure with prior rows and clears stale feedback on recovery (589.323185ms)
+  ✔ identifies sessions failure with prior empty and clears stale feedback on recovery (501.609931ms)
+  ✔ identifies movements failure with prior none and clears stale feedback on recovery (787.184391ms)
+  ✔ identifies movements failure with prior rows and clears stale feedback on recovery (698.875701ms)
+  ✔ identifies movements failure with prior empty and clears stale feedback on recovery (517.721807ms)
+✔ cash failed refresh guidance (6396.530588ms)
+▶ ERP catalog editor authority and request lifecycle
+  ✔ uses the distinct customer-group permissions and keeps delegated user access read-only (2091.937399ms)
+  ✔ provides read-only detail for show-only members without exposing edit or archive (420.096816ms)
+  ✔ keeps a delegated office user read-only when the Company grants catalog mutation permissions (398.751514ms)
+  ✔ denies delegated catalog actions when the selected office membership does not match (383.554011ms)
+  ✔ requires show and update to edit, and fetches the real record before opening edit mode (400.254922ms)
+  ✔ aborts a delayed detail response and clears form state synchronously when authority changes (111.435492ms)
+  ▶ clears protected form state and blocks writes after 401, 403, or company-context 409
+    ✔ 401: (489.177461ms)
+    ✔ 403: (198.883777ms)
+    ✔ 409:company_context_changed (196.808354ms)
+  ✔ clears protected form state and blocks writes after 401, 403, or company-context 409 (886.066261ms)
+  ✔ resets an old authority refresh on context change without clearing a newer refresh busy flag (295.401586ms)
+  ▶ retains form values for validation, conflict, and service errors
+    ✔ 422 (505.03376ms)
+    ✔ 409 (97.894045ms)
+    ✔ 503 (118.19202ms)
+  ✔ retains form values for validation, conflict, and service errors (721.80783ms)
+  ✔ prevents archive and save from running concurrently in either order (184.923541ms)
+✔ ERP catalog editor authority and request lifecycle (5896.36982ms)
+▶ ERP catalog family forms
+  ✔ edits and submits the saved ErpContactCatalogForm.vue fixture without losing its references or stored values (3204.067686ms)
+  ✔ edits and submits the saved ErpProductCatalogForm.vue fixture without losing its references or stored values (2197.776745ms)
+  ✔ edits and submits the saved ErpCustomerGroupCatalogForm.vue fixture without losing its references or stored values (282.80895ms)
+  ✔ edits and submits the saved ErpUnitCatalogForm.vue fixture without losing its references or stored values (392.466691ms)
+  ✔ edits and submits the saved ErpCategoryCatalogForm.vue fixture without losing its references or stored values (121.038504ms)
+  ✔ edits and submits the saved ErpBrandCatalogForm.vue fixture without losing its references or stored values (99.565586ms)
+  ✔ edits and submits the saved ErpPriceGroupCatalogForm.vue fixture without losing its references or stored values (282.673276ms)
+  ✔ edits and submits the saved ErpDiscountRuleCatalogForm.vue fixture without losing its references or stored values (404.409233ms)
+  ✔ edits and submits the saved ErpTaxRateCatalogForm.vue fixture without losing its references or stored values (301.195152ms)
+  ✔ edits and submits the saved ErpOperationNatureCatalogForm.vue fixture without losing its references or stored values (312.435977ms)
+  ✔ edits and submits the saved ErpCarrierCatalogForm.vue fixture without losing its references or stored values (385.968875ms)
+  ✔ edits and submits the saved ErpVehicleCatalogForm.vue fixture without losing its references or stored values (597.560968ms)
+  ✔ edits and submits the saved ErpDriverCatalogForm.vue fixture without losing its references or stored values (299.168015ms)
+  ✔ creates a ErpContactCatalogForm.vue record from entered name data (220.420282ms)
+  ✔ creates a ErpProductCatalogForm.vue record from entered name data (682.368535ms)
+  ✔ creates a ErpUnitCatalogForm.vue record from entered short_name data (110.055247ms)
+  ✔ creates a ErpCategoryCatalogForm.vue record from entered name data (102.332257ms)
+  ✔ creates a ErpBrandCatalogForm.vue record from entered name data (176.860351ms)
+  ✔ creates a ErpPriceGroupCatalogForm.vue record from entered name data (110.790104ms)
+  ✔ creates a ErpCustomerGroupCatalogForm.vue record from entered name data (98.078322ms)
+  ✔ creates a ErpDiscountRuleCatalogForm.vue record from entered name data (106.739733ms)
+  ✔ creates a ErpTaxRateCatalogForm.vue record from entered name data (287.900736ms)
+  ✔ creates a ErpOperationNatureCatalogForm.vue record from entered cfop data (198.916671ms)
+  ✔ creates a ErpCarrierCatalogForm.vue record from entered legal_name data (219.919938ms)
+  ✔ creates a ErpVehicleCatalogForm.vue record from entered plate data (187.061757ms)
+  ✔ creates a ErpDriverCatalogForm.vue record from entered name data (104.739291ms)
+  ✔ keeps a product in readonly detail mode and ignores a form submit event (994.136513ms)
+  ✔ keeps fiscal codes and decimal strings lossless, supports optional clearing, and uses the customer group reference (1315.197306ms)
+  ✔ uses a reactive Nuxt UI form state and registered field names for every catalog family (3681.838227ms)
+  ✔ uses Nuxt UI controls for enums, named booleans and shared notes (1605.733945ms)
+  ✔ disables name and hides submit in ErpContactCatalogForm.vue detail mode (203.368511ms)
+  ✔ retains name after server field validation in ErpContactCatalogForm.vue (208.782966ms)
+  ✔ disables name and hides submit in ErpProductCatalogForm.vue detail mode (596.232894ms)
+  ✔ retains name after server field validation in ErpProductCatalogForm.vue (499.604658ms)
+  ✔ disables name and hides submit in ErpCustomerGroupCatalogForm.vue detail mode (297.933986ms)
+  ✔ retains name after server field validation in ErpCustomerGroupCatalogForm.vue (87.677741ms)
+  ✔ disables short_name and hides submit in ErpUnitCatalogForm.vue detail mode (125.269281ms)
+  ✔ retains short_name after server field validation in ErpUnitCatalogForm.vue (90.016145ms)
+  ✔ disables name and hides submit in ErpCategoryCatalogForm.vue detail mode (279.290023ms)
+  ✔ retains name after server field validation in ErpCategoryCatalogForm.vue (107.975052ms)
+  ✔ disables name and hides submit in ErpBrandCatalogForm.vue detail mode (93.410877ms)
+  ✔ retains name after server field validation in ErpBrandCatalogForm.vue (21.814247ms)
+  ✔ disables name and hides submit in ErpPriceGroupCatalogForm.vue detail mode (182.837256ms)
+  ✔ retains name after server field validation in ErpPriceGroupCatalogForm.vue (13.957142ms)
+  ✔ disables name and hides submit in ErpDiscountRuleCatalogForm.vue detail mode (389.300078ms)
+  ✔ retains name after server field validation in ErpDiscountRuleCatalogForm.vue (112.839691ms)
+  ✔ disables name and hides submit in ErpTaxRateCatalogForm.vue detail mode (283.012735ms)
+  ✔ retains name after server field validation in ErpTaxRateCatalogForm.vue (202.98566ms)
+  ✔ disables cfop and hides submit in ErpOperationNatureCatalogForm.vue detail mode (403.517539ms)
+  ✔ retains cfop after server field validation in ErpOperationNatureCatalogForm.vue (198.882028ms)
+  ✔ disables legal_name and hides submit in ErpCarrierCatalogForm.vue detail mode (111.392481ms)
+  ✔ retains legal_name after server field validation in ErpCarrierCatalogForm.vue (602.701665ms)
+  ✔ disables plate and hides submit in ErpVehicleCatalogForm.vue detail mode (197.082703ms)
+  ✔ retains plate after server field validation in ErpVehicleCatalogForm.vue (190.132492ms)
+  ✔ disables name and hides submit in ErpDriverCatalogForm.vue detail mode (93.638876ms)
+  ✔ retains name after server field validation in ErpDriverCatalogForm.vue (20.768532ms)
+  ✔ keeps estabelecimento and edits visible after erp_establishment_id validation fails (178.292454ms)
+  ✔ disables estabelecimento and form controls in ErpTaxRateCatalogForm.vue detail mode (14.594835ms)
+  ✔ keeps estabelecimento and edits visible after erp_establishment_id validation fails (90.479385ms)
+  ✔ disables estabelecimento and form controls in ErpOperationNatureCatalogForm.vue detail mode (305.558694ms)
+  ✔ keeps transportadora and edits visible after erp_carrier_id validation fails (197.929598ms)
+  ✔ disables transportadora and form controls in ErpVehicleCatalogForm.vue detail mode (287.623946ms)
+  ✔ disables actual variant inputs in product detail and while a mutation is pending (1006.190008ms)
+  ✔ uses the standard titled variant archive dialog and ignores confirmation while busy (615.33785ms)
+✔ ERP catalog family forms (27399.201993ms)
+▶ ERP standalone label renderer with real pinned JsBarcode
+  ✔ outputs three real SVG labels, exact text/money, escaped content and fractional page geometry without external resources (1787.184741ms)
+  ✔ renders all six explicit symbologies and rejects normalization or insufficient physical width (3501.409822ms)
+  ✔ honors toggles and aborts late render jobs before returning bytes (214.060755ms)
+✔ ERP standalone label renderer with real pinned JsBarcode (5511.44458ms)
+▶ ERP labels real composable authority and mutations
+  ✔ releases the mutation fence after success and preserves exact fractional input after field422 (2803.438003ms)
+  ✔ blocks denied generation and refuses download callbacks after authority loss (978.956026ms)
+  ✔ cancels pending requests and clears selections/drafts when session generation changes (906.746928ms)
+✔ ERP labels real composable authority and mutations (4691.943313ms)
+▶ ERP labels mounted real SFC
+  ✔ keeps shell, search, ordered product/variant selection and quantities across pagination (3094.85559ms)
+  ✔ retains decimal layout text and field errors in mounted controls, and removes access on permission change (2203.052064ms)
+  ✔ shows real renderer errors without opening a preview and prevents stale completion after context changes (1813.908819ms)
+✔ ERP labels mounted real SFC (7112.594021ms)
+▶ ERP label output callbacks and stale rendering
+  ✔ downloads and prints the owned output, then revokes it synchronously on edits and disposes callbacks (584.404165ms)
+  ✔ refuses a Blob URL when Company context changes during actual JsBarcode rendering (609.484571ms)
+✔ ERP label output callbacks and stale rendering (1194.470064ms)
+▶ ERP labels independent review regressions
+  ✔ allows exact generate-only grants, consumes the output snapshot and recovers same-context authority (1484.616291ms)
+  ✔ keeps target-specific422 fields out of unrelated settings, layout, profile and selection controls (1303.40641ms)
+✔ ERP labels independent review regressions (2788.219781ms)
+▶ ERP catalog label selection and physical layout
+  ✔ keeps selection order and independent product and variant keys across page changes (74.854378ms)
+  ✔ plans copies in request order and starts a new sheet at the saved count (0.793777ms)
+  ✔ checks continuous output height with exact fixed-point decimals (0.685624ms)
+  ✔ rejects physically nonfitting layouts and output above the copy bound (0.303261ms)
+✔ ERP catalog label selection and physical layout (78.111664ms)
+▶ exact ERP label barcode input
+  ✔ rejects library normalization and synthesized check digits while preserving spaces and zeros (0.606955ms)
+✔ exact ERP label barcode input (0.794218ms)
+▶ shared ERP catalog list lifecycle
+  ✔ starts only for an active Company with the exact route read permission (2383.390767ms)
+  ✔ maps every catalog URL to its backend route permission, including fiscal short names (3213.420348ms)
+  ✔ requires the selected active office to match a delegated Company (391.75077ms)
+  ✔ clears and aborts synchronously on context change, then ignores a late old success and finally (113.03017ms)
+  ✔ ignores a late old-context authorization error after the new list succeeds (177.586231ms)
+  ▶ invalidates captures for actor, Account, session, delegated office and authority changes
+    ✔ actor (103.741248ms)
+    ✔ Account (111.141749ms)
+    ✔ session generation (401.716201ms)
+    ✔ delegated office and access kind (94.985339ms)
+    ✔ Company authority (194.349798ms)
+  ✔ invalidates captures for actor, Account, session, delegated office and authority changes (909.857083ms)
+  ✔ keeps same-context last-good rows visibly stale on a transient refresh failure and retries (490.733079ms)
+  ▶ clears on 401, 403 or named context conflict and only retries after an auth refresh
+    ✔ 401 (221.462508ms)
+    ✔ 403 (294.974005ms)
+    ✔ named 409 (281.479731ms)
+  ✔ clears on 401, 403 or named context conflict and only retries after an auth refresh (798.680397ms)
+  ✔ does not let an auth refresh started for a rejected context replace a newer context request (916.48611ms)
+  ✔ keeps ordinary same-context 409 data and does not treat it as lost authority (380.23822ms)
+  ✔ debounces text, resets page, and honors an explicit page action during the debounce (600.528408ms)
+  ▶ keeps successful empty distinct from initial pending and initial failure
+    ✔ initial pending (216.145899ms)
+    ✔ initial failure (106.365305ms)
+    ✔ successful empty (289.705153ms)
+  ✔ keeps successful empty distinct from initial pending and initial failure (612.888885ms)
+  ✔ aborts on dispose and cannot restart or accept a late result (286.912364ms)
+✔ shared ERP catalog list lifecycle (11277.679431ms)
+▶ ERP catalog list SFC states
+  ✔ mounts the real Products page without rendering initial or failed loads as an empty table (8991.217185ms)
+  ✔ keeps the real Pricing page lists independent through pending, error, retry and confirmed empty (3200.511875ms)
+✔ ERP catalog list SFC states (12193.197429ms)
+✔ pages the real catalog footer once, retaining search and refusing pending or unauthorized requests (2999.42853ms)
+▶ ERP localized read-only catalog decimals
+  ✔ renders exact localized cells in the real produtos SFC while preserving canonical records (2016.280852ms)
+  ✔ renders exact localized cells in the real fiscal SFC while preserving canonical records (1787.053358ms)
+  ✔ renders exact localized cells in the real unidades SFC while preserving canonical records (1321.889736ms)
+  ✔ renders exact localized cells in the real precos SFC while preserving canonical records (1402.001397ms)
+  ✔ renders exact localized cells in the real grupos-clientes SFC while preserving canonical records (896.239893ms)
+✔ ERP localized read-only catalog decimals (7425.250604ms)
+▶ ERP catalog reference selector
+  ✔ aborts and discards an off-page detail response after the real catalog read loses authority (4288.233854ms)
+  ✔ keeps the selected archived reference visibly marked when its detail is still authorized (1403.937337ms)
+  ✔ uses Nuxt UI value-key search, remote filtering, required and optional clear contracts (1708.459657ms)
+  ✔ keeps authority recovery visible when the native selector is disabled (999.793724ms)
+✔ ERP catalog reference selector (8403.26486ms)
+▶ ERP catalog shared resource authority
+  ✔ exposes its permission-gated create action and keeps the list mounted through the focused editor lifecycle (6912.044261ms)
+  ✔ keeps the real Contact notes panel draft and selected File across native-style detail tab switches (2475.268095ms)
+  ✔ blocks the editor when list authority is rejected and ignores its delayed detail response (1098.072855ms)
+  ✔ clears table state when an editor mutation loses authority and ignores a delayed list response (1399.493387ms)
+  ✔ does not let Escape cancel an in-flight save (1312.830263ms)
+  ✔ recovers both sides after a same-context auth refresh and a successful list read (902.643268ms)
+  ✔ recovers shared Resource authority when retry is clicked inside the real pagination alert (1500.125ms)
+  ✔ keeps the next company archive confirmation open when the prior company delete finishes late (592.330402ms)
+  ✔ keeps search available and shows only the confirmed server count in the real footer (813.287716ms)
+  ✔ restores the list for a valid direct index-only actor without exposing record actions (690.246546ms)
+  ✔ restores the list for a valid delegated index-only actor without exposing record actions (687.394153ms)
+  ✔ hands focus from the closing row menu to the editor without changing ordinary menu focus (822.852758ms)
+  ✔ uses record-specific edit headings and restores row-menu focus after cancel and save (599.269194ms)
+  ✔ ignores an old authority recovery after the selected company changes (1097.294455ms)
+✔ ERP catalog shared resource authority (20905.91012ms)
+▶ ERP catalog status labels
+  ✔ shows catalog states in Portuguese while preserving unknown API values (1.135432ms)
+✔ ERP catalog status labels (2.586881ms)
+▶ useErpCompanySettings API wire
+  ✔ calls GET/PATCH /erp/company/settings via useAccessApi (104.019423ms)
+✔ useErpCompanySettings API wire (107.405353ms)
+▶ native acceptance settings authority
+  ✔ renders operator/viewer without write grants as read-only and rejects programmatic submit (2773.925112ms)
+  ✔ admits current writers and drops late PATCH/GET after authority or session changes (908.459206ms)
+✔ native acceptance settings authority (3682.871718ms)
+▶ native acceptance settings writer roles and refusals
+  ✔ preserves owner/manager and explicitly granted operator writes, with viewer remaining read-only (1402.06974ms)
+  ✔ intersects delegated write grants with active matching office writer role (614.583107ms)
+  ✔ clears data and blocks a definitive current refusal, and disables unknown failed reads (696.710692ms)
+✔ native acceptance settings writer roles and refusals (2714.172453ms)
+▶ native acceptance email consumer review correction
+  ✔ renders the actual email page read-only and performs no denied programmatic PATCH or confirmation (302.672858ms)
+  ✔ blocks unknown and busy email submissions without a request or skipped-save success toast (185.499708ms)
+  ✔ clears private email inputs synchronously and emits no toast for obsolete PATCH success or failure (1409.119789ms)
+  ✔ submits the accepted nested email_settings fields and confirms only an authorized actual response (779.556661ms)
+  ✔ keeps an unknown failed email read disabled and offers an authorized read retry (405.482302ms)
+✔ native acceptance email consumer review correction (3083.202713ms)
+▶ settings rejected save feedback
+  ✔ section binds current form state and preserves field metadata (120.004679ms)
+  ✔ section renders the first named 422 error, retains edits and clears feedback on retry (381.348356ms)
+  ✔ section visibly reports a form or transport failure (293.428881ms)
+  ✔ section visibly reports a form or transport failure (605.714883ms)
+  ✔ section visibly reports a form or transport failure (196.430967ms)
+  ✔ section clears old feedback on a same-context 401 authority refusal (220.998548ms)
+  ✔ section clears old feedback on a same-context 403 authority refusal (297.208839ms)
+  ✔ section clears old feedback on a same-context 409 authority refusal (103.654817ms)
+  ✔ section clears already visible feedback immediately when authority changes (295.842684ms)
+  ✔ section discards late success and clears feedback on company changes (281.092315ms)
+  ✔ section discards late failure and clears feedback on company changes (112.815977ms)
+  ✔ section discards late success and clears feedback on account changes (188.26232ms)
+  ✔ section discards late failure and clears feedback on account changes (107.90878ms)
+  ✔ section discards late success and clears feedback on session changes (294.848185ms)
+  ✔ section discards late failure and clears feedback on session changes (102.080914ms)
+  ✔ section discards late success and clears feedback on permission changes (98.451146ms)
+  ✔ section discards late failure and clears feedback on permission changes (212.869907ms)
+  ✔ section discards late success and clears feedback on role changes (103.891421ms)
+  ✔ section discards late failure and clears feedback on role changes (286.547715ms)
+  ✔ email binds current form state and preserves field metadata (112.099887ms)
+  ✔ email renders the first named 422 error, retains edits and clears feedback on retry (184.358106ms)
+  ✔ email visibly reports a form or transport failure (115.000328ms)
+  ✔ email visibly reports a form or transport failure (179.505244ms)
+  ✔ email visibly reports a form or transport failure (101.271498ms)
+  ✔ email clears old feedback on a same-context 401 authority refusal (224.73161ms)
+  ✔ email clears old feedback on a same-context 403 authority refusal (97.250052ms)
+  ✔ email clears old feedback on a same-context 409 authority refusal (94.600461ms)
+  ✔ email clears already visible feedback immediately when authority changes (83.678697ms)
+  ✔ email discards late success and clears feedback on company changes (17.399076ms)
+  ✔ email discards late failure and clears feedback on company changes (180.692761ms)
+  ✔ email discards late success and clears feedback on account changes (207.221352ms)
+  ✔ email discards late failure and clears feedback on account changes (203.69024ms)
+  ✔ email discards late success and clears feedback on session changes (97.360699ms)
+  ✔ email discards late failure and clears feedback on session changes (105.504785ms)
+  ✔ email discards late success and clears feedback on permission changes (195.816764ms)
+  ✔ email discards late failure and clears feedback on permission changes (104.483879ms)
+  ✔ email discards late success and clears feedback on role changes (202.981571ms)
+  ✔ email discards late failure and clears feedback on role changes (187.304155ms)
+✔ settings rejected save feedback (7004.127637ms)
+▶ legacy settings reference compatibility without native lookups
+  ✔ omits all five references from an unrelated section save and retains raw confirmed values (96.995171ms)
+  ✔ produto preserves untouched raw references on same-section save and failed edited save (120.286392ms)
+  ✔ produto clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (95.567115ms)
+  ✔ vendas preserves untouched raw references on same-section save and failed edited save (203.341352ms)
+  ✔ vendas clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (198.951643ms)
+  ✔ compras preserves untouched raw references on same-section save and failed edited save (278.567613ms)
+  ✔ compras clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (208.366363ms)
+  ✔ empresa preserves untouched raw references on same-section save and failed edited save (310.09754ms)
+  ✔ empresa clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (179.230903ms)
+✔ legacy settings reference compatibility without native lookups (1692.128959ms)
+▶ erpCompanySettingsFields
+  ✔ maps business tab keys from reference settings_business (1.020605ms)
+  ✔ preserves numeric editing for existing opaque business references (1.158425ms)
+  ✔ maps tax tab keys from reference settings_tax (0.190008ms)
+✔ erpCompanySettingsFields (4.931384ms)
+▶ ERP Contact notes lifecycle
+  ✔ loads active notes through the fixed nested index route (1406.837765ms)
+  ✔ keeps the last good list and marks it stale when a same-context read fails (773.701945ms)
+  ✔ requires separate route grants and keeps delegated user access read-only (1027.13903ms)
+  ✔ clears and aborts old Company/session data when a download resolves after context changes (672.354825ms)
+  ✔ blocks a late download after a separate same-context request loses authority (327.618836ms)
+  ✔ ignores list and detail reads that resolve after an accepted update (680.824202ms)
+  ✔ removes a note after a visibility 404 and fences its late list and download responses only (609.025784ms)
+  ✔ hides a note while an attachment 404 is reconciled and restores it only when detail remains visible (508.347646ms)
+  ✔ reconciles download 404s with the note detail route and clears loading after either result (376.906466ms)
+  ✔ keeps note recovery retryable and restores or loses only after its authorized retry (420.342863ms)
+  ✔ binds a retryable note check to the current selection and context (294.127004ms)
+  ✔ clears a stale retry marker after an authorized manual detail read of the same note (185.424518ms)
+  ✔ re-arms the selected note retry when an unrelated create aborts its pending 404 recheck (223.55657ms)
+  ✔ preserves selected-note retry metadata when an unrelated note becomes invisible (277.733136ms)
+  ✔ keeps a background note hidden and marks the list stale after its transient visibility failure (310.607207ms)
+  ✔ keeps an authorized list refresh available when a failed write cancels a background visibility check (288.672368ms)
+  ✔ keeps the stale-list affordance when manual selection cancels a background visibility check (202.60283ms)
+  ✔ does not decrement the pending-filter count when a retained active selection is lost (220.268029ms)
+  ✔ refuses new downloads during a write and ignores a same-note download started before it (1085.417364ms)
+  ✔ treats an attachment 404 followed by a note 404 as note visibility loss (210.544129ms)
+  ✔ does not restore a note after attachment reconciliation when the user selects another note (394.546545ms)
+  ✔ does not restore attachment detail from a prior Company after its 404 recheck resolves (396.770651ms)
+✔ ERP Contact notes lifecycle (10898.669396ms)
+▶ ERP Contact notes panel
+  ✔ mounts sibling forms, retains typed text and selected file after field validation errors, and clears local input on context change (1508.613284ms)
+  ✔ clears a file selected for note A while note B detail is loading (783.246286ms)
+  ✔ preserves an unsaved edit when an attachment response updates note details (1013.864111ms)
+  ✔ clears note-local input during visibility reconciliation while preserving a new note draft (706.911117ms)
+  ✔ keeps note content hidden during a retryable check and retries from the mounted panel (785.847826ms)
+  ✔ clears private drafts and a selected file after same-context authority is blocked (608.905801ms)
+  ✔ keeps a new create draft when an old-context create and refresh finish late (386.289622ms)
+✔ ERP Contact notes panel (5794.188599ms)
+▶ Contact mutation permissions and input preservation
+  ✔ allows delegated creation only with the effective exact action from the server (7872.678544ms)
+  ✔ allows a direct owner with actual server grants * (3323.550466ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.store (2683.170459ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.* (2403.679823ms)
+  ✔ allows a direct owner with actual server grants erp.contacts.write (2510.514959ms)
+  ✔ allows a direct owner with actual server grants erp.write (2285.865725ms)
+  ✔ hides and guards mutation for {"role":"viewer","permissions":["*"]} (1801.440598ms)
+  ✔ hides and guards mutation for {"access_kind":"delegated","role":"delegated","permissions":["*"]} (1618.58188ms)
+  ✔ hides and guards mutation for {"role":"operator","permissions":["erp.read"]} (1971.972433ms)
+  ✔ hides and guards mutation for {"role":"owner","permissions":["erp.catalog.write"]} (1220.988642ms)
+  ✔ hides and guards mutation for {"role":"owner","permissions":[]} (2093.222631ms)
+  ✔ hides and guards mutation for {"status":"suspended"} (1807.805341ms)
+  ✔ does not infer a delegated store action from * (1301.99097ms)
+  ✔ does not infer a delegated store action from erp.contacts.* (1878.664925ms)
+  ✔ does not infer a delegated store action from erp.contacts.write (1104.30086ms)
+  ✔ does not infer a delegated store action from erp.write (1409.25218ms)
+  ✔ requires the real active delegated office writer {"role":"user"} (2394.269898ms)
+  ✔ requires the real active delegated office writer {"status":"suspended"} (2407.066445ms)
+  ✔ requires the real active delegated office writer {"id":88} (1293.804971ms)
+  ✔ retains all entered fields and actionable feedback after HTTP 422 (1718.036039ms)
+  ✔ retains all entered fields and actionable feedback after HTTP 503 (1586.411259ms)
+  ✔ unmounts protected fields after authority loss HTTP 401 until real recovery (1489.090751ms)
+  ✔ unmounts protected fields after authority loss HTTP 403 until real recovery (1222.734212ms)
+  ✔ unmounts protected fields after authority loss HTTP 409 until real recovery (2389.291419ms)
+  ✔ rechecks permission after CSRF and never submits after revocation (2184.590083ms)
+  ✔ ignores a late POST success after Account switch (1318.382888ms)
+  ✔ ignores a late POST failure after Account switch (1195.357974ms)
+  ✔ ignores a late POST success after actor switch (1203.474551ms)
+  ✔ ignores a late POST failure after actor switch (1683.851943ms)
+  ✔ ignores a late POST success after Company switch (1603.434352ms)
+  ✔ ignores a late POST failure after Company switch (2222.13896ms)
+  ✔ ignores a late POST success after office role switch (2883.232122ms)
+  ✔ ignores a late POST failure after office role switch (1109.448244ms)
+  ✔ ignores a late POST success after session switch (2082.49518ms)
+  ✔ ignores a late POST failure after session switch (1203.600864ms)
+  ✔ clears private draft fields and ignores late mutation success across company context (1490.157815ms)
+✔ Contact mutation permissions and input preservation (71973.35315ms)
+▶ ERP core catalogs shared contracts
+  ✔ freezes catalog API route families (6.330403ms)
+  ✔ maps cadastros Nuxt pages (0.302261ms)
+  ✔ preserves decimal strings without float coercion (0.314152ms)
+  ✔ posted snapshot stays stable when catalog price changes (0.318361ms)
+  ✔ cadastros hub page references catalog routes (1699.149902ms)
+✔ ERP core catalogs shared contracts (1790.294194ms)
+▶ ERP exact decimal display
+  ✔ displays 12.5000 with minimum 2 as 12,50 without changing its input (1.543313ms)
+  ✔ displays 0 with minimum 2 as 0,00 without changing its input (0.232068ms)
+  ✔ displays 0 with minimum 2 as 0,00 without changing its input (0.167176ms)
+  ✔ displays -10.1250 with minimum 0 as -10,125 without changing its input (0.137018ms)
+  ✔ displays 12345678901234567890.1234 with minimum 0 as 12.345.678.901.234.567.890,1234 without changing its input (1.645445ms)
+  ✔ displays null with minimum 0 as — without changing its input (0.122822ms)
+  ✔ displays undefined with minimum 0 as — without changing its input (0.764693ms)
+  ✔ displays  with minimum 0 as — without changing its input (0.258818ms)
+  ✔ displays não disponível with minimum 0 as não disponível without changing its input (0.131187ms)
+  ✔ displays 1000 with minimum 0 as 1.000 without changing its input (0.221097ms)
+  ✔ displays 12.0000 with minimum 0 as 12 without changing its input (0.098746ms)
+  ✔ displays 12.1234567890123456789000 with minimum 2 as 12,1234567890123456789 without changing its input (1.104894ms)
+  ✔ displays 0.00000001 with minimum 2 as 0,00000001 without changing its input (0.0793ms)
+  ✔ displays -0.0000 with minimum 2 as -0,00 without changing its input (0.05796ms)
+  ✔ displays -1234567.8900 with minimum 4 as -1.234.567,8900 without changing its input (0.078468ms)
+  ✔ displays 12.5 with minimum 4 as 12,5000 without changing its input (0.053531ms)
+  ✔ displays 12.5 with minimum 0 as 12,5 without changing its input (0.048161ms)
+  ✔ displays 12,50 with minimum 2 as 12,50 without changing its input (0.043261ms)
+  ✔ displays  12.5000  with minimum 2 as  12.5000  without changing its input (0.042529ms)
+  ✔ displays 01.20 with minimum 2 as 01.20 without changing its input (0.07379ms)
+  ✔ displays +12.50 with minimum 2 as +12.50 without changing its input (0.057217ms)
+  ✔ displays 1e3 with minimum 2 as 1e3 without changing its input (0.060154ms)
+  ✔ displays .5 with minimum 2 as .5 without changing its input (0.043482ms)
+  ✔ displays 12. with minimum 2 as 12. without changing its input (0.055305ms)
+  ✔ displays 12.5000
+ with minimum 2 as 12.5000
+ without changing its input (0.064682ms)
+  ✔ displays   with minimum 0 as   without changing its input (0.042942ms)
+  ✔ displays NaN with minimum 0 as NaN without changing its input (0.040846ms)
+  ✔ displays Infinity with minimum 0 as Infinity without changing its input (0.040577ms)
+  ✔ defaults to no minimum fractional digits without rounding or adding currency (0.093196ms)
+✔ ERP exact decimal display (10.694908ms)
+▶ finance forms use actual form submissions and exact decimal strings
+  ✔ submits a financial account body with only supported fields (798.483308ms)
+  ✔ submits an obligation while preserving amount text and nullable references (193.970722ms)
+  ✔ rejects malformed decimal text and submits cash payment only with a selected session (389.716736ms)
+✔ finance forms use actual form submissions and exact decimal strings (1383.450753ms)
+▶ finance permission family matching
+  ✔ matches CurrentCompany last-dot family grants for nested allocation history (0.390017ms)
+✔ finance permission family matching (0.575907ms)
+▶ finance workspace
+  ✔ renders authoritative list state for unknown (4300.36385ms)
+  ✔ renders authoritative list state for pending (1796.281041ms)
+  ✔ renders authoritative list state for failed (1905.818933ms)
+  ✔ renders authoritative list state for confirmed-empty (1611.715699ms)
+  ✔ renders authoritative list state for populated (1402.269521ms)
+  ✔ renders authoritative list state for failed-refresh (1595.132213ms)
+  ✔ renders authoritative list state for failed-empty-refresh (1191.289102ms)
+  ✔ renders authoritative list state for pending-empty-refresh (1105.644731ms)
+  ✔ identifies the last confirmed finance result after failure with prior none and clears it on recovery (1106.504451ms)
+  ✔ identifies the last confirmed finance result after failure with prior rows and clears it on recovery (896.374449ms)
+  ✔ identifies the last confirmed finance result after failure with prior empty and clears it on recovery (1498.514175ms)
+  ✔ offers an explicit list-first create action for the selected finance area (1282.048496ms)
+  ✔ retains create drafts across close and area changes while focusing the editor and returning to its opener (1006.712602ms)
+  ✔ uses the validated Finance hash for initial load and browser history without duplicate requests (1001.188391ms)
+  ✔ normalizes an invalid initial Finance hash without issuing a duplicate list read (1207.810029ms)
+  ✔ hydrates a direct accounts hash from the stable obligations presentation with one accounts read (1311.780385ms)
+  ✔ translates known Finance enum values and labels unknown values safely (1296.08461ms)
+  ✔ keeps a create editor open after 422 with its exact draft and errors (1879.701879ms)
+  ✔ retains a create draft and unresolved identity after an ordinary reconciliation 409 (1311.450015ms)
+  ✔ closes a create editor only after the server confirms the write (2105.716901ms)
+  ✔ clears the private create draft after definitive permission invalidation (1291.372792ms)
+  ✔ keeps finance blocked when a superseded committed identity refresh returns stale grants after a newer refresh fails (187.65592ms)
+  ✔ keeps finance blocked after the actual shared auth refresh fails (109.22676ms)
+  ✔ unlocks finance only after the actual shared auth refresh commits the current identity (200.574916ms)
+  ✔ retains mounted form drafts across tabs and resets them on authority changes (1188.563279ms)
+  ✔ closes and clears an allocation confirmation when the company authority changes (1815.729617ms)
+  ✔ paginates reference, candidate, and allocation choices without overwriting account options with list rows (201.909681ms)
+  ✔ does not resume payment history under a new company after the detail read resolves (283.255438ms)
+  ✔ keeps authorized finance references when establishment access is absent (104.994595ms)
+  ✔ loads and renders financial-account details from its actual GET route (1294.300235ms)
+  ✔ clears a denied cached finance read, refreshes auth, and ignores an older successful callback (99.923909ms)
+  ✔ keeps all finance actions blocked after a 401 when identity refresh fails and preserves pending identity (99.711486ms)
+  ✔ blocks authority and clears private references after direct POST authorization and context denials (509.268922ms)
+  ✔ commits refreshed grants after a direct POST denial before deciding which Finance actions remain available (191.843069ms)
+  ✔ does not apply an old POST denial after a newer authority refresh wins (28.828044ms)
+  ✔ keeps all finance actions blocked after a 409 when identity refresh fails and preserves pending identity (182.103623ms)
+  ✔ does not let a delayed Company A list denial erase Company B rows after identity refresh (293.75549ms)
+  ✔ does not let a delayed Company A reference denial overwrite Company B references (105.064718ms)
+  ✔ reloads typed current payment detail and linked allocations after allocation mutation (212.227648ms)
+  ✔ uses operation lookup only as an outcome and reloads current typed detail (191.564174ms)
+  ✔ uses per-resource selection sequences for details, candidates and receipts, including close races (107.282883ms)
+  ✔ keeps legacy-observed lookup records unresolved without clearing or creating a new key (195.514595ms)
+  ✔ preserves the original idempotency key and payload when an exact retry receives a business 409 (194.32328ms)
+  ✔ mounts the real workspace and child form, emits its submission, and retains decimal input after 422 (2088.560013ms)
+  ✔ keeps an allocation dialog and amount after 422, then closes only after corrected submission succeeds (1201.004749ms)
+  ✔ refuses a write before POST when session recovery storage cannot persist the identity (111.760802ms)
+  ✔ prevents a different action from replacing any unresolved payment identity (95.864257ms)
+  ✔ restores Company A pending identity after switching A to B and back in the same mount (219.50857ms)
+  ✔ clears busy state on authority change and ignores a late Company A result after Company B succeeds (92.245121ms)
+  ✔ fences a company switch during CSRF refresh before any finance POST is sent (88.117551ms)
+  ✔ remounts from the persisted key, reconciles a 404, and retries the frozen payload exactly (94.794912ms)
+  ✔ keeps the original unknown identity after an exact retry is refused with 403 (98.612473ms)
+  ✔ keeps server pagination, grouped totals and prior rows when refresh fails (21.38575ms)
+  ✔ reconciles an uncertain write and retries only the frozen body with the same key (104.21698ms)
+  ✔ uses the private receipt endpoint and enforces action-specific read versus write access (273.889947ms)
+  ✔ loads scoped allocation candidates and posts allocation and linked reversals with exact bodies (107.508056ms)
+  ✔ drops a response after authority changes and never invents empty success data (105.018481ms)
+✔ finance workspace (44607.818882ms)
+▶ real finance list footer
+  ✔ admits one page request with all filters, blocks pending transitions and clears on denial (1212.379712ms)
+✔ real finance list footer (1212.517242ms)
+▶ fiscal authoritative denial boundaries
+  ✔ clears before identity refresh and fences late responses at list (2088.538876ms)
+  ✔ clears before identity refresh and fences late responses at configuration read (808.507647ms)
+  ✔ clears before identity refresh and fences late responses at certificate read (881.336423ms)
+  ✔ clears before identity refresh and fences late responses at source list (511.240089ms)
+  ✔ clears before identity refresh and fences late responses at operation natures (511.39604ms)
+  ✔ clears before identity refresh and fences late responses at detail (589.301571ms)
+  ✔ clears before identity refresh and fences late responses at sale source (395.87866ms)
+  ✔ clears before identity refresh and fences late responses at return source (593.88802ms)
+  ✔ clears before identity refresh and fences late responses at configuration mutation (607.778895ms)
+  ✔ clears before identity refresh and fences late responses at certificate baseline (285.04879ms)
+  ✔ clears before identity refresh and fences late responses at download (414.749455ms)
+  ✔ clears before identity refresh and fences late responses at document mutation (298.658156ms)
+  ✔ clears before identity refresh and fences late responses at invalidation mutation (589.917118ms)
+  ✔ keeps denial closed when identity refresh rejects (309.730781ms)
+  ▶ normalizes JSON Blob context conflicts from artifact downloads before refresh and fences old reads
+    ✔ identity refresh reject (391.704057ms)
+    ✔ identity refresh uncommitted (400.563813ms)
+    ✔ identity refresh committed (319.059202ms)
+  ✔ normalizes JSON Blob context conflicts from artifact downloads before refresh and fences old reads (1112.353107ms)
+  ✔ retains private state for a JSON Blob business conflict from artifact download (391.115596ms)
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Extraneous non-props attributes (color, variant) were passed to component but could not be automatically inherited because component renders fragment or text or teleport root nodes.
+  at <UBadge color="warning" variant="subtle" >
+  at <UForm state= {
+  tax_regime: 3,
+  state_registration: '110042490114',
+  uf: 'SP',
+  street: 'Rua Um',
+  number: '10',
+  district: 'Centro',
+  city_code: '3550308',
+  city_name: 'Sao Paulo',
+  zip_code: '01001000',
+  complement: '',
+  series_55: '',
+  next_number_55: '',
+  operation_nature_id_55: '',
+  series_65: '',
+  next_number_65: '',
+  operation_nature_id_65: '',
+  series_57: '',
+  next_number_57: '',
+  operation_nature_id_57: '',
+  series_58: '',
+  next_number_58: '',
+  operation_nature_id_58: '',
+  qr_mode: 'online',
+  qr_url: ''
+} class="space-y-5" onSubmit=fn<submit> >
+  at <ErpFiscalConfigurationForm configuration= {
+  establishment: { id: 6, name: 'Matriz', cnpj: '30288513000100', status: 'active' },
+  environment: 'homologation',
+  revision: 2,
+  revision_id: 8,
+  issuer: {
+    tax_regime: 3,
+    state_registration: '110042490114',
+    uf: 'SP',
+    address: {
+      street: 'Rua Um',
+      number: '10',
+      district: 'Centro',
+      city_code: '3550308',
+      city_name: 'Sao Paulo',
+      zip_code: '01001000'
+    }
+  },
+  models: {},
+  release_gates: {
+    provider: 'unavailable',
+    production_transmission_enabled: false,
+    production_blocker: 'provider_unavailable'
+  }
+} canWrite=true operationNatures= []  ... >
+[Vue warn]: Failed to resolve component: USelect
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpFiscalCertificateForm mode="upload" establishments= [ { id: 41, name: 'Matriz' } ] establishmentId=41  ... >
+[Vue warn]: Failed to resolve component: UAlert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement.
+  at <ErpFiscalCertificateForm mode="upload" establishments= [ { id: 41, name: 'Matriz' } ] establishmentId=41  ... >
+  ✔ reopens only a blank workspace after committed identity recovery and preserves durable recovery identity (500.689119ms)
+  ✔ keeps private state for ordinary business 409 responses (303.011121ms)
+✔ fiscal authoritative denial boundaries (11200.103276ms)
+▶ ERP fiscal typed request helpers
+  ✔ emits complete human-entered NF-e and NFC-e online source facts from the mounted form (3901.962071ms)
+  ✔ emits a complete NFC-e offline source with the entered contingency time and reason (885.475991ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00 (907.661644ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00-03:00 (994.911747ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00:00 (491.310875ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-02-29T14:00:00-03:00 (417.898511ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-04-31T14:00:00-03:00 (290.219615ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T24:00:00-03:00 (503.232587ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00:00Z (514.828684ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00:00+05:30 (786.259715ms)
+  ✔ blocks an offline contingency timestamp outside the fiscal calendar/offset contract: 2026-10-21T14:00:00-12:00 (611.501812ms)
+  ✔ preserves an explicit schema-supported offline timestamp and retains it after a field 422: 2028-02-29T23:59:59-11:00 (484.684099ms)
+  ✔ preserves an explicit schema-supported offline timestamp and retains it after a field 422: 2026-10-21T14:00:17+00:00 (314.140162ms)
+  ✔ preserves an explicit schema-supported offline timestamp and retains it after a field 422: 2026-10-21T14:00:17+12:00 (912.736951ms)
+  ✔ emits complete typed CT-e and MDF-e facts from their native mounted forms (815.766741ms)
+  ✔ emits CT-e complement and substitution references from the selected authorized CT-e (1181.827417ms)
+  ✔ emits an NF-e return from the selected posted return line and frozen source line (1496.65954ms)
+  ✔ keeps entered document facts visible and renders mapped field errors after a mounted-form 422 (1299.770263ms)
+  ✔ saves CT-e configuration with both participant locations matching their entered addresses (1011.507802ms)
+  ✔ saves the complete typed MDF-e configuration with the selected supported issuer type (788.751661ms)
+  ✔ emits an NF-e complement using the entered complementary amount instead of copying the sale amount (1213.195404ms)
+  ✔ sends an actual PKCS#12 file and preserves a present empty password in multipart data (288.350872ms)
+  ✔ copies a posted-sale source snapshot with its original line identity and selected sale (3.285739ms)
+  ✔ rejects commercial line amounts smaller than a fiscal cent without rounding (0.595052ms)
+  ✔ persists exact nonsecret request identity for uncertain document recovery without certificate material (0.257316ms)
+  ✔ maps an accepted posted return line back to its frozen sale line and current return CFOP (0.257055ms)
+  ✔ mounts the certificate SFC and emits the selected file with an empty password on submit (203.238873ms)
+✔ ERP fiscal typed request helpers (20394.869581ms)
+▶ ERP fiscal durable workspace operations
+  ✔ does not send production transmission when the server release gate is disabled (387.513997ms)
+  ✔ replays the exact uncertain transmission identity after reload and reconciles from current detail (315.728929ms)
+  ✔ retains an unknown operation after recovery returns 404 and blocks a different operation (503.781926ms)
+  ✔ keeps authorized document status when a cancellation event is rejected (203.771315ms)
+  ✔ keeps a newly created event draft from submitting after the focused document changes (485.236048ms)
+  ✔ does not dispatch recovery work when the current company has no pending identity (217.991498ms)
+  ✔ invalidates the previous sale snapshot immediately when a new sale is requested (475.045969ms)
+  ✔ recovers queue by its exact accepted attempt even while the document remains queued (198.338437ms)
+  ✔ does not let an old authorized resource status clear a still-pending consult attempt (408.499787ms)
+  ✔ recovers a queued event draft and submits only the same event after explicit continuation (408.43135ms)
+  ✔ keeps the exact recovered event identity after an authority refusal without replaying it (497.92729ms)
+  ✔ keeps an uncertain recovered-event submission inspection-only after a timeout (290.65596ms)
+  ✔ keeps the submit inspection lock when the submit succeeded but its detail read is refused (307.741024ms)
+  ✔ retains an event draft after its initial submit is definitively refused (301.152779ms)
+  ✔ does not submit a newly created event when persisting its resumable identity fails (206.714731ms)
+  ✔ reconciles a known document identity with show permission after its mutation permission is revoked (386.628341ms)
+  ✔ uses event and invalidation show grants for detail recovery, not index grants (1188.006778ms)
+  ✔ shows and repeats read-only recovery in the mounted fiscal page with exact show grants (3116.327493ms)
+  ✔ keeps known-resource detail recovery independent of list failures and rejects malformed recovery scope quietly (1102.852851ms)
+  ✔ locks certificate writes after an ambiguous response until the operator acknowledges current metadata (303.931111ms)
+  ✔ admits only one certificate mutation across deferred baseline reads with a frozen clock (184.080717ms)
+  ✔ rechecks the persisted certificate owner after baselines race across workspace instances (893.500203ms)
+  ✔ keeps a certificate operation owned across establishment changes until its request settles (111.443603ms)
+  ✔ keeps an unknown certificate mutation locked after reload without replaying its secret-bearing request (612.837221ms)
+  ✔ does not let metadata inspection or acknowledgment release a certificate lock during its active POST (284.660443ms)
+  ✔ does not dispatch a certificate POST when authority changes during the baseline read (200.183668ms)
+  ✔ disables certificate selection in the mounted workspace while the baseline operation is active (602.834869ms)
+  ✔ reports an unavailable PDF response without creating or returning a downloaded Blob (506.290063ms)
+  ✔ downloads only XML MIME responses and rejects JSON payloads from the XML route (1007.116041ms)
+  ✔ preserves the complete unsaved model form and maps field-level 422 errors (785.52642ms)
+  ✔ does not read the selected fiscal workspace without an active company context (387.112348ms)
+  ✔ limits fiscal writes by company role and active office membership (1308.628311ms)
+  ✔ ignores a late successful configuration response after the selected company changes (591.574718ms)
+  ✔ closes a pending confirmation and suppresses a late error after the company context changes in the mounted workspace (609.621025ms)
+  ✔ closes a pending fiscal confirmation and resets local drafts on same-identity authority invalidation (617.616315ms)
+✔ ERP fiscal durable workspace operations (20011.22215ms)
+▶ confirmed fiscal list states
+  ✔ never renders a fabricated zero or empty state after the first fiscal index failure (601.036893ms)
+  ✔ retains mounted known-document recovery independently from the failed index without false empty text (798.346463ms)
+  ✔ does not claim empty certificates or events when their independent list read fails (1574.577313ms)
+  ✔ renders confirmed empty only after success and keeps confirmed rows explicitly stale after refresh failure (720.53293ms)
+  ✔ labels a previously confirmed empty result stale and clears confirmation when list authority is removed (486.381819ms)
+  ✔ clears list confirmation synchronously on context change and rejects its late successful callback (295.856501ms)
+✔ confirmed fiscal list states (4477.09205ms)
+▶ ERP foundation shared contracts
+  ✔ freezes error code strings for client handling (1.083944ms)
+  ✔ company-only identity routes to /erp without office membership (0.20158ms)
+  ✔ office-first identity keeps home default; explicit ERP navigation stays on ERP paths (0.156215ms)
+  ✔ operating API paths require company assertion except access/setup routes (0.403351ms)
+  ✔ erpCompanySelection returns active current company only (0.427135ms)
+✔ ERP foundation shared contracts (74.790546ms)
+✔ mounts the actual import page with native file upload and explicit preview/cancel/confirm controls (3897.369898ms)
+✔ renders real totals/errors and disables confirm for invalid product/contact previews (3021.059546ms)
+✔ keeps file/choice/identity after failed confirm and lookup404 reuses exactly the original key (1279.357571ms)
+✔ restores durable preview after full reload and reconciles a committed lost response without CSV browser storage (1706.819747ms)
+✔ ignores delayed401/error/finally after Company/actor/session changes and retains the newer busy state (897.076253ms)
+✔ blocks an unrecoverable send when browser storage fails and cancels a preview with no confirm request (615.326231ms)
+✔ retains editable unit and file after a definite422 then denies viewer changes with private state cleared (781.766147ms)
+✔ restores an unsent preview for review without an automatic confirm and ignores success after mode changes (1112.662981ms)
+✔ uses separate preview and confirm action grants for granular operators (504.211329ms)
+✔ keeps original submitted identity through expired/transient read and lookup404, allowing only original retry (2577.185717ms)
+✔ preserves a submitted identity when authority refresh actually changes session and grants (426.615725ms)
+✔ mounts the actual unit selector and blocks first confirmation during load, error and archived selection (784.220868ms)
+✔ recovers an original completed product result while the real old unit is archived (1389.884731ms)
+✔ does not overwrite submitted recovery when refreshed authority permits only a new preview (698.869286ms)
+✔ resolves the nested unit selector through the page import without a global component alias (601.58695ms)
+▶ ERP controlled list footer
+  ✔ keeps the confirmed 0 count without pagination for a single page (2817.846381ms)
+  ✔ keeps the confirmed 1 count without pagination for a single page (886.461863ms)
+  ✔ keeps the confirmed 15 count without pagination for a single page (299.098993ms)
+  ✔ uses server total and page size and emits exactly one changed valid transition (115.294722ms)
+  ✔ does not emit on metadata replacement or synchronize the model automatically (198.527903ms)
+  ✔ rejects pending, unchanged, out-of-range, fractional and non-finite transitions (278.123374ms)
+  ✔ renders Portuguese accessible navigation and page names through native pagination slots (316.772928ms)
+  ✔ allows a consumer summary without changing authoritative pagination (196.677353ms)
+✔ ERP controlled list footer (5110.535242ms)
+▶ ERP mobile shell and contract
+  ✔ keeps the operational native header visible with company/user controls and one sidebar toggle (783.891691ms)
+  ✔ lets every catalog route provide its own single native panel (401.592576ms)
+  ✔ controls active sidebar expansion after mounted route and history changes while preserving manual collapse (394.280481ms)
+  ✔ keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount (709.232031ms)
+  ✔ changes the catalog content key when company or Account context changes (299.07216ms)
+  ✔ disposes the old protected child and mounts a fresh child after selected company context changes (202.300934ms)
+  ✔ lets operational routes retain their own native panel without nesting (494.114968ms)
+  ✔ uses a native panel, page title, context controls and one marked sidebar toggle for catalogs (206.148409ms)
+  ✔ renders overview content inside the ERP layout panel (92.172632ms)
+  ✔ uses ERP layout for a company-only contract route (508.645722ms)
+  ✔ preserves pending contract feedback (98.721647ms)
+  ✔ preserves active contract feedback (87.176775ms)
+  ✔ preserves past_due contract feedback (94.357964ms)
+  ✔ preserves canceled contract feedback (123.75466ms)
+  ✔ offers refresh/retry and retains confirmed contract on refresh failure (100.013252ms)
+  ✔ clears contract state and rejects late replies on company/Account switch (84.965185ms)
+✔ ERP mobile shell and contract (4684.34084ms)
+▶ erpModulesNav
+  ✔ shows modules for exact effective reads without broadening narrow delegated grants (2.330298ms)
+  ✔ resolve permissões com wildcard, grant específico e fallback erp.read (0.385227ms)
+  ✔ lista módulos operacionais com rotas e ícones estáveis (0.368896ms)
+  ✔ filtra sidebar por permissões visíveis (0.478231ms)
+  ✔ marca filho ativo por prefixo, com índice exato em /erp (0.532505ms)
+  ✔ congela contratos de API alinhados ao design (changes 4–9) (1.633842ms)
+  ✔ extrai total paginado apenas quando meta.total é numérico (0.222098ms)
+✔ erpModulesNav (11.391063ms)
+▶ resource-owned purchase list read errors
+  ✔ keeps the purchases failure visible through an unrelated pending and successful read (7187.264925ms)
+  ✔ retains the last confirmed purchases snapshot and marks it stale after refresh failure (3296.14444ms)
+  ✔ fences superseded purchases success without replacing the current error or snapshot (297.971261ms)
+  ✔ fences superseded purchases error without replacing the current error or snapshot (312.759577ms)
+  ✔ keeps the returns failure visible through an unrelated pending and successful read (2292.300531ms)
+  ✔ retains the last confirmed returns snapshot and marks it stale after refresh failure (1801.544081ms)
+  ✔ fences superseded returns success without replacing the current error or snapshot (404.840985ms)
+  ✔ fences superseded returns error without replacing the current error or snapshot (381.448313ms)
+  ✔ clears both lists and errors on company invalidation and fences late success (209.338395ms)
+  ✔ clears both lists and errors on company invalidation and fences late error (224.137285ms)
+  ✔ clears both lists and errors on actor invalidation and fences late success (382.830841ms)
+  ✔ clears both lists and errors on actor invalidation and fences late error (393.51603ms)
+  ✔ clears both lists and errors on session invalidation and fences late success (116.807247ms)
+  ✔ clears both lists and errors on session invalidation and fences late error (271.469181ms)
+  ✔ routes one relevant alert to each list area while preserving XML operation failures (1515.832943ms)
+✔ resource-owned purchase list read errors (19092.739066ms)
+▶ purchase decimal and source helpers
+  ✔ keeps a pending recovery notice in the attention color before any message arrives (1106.988993ms)
+  ✔ shows Portuguese XML total labels while preserving values and exposing unknown fields (386.774843ms)
+  ✔ keeps four-place money and quantity strings exact through conversion and line totals (0.8319ms)
+  ✔ builds return lines only from remaining source quantities and preserves source IDs (0.376279ms)
+  ✔ requires an explicit product and unit choice for every XML line (0.489162ms)
+  ✔ checks preview-read as its own write-family action and respects each catalog family (412.473578ms)
+  ✔ fences late XML responses by preview sequence and cancel, keeping the newest explicit mapping (104.104245ms)
+  ✔ ignores an obsolete XML upload failure after a newer preview has succeeded (173.464123ms)
+  ✔ persists supplier and item mapping edits and restores them after a transient XML refresh error (606.325778ms)
+  ✔ does not let an old-company preview result repopulate private state after context changes (203.812574ms)
+  ✔ creates, reloads, edits by revision, and posts a receipt through the existing purchase endpoints (189.266808ms)
+  ✔ recovers a lost create response through lookup and refreshes the current purchase detail (299.358201ms)
+  ✔ retries a not-yet-recorded operation with the original method, body, path, and key (211.055882ms)
+  ✔ releases only an explicitly stale purchase revision after lookup 404 and a fresh authorized changed revision (213.659834ms)
+  ✔ resolves a first-attempt stale rejection when the authorized current GET proves the purchase was posted (103.130029ms)
+  ✔ keeps a completed receipt from being posted again when its confirming detail GET fails (176.154831ms)
+  ✔ keeps an uncertain write pending when a lookup is not recorded even if the draft revision changed (104.75873ms)
+  ✔ posts a partial supplier return, reloads source residuals, and preserves original payable identity (395.633336ms)
+  ✔ preserves selection ownership through create return continuation at operation (115.714341ms)
+  ✔ preserves selection ownership through create return continuation at list (191.613379ms)
+  ✔ preserves selection ownership through create return continuation at source (185.610673ms)
+  ✔ preserves selection ownership through create return continuation at return (218.634183ms)
+  ✔ preserves selection ownership through create return continuation at newer-return (192.731147ms)
+  ✔ preserves selection ownership through create return continuation at normal (695.340308ms)
+  ✔ preserves selection ownership through post return continuation at operation (299.757837ms)
+  ✔ preserves selection ownership through post return continuation at list (105.014442ms)
+  ✔ preserves selection ownership through post return continuation at source (216.545251ms)
+  ✔ preserves selection ownership through post return continuation at return (199.025135ms)
+  ✔ preserves selection ownership through post return continuation at newer-return (279.101684ms)
+  ✔ preserves selection ownership through post return continuation at normal (810.7855ms)
+  ✔ preserves selection ownership through lookup return continuation at operation (504.264754ms)
+  ✔ preserves selection ownership through lookup return continuation at list (578.583108ms)
+  ✔ preserves selection ownership through lookup return continuation at source (206.277009ms)
+  ✔ preserves selection ownership through lookup return continuation at return (120.623534ms)
+  ✔ preserves selection ownership through lookup return continuation at newer-return (287.443713ms)
+  ✔ preserves selection ownership through lookup return continuation at normal (502.801374ms)
+  ✔ preserves selection ownership through retryExact return continuation at operation (196.798503ms)
+  ✔ preserves selection ownership through retryExact return continuation at list (293.772273ms)
+  ✔ preserves selection ownership through retryExact return continuation at source (310.691628ms)
+  ✔ preserves selection ownership through retryExact return continuation at return (290.103701ms)
+  ✔ preserves selection ownership through retryExact return continuation at newer-return (298.234263ms)
+  ✔ preserves selection ownership through retryExact return continuation at normal (707.762375ms)
+  ✔ shows an authorized return detail without requiring unrelated purchase-show access (290.127556ms)
+  ✔ fences out-of-order return-detail reads for the same selected source (322.332201ms)
+  ✔ does not let an obsolete return intent commit its nested source GET for same or different purchase (773.75364ms)
+  ✔ lets a current return source GET supersede an older purchase detail request (301.041991ms)
+  ✔ lets a newer manual detail intent supersede a pending initial return GET (604.721498ms)
+  ✔ lets a newer manual purchase selection supersede an in-flight return source GET (108.315192ms)
+  ✔ keeps a last-good reference family and XML token/mappings when refreshes fail transiently (197.908354ms)
+  ✔ keeps XML token and explicit mappings after a field-level confirmation rejection (217.771965ms)
+  ✔ clears private data after 403/context-changed 409 when auth refresh is rejected, while retaining operation identity (368.141153ms)
+  ✔ fences a late write after selection or company changes without refreshing or restoring stale detail (699.850656ms)
+  ✔ retains a canceled draft across same-authority reopen, shows the save error, and clears it on authority change (2902.421567ms)
+  ✔ closes and resets the original create draft after the mounted recovery action confirms it (3618.957343ms)
+  ✔ preserves a newer create draft when recovery completes an older closed submission (1090.330131ms)
+  ✔ does not assign a restored pending operation to a create draft submitted after reload (911.878008ms)
+  ✔ closes only the matching edited purchase after mounted recovery confirms its update (1291.652433ms)
+  ✔ closes the receipt overlay after mounted recovery confirms the original post (802.518657ms)
+  ✔ keeps a new draft identity separate when editing another purchase between create attempts (1099.795265ms)
+  ✔ preserves native hash areas and loads the authorized paginated return area on entry (1204.077331ms)
+  ✔ opens a new supplier return with the real form and emits the selected source quantity and reason (1397.762755ms)
+  ✔ does not reopen a return-create overlay after the user closes it during the request (1586.63532ms)
+  ✔ does not reopen a return-detail overlay after the user closes it during posting (1298.928971ms)
+  ✔ round-trips API snapshot discounts, taxes and references through mounted draft edit (696.914535ms)
+  ✔ discards a stale edit form only after fresh revision proof and reopens with the current revision (1404.111727ms)
+  ✔ ignores a stale-revision notification for another purchase while the selected draft is being edited (1104.313881ms)
+  ✔ preserves the accepted XML total for the exact 3 x 0.3333 source basis on metadata-only edit (700.724883ms)
+  ✔ mounts the real purchase form and emits exact decimal fields without coercion (99.423885ms)
+✔ purchase decimal and source helpers (37594.489989ms)
+▶ native acceptance purchase dialog handoff
+  ✔ leaves detail before editing while retaining source and rejects a stale leave callback (1510.76059ms)
+✔ native acceptance purchase dialog handoff (1510.874847ms)
+▶ real purchase list footers
+  ✔ pages purchases once, preserving the active area and filters through pending and denial (1482.468826ms)
+  ✔ pages returns once, preserving the active area and filters through pending and denial (1598.213059ms)
+✔ real purchase list footers (3080.916129ms)
+▶ authoritative report workspace
+  ✔ renders current-position basis, aging, grouped currencies and linked compensation detail without coercing decimals (3002.018458ms)
+  ✔ uses the shared ERP shell once and places report navigation in its toolbar (1202.522606ms)
+  ✔ submits all report filters and preserves exact server totals on a refresh rejection (200.582912ms)
+  ✔ never turns initial failure into an empty report and discards responses from old companies (103.946939ms)
+  ✔ shows consultation but no export creation for delegated readers and viewers (292.250545ms)
+✔ authoritative report workspace (4803.680652ms)
+▶ report activity completeness
+  ✔ does not call a report empty when returns or cash activity exist outside zero headline totals (116.678455ms)
+✔ report activity completeness (116.874044ms)
+▶ private report exports
+  ✔ fails closed before POST when tab storage cannot preserve the request identity (478.841031ms)
+  ✔ blocks duplicate POSTs and downloads only a freshly verified completed snapshot (498.270822ms)
+  ✔ keeps a pending export locked while allowing read-only inspection (416.939953ms)
+  ✔ retains failed intent and inputs and allows inspection of the failure without downloading (206.365557ms)
+  ✔ locks ambiguous POST failure against blind retry and supports explicit reference inspection (492.692428ms)
+  ✔ does not dispatch an old POST after delayed real CSRF and company switch (600.14646ms)
+  ✔ does not dispatch an old POST after delayed real CSRF and disposal (508.427081ms)
+  ✔ rechecks server authorization and expiry before exposing a download (179.401083ms)
+  ✔ explains actual generic HTTP410 expiry and retains the original reference until deliberate new generation (311.251335ms)
+  ✔ rejects empty/partial artifacts and download failures and invalidates late export responses (108.868242ms)
+  ✔ persists frozen actor/company/key/category and user filters before POST and recovers after a lost response and reload (485.852988ms)
+  ✔ preserves the newer reference when inspecting an older known failure and reloading (408.56949ms)
+  ✔ keeps a known failed reference when deliberately generating a new key and never leaks recovery across actors (186.793741ms)
+  ✔ compares structured normalized scope by value and accepts explicit unavailable stock valuation (122.517825ms)
+✔ private report exports (5005.884542ms)
+▶ ERP review regressions
+  ✔ shows the field rejection returned by the XML preview API instead of the fetch status line (3783.081064ms)
+  ✔ allows unauthenticated visitors to reach the ERP registration page (14.043657ms)
+  ✔ preserves report aggregates instead of claiming a successful report is empty (189.030997ms)
+  ✔ discards a late response from the previous tab (193.727648ms)
+  ✔ requests the selected list page instead of keeping every module on page one (17.260919ms)
+  ✔ uses the registered financial and overview report categories (0.253028ms)
+  ✔ does not issue a GET against the XML preview mutation (191.934953ms)
+  ✔ keeps catalog search results from being overwritten by an older request (697.529317ms)
+✔ ERP review regressions (5088.50944ms)
+▶ sales workspace page contract
+  ✔ mounts the sales workflow workspace inside the existing ERP route (4.032347ms)
+✔ sales workspace page contract (84.970723ms)
+▶ sales authoritative denial boundaries
+  ✔ clears all private state before refresh at list and keeps the durable original identity (1501.011816ms)
+  ✔ clears all private state before refresh at detail and keeps the durable original identity (519.337586ms)
+  ✔ clears all private state before refresh at references and keeps the durable original identity (575.728896ms)
+  ✔ clears all private state before refresh at payment and keeps the durable original identity (427.957815ms)
+  ✔ clears all private state before refresh at obligation and keeps the durable original identity (377.130535ms)
+  ✔ clears all private state before refresh at receipt and keeps the durable original identity (300.527176ms)
+  ✔ clears all private state before refresh at mutation and keeps the durable original identity (107.295254ms)
+  ✔ clears all private state before refresh at recovery and keeps the durable original identity (206.914347ms)
+  ✔ restores only the durable original operation after committed identity recovery (280.147444ms)
+  ✔ does not treat an ordinary business 409 as authority invalidation (397.064844ms)
+✔ sales authoritative denial boundaries (4696.608234ms)
+▶ sales authority and mounted draft form
+  ✔ keeps document numbers editable on create (4403.735749ms)
+  ✔ labels known fiscal and payment states and keeps unknown values explicit (1414.967241ms)
+  ✔ uses nonempty status options in every mounted area and clears API filters without sending the UI sentinel (2706.267664ms)
+  ✔ renders actual API unit names for a saved line and submits the selected unit ID (2876.914061ms)
+  ✔ requires the exact sales action and blocks viewer writes (0.291689ms)
+  ✔ releases an obsolete list spinner while allowing unrelated catalog reads to finish after new intent (399.823372ms)
+  ✔ rebuilds edits from actual raw line snapshots, retaining explicit price, unit, rule, header amounts, and exact IDs (0.299295ms)
+  ✔ keeps mounted edits through cancel, reopen, revision reapply, and exact submit (492.470639ms)
+  ✔ keeps edits in the actual workspace across cancel, reopen, stale revision, and reapply (1311.618818ms)
+  ✔ labels converted quotes and orders and hides their edit and convert actions (2209.571957ms)
+  ✔ closes an edit after an exact consumed-document conflict is proven by an authorized detail GET (1677.501164ms)
+  ✔ reconciles an uncertain sale post in the same workspace modal using the exact captured payload (2413.374727ms)
+  ✔ keeps the posted sale non-actionable in the open detail until the confirmed refresh succeeds (1486.895572ms)
+  ✔ submits only selected source lines and preserves exact return quantities (30.127225ms)
+  ✔ keeps a compacted validation error attached to the submitted second return line after selection changes (1480.043476ms)
+  ✔ preserves return drafts by authority and sale, clears on authority change, and resets only after creation (1192.392671ms)
+✔ sales authority and mounted draft form (24103.635664ms)
+▶ commercial API lifecycle
+  ✔ patches an owned draft and preserves the exact method through uncertain retry (119.325498ms)
+  ✔ resolves a proven stale-revision update with a fresh detail while retaining a rebase choice (190.729666ms)
+  ✔ keeps an unrecognized update conflict attached to its original operation (309.099902ms)
+  ✔ releases only exact pre-effect conversion and post conflicts proven by fresh terminal details (1190.527474ms)
+  ✔ converts quote to order and order to sale using HTTP 200 acknowledgements followed by authorized details (192.755912ms)
+  ✔ uses the accepted save acknowledgement then installs only the authorized detail snapshot (402.579249ms)
+  ✔ reads the real sale-post response shape and follows fresh payment and obligation GETs without inventing paid state (293.147869ms)
+  ✔ completes uncertain sale-post recovery with the exact owned payload and refreshed detail (118.285443ms)
+  ✔ blocks a second sale mutation when the acknowledged write detail refresh fails (199.7083ms)
+  ✔ keeps a lost write frozen through lookup 404 and retries the same key, path, and body (187.649099ms)
+  ✔ resolves the original write after a newer selection without letting its detail reload take over (921.913125ms)
+  ✔ stores a return draft and posts it as a separate explicit operation (374.20252ms)
+  ✔ clears the previous success banner before a later validation failure (205.305368ms)
+  ✔ blocks another return post when its acknowledged detail GET fails (212.356675ms)
+  ✔ does not let a late company A denial refresh overwrite company B pending operation state (96.229686ms)
+✔ commercial API lifecycle (5014.78365ms)
+▶ native acceptance typed commercial nature
+  ✔ selects a scoped nature and retains its ID through validation failure and cancel/reopen (1892.928306ms)
+✔ native acceptance typed commercial nature (1893.162238ms)
+▶ native acceptance immutable commercial nature handoff
+  ✔ restores edit from frozen line metadata and preserves that source through actual quote/order conversion actions (1707.522292ms)
+  ✔ shows denied reads and unavailable historical nature without inventing a default or making a forbidden request (2600.925755ms)
+  ✔ drops delayed nature references from a prior company while accepting the current company response (197.987756ms)
+✔ native acceptance immutable commercial nature handoff (4506.78954ms)
+▶ ERP mobile sidebar navigation focus
+  ✔ closes the menu and focuses the new page trigger only after navigation finishes (574.694185ms)
+  ✔ restores focus after same-page hash navigation, but leaves page transitions to page:finish (111.434576ms)
+✔ ERP mobile sidebar navigation focus (702.89633ms)
+▶ stock operation payloads
+  ✔ requires the exact stock grant and blocks viewer writes (1.031054ms)
+  ✔ keeps adjustment quantities signed and requires a reason (1.654953ms)
+  ✔ requires distinct transfer establishments and a positive exact quantity (0.592838ms)
+  ✔ sends an explicit reversal quantity bounded by remaining source quantity (0.700782ms)
+✔ stock operation payloads (5.377065ms)
+▶ stock cost presentation
+  ✔ keeps unknown and mixed-currency cost distinct from a numeric total (0.43976ms)
+✔ stock cost presentation (0.599941ms)
+▶ stock workspace request lifecycle
+  ✔ releases only the proven no-effect legacy transfer rejection and retains unknown conflicts (1989.412776ms)
+  ✔ does not let a stale legacy rejection clear the new authority pending operation (486.870304ms)
+  ✔ does not reopen an exhausted movement detail after a watcher dismisses the nested refresh (322.997436ms)
+  ✔ clears a denied read action when the company and grant context changes (296.85576ms)
+  ✔ ignores a delayed authorization refresh from the previous company (505.776066ms)
+  ✔ keeps a pending reversal reachable after detail dismissal and failed source refresh without an index grant (5989.328159ms)
+  ✔ posts a transfer with the authorized exact grant, decimal body, and stable key header (385.088321ms)
+  ✔ preserves an uncertain operation and blocks a second post without replacing its identity (508.694282ms)
+  ✔ keeps the newest cross-resource detail when an older request resolves last (305.057156ms)
+  ✔ invalidates a pending automatic detail read after a manual form intent (307.843733ms)
+  ✔ invalidates detail and its grant after a silent automatic refresh receives 403 (497.012179ms)
+  ✔ uses the rejected reference request that actually returned 403 (587.061465ms)
+  ✔ retains last-good balance rows and marks them stale after a transient refresh failure (198.293102ms)
+  ✔ clears private selection and loaded balances when company authority changes (300.446896ms)
+  ✔ does not restore a pending write into an authority context that lost its grant (118.311012ms)
+  ✔ does not treat a restored key as an operation created by a blocked form submit (98.74804ms)
+✔ stock workspace request lifecycle (12900.403727ms)
+▶ mounted stock operation forms
+  ✔ keeps adjustment entry values as strings and emits the signed exact payload (91.692946ms)
+  ✔ clears a transfer destination that becomes the selected source (108.041915ms)
+  ✔ confirms and emits an explicit remaining movement reversal quantity (289.151624ms)
+  ✔ renders raw allocation lineage and cost settlement facts from the movement API (289.327837ms)
+  ✔ uses the reduced transfer balance and emits an explicit paired reversal amount (22.296039ms)
+  ✔ distinguishes missing transfer reversal permission from an exhausted transfer (493.025035ms)
+  ✔ routes only the server-approved source workflow to its canonical return area (1794.618105ms)
+  ✔ keeps lookup and exact retry controls in the detail overlay after the source is exhausted (115.104441ms)
+✔ mounted stock operation forms (3282.619153ms)
+▶ mounted stock workspace recovery lifecycle
+  ✔ labels known and unrecognized movement sources and lot cost states in Portuguese (1491.52144ms)
+  ✔ follows a transfer source policy into the authorized paired transfer detail (2225.608993ms)
+  ✔ does not show an unauthorized area as an empty table and sanitizes its hash (1592.536117ms)
+  ✔ routes an unauthorized balances hash to the first permitted stock area (1194.854451ms)
+  ✔ retains a canceled same-authority entry while pending, then resets its matching completed recovery (1400.96216ms)
+  ✔ preserves a newer draft fingerprint when an older submitted operation completes (796.810937ms)
+✔ mounted stock workspace recovery lifecycle (8703.694891ms)
+✔ pages the real stock footer once for the selected area, preserving filters and denying revoked access (1091.321185ms)
+▶ ERP workspace navigation registry
+  ✔ filters catalog destinations by exact read grants and omits empty groups (2.625333ms)
+  ✔ keeps all prior settings destinations while restricting owner and establishment links (0.50334ms)
+  ✔ keeps Empresa reachable from its exact read grant without requiring erp.read (1.136345ms)
+  ✔ keeps owner-only settings hidden for delegated access even when the role says owner (0.325044ms)
+  ✔ shows establishments to delegated readers with the exact index grant (0.321617ms)
+  ✔ keeps an establishments-only direct manager reachable through Configurações (0.680925ms)
+  ✔ uses the subscription read action for the Modules settings destination (0.580867ms)
+  ✔ uses hash child targets and expands the active module for deep links and history (2.656963ms)
+  ✔ omits unusable multi-area modules, retains single-area leaves, and closes only on destination selection (0.906371ms)
+  ✔ keeps narrow import and XML preview grants reachable without broad aggregate module grants (1.79644ms)
+  ✔ gives settings group navigation an active descendant and handles inactive companies safely (0.730098ms)
+✔ ERP workspace navigation registry (16.164831ms)
+▶ ERP workspace shell
+  ✔ erp layout uses WorkspaceContextMenu and company-aware navigation (275.763835ms)
+  ✔ WorkspaceContextMenu separates offices and companies (4.418667ms)
+  ✔ company switch clears cached data like account switch (1.806168ms)
+✔ ERP workspace shell (284.786089ms)
+▶ painel de filtros
+  ✔ monta o rascunho a partir do modelo vigente (1.371999ms)
+  ✔ grava o select na hora e tira o campo quando a escolha esvazia (2.953633ms)
+  ✔ grava vários valores de multi como inclusão (0.241335ms)
+  ✔ aplica texto e intervalo e preserva o select já gravado (0.673842ms)
+  ✔ bloqueia o Aplicar quando a validação da página recusa o rascunho (0.258207ms)
+  ✔ bloqueia intervalo incompleto, número invertido e data invertida (2.329344ms)
+  ✔ limpa um texto em branco sem consultar a validação (0.209675ms)
+  ✔ resume o chip com o rótulo da coluna e o valor legível (0.322068ms)
+  ✔ inclui o operador no chip quando a coluna pede o seletor (0.240174ms)
+  ✔ aplica o rascunho de uma coluna e deixa o resto no lugar (0.478923ms)
+  ✔ recusa o rascunho da coluna e texto vazio tira só ela (0.228071ms)
+  ✔ conta o que está ativo e remove um campo (0.176753ms)
+  ✔ leva coluna de opção para o painel com operador quando a tela pede (3.654725ms)
+✔ painel de filtros (15.349772ms)
+▶ rótulo de direção
+  ✔ nomeia saída e entrada em português (2.453518ms)
+✔ rótulo de direção (6.395657ms)
+▶ rótulo de competência
+  ✔ escreve MM/AA a partir da chave YYYY-MM (0.647232ms)
+  ✔ diz que a competência não veio, em vez de inventar mês (0.234132ms)
+  ✔ devolve a chave como veio quando ela não é um mês (0.653252ms)
+  ✔ não monta a competência como data (2.277587ms)
+✔ rótulo de competência (75.703981ms)
+▶ rótulo do número da nota
+  ✔ mostra número e série juntos (0.251585ms)
+  ✔ mostra só o número quando a série não veio (2.486511ms)
+  ✔ diz que o número não veio, e nunca o inventa (0.242848ms)
+✔ rótulo do número da nota (3.420653ms)
+▶ link para os documentos do cliente
+  ✔ filtra a tabela pelo cliente (0.806662ms)
+✔ link para os documentos do cliente (0.935144ms)
+▶ página de clientes
+  ✔ usa pageTableClass, middleware auth e mostra ErrorRetryAlert com a frase do 404 (0.685562ms)
+  ✔ linka o menu da linha para a tabela filtrada e oferece o CSV do agregado (0.326875ms)
+✔ página de clientes (1.169216ms)
+▶ nome do arquivo CSV
+  ✔ leva o id do cliente e a competência da última emissão (0.266182ms)
+  ✔ diz que não há emissão quando nunca houve, em vez de omitir o sufixo (0.146427ms)
+✔ nome do arquivo CSV (0.526392ms)
+▶ CSV do cliente
+  ✔ separa com ponto e vírgula e abre com cabeçalho em português (1.745465ms)
+  ✔ formata valor em reais e marca o ausente com traço (0.337166ms)
+  ✔ nomeia os modelos e data a última emissão (0.415643ms)
+  ✔ escapa aspas dobrando e cerca o campo com ponto e vírgula (0.219133ms)
+✔ CSV do cliente (4.240852ms)
+▶ painel de documentos e a URL
+  ✔ monta o modelo com as mesmas chaves que a URL já tinha (1.762525ms)
+  ✔ devolve a URL sem levar a busca embora quando o painel limpa (1.720767ms)
+  ✔ escreve intervalo e prefixo pelo mesmo leitor da URL (0.352445ms)
+  ✔ recusa prefixo com letra e valor negativo no rascunho (0.37036ms)
+✔ painel de documentos e a URL (7.743831ms)
+▶ a URL da tabela de documentos
+  ✔ lê modelo repetido, cliente e página do jeito que a barra escreve (4.540247ms)
+  ✔ descarta modelo desconhecido e prende a página no primeiro valor (1.21389ms)
+  ✔ aceita a chave sem valor, que é o que o roteador devolve para `?model` (1.005558ms)
+  ✔ devolve a mesma tela depois de recarregar (0.711944ms)
+  ✔ não escreve o que já é o padrão do backend (3.082556ms)
+  ✔ repete a chave do modelo em vez de juntar os valores (0.217782ms)
+  ✔ junta prefixo de CNPJ com o que o operador digitou e nunca envia vazio (0.250863ms)
+  ✔ não transforma campo de valor vazio em filtro de zero (6.135156ms)
+  ✔ ignora o que a API rejeitaria com 422 (74.307513ms)
+  ✔ monta o caminho da tabela para o link do painel (0.489544ms)
+  ▶ a busca por texto
+    ✔ lê o valor com trim e descarta o vazio ou só de espaços (0.307289ms)
+    ✔ só escreve na URL quando a busca tem texto (0.174689ms)
+  ✔ a busca por texto (0.690383ms)
+✔ a URL da tabela de documentos (101.730627ms)
+▶ a confirmação do rascunho dos filtros
+  ✔ não escreve na URL um valor que a consulta não aceitaria (0.358837ms)
+  ✔ limpa o filtro quando o campo volta vazio (10.557569ms)
+  ✔ normaliza o CNPJ digitado e corta o que passa do tamanho (0.446351ms)
+  ✔ mantém o que o rascunho não toca e o que ele confirma é o que a URL filtra (0.250754ms)
+  ✔ substitui a busca e a limpa com o campo vazio (0.151868ms)
+✔ a confirmação do rascunho dos filtros (11.984923ms)
+▶ as opções de modelo do filtro
+  ✔ lista cada modelo uma vez, na ordem em que a consulta devolveu (0.240343ms)
+  ✔ não oferece modelo nenhum sem resultado (0.107733ms)
+  ✔ mantém o modelo selecionado disponível para o filtro sair (0.117942ms)
+  ✔ oferece um modelo que não tem linha nenhuma na página atual (0.126609ms)
+  ✔ mantém o modelo selecionado depois de recarregar a tela (0.150645ms)
+  ✔ recusa um modelo que a API rejeitaria, antes de oferecer o chip (0.10569ms)
+  ✔ filtra o CT-e OS e o GTV-e, que o backend grava e esta lista tinha de saber (2.969664ms)
+✔ as opções de modelo do filtro (4.164417ms)
+✔ roundtrips self-issued MDF-e model through office Fiscal filters (0.398163ms)
+▶ Completed NF-e actual detail legal context
+  ✔ retains non-conclusive notice after XML completion and shows independent authorization/deadline (2703.609415ms)
+  ✔ labels missing authorization unverifiable instead of substituting issue date (704.851612ms)
+  ✔ labels future authorization unverifiable instead of substituting issue date (797.650983ms)
+  ✔ ignores late detail success after account (611.262588ms)
+  ✔ ignores late detail failure after account (396.7733ms)
+  ✔ ignores late detail success after unmount (510.167131ms)
+  ✔ ignores late detail failure after unmount (396.171212ms)
+  ✔ discards same-Account prior-session detail success and closes the protected sheet (497.425146ms)
+  ✔ never creates a Blob URL or clicks a stale same-Account prior-session XML download (611.443706ms)
+  ✔ clears completed legal/document context when Account changes (998.866866ms)
+✔ Completed NF-e actual detail legal context (8308.865808ms)
+▶ fiscal sidebar navigation
+  ✔ lists the module destinations in the order the rail shows them (2.073493ms)
+  ✔ marks only Painel active on the module panel (0.355902ms)
+  ✔ marks only Clientes active on the client view (0.4246ms)
+  ✔ marks only Documentos active on the list (0.321778ms)
+  ✔ keeps Documentos active on any child route under the module (0.228572ms)
+  ✔ marks the ancestor exact so the menu does not relight it by prefix (0.298433ms)
+  ✔ carries the labels and routes the rail renders (0.426996ms)
+  ✔ gives the shell tab bar the same answer as the rail (0.602116ms)
+✔ fiscal sidebar navigation (6.903696ms)
+▶ estado da cobertura
+  ✔ distingue carteira vazia de carteira sem certificado (0.819536ms)
+  ✔ separa "capturável sem documento" de "com documento" (11.56394ms)
+  ✔ conta documento nenhum como não capturável, e não o contrário (1.143678ms)
+  ✔ aceita o resumo inteiro, como a interface declara (0.223601ms)
+  ✔ dá a cada estado sem documento uma frase que não existe para o outro (0.440511ms)
+✔ estado da cobertura (96.475193ms)
+▶ a frase do estado conforme a atenção
+  ✔ não diz que a consulta está impedida quando o motivo só avisa sobre o futuro (3.102513ms)
+  ✔ também não nomeia mecanismo com um motivo que de fato bloqueia (0.734345ms)
+  ✔ não nomeia nenhum dos mecanismos que a lista nomeia (0.356211ms)
+  ✔ não afirma nada sobre a operação quando a lista está vazia (0.533246ms)
+  ✔ não manda à lista de atenção um estado que diz que a lista está vazia (0.256785ms)
+  ✔ manda à lista de atenção quando a lista tem o que dizer (0.170071ms)
+  ✔ diz a mesma coisa para uma carteira sem cliente, com ou sem atenção (0.116118ms)
+  ✔ nenhuma das frases afirma o que a outra metade da tela afirma ao contrário (0.306308ms)
+✔ a frase do estado conforme a atenção (6.124175ms)
+▶ participação da carteira
+  ✔ mede a proporção de capturáveis sobre o total (0.865764ms)
+  ✔ não devolve 0% para uma carteira que não existe (0.108766ms)
+✔ participação da carteira (1.104363ms)
+▶ rótulo dos dez motivos
+  ✔ nomeia a ação do reenvio exatamente como o contrato manda (0.246285ms)
+  ✔ cobre os dez motivos, cada um com frase própria (0.227759ms)
+  ✔ distingue a lacuna pausada da lacuna abandonada (0.157467ms)
+  ✔ dá a cada motivo uma frase que diz o que fazer (0.132419ms)
+  ✔ distingue senha não guardada de senha que não abre o certificado (0.158297ms)
+  ✔ não oferece certificado para o bloqueio do fisco (0.121819ms)
+  ✔ diz que o histórico interrompido não volta, e não promete a captura (0.261794ms)
+  ✔ não derruba a tela com um motivo que o painel não conhece (0.132781ms)
+  ✔ diz que nenhum motivo é a vez do outro (0.125027ms)
+  ✔ diz o contrário no aviso de continuidade, que ainda é recuperável (0.118894ms)
+  ✔ trata a posição esgotada como documento perdido, não como atraso (0.139934ms)
+✔ rótulo dos dez motivos (2.389288ms)
+▶ grupos de atenção
+  ✔ devolve lista vazia quando nada está em atenção (0.330864ms)
+  ✔ não afirma que a carteira está capturando quando a lista está vazia (0.13748ms)
+  ✔ agrupa pela precedência do backend, não pela ordem que chegou (0.250332ms)
+  ✔ mantém a ordem do backend dentro de cada grupo (0.162777ms)
+  ✔ esconde nenhum cliente quando o motivo não é conhecido (0.1643ms)
+  ✔ cria um grupo por motivo, com os dez juntos, uma vez cada (0.232178ms)
+  ✔ carrega a hora do bloqueio só no item que a tem (0.168668ms)
+✔ grupos de atenção (1.768177ms)
+▶ tempo restante do bloqueio
+  ✔ não diz nada quando o item não é um bloqueio (0.231136ms)
+  ✔ diz quanto falta, e não só que está bloqueado (66.36737ms)
+  ✔ diz que a janela passou em vez de dizer que falta tempo negativo (0.132089ms)
+  ✔ não quebra com uma data que o cliente não sabe ler (0.103857ms)
+  ✔ conta a partir do relógio que a página passa, não do relógio que a função tem (0.197142ms)
+  ✔ nunca cresce quando o relógio avança, para o mesmo valor do servidor (0.145675ms)
+  ✔ conta a janela a partir do instante em que a resposta chegou, não do anterior (0.129715ms)
+✔ tempo restante do bloqueio (69.100637ms)
+▶ volume por modelo
+  ✔ lê a chave do modelo e o número que o resumo mandou (0.25444ms)
+  ✔ não inventa linha para o modelo que o resumo não mandou (0.128563ms)
+  ✔ conta os modelos que o mapa traz, e só eles (0.122471ms)
+  ✔ nomeia um modelo que ele não conhece em vez de sumir com ele (0.116591ms)
+✔ volume por modelo (0.74778ms)
+▶ rótulo do mês e da fonte
+  ✔ mantém a série na ordem e com o rótulo do mês (0.349299ms)
+  ✔ escreve o mês da chave sem construir data (0.103497ms)
+  ✔ devolve a chave como veio quando ela não é um mês (0.099488ms)
+  ✔ nomeia a fonte da última consulta (0.09539ms)
+  ✔ diz que a fonte não veio, em vez de devolver undefined (0.110288ms)
+✔ rótulo do mês e da fonte (1.014275ms)
+▶ o aviso de captura enfileirada
+  ✔ afirma o que o pedido fez, e não o que o lote vai trazer (0.486187ms)
+  ✔ nomeia a distribuição só quando ela veio (0.141306ms)
+✔ o aviso de captura enfileirada (0.727554ms)
+▶ o cabeçalho do gráfico de emissão
+  ✔ nomeia a diferença quando há documento sem data de emissão (0.457453ms)
+  ✔ some com a linha da diferença quando os dois números batem (0.219974ms)
+  ✔ conta um documento sem data de emissão, e não o esconde (0.266512ms)
+  ✔ é o cabeçalho que a página desenha, e não o total sozinho (0.283906ms)
+✔ o cabeçalho do gráfico de emissão (1.416684ms)
+▶ última consulta
+  ✔ distingue "nunca consultou" de "consultou e não achou nada" (0.427978ms)
+  ✔ conta a última consulta com a hora e a fonte (0.403282ms)
+  ✔ mostra a frase de erro como ela veio, sem transformá-la em motivo (0.249291ms)
+  ✔ trata um instante ausente como dado ausente, não como agora (0.09002ms)
+✔ última consulta (1.320591ms)
+▶ contagem em pt-BR
+  ✔ formata o número como o resto do produto formata (0.202022ms)
+✔ contagem em pt-BR (0.303332ms)
+▶ a leitura das células do documento
+  ✔ mostra o valor decimal que a API entrega, sem arredondar o centavo (0.31874ms)
+  ✔ diz que não há valor em vez de mostrar zero (0.096352ms)
+  ✔ pinta a emissão como dia, em UTC, e o vazio como ausente (0.130687ms)
+  ✔ conta os eventos da chave sem subtrair a própria linha (0.255612ms)
+  ✔ nomeia o tipo e a etapa pelo que o fisco entrega (0.110959ms)
+✔ a leitura das células do documento (1.137598ms)
+▶ a coluna de certificado do cliente
+  ✔ nomeia os cinco estados com a cor semântica de cada um (0.316777ms)
+  ✔ trata o campo ausente como valor ausente, e não como "sem certificado" (0.097204ms)
+  ✔ não devolve um objeto com tom fora da paleta semântica (0.122951ms)
+  ✔ pinta a situação com a apresentação e a usa na folha de detalhe (0.537094ms)
+  ✔ pinta a completude com a apresentação e a coluna existe na tabela de documentos (0.367553ms)
+  ✔ a tabela de documentos mostra o certificado como indicador ao lado do cliente (0.333239ms)
+✔ a coluna de certificado do cliente (1.978212ms)
+▶ a reancoragem do relógio das janelas
+  ✔ reancora dentro do handler que traz o resumo, e antes de devolver (0.460399ms)
+  ✔ conta a janela com o relógio reancorado, e não com o do navegador (0.242377ms)
+  ✔ mantém o relógio em um só lugar, e é o lugar certo (0.156957ms)
+✔ a reancoragem do relógio das janelas (0.992502ms)
+✔ labels a self-issued MDF-e without changing its model identity (0.130136ms)
+▶ Fiscal processing actual page lifecycle
+  ✔ initial failure is unknown, offers retry, and only successful empty responses show zero (1718.604478ms)
+  ✔ keeps confirmed rows/counts on refresh failure and renders readable dates and reasons (702.937369ms)
+  ✔ ignores late success after Account change and aborts prior read (674.010574ms)
+  ✔ ignores late failure after Account change and aborts prior read (304.858385ms)
+  ✔ invalidates same-Account prior-session processing success (592.910947ms)
+  ✔ invalidates same-Account prior-session processing failure (412.963373ms)
+  ✔ resets page and invalidates delayed failures on filter changes; page changes keep filter (288.956741ms)
+  ✔ does not invent processing authorization or conclusive dates (116.960758ms)
+  ✔ does not invent processing authorization or conclusive dates (482.853146ms)
+  ✔ labels unavailable completed XML as attention while retaining its completion audit (114.120749ms)
+  ✔ explains artifact conflict requiring reconciliation with available storage without starting recovery (490.563172ms)
+  ✔ explains artifact conflict requiring reconciliation with unverified storage without starting recovery (495.070795ms)
+  ✔ explains artifact conflict requiring reconciliation with missing storage without starting recovery (217.397798ms)
+  ✔ explains artifact conflict requiring reconciliation with corrupt storage without starting recovery (193.707488ms)
+  ✔ bounds polling, blocks overlapping refreshes, and invalidates on unmount (94.928664ms)
+✔ Fiscal processing actual page lifecycle (6902.880159ms)
+✔ ignores a delayed processing failure after unmount without publishing an error (111.977074ms)
+✔ forwards processing filters and cancellation through the actual authenticated fiscal adapter (81.458176ms)
+▶ model template step descriptions
+  ✔ preserves the API description verbatim when saving a renamed model (1999.079251ms)
+  ✔ keeps the nullable description null through sync and payload (708.379721ms)
+  ✔ keeps the nullable description "" through sync and payload (382.586111ms)
+  ✔ initializes both initial and subsequently added steps with null descriptions (606.57018ms)
+✔ model template step descriptions (3700.718246ms)
+▶ SERPRO write-only credential editing
+  ✔ accepts a secret-only update with key undefined when already configured (9003.568391ms)
+  ✔ accepts a secret-only update with key "" when already configured (505.675518ms)
+  ✔ requires the initial key for metadata false and key undefined (384.384464ms)
+  ✔ requires the initial key for metadata false and key "" (198.704712ms)
+  ✔ requires the initial key for metadata null and key undefined (209.057976ms)
+  ✔ requires the initial key for metadata null and key "" (203.231663ms)
+  ✔ accepts a supplied initial key and reevaluates validation after configuration (401.846495ms)
+✔ SERPRO write-only credential editing (10907.260414ms)
+▶ declaration detail guide availability
+  ✔ matches the guide target for slip null and declaration null (497.599123ms)
+  ✔ matches the guide target for slip null and declaration 2026-10-10 (83.651565ms)
+  ✔ matches the guide target for slip "" and declaration null (98.749653ms)
+  ✔ matches the guide target for slip "" and declaration 2026-10-10 (20.586906ms)
+  ✔ matches the guide target for slip "DAS-123" and declaration null (177.577164ms)
+  ✔ matches the guide target for slip "DAS-123" and declaration 2026-10-10 (17.929882ms)
+  ✔ rejects every artifact without an active period (281.277711ms)
+✔ declaration detail guide availability (1177.840706ms)
+✔ diagnostic and certificate budgets preserve operational paths (1.425631ms)
+✔ Laravel-equivalent certificate and diagnostic paths retain the ingress policy (0.363616ms)
+✔ route normalization decodes once after trimming literal trailing slashes (0.215717ms)
+✔ multipart PUT is transported as POST override preserving binary and empty password (111.008122ms)
+▶ formatMonitoringCount
+  ✔ renders zero rather than hiding it (93.451876ms)
+  ✔ groups thousands in pt-BR (0.267365ms)
+✔ formatMonitoringCount (94.828995ms)
+▶ formatMonitoringDate
+  ✔ renders a date as dd/mm/yyyy (0.268446ms)
+  ✔ renders an absent value as an em dash (0.142007ms)
+✔ formatMonitoringDate (0.61452ms)
+▶ formatMonitoringConsultedAt
+  ✔ renders the provider stamp in São Paulo time, day/month/year and hour:minute (4.760913ms)
+  ✔ moves the clock with the timezone, not with the runner's (0.277884ms)
+  ✔ reads "Nunca" when the provider was never consulted (0.181983ms)
+  ✔ labels the never-consulted cell differently from every other empty value (0.255833ms)
+  ✔ degrades an unreadable stamp to the em dash, never to "Nunca" (0.168899ms)
+✔ formatMonitoringConsultedAt (6.005812ms)
+▶ monitoringDeadlinePassed
+  ✔ reports a deadline whose day is over (0.396348ms)
+  ✔ does not report a deadline still ahead (0.132791ms)
+  ✔ does not report today as passed, whatever hour the provider sent (0.193897ms)
+  ✔ reports no deadline as not passed (0.378844ms)
+  ✔ reports a date it cannot read as not passed (75.200467ms)
+✔ monitoringDeadlinePassed (76.552869ms)
+▶ the em dash is one value, not a literal per reader
+  ✔ is what every absent reading is drawn as (0.224294ms)
+✔ the em dash is one value, not a literal per reader (22.716952ms)
+▶ slipStatusFor
+  ✔ reads an issued and paid slip with both dates (0.259229ms)
+  ✔ reads an issued and unpaid slip (0.218241ms)
+  ✔ reads a declared period with no slip as owing (0.108976ms)
+  ✔ presents the rectified transmission, not the original (0.105278ms)
+  ✔ reports no slip for a period the data does not mention (0.115068ms)
+✔ slipStatusFor (0.99115ms)
+▶ latestSlipFor
+  ✔ reads the most recent period, not the first the array lists (0.225264ms)
+  ✔ reads the most recent transmission inside that period (0.141086ms)
+  ✔ is null — not "Sem guia" — when the data mentions no period (0.093726ms)
+  ✔ distinguishes a period that owes a guide from no period at all (0.091883ms)
+✔ latestSlipFor (0.679812ms)
+▶ monitoringSlipColumnValue
+  ✔ presents the status, the number, both dates and the paid flag (0.314112ms)
+  ✔ says a slip issued and unpaid is unpaid (0.107473ms)
+  ✔ gives a period with no slip no paid verdict (0.377481ms)
+  ✔ degrades to the em dash for a row with no periods, without throwing (0.153438ms)
+  ✔ never claims "Sem guia" for a row the source said nothing about (0.085601ms)
+  ✔ falls back to the em dash for a column nothing can read (3.196621ms)
+  ✔ does not claim a guide column for an id inherited from the prototype (0.141238ms)
+✔ monitoringSlipColumnValue (4.573258ms)
+▶ isServedObligationCategory
+  ✔ serves direct and derived only (1.182001ms)
+✔ isServedObligationCategory (69.643975ms)
+▶ sortMonitoringModules
+  ✔ drops obligations the provider does not serve (1.155008ms)
+  ✔ puts suggested first, then alphabetical by label (7.690471ms)
+  ✔ does not mutate the input list (0.204556ms)
+✔ sortMonitoringModules (9.497382ms)
+▶ monitoringModuleGroups
+  ✔ groups suggested before the others (0.621693ms)
+  ✔ omits an empty group rather than drawing a header over nothing (0.379075ms)
+  ✔ returns no groups when nothing is served (0.374076ms)
+✔ monitoringModuleGroups (3.664284ms)
+▶ initialMonitoringModuleSelection
+  ✔ pre-checks suggested obligations (0.316258ms)
+  ✔ keeps an already-associated obligation checked even when not suggested (0.407709ms)
+  ✔ never pre-checks an unserved obligation (3.427207ms)
+✔ initialMonitoringModuleSelection (4.350248ms)
+▶ monitoringModulesPayload
+  ✔ sends the selected slugs in the displayed order (0.262555ms)
+  ✔ keeps an associated-but-not-suggested slug the member left checked (0.128582ms)
+  ✔ sends an empty list when nothing is selected (0.120167ms)
+✔ monitoringModulesPayload (0.637693ms)
+▶ monitoring routes
+  ✔ resolves an obligation slug (1.018521ms)
+  ✔ resolves a two-segment obligation slug (0.209236ms)
+  ✔ does not resolve the moved office-certificate screen (0.168308ms)
+  ✔ resolves a situation segment and returns it (0.157827ms)
+  ✔ returns null for an unknown obligation (0.179128ms)
+  ✔ treats an unknown trailing segment as part of the body, not a situation (0.158791ms)
+  ✔ returns null for a situation with no obligation (0.148511ms)
+  ✔ does not resolve the removed execution screens (0.162677ms)
+✔ monitoring routes (3.631502ms)
+▶ the obligation registry
+  ✔ resolves all nineteen obligations (0.324573ms)
+  ✔ has no duplicate slug (0.335813ms)
+  ✔ declares a catalogue source for every served obligation (0.951986ms)
+  ✔ names what a derived obligation projects over (0.194707ms)
+  ✔ declares no provenance for an obligation that is not a projection (0.136867ms)
+  ✔ declares only columns the panel can actually read (0.147849ms)
+  ✔ declares no column the panel does not know where to read (4.4409ms)
+  ✔ marks exactly the three obligations the provider does not serve as unserved (1.021908ms)
+  ✔ treats only unavailable and extinct as unserved, never a derived one (0.240314ms)
+  ✔ groups into eight top-level items, four with sub-tabs (0.510794ms)
+  ✔ builds a list path carrying the situation (0.419862ms)
+✔ the obligation registry (10.045935ms)
+▶ the module navigation
+  ✔ offers Painel as the only module tab (0.182514ms)
+  ✔ keeps the office certificate out of the module (0.091452ms)
+  ✔ lights exactly one tab per destination (0.23874ms)
+  ✔ lights every obligation under Painel, the screen that indexes them (3.318781ms)
+  ✔ lists the sidebar in the same order as the tabs, obligations after Painel (0.297762ms)
+  ✔ names exactly one position in the sidebar, on every screen (0.597227ms)
+  ✔ hands the position to the group inside an obligation, not to Painel (1.647648ms)
+  ✔ keeps Painel lit on every module path, the drill-downs included (0.192665ms)
+  ✔ keeps the search action label spelled once (0.16489ms)
+  ✔ marks PGDAS as supporting declaration detail (0.1965ms)
+✔ the module navigation (7.334428ms)
+▶ monitoring counters
+  ✔ labels, colours and icons every counter of the partition (2.531397ms)
+  ✔ keeps encerrado out of the four counters (0.195157ms)
+  ✔ sums the four counters plus the never-consulted into the total (0.332436ms)
+  ✔ counts the never-consulted in the total without touching pendencias (0.55663ms)
+✔ monitoring counters (4.799195ms)
+▶ the progress axis
+  ✔ reads as a reading of the synchronization, not a client state (96.327352ms)
+  ✔ is a sentence, never a truncated "3 de" (0.993164ms)
+  ✔ renders nothing at all while the pair is absent (0.154923ms)
+  ✔ keeps zero transmitted visible rather than omitting the reading (0.348628ms)
+  ✔ carries the icon the panel draws it with (4.435028ms)
+✔ the progress axis (103.135928ms)
+▶ monitoring situations
+  ✔ labels, colours and icons every row state (1.213961ms)
+  ✔ presents a closed obligation as neutral, outside the partition (0.140134ms)
+  ✔ draws the situation of a never-consulted row as the em dash, not a state (0.098105ms)
+✔ monitoring situations (1.901298ms)
+▶ monitoring attention reasons
+  ✔ resolves each cause code to a label and a colour (1.127397ms)
+  ✔ resolves an unknown code from the backend label rather than going blank (0.114826ms)
+  ✔ falls back to the code itself when no wording arrives (0.170592ms)
+✔ monitoring attention reasons (2.614383ms)
+▶ obligation categories
+  ✔ labels and explains every category (0.244391ms)
+  ✔ says an unserved obligation is not a client pending (0.619048ms)
+✔ obligation categories (0.986702ms)
+▶ provenance of a derived obligation
+  ✔ names what it projects over and the call it projects it with (0.155053ms)
+  ✔ has no provenance for an obligation that is not a projection (0.123232ms)
+  ✔ still renders a derived obligation whose origin was not declared (0.097524ms)
+  ✔ labels the two things a projection has to declare (0.108825ms)
+✔ provenance of a derived obligation (0.615512ms)
+▶ run counters
+  ✔ sums the six reported counts, including the two that are not outcomes (3.924816ms)
+  ✔ counts indeterminate on its own, never inside failed (0.163648ms)
+✔ run counters (4.264807ms)
+▶ run and term vocabulary
+  ✔ labels every run state and item state (0.230586ms)
+  ✔ separates not-processed from skipped (0.207341ms)
+  ✔ labels every term state (0.16437ms)
+  ✔ names the office as the actor for a lapsed or refused term (0.421415ms)
+  ✔ gives guidance for every term state, with and without a stored certificate (79.673911ms)
+✔ run and term vocabulary (80.969204ms)
+▶ habilitação da integração por Account
+  ✔ desabilitação nomeia o Account sem apagar histórico (1.1131ms)
+  ✔ o estado lido é o flag, com a legenda que a desliga promete conservar (0.331967ms)
+  ✔ a ação é de ligar quando está desligada e de desligar quando está ligada (0.189897ms)
+  ✔ desligar é o passo que pede confirmação, ligar não (0.378565ms)
+✔ habilitação da integração por Account (3.620211ms)
+▶ a tela do termo não se contradiz, estado por estado
+  ✔ nenhum estado atribui a emissão do termo ao escritório (12.096396ms)
+  ✔ o cabeçalho só promete renovação onde refresh() ainda reenvia (3.360982ms)
+  ✔ nenhuma frase afirma renovação como comportamento onde refresh() não reenvia (0.526944ms)
+  ✔ só diz que o termo continua valendo onde ele está em vigor (0.481519ms)
+  ✔ nenhuma tela nega um remédio que outra frase da mesma tela oferece (1.654272ms)
+  ✔ pede e dispensa ao mesmo tempo não (1.243766ms)
+  ✔ toda tela tem frases para renderizar, e nenhuma delas é vazia (0.420914ms)
+✔ a tela do termo não se contradiz, estado por estado (21.983642ms)
+▶ tokens de shell de página
+  ✔ exporta os quatro tokens com a forma documentada (0.916139ms)
+  ✔ não deixa cópia da string de scroll fora do módulo (0.89518ms)
+  ✔ as fichas Work importam o token de scroll do módulo (1.270187ms)
+✔ tokens de shell de página (4.322696ms)
+▶ tokens de tabela
+  ✔ Work › Modelos aplica workTableUi na lista (2.031624ms)
+  ✔ HomeSales aplica panelTableUi em vez de :ui inline (0.243881ms)
+✔ tokens de tabela (2.491962ms)
+▶ contrato de erro fatal nas listas Admin
+  ✔ cada lista de painel usa useRetryableLoad e ErrorRetryAlert (0.568031ms)
+  ✔ nenhuma lista Admin inventa UAlert de retry próprio (0.596986ms)
+✔ contrato de erro fatal nas listas Admin (1.400584ms)
+▶ portfolio filters follow the open view
+  ✔ leaves both document filters available on Todos (1.020614ms)
+  ✔ pins the certificate filter on a certificate status view (0.171193ms)
+  ✔ pins the power of attorney filter on a procuração view (0.198814ms)
+  ✔ drops the pinned filter and keeps the other document (0.865524ms)
+  ✔ hides a column whose values no longer split the rows (0.317598ms)
+  ✔ keeps only tags that some clients have and others do not (0.33913ms)
+✔ portfolio filters follow the open view (4.485954ms)
+▶ apresentação da conectividade
+  ✔ nomeia cada elemento do contrato no idioma do operador (2.052864ms)
+  ✔ não some um elemento novo e devolve o próprio código (0.289466ms)
+  ✔ trata a autenticação bem-sucedida como sucesso, sem elemento (0.342176ms)
+  ✔ trata um desfecho da credencial como erro que o operador precisa corrigir (0.318581ms)
+  ✔ trata `provedor` como recuperável, e é o que o título de terceiro elemento diz (0.362063ms)
+  ✔ nomeia o desfecho do certificado como problema de certificado, não de autenticação (0.557551ms)
+  ✔ sem veredito nenhum, nenhum título afirma o que aconteceu (0.163297ms)
+✔ apresentação da conectividade (6.455201ms)
+▶ Mailbox explicit effects lifecycle
+  ✔ opening never reads or reconciles, uncertain blocks retry without claiming nothing happened (10315.953864ms)
+  ✔ confirmed conflict offers explicit local recovery and never claims the body was recovered (308.519201ms)
+  ✔ explicit before-send error permits a new consent (179.667852ms)
+  ✔ treats an unclassified network failure as uncertain rather than asserting no effect (113.596155ms)
+  ✔ ignores a late provider response after client changes (100.474398ms)
+  ✔ ignores a late provider response after close changes (391.990467ms)
+  ✔ ignores a late provider response after account changes (102.065127ms)
+✔ Mailbox explicit effects lifecycle (11516.580489ms)
+▶ the manual search modes
+  ✔ labels and explains both modes (4.915064ms)
+  ✔ says the partial mode is the paid/unpaid reading of the slip (0.352866ms)
+✔ the manual search modes (6.568425ms)
+▶ the quota column
+  ✔ reads "X de Y" for a client with quota data (3.13181ms)
+  ✔ renders nothing — never a zero — when the quota did not arrive (0.411065ms)
+  ✔ colours by how much of the month is left (0.224043ms)
+✔ the quota column (4.083014ms)
+▶ the quota refusal (422)
+  ✔ flattens one message per client under a single field (1.379412ms)
+  ✔ reads indexed per-client fields as well (6.30689ms)
+  ✔ falls back to the top-level message when no per-client refusal arrived (3.900851ms)
+  ✔ answers nothing for a refusal with no readable message (0.195519ms)
+✔ the quota refusal (422) (15.690196ms)
+▶ the scheduled-search day
+  ✔ bounds the day to 1–28, the range every month has (0.8694ms)
+  ✔ reads empty as "sem agendamento" (null), not as a day (1.027127ms)
+  ✔ reads a whole day inside the range (0.217971ms)
+  ✔ refuses what no month could run, without clamping (0.486208ms)
+✔ the scheduled-search day (4.201519ms)
+▶ the schedules form payload
+  ✔ carries only the days the office typed, keyed by the obligation slug (73.005957ms)
+  ✔ names the lines that would not convert instead of saving a day nobody chose (0.622665ms)
+  ✔ answers an empty payload for an empty form (0.221077ms)
+✔ the schedules form payload (76.040543ms)
+▶ SERPRO settings request lifecycle
+  ✔ cannot replace saved schedules while their initial read is pending (9901.049331ms)
+  ✔ keeps a failed read locked until retry restores saved values (396.275702ms)
+  ✔ does not reread over edits once the initial schedule read succeeded (208.581637ms)
+  ✔ exposes enablement independently from credentials to a Super Admin member administrator (411.757894ms)
+  ✔ does not offer or perform enablement writes for {"superAdmin":false,"role":"admin"} (287.725172ms)
+  ✔ does not offer or perform enablement writes for {"superAdmin":true,"role":"operador"} (186.777224ms)
+  ✔ does not offer or perform enablement writes for {"superAdmin":true,"role":null} (111.53812ms)
+  ✔ does not offer an enablement write when its initial state cannot be read (201.472996ms)
+✔ SERPRO settings request lifecycle (11706.94598ms)
+▶ sample Settings persistence disclosure
+  ✔ labels the rendered profile and submit action as demonstration before submission (1594.493923ms)
+  ✔ submits valid sample data with an explicit non-persistence notice, not success (216.259075ms)
+  ✔ does not log the submitted sample profile payload (173.545145ms)
+✔ sample Settings persistence disclosure (1985.763256ms)
+▶ the settings navigation
+  ✔ offers the office certificate and the WhatsApp channel to account admins, not to other members (3.02648ms)
+  ✔ keeps the tab order: Geral, Notificações, Segurança, Certificado, Canal WhatsApp (0.865143ms)
+  ✔ builds one tab per page, with the index exact (0.317768ms)
+  ✔ builds the same list for the sidebar children (0.300627ms)
+  ✔ marca só o filho da rota atual, com o índice exato (0.300287ms)
+✔ the settings navigation (6.398894ms)
+▶ sidebarOpenGroupFromPath
+  ✔ mapeia prefixos de módulo para o value do accordion (1.007781ms)
+  ✔ exige igualdade ou prefixo delimitado por barra em todos os módulos (0.358376ms)
+  ✔ retorna vazio fora dos módulos com submenu (0.18474ms)
+✔ sidebarOpenGroupFromPath (3.254391ms)
+▶ foldedSidebarChildren
+  ✔ esconde os irmãos e preserva o filho ativo (0.30246ms)
+  ✔ não muta o catálogo nem substitui o nó ativo ao ocultar irmãos (1.168385ms)
+  ✔ mantém a projeção idempotente e a identidade do ativo em recolhimentos repetidos (0.267675ms)
+  ✔ devolve o próprio catálogo com o grupo aberto, inclusive vazio ou indefinido (0.458356ms)
+✔ foldedSidebarChildren (2.524594ms)
+▶ collapsedSidebarItems
+  ✔ acende o pai em rota filha sem mexer no exact dos filhos (75.294797ms)
+  ✔ não acende o módulo quando a rota é de outro grupo (0.271152ms)
+✔ collapsedSidebarItems (75.881225ms)
+▶ taxId com CNPJ alfanumérico
+  ✔ formata os doze primeiros caracteres alfanuméricos e os dois dígitos (1.335981ms)
+  ✔ mantém a máscara do CPF numérico (0.290498ms)
+  ✔ só habilita a consulta pública para CNPJ numérico (0.253128ms)
+  ✔ manda o CNPJ numérico para consulta e o alfanumérico para digitação (0.252526ms)
+  ✔ oferece o cadastro digitado para todo CNPJ completo, e não só para o alfanumérico (0.191421ms)
+  ✔ não oferece nenhum caminho enquanto o documento não tem catorze caracteres (0.15855ms)
+  ✔ invalida a consulta anterior quando a edição muda o documento, e não quando só reformata (0.210958ms)
+✔ taxId com CNPJ alfanumérico (4.120244ms)
+✔ access admission queue serializes dispatch and keeps Nuxt apps isolated (2.411179ms)
+✔ separate API transports for separate Nuxt apps dispatch independently (1991.10903ms)
+✔ aborted or stale queued work is rejected without transport dispatch (1.100347ms)
+✔ a rejected transport releases the next queued dispatch (3.155624ms)
+✔ API abort while queued prevents dispatch and releases the next request (278.740775ms)
+✔ active API transport receives the caller abort signal (99.909953ms)
+✔ API snapshots tenant headers and rejects mutations made stale during CSRF preflight (214.304787ms)
+✔ anonymous login bootstrap remains valid and can fetch its CSRF token (403.334866ms)
+✔ API queue preserves explicit headers and dispatches the captured company context (189.880061ms)
+✔ API queue discards an already queued read after the selected company changes (107.156424ms)
+✔ queued API calls independently fence actor, account, and session generation changes (206.9613ms)
+✔ queued JSON body and nested query and params preserve invocation-time intent (84.257397ms)
+✔ queued Date and toJSON values keep their serialized invocation-time value and idempotency key (12.498824ms)
+✔ snapshot preserves an own JSON __proto__ key without changing the copied prototype (81.171226ms)
+✔ captured JSON values preserve installed ofetch body and query wire encoding (114.910075ms)
+✔ queued Vue reactive body preserves ref unwrapping at the installed ofetch boundary (292.442402ms)
+✔ queued form-urlencoded body preserves fields instead of exposing the snapshot hook (89.41016ms)
+✔ queued body snapshots match ofetch exact form content-type and string rules (14.34146ms)
+✔ pre-aborted mutations do not enqueue CSRF or mutation requests (9.478664ms)
+✔ aborting a queued CSRF preflight settles immediately and preserves unrelated and fresh work (105.194526ms)
+✔ cancellation during active CSRF preflight reaches transport and permits fresh work (180.943418ms)
+✔ queued multipart PUT retains filename, blob, method adaptation, and SSR response cookies (105.846114ms)
+✔ API queue rechecks context in the dispatch microtask (294.190394ms)
+✔ extrai message e mapeia errors.* do 422 (4.891259ms)
+✔ a recusa de um 422 é a frase do campo, não a genérica de topo (0.848551ms)
+✔ a recusa nomeada do primeiro campo é a que aparece (0.33407ms)
+✔ sem recusa nomeada, o que a API disse continua sendo a resposta (0.183746ms)
+✔ uma lista de recusas vazia não é resposta (0.295708ms)
+✔ serializa array como key[] e pula null/undefined/vazio (2.091015ms)
+▶ useWhatsAppChannel (contrato do canal)
+  ✔ cobre os quatro estados espelhados do canal, nem mais nem menos (92.117388ms)
+  ✔ dá cor semântica e rótulo em português para cada estado (0.279968ms)
+  ✔ não rotula estados em inglês nem fora do vocabulário do produto (0.376522ms)
+  ✔ só explica o que pede ação: pareando e erro, nunca o estado feliz (0.257025ms)
+  ✔ mantém o intervalo de polling do pareamento dentro de 3 a 5 segundos (0.180891ms)
+  ✔ reconhece o código cru do whatsmeow, no prefixo 2@ ou na URL de aparelhos (0.210527ms)
+  ✔ declara o payload do canal com os campos que a API devolve (0.423629ms)
+✔ useWhatsAppChannel (contrato do canal) (95.465554ms)
+▶ ciclo de pareamento do Canal WhatsApp
+  ✔ preserva o UUID e mostra continuação sem repetir criação nem aceitar resposta antiga (6.763843ms)
+  ✔ descarta continuação atrasada depois de sair da tela (2.395179ms)
+  ✔ consulta resultado incerto sem novo POST de pareamento (1.093173ms)
+  ✔ ignora polling antigo em pairing após iniciar outro pareamento (281.826863ms)
+  ✔ ignora polling antigo em connected após iniciar outro pareamento (99.125924ms)
+  ✔ ignora polling antigo em error após iniciar outro pareamento (103.803077ms)
+  ✔ ignora polling antigo em 502 após iniciar outro pareamento (98.263504ms)
+  ✔ ignora a releitura antiga do canal após um novo pareamento (83.141391ms)
+  ✔ descarta o polling pendente depois de desconectar (10.702934ms)
+  ✔ descarta o polling pendente depois de sair da tela (8.514856ms)
+  ✔ retoma o QR e o polling quando tentar novamente recupera um canal em pareamento (9.9423ms)
+  ✔ detecta a conexão do novo pareamento depois que o QR anterior expirou (173.246092ms)
+  ✔ fecha o QR quando o polling informa que o canal foi desconectado (8.808581ms)
+  ✔ elimina o QR após polling 404 e releitura em disconnected (10.299154ms)
+  ✔ elimina o QR após polling 502 e releitura em error (79.031588ms)
+✔ ciclo de pareamento do Canal WhatsApp (980.3247ms)
+▶ whatsappDispatchEligibility
+  ✔ libera o disparo quando telefone, canal e artefato estão ok (72.348717ms)
+  ✔ nega o disparo para o papel user, que só lê o rastreio (0.29684ms)
+  ✔ nega o disparo sem telefone cadastrado, com o motivo em pt-BR (0.224994ms)
+  ✔ nega o disparo para telefone fora do padrão BR-plausível (10 a 13 dígitos) (0.255933ms)
+  ✔ nega o disparo com o canal em qualquer estado que não connected (0.194878ms)
+  ✔ nega o disparo quando o artefato não existe para a competência (0.15353ms)
+  ✔ nomeia o primeiro bloqueio na ordem canal → papel → telefone → artefato (14.086849ms)
+  ✔ aceita channelStatus null como "sem canal pareado" (0.43975ms)
+  ✔ distingue "carregando" de "sem canal": channelStatus undefined não é bloqueio concreto (0.749454ms)
+  ✔ telefone undefined é "ainda lendo", não "sem telefone" (0.661598ms)
+  ✔ canal confirmado ausente (null) resolve o motivo "sem canal", não o pendente (0.405234ms)
+  ✔ pending prevalece sobre telefone carregando mas não sobre bloqueio concreto do canal (0.145354ms)
+  ✔ super_admin em suporte dispara como admin (1.297078ms)
+✔ whatsappDispatchEligibility (94.367302ms)
+▶ whatsappDispatchStatusPresentation
+  ✔ cobre os cinco estados do rastreio, nem mais nem menos (0.304294ms)
+  ✔ dá rótulo em português e cor semântica para cada estado (0.122071ms)
+  ✔ não rotula estados em inglês (0.314834ms)
+✔ whatsappDispatchStatusPresentation (0.89019ms)
+▶ whatsappLatestDispatch
+  ✔ devolve o disparo mais recente do artefato pedido (0.218782ms)
+  ✔ devolve null quando o artefato nunca foi disparado (0.112432ms)
+✔ whatsappLatestDispatch (0.42391ms)
+▶ whatsappArtifactLabels
+  ✔ nomeia guia, recibo e declaração em português (0.092554ms)
+✔ whatsappArtifactLabels (0.200059ms)
+▶ whatsappRowSummaryPresentation
+  ✔ devolve a apresentação do último status quando o resumo existe (0.14314ms)
+  ✔ um envio não diz "3 disparos" — o selo nomeia o estado, o rastreio detalha (0.098936ms)
+  ✔ cobre os cinco estados sem inventar um sexto (0.120767ms)
+✔ whatsappRowSummaryPresentation (0.744996ms)
+▶ contrato wire do useSerpro (Disparo e Rastreio)
+  ✔ POST de Disparo endereça a rota por linha e envia competence + artifact (276.974271ms)
+  ✔ GET de Rastreio manda competence e aceita artefato opcional (1.851393ms)
+  ✔ o payload do dispatch carrega os campos que a UI lê, sem telefone (0.267684ms)
+  ✔ os estados do rastreio são os cinco do backend (0.135817ms)
+  ✔ os estados do canal são os quatro espelhados (0.075453ms)
+✔ contrato wire do useSerpro (Disparo e Rastreio) (279.689463ms)
+▶ whatsappGuideTarget
+  ✔ devolve o período mais recente com slip_number, com o número do DAS (87.525324ms)
+  ✔ aceita período declarado sem slip_number — a guia é gerada na hora (slipNumber null) (0.244112ms)
+  ✔ pula o período mais recente sem guia e escolhe o anterior que tem (0.186742ms)
+  ✔ devolve null quando nenhum período tem guia, e para lista ausente (0.57816ms)
+✔ whatsappGuideTarget (96.973581ms)
+▶ whatsappGuideAlreadySent
+  ✔ reconhece a guia já enviada ao contato (mesma competência e slip) (3.50266ms)
+  ✔ não conta disparo de outro contato (0.203874ms)
+  ✔ failed não afirma envio confirmado — a proteção de incerteza é separada no plano (0.168127ms)
+  ✔ recálculo libera o reenvio: slip_number novo não é a mesma guia (0.256965ms)
+  ✔ outra competência não bloqueia (0.251205ms)
+  ✔ a guia por declared_at casa slip null com slip null (0.25983ms)
+  ✔ disparo legado sem contato (telefone da carteira) não bloqueia nenhum contato (0.187264ms)
+  ✔ recibo e declaração não são guia — não bloqueiam o reenvio (0.195839ms)
+✔ whatsappGuideAlreadySent (5.605176ms)
+▶ whatsappSendGuidesPlan
+  ✔ pré-seleciona o contato WhatsApp que ainda não recebeu a guia corrente (0.491096ms)
+  ✔ desmarca quem já recebeu a mesma guia e expõe a Ciência de reenvio (0.359679ms)
+  ✔ contato de e-mail é listado mas nunca selecionável nesta versão (0.217992ms)
+  ✔ telefone fora do padrão não é selecionável e nomeia o motivo (0.198043ms)
+  ✔ sem guia corrente ninguém é marcado como já enviado (0.189718ms)
+  ✔ recálculo pré-seleciona de novo: slip novo não dispara o bloqueio (0.135996ms)
+✔ whatsappSendGuidesPlan (7.176961ms)
+▶ retry conservador da guia corrente
+  ✔ seguro pré-envio: pré-seleção e ciência refletem a evidência, não só failed (0.403291ms)
+  ✔ incerto pós-fronteira: pré-seleção e ciência refletem a evidência, não só failed (0.121579ms)
+  ✔ legado sem metadados: pré-seleção e ciência refletem a evidência, não só failed (0.22279ms)
+  ✔ flag segura com tentativa registrada: pré-seleção e ciência refletem a evidência, não só failed (0.121589ms)
+  ✔ flag segura sem timestamp explícito: pré-seleção e ciência refletem a evidência, não só failed (0.116299ms)
+  ✔ flag conservadora sem tentativa: pré-seleção e ciência refletem a evidência, não só failed (0.090841ms)
+  ✔ considera qualquer operação relevante: falha segura antiga não esconde falha incerta posterior (0.275881ms)
+  ✔ a operação corrente muda de failed seguro para queued e depois failed incerto (0.182925ms)
+  ✔ não descarta a proteção de queued/sent/delivered/read por haver failed seguro mais recente (0.497549ms)
+  ✔ incerteza se limita ao contato, competência, número da guia e artefato (0.594401ms)
+  ✔ ciência explícita de falha incerta monta resend_acknowledgements só para os marcados (0.819446ms)
+✔ retry conservador da guia corrente (76.908804ms)
+▶ whatsappSendGuidesPayload
+  ✔ monta contact_ids dos marcados e resend_acknowledgements dos que têm ciência (0.383773ms)
+  ✔ ciência num contato desmarcado não viaja no request (0.192915ms)
+  ✔ sem nenhum WhatsApp marcado devolve null — a validação é da tela, não da API (0.315806ms)
+  ✔ o null do payload é o que dispara a frase de validação do modal — "zero marcados" é alcançável (0.140105ms)
+  ✔ nunca envia contato bloqueado, mesmo que a entrada venha marcada à força (0.134174ms)
+✔ whatsappSendGuidesPayload (1.421583ms)
+▶ whatsappContactPhoneLabel
+  ✔ formata celular com DDD e fixo com DDD (0.268667ms)
+  ✔ mantém o DDI visível quando o telefone já vem em E.164 brasileiro (0.110347ms)
+  ✔ devolve o valor cru quando não reconhece o padrão — não inventa máscara (0.09518ms)
+✔ whatsappContactPhoneLabel (0.611965ms)
+▶ apresentação do Contato de envio
+  ✔ whatsappDispatchContactValueLabel formata WhatsApp e devolve e-mail cru (0.156174ms)
+  ✔ whatsappDispatchContactName prefere o rótulo e cai no valor formatado (0.16918ms)
+✔ apresentação do Contato de envio (0.579825ms)
+▶ SendGuidesModal setup e template reais
+  ✔ falha segura pré-selecionada envia sem ciência (719.112783ms)
+  ✔ falha incerta desmarcada oferece ciência sem afirmar recebimento (582.921241ms)
+  ✔ falha legada desmarcada oferece ciência sem afirmar recebimento (207.696789ms)
+  ✔ ciência explícita seleciona a falha incerta e viaja na chamada (207.74838ms)
+  ✔ incerteza de outro contato não exige ciência (185.479184ms)
+  ✔ 422 mantém a recusa específica visível e não fecha o modal (96.82879ms)
+✔ SendGuidesModal setup e template reais (2000.427646ms)
+▶ contrato wire do Enviar guias e dos Contatos de envio
+  ✔ useSerpro endereça o send-guides batch com contact_ids + resend_acknowledgements (216.484555ms)
+  ✔ useDispatchContacts endereça o CRUD sob /clients/{id}/dispatch-contacts (81.010941ms)
+✔ contrato wire do Enviar guias e dos Contatos de envio (297.973788ms)
+▶ whatsappSheetSendAvailability
+  ✔ libera a célula Enviar só na obrigação que serve Disparo (PGDAS) (0.983024ms)
+  ✔ desabilita as demais servidas com o motivo legível, nunca um código (1.736516ms)
+  ✔ a lista do Disparo é a do PGDAS hoje — um slug só (0.860093ms)
+✔ whatsappSheetSendAvailability (5.006307ms)
+▶ whatsappSheetGuideDownloadTarget
+  ✔ devolve a competência da guia corrente quando a linha tem guia baixável (17.201136ms)
+  ✔ aceita a guia por declaração transmitida sem slip_number (0.215938ms)
+  ✔ devolve null sem guia corrente — a seta fica desabilitada, não some (0.168348ms)
+✔ whatsappSheetGuideDownloadTarget (17.953894ms)
+▶ whatsappDispatchTrackingTab
+  ✔ Envio agrupa os estados em trânsito (queued, sent, delivered) (70.486263ms)
+  ✔ Visualização e Não enviados são desfechos com aba própria (0.230896ms)
+  ✔ cobre os cinco status do rastreio, nem mais nem menos (0.3656ms)
+✔ whatsappDispatchTrackingTab (71.577132ms)
+▶ whatsappTrackingGroups
+  ✔ separa os disparos nas três abas, preservando a ordem da lista (0.445751ms)
+  ✔ sem disparos as três abas ficam vazias — o painel lê zero (0.141526ms)
+✔ whatsappTrackingGroups (0.733374ms)
+▶ whatsappDispatchDestinationLabel
+  ✔ o cartão mostra o telefone mascarado do Contato de envio (0.301539ms)
+  ✔ contato removido ou disparo legado não mostra número cru (0.138111ms)
+✔ whatsappDispatchDestinationLabel (0.555629ms)
+▶ vocabulário do painel
+  ✔ as abas são Envio, Visualização e Não enviados (0.123853ms)
+  ✔ o texto fixo do cartão é o do escritório, verbatim da spec (0.084801ms)
+✔ vocabulário do painel (0.302611ms)
+▶ work calendar date keys
+  ✔ pins the product calendar timezone to America/Sao_Paulo (0.899668ms)
+  ✔ resolves today via an explicit timezone, not process local TZ (93.75946ms)
+  ✔ compares calendar-today against the pinned today key (0.52495ms)
+✔ work calendar date keys (96.462319ms)
+▶ Facet de departamento por id com Sem departamento
+  ✔ tarefas: opcoes sao ids do catalogo mais Sem departamento (2.963552ms)
+  ✔ tarefas: filtro none casa com task sem departamento e busca acha o nome atual (2.850328ms)
+  ✔ tarefas: filtro por id casa com leaves e busca acha o nome (2.368009ms)
+  ✔ facet generico: opcoes do catalogo mais Sem departamento e chave none (89.292067ms)
+  ✔ clientes: filtro none casa com leaf sem department_id (4.884768ms)
+  ✔ processos: filtro none casa com leaf sem department_id (0.695623ms)
+✔ Facet de departamento por id com Sem departamento (104.582541ms)
+▶ derivedProcessStatus
+  ✔ returns empty when there are no tasks (1.007111ms)
+  ✔ returns open when every task is todo (0.175972ms)
+  ✔ returns in_progress when some tasks are done and others remain open (3.369629ms)
+  ✔ returns in_progress when any task is doing (0.156215ms)
+  ✔ returns done when every task is done or dismissed (67.393256ms)
+  ✔ returns done when every task is dismissed (0.703337ms)
+  ✔ ignores nullish statuses when deriving (0.223913ms)
+✔ derivedProcessStatus (74.945286ms)
+▶ derivedProcessStatusPresentation
+  ✔ maps each derived status to label and color (1.038319ms)
+✔ derivedProcessStatusPresentation (3.935285ms)
+▶ isCascadeAdvanceLocked
+  ✔ is false when cascade is off (0.289226ms)
+  ✔ is true when an earlier sibling is still open (1.149879ms)
+  ✔ is false when earlier siblings are done or dismissed (0.17458ms)
+✔ isCascadeAdvanceLocked (1.854369ms)
+▶ group status and cascade from complete process data
+  ✔ keeps a group in progress when a status filter shows only its done task (0.203323ms)
+  ✔ keeps the second task locked when the first is hidden by a filter (1.42024ms)
+  ✔ uses the server lock when earlier tasks fall outside the selected month (0.138582ms)
+✔ group status and cascade from complete process data (1.913961ms)
+▶ Work task filters
+  ✔ keeps only tasks inside an inclusive due-date range (4.852305ms)
+  ✔ filtra vencimento pelo intervalo gravado no modelo (82.494915ms)
+  ✔ exclui um status quando o operador é de negação (0.377383ms)
+✔ Work task filters (92.78984ms)
+▶ Work task scope
+  ✔ keeps scoped undated tasks in their competence and separates unscoped undated tasks (0.927411ms)
+✔ Work task scope (2.469521ms)
+▶ Work process filters
+  ✔ exposes template and process-status facets from grouped process metadata (185.385278ms)
+  ✔ filters process rows by template and process status independently of task status (0.518859ms)
+✔ Work process filters (186.548644ms)
+▶ Work client filters
+  ✔ offers the four shared Work facets in bar order (0.469274ms)
+  ✔ keeps a fixed facet an operator already picked even when no leaf holds it (0.423079ms)
+  ✔ keeps a client filter column while leaves still carry a name to narrow (0.359388ms)
+  ✔ narrows cascade and status to the values the leaves actually hold (5.711626ms)
+  ✔ searches across cliente, processo, tarefa and departamento (0.252818ms)
+  ✔ combines a facet filter with the search term (1.244248ms)
+✔ Work client filters (8.869845ms)
+▶ Work navigation
+  ✔ marks the active Work child in sidebar children (0.855074ms)
+✔ Work navigation (10.890419ms)
+▶ Work list and detail route isolation
+  ✔ keeps modelos list and detail as independent page entrypoints (283.576701ms)
+  ✔ keeps processos list and detail as independent page entrypoints (123.925543ms)
+✔ Work list and detail route isolation (408.806544ms)
+▶ statusPresentation
+  ✔ labels not-started tasks as A fazer (1.640755ms)
+  ✔ keeps the remaining task status labels (0.196491ms)
+✔ statusPresentation (3.220006ms)
+▶ calendarStatusPresentation
+  ✔ reuses the shared A fazer label for todo chips (0.395006ms)
+✔ calendarStatusPresentation (0.623757ms)
+▶ priorityPresentation
+  ✔ maps each priority to label and color (0.367213ms)
+✔ priorityPresentation (0.635268ms)
+▶ reference month
+  ✔ generates templates for the selected Work month, falling back to the current month (778.467098ms)
+  ✔ accepts only real month numbers (0.329031ms)
+  ✔ keeps incomplete generation input out of the shared list month (14.199643ms)
+  ✔ does not label or shift an invalid month (0.257977ms)
+✔ reference month (794.753941ms)
+▶ selection shared by client and process views
+  ✔ selects visible task leaves without selecting placeholders (3.757341ms)
+  ✔ clears one group while preserving selection outside it (0.395997ms)
+✔ selection shared by client and process views (5.998108ms)
+▶ workTableFormat
+  ✔ formats due dates in pt-BR and empty as em dash (15.326108ms)
+  ✔ formats ratios as rounded percentages (0.188505ms)
+  ✔ counts non-empty leaf tasks under a grouped row (0.249431ms)
+  ✔ labels a grouped row leaf count with the pre-refactor wording (0.332458ms)
+  ✔ prepends Sem responsável to assign items (0.878578ms)
+✔ workTableFormat (18.474017ms)
+▶ Work toolbar teleport
+  ✔ renders actions when the toolbar target is mounted later in the same update (76.106135ms)
+✔ Work toolbar teleport (77.171615ms)
+ℹ tests 1559
+ℹ suites 218
+ℹ pass 1559
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 240209.351301

@@ -307,9 +307,9 @@
 test at tests/erpCatalogResourceAuthority.test.ts:817:3
 ✖ uses a wrapping full-width toolbar and shows only the confirmed server count (1373.44783ms)
   AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
-  
+
     assert.ok(toolbar)
-  
+
       at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpCatalogResourceAuthority.test.ts:821:12)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1325:25)

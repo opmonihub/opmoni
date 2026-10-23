@@ -163,9 +163,9 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
   components.ErpCatalogPageShell = { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) }
   components.UButton = { props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, 'data-label': props.label }, context.slots.default?.()) }
   components.UNavigationMenu = { props: ['items'], setup: props => () => Vue.h('nav', {}, (props.items as Record<string, unknown>[][]).flat().map(item => Vue.h('span', { 'data-active': item.active }, String(item.label)))) }
-  components.UTable = { props: ['data'], setup: props => () => {
+  components.UTable = { props: ['data', 'empty'], setup: props => () => {
     tableRows.push(props.data as unknown[])
-    return Vue.h('div')
+    return Vue.h('div', {}, (props.data as unknown[]).length ? '' : String(props.empty ?? ''))
   } }
   components.UModal = { props: ['title'], setup: (props) => {
     const id = Vue.getCurrentInstance()?.uid ?? -1
@@ -177,7 +177,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
   components.ErpCashMovementForm = { setup: () => () => Vue.h('div') }
   components.ErpCashPaymentForm = { setup: () => () => Vue.h('div') }
   components.ErpCashCloseForm = { setup: () => () => Vue.h('div') }
-  components.UAlert = { props: ['title'], setup: (props, context) => () => Vue.h('aside', {}, [Vue.h('span', {}, String(props.title ?? '')), context.slots.default?.(), context.slots.description?.()]) }
+  components.UAlert = { props: ['title', 'description'], setup: (props, context) => () => Vue.h('aside', {}, [Vue.h('span', {}, String(props.title ?? '')), Vue.h('span', {}, String(props.description ?? '')), context.slots.default?.(), context.slots.description?.()]) }
   for (const name of ['UFormField', 'UInput', 'USelect', 'UTextarea', 'UCheckbox', 'CompanyMenu', 'UserMenu'])
     components[name] = { setup: (_props, context) => () => Vue.h('div', context.attrs, context.slots.default?.()) }
   const root = { children: [] as unknown[] }
@@ -1010,4 +1010,58 @@ describe('real cash list footers', () => {
     await Vue.nextTick()
     assert.equal(cashPagination(mounted.root).length, 0)
   })
+})
+
+// Each actual loader keeps confirmed data on transient failure; its mounted consumer must say so.
+describe('cash failed refresh guidance', () => {
+  for (const kind of ['registers', 'sessions', 'movements'] as const) {
+    for (const prior of ['none', 'rows', 'empty'] as const) {
+      it(`identifies ${kind} failure with prior ${prior} and clears stale feedback on recovery`, async (t) => {
+        let fail = false
+        const calls: string[] = []
+        const row = kind === 'registers' ? activeRegister : kind === 'sessions' ? openSession : { id: 5, erp_cash_session_id: 21, amount: '5.0000', direction: 'in', kind: 'deposit' }
+        const confirmed = prior === 'rows' ? [row] : []
+        const workspace = createCashWorkspace(async (path, options) => {
+          assert.equal(options?.method, undefined, 'presentation checks perform reads only')
+          calls.push(path)
+          if (fail) throw { statusCode: 503, data: { message: 'Caixa indisponível' } }
+          return { data: confirmed, meta: { current_page: 1, last_page: 1, per_page: 15, total: confirmed.length, totals: [] } }
+        })
+        t.after(workspace.stop)
+        const state = workspace.state as {
+          loadList: (kind: string) => Promise<void>
+          loadMovementPage: (id: number) => Promise<void>
+          selectedSession: Vue.Ref<typeof openSession | null>
+          registers: Vue.Ref<unknown[]>
+          sessions: Vue.Ref<unknown[]>
+          movements: Vue.Ref<unknown[]>
+        }
+        if (kind === 'movements') state.selectedSession.value = openSession
+        const read = () => kind === 'movements' ? state.loadMovementPage(21) : state.loadList(kind)
+        if (prior !== 'none') await read()
+        const mounted = mountCashWorkspace({ workspaceState: workspace.state, initialHash: kind === 'registers' ? '#registers' : '#sessions' })
+        t.after(() => mounted.app.unmount())
+        await Vue.nextTick()
+        fail = true
+        await read()
+        await Vue.nextTick()
+        const text = textContent(mounted.root)
+        assert.match(text, /Caixa indisponível/)
+        assert.match(text, prior === 'none'
+          ? kind === 'movements' ? /histórico ainda não foi carregado com sucesso/ : /lista ainda não foi carregada com sucesso/
+          : kind === 'movements' ? /último histórico confirmado/ : /última lista confirmada/)
+        assert.deepEqual(state[kind].value, confirmed)
+        assert.ok(mounted.tableRows.some(rows => JSON.stringify(rows) === JSON.stringify(confirmed)), 'retained records remain bound to a mounted table')
+        const ordinaryEmpty = kind === 'registers' ? 'Nenhum caixa cadastrado.' : kind === 'sessions' ? 'Nenhuma sessão de caixa encontrada.' : 'Nenhum movimento registrado nesta sessão.'
+        if (prior === 'empty') assert.equal(text.includes(ordinaryEmpty), false, 'failed refresh must not present ordinary successful-empty copy')
+        fail = false
+        await read()
+        await Vue.nextTick()
+        const recovered = textContent(mounted.root)
+        assert.doesNotMatch(recovered, /última lista confirmada|último histórico confirmado|ainda não foi carregad/)
+        assert.equal(new Set(calls).size, 1, 'recovery keeps the original query')
+        if (prior !== 'rows') assert.ok(recovered.includes(ordinaryEmpty), 'successful empty recovery restores ordinary empty guidance')
+      })
+    }
+  }
 })

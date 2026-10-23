@@ -1,0 +1,13 @@
+{
+  "base": "5b752b1",
+  "protectedPathsDiff": [],
+  "immutableAuditDiff": [],
+  "gitDiffCheckExitCode": 0,
+  "stagedDiffCheckExitCode": 0,
+  "openspecStrictExitCode": 0,
+  "runtimeApplicationDiffSinceGroup8": [],
+  "group9FrontendDiff": [
+    "frontend/tests/erpContactPermission.test.ts"
+  ],
+  "checkboxesUnchangedByGroup9": true
+}

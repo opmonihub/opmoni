@@ -8,4 +8,3 @@
   44:31  error  This line has 2 statements. Maximum allowed is 1  @stylistic/max-statements-per-line
 
 ✖ 4 problems (4 errors, 0 warnings)
-

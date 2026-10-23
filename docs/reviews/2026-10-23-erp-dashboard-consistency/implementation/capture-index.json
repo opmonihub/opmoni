@@ -11,7 +11,8 @@
     "Initial pending capture is separate.",
     "Synthetic identities are client/API samples, not authentication or SSR acceptance.",
     "Raw geometry scripts and deterministic checks accompany screenshot evidence.",
-    "Earlier accepted group1-8 artifacts remain indexed by their own reports; they are reused without modification."
+    "Earlier accepted group1-8 artifacts remain indexed by their own reports; they are reused without modification.",
+    "Combined final-review correction has fresh serial checks/mounted failure-state evidence. Browser/reference matrix remains checkpoint4f8646d, not a new measurement of corrected descriptions."
   ],
   "captures": [
     {
@@ -497,20 +498,230 @@
     {
       "file": "group-9-final-check-results.json",
       "kind": "final-verification-result",
-      "bytes": 785,
-      "sha256": "30c0d357a72b8f172d87347bed920c64cc9892a53c1351aca9b14d01a3f0519b"
+      "bytes": 951,
+      "sha256": "ed1044356b4489b68a6c0933015518232f49741035e6f9a96079b018a4eaea09"
     },
     {
       "file": "group-9-final-integrity.json",
       "kind": "final-verification-result",
-      "bytes": 335,
-      "sha256": "e5f7b42586565421d712be4e2002f63183df3392f9009756c98a8668d7c74d31"
+      "bytes": 815,
+      "sha256": "386eeeaeb1dbfd52e7ea8fde5ff1188d8e81da2878c8b1225ff2d4512fc8cd48"
     },
     {
       "file": "group-9-final-lint-result.json",
       "kind": "final-verification-result",
       "bytes": 190,
       "sha256": "3b9a46d26f54c8753973cc2865234bfc58afa909e9d128cc02d8669ed783bbd4"
+    },
+    {
+      "file": "final-fix-build.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 113381,
+      "sha256": "11cfe2276228f272fd482588ce66400c0f4693ef9bc6a659085cae743088f4ef"
+    },
+    {
+      "file": "final-fix-build.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 20088,
+      "sha256": "156fb99dd6f1a38c3801c018729ef957fd172acdfd1e43173b31befb1dc145ca"
+    },
+    {
+      "file": "final-fix-changed-eslint-initial.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 292,
+      "sha256": "f48cf617f35de805077a8d64d5c0532dbf11ded62826bcc949b17f6e027b94f7"
+    },
+    {
+      "file": "final-fix-changed-eslint-initial.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 200,
+      "sha256": "b961c00f2e54951e21b4f8e26340f5857a9fa55aa9ae90a3ec0aba059cce7006"
+    },
+    {
+      "file": "final-fix-changed-eslint.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "final-fix-changed-eslint.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 20,
+      "sha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "file": "final-fix-check-results.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 951,
+      "sha256": "ed1044356b4489b68a6c0933015518232f49741035e6f9a96079b018a4eaea09"
+    },
+    {
+      "file": "final-fix-focused-green.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 11732,
+      "sha256": "7f725f742fc21241c3a885da5106076a67c8bc7ecae713c9c1d67da24418dff3"
+    },
+    {
+      "file": "final-fix-focused-green.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 4023,
+      "sha256": "a630f30551a9940236f11857b978495f9228ec218da735340dc7ceaeba44bc55"
+    },
+    {
+      "file": "final-fix-focused-results.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 1368,
+      "sha256": "4840f8e8b86edcc62a87fd63717dad3cefe798ef88994376aeea24760b5aeb9c"
+    },
+    {
+      "file": "final-fix-impeccable.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "file": "final-fix-integrity.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 930,
+      "sha256": "7e6597b3674c3cbaf6c7f2e0646ee8d1f3ac7ec7bcbcf3235736e1cce10225e1"
+    },
+    {
+      "file": "final-fix-lint.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 11,
+      "sha256": "050c69da23536758722729aeda55a8d0fb9d557495ef6d33d70873a3b64a71c1"
+    },
+    {
+      "file": "final-fix-lint.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 31,
+      "sha256": "e4c6fc256674801f91d5a831c7a918edffefebb440785c6c54595f1d0ed38132"
+    },
+    {
+      "file": "final-fix-log-normalization.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 2206,
+      "sha256": "d69ff6fbe262038e089fee8bbe2f47677191db6ab9889fb50563bd2ecb827fcd"
+    },
+    {
+      "file": "final-fix-openspec.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 47,
+      "sha256": "f0a4a23453f410b9a4af1b26aa6a40ea32fa5e35903b8a651bd658a0f279f507"
+    },
+    {
+      "file": "final-fix-openspec.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 66,
+      "sha256": "7fb03bb6ed5350d0d19ef2d97449b540389e5053252e0032740d33573160b7c4"
+    },
+    {
+      "file": "final-fix-red.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 14067,
+      "sha256": "0a30d6d9ff41c16de5e14b7a2ec63e5ddf89f45840711202a22f5467db6545f4"
+    },
+    {
+      "file": "final-fix-red.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 1399,
+      "sha256": "2cbcd09d6455776a528695f7d209a560c343d8ef4d982152c80a10baca771fcb"
+    },
+    {
+      "file": "final-fix-report.md",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 6106,
+      "sha256": "564777e99deeecd316bf037aa030312ee1a499be5aed7cc0d5b5ba51e7bc1198"
+    },
+    {
+      "file": "final-fix-secret-scan.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 218,
+      "sha256": "52f3d70f947d44862fd27b08db034d7586bdefeba2df7671a535af8823723128"
+    },
+    {
+      "file": "final-fix-source-hashes.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 928,
+      "sha256": "11ffa0b04ea50dd3a7434e0886912c67a8939acd47275f8dd953eab2b303bdc2"
+    },
+    {
+      "file": "final-fix-test.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 186495,
+      "sha256": "f8dd6de01e470078fd9f0cc65eaab4dab283666f942117493ce122055a8657c5"
+    },
+    {
+      "file": "final-fix-test.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 52278,
+      "sha256": "a1744aa84363d36ab5b79c799936038657cfa323aff450b06dece8566e64ec78"
+    },
+    {
+      "file": "final-fix-typecheck.txt",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 8625,
+      "sha256": "a274e28fb22c56cbe57c18f37631f7106ae3293904715cb208b4587d6995a798"
+    },
+    {
+      "file": "final-fix-typecheck.txt.raw.gz",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 1639,
+      "sha256": "bcc150de2a8309d1d4678adb0fa507c0553996ff9368be79f58cb06f977618a8"
+    },
+    {
+      "file": "final-fix-ui-reference.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 720,
+      "sha256": "853eab4460c2e13f58a7aaf81f9cfeb93238b41b0c1f9cb01fdb4537cc8f8586"
+    },
+    {
+      "file": "final-fix-warning-analysis.json",
+      "kind": "combined-final-review-fix-evidence",
+      "bytes": 721,
+      "sha256": "ef2680b0dd51edefe35d44b8d41c8656cb7aa310f7967b92ca24888eda79326c"
+    },
+    {
+      "file": "group-4-fix-1-footer-red.txt.raw.gz",
+      "kind": "exact-historical-log-preservation",
+      "bytes": 896,
+      "sha256": "2257e122041bdc7bc8ea2a175a2cc7061d1fad420f6f85dc9e507b4dc6b9c2e0"
+    },
+    {
+      "file": "group-4-focused-green.txt.raw.gz",
+      "kind": "exact-historical-log-preservation",
+      "bytes": 12234,
+      "sha256": "607dfce8713395b87db67ba106f7fb91b1cd97a5f2eb74328d7b73720d030a2d"
+    },
+    {
+      "file": "group-4-focused-initial.txt.raw.gz",
+      "kind": "exact-historical-log-preservation",
+      "bytes": 9155,
+      "sha256": "b7e7898376566c19ce3fcd820ccfe283a278be34f09f405a50e5fd557a293a68"
+    },
+    {
+      "file": "group-4-integration-initial.txt.raw.gz",
+      "kind": "exact-historical-log-preservation",
+      "bytes": 1116,
+      "sha256": "59f5645e00224b81f25774a7f9e2783b65602dfc92e4198ab4ddf938dac525a3"
+    },
+    {
+      "file": "group-4-lint-initial.txt.raw.gz",
+      "kind": "exact-historical-log-preservation",
+      "bytes": 247,
+      "sha256": "90f78ef2302ea18864f34e467e804a35e9d4e848728c58901d2af158f1a74a68"
+    },
+    {
+      "file": "group-9-final-check-results-checkpoint-4f8646d.json",
+      "kind": "historical-checkpoint-before-combined-fix",
+      "bytes": 785,
+      "sha256": "30c0d357a72b8f172d87347bed920c64cc9892a53c1351aca9b14d01a3f0519b"
+    },
+    {
+      "file": "group-9-final-integrity-checkpoint-4f8646d.json",
+      "kind": "historical-checkpoint-before-combined-fix",
+      "bytes": 335,
+      "sha256": "e5f7b42586565421d712be4e2002f63183df3392f9009756c98a8668d7c74d31"
     }
   ]
 }

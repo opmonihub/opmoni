@@ -1,0 +1,34 @@
+[
+  {
+    "command": "pnpm --dir frontend test",
+    "exitCode": 0,
+    "seconds": 240.46,
+    "log": "final-fix-test.txt",
+    "raw": "final-fix-test.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
+  },
+  {
+    "command": "pnpm --dir frontend lint",
+    "exitCode": 0,
+    "seconds": 46.42,
+    "log": "final-fix-lint.txt",
+    "raw": "final-fix-lint.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
+  },
+  {
+    "command": "pnpm --dir frontend typecheck",
+    "exitCode": 0,
+    "seconds": 62.02,
+    "log": "final-fix-typecheck.txt",
+    "raw": "final-fix-typecheck.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
+  },
+  {
+    "command": "pnpm --dir frontend build",
+    "exitCode": 0,
+    "seconds": 144.94,
+    "log": "final-fix-build.txt",
+    "raw": "final-fix-build.txt.raw.gz",
+    "execution": "one serial pipeline; no browser/server restart"
+  }
+]
