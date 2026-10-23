@@ -2,7 +2,7 @@
 
 Checkpoint: `codex/standardize-erp-dashboard-ui`, worktree `.worktrees/erp-ui-audit-shell`; source `5ce7d51`, immutable planning/audit boundary `5b752b1`, accepted groups 1–8 through `dd9bd99`.
 
-Implementation and final verification are ready for controller review. The independent broad review identified two findings; this combined correction addresses both. One controller-owned scoped rereview and all final checkbox acceptance remain pending. No merge, push, archive, canonical-spec synchronization or release-gate change is included. Completing this frontend plan would not complete the reference-contract migration or establish provider/production acceptance.
+Implementation and final verification are accepted: all 34 OpenSpec task checks are complete. The independent broad review identified two findings; both were corrected and independently verified in the scoped rereview, with no new breakage found. No merge, push, archive, canonical-spec synchronization or release-gate change is included. This frontend plan does not complete the reference-contract migration or establish provider/production acceptance.
 
 ## Finding ledger and rollback checkpoints
 
@@ -64,7 +64,7 @@ Automated axe first failed with transient daemon resource error. One retry succe
 
 Cleanup closes only the used named browsers, CDP interceptors and owned worktree/reference listeners3107/3119. No main Docker/service was stopped. Worktree, branch, accepted commits and ignored `.superpowers/sdd` workspace remain available for controller review. `group-9-cleanup.json` records listener/process checks.
 
-Remaining acceptance: controller's one scoped rereview of the combined correction and final checkboxes; all five D06 contracts; real company-only auth/SSR and independent concurrent stores; physical touch, all unsampled editors/export/print/provider flows; production fiscal/SERPRO/commercial acceptance. Existing gates remain unchanged, including default disabled ERP registration. A passing plan validator, unit suite, browser sample or synthetic transport is not provider/production release evidence.
+Remaining acceptance beyond this frontend change: all five D06 contracts; real company-only auth/SSR and independent concurrent stores; physical touch, all unsampled editors/export/print/provider flows; production fiscal/SERPRO/commercial acceptance. Existing gates remain unchanged, including default disabled ERP registration. A passing plan validator, unit suite, browser sample or synthetic transport is not provider/production release evidence.
 
 
 ## Combined final-review correction
@@ -74,3 +74,12 @@ The broad review found that retained Finance/Cash reads lacked the delta's last-
 The five historical group4 logs caused `git diff --check 5b752b1 4f8646d` to fail (exit2/29 diagnostics). Prior unstaged/staged exit0 checks did not cover that accumulated range. Exact historical byte streams are now retained in matching raw.gz, verified against committed4f8646d before readable whitespace normalization. `final-fix-log-normalization.json` records hashes; explicit working-tree/index and postcommit full-range checks are recorded in `final-fix-integrity.json`. The immutable original audit was not normalized or edited.
 
 No browser, server or interceptor was reopened for this description-only correction. Earlier screenshots/geometry/reference/identity/error/keyboard samples belong to checkpoint4f8646d; newly added Finance/Cash failed-refresh descriptions have mounted real-component/composable evidence plus the actual native Nuxt UI Alert API, without a new browser geometry/axe claim. Physical touch, real company-only SSR, independent concurrent stores, all provider/production gates and all five D06 contracts remain pending as stated above. Existing group8 source manifest stays historical; `final-fix-source-hashes.json` records the current two consumers/tests and coverage hash. Four affected direct/host coverage rows now point to this correction; all97 tuples/dispositions remain unchanged.
+
+
+## Final controller acceptance
+
+All 34 task checks in `standardize-erp-dashboard-ui` are accepted. The broad review covered source base `5ce7d51` through `4f8646d`; the scoped rereview covered the two correction commits through `cc8615f`. Both final findings are addressed, with no new Critical/Important breakage or out-of-scope observations in the fix. The full review and per-finding evidence are retained in [final-review.md](final-review.md).
+
+The final runtime revision is validated by the fresh serial 1559/1559-test, lint, typecheck and build results above. Subsequent acceptance changes affect documentation/checklists only. Controller verification also confirms the explicit accumulated implementation diff is whitespace-clean and the original main checkout remains at `5ce7d51` with its existing dirty instruction/planning/audit files preserved.
+
+The branch `codex/standardize-erp-dashboard-ui` and worktree `.worktrees/erp-ui-audit-shell` are kept for review. Owned temporary browsers/listeners/interceptors are closed. The ignored SDD recovery ledger remains available; it is not release evidence or committed application state. No integration, archive or production gate was performed.
