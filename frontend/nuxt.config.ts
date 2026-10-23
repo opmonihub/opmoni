@@ -9,7 +9,9 @@ export default defineNuxtConfig({
   ],
 
   devtools: {
-    enabled: true
+    // Its client imports the Vue tracer overlay even when componentInspector is false.
+    // Keep the overlay from intercepting Paseo's element picker.
+    enabled: false
   },
 
   css: ['~/assets/css/main.css'],
@@ -17,6 +19,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     backendUrl: 'http://127.0.0.1:8000',
     ingressKey: ''
+  },
+
+  devServer: {
+    // Wait for the application without rendering Nuxt's animated build screen.
+    loadingTemplate: () => ''
   },
 
   compatibilityDate: '2026-06-30',
