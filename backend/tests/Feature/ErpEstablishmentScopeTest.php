@@ -45,10 +45,12 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Tests\Support\BuildsVerifiedErpFiscalEvidence;
 use Tests\TestCase;
 
 class ErpEstablishmentScopeTest extends TestCase
 {
+    use BuildsVerifiedErpFiscalEvidence;
     use RefreshDatabase;
 
     private ErpCompany $company;
@@ -417,7 +419,7 @@ class ErpEstablishmentScopeTest extends TestCase
     {
         Storage::fake('local');
         $allowed = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
-        $denied = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
+        $denied = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id, 'cnpj' => '30288513000100']);
         $outside = ErpEstablishment::factory()->create(['erp_company_id' => $this->company->id]);
         $member = $this->selectedMember([$allowed->id, $denied->id]);
         foreach ([[$allowed, '10'], [$denied, '90']] as [$establishment, $amount]) {
@@ -426,8 +428,12 @@ class ErpEstablishmentScopeTest extends TestCase
             ErpStockBalance::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'erp_product_variant_id' => 910 + $establishment->id, 'quantity_on_hand' => $amount, 'average_cost' => '2.0000']);
             ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'direction' => 'receivable', 'category' => 'manual', 'amount' => $amount, 'open_amount' => $amount, 'currency' => 'BRL', 'status' => 'open', 'created_at' => now()]);
             ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'amount' => $amount, 'currency' => 'BRL', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted', 'posted_at' => now()]);
-            ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => 9200 + $establishment->id, 'status' => $establishment->id === $allowed->id ? 'draft' : 'authorized', 'idempotency_key' => 'report-fiscal-'.$establishment->id]);
+            $document = ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $establishment->id, 'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => 9200 + $establishment->id, 'status' => $establishment->id === $allowed->id ? 'draft' : 'authorized', 'idempotency_key' => 'report-fiscal-'.$establishment->id]);
+            if ($establishment->id === $denied->id) {
+                $this->attachVerifiedFiscalEvidence($document);
+            }
         }
+        ErpFiscalDocument::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => $allowed->id, 'model' => '55', 'environment' => 'homologation', 'series' => 1, 'number' => 9300, 'status' => 'authorized', 'idempotency_key' => 'report-fiscal-unverified']);
         ErpObligation::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'direction' => 'receivable', 'category' => 'manual', 'amount' => '900.0000', 'open_amount' => '900.0000', 'currency' => 'BRL', 'status' => 'open', 'created_at' => now()]);
         ErpPayment::query()->create(['erp_company_id' => $this->company->id, 'erp_establishment_id' => null, 'amount' => '800.0000', 'currency' => 'BRL', 'method' => 'manual', 'direction' => 'in', 'status' => 'posted', 'posted_at' => now()]);
 
@@ -436,7 +442,7 @@ class ErpEstablishmentScopeTest extends TestCase
         $this->getJson('/api/v1/erp/reports/purchases')->assertOk()->assertJsonPath('data.totals.document_count', 2)->assertJsonPath('data.totals.posted_total', '100.0000');
         $this->getJson('/api/v1/erp/reports/stock')->assertOk()->assertJsonPath('data.totals.balance_lines', 2)->assertJsonPath('data.totals.quantity_on_hand', '100.0000');
         $this->getJson('/api/v1/erp/reports/financial')->assertOk()->assertJsonPath('data.totals.obligations_amount', '100.0000')->assertJsonPath('data.totals.payments_posted_total', '100.0000');
-        $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.draft_count', 1)->assertJsonPath('data.totals.authorized_count', 1);
+        $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.draft_count', 1)->assertJsonPath('data.totals.authorized_count', 1)->assertJsonPath('data.totals.unverified_authorization_count', 1);
         $this->getJson('/api/v1/erp/reports/overview')->assertOk()->assertJsonPath('data.sections.financial.obligations_amount', '100.0000');
         $this->getJson('/api/v1/erp/reports/sales?erp_establishment_id='.$outside->id)->assertUnprocessable();
 
@@ -451,6 +457,7 @@ class ErpEstablishmentScopeTest extends TestCase
         $membershipId = ErpCompanyMembership::query()->where('erp_company_id', $this->company->id)->where('user_id', $member->id)->value('id');
         $this->patchJson('/api/v1/erp/members/'.$membershipId, ['establishment_scope' => 'selected', 'establishment_ids' => [$allowed->id]])->assertOk();
         $this->actingAs($member, 'web');
+        $this->getJson('/api/v1/erp/reports/fiscal')->assertOk()->assertJsonPath('data.totals.draft_count', 1)->assertJsonPath('data.totals.authorized_count', 0)->assertJsonPath('data.totals.unverified_authorization_count', 1);
         $this->getJson('/api/v1/erp/reports/exports/'.$export['id'])->assertStatus(409)->assertJsonPath('code', 'export_requires_regeneration');
         Storage::disk('local')->assertExists($exportRow->storage_path);
     }

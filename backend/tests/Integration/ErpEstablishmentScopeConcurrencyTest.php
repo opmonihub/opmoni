@@ -144,7 +144,8 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
         $ownerSession = $this->login($owner, $company->id);
         $memberSession = $this->login($member, $company->id);
         $baseline = $this->request($this->mutation($memberSession, '/api/v1/erp/quotes', [
-            'body' => ['erp_establishment_id' => $location->id, 'quote_no' => 'scope-race-before-revoke', 'total_amount' => '5.00'],
+            'headers' => ['Idempotency-Key' => 'scope-race-before-revoke'],
+            'body' => ['erp_establishment_id' => $location->id, 'quote_no' => 'scope-race-before-revoke', 'lines' => [['description' => 'Synthetic scope quote', 'quantity' => '1', 'unit_price' => '5.00']]],
         ]));
         $this->assertSame(201, $baseline['status'], json_encode($baseline['body']));
 
@@ -160,7 +161,8 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
             ], 'PATCH') + ['label' => 'task22-owner-narrow', 'ready' => $narrowReady]);
             $this->waitForCompanyLock('task22-owner-narrow', $narrowReady);
             $write = $this->worker($this->mutation($memberSession, '/api/v1/erp/quotes', [
-                'body' => ['erp_establishment_id' => $location->id, 'quote_no' => 'scope-race-after-narrow', 'total_amount' => '7.00'],
+                'headers' => ['Idempotency-Key' => 'scope-race-after-narrow'],
+                'body' => ['erp_establishment_id' => $location->id, 'quote_no' => 'scope-race-after-narrow', 'lines' => [['description' => 'Synthetic denied quote', 'quantity' => '1', 'unit_price' => '7.00']]],
             ]) + ['label' => 'task22-source-write', 'ready' => $writeReady]);
             $this->waitForCompanyLock('task22-source-write', $writeReady);
 
@@ -173,7 +175,8 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
             $this->assertNotSame($narrowed['pid'], $denied['pid']);
             $this->assertDatabaseCount('erp_quotes', 1);
             $this->assertDatabaseMissing('erp_quotes', ['quote_no' => 'scope-race-after-narrow']);
-            $this->assertDatabaseCount('erp_operation_receipts', 0);
+            $this->assertDatabaseCount('erp_operation_receipts', 1);
+            $this->assertDatabaseMissing('erp_operation_receipts', ['key_digest' => hash('sha256', 'scope-race-after-narrow')]);
             $this->assertDatabaseHas('erp_company_memberships', ['id' => $membership->id, 'access_all_establishments' => false]);
             $this->assertDatabaseCount('erp_company_membership_establishments', 0);
         } finally {
@@ -214,6 +217,7 @@ class ErpEstablishmentScopeConcurrencyTest extends TestCase
             'amount' => '10.0000',
             'currency' => 'BRL',
             'method' => 'cash',
+            'direction' => 'in',
             'status' => 'posted',
             'posted_at' => now(),
         ]);

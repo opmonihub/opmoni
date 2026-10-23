@@ -404,7 +404,7 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
     private function fixture(): array
     {
         $company = ErpCompany::factory()->create(['cnpj' => (string) random_int(10000000000000, 99999999999999)]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $document = ErpFiscalDocument::query()->create([
             'erp_company_id' => $company->id,
@@ -453,10 +453,10 @@ class ErpAccountingOutboxConcurrencyTest extends TestCase
     /** @return array{company: ErpCompany, delivery: ErpAccountingDelivery, actor: User} */
     private function handoffFixture(string $storageRoot): array
     {
-        $cnpj = (string) random_int(10000000000000, 99999999999999);
+        $cnpj = fake('pt_BR')->unique()->cnpj(false);
         $accessKey = substr_replace('35251030288513000100550010000090011234567890', $cnpj, 6, 14);
         $company = ErpCompany::factory()->create(['cnpj' => $cnpj]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $cnpj]);
         $office = Account::factory()->create();
         $actor = User::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([

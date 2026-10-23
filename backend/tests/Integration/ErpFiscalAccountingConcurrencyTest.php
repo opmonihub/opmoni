@@ -70,7 +70,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function assertConcurrentDeliveryPublishesSingleOfficeDocument(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $company->id,
@@ -154,7 +154,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function assertDeliveryBlockedWhenDelegationRevoked(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create([
             'erp_company_id' => $company->id,
@@ -244,7 +244,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     public function test_initial_concurrent_office_approvals_create_one_mapping(): void
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
         $client = resolve(CurrentTenant::class)->run($office->id, fn () => Client::factory()->company()->create(['account_id' => $office->id]));
@@ -468,7 +468,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
             Account::whereKey($s['account_id'])->lockForUpdate()->firstOrFail();
             $busy = $this->httpRequest(array_replace_recursive($ownerSession, [
                 'method' => 'POST', 'path' => '/api/v1/erp/accounting-deliveries/'.$s['delivery_id'].'/retry',
-                'headers' => ['X-Company-Id' => (string) $s['company_id']],
+                'headers' => ['X-Company-Id' => (string) $s['company_id'], 'Idempotency-Key' => 'accounting-busy-retry'],
             ]));
             $this->assertSame(503, $busy['status'], json_encode($busy));
             $this->assertSame('accounting_mapping_busy', $busy['body']['code']);
@@ -561,7 +561,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
     private function mappingScenario(): array
     {
         $company = ErpCompany::factory()->create(['cnpj' => $this->uniqueCnpj()]);
-        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id]);
+        $establishment = ErpEstablishment::factory()->create(['erp_company_id' => $company->id, 'cnpj' => $company->cnpj]);
         $office = Account::factory()->create();
         $delegation = ErpOfficeDelegation::factory()->create(['erp_company_id' => $company->id, 'account_id' => $office->id]);
         $client = resolve(CurrentTenant::class)->run($office->id, fn () => Client::factory()->company()->create(['account_id' => $office->id]));
@@ -592,7 +592,7 @@ class ErpFiscalAccountingConcurrencyTest extends TestCase
 
     private function uniqueCnpj(): string
     {
-        return str_pad((string) random_int(1_000_000_000_000_0, 9_999_999_999_999_9), 14, '0', STR_PAD_LEFT);
+        return fake('pt_BR')->unique()->cnpj(false);
     }
 
     /** @param array<string, mixed> $input */

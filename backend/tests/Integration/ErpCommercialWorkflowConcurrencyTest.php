@@ -106,6 +106,9 @@ class ErpCommercialWorkflowConcurrencyTest extends TestCase
         $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
         $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(0, $result['transaction_level']);
+        if ($result['status'] >= 500) {
+            fwrite(STDERR, $process->getErrorOutput());
+        }
 
         return $result;
     }

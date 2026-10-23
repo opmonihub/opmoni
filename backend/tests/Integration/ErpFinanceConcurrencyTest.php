@@ -113,7 +113,7 @@ class ErpFinanceConcurrencyTest extends TestCase
 
     private function worker(array $input): Process
     {
-        $process = new Process([PHP_BINARY, base_path('tests/Integration/ErpFinanceConcurrencyWorker.php')], base_path());
+        $process = new Process([PHP_BINARY, base_path('tests/Integration/ErpFinanceConcurrencyWorker.php')], base_path(), ['ERP_RELEASE_ENABLED' => 'true']);
         $process->setInput(json_encode($input + ['client_ip' => $this->clientIp], JSON_THROW_ON_ERROR));
         $process->setTimeout(30);
         $process->start();
