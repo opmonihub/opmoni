@@ -1,0 +1,41 @@
+{
+  "company": {
+    "bottom": 132,
+    "height": 32,
+    "right": 374,
+    "width": 320,
+    "x": 54,
+    "y": 100
+  },
+  "companyNavigationOverlap": 0,
+  "header": {
+    "bottom": 145,
+    "height": 145,
+    "right": 390,
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "headerClasses": "shrink-0 flex items-center gap-1.5 px-4 sm:px-6 h-auto min-h-(--ui-header-height) py-3",
+  "navigation": {
+    "bottom": 185,
+    "height": 32,
+    "right": 374,
+    "width": 358,
+    "x": 16,
+    "y": 153
+  },
+  "office": {
+    "bottom": 66,
+    "height": 32,
+    "right": 374,
+    "width": 320,
+    "x": 54,
+    "y": 34
+  },
+  "url": "http://localhost:3107/erp/cadastros/produtos",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "factory": true,
+  "header": {
+    "bottom": 64,
+    "height": 64,
+    "left": 0,
+    "right": 63,
+    "top": 0,
+    "width": 63,
+    "x": 0,
+    "y": 0
+  },
+  "links": [
+    {
+      "aria": null,
+      "text": "Visão geral",
+      "title": null
+    },
+    {
+      "aria": null,
+      "text": "Contabilidade",
+      "title": null
+    }
+  ]
+}

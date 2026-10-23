@@ -1,0 +1,48 @@
+▶ ERP mobile shell and contract
+  ✔ keeps the operational native header visible with company/user controls and one sidebar toggle (514.875421ms)
+  ✔ lets every catalog route provide its own single native panel (492.014207ms)
+  ✔ controls active sidebar expansion after mounted route and history changes while preserving manual collapse (309.344304ms)
+  ✔ keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount (207.354147ms)
+  ✔ changes the catalog content key when company or Account context changes (171.780838ms)
+  ✔ disposes the old protected child and mounts a fresh child after selected company context changes (105.461921ms)
+  ✔ lets operational routes retain their own native panel without nesting (210.466009ms)
+  ✔ uses a native panel, page title, context controls and one marked sidebar toggle for catalogs (198.007981ms)
+  ✔ renders overview content inside the ERP layout panel (86.942277ms)
+  ✔ uses ERP layout for a company-only contract route (117.887198ms)
+  ✔ preserves pending contract feedback (86.352789ms)
+  ✔ preserves active contract feedback (21.376278ms)
+  ✔ preserves past_due contract feedback (295.462252ms)
+  ✔ preserves canceled contract feedback (101.230572ms)
+  ✔ offers refresh/retry and retains confirmed contract on refresh failure (88.568007ms)
+  ✔ clears contract state and rejects late replies on company/Account switch (110.520135ms)
+✔ ERP mobile shell and contract (3119.897074ms)
+▶ ERP mobile sidebar navigation focus
+  ✔ closes the menu and focuses the new page trigger only after navigation finishes (773.944193ms)
+  ✔ restores focus after same-page hash navigation, but leaves page transitions to page:finish (101.596427ms)
+✔ ERP mobile sidebar navigation focus (876.79108ms)
+▶ ERP workspace navigation registry
+  ✔ filters catalog destinations by exact read grants and omits empty groups (2.705035ms)
+  ✔ keeps all prior settings destinations while restricting owner and establishment links (90.031934ms)
+  ✔ keeps Empresa reachable from its exact read grant without requiring erp.read (1.596645ms)
+  ✔ keeps owner-only settings hidden for delegated access even when the role says owner (0.475992ms)
+  ✔ shows establishments to delegated readers with the exact index grant (0.386593ms)
+  ✔ keeps an establishments-only direct manager reachable through Configurações (0.489137ms)
+  ✔ uses the subscription read action for the Modules settings destination (0.484788ms)
+  ✔ uses hash child targets and expands the active module for deep links and history (1.862951ms)
+  ✔ omits unusable multi-area modules, retains single-area leaves, and closes only on destination selection (0.679327ms)
+  ✔ keeps narrow import and XML preview grants reachable without broad aggregate module grants (0.623772ms)
+  ✔ gives settings group navigation an active descendant and handles inactive companies safely (0.295199ms)
+✔ ERP workspace navigation registry (101.593864ms)
+▶ ERP workspace shell
+  ✔ erp layout uses WorkspaceContextMenu and company-aware navigation (113.823137ms)
+  ✔ WorkspaceContextMenu separates offices and companies (78.873578ms)
+  ✔ company switch clears cached data like account switch (1.928044ms)
+✔ ERP workspace shell (199.078478ms)
+ℹ tests 32
+ℹ suites 4
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7822.749763
