@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-23",
+  "source_head": "d2763b8",
+  "backend": "Paseo browser tools",
+  "task_tab": "882f8c89-4014-44dd-b72e-d2300896d937",
+  "route": "/erp/cadastros/produtos",
+  "action": "Open Add product and inspect settled create drawer; resize and reopen where required",
+  "submissions": 0,
+  "samples": [
+    {
+      "viewport": { "width": 1280, "height": 800 },
+      "dialog": { "width": 768, "height": 800, "opacity": 1, "background": "rgb(255, 255, 255)" },
+      "body": { "client_height": 654, "scroll_height": 1650 },
+      "label_count": 32,
+      "primary_submit_top_in_viewport": 1651
+    },
+    {
+      "viewport": { "width": 390, "height": 844 },
+      "dialog": { "width": 390, "height": 844, "opacity": 1, "background": "rgb(255, 255, 255)" },
+      "body": { "client_height": 698, "scroll_height": 2766 },
+      "label_count": 32,
+      "primary_submit_top_in_viewport": 2799,
+      "document_horizontal_overflow": false
+    }
+  ],
+  "interpretation": {
+    "confirmed": ["Long editor relative to visible body", "Primary create action below initial viewport"],
+    "not_reproduced": ["Transparency in the settled dialog", "Horizontal document overflow at mobile"],
+    "transition_sampling": "Opening animation samples were excluded; settled measurements waited 120 animation frames. No cause is assigned to the supplied screenshot."
+  },
+  "cleanup": {
+    "task_tab_closed": true,
+    "verified_absent_from_tab_list": true,
+    "user_tabs_untouched": true
+  },
+  "limits": [
+    "No save, edit, archive, seed or configuration application",
+    "No restricted-user browser flow or API mutation",
+    "No dark-mode, 200 percent zoom or complete form-family acceptance in this extension",
+    "No application suite, concurrency suite or live fiscal/provider verification"
+  ]
+}

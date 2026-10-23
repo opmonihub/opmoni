@@ -1,0 +1,54 @@
+{
+  "method": "Node experimental-strip-types with the existing loadAppComposable helper and real erpWorkspaceSidebarItems; direct active viewer fixture. These are local registry probes, not browser or backend authorization tests.",
+  "results": [
+    {
+      "case": "stock-lots-only",
+      "permissions": [
+        "erp.stock.lots.index"
+      ],
+      "sidebar": []
+    },
+    {
+      "case": "finance-payments-only",
+      "permissions": [
+        "erp.payments.index"
+      ],
+      "sidebar": [
+        {
+          "label": "Financeiro",
+          "destinations": [
+            "/erp/financeiro#payments"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "cash-sessions-only",
+      "permissions": [
+        "erp.cash-sessions.index"
+      ],
+      "sidebar": [
+        {
+          "label": "Caixa",
+          "destinations": [
+            "/erp/caixa#sessions"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "settings-establishments-only",
+      "permissions": [
+        "erp.establishments.index"
+      ],
+      "sidebar": [
+        {
+          "label": "Configura\u00e7\u00f5es",
+          "destinations": [
+            "/erp/configuracoes/estabelecimentos"
+          ]
+        }
+      ]
+    }
+  ]
+}

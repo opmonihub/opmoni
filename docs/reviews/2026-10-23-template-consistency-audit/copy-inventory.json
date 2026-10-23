@@ -1,0 +1,2612 @@
+{
+  "method": "Read-only lexical source inventory; not a rendered-text or defect count. Literal description attributes and description/emptyDescription single-quoted object values; dynamic expressions and multiline strings excluded. Threshold >120 Unicode characters is triage only.",
+  "groups": {
+    "pages": {
+      "files": 90,
+      "description_occurrences": 98,
+      "over_120_characters": 6,
+      "entries": [
+        {
+          "path": "frontend/app/pages/acesso-indisponivel.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/admin/assinaturas.vue",
+          "literal_descriptions": [
+            {
+              "line": 181,
+              "text": "Plano e situação comercial de cada conta. Assinaturas inativas permitem leitura e bloqueiam alterações nos dados da conta.",
+              "characters": 122
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/contas.vue",
+          "literal_descriptions": [
+            {
+              "line": 205,
+              "text": "Escritórios e acesso de seus responsáveis.",
+              "characters": 42
+            },
+            {
+              "line": 294,
+              "text": "Administre os dados e o acesso do escritório.",
+              "characters": 45
+            },
+            {
+              "line": 298,
+              "text": "Copie agora e envie ao responsável. Ao fechar, o link não será exibido novamente.",
+              "characters": 81
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/erp/assinaturas.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/admin/erp/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/admin/erp/planos.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/admin/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 104,
+              "text": "Últimos eventos registrados na auditoria.",
+              "characters": 41
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/planos.vue",
+          "literal_descriptions": [
+            {
+              "line": 137,
+              "text": "Limites de usuários, clientes e monitoramentos.",
+              "characters": 47
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/serpro.vue",
+          "literal_descriptions": [
+            {
+              "line": 473,
+              "text": "Informe chave, segredo e um certificado contratante válido para configurar a integração.",
+              "characters": 88
+            },
+            {
+              "line": 530,
+              "text": "Usar o cofre contratante da plataforma no escritório escolhido.",
+              "characters": 63
+            },
+            {
+              "line": 531,
+              "text": "Arquivo dedicado à credencial da plataforma.",
+              "characters": 44
+            },
+            {
+              "line": 549,
+              "text": "Arraste o arquivo ou clique para selecionar",
+              "characters": 43
+            },
+            {
+              "line": 722,
+              "text": "Testa a autenticação no provedor sem sincronizar nada.",
+              "characters": 54
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/suporte.vue",
+          "literal_descriptions": [
+            {
+              "line": 212,
+              "text": "Acesse contas das quais você é membro ou consulte a auditoria.",
+              "characters": 62
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin/usuarios.vue",
+          "literal_descriptions": [
+            {
+              "line": 91,
+              "text": "Pessoas com acesso ao sistema.",
+              "characters": 30
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/admin.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/customers/[documento]/[[situacao]].vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/customers/empresa/[id].vue",
+          "literal_descriptions": [
+            {
+              "line": 608,
+              "text": "O cliente pode ter sido excluído ou o link está incorreto.",
+              "characters": 58
+            },
+            {
+              "line": 981,
+              "text": "Sem ele, as rotinas com a Receita ficam paradas.",
+              "characters": 48
+            },
+            {
+              "line": 1024,
+              "text": "A procuração é concedida no e-CAC e lida aqui. Não há cadastro manual.",
+              "characters": 70
+            },
+            {
+              "line": 1148,
+              "text": "A lista de envio não respondeu. Tente de novo sem sair da ficha.",
+              "characters": 64
+            },
+            {
+              "line": 1158,
+              "text": "Cadastre um destino. O envio de guias usa as linhas de WhatsApp.",
+              "characters": 64
+            },
+            {
+              "line": 1273,
+              "text": "text-muted text-sm text-pretty break-words",
+              "characters": 42
+            },
+            {
+              "line": 1281,
+              "text": "Abertura, certificado e consultas à Receita aparecem aqui.",
+              "characters": 58
+            },
+            {
+              "line": 1334,
+              "text": "A exclusão tira o cliente da carteira e elimina o certificado A1 ativo.",
+              "characters": 71
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/customers/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/customers/painel.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/customers.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/equipe/departamentos.vue",
+          "literal_descriptions": [
+            {
+              "line": 175,
+              "text": "Agrupe a equipe por área.",
+              "characters": 25
+            },
+            {
+              "line": 233,
+              "text": "Crie o primeiro departamento para organizar a equipe.",
+              "characters": 53
+            },
+            {
+              "line": 243,
+              "text": "Ajuste a busca ou limpe o filtro.",
+              "characters": 33
+            },
+            {
+              "line": 293,
+              "text": "O nome vale para toda a conta. Vincule os membros deste departamento.",
+              "characters": 69
+            },
+            {
+              "line": 321,
+              "text": "Selecione um ou mais membros.",
+              "characters": 29
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/equipe/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 143,
+              "text": "Convide novos membros por e-mail.",
+              "characters": 33
+            },
+            {
+              "line": 212,
+              "text": "Os membros da conta aparecem aqui automaticamente.",
+              "characters": 50
+            },
+            {
+              "line": 222,
+              "text": "Ajuste a busca ou limpe o filtro de departamento.",
+              "characters": 49
+            },
+            {
+              "line": 241,
+              "text": "Crie o acesso com nome, e-mail, senha e papel na conta.",
+              "characters": 55
+            },
+            {
+              "line": 255,
+              "text": "Mínimo de 8 caracteres.",
+              "characters": 23
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/equipe.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastro.vue",
+          "literal_descriptions": [
+            {
+              "line": 80,
+              "text": "A plataforma ainda não liberou novos cadastros ERP.",
+              "characters": 51
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/categorias.vue",
+          "literal_descriptions": [
+            {
+              "line": 21,
+              "text": "Organize os produtos em uma hierarquia da própria empresa.",
+              "characters": 58
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/contatos.vue",
+          "literal_descriptions": [
+            {
+              "line": 24,
+              "text": "Clientes e fornecedores comerciais da empresa, separados do portfólio do escritório.",
+              "characters": 84
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/etiquetas.vue",
+          "literal_descriptions": [
+            {
+              "line": 86,
+              "text": "Selecione produtos e variantes, defina as quantidades e confira a impressão.",
+              "characters": 76
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/fiscal.vue",
+          "literal_descriptions": [
+            {
+              "line": 55,
+              "text": "Alíquotas e naturezas de operação por empresa e estabelecimento.",
+              "characters": 64
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/grupos-clientes.vue",
+          "literal_descriptions": [
+            {
+              "line": 22,
+              "text": "Organize contatos de clientes por grupo e ajuste percentual.",
+              "characters": 60
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/importacao.vue",
+          "literal_descriptions": [
+            {
+              "line": 25,
+              "text": "Revise o CSV antes de confirmar. Nenhum cadastro é criado na pré-visualização.",
+              "characters": 78
+            },
+            {
+              "line": 39,
+              "text": "A identificação original foi preservada. Revalide o acesso para consultar o resultado antes de iniciar outra importação.",
+              "characters": 120
+            },
+            {
+              "line": 56,
+              "text": "UTF-8, separado por vírgulas. Até 500 registros e 512 KiB; pré-visualização válida por uma hora.",
+              "characters": 96
+            },
+            {
+              "line": 62,
+              "text": "O arquivo permanece selecionado em caso de falha.",
+              "characters": 49
+            },
+            {
+              "line": 132,
+              "text": "Consulte o resultado ou recarregue a pré-visualização. Se necessário, repita a mesma confirmação: a identificação e as escolhas originais serão mantidas.",
+              "characters": 153
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 16,
+              "text": "Catálogos comerciais e referências fiscais/logísticas da empresa.",
+              "characters": 65
+            },
+            {
+              "line": 31,
+              "text": "Esta empresa ainda não concedeu acesso a um catálogo.",
+              "characters": 53
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/logistica.vue",
+          "literal_descriptions": [
+            {
+              "line": 62,
+              "text": "Transportadoras, veículos e motoristas para operações de transporte.",
+              "characters": 68
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/marcas.vue",
+          "literal_descriptions": [
+            {
+              "line": 20,
+              "text": "Marcas comerciais disponíveis para os produtos da empresa.",
+              "characters": 58
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/precos.vue",
+          "literal_descriptions": [
+            {
+              "line": 54,
+              "text": "Grupos de preço e regras comerciais com valores decimais exatos.",
+              "characters": 64
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/produtos.vue",
+          "literal_descriptions": [
+            {
+              "line": 24,
+              "text": "Mercadorias, serviços e suas variações.",
+              "characters": 39
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/cadastros/unidades.vue",
+          "literal_descriptions": [
+            {
+              "line": 24,
+              "text": "Unidades de medida e fatores de conversão decimal.",
+              "characters": 50
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/caixa/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/compras/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/compras.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Configure moeda, edição de produtos, status e controle de lotes nas compras.",
+              "characters": 76
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/email.vue",
+          "literal_descriptions": [
+            {
+              "line": 79,
+              "text": "Configure o servidor SMTP e os dados do remetente dos e-mails da empresa.",
+              "characters": 73
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/empresa.vue",
+          "literal_descriptions": [
+            {
+              "line": 10,
+              "text": "Mantenha os dados cadastrais, o endereço e os parâmetros fiscais da empresa.",
+              "characters": 76
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/escritorio.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/estabelecimentos.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/membros.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/modulos.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/pontos.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Defina as regras de acúmulo, resgate e validade dos pontos de recompensa.",
+              "characters": 73
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/prefixos.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Defina o prefixo dos códigos SKU dos produtos. Os demais prefixos ainda não têm editor nesta tela.",
+              "characters": 98
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/produto.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Configure a identificação, a classificação e as regras de validade dos produtos.",
+              "characters": 80
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/rotulos.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/sistema.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Defina as preferências do sistema e os valores fiscais padrão da empresa.",
+              "characters": 73
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/sms.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/taxas.vue",
+          "literal_descriptions": [
+            {
+              "line": 10,
+              "text": "Defina os nomes e números de identificação dos impostos usados pela empresa.",
+              "characters": 76
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes/vendas.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Defina os valores padrão de desconto, tributação e inclusão de itens nas vendas.",
+              "characters": 80
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/configuracoes.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/contabilidade/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 8,
+              "text": "Acompanhe documentos fiscais autorizados que foram projetados no histórico do escritório delegado.",
+              "characters": 98
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/contrato.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/estoque/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/financeiro/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/fiscal/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 22,
+              "text": "Contexto de empresa, delegação e navegação compartilhada estão disponíveis. Escritas operacionais permanecem bloqueadas até a ativação comercial.",
+              "characters": 145
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/erp/relatorios/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/erp/vendas/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/fiscal/clientes.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/fiscal/documentos.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/fiscal/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/fiscal/processamento.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/fiscal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/inbox.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/login.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/monitoring/[...slug].vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/monitoring/index.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/monitoring.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/onboarding.vue",
+          "literal_descriptions": [
+            {
+              "line": 43,
+              "text": "Use de 8 a 128 caracteres.",
+              "characters": 26
+            },
+            {
+              "line": 109,
+              "text": "Esses dados serão usados para entrar no Opmoni.",
+              "characters": 47
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/primeiro-acesso.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/selecionar-escritorio.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/settings/certificado.vue",
+          "literal_descriptions": [
+            {
+              "line": 303,
+              "text": "Arquivo .pfx ou .p12 e senha ficam cifrados; a plataforma assina o termo de autorização com este e-CNPJ.",
+              "characters": 104
+            },
+            {
+              "line": 328,
+              "text": "O conteúdo cifrado do e-CNPJ é apagado e fica só o metadado. O termo já assinado continua valendo, mas a plataforma não poderá emitir um novo quando ele vencer.",
+              "characters": 160
+            },
+            {
+              "line": 363,
+              "text": "Arraste o arquivo ou clique para selecionar",
+              "characters": 43
+            },
+            {
+              "line": 397,
+              "text": "O dia do mês em que cada documento é buscado automaticamente pelo Integra Contador. Em branco, o documento não entra na busca automática.",
+              "characters": 137
+            },
+            {
+              "line": 407,
+              "text": "Tente novamente para carregar a agenda existente antes de editar.",
+              "characters": 65
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/settings/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 27,
+              "text": "Nenhuma alteração foi salva. Este formulário é apenas demonstrativo.",
+              "characters": 68
+            },
+            {
+              "line": 57,
+              "text": "Dados fictícios para demonstração. As alterações não são salvas nem alteram seu perfil real.",
+              "characters": 92
+            },
+            {
+              "line": 75,
+              "text": "Will appear on receipts, invoices, and other communication.",
+              "characters": 59
+            },
+            {
+              "line": 88,
+              "text": "Used to sign in, for email receipts and product updates.",
+              "characters": 56
+            },
+            {
+              "line": 102,
+              "text": "Your unique username for logging in and your profile URL.",
+              "characters": 57
+            },
+            {
+              "line": 116,
+              "text": "JPG, GIF or PNG. 1MB Max.",
+              "characters": 25
+            },
+            {
+              "line": 143,
+              "text": "Brief description for your profile. URLs are hyperlinked.",
+              "characters": 57
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/settings/integracoes-erp.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/settings/members.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/settings/notifications.vue",
+          "literal_descriptions": [
+            {
+              "line": 12,
+              "text": "Where can we notify you?",
+              "characters": 24
+            },
+            {
+              "line": 16,
+              "text": "Receive a daily email digest.",
+              "characters": 29
+            },
+            {
+              "line": 20,
+              "text": "Receive desktop notifications.",
+              "characters": 30
+            },
+            {
+              "line": 24,
+              "text": "Receive updates about Nuxt UI.",
+              "characters": 30
+            },
+            {
+              "line": 28,
+              "text": "Receive a weekly digest of news.",
+              "characters": 32
+            },
+            {
+              "line": 32,
+              "text": "Receive a monthly email with all new features and updates.",
+              "characters": 58
+            },
+            {
+              "line": 36,
+              "text": "Receive emails about important updates like security fixes, maintenance, etc.",
+              "characters": 77
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/settings/security.vue",
+          "literal_descriptions": [
+            {
+              "line": 29,
+              "text": "Confirm your current password before setting a new one.",
+              "characters": 55
+            },
+            {
+              "line": 62,
+              "text": "No longer want to use our service? You can delete your account here. This action is not reversible. All information related to this account will be deleted permanently.",
+              "characters": 168
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/settings/whatsapp.vue",
+          "literal_descriptions": [
+            {
+              "line": 401,
+              "text": "O número do escritório que envia os documentos do monitoramento. Um canal por conta, pareado pelo celular do escritório.",
+              "characters": 120
+            },
+            {
+              "line": 486,
+              "text": "A sessão do número pareado é encerrada no gateway e o Disparo de documentos para de funcionar até um novo pareamento.",
+              "characters": 117
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/settings.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/work/calendario.vue",
+          "literal_descriptions": [
+            {
+              "line": 530,
+              "text": "Rotinas geradas com vencimento aparecem aqui.",
+              "characters": 45
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/clientes.vue",
+          "literal_descriptions": [
+            {
+              "line": 486,
+              "text": "A atribuição em massa pode ficar limitada.",
+              "characters": 42
+            },
+            {
+              "line": 554,
+              "text": "Quando houver processos gerados, eles aparecem aqui agrupados por cliente.",
+              "characters": 74
+            },
+            {
+              "line": 563,
+              "text": "Ajuste a busca ou limpe os filtros aplicados.",
+              "characters": 45
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/modelos/[id].vue",
+          "literal_descriptions": [
+            {
+              "line": 400,
+              "text": "Sua função pode ver os modelos, mas só gestores criam ou editam.",
+              "characters": 64
+            },
+            {
+              "line": 487,
+              "text": "A lista de clientes elegíveis aparece depois da criação.",
+              "characters": 56
+            },
+            {
+              "line": 506,
+              "text": "Ajuste regimes, tags ou exceções.",
+              "characters": 33
+            },
+            {
+              "line": 613,
+              "text": "Adicione ao menos uma etapa para o processo gerado.",
+              "characters": 51
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/modelos/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 117,
+              "text": "Os modelos definem as rotinas mensais que geram um processo por cliente.",
+              "characters": 72
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/processos/[id].vue",
+          "literal_descriptions": [
+            {
+              "line": 224,
+              "text": "Este processo ainda não tem tarefas.",
+              "characters": 36
+            },
+            {
+              "line": 281,
+              "text": "Este processo ainda não tem tarefas.",
+              "characters": 36
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/processos/index.vue",
+          "literal_descriptions": [
+            {
+              "line": 645,
+              "text": "Os processos gerados a partir dos modelos aparecem aqui agrupados por processo, cliente e tarefa.",
+              "characters": 97
+            },
+            {
+              "line": 654,
+              "text": "Ajuste a busca ou limpe os filtros aplicados.",
+              "characters": 45
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/pages/work/tarefas.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/pages/work.vue",
+          "literal_descriptions": []
+        }
+      ]
+    },
+    "components": {
+      "files": 144,
+      "description_occurrences": 90,
+      "over_120_characters": 14,
+      "entries": [
+        {
+          "path": "frontend/app/components/AccessLogout.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/AccountMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/CompanyMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/ErrorRetryAlert.vue",
+          "literal_descriptions": [
+            {
+              "line": 26,
+              "text": "Verifique sua conexão e tente novamente.",
+              "characters": 40
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/MetricCard.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/NotificationsSlideover.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/UserMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/WorkspaceContextMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/AddModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 26,
+              "text": "Add a new customer to the database",
+              "characters": 34
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/CertificateModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 47,
+              "text": "A consulta deste cliente entrou na fila para cada fonte habilitada. O que o lote encontrar aparece na tabela de documentos quando ele terminar.",
+              "characters": 143
+            },
+            {
+              "line": 80,
+              "text": "Confira o arquivo e a senha.",
+              "characters": 28
+            },
+            {
+              "line": 144,
+              "text": "Arraste o arquivo ou clique para selecionar",
+              "characters": 43
+            },
+            {
+              "line": 175,
+              "text": "O certificado atual será excluído e precisará ser cadastrado novamente.",
+              "characters": 71
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientCadastroModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 227,
+              "text": "Confira abaixo e confirme para aplicar.",
+              "characters": 39
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientContactModal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/ClientCreateModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 409,
+              "text": "A seleção foi mantida e o cliente continua cadastrado. Tente novamente ou conclua sem associar.",
+              "characters": 95
+            },
+            {
+              "line": 449,
+              "text": "O cliente continua cadastrado. Tente carregar de novo ou conclua sem associar — dá para associar depois pelo Monitoramento.",
+              "characters": 123
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientDeleteModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 63,
+              "text": "O cliente sai da carteira e o certificado A1 ativo será eliminado. Digite o nome exato do cliente para confirmar.",
+              "characters": 113
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientListFilters.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/ClientListMenu.vue",
+          "literal_descriptions": [
+            {
+              "line": 128,
+              "text": "Este atalho fica só com você e abre em Todos.",
+              "characters": 45
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientListToolbar.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/ClientPortfolioEmpty.vue",
+          "literal_descriptions": [
+            {
+              "line": 45,
+              "text": "Não há clientes que correspondam à busca ou aos filtros aplicados. Ajuste os critérios para continuar.",
+              "characters": 102
+            },
+            {
+              "line": 62,
+              "text": "Não há clientes nesta situação. Veja todos os clientes para consultar o restante da carteira.",
+              "characters": 93
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/ClientPortfolioMobileList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/ClientPortfolioTable.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/ClientTags.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/DeleteModal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/DocumentStatus.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/SelectionBar.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/TagsModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 272,
+              "text": "Crie a primeira no catálogo para categorizar a seleção.",
+              "characters": 55
+            },
+            {
+              "line": 281,
+              "text": "Tente outro nome ou crie uma nova no catálogo.",
+              "characters": 46
+            },
+            {
+              "line": 312,
+              "text": "Enter adiciona. A cor vale para todas.",
+              "characters": 38
+            },
+            {
+              "line": 354,
+              "text": "As tags criadas aqui ficam disponíveis para toda a conta.",
+              "characters": 57
+            },
+            {
+              "line": 419,
+              "text": "O nome e a cor valem para todos os clientes que usam esta tag.",
+              "characters": 62
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/BrazilStateHeatmap.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/ClientCompanySwitcher.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/DeadlineAlertPanels.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/PortfolioBarList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/PortfolioDistribution.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/PortfolioDonutChart.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/PortfolioGrowthChart.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/customers/dashboard/PortfolioKpis.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/ColumnMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/FilterMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/FilterPanel.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/FilterPanelBody.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/FilterPanelValue.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/Identity.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/MetaList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/PanelList.vue",
+          "literal_descriptions": [
+            {
+              "line": 20,
+              "text": "Empresas que usam o opmoni.",
+              "characters": 27
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/data-table/PanelTableEmpty.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/RowActionsMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/SortButton.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/data-table/StatusChips.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/equipe/MembersList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpAccountingDeliveries.vue",
+          "literal_descriptions": [
+            {
+              "line": 423,
+              "text": "Peça ao responsável pela empresa acesso de leitura a este histórico.",
+              "characters": 68
+            },
+            {
+              "line": 476,
+              "text": "A atualização falhou. Os dados anteriores foram mantidos até uma nova consulta.",
+              "characters": 79
+            },
+            {
+              "line": 485,
+              "text": "Consulte o recibo usando a mesma chave antes de iniciar outra operação.",
+              "characters": 71
+            },
+            {
+              "line": 521,
+              "text": "O histórico não foi tratado como vazio. Tente atualizar quando a conexão estiver disponível.",
+              "characters": 92
+            },
+            {
+              "line": 531,
+              "text": "Entregas aparecem após uma solicitação autorizada e a confirmação do escritório.",
+              "characters": 80
+            },
+            {
+              "line": 706,
+              "text": "Um administrador do escritório precisa aprovar o vínculo para este estabelecimento e cliente. A empresa não escolhe o cliente nem concede acesso.",
+              "characters": 145
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpAccountingMappingApproval.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCashCloseForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCashMovementForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 44,
+              "text": "Valor positivo, até quatro casas decimais.",
+              "characters": 42
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCashPaymentForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCashSessionForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 85,
+              "text": "Use ponto para separar as casas decimais.",
+              "characters": 41
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCashWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 209,
+              "text": "Aberturas, movimentos e fechamentos com saldos reconciliados pelo servidor.",
+              "characters": 75
+            },
+            {
+              "line": 450,
+              "text": "Esta sessão não possui moeda ou saldo conciliado. Movimentos, pagamentos e fechamento estão indisponíveis.",
+              "characters": 106
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCatalogPageShell.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCatalogPagination.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCommercialDraftForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 377,
+              "text": "Preços, unidade, descontos, impostos e total serão atualizados depois de salvar e consultar o documento autorizado.",
+              "characters": 115
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpCompanyAdministration.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFinanceWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 316,
+              "text": "Obrigações, pagamentos e contas da empresa, com histórico e saldos conciliáveis.",
+              "characters": 80
+            },
+            {
+              "line": 484,
+              "text": "Ajuste a busca ou crie um lançamento.",
+              "characters": 37
+            },
+            {
+              "line": 790,
+              "text": "Documento JSON protegido pela sessão da empresa.",
+              "characters": 48
+            },
+            {
+              "line": 821,
+              "text": "A conta pertence à empresa ERP selecionada.",
+              "characters": 43
+            },
+            {
+              "line": 852,
+              "text": "Lançamento manual sem cobrança automática ou movimento bancário.",
+              "characters": 64
+            },
+            {
+              "line": 884,
+              "text": "Este registro não envia cobrança nem inicia transação bancária.",
+              "characters": 63
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFinancialAccountForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalCertificateForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 95,
+              "text": "Arquivo .p12 ou .pfx, até 2 MiB",
+              "characters": 31
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalConfigurationForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 185,
+              "text": "Selecione um estabelecimento fiscal para carregar os dados do emissor.",
+              "characters": 70
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalDocumentDetail.vue",
+          "literal_descriptions": [
+            {
+              "line": 178,
+              "text": "Este registro legado precisa de revisão antes de novas operações fiscais.",
+              "characters": 73
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalDocumentForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 229,
+              "text": "A emissão permanece bloqueada enquanto o serviço fiscal não estiver disponível. O rascunho pode ser preparado para validação local.",
+              "characters": 131
+            },
+            {
+              "line": 236,
+              "text": "A transmissão em produção continua desabilitada pelas regras atuais.",
+              "characters": 68
+            },
+            {
+              "line": 340,
+              "text": "Informe o fuso real em horas inteiras, entre -11:00 e +12:00. Exemplo: 2026-10-21T14:00:00-03:00.",
+              "characters": 97
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalEventForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalInvalidationForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpFiscalWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 223,
+              "text": "Configuração, emissão e acompanhamento de documentos fiscais vinculados à empresa ativa.",
+              "characters": 88
+            },
+            {
+              "line": 256,
+              "text": "Selecione uma empresa ERP ativa no menu da empresa para acessar o Fiscal.",
+              "characters": 73
+            },
+            {
+              "line": 263,
+              "text": "Seu perfil atual não possui permissão para consultar os recursos fiscais desta empresa.",
+              "characters": 87
+            },
+            {
+              "line": 443,
+              "text": "Os dados fiscais e a numeração são específicos do estabelecimento.",
+              "characters": 66
+            },
+            {
+              "line": 462,
+              "text": "A consulta mostra metadados atuais, mas não prova qual arquivo foi enviado. Confira o estabelecimento e o certificado antes de liberar outra alteração; arquivo e senha não foram guardados.",
+              "characters": 188
+            },
+            {
+              "line": 619,
+              "text": "Esta ação se refere a um documento de produção.",
+              "characters": 47
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpListFooter.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpModuleHub.vue",
+          "literal_descriptions": [
+            {
+              "line": 166,
+              "text": "Solicite ao responsável da empresa a permissão necessária ou troque de empresa.",
+              "characters": 79
+            },
+            {
+              "line": 207,
+              "text": "A listagem ficará disponível quando o backend deste domínio for liberado. Nenhum total foi inventado.",
+              "characters": 101
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpObligationForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 67,
+              "text": "Até quatro casas decimais.",
+              "characters": 26
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPaymentForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 60,
+              "text": "Até quatro casas decimais.",
+              "characters": 26
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPurchaseForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPurchaseOperationRecovery.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPurchaseReturnForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPurchaseWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 463,
+              "text": "Entradas de fornecedor, conferência de XML e devoluções vinculadas ao histórico recebido.",
+              "characters": 89
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpPurchaseXmlPreview.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpReportExportPanel.vue",
+          "literal_descriptions": [
+            {
+              "line": 288,
+              "text": "A solicitação e sua chave estão preservadas nesta aba, inclusive após recarga. Consulte a operação sem repetir a geração. Uma referência manual não concilia esta solicitação.",
+              "characters": 174
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpReportMetrics.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpReportsWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 213,
+              "text": "Os totais abaixo foram confirmados pelo servidor.",
+              "characters": 49
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpSaleDetail.vue",
+          "literal_descriptions": [
+            {
+              "line": 84,
+              "text": "Os dados atuais exigem conciliação. Ações dependentes estão indisponíveis.",
+              "characters": 74
+            },
+            {
+              "line": 90,
+              "text": "Este pedido não reserva estoque. A disponibilidade é conferida ao lançar a venda.",
+              "characters": 81
+            },
+            {
+              "line": 245,
+              "text": "A devolução não estorna o recebimento nem gera reembolso. Qualquer pagamento posterior é uma operação separada no Financeiro.",
+              "characters": 125
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpSaleReturnForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 53,
+              "text": "O servidor calcula o crédito oposto a partir das quantidades restantes. O pagamento original não será estornado nem reembolsado automaticamente.",
+              "characters": 144
+            },
+            {
+              "line": 64,
+              "text": "A situação financeira ou o histórico de origem exige conciliação.",
+              "characters": 65
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpSalesWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 535,
+              "text": "Orçamentos, pedidos, vendas de balcão e devoluções com valores confirmados pelo servidor.",
+              "characters": 89
+            },
+            {
+              "line": 710,
+              "text": "Suas alterações locais foram mantidas. Escolha aplicar essas alterações sobre a revisão atual ou carregar a versão mais recente.",
+              "characters": 128
+            },
+            {
+              "line": 764,
+              "text": "O servidor confirmou esta operação, mas a nova versão autorizada ainda não foi carregada. Continue depois de atualizar o detalhe.",
+              "characters": 129
+            },
+            {
+              "line": 896,
+              "text": "O servidor conferirá estoque e criará a obrigação financeira. A situação fiscal permanece independente.",
+              "characters": 103
+            },
+            {
+              "line": 901,
+              "text": "Pagamento imediato exige permissões independentes de criação e alocação. A venda pode ser lançada como recebível.",
+              "characters": 113
+            },
+            {
+              "line": 940,
+              "text": "Esta ação lança o crédito oposto calculado pelo servidor. O recebimento original e qualquer caixa permanecem inalterados; nenhum reembolso será feito automaticamente.",
+              "characters": 166
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpSettingsSectionForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpStockAdjustmentForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 66,
+              "text": "Até quatro casas decimais.",
+              "characters": 26
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpStockMovementDetail.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpStockTransferDetail.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/ErpStockTransferForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 80,
+              "text": "Quantidade positiva, até quatro casas decimais.",
+              "characters": 47
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/ErpStockWorkspace.vue",
+          "literal_descriptions": [
+            {
+              "line": 281,
+              "text": "Consulte saldos, movimentos e camadas com origem rastreável. Custos desconhecidos permanecem identificados como desconhecidos.",
+              "characters": 126
+            },
+            {
+              "line": 407,
+              "text": "As referências carregadas anteriormente permanecem disponíveis; atualize antes de iniciar uma operação.",
+              "characters": 103
+            },
+            {
+              "line": 421,
+              "text": "A atualização falhou. Os dados abaixo são o último resultado autorizado.",
+              "characters": 72
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpBrandCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCarrierCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCatalogField.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCatalogReferenceSelect.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCatalogResource.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCategoryCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpContactCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpContactNotesPanel.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpCustomerGroupCatalogForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 55,
+              "text": "Pode ser positivo ou negativo.",
+              "characters": 30
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpDiscountRuleCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpDriverCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpOperationNatureCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpPriceGroupCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpProductCatalogForm.vue",
+          "literal_descriptions": [
+            {
+              "line": 603,
+              "text": "Herdar usa a simbologia definida no produto.",
+              "characters": 44
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpTaxRateCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpUnitCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/erp/catalogs/ErpVehicleCatalogForm.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/fiscal/FiscalDocumentSheet.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomeChart.client.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomeChart.server.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomeDateRangePicker.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomePeriodSelect.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomeSales.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/home/HomeStats.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/inbox/InboxList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/inbox/InboxMail.vue",
+          "literal_descriptions": [
+            {
+              "line": 38,
+              "text": "Your email has been sent successfully",
+              "characters": 37
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/AssociateClientsModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 145,
+              "text": "Refine a busca para ver os demais.",
+              "characters": 34
+            },
+            {
+              "line": 154,
+              "text": "A integração acompanha apenas clientes pessoa jurídica que ainda não estão nesta obrigação.",
+              "characters": 91
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/DeclarationDetailModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 200,
+              "text": "Este cliente ainda não tem competências PGDAS na base sincronizada. Dispare uma busca manual ou aguarde a próxima execução.",
+              "characters": 123
+            },
+            {
+              "line": 221,
+              "text": "A consulta de PDFs no Integra Contador é bilhetada. Peça a um administrador ou operador do escritório.",
+              "characters": 102
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/DispatchContactFormModal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/DispatchTrackingPanel.vue",
+          "literal_descriptions": [
+            {
+              "line": 110,
+              "text": "Este cliente ainda não recebeu guia por WhatsApp nesta obrigação.",
+              "characters": 65
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/ManualSearchModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 141,
+              "text": "As linhas entram em \"Processando\" enquanto a busca dura.",
+              "characters": 56
+            },
+            {
+              "line": 232,
+              "text": "Nenhum cliente desta obrigação corresponde à busca.",
+              "characters": 51
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/MessageDetail.vue",
+          "literal_descriptions": [
+            {
+              "line": 133,
+              "text": "A consulta pode ter registrado a ciência. Não repita o envio: o resultado exige verificação antes de qualquer nova ação.",
+              "characters": 120
+            },
+            {
+              "line": 141,
+              "text": "Reconcilie somente as datas confirmadas, sem nova consulta ao provedor. O corpo da mensagem não será recuperado.",
+              "characters": 112
+            },
+            {
+              "line": 149,
+              "text": "A operação foi interrompida antes do envio da consulta de ciência. Corrija o impedimento antes de confirmar novamente.",
+              "characters": 118
+            },
+            {
+              "line": 157,
+              "text": "O Integra Contador avisa: ler uma mensagem caracteriza ciência da intimação, nos termos do art. 23, § 2º, inciso III, do Decreto nº 70.235/1972. Ao abrir a mensagem, a ciência é registrada e o prazo do escritório começa a correr.",
+              "characters": 229
+            },
+            {
+              "line": 177,
+              "text": "Abrir a mensagem registra a ciência em nome do cliente. Peça a um administrador ou operador do escritório.",
+              "characters": 106
+            },
+            {
+              "line": 224,
+              "text": "O provedor devolveu a intimação sem o corpo. A ciência e o prazo acima são o que foi registrado.",
+              "characters": 96
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/monitoring/MessageStubSummary.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/MonitoringSheet.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/MonitoringWhatsAppSendCell.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/MonitoringWhatsAppTrackingCell.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/ObligationActionMenu.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/ObligationCounters.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/monitoring/SendGuidesModal.vue",
+          "literal_descriptions": [
+            {
+              "line": 248,
+              "text": "O cliente não tem guia sincronizada nesta obrigação — o envio fica bloqueado até uma guia existir.",
+              "characters": 98
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/platform/AccountCommercialModal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/settings/MembersList.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkDismissModal.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkGroupStatusSelect.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkReferenceMonthPicker.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkSelectionBar.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkTableSkeleton.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkTarefasBoard.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkTarefasBulkBar.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkTarefasCard.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/WorkTaskStatusSelect.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkCalendarSidebar.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkCalendarTaskChip.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkCalendarTaskDetails.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkCalendarTaskPopover.vue",
+          "literal_descriptions": [
+            {
+              "line": 94,
+              "text": "Informe o motivo. Essa ação registra a dispensa na rotina.",
+              "characters": 58
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkDayColumns.vue",
+          "literal_descriptions": [
+            {
+              "line": 54,
+              "text": "Nenhuma rotina com vencimento neste dia.",
+              "characters": 40
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkMonthGrid.vue",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/components/work/calendar/WorkMonthWeek.vue",
+          "literal_descriptions": []
+        }
+      ]
+    },
+    "utils": {
+      "files": 56,
+      "description_occurrences": 78,
+      "over_120_characters": 21,
+      "entries": [
+        {
+          "path": "frontend/app/utils/accessApiAdmissionQueue.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/adminListFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/adminNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/brazilUfs.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/calendarDates.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/calendarLayout.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/calendarUi.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientFilterPanel.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientListFilterOptions.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientListMenu.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientSelection.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/clientsNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/customerRoutes.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/equipeNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/erpCatalogLabelRenderer.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/erpCompanySettingsFields.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/erpModulesNav.ts",
+          "literal_descriptions": [
+            {
+              "line": 80,
+              "text": "Contas, obrigações e pagamentos com saldos derivados de lançamentos imutáveis.",
+              "characters": 78
+            },
+            {
+              "line": 92,
+              "text": "Cadastre contas ERP separadas do escritório quando a API estiver ativa.",
+              "characters": 71
+            },
+            {
+              "line": 99,
+              "text": "Recebíveis e pagáveis aparecem aqui após lançamentos confirmados.",
+              "characters": 65
+            },
+            {
+              "line": 106,
+              "text": "Alocações e estornos ficam registrados sem apagar histórico.",
+              "characters": 60
+            },
+            {
+              "line": 114,
+              "text": "Caixas registradores e sessões com abertura, movimentos e fechamento reconciliado.",
+              "characters": 82
+            },
+            {
+              "line": 126,
+              "text": "Configure caixas por estabelecimento quando o módulo for liberado.",
+              "characters": 66
+            },
+            {
+              "line": 133,
+              "text": "Sessões abertas e fechadas aparecem com saldo esperado e conferência.",
+              "characters": 69
+            },
+            {
+              "line": 141,
+              "text": "Entradas de fornecedor, prévia de XML e devoluções com confirmação explícita.",
+              "characters": 77
+            },
+            {
+              "line": 153,
+              "text": "Rascunhos e documentos lançados ficam separados por status.",
+              "characters": 59
+            },
+            {
+              "line": 161,
+              "text": "Envie XML de entrada para validar duplicidade antes de confirmar.",
+              "characters": 65
+            },
+            {
+              "line": 168,
+              "text": "Devoluções referenciam quantidades já recebidas.",
+              "characters": 48
+            },
+            {
+              "line": 176,
+              "text": "Saldos, movimentações, ajustes e transferências com política FIFO/LIFO da empresa.",
+              "characters": 82
+            },
+            {
+              "line": 188,
+              "text": "Saldos por estabelecimento e variante aparecem após movimentações.",
+              "characters": 66
+            },
+            {
+              "line": 195,
+              "text": "Histórico imutável com origem e operação de estoque.",
+              "characters": 52
+            },
+            {
+              "line": 202,
+              "text": "Ajustes exigem permissão, motivo e actor registrados.",
+              "characters": 53
+            },
+            {
+              "line": 209,
+              "text": "Transferências balanceiam saída e entrada no mesmo commit.",
+              "characters": 58
+            },
+            {
+              "line": 217,
+              "text": "Orçamentos, pedidos, balcão/POS e devoluções com status fiscal distinto do comercial.",
+              "characters": 85
+            },
+            {
+              "line": 229,
+              "text": "Orçamentos não alteram saldos até confirmação.",
+              "characters": 46
+            },
+            {
+              "line": 236,
+              "text": "Pedidos confirmados preservam quantidades solicitadas.",
+              "characters": 54
+            },
+            {
+              "line": 243,
+              "text": "Vendas lançadas consomem estoque e financeiro no mesmo commit.",
+              "characters": 62
+            },
+            {
+              "line": 250,
+              "text": "Devoluções limitam-se às linhas ainda retornáveis.",
+              "characters": 50
+            },
+            {
+              "line": 258,
+              "text": "Emissão NF-e, NFC-e, CT-e, MDF-e, certificados, eventos e inutilização com estados explícitos.",
+              "characters": 94
+            },
+            {
+              "line": 265,
+              "text": "Rascunhos e autorizadas ficam separadas por status de transmissão.",
+              "characters": 66
+            },
+            {
+              "line": 266,
+              "text": "Contingência exige reconciliação posterior; nunca simula autorização.",
+              "characters": 69
+            },
+            {
+              "line": 267,
+              "text": "Complemento e substituição permanecem ações explícitas.",
+              "characters": 55
+            },
+            {
+              "line": 268,
+              "text": "Encerramento e eventos seguem o modelo de transporte.",
+              "characters": 53
+            },
+            {
+              "line": 269,
+              "text": "Metadados seguros; bytes e senhas nunca entram no navegador.",
+              "characters": 60
+            },
+            {
+              "line": 270,
+              "text": "Histórico append-only de tentativas e retornos.",
+              "characters": 47
+            },
+            {
+              "line": 271,
+              "text": "Faixas inutilizadas com justificativa e permissão.",
+              "characters": 50
+            },
+            {
+              "line": 278,
+              "text": "Entrega de XML autorizado ao escritório delegado, com retry limitado e motivos auditáveis.",
+              "characters": 90
+            },
+            {
+              "line": 290,
+              "text": "Projeções aparecem após commit fiscal autorizado e delegação válida.",
+              "characters": 68
+            },
+            {
+              "line": 298,
+              "text": "Relatórios reconciliados aos ledgers lançados; rascunhos e tentativas fiscais indeterminadas não inflam totais.",
+              "characters": 111
+            },
+            {
+              "line": 305,
+              "text": "Agregados usam snapshots e lançamentos confirmados.",
+              "characters": 51
+            },
+            {
+              "line": 306,
+              "text": "Compras lançadas e devoluções compensatórias entram nos filtros.",
+              "characters": 64
+            },
+            {
+              "line": 307,
+              "text": "Quantidades e custos seguem movimentos registrados.",
+              "characters": 51
+            },
+            {
+              "line": 308,
+              "text": "Recebíveis, pagáveis e aging derivam de obrigações postadas.",
+              "characters": 60
+            },
+            {
+              "line": 309,
+              "text": "Status de autorização separado de rascunhos e indeterminados.",
+              "characters": 61
+            },
+            {
+              "line": 310,
+              "text": "Indicadores combinados respeitam os mesmos filtros de período.",
+              "characters": 62
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/erpWorkspaceNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/filterPanel.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/fiscalClients.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/fiscalDocumentPanel.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/fiscalFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/fiscalNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/fiscalPresentation.ts",
+          "literal_descriptions": [
+            {
+              "line": 86,
+              "text": "Não há cliente cadastrado para consultar. A carteira do escritório começa na tela de clientes.",
+              "characters": 94
+            },
+            {
+              "line": 92,
+              "text": "Nenhum cliente desta carteira tem certificado A1 utilizável hoje. O motivo de cada um está na lista de atenção.",
+              "characters": 111
+            },
+            {
+              "line": 98,
+              "text": "Nenhum documento foi capturado até agora nesta conta, então não há volume por modelo nem série de emissão para mostrar.",
+              "characters": 119
+            },
+            {
+              "line": 124,
+              "text": "Nenhum documento foi capturado até agora nesta conta, e a lista de atenção abaixo diz por que nada chegou ainda.",
+              "characters": 112
+            },
+            {
+              "line": 145,
+              "text": "Nenhum cliente desta carteira tem certificado A1 utilizável hoje, e a lista de atenção abaixo não traz motivo para nenhum deles.",
+              "characters": 128
+            },
+            {
+              "line": 323,
+              "text": "Não há certificado A1 cadastrado para este cliente. Sem ele nenhuma consulta ao fisco acontece, e nada mais sobre a captura dele é observável.",
+              "characters": 142
+            },
+            {
+              "line": 329,
+              "text": "A validade do certificado passou, e captura não roda com certificado vencido. Reenviar o arquivo conserta a validade e, de quebra, a senha que estiver faltando.",
+              "characters": 160
+            },
+            {
+              "line": 335,
+              "text": "O certificado é válido, mas a senha dele não foi guardada. Sem a senha o arquivo não abre, e a captura deste cliente não sai.",
+              "characters": 125
+            },
+            {
+              "line": 341,
+              "text": "A senha guardada não abre o certificado — a cifra pode ter se perdido numa troca de chave da aplicação. O conserto é reenviar o arquivo com a senha certa.",
+              "characters": 154
+            },
+            {
+              "line": 347,
+              "text": "O fisco entregou uma posição e a busca dela acabou. O documento daquela posição não existe aqui e nenhuma captura futura o traz: ele está perdido e o cliente precisa ser avisado.",
+              "characters": 178
+            },
+            {
+              "line": 358,
+              "text": "Uma posição do fisco ficou sem ser buscada porque a volta atrás desta fonte está desligada nesta instalação. Nada está perdido: o cliente continua capturando, a posição está registrada e volta a ser buscada assim que a chave for ligada.",
+              "characters": 236
+            },
+            {
+              "line": 368,
+              "text": "A captura parou por mais de 60 dias. O fisco não gera posições retroativas, então o período perdido não pode ser recuperado continuando a captura.",
+              "characters": 146
+            },
+            {
+              "line": 379,
+              "text": "O fisco bloqueou este CNPJ por consumo indevido, e a consulta volta sozinha quando a janela terminar. O tempo que falta está no item.",
+              "characters": 133
+            },
+            {
+              "line": 385,
+              "text": "A última consulta bem-sucedida já está perto da janela que interrompe o histórico. Ainda dá para voltar a consultar sem perder nada — vale retomá-la agora.",
+              "characters": 155
+            },
+            {
+              "line": 391,
+              "text": "A última consulta terminou em erro. A próxima execução tenta de novo; se o erro persistir, ele fica registrado aqui para o escritório investigar.",
+              "characters": 145
+            },
+            {
+              "line": 433,
+              "text": "Este motivo ainda não tem um texto próprio no painel. O código veio do resumo da API.",
+              "characters": 85
+            },
+            {
+              "line": 518,
+              "text": "Nenhum cliente desta conta está sem certificado, com certificado vencido, senha faltando, ou com captura parada, bloqueada ou em falha.",
+              "characters": 135
+            },
+            {
+              "line": 744,
+              "text": "Nenhuma execução de captura foi registrada até agora, então ainda não há resultado para ler — nem um documento faltando, nem um erro para investigar.",
+              "characters": 149
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/index.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/metaList.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/monitoringModules.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/monitoringNav.ts",
+          "literal_descriptions": [
+            {
+              "line": 78,
+              "text": "Receita bruta acumulada dos últimos 12 meses.",
+              "characters": 45
+            },
+            {
+              "line": 94,
+              "text": "Dívida ativa do microempreendedor.",
+              "characters": 34
+            },
+            {
+              "line": 110,
+              "text": "Entregas da DCTFWeb.",
+              "characters": 20
+            },
+            {
+              "line": 129,
+              "text": "Valores apurados no FGTS Digital.",
+              "characters": 33
+            },
+            {
+              "line": 149,
+              "text": "Parcelas em aberto por programa.",
+              "characters": 32
+            },
+            {
+              "line": 199,
+              "text": "Relatório, certidões e comprovantes.",
+              "characters": 36
+            },
+            {
+              "line": 239,
+              "text": "Mensagens por caixa.",
+              "characters": 20
+            },
+            {
+              "line": 285,
+              "text": "Obrigações acessórias da carteira.",
+              "characters": 34
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/monitoringPresentation.ts",
+          "literal_descriptions": [
+            {
+              "line": 129,
+              "text": "O Integra Contador publica um serviço que devolve estes dados estruturados.",
+              "characters": 75
+            },
+            {
+              "line": 135,
+              "text": "Estes dados saem de outro serviço do provedor, ou de um filtro sobre o assunto de uma mensagem. Não é uma fonte independente.",
+              "characters": 125
+            },
+            {
+              "line": 141,
+              "text": "O catálogo do Integra Contador não publica serviço para esta obrigação. A ausência é da obrigação, não de um cliente: nenhum cliente aparece como pendente por causa dela.",
+              "characters": 170
+            },
+            {
+              "line": 147,
+              "text": "Esta obrigação deixou de ser devida. A IN RFB 2.043/2021 a substituiu por EFD-Reinf e eSocial, e a IN RFB 2.181/2024 adiou isso a 1º/1/2025. Nenhum dos sistemas sucessores é exposto pela integração.",
+              "characters": 198
+            },
+            {
+              "line": 397,
+              "text": "É o certificado digital do escritório (e-CNPJ, arquivo .pfx ou .p12) e a senha que o abre, uma única vez. A partir dele quem monta, assina e renova o termo de autorização é a plataforma — e ninguém da conta assina nada. Sem ele não há termo, e sem termo a integração não fala com o provedor em nome de nenhum cliente.",
+              "characters": 317
+            },
+            {
+              "line": 406,
+              "text": "O termo guardado não serve mais para a plataforma: o provedor ou a vigência o encerraram, e nenhum dos dois se resolve com o documento que já está gravado. Reenvie o e-CNPJ — pode ser o mesmo arquivo — e a emissão do termo novo é da plataforma, sozinha.",
+              "characters": 253
+            },
+            {
+              "line": 521,
+              "text": "O termo já assinado continua valendo e sendo renovado pela plataforma, que reenvia o documento guardado sem precisar do certificado. O que a remoção tira é a emissão de um termo novo — nenhum estado de tela afirma que a integração parou, porque ela não parou.",
+              "characters": 259
+            },
+            {
+              "line": 537,
+              "text": "O termo já está assinado e na mão da plataforma, mas o provedor ainda não respondeu e ele ainda não autoriza nenhuma chamada. A plataforma continua cuidando dele; o que a remoção tira é a emissão de um termo novo.",
+              "characters": 213
+            },
+            {
+              "line": 623,
+              "text": "O e-CNPJ do escritório expira, e é ele que assina o termo. Entregue o novo antes de o antigo expirar: quem monta, assina e renova o termo é a plataforma, e a integração não fica para trás.",
+              "characters": 188
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/pageShell.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/portfolioFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/portfolioLabels.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/serproConnectivityPresentation.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/serproEnablement.ts",
+          "literal_descriptions": [
+            {
+              "line": 22,
+              "text": "Este Account sincroniza clientes com o Integra Contador.",
+              "characters": 56
+            },
+            {
+              "line": 23,
+              "text": "Nenhuma sincronização nova é disparada; o histórico permanece.",
+              "characters": 62
+            },
+            {
+              "line": 41,
+              "text": "Nenhuma sincronização nova será disparada. Execuções e dados já sincronizados permanecem.",
+              "characters": 89
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/serproManualSearch.ts",
+          "literal_descriptions": [
+            {
+              "line": 13,
+              "text": "Baixa todas as leituras que o documento publica.",
+              "characters": 48
+            },
+            {
+              "line": 17,
+              "text": "Consulta apenas se a guia está paga, sem baixar os demais campos.",
+              "characters": 65
+            }
+          ]
+        },
+        {
+          "path": "frontend/app/utils/serproSchedules.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/settingsNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/sidebarNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/taxId.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/whatsappChannelPresentation.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/whatsappDispatch.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workCalendar.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workClientesFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workClientesSelection.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workDerivedStatus.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workFacetFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workGroupedTable.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workNav.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workProcessosFilters.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workProcessosSelection.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workReferenceMonth.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workSelection.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workSortableHeader.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workTableFormat.ts",
+          "literal_descriptions": []
+        },
+        {
+          "path": "frontend/app/utils/workTarefasFilters.ts",
+          "literal_descriptions": []
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "source": "/home/obsidian/dev/opmoni",
+  "head": "f5f2726cf2880dd12c53c503a3e1ea526f7b8495",
+  "status": " M frontend/app/components/WorkspaceContextMenu.vue\n M frontend/app/layouts/default.vue\n M frontend/app/layouts/erp.vue\n M frontend/app/utils/erpWorkspaceNav.ts\n M frontend/nuxt.config.ts\n M frontend/tests/erpMobileShell.test.ts\n M frontend/tests/erpWorkspaceNav.test.ts\n M frontend/tests/erpWorkspaceShell.test.ts\n?? frontend/tests/workspaceContextMenu.test.ts\n",
+  "scope": "Read-only source audit; isolated snapshots include current uncommitted frontend sources and .dashboard reference."
+}

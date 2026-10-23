@@ -1,0 +1,910 @@
+{
+  "auditDate": "2026-10-23",
+  "backend": "Paseo browser_*",
+  "taskOwnedTab": "70a69c90-d1fd-41d5-bb67-e0b54b5f8bf6",
+  "viewports": {
+    "desktop": [
+      1366,
+      900
+    ],
+    "mobile": [
+      390,
+      844
+    ]
+  },
+  "records": [
+    {
+      "url": "/erp/configuracoes/empresa",
+      "viewport": [
+        390,
+        844
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Configurações da empresa",
+          "width": 201,
+          "height": 24,
+          "x": 54,
+          "y": 20
+        },
+        {
+          "tag": "DIV",
+          "text": "Dados da empresa",
+          "width": 343,
+          "height": 24,
+          "x": 16,
+          "y": -41
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Mantenha os dados cadastrais, o endereço e os parâmetros fiscais da empresa.",
+          "fontSize": "15px",
+          "width": 343,
+          "height": 45,
+          "x": 16,
+          "y": -13
+        }
+      ],
+      "navigations": [
+        {
+          "label": null,
+          "text": "EmpresaOperaçãoSistemaAdministração",
+          "justify": "space-between",
+          "wrap": "wrap",
+          "width": 366,
+          "height": 102,
+          "x": 12,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Empresa",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 130,
+              "height": 32,
+              "x": 12,
+              "y": 72
+            },
+            {
+              "text": "Operação",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 135,
+              "height": 32,
+              "x": 243,
+              "y": 72
+            },
+            {
+              "text": "Sistema",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 125,
+              "height": 32,
+              "x": 12,
+              "y": 126
+            },
+            {
+              "text": "Administração",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 167,
+              "height": 32,
+              "x": 211,
+              "y": 126
+            }
+          ]
+        }
+      ],
+      "fieldCount": 35,
+      "rawFormControls": 8,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/settings",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Settings",
+          "width": 64,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "DIV",
+          "text": "Perfil (demonstração)",
+          "width": 320,
+          "height": 24,
+          "x": 467,
+          "y": 161
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Dados fictícios para demonstração. As alterações não são salvas nem alteram seu perfil real.",
+          "fontSize": "15px",
+          "width": 320,
+          "height": 68,
+          "x": 467,
+          "y": 189
+        },
+        {
+          "text": "Will appear on receipts, invoices, and other communication.",
+          "fontSize": "14px",
+          "width": 383,
+          "height": 20,
+          "x": 491,
+          "y": 317
+        },
+        {
+          "text": "Used to sign in, for email receipts and product updates.",
+          "fontSize": "14px",
+          "width": 357,
+          "height": 20,
+          "x": 491,
+          "y": 390
+        },
+        {
+          "text": "Your unique username for logging in and your profile URL.",
+          "fontSize": "14px",
+          "width": 374,
+          "height": 20,
+          "x": 491,
+          "y": 463
+        },
+        {
+          "text": "JPG, GIF or PNG. 1MB Max.",
+          "fontSize": "14px",
+          "width": 172,
+          "height": 20,
+          "x": 491,
+          "y": 536
+        },
+        {
+          "text": "Brief description for your profile. URLs are hyperlinked.",
+          "fontSize": "14px",
+          "width": 221,
+          "height": 40,
+          "x": 491,
+          "y": 609
+        }
+      ],
+      "navigations": [
+        {
+          "label": null,
+          "text": "GeneralMembersNotificationsSecurityCertificado do escritórioCanal WhatsAppIntegração ERP",
+          "justify": "space-between",
+          "wrap": "nowrap",
+          "width": 1086,
+          "height": 48,
+          "x": 260,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "General",
+              "role": null,
+              "expanded": null,
+              "href": "/settings",
+              "width": 98,
+              "height": 32,
+              "x": 260,
+              "y": 72
+            },
+            {
+              "text": "Members",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/members",
+              "width": 108,
+              "height": 32,
+              "x": 358,
+              "y": 72
+            },
+            {
+              "text": "Notifications",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/notifications",
+              "width": 130,
+              "height": 32,
+              "x": 466,
+              "y": 72
+            },
+            {
+              "text": "Security",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/security",
+              "width": 102,
+              "height": 32,
+              "x": 595,
+              "y": 72
+            },
+            {
+              "text": "Certificado do escritório",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/certificado",
+              "width": 204,
+              "height": 32,
+              "x": 697,
+              "y": 72
+            },
+            {
+              "text": "Canal WhatsApp",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/whatsapp",
+              "width": 155,
+              "height": 32,
+              "x": 900,
+              "y": 72
+            },
+            {
+              "text": "Integração ERP",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/integracoes-erp",
+              "width": 147,
+              "height": 32,
+              "x": 1056,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 5,
+      "rawFormControls": 1,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/erp/financeiro",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Financeiro",
+          "width": 79,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "H2",
+          "text": "Obrigações",
+          "width": 97,
+          "height": 28,
+          "x": 264,
+          "y": 181
+        }
+      ],
+      "descriptions": [],
+      "navigations": [
+        {
+          "label": "Áreas financeiras",
+          "text": "ContasObrigaçõesPagamentos",
+          "justify": "space-between",
+          "wrap": "nowrap",
+          "width": 1086,
+          "height": 48,
+          "x": 260,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Contas",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/financeiro#accounts",
+              "width": 66,
+              "height": 32,
+              "x": 260,
+              "y": 72
+            },
+            {
+              "text": "Obrigações",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/financeiro#obligations",
+              "width": 95,
+              "height": 32,
+              "x": 326,
+              "y": 72
+            },
+            {
+              "text": "Pagamentos",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/financeiro#payments",
+              "width": 101,
+              "height": 32,
+              "x": 421,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 7,
+      "rawFormControls": 4,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/erp/relatorios",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Relatórios",
+          "width": 77,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "H2",
+          "text": "Exportação privada",
+          "width": 1078,
+          "height": 24,
+          "x": 264,
+          "y": 302
+        }
+      ],
+      "descriptions": [],
+      "navigations": [
+        {
+          "label": null,
+          "text": "VendasComprasEstoqueFinanceiroFiscalIntegrado",
+          "justify": "space-between",
+          "wrap": "nowrap",
+          "width": 1086,
+          "height": 48,
+          "x": 260,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Vendas",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#sales",
+              "width": 68,
+              "height": 32,
+              "x": 260,
+              "y": 72
+            },
+            {
+              "text": "Compras",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#purchases",
+              "width": 79,
+              "height": 32,
+              "x": 328,
+              "y": 72
+            },
+            {
+              "text": "Estoque",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#stock",
+              "width": 74,
+              "height": 32,
+              "x": 407,
+              "y": 72
+            },
+            {
+              "text": "Financeiro",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#finance",
+              "width": 89,
+              "height": 32,
+              "x": 480,
+              "y": 72
+            },
+            {
+              "text": "Fiscal",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#fiscal",
+              "width": 59,
+              "height": 32,
+              "x": 569,
+              "y": 72
+            },
+            {
+              "text": "Integrado",
+              "role": null,
+              "expanded": null,
+              "href": "/erp/relatorios#dashboard",
+              "width": 83,
+              "height": 32,
+              "x": 628,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 6,
+      "rawFormControls": 2,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/fiscal/processamento",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Painel",
+          "width": 47,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "H1",
+          "text": "Processamento fiscal",
+          "width": 202,
+          "height": 28,
+          "x": 256,
+          "y": 129
+        }
+      ],
+      "descriptions": [],
+      "navigations": [
+        {
+          "label": null,
+          "text": "PainelClientesDocumentos",
+          "justify": "space-between",
+          "wrap": "nowrap",
+          "width": 315,
+          "height": 48,
+          "x": 260,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Painel",
+              "role": null,
+              "expanded": null,
+              "href": "/fiscal",
+              "width": 87,
+              "height": 32,
+              "x": 260,
+              "y": 72
+            },
+            {
+              "text": "Clientes",
+              "role": null,
+              "expanded": null,
+              "href": "/fiscal/clientes",
+              "width": 100,
+              "height": 32,
+              "x": 347,
+              "y": 72
+            },
+            {
+              "text": "Documentos",
+              "role": null,
+              "expanded": null,
+              "href": "/fiscal/documentos",
+              "width": 128,
+              "height": 32,
+              "x": 447,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 0,
+      "rawFormControls": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/settings",
+      "viewport": [
+        390,
+        844
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Settings",
+          "width": 64,
+          "height": 24,
+          "x": 54,
+          "y": 20
+        },
+        {
+          "tag": "DIV",
+          "text": "Perfil (demonstração)",
+          "width": 343,
+          "height": 24,
+          "x": 16,
+          "y": 144
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Dados fictícios para demonstração. As alterações não são salvas nem alteram seu perfil real.",
+          "fontSize": "15px",
+          "width": 343,
+          "height": 45,
+          "x": 16,
+          "y": 172
+        },
+        {
+          "text": "Will appear on receipts, invoices, and other communication.",
+          "fontSize": "14px",
+          "width": 311,
+          "height": 40,
+          "x": 32,
+          "y": 317
+        },
+        {
+          "text": "Used to sign in, for email receipts and product updates.",
+          "fontSize": "14px",
+          "width": 311,
+          "height": 40,
+          "x": 32,
+          "y": 462
+        },
+        {
+          "text": "Your unique username for logging in and your profile URL.",
+          "fontSize": "14px",
+          "width": 311,
+          "height": 40,
+          "x": 32,
+          "y": 607
+        },
+        {
+          "text": "JPG, GIF or PNG. 1MB Max.",
+          "fontSize": "14px",
+          "width": 311,
+          "height": 20,
+          "x": 32,
+          "y": 752
+        },
+        {
+          "text": "Brief description for your profile. URLs are hyperlinked.",
+          "fontSize": "14px",
+          "width": 311,
+          "height": 40,
+          "x": 32,
+          "y": 881
+        }
+      ],
+      "navigations": [
+        {
+          "label": null,
+          "text": "GeneralMembersNotificationsSecurityCertificado do escritórioCanal WhatsAppIntegração ERP",
+          "justify": "space-between",
+          "wrap": "nowrap",
+          "width": 942,
+          "height": 48,
+          "x": 12,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "General",
+              "role": null,
+              "expanded": null,
+              "href": "/settings",
+              "width": 98,
+              "height": 32,
+              "x": 12,
+              "y": 72
+            },
+            {
+              "text": "Members",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/members",
+              "width": 108,
+              "height": 32,
+              "x": 110,
+              "y": 72
+            },
+            {
+              "text": "Notifications",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/notifications",
+              "width": 130,
+              "height": 32,
+              "x": 218,
+              "y": 72
+            },
+            {
+              "text": "Security",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/security",
+              "width": 102,
+              "height": 32,
+              "x": 347,
+              "y": 72
+            },
+            {
+              "text": "Certificado do escritório",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/certificado",
+              "width": 204,
+              "height": 32,
+              "x": 449,
+              "y": 72
+            },
+            {
+              "text": "Canal WhatsApp",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/whatsapp",
+              "width": 155,
+              "height": 32,
+              "x": 652,
+              "y": 72
+            },
+            {
+              "text": "Integração ERP",
+              "role": null,
+              "expanded": null,
+              "href": "/settings/integracoes-erp",
+              "width": 147,
+              "height": 32,
+              "x": 808,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 5,
+      "rawFormControls": 1,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/erp/vendas",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Vendas",
+          "width": 56,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "H1",
+          "text": "Orçamentos",
+          "width": 103,
+          "height": 28,
+          "x": 264,
+          "y": 225
+        }
+      ],
+      "descriptions": [],
+      "navigations": [
+        {
+          "label": "Áreas de vendas",
+          "text": "OrçamentosPedidosVendas / balcãoDevoluções",
+          "justify": "normal",
+          "wrap": "nowrap",
+          "width": 1078,
+          "height": 28,
+          "x": 264,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Orçamentos",
+              "role": null,
+              "expanded": null,
+              "href": null,
+              "width": 88,
+              "height": 28,
+              "x": 264,
+              "y": 64
+            },
+            {
+              "text": "Pedidos",
+              "role": null,
+              "expanded": null,
+              "href": null,
+              "width": 65,
+              "height": 28,
+              "x": 360,
+              "y": 64
+            },
+            {
+              "text": "Vendas / balcão",
+              "role": null,
+              "expanded": null,
+              "href": null,
+              "width": 109,
+              "height": 28,
+              "x": 433,
+              "y": 64
+            },
+            {
+              "text": "Devoluções",
+              "role": null,
+              "expanded": null,
+              "href": null,
+              "width": 85,
+              "height": 28,
+              "x": 550,
+              "y": 64
+            }
+          ]
+        }
+      ],
+      "fieldCount": 1,
+      "rawFormControls": 0,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/erp/configuracoes/empresa",
+      "viewport": [
+        1366,
+        900
+      ],
+      "headings": [
+        {
+          "tag": "H1",
+          "text": "Configurações da empresa",
+          "width": 201,
+          "height": 24,
+          "x": 302,
+          "y": 20
+        },
+        {
+          "tag": "DIV",
+          "text": "Dados da empresa",
+          "width": 408,
+          "height": 24,
+          "x": 372,
+          "y": 137
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Mantenha os dados cadastrais, o endereço e os parâmetros fiscais da empresa.",
+          "fontSize": "15px",
+          "width": 408,
+          "height": 45,
+          "x": 372,
+          "y": 165
+        }
+      ],
+      "navigations": [
+        {
+          "label": null,
+          "text": "EmpresaOperaçãoSistemaAdministração",
+          "justify": "space-between",
+          "wrap": "wrap",
+          "width": 1086,
+          "height": 48,
+          "x": 260,
+          "y": 64,
+          "buttons": [
+            {
+              "text": "Empresa",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 130,
+              "height": 32,
+              "x": 260,
+              "y": 72
+            },
+            {
+              "text": "Operação",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 135,
+              "height": 32,
+              "x": 566,
+              "y": 72
+            },
+            {
+              "text": "Sistema",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 125,
+              "height": 32,
+              "x": 877,
+              "y": 72
+            },
+            {
+              "text": "Administração",
+              "role": null,
+              "expanded": "false",
+              "href": null,
+              "width": 167,
+              "height": 32,
+              "x": 1179,
+              "y": 72
+            }
+          ]
+        }
+      ],
+      "fieldCount": 35,
+      "rawFormControls": 8,
+      "horizontalOverflow": false
+    },
+    {
+      "url": "/erp/fiscal#certificates",
+      "viewport": [
+        1366,
+        900
+      ],
+      "tabs": [],
+      "sidebarActive": [
+        {
+          "text": "Certificados",
+          "href": "/erp/fiscal#certificates"
+        }
+      ],
+      "headings": [
+        "Fiscal",
+        "Documentos fiscais"
+      ]
+    },
+    {
+      "url": "/erp/fiscal#certificates",
+      "selectedButtons": [],
+      "buttons": [
+        {
+          "text": "Documentos",
+          "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-xs gap-1.5 text-inverted bg-primary hover:bg-primary/75 active:bg-primary/75 disabled:bg-primary aria-disabled:bg-primary outline-primary/25 focus-visible:outline-3"
+        },
+        {
+          "text": "Configuração",
+          "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-xs gap-1.5 ring ring-inset ring-accented text-default bg-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted"
+        },
+        {
+          "text": "Certificados",
+          "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-xs gap-1.5 ring ring-inset ring-accented text-default bg-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted"
+        },
+        {
+          "text": "Eventos",
+          "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-xs gap-1.5 ring ring-inset ring-accented text-default bg-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted"
+        },
+        {
+          "text": "Inutilizações",
+          "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-xs gap-1.5 ring ring-inset ring-accented text-default bg-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Read-only page navigation and DOM measurements; no save, transmission, form submission, or mutation button was used.",
+    "Initial /erp/vendas capture timed out once; a bounded later retry succeeded.",
+    "getClientRects-based collection can include offscreen content inside scroll containers. Negative or large y coordinates do not establish viewport visibility.",
+    "Office settings toolbar exceeds the viewport but its existing DashboardToolbar ancestor scrolls horizontally: no document overflow or unreachable-tab claim.",
+    "Fiscal processing empty/short state had no clipping; populated-list scrolling remains unverified.",
+    "Raw native form control counts can include Reka implementation controls and are not evidence of custom controls by themselves.",
+    "No browser overlay, local critique server, external-provider acceptance or full WCAG audit was performed."
+  ]
+}

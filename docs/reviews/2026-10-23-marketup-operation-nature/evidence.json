@@ -1,0 +1,313 @@
+{
+  "recorded_on": "2026-10-23",
+  "requested_focus": "Backend functionality and ideas; retain the existing Opmoni implementation and template. UI was inspected to discover behavior, not as a redesign target.",
+  "source_url": "https://prontofarmamedicamentos12.marketup.com/index.html#/transaction_nature",
+  "source_backend_visibility": "Client-rendered state, DOM and resource timing only; no server code, authenticated API bodies, database or write verification.",
+  "opmoni_source_commit": "d2763b85220f314f920d31a57ef9a4f8724e2645",
+  "browser": {
+    "backend": "Paseo browser_*",
+    "reused_user_tab": true,
+    "created_tabs": 0,
+    "returned_route": "#/transaction_nature",
+    "returned_viewport": {
+      "width": 1046,
+      "height": 612
+    }
+  },
+  "list": {
+    "records": 18,
+    "protected_delete_controls": 16,
+    "enabled_delete_controls": 2,
+    "note": "Disabled controls prove client behavior only, not server delete enforcement."
+  },
+  "standard_nature": {
+    "loaded": true,
+    "flags": {
+      "isSystem": true,
+      "isStockMovement": false,
+      "isWithinState": true,
+      "isOwnEmitter": true,
+      "isActive": true,
+      "operationType": 2
+    },
+    "cfops": {
+      "count": 17,
+      "mainCount": 1,
+      "firstIsMain": false,
+      "metadataKeys": [
+        "TransactionNatureCfopID",
+        "TaxCfopID",
+        "TransactionNatureID",
+        "TransactionNatureName",
+        "InstallID",
+        "IsMain",
+        "Cfop",
+        "IsSystem",
+        "ShowNFCe",
+        "ShowCFe",
+        "IsCfopST",
+        "IsCfopSale",
+        "TransactionNatureTaxCfopID",
+        "TaxCfopCode",
+        "Name",
+        "IsDevolutionCFOP"
+      ]
+    },
+    "general_fields": [
+      {
+        "model": "controller.currentTransactionNature.Code",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.Name",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.Description",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.OperationTypeID",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.IsActive",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.IsWithinState",
+        "disabled": true
+      },
+      {
+        "model": "controller.currentTransactionNature.IsOwnEmitter",
+        "disabled": true
+      }
+    ]
+  },
+  "custom_nature": {
+    "loaded": true,
+    "flags": {
+      "isSystem": false,
+      "isStockMovement": false,
+      "isWithinState": true,
+      "isOwnEmitter": false,
+      "isActive": true,
+      "operationType": 2
+    },
+    "cfop_count": 1,
+    "default_count": 1,
+    "general_fields": [
+      {
+        "model": "controller.currentTransactionNature.Code",
+        "disabled": false,
+        "readOnly": false
+      },
+      {
+        "model": "controller.currentTransactionNature.Name",
+        "disabled": false,
+        "readOnly": false
+      },
+      {
+        "model": "controller.currentTransactionNature.Description",
+        "disabled": false,
+        "readOnly": false
+      },
+      {
+        "model": "controller.currentTransactionNature.OperationTypeID",
+        "disabled": false
+      },
+      {
+        "model": "controller.currentTransactionNature.IsActive",
+        "disabled": false,
+        "readOnly": false
+      },
+      {
+        "model": "controller.currentTransactionNature.IsWithinState",
+        "disabled": false,
+        "readOnly": false
+      },
+      {
+        "model": "controller.currentTransactionNature.IsOwnEmitter",
+        "disabled": false,
+        "readOnly": false
+      }
+    ],
+    "extra_stock_controls": []
+  },
+  "client_projection": {
+    "nature_fields": [
+      "TransactionNatureID",
+      "Code",
+      "Name",
+      "Description",
+      "OperationTypeID",
+      "OperationType",
+      "IsActive",
+      "ActiveValue",
+      "IsWithinState",
+      "IsOwnEmitter",
+      "IsSystem",
+      "Origin",
+      "IsStockMovement",
+      "CfopList",
+      "CfopItemList"
+    ],
+    "collections": {
+      "CfopList": {
+        "length": 17,
+        "itemKeys": [
+          "TransactionNatureCfopID",
+          "TaxCfopID",
+          "TransactionNatureID",
+          "TransactionNatureName",
+          "InstallID",
+          "IsMain",
+          "Cfop",
+          "IsSystem",
+          "ShowNFCe",
+          "ShowCFe",
+          "IsCfopST",
+          "IsCfopSale",
+          "TransactionNatureTaxCfopID",
+          "TaxCfopCode",
+          "Name",
+          "IsDevolutionCFOP"
+        ]
+      },
+      "CfopItemList": {
+        "length": 0,
+        "itemKeys": []
+      }
+    },
+    "note": "Field names and collection shapes observed in the AngularJS controller; not an assertion about database tables or constraints."
+  },
+  "new_draft": {
+    "general_fields": [
+      {
+        "model": "controller.currentTransactionNature.Code",
+        "tag": "INPUT",
+        "type": "text",
+        "checked": false,
+        "disabled": false,
+        "required": false
+      },
+      {
+        "model": "controller.currentTransactionNature.Name",
+        "tag": "INPUT",
+        "type": "text",
+        "checked": false,
+        "disabled": false,
+        "required": true
+      },
+      {
+        "model": "controller.currentTransactionNature.Description",
+        "tag": "INPUT",
+        "type": "text",
+        "checked": false,
+        "disabled": false,
+        "required": false
+      },
+      {
+        "model": "controller.currentTransactionNature.OperationTypeID",
+        "tag": "SELECT",
+        "type": "select-one",
+        "disabled": false,
+        "required": true
+      },
+      {
+        "model": "controller.currentTransactionNature.IsActive",
+        "tag": "INPUT",
+        "type": "checkbox",
+        "checked": false,
+        "disabled": false,
+        "required": false
+      },
+      {
+        "model": "controller.currentTransactionNature.IsWithinState",
+        "tag": "INPUT",
+        "type": "checkbox",
+        "checked": false,
+        "disabled": false,
+        "required": false
+      },
+      {
+        "model": "controller.currentTransactionNature.IsOwnEmitter",
+        "tag": "INPUT",
+        "type": "checkbox",
+        "checked": false,
+        "disabled": false,
+        "required": false
+      }
+    ],
+    "cfop_count": 0,
+    "exception_count": 0,
+    "operation_type_initially_unselected": true,
+    "persisted_defaults_verified": false
+  },
+  "product_exceptions": {
+    "separate_tab": true,
+    "cfop_selector_model": "controller.currentCfop",
+    "product_selector_model": "controller.currentCfopItem.Item",
+    "existing_count_in_standard_nature": 0,
+    "empty_copy": "Não foram encontrados registros.",
+    "association_added": false,
+    "persistence_or_precedence_verified": false
+  },
+  "cfop_autocomplete": {
+    "query": "5102",
+    "observed_display": "[5102] Venda de mercadoria adquirida ou recebida de terceiros",
+    "listbox_role": "listbox",
+    "item_selected": false,
+    "association_added": false
+  },
+  "filter_panel": {
+    "text_search_placeholder": "Buscar termo",
+    "criteria": [
+      "Status",
+      "Código",
+      "TP. Operação"
+    ],
+    "query_applied": false
+  },
+  "observed_api_resources": [
+    {
+      "host": "api-erp.marketup.com",
+      "path": "/v1/TransactionNature/GetPagedList",
+      "initiatorType": "xmlhttprequest"
+    },
+    {
+      "host": "api-erp.marketup.com",
+      "path": "/v1/TransactionNature/Get",
+      "initiatorType": "xmlhttprequest"
+    },
+    {
+      "host": "api-erp.marketup.com",
+      "path": "/v1/Cfop/List",
+      "initiatorType": "xmlhttprequest"
+    },
+    {
+      "host": "api-erp.marketup.com",
+      "path": "/v1/TransactionNature/GetCfopItemPagedList",
+      "initiatorType": "xmlhttprequest"
+    }
+  ],
+  "api_limits": "Resource Timing identifies loaded API paths; it does not expose HTTP methods, authorization checks, response statuses, payloads, mutation semantics or persistence guarantees.",
+  "verification_limits": [
+    "No business record saved, deleted, activated or imported by this analysis.",
+    "No fiscal issuance or transmission attempted.",
+    "No server authorization, persistence, concurrency or tax correctness test.",
+    "Screenshots viewed for inspection; raw authenticated screenshots and payloads not included in the repository."
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://suporte.marketup.com/hc/pt-br/articles/208147693-EMITA-UMA-NOTA-OU-CUPOM-FISCAL-COM-MAIS-DE-UM-CFOP",
+      "supports": "Default CFOP, per-product exceptions, explicit Save and PDV synchronization."
+    },
+    {
+      "id": "S2",
+      "url": "https://suporte.marketup.com/hc/pt-br/articles/37648249374484-FISCAL-Como-usar-a-nova-tela-de-emiss%C3%A3o-para-notas-fiscais",
+      "supports": "Operation nature and default CFOP are separate inputs in fiscal preparation; saved note precedes issuance."
+    }
+  ]
+}
