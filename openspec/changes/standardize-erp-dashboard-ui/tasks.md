@@ -36,10 +36,10 @@
 
 **Interfaces:** preserve sidebar/context selection and all navigation helper signatures. Produce only a correctly sized ERP sidebar host; no shared context component API change.
 
-- [ ] 1.1 Prepare a suitable isolated worktree and implementation branch, make the planning/audit artifacts available there, and verify ignore rules, dirty files, source revision, and runtime mounts. Run the four existing suites listed above and changed-path lint as the baseline; record failures without resetting data or unrelated work.
-- [ ] 1.2 Reproduce the office/company overlap in the browser before editing and record header/control/navigation rectangles; verify the reproduction matches audit D01 rather than relying on a stubbed renderer to prove geometry.
-- [ ] 1.3 Override the ERP sidebar header with `h-auto min-h-(--ui-header-height) py-3`, retaining native horizontal padding, collapse persistence, footer, mobile menu, and selection behavior; verify both controls fit inside the header and do not intersect navigation within a 1px tolerance.
-- [ ] 1.4 Run the four focused suites and `pnpm --dir frontend exec eslint app/layouts/erp.vue`; verify expanded/collapsed desktop, company-only, office-plus-company, long-name, and mobile navigation plus an unchanged office-shell sample. Retain before/after evidence and checkpoint only the accepted file set.
+- [x] 1.1 Prepare a suitable isolated worktree and implementation branch, make the planning/audit artifacts available there, and verify ignore rules, dirty files, source revision, and runtime mounts. Run the four existing suites listed above and changed-path lint as the baseline; record failures without resetting data or unrelated work.
+- [x] 1.2 Reproduce the office/company overlap in the browser before editing and record header/control/navigation rectangles; verify the reproduction matches audit D01 rather than relying on a stubbed renderer to prove geometry.
+- [x] 1.3 Override the ERP sidebar header with `h-auto min-h-(--ui-header-height) py-3`, retaining native horizontal padding, collapse persistence, footer, mobile menu, and selection behavior; verify both controls fit inside the header and do not intersect navigation within a 1px tolerance.
+- [x] 1.4 Run the four focused suites and `pnpm --dir frontend exec eslint app/layouts/erp.vue`; verify expanded/collapsed desktop, company-only, office-plus-company, long-name, and mobile navigation plus an unchanged office-shell sample. Retain before/after evidence and checkpoint only the accepted file set.
 
 ## 2. Keep finance empty guidance inside the mobile frame — D08
 
