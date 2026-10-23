@@ -2,7 +2,8 @@
 import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
 import ErpProductCatalogForm from '~/components/erp/catalogs/ErpProductCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
-import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import { formatErpDecimalDisplay } from '#shared/utils/erpDecimalDisplay'
 
 const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
 
@@ -14,7 +15,7 @@ const columns = [
   { accessorKey: 'name', header: 'Nome' },
   { accessorKey: 'sku', header: 'SKU' },
   { accessorKey: 'kind', header: 'Tipo', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.kind === 'service' ? 'Serviço' : 'Mercadoria' },
-  { accessorKey: 'sale_price', header: 'Preço', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimal(row.original.sale_price as string | number | null) },
+  { accessorKey: 'sale_price', header: 'Preço', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimalDisplay(row.original.sale_price as string | number | null, { minimumFractionDigits: 2 }) },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
 ]
 </script>

@@ -2,7 +2,8 @@
 import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
 import ErpUnitCatalogForm from '~/components/erp/catalogs/ErpUnitCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
-import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import { formatErpDecimalDisplay } from '#shared/utils/erpDecimalDisplay'
 
 const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
 
@@ -13,7 +14,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.short_nam
 const columns = [
   { accessorKey: 'short_name', header: 'Sigla' },
   { accessorKey: 'actual_name', header: 'Nome' },
-  { accessorKey: 'base_unit_id', header: 'Unidade base', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.base_unit_id ? `#${row.original.base_unit_id} · ${formatErpDecimal(row.original.conversion_factor as string | number | null)}` : '—' },
+  { accessorKey: 'base_unit_id', header: 'Unidade base', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.base_unit_id ? `#${row.original.base_unit_id} · ${formatErpDecimalDisplay(row.original.conversion_factor as string | number | null)}` : '—' },
   { accessorKey: 'allow_decimal', header: 'Frações', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.allow_decimal ? 'Sim' : 'Não' },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
 ]

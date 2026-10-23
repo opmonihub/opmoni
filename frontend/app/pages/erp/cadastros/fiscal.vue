@@ -3,7 +3,8 @@ import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue
 import ErpOperationNatureCatalogForm from '~/components/erp/catalogs/ErpOperationNatureCatalogForm.vue'
 import ErpTaxRateCatalogForm from '~/components/erp/catalogs/ErpTaxRateCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
-import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import { formatErpDecimalDisplay } from '#shared/utils/erpDecimalDisplay'
 import type { ComponentPublicInstance } from 'vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
@@ -11,7 +12,7 @@ useHead({ title: 'Referências fiscais · Cadastros ERP' })
 
 const taxRateColumns = [
   { accessorKey: 'name', header: 'Nome' },
-  { accessorKey: 'rate', header: 'Alíquota', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimal(row.original.rate as string | number | null) },
+  { accessorKey: 'rate', header: 'Alíquota', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimalDisplay(row.original.rate as string | number | null) },
   { accessorKey: 'tax_kind', header: 'Tipo' },
   { accessorKey: 'erp_establishment_id', header: 'Estabelecimento', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.erp_establishment_id ? `#${row.original.erp_establishment_id}` : 'Todos' },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }

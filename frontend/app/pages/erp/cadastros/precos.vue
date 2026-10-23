@@ -3,7 +3,8 @@ import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue
 import ErpDiscountRuleCatalogForm from '~/components/erp/catalogs/ErpDiscountRuleCatalogForm.vue'
 import ErpPriceGroupCatalogForm from '~/components/erp/catalogs/ErpPriceGroupCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
-import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import { formatErpDecimalDisplay } from '#shared/utils/erpDecimalDisplay'
 import type { ComponentPublicInstance } from 'vue'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
@@ -11,14 +12,14 @@ useHead({ title: 'Preços · Cadastros ERP' })
 
 const groupColumns = [
   { accessorKey: 'name', header: 'Grupo' },
-  { accessorKey: 'percentage_adjustment', header: 'Ajuste %', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimal(row.original.percentage_adjustment as string | number | null) },
+  { accessorKey: 'percentage_adjustment', header: 'Ajuste %', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimalDisplay(row.original.percentage_adjustment as string | number | null) },
   { accessorKey: 'is_default', header: 'Padrão', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.is_default ? 'Sim' : 'Não' },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
 ]
 const discountColumns = [
   { accessorKey: 'name', header: 'Regra' },
   { accessorKey: 'kind', header: 'Tipo', cell: ({ row }: { row: { original: Record<string, unknown> } }) => row.original.kind === 'percentage' ? 'Percentual' : 'Valor fixo' },
-  { accessorKey: 'value', header: 'Valor', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimal(row.original.value as string | number | null) },
+  { accessorKey: 'value', header: 'Valor', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimalDisplay(row.original.value as string | number | null) },
   { accessorKey: 'coupon_code', header: 'Cupom' },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
 ]

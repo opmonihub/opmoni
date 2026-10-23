@@ -2,7 +2,8 @@
 import ErpCatalogResource from '~/components/erp/catalogs/ErpCatalogResource.vue'
 import ErpCustomerGroupCatalogForm from '~/components/erp/catalogs/ErpCustomerGroupCatalogForm.vue'
 import ErpCatalogPageShell from '~/components/erp/ErpCatalogPageShell.vue'
-import { erpCatalogRoutes, formatErpCatalogStatus, formatErpDecimal } from '#shared/utils/erpCatalogs'
+import { erpCatalogRoutes, formatErpCatalogStatus } from '#shared/utils/erpCatalogs'
+import { formatErpDecimalDisplay } from '#shared/utils/erpDecimalDisplay'
 
 const catalogResource = ref<InstanceType<typeof ErpCatalogResource> | null>(null)
 
@@ -12,7 +13,7 @@ useHead({ title: 'Grupos de clientes · Cadastros ERP' })
 const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '')
 const columns = [
   { accessorKey: 'name', header: 'Nome' },
-  { accessorKey: 'percentage_adjustment', header: 'Ajuste percentual', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimal(row.original.percentage_adjustment as string | number | null) },
+  { accessorKey: 'percentage_adjustment', header: 'Ajuste percentual', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpDecimalDisplay(row.original.percentage_adjustment as string | number | null) },
   { accessorKey: 'status', header: 'Status', cell: ({ row }: { row: { original: Record<string, unknown> } }) => formatErpCatalogStatus(row.original.status) }
 ]
 </script>

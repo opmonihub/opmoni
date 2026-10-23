@@ -283,7 +283,10 @@ function mountCatalogPage(path: string) {
     props: ['data', 'loading', 'columns'],
     setup(props) {
       return () => Vue.h('table', { 'data-loading': props.loading }, (props.data as Record<string, unknown>[]).map(row =>
-        Vue.h('tr', {}, [Vue.h('td', {}, JSON.stringify(row))])
+        Vue.h('tr', {}, (props.columns as Array<{ accessorKey?: string, cell?: (context: { row: { original: Record<string, unknown> } }) => unknown }>).map((column) => {
+          const value = column.cell ? column.cell({ row: { original: row } }) : row[column.accessorKey ?? '']
+          return Vue.h('td', {}, Vue.isVNode(value) ? [value] : String(value ?? ''))
+        }))
       ))
     }
   }))
@@ -486,4 +489,31 @@ it('pages the real catalog footer once, retaining search and refusing pending or
   await settle()
   assert.match(page.text(), /acesso|autoriz/i)
   assert.equal(findHostNodes(page.root, node => node.props['data-pagination'] === true).length, 0)
+})
+
+describe('ERP localized read-only catalog decimals', () => {
+  const cases = [
+    { page: 'produtos', records: [[{ id: 1, name: 'Preço exato', sale_price: '12.5000' }, { id: 2, name: 'Zero', sale_price: '0' }]], displays: ['12,50', '0,00'] },
+    { page: 'fiscal', records: [[{ id: 1, name: 'Alíquota exata', rate: '-10.1250' }], []], displays: ['-10,125'] },
+    { page: 'unidades', records: [[{ id: 1, short_name: 'cx', base_unit_id: 2, conversion_factor: '12345678901234567890.1234' }]], displays: ['#2 · 12.345.678.901.234.567.890,1234'] },
+    { page: 'precos', records: [[{ id: 1, name: 'Ajuste', percentage_adjustment: '-2.5000' }], [{ id: 2, name: 'Desconto', value: '0.0001', kind: 'fixed' }]], displays: ['-2,5', '0,0001'] },
+    { page: 'grupos-clientes', records: [[{ id: 1, name: 'Grupo', percentage_adjustment: '12.5000' }]], displays: ['12,5'] }
+  ]
+
+  for (const item of cases) {
+    it(`renders exact localized cells in the real ${item.page} SFC while preserving canonical records`, async (t) => {
+      const page = mountCatalogPage(`pages/erp/cadastros/${item.page}.vue`)
+      t.after(page.unmount)
+      const before = structuredClone(item.records)
+      item.records.forEach((data, index) => page.requests[index]!.resolve({
+        data,
+        meta: { current_page: 1, last_page: 1, per_page: 15, total: data.length }
+      }))
+      await settle()
+      const cells = page.tables().flatMap(table => findHostNodes(table, node => node.tag === 'td').map(hostText))
+      for (const display of item.displays)
+        assert.ok(cells.includes(display), `Expected exact cell ${display}; got ${JSON.stringify(cells)}`)
+      assert.deepEqual(item.records, before)
+    })
+  }
 })
