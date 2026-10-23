@@ -8,7 +8,7 @@
 
 **Tech Stack:** installed Nuxt UI 4.11.3, Nuxt 4.6.0, Vue 3.5.43, TypeScript, Tailwind, and the repository's Node/Vue test harness; no dependency changes.
 
-**Spec:** [delta](specs/erp-company-foundation/spec.md), [design](design.md), [proposal](proposal.md). Source evidence: [2026-10-23 audit](../../../docs/reviews/2026-10-23-erp-dashboard-consistency/README.md).
+**Spec:** [delta](specs/erp-company-foundation/spec.md), [design](design.md), [proposal](proposal.md). Source evidence: [2026-10-23 audit](../../../../docs/reviews/2026-10-23-erp-dashboard-consistency/README.md).
 
 ## Global Constraints
 

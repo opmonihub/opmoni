@@ -1,6 +1,6 @@
 ## Context
 
-See [proposal.md](proposal.md) for scope and [the audit](../../../docs/reviews/2026-10-23-erp-dashboard-consistency/README.md) for D01-D09, source locations, inventory, and current browser measurements. The source baseline is `5ce7d51`; the earlier 2026-10-20 plan is already completed historical work and must not be reopened as this implementation ledger.
+See [proposal.md](proposal.md) for scope and [the audit](../../../../docs/reviews/2026-10-23-erp-dashboard-consistency/README.md) for D01-D09, source locations, inventory, and current browser measurements. The source baseline is `5ce7d51`; the earlier 2026-10-20 plan is already completed historical work and must not be reopened as this implementation ledger.
 
 Nuxt UI 4.11.3, Nuxt 4.6.0, Vue 3.5.43, existing Node/Vue test helpers, and Tailwind are sufficient. The existing `ErpCatalogPageShell`, `ErpCatalogResource`, `ErpSettingsSectionForm`, catalog field/reference components, and `data-table/panel.ts` are the reuse boundaries. `ErpModuleHub` has no current application consumer.
 
