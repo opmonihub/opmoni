@@ -91,9 +91,9 @@
 
 **Interfaces:** retain the existing settings endpoint and all five stored scalar fields; no backend API, mapping, schema, or speculative selector is produced by this task.
 
-- [ ] 6.1 Complete a field-by-field contract register for `default_unit`, `default_sales_tax`, `currency_id`, `purchase_currency_id`, and `cidade_id`: stored type, identifier namespace, label source, validation, permission, current/archived selection handling, and concrete missing dependency. Verify every conclusion points to source/API evidence and a same-number catalog record is never treated as proof.
-- [ ] 6.2 Add preservation cases with opaque preexisting values and unavailable lookups; verify unrelated settings saves retain untouched identifiers and existing editing, do not auto-select native options, and do not clear values after failure or context changes. Run the settings suites and verify no backend/application/schema diff was introduced.
-- [ ] 6.3 Document the exact scope of a later reference-contract/backend change for each unresolved field and mark D06 compatibility work pending in implementation results. Verify the coverage ledger does not claim removal of manual-ID editing or complete reference migration. Do not implement a guessed adapter to make this checkbox appear resolved.
+- [x] 6.1 Complete a field-by-field contract register for `default_unit`, `default_sales_tax`, `currency_id`, `purchase_currency_id`, and `cidade_id`: stored type, identifier namespace, label source, validation, permission, current/archived selection handling, and concrete missing dependency. Verify every conclusion points to source/API evidence and a same-number catalog record is never treated as proof.
+- [x] 6.2 Add preservation cases with opaque preexisting values and unavailable lookups; verify unrelated settings saves retain untouched identifiers and existing editing, do not auto-select native options, and do not clear values after failure or context changes. Run the settings suites and verify no backend/application/schema diff was introduced.
+- [x] 6.3 Document the exact scope of a later reference-contract/backend change for each unresolved field and mark D06 compatibility work pending in implementation results. Verify the coverage ledger does not claim removal of manual-ID editing or complete reference migration. Do not implement a guessed adapter to make this checkbox appear resolved.
 
 ## 7. Localize read-only decimals without rounding — D09
 
