@@ -1,0 +1,78 @@
+▶ shared ERP catalog list lifecycle
+  ✔ starts only for an active Company with the exact route read permission (2181.507882ms)
+  ✔ maps every catalog URL to its backend route permission, including fiscal short names (3095.186275ms)
+  ✔ requires the selected active office to match a delegated Company (402.471114ms)
+  ✔ clears and aborts synchronously on context change, then ignores a late old success and finally (107.511554ms)
+  ✔ ignores a late old-context authorization error after the new list succeeds (108.026781ms)
+  ▶ invalidates captures for actor, Account, session, delegated office and authority changes
+    ✔ actor (284.902702ms)
+    ✔ Account (311.138798ms)
+    ✔ session generation (298.141089ms)
+    ✔ delegated office and access kind (406.149214ms)
+    ✔ Company authority (182.871125ms)
+  ✔ invalidates captures for actor, Account, session, delegated office and authority changes (1484.945781ms)
+  ✔ keeps same-context last-good rows visibly stale on a transient refresh failure and retries (306.427246ms)
+  ▶ clears on 401, 403 or named context conflict and only retries after an auth refresh
+    ✔ 401 (97.142139ms)
+    ✔ 403 (194.746398ms)
+    ✔ named 409 (106.385373ms)
+  ✔ clears on 401, 403 or named context conflict and only retries after an auth refresh (399.098532ms)
+  ✔ does not let an auth refresh started for a rejected context replace a newer context request (904.386697ms)
+  ✔ keeps ordinary same-context 409 data and does not treat it as lost authority (91.571195ms)
+  ✔ debounces text, resets page, and honors an explicit page action during the debounce (388.6869ms)
+  ▶ keeps successful empty distinct from initial pending and initial failure
+    ✔ initial pending (18.99658ms)
+    ✔ initial failure (84.000381ms)
+    ✔ successful empty (22.003607ms)
+  ✔ keeps successful empty distinct from initial pending and initial failure (125.658394ms)
+  ✔ aborts on dispose and cannot restart or accept a late result (85.371308ms)
+✔ shared ERP catalog list lifecycle (9686.341592ms)
+▶ ERP catalog list SFC states
+  ✔ mounts the real Products page without rendering initial or failed loads as an empty table (6499.038647ms)
+  ✔ keeps the real Pricing page lists independent through pending, error, retry and confirmed empty (1998.960038ms)
+✔ ERP catalog list SFC states (8499.59595ms)
+▶ useErpCompanySettings API wire
+  ✔ calls GET/PATCH /erp/company/settings via useAccessApi (90.273946ms)
+✔ useErpCompanySettings API wire (92.982108ms)
+▶ native acceptance settings authority
+  ✔ renders operator/viewer without write grants as read-only and rejects programmatic submit (2591.820699ms)
+  ✔ admits current writers and drops late PATCH/GET after authority or session changes (597.832678ms)
+✔ native acceptance settings authority (3190.152973ms)
+▶ native acceptance settings writer roles and refusals
+  ✔ preserves owner/manager and explicitly granted operator writes, with viewer remaining read-only (995.256417ms)
+  ✔ intersects delegated write grants with active matching office writer role (322.93898ms)
+  ✔ clears data and blocks a definitive current refusal, and disables unknown failed reads (594.820466ms)
+✔ native acceptance settings writer roles and refusals (1913.875502ms)
+▶ native acceptance email consumer review correction
+  ✔ renders the actual email page read-only and performs no denied programmatic PATCH or confirmation (692.730114ms)
+  ✔ blocks unknown and busy email submissions without a request or skipped-save success toast (284.841196ms)
+  ✔ clears private email inputs synchronously and emits no toast for obsolete PATCH success or failure (1810.861878ms)
+  ✔ submits the accepted nested email_settings fields and confirms only an authorized actual response (300.543824ms)
+  ✔ keeps an unknown failed email read disabled and offers an authorized read retry (101.711757ms)
+✔ native acceptance email consumer review correction (3191.51394ms)
+▶ ERP mobile shell and contract
+  ✔ keeps the operational native header visible with company/user controls and one sidebar toggle (202.156793ms)
+  ✔ lets every catalog route provide its own single native panel (96.705712ms)
+  ✔ controls active sidebar expansion after mounted route and history changes while preserving manual collapse (105.049489ms)
+  ✔ keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount (118.047779ms)
+  ✔ changes the catalog content key when company or Account context changes (75.037312ms)
+  ✔ disposes the old protected child and mounts a fresh child after selected company context changes (21.434388ms)
+  ✔ lets operational routes retain their own native panel without nesting (84.382578ms)
+  ✔ uses a native panel, page title, context controls and one marked sidebar toggle for catalogs (28.659205ms)
+  ✔ renders overview content inside the ERP layout panel (68.847836ms)
+  ✔ uses ERP layout for a company-only contract route (36.273622ms)
+  ✔ preserves pending contract feedback (67.828845ms)
+  ✔ preserves active contract feedback (12.617144ms)
+  ✔ preserves past_due contract feedback (15.352837ms)
+  ✔ preserves canceled contract feedback (71.085335ms)
+  ✔ offers refresh/retry and retains confirmed contract on refresh failure (92.714241ms)
+  ✔ clears contract state and rejects late replies on company/Account switch (21.821552ms)
+✔ ERP mobile shell and contract (1120.869557ms)
+ℹ tests 53
+ℹ suites 7
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13575.642136

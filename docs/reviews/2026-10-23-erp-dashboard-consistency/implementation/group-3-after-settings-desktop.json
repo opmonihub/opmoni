@@ -1,0 +1,37 @@
+{
+  "card": {
+    "bottom": 3572,
+    "height": 3270,
+    "left": 379,
+    "right": 1227,
+    "top": 302,
+    "width": 848,
+    "x": 379,
+    "y": 302
+  },
+  "content": {
+    "bottom": 374,
+    "height": 32,
+    "left": 1025,
+    "right": 1203,
+    "top": 342,
+    "width": 178,
+    "x": 1025,
+    "y": 342
+  },
+  "pageWidth": 1366,
+  "viewport": {
+    "height": 900,
+    "width": 1366
+  },
+  "wrapper": {
+    "bottom": 3596,
+    "height": 3483,
+    "left": 355,
+    "right": 1251,
+    "top": 113,
+    "width": 896,
+    "x": 355,
+    "y": 113
+  }
+}

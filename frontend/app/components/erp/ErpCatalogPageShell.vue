@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { erpPageBodyClass } from '~/components/erp/erpPresentation'
+
 defineProps<{
   title: string
   description?: string
@@ -28,7 +30,7 @@ defineProps<{
       </UDashboardToolbar>
     </template>
     <template #body>
-      <div class="space-y-5 p-4 sm:p-6">
+      <div :class="erpPageBodyClass">
         <p v-if="description" class="text-muted text-sm">
           {{ description }}
         </p>

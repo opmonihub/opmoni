@@ -1,0 +1,38 @@
+{
+  "aligned": true,
+  "frame": {
+    "bottom": 429,
+    "height": 197,
+    "left": 16,
+    "right": 374,
+    "top": 232,
+    "width": 358,
+    "x": 16,
+    "y": 232
+  },
+  "pageWidth": 390,
+  "search": {
+    "bottom": 176,
+    "height": 32,
+    "left": 16,
+    "right": 374,
+    "top": 144,
+    "width": 358,
+    "x": 16,
+    "y": 144
+  },
+  "table": {
+    "bottom": 429,
+    "height": 197,
+    "left": 16,
+    "right": 501.203125,
+    "top": 232,
+    "width": 485.203125,
+    "x": 16,
+    "y": 232
+  },
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

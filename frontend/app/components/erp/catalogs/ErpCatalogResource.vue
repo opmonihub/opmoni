@@ -374,23 +374,19 @@ defineExpose({ createAction })
     <h2 v-if="showHeading" class="text-highlighted text-lg font-semibold">
       {{ title }}
     </h2>
-    <UDashboardToolbar :ui="{ root: 'w-full min-w-0 flex-col items-stretch justify-start gap-3 overflow-visible sm:flex-row sm:items-end sm:justify-between', left: 'w-full min-w-0 flex-1', right: 'w-full min-w-0 sm:w-auto sm:shrink-0' }">
-      <template #left>
-        <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          <UFormField :label="`Buscar ${title.toLocaleLowerCase()}`" class="min-w-0 w-full flex-1 sm:max-w-md">
-            <UInput
-              v-model="search"
-              icon="i-lucide-search"
-              :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`"
-              class="w-full"
-            />
-          </UFormField>
-          <p v-if="hasLoaded && state?.meta" class="text-muted shrink-0 pb-2 text-sm" aria-live="polite">
-            {{ state.meta.total }} {{ state.meta.total === 1 ? 'registro' : 'registros' }}
-          </p>
-        </div>
-      </template>
-    </UDashboardToolbar>
+    <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+      <UFormField :label="`Buscar ${title.toLocaleLowerCase()}`" class="min-w-0 w-full flex-1 sm:max-w-md">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          :placeholder="searchPlaceholder ?? `Buscar ${title.toLocaleLowerCase()}`"
+          class="w-full"
+        />
+      </UFormField>
+      <p v-if="hasLoaded && state?.meta" class="text-muted shrink-0 pb-2 text-sm" aria-live="polite">
+        {{ state.meta.total }} {{ state.meta.total === 1 ? 'registro' : 'registros' }}
+      </p>
+    </div>
     <div class="space-y-4">
       <UTable
         v-if="hasLoaded && rows.length"

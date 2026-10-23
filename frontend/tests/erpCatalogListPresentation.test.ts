@@ -320,7 +320,7 @@ function mountCatalogPage(path: string) {
     text: () => hostText(root),
     panels: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardPanel'),
     navbars: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardNavbar'),
-    toolbars: () => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === 'UDashboardToolbar'),
+    searchFields: () => findHostNodes(root, node => node.tag === 'label' && /^Buscar /.test(hostText(node))),
     shellComponents: (name: string) => findHostNodes(root, node => node.props['data-nuxt-ui-component'] === name),
     tables: () => findHostNodes(root, node => node.tag === 'table'),
     buttons: () => findHostNodes(root, node => node.tag === 'button'),
@@ -345,7 +345,8 @@ describe('ERP catalog list SFC states', () => {
     t.after(page.unmount)
     assert.equal(page.panels().length, 1)
     assert.equal(page.navbars().length, 1)
-    assert.equal(page.toolbars().length, 1)
+    assert.equal(page.searchFields().length, 1)
+    assert.match(hostText(page.searchFields()[0]!), /Buscar produtos/)
     assert.equal(page.shellComponents('UDashboardSidebarToggle').length, 1)
     assert.equal(page.shellComponents('CompanyMenu').length, 1)
     assert.equal(page.shellComponents('UserMenu').length, 1)
@@ -384,7 +385,7 @@ describe('ERP catalog list SFC states', () => {
     t.after(page.unmount)
     assert.equal(page.panels().length, 1)
     assert.equal(page.navbars().length, 1)
-    assert.equal(page.toolbars().length, 2)
+    assert.equal(page.searchFields().length, 2)
     assert.equal(page.requests.length, 2)
     assert.equal(page.tables().length, 0)
     assert.equal((page.text().match(/carregando/gi) ?? []).length, 2)

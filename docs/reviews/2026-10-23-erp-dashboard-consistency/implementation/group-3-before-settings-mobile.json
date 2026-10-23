@@ -1,0 +1,27 @@
+{
+  "card": {
+    "bottom": 4592.5,
+    "height": 4234,
+    "left": 32,
+    "right": 358,
+    "top": 358.5,
+    "width": 326,
+    "x": 32,
+    "y": 358.5
+  },
+  "content": {
+    "bottom": 450.5,
+    "height": 32,
+    "left": 48,
+    "right": 342,
+    "top": 418.5,
+    "width": 294,
+    "x": 48,
+    "y": 418.5
+  },
+  "pageWidth": 390,
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

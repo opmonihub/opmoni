@@ -5,6 +5,7 @@ import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
+import * as erpPresentation from '../app/components/erp/erpPresentation.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const workspaceNav = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
@@ -15,6 +16,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
     if (name === 'vue') return { ...Vue, resolveComponent: globals.resolveComponent ?? ((name: string) => ({ name })), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
     if (name === '~/utils/erpModulesNav') return nav
+    if (name === '~/components/erp/erpPresentation') return erpPresentation
     assert.equal(name, '~/utils/erpWorkspaceNav')
     return workspaceNav
   }, exports, ...Object.values(globals))

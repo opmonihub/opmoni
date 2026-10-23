@@ -1,0 +1,40 @@
+{
+  "alerts": [],
+  "aligned": true,
+  "card": {
+    "bottom": 4576.5,
+    "height": 4234,
+    "left": 16,
+    "right": 374,
+    "top": 342.5,
+    "width": 358,
+    "x": 16,
+    "y": 342.5
+  },
+  "content": {
+    "bottom": 434.5,
+    "height": 32,
+    "left": 32,
+    "right": 358,
+    "top": 402.5,
+    "width": 326,
+    "x": 32,
+    "y": 402.5
+  },
+  "disabled": false,
+  "pageWidth": 390,
+  "viewport": {
+    "height": 844,
+    "width": 390
+  },
+  "wrapper": {
+    "bottom": 4592.5,
+    "height": 4425.5,
+    "left": 0,
+    "right": 390,
+    "top": 167,
+    "width": 390,
+    "x": 0,
+    "y": 167
+  }
+}

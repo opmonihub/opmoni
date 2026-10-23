@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpPageBodyClass } from '~/components/erp/erpPresentation'
 import { erpWorkspaceSettingsGroups } from '~/utils/erpWorkspaceNav'
 
 definePageMeta({ layout: 'erp', middleware: 'auth' })
@@ -9,7 +10,7 @@ const links = computed(() => erpWorkspaceSettingsGroups(route.path, currentCompa
 </script>
 
 <template>
-  <UDashboardPanel id="erp-configuracoes">
+  <UDashboardPanel id="erp-configuracoes" :ui="{ body: 'p-0 sm:p-0' }">
     <template #header>
       <UDashboardNavbar title="Configurações da empresa">
         <template #leading>
@@ -24,7 +25,7 @@ const links = computed(() => erpWorkspaceSettingsGroups(route.path, currentCompa
       </UDashboardToolbar>
     </template>
     <template #body>
-      <div class="mx-auto w-full max-w-4xl p-4 sm:p-6">
+      <div :class="['mx-auto w-full max-w-4xl', erpPageBodyClass]">
         <NuxtPage :key="route.fullPath" />
       </div>
     </template>

@@ -1,0 +1,27 @@
+{
+  "overflow": 390,
+  "search": {
+    "bottom": 176,
+    "height": 32,
+    "left": 32,
+    "right": 358,
+    "top": 144,
+    "width": 326,
+    "x": 32,
+    "y": 144
+  },
+  "table": {
+    "bottom": 442,
+    "height": 197,
+    "left": 16,
+    "right": 501.203125,
+    "top": 245,
+    "width": 485.203125,
+    "x": 16,
+    "y": 245
+  },
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}
