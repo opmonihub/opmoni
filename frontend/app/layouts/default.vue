@@ -151,7 +151,7 @@ const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
       collapsible
       resizable
       class="bg-elevated/25"
-      :ui="{ footer: 'lg:border-t lg:border-default' }"
+      :ui="{ header: 'h-auto min-h-(--ui-header-height) py-3', footer: 'lg:border-t lg:border-default' }"
     >
       <template #header="{ collapsed, collapse }">
         <UButton
