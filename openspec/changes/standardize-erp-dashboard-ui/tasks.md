@@ -79,11 +79,11 @@
 
 **Interfaces:** reuse one exported `ErpSettingsField`, including existing key/label/type/required/options and optional description/hint. Bind existing reactive state and named fields; consume `apiFailure(...).errors` with unchanged settings PATCH keys and nested email payload shape.
 
-- [ ] 5.1 Extend the real settings harness to retain field names/errors and add cases for a current 422, a form/network failure, retained edits, duplicate submit suppression, and late errors after Company/Account/session/write-grant changes. Verify the missing field-feedback cases fail before implementation.
-- [ ] 5.2 Use the shared metadata type, forward description/hint/error, bind `UForm` to current form state, and show named validation plus form-level feedback. Clear feedback for new attempts or authority changes; verify no stale success/error can cross contexts and existing read-only roles still cannot submit.
-- [ ] 5.3 Apply the same error policy to email fields, accepting nested `email_settings.<key>` paths without changing the serialized body; verify nested and form-level failure cases and existing API/authority tests pass.
-- [ ] 5.4 Replace all visible Blade filenames, partial paths, and internal change identifiers across settings with accurate business guidance. Verify current functionality/unsupported placeholders remain honest in the browser and source inspection finds no internal migration copy in rendered descriptions.
-- [ ] 5.5 Run settings API/field, administration, catalog reference, and catalog form suites plus changed-file ESLint; inspect loaded settings in desktop/mobile and exercise a rejected settings save only against isolated stores. Checkpoint the accepted renderer/copy change.
+- [x] 5.1 Extend the real settings harness to retain field names/errors and add cases for a current 422, a form/network failure, retained edits, duplicate submit suppression, and late errors after Company/Account/session/write-grant changes. Verify the missing field-feedback cases fail before implementation.
+- [x] 5.2 Use the shared metadata type, forward description/hint/error, bind `UForm` to current form state, and show named validation plus form-level feedback. Clear feedback for new attempts or authority changes; verify no stale success/error can cross contexts and existing read-only roles still cannot submit.
+- [x] 5.3 Apply the same error policy to email fields, accepting nested `email_settings.<key>` paths without changing the serialized body; verify nested and form-level failure cases and existing API/authority tests pass.
+- [x] 5.4 Replace all visible Blade filenames, partial paths, and internal change identifiers across settings with accurate business guidance. Verify current functionality/unsupported placeholders remain honest in the browser and source inspection finds no internal migration copy in rendered descriptions.
+- [x] 5.5 Run settings API/field, administration, catalog reference, and catalog form suites plus changed-file ESLint; inspect loaded settings in desktop/mobile and exercise a rejected settings save only against isolated stores. Checkpoint the accepted renderer/copy change.
 
 ## 6. Verify legacy reference compatibility without changing IDs — D06 dependency
 
