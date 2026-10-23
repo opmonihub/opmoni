@@ -1,0 +1,15 @@
+$ git diff --check
+exit=0
+
+
+$ git diff f2c89b7 -- backend frontend/app frontend/shared frontend/package.json pnpm-lock.yaml
+exit=0
+
+
+$ git diff 5ce7d51 -- backend reference
+exit=0
+
+
+$ git check-ignore .superpowers/sdd/tasks/group-6-report.md
+exit=0
+.superpowers/sdd/tasks/group-6-report.md

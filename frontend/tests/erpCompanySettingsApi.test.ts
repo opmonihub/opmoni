@@ -5,6 +5,8 @@ import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { apiFailure } from '../shared/utils/access.ts'
+import { erpSettingsBusinessFields } from '../app/utils/erpCompanySettingsFields.ts'
+import type { ErpSettingsField } from '../app/utils/erpCompanySettingsFields.ts'
 import { erpCompanyHasPermission } from '../app/utils/erpModulesNav.ts'
 import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
@@ -18,7 +20,7 @@ describe('useErpCompanySettings API wire', () => {
   })
 })
 
-function settingsHarness(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, role = 'owner', permissions = ['*'], target: 'section' | 'email' = 'section') {
+function settingsHarness(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, role = 'owner', permissions = ['*'], target: 'section' | 'email' = 'section', fields: ErpSettingsField[] = [{ key: 'name', label: 'Nome', description: 'Nome exibido pela empresa.', hint: 'Obrigatório' }, { key: 'regime', label: 'Regime', type: 'select', options: [{ label: 'Normal', value: 'normal' }] }, { key: 'enabled', label: 'Ativo', type: 'checkbox' }]) {
   const user = Vue.ref({ id: 91 })
   const company = Vue.ref({ id: 7, status: 'active', access_kind: 'direct', role, permissions, delegated_office_id: null as number | null })
   const account = Vue.ref({ id: 3, status: 'active', role: 'admin' })
@@ -56,7 +58,7 @@ function settingsHarness(api: (path: string, options?: Record<string, unknown>) 
     createElement(tag) { return { tag, children: [], parent: null, props: {} } }, createText(text) { return { text, children: [], parent: null, props: {} } }, createComment(text) { return { text, children: [], parent: null, props: {} } },
     setText(node, text) { node.text = text }, setElementText(node, text) { node.children = []; node.text = text }, parentNode(node) { return node.parent }, nextSibling(node) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
   })
-  const app = renderer.createApp({ render: () => Vue.h(component, { title: 'Sistema', fields: [{ key: 'name', label: 'Nome', description: 'Nome exibido pela empresa.', hint: 'Obrigatório' }, { key: 'regime', label: 'Regime', type: 'select', options: [{ label: 'Normal', value: 'normal' }] }, { key: 'enabled', label: 'Ativo', type: 'checkbox' }] }) })
+  const app = renderer.createApp({ render: () => Vue.h(component, { title: 'Sistema', fields }) })
   for (const name of ['UPageCard', 'USeparator']) app.component(name, { setup: (_props, ctx) => () => Vue.h('div', ctx.slots.default?.()) })
   app.component('UFormField', { props: ['name', 'label', 'description', 'hint', 'error'], setup: (props, ctx) => () => Vue.h('fieldset', { name: props.name }, [Vue.h('label', String(props.label ?? '')), props.description ? Vue.h('p', String(props.description)) : null, props.hint ? Vue.h('span', String(props.hint)) : null, ctx.slots.default?.(), props.error ? Vue.h('p', { role: 'alert' }, String(props.error)) : null]) })
   app.component('UForm', { setup: (_props, ctx) => () => Vue.h('form', { ...ctx.attrs }, ctx.slots.default?.()) })
@@ -446,5 +448,130 @@ describe('settings rejected save feedback', () => {
         })
       }
     }
+  }
+})
+
+// Read the actual page metadata; all inline fields here are literal arrays, not a copied contract.
+const inlineSettingsFields = (page: string): ErpSettingsField[] => {
+  const source = readFileSync(new URL(`../app/pages/erp/configuracoes/${page}.vue`, import.meta.url), 'utf8')
+  const literal = source.match(/:fields="(\[[\s\S]*?\])"/)?.[1]
+  assert.ok(literal, `literal field metadata in ${page}`)
+  return new Function(`return (${literal})`)() as ErpSettingsField[]
+}
+const legacySettingsMeta = { date_formats: {}, accounting_methods: {}, months: {}, time_formats: {}, currency_symbol_placements: {}, regimes: {}, ambientes: {}, decimal_places: {} }
+const legacyReferences = { default_unit: 'legacy-unit/0042', default_sales_tax: '00042', currency_id: '900719925474099312345', purchase_currency_id: 987654321, cidade_id: '0003550308' }
+const referenceSections = [
+  { page: 'produto', keys: ['default_unit'], other: 'sku_prefix', edit: 'SKU-NEW', fields: inlineSettingsFields('produto') },
+  { page: 'vendas', keys: ['default_sales_tax'], other: 'default_sales_discount', edit: '5.25', fields: inlineSettingsFields('vendas') },
+  { page: 'compras', keys: ['purchase_currency_id'], other: 'purchase_in_diff_currency', edit: '0', fields: inlineSettingsFields('compras') },
+  { page: 'empresa', keys: ['currency_id', 'cidade_id'], other: 'name', edit: 'Novo nome', fields: erpSettingsBusinessFields }
+]
+
+describe('legacy settings reference compatibility without native lookups', () => {
+  it('omits all five references from an unrelated section save and retains raw confirmed values', async () => {
+    let stored = { ...settingsResponse.data, ...legacyReferences }
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const mounted = settingsHarness(async (path, options) => {
+      calls.push({ path, options })
+      assert.equal(path, '/erp/company/settings', 'any catalog lookup is unavailable and forbidden for these opaque IDs')
+      if (options?.method === 'PATCH') stored = { ...stored, ...options.body as object }
+      return { data: { ...stored }, meta: legacySettingsMeta }
+    }, 'owner', ['erp.company.settings.show', 'erp.company.settings.update'])
+    try {
+      await flushSettings()
+      mounted.privateForm()!.name = 'Outra configuração'
+      await mounted.submit()
+      await flushSettings()
+      const patch = calls.find(call => call.options?.method === 'PATCH')!.options!.body as Record<string, unknown>
+      for (const [key, value] of Object.entries(legacyReferences)) {
+        assert.equal(Object.hasOwn(patch, key), false)
+        assert.equal(stored[key as keyof typeof stored], value)
+        assert.equal(mounted.state.state.value[key], value)
+      }
+      assert.deepEqual(calls.map(call => call.path), ['/erp/company/settings', '/erp/company/settings'])
+      assert.deepEqual(mounted.errors, [])
+    } finally { mounted.dispose() }
+  })
+
+  for (const section of referenceSections) {
+    it(`${section.page} preserves untouched raw references on same-section save and failed edited save`, async () => {
+      let stored: Record<string, unknown> = { ...settingsResponse.data, ...legacyReferences }
+      const writes: Record<string, unknown>[] = []
+      const calls: string[] = []
+      let refuse = false
+      const mounted = settingsHarness(async (path, options) => {
+        calls.push(path)
+        assert.equal(path, '/erp/company/settings', 'no native list/detail lookup or automatic native choice')
+        if (options?.method === 'PATCH') {
+          writes.push(structuredClone(options.body as Record<string, unknown>))
+          if (refuse) throw validationFailure({ [section.keys[0]!]: ['Referência indisponível.'] })
+          stored = { ...stored, ...options.body as object }
+        }
+        return { data: { ...stored }, meta: legacySettingsMeta }
+      }, 'owner', ['erp.company.settings.show', 'erp.company.settings.update'], 'section', section.fields)
+      try {
+        await flushSettings()
+        for (const key of section.keys) {
+          const current = mounted.walk(settingsField(mounted, key)).find(node => node.tag === 'input')!
+          assert.equal(current.props.value, String(legacyReferences[key as keyof typeof legacyReferences]), 'rendering preserves the stored reference without auto-selecting a native option')
+          assert.equal(mounted.privateForm()![key], legacyReferences[key as keyof typeof legacyReferences])
+        }
+        const input = mounted.walk(settingsField(mounted, section.other)).find(node => node.tag === 'input')!
+        ;(input.props.onInput as (value: string) => void)(section.edit)
+        await mounted.submit()
+        await flushSettings()
+        for (const key of section.keys) assert.equal(writes[0]![key], legacyReferences[key as keyof typeof legacyReferences])
+        // Exercise existing input behavior rather than changing numeric/text conversions.
+        refuse = true
+        for (const key of section.keys) {
+          const input = mounted.walk(settingsField(mounted, key)).find(node => node.tag === 'input')!
+          const numeric = section.fields.find(field => field.key === key)?.type === 'number'
+          assert.equal(input.props.type, numeric ? 'number' : 'text')
+          ;(input.props.onInput as (value: string) => void)(numeric ? '12345' : 'legacy-edited/0043')
+        }
+        const edited = { ...mounted.privateForm() }
+        await mounted.submit()
+        await flushSettings()
+        assert.deepEqual(mounted.privateForm(), edited, 'ordinary failed save retains same-context edits')
+        for (const key of section.keys) {
+          const numeric = section.fields.find(field => field.key === key)?.type === 'number'
+          assert.equal(writes[1]![key], numeric ? 12345 : 'legacy-edited/0043')
+          assert.equal(stored[key], legacyReferences[key as keyof typeof legacyReferences], 'failed writes do not replace stored references')
+        }
+        assert.deepEqual(calls, Array(3).fill('/erp/company/settings'))
+        assert.deepEqual(mounted.errors, [])
+      } finally { mounted.dispose() }
+    })
+
+    it(`${section.page} clears old private reference drafts on Company switch without PATCH and rehydrates the new Company`, async () => {
+      const nextReferences = { default_unit: 'other-unit/009', default_sales_tax: 654321, currency_id: '000003', purchase_currency_id: '9007199254740993999', cidade_id: 'other-city/009' }
+      const stores = new Map([[7, { ...settingsResponse.data, ...legacyReferences }], [8, { ...settingsResponse.data, ...nextReferences }]])
+      const calls: string[] = []
+      let companyId = 7
+      const mounted = settingsHarness(async (path, options) => {
+        calls.push(path)
+        assert.equal(path, '/erp/company/settings')
+        assert.notEqual(options?.method, 'PATCH', 'context cleanup must never send a destructive PATCH')
+        return { data: { ...stores.get(companyId)! }, meta: legacySettingsMeta }
+      }, 'owner', ['erp.company.settings.show', 'erp.company.settings.update'], 'section', section.fields)
+      try {
+        await flushSettings()
+        for (const key of section.keys) assert.equal(mounted.privateForm()![key], legacyReferences[key as keyof typeof legacyReferences])
+        mounted.privateForm()![section.keys[0]!] = 'unsaved-private-reference'
+        companyId = 8
+        mounted.company.value.id = companyId
+        assert.deepEqual(mounted.privateForm(), {}, 'old private UI clears synchronously, distinct from stored identifier preservation')
+        assert.equal(mounted.state.state.value, null)
+        await flushSettings()
+        await mounted.submit()
+        await mounted.state.refresh()
+        await flushSettings()
+        for (const key of section.keys) assert.equal(mounted.privateForm()![key], nextReferences[key as keyof typeof nextReferences])
+        assert.deepEqual(stores.get(7), { ...settingsResponse.data, ...legacyReferences })
+        assert.deepEqual(stores.get(8), { ...settingsResponse.data, ...nextReferences })
+        assert.deepEqual(calls, ['/erp/company/settings', '/erp/company/settings'], 'exactly the old and new Company reads; no lookup or cleanup write')
+        assert.deepEqual(mounted.errors, [])
+      } finally { mounted.dispose() }
+    })
   }
 })

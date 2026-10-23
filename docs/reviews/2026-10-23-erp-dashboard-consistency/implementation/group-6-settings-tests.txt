@@ -1,0 +1,83 @@
+▶ useErpCompanySettings API wire
+  ✔ calls GET/PATCH /erp/company/settings via useAccessApi (5.236845ms)
+✔ useErpCompanySettings API wire (6.454351ms)
+▶ native acceptance settings authority
+  ✔ renders operator/viewer without write grants as read-only and rejects programmatic submit (585.339854ms)
+  ✔ admits current writers and drops late PATCH/GET after authority or session changes (263.268134ms)
+✔ native acceptance settings authority (849.09861ms)
+▶ native acceptance settings writer roles and refusals
+  ✔ preserves owner/manager and explicitly granted operator writes, with viewer remaining read-only (304.678125ms)
+  ✔ intersects delegated write grants with active matching office writer role (38.416501ms)
+  ✔ clears data and blocks a definitive current refusal, and disables unknown failed reads (166.66252ms)
+✔ native acceptance settings writer roles and refusals (510.488099ms)
+▶ native acceptance email consumer review correction
+  ✔ renders the actual email page read-only and performs no denied programmatic PATCH or confirmation (98.493597ms)
+  ✔ blocks unknown and busy email submissions without a request or skipped-save success toast (33.545198ms)
+  ✔ clears private email inputs synchronously and emits no toast for obsolete PATCH success or failure (598.690673ms)
+  ✔ submits the accepted nested email_settings fields and confirms only an authorized actual response (155.635913ms)
+  ✔ keeps an unknown failed email read disabled and offers an authorized read retry (22.115569ms)
+✔ native acceptance email consumer review correction (909.269243ms)
+▶ settings rejected save feedback
+  ✔ section binds current form state and preserves field metadata (87.645248ms)
+  ✔ section renders the first named 422 error, retains edits and clears feedback on retry (98.285521ms)
+  ✔ section visibly reports a form or transport failure (30.385342ms)
+  ✔ section visibly reports a form or transport failure (67.390737ms)
+  ✔ section visibly reports a form or transport failure (29.683521ms)
+  ✔ section clears old feedback on a same-context 401 authority refusal (77.309913ms)
+  ✔ section clears old feedback on a same-context 403 authority refusal (22.858377ms)
+  ✔ section clears old feedback on a same-context 409 authority refusal (67.084484ms)
+  ✔ section clears already visible feedback immediately when authority changes (103.511807ms)
+  ✔ section discards late success and clears feedback on company changes (22.832577ms)
+  ✔ section discards late failure and clears feedback on company changes (23.537152ms)
+  ✔ section discards late success and clears feedback on account changes (72.680026ms)
+  ✔ section discards late failure and clears feedback on account changes (91.399485ms)
+  ✔ section discards late success and clears feedback on session changes (97.063157ms)
+  ✔ section discards late failure and clears feedback on session changes (92.647648ms)
+  ✔ section discards late success and clears feedback on permission changes (21.992636ms)
+  ✔ section discards late failure and clears feedback on permission changes (82.055717ms)
+  ✔ section discards late success and clears feedback on role changes (99.020805ms)
+  ✔ section discards late failure and clears feedback on role changes (100.059709ms)
+  ✔ email binds current form state and preserves field metadata (89.96175ms)
+  ✔ email renders the first named 422 error, retains edits and clears feedback on retry (98.760373ms)
+  ✔ email visibly reports a form or transport failure (25.212358ms)
+  ✔ email visibly reports a form or transport failure (79.241875ms)
+  ✔ email visibly reports a form or transport failure (27.456921ms)
+  ✔ email clears old feedback on a same-context 401 authority refusal (69.49329ms)
+  ✔ email clears old feedback on a same-context 403 authority refusal (19.499713ms)
+  ✔ email clears old feedback on a same-context 409 authority refusal (24.458779ms)
+  ✔ email clears already visible feedback immediately when authority changes (76.625731ms)
+  ✔ email discards late success and clears feedback on company changes (86.453172ms)
+  ✔ email discards late failure and clears feedback on company changes (17.861608ms)
+  ✔ email discards late success and clears feedback on account changes (73.673994ms)
+  ✔ email discards late failure and clears feedback on account changes (16.631267ms)
+  ✔ email discards late success and clears feedback on session changes (16.713753ms)
+  ✔ email discards late failure and clears feedback on session changes (16.155494ms)
+  ✔ email discards late success and clears feedback on permission changes (15.889461ms)
+  ✔ email discards late failure and clears feedback on permission changes (35.361632ms)
+  ✔ email discards late success and clears feedback on role changes (34.654752ms)
+  ✔ email discards late failure and clears feedback on role changes (17.780596ms)
+✔ settings rejected save feedback (2132.186009ms)
+▶ legacy settings reference compatibility without native lookups
+  ✔ omits all five references from an unrelated section save and retains raw confirmed values (66.339694ms)
+  ✔ produto preserves untouched raw references on same-section save and failed edited save (84.218374ms)
+  ✔ produto clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (26.572676ms)
+  ✔ vendas preserves untouched raw references on same-section save and failed edited save (76.644306ms)
+  ✔ vendas clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (93.42384ms)
+  ✔ compras preserves untouched raw references on same-section save and failed edited save (28.125418ms)
+  ✔ compras clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (81.874173ms)
+  ✔ empresa preserves untouched raw references on same-section save and failed edited save (95.801096ms)
+  ✔ empresa clears old private reference drafts on Company switch without PATCH and rehydrates the new Company (44.641516ms)
+✔ legacy settings reference compatibility without native lookups (598.396167ms)
+▶ erpCompanySettingsFields
+  ✔ maps business tab keys from reference settings_business (0.924052ms)
+  ✔ preserves numeric editing for existing opaque business references (1.075979ms)
+  ✔ maps tax tab keys from reference settings_tax (0.18988ms)
+✔ erpCompanySettingsFields (8.057669ms)
+ℹ tests 61
+ℹ suites 7
+ℹ pass 61
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5877.654614

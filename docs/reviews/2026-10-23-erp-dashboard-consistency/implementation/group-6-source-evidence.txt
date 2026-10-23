@@ -1,0 +1,798 @@
+Source-only citation verification at f2c89b7; no service access.
+git diff 5ce7d51 -- backend reference: empty (byte-identical tracked source).
+
+backend/database/migrations/2026_10_17_160533_add_operating_settings_to_erp_companies_table.php:11-14
+11:         Schema::table('erp_companies', function (Blueprint $table): void {
+12:             $table->string('razao_social', 120)->nullable()->after('name');
+13:             $table->string('ie', 20)->nullable()->after('cnpj');
+14:             $table->json('operating_settings')->nullable()->after('status');
+
+backend/app/Models/Erp/ErpCompany.php:16-23
+16:     protected $fillable = ['name', 'razao_social', 'cnpj', 'ie', 'status', 'operating_settings'];
+17:
+18:     /** @return array<string, string> */
+19:     protected function casts(): array
+20:     {
+21:         return [
+22:             'operating_settings' => 'array',
+23:         ];
+
+backend/app/Erp/ErpCompanyOperatingSettings.php:13-30
+13:     public const SCALAR_KEYS = [
+14:         'start_date', 'currency_id', 'tax_label_1', 'tax_number_1', 'tax_label_2', 'tax_number_2',
+15:         'default_profit_percent', 'default_sales_tax', 'default_sales_discount', 'sell_price_tax', 'sku_prefix',
+16:         'stock_overselling_enabled', 'time_zone', 'fy_start_month', 'accounting_method', 'transaction_edit_days', 'sales_cmsn_agnt',
+17:         'item_addition_method', 'currency_symbol_placement', 'on_product_expiry', 'stop_selling_before',
+18:         'default_unit', 'expiry_type', 'date_format', 'time_format', 'theme_color', 'rp_name', 'amount_for_unit_rp',
+19:         'min_order_total_for_rp', 'max_rp_per_order', 'redeem_amount_per_unit_rp', 'min_order_total_for_redeem',
+20:         'min_redeem_point', 'max_redeem_point', 'rp_expiry_period', 'rp_expiry_type', 'cidade_id', 'city', 'rua',
+21:         'numero', 'bairro', 'cep', 'telefone', 'ultimo_numero_nfe', 'ultimo_numero_nfce', 'ultimo_numero_cte',
+22:         'ultimo_numero_mdfe', 'inscricao_municipal', 'numero_serie_nfe', 'numero_serie_nfce', 'ambiente', 'regime',
+23:         'cst_csosn_padrao', 'cst_pis_padrao', 'cst_cofins_padrao', 'cst_ipi_padrao', 'csc', 'csc_id',
+24:         'perc_icms_padrao', 'perc_pis_padrao', 'perc_cofins_padrao', 'perc_ipi_padrao', 'ncm_padrao',
+25:         'cfop_saida_estadual_padrao', 'cfop_saida_inter_estadual_padrao', 'aut_xml', 'casas_decimais_valor',
+26:         'numero_serie_cte', 'numero_serie_mdfe', 'pCredSN', 'natureza_operacao_pdv', 'exclusao_icms_pis_cofins',
+27:         'purchase_in_diff_currency', 'purchase_currency_id', 'p_exchange_rate', 'enable_editing_product_from_purchase',
+28:         'enable_purchase_status', 'enable_lot_number', 'enable_tooltip', 'enable_product_expiry', 'stock_expiry_alert_days',
+29:         'enable_rp', 'enable_inline_tax', 'enable_brand', 'enable_category', 'enable_sub_category', 'enable_price_tax',
+30:         'enable_racks', 'enable_row', 'enable_position', 'enable_sub_units', 'certificado_urn',
+
+backend/app/Http/Controllers/Api/V1/Erp/ErpCompanySettingsController.php:40-51
+40:         $request->validate([
+41:             'accounting_method' => ['sometimes', 'in:fifo,lifo'],
+42:             'stock_overselling_enabled' => ['sometimes', 'boolean'],
+43:             'name' => ['sometimes', 'string', 'max:255'],
+44:             'cnpj' => ['sometimes', 'string', 'max:20'],
+45:             'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:120'],
+46:             'ie' => ['sometimes', 'nullable', 'string', 'max:20'],
+47:         ], [
+48:             'razao_social.min' => 'digite no minimo 10 caractes.',
+49:         ]);
+50:
+51:         $persist = $this->settings->extractPersistable($request->all());
+
+frontend/shared/types/erp-company-settings.ts:1-22
+1: export type ErpCompanySettingsPayload = {
+2:   name: string
+3:   cnpj: string
+4:   razao_social: string | null
+5:   ie: string | null
+6:   status: string
+7:   time_zone?: string
+8:   accounting_method?: string
+9:   transaction_edit_days?: number
+10:   [key: string]: unknown
+11: }
+12:
+13: export type ErpCompanySettingsMeta = {
+14:   date_formats: Record<string, string>
+15:   accounting_methods: Record<string, string>
+16:   months: Record<number, string>
+17:   time_formats: Record<number, string>
+18:   currency_symbol_placements: Record<string, string>
+19:   regimes: Record<string, string>
+20:   ambientes: Record<string, string>
+21:   decimal_places: Record<string, string>
+22: }
+
+backend/routes/api.php:16-32
+16: Route::prefix('v1')->group(function (): void {
+17:     require __DIR__.'/business-webhooks.php';
+18:     Route::get('/health', HealthController::class)->name('api.v1.health');
+19:     Route::middleware([TrustedIngress::class, EncryptCookies::class, AddQueuedCookiesToResponse::class, SerializedAccessSession::class, AccessSecurity::class])->group(function (): void {
+20:         Route::get('/csrf', [AccessController::class, 'csrf'])->name('access.csrf');
+21:         Route::get('/registration-status', [AccessController::class, 'registrationStatus'])->name('access.registration-status');
+22:         Route::post('/register', [AccessController::class, 'register'])->name('access.register');
+23:         Route::get('/erp/registration-status', [ErpRegistrationController::class, 'registrationStatus'])->name('erp.registration-status');
+24:         Route::post('/erp/register', [ErpRegistrationController::class, 'register'])->name('erp.register');
+25:         Route::post('/login', [AccessController::class, 'login'])->name('access.login');
+26:         Route::get('/first-access/status', [AccessController::class, 'activationStatus'])->name('access.activation-status');
+27:         Route::post('/first-access', [AccessController::class, 'activate'])->name('access.activate');
+28:         Route::middleware('auth')->group(function (): void {
+29:             Route::get('/me', [AccessController::class, 'me'])->name('access.me');
+30:             Route::post('/logout', [AccessController::class, 'logout'])->name('access.logout');
+31:             Route::post('/account/switch', [AccessController::class, 'switchAccount'])->name('access.switch');
+32:             require __DIR__.'/erp.php';
+
+backend/routes/erp.php:11-11
+11: Route::prefix('erp')->group(function (): void {
+
+backend/app/Support/CurrentCompany.php:30-65
+30:     /** @return list<string> */
+31:     public function permissions(): array
+32:     {
+33:         if ($this->accessKind === 'direct' && $this->membership) {
+34:             return $this->membership->effectivePermissions();
+35:         }
+36:         if ($this->accessKind === 'delegated' && $this->delegation) {
+37:             return ErpCompanyPermissions::delegatedEffective($this->delegation->effectivePermissions(), $this->delegatedOfficeRole);
+38:         }
+39:
+40:         return [];
+41:     }
+42:
+43:     public function assertPermission(string $permission, bool $write = false): void
+44:     {
+45:         if ($this->accessKind === 'delegated') {
+46:             abort_unless(ErpCompanyPermissions::delegatedAllows($permission, $write, $this->delegation?->effectivePermissions() ?? [], $this->delegatedOfficeRole), 403, 'Permissão insuficiente');
+47:
+48:             return;
+49:         }
+50:         if ($write && ! $this->membership?->roleEnum()->canMutate()) {
+51:             abort(403, 'Permissão insuficiente');
+52:         }
+53:         $permissions = $this->permissions();
+54:         $family = preg_replace('/\.[^.]+$/', '', $permission);
+55:         foreach (['*', $permission, $family.'.*', $family.($write ? '.write' : '.read'), $write ? 'erp.write' : 'erp.read'] as $candidate) {
+56:             if (in_array($candidate, $permissions, true)) {
+57:                 return;
+58:             }
+59:         }
+60:         abort(403, 'Permissão insuficiente');
+61:     }
+62:
+63:     public function assertCanMutate(): void
+64:     {
+65:         $this->assertPermission((string) request()->route()?->getName(), true);
+
+frontend/app/composables/useErpCompanySettings.ts:15-25
+15:   function hasPermission(permission: string, write: boolean) {
+16:     const company = currentCompany.value
+17:     if (!user.value?.id || company?.status !== 'active' || blockedKey.value === context.key.value) return false
+18:     if (company.access_kind === 'delegated') {
+19:       const office = currentAccount.value
+20:       if (office?.status !== 'active' || office.id !== company.delegated_office_id || (write && !['admin', 'operador'].includes(office.role))) return false
+21:     } else if (company.access_kind !== 'direct' || (write && !['owner', 'manager', 'operator'].includes(company.role))) return false
+22:     return erpCompanyHasPermission(company.permissions, permission)
+23:   }
+24:   const canRead = computed(() => hasPermission('erp.company.settings.show', false))
+25:   const canWrite = computed(() => hasPermission('erp.company.settings.update', true))
+
+frontend/app/components/erp/ErpSettingsSectionForm.vue:35-43
+35: function syncForm() {
+36:   if (!state.value) {
+37:     for (const key of Object.keys(form)) Reflect.deleteProperty(form, key)
+38:     return
+39:   }
+40:   for (const field of props.fields) {
+41:     const key = field.key as string
+42:     form[key] = state.value[key] ?? (field.type === 'checkbox' ? 0 : '')
+43:   }
+
+frontend/app/pages/erp/configuracoes/produto.vue:9-11
+9:     :fields="[
+10:       { key: 'sku_prefix', label: 'Prefixo SKU' },
+11:       { key: 'default_unit', label: 'Unidade padrão (ID)' },
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:379-402
+379:         $business_id = request()->session()->get('user.business_id');
+380:         $business = Business::where('id', $business_id)->first();
+381:
+382:         $currencies = $this->businessUtil->allCurrencies();
+383:         $tax_details = TaxRate::forBusinessDropdown($business_id);
+384:         $tax_rates = $tax_details['tax_rates'];
+385:
+386:         $months = [];
+387:         for ($i=1; $i<=12; $i++) {
+388:             $months[$i] = $this->getMeses($i);
+389:         }
+390:
+391:         $accounting_methods = [
+392:             'fifo' => __('business.fifo'),
+393:             'lifo' => __('business.lifo')
+394:         ];
+395:         $commission_agent_dropdown = [
+396:             '' => __('lang_v1.disable'),
+397:             'logged_in_user' => __('lang_v1.logged_in_user'),
+398:             'user' => __('lang_v1.select_from_users_list'),
+399:             'cmsn_agnt' => __('lang_v1.select_from_commisssion_agents_list')
+400:         ];
+401:
+402:         $units_dropdown = Unit::forDropdown($business_id, true);
+
+reference/sistema-e7b77be/app/Models/Unit.php:34-42
+34:     public static function forDropdown($business_id, $show_none = false, $only_base = true)
+35:     {
+36:         $query = Unit::where('business_id', $business_id);
+37:         if ($only_base) {
+38:             $query->whereNull('base_unit_id');
+39:         }
+40:
+41:         $units = $query->select(DB::raw('CONCAT(actual_name, " (", short_name, ")") as name'), 'id')->get();
+42:         $dropdown = $units->pluck('name', 'id');
+
+reference/sistema-e7b77be/resources/views/business/partials/settings_product.blade.php:98-103
+98:         {!! Form::label('default_unit', 'Unidade padrão:') !!}
+99:         <div class="input-group">
+100:             <span class="input-group-addon">
+101:                 <i class="fa fa-balance-scale"></i>
+102:             </span>
+103:             {!! Form::select('default_unit', $units_dropdown, $business->default_unit, ['class' => 'form-control select2', 'style' => 'width: 100%;' ]); !!}
+
+backend/app/Http/Controllers/Api/V1/Erp/Catalogs/ErpUnitController.php:29-40
+29:     protected function serialize(Model $model): array
+30:     {
+31:         /** @var ErpUnit $model */
+32:         return [
+33:             'id' => $model->id,
+34:             'short_name' => $model->short_name,
+35:             'actual_name' => $model->actual_name,
+36:             'allow_decimal' => $model->allow_decimal,
+37:             'base_unit_id' => $model->base_unit_id,
+38:             'conversion_factor' => $model->conversion_factor !== null ? $this->decimalString($model->conversion_factor) : null,
+39:             'status' => $model->status,
+40:         ];
+
+backend/database/migrations/2026_10_17_180000_create_erp_core_catalog_tables.php:31-42
+31:         Schema::create('erp_units', function (Blueprint $table): void {
+32:             $table->id();
+33:             $table->foreignId('erp_company_id')->constrained('erp_companies')->cascadeOnDelete();
+34:             $table->string('short_name', 16);
+35:             $table->string('actual_name', 64);
+36:             $table->boolean('allow_decimal')->default(true);
+37:             $table->foreignId('base_unit_id')->nullable()->constrained('erp_units')->nullOnDelete();
+38:             $table->decimal('conversion_factor', 20, 8)->nullable();
+39:             $table->string('status', 16)->default('active');
+40:             $table->timestamps();
+41:
+42:             $table->unique(['erp_company_id', 'short_name']);
+
+backend/app/Models/Erp/ErpUnit.php:16-27
+16:     protected $fillable = [
+17:         'erp_company_id', 'short_name', 'actual_name', 'allow_decimal',
+18:         'base_unit_id', 'conversion_factor', 'status',
+19:     ];
+20:
+21:     /** @return array<string, string> */
+22:     protected function casts(): array
+23:     {
+24:         return [
+25:             'allow_decimal' => 'boolean',
+26:             'conversion_factor' => 'decimal:8',
+27:         ];
+
+backend/routes/erp-catalogs.php:44-48
+44: Route::get('/units', [ErpUnitController::class, 'index'])->name('erp.units.index');
+45: Route::post('/units', [ErpUnitController::class, 'store'])->name('erp.units.store');
+46: Route::get('/units/{unit}', [ErpUnitController::class, 'show'])->whereNumber('unit')->name('erp.units.show');
+47: Route::patch('/units/{unit}', [ErpUnitController::class, 'update'])->whereNumber('unit')->name('erp.units.update');
+48: Route::delete('/units/{unit}', [ErpUnitController::class, 'archive'])->whereNumber('unit')->name('erp.units.archive');
+
+frontend/app/pages/erp/configuracoes/vendas.vue:9-11
+9:     :fields="[
+10:       { key: 'default_sales_discount', label: 'Desconto padrão venda' },
+11:       { key: 'default_sales_tax', label: 'Imposto padrão venda (ID)' },
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:379-384
+379:         $business_id = request()->session()->get('user.business_id');
+380:         $business = Business::where('id', $business_id)->first();
+381:
+382:         $currencies = $this->businessUtil->allCurrencies();
+383:         $tax_details = TaxRate::forBusinessDropdown($business_id);
+384:         $tax_rates = $tax_details['tax_rates'];
+
+reference/sistema-e7b77be/app/Models/TaxRate.php:34-45
+34:     public static function forBusinessDropdown(
+35:         $business_id,
+36:         $prepend_none = true,
+37:         $include_attributes = false
+38:     ) {
+39:         $all_taxes = TaxRate::where('business_id', $business_id);
+40:         $result = $all_taxes->get();
+41:         $tax_rates = $result->pluck('name', 'id');
+42:
+43:         //Prepend none
+44:         if ($prepend_none) {
+45:             $tax_rates = $tax_rates->prepend(__('lang_v1.none'), '');
+
+reference/sistema-e7b77be/resources/views/business/partials/settings_sales.blade.php:17-22
+17:                 {!! Form::label('default_sales_tax', __('business.default_sales_tax') . ':') !!}
+18:                 <div class="input-group">
+19:                     <span class="input-group-addon">
+20:                         <i class="fa fa-info"></i>
+21:                     </span>
+22:                     {!! Form::select('default_sales_tax', $tax_rates, $business->default_sales_tax, ['class' => 'form-control select2','placeholder' => __('business.default_sales_tax'), 'style' => 'width: 100%;']); !!}
+
+backend/app/Http/Controllers/Api/V1/Erp/Catalogs/ErpTaxRateController.php:28-39
+28:     protected function serialize(Model $model): array
+29:     {
+30:         /** @var ErpTaxRate $model */
+31:         return [
+32:             'id' => $model->id,
+33:             'erp_establishment_id' => $model->erp_establishment_id,
+34:             'name' => $model->name,
+35:             'rate' => $this->decimalString($model->rate),
+36:             'tax_kind' => $model->tax_kind,
+37:             'metadata' => $model->metadata,
+38:             'status' => $model->status,
+39:         ];
+
+backend/database/migrations/2026_10_17_180000_create_erp_core_catalog_tables.php:126-137
+126:         Schema::create('erp_tax_rates', function (Blueprint $table): void {
+127:             $table->id();
+128:             $table->foreignId('erp_company_id')->constrained('erp_companies')->cascadeOnDelete();
+129:             $table->foreignId('erp_establishment_id')->nullable()->constrained('erp_establishments')->nullOnDelete();
+130:             $table->string('name');
+131:             $table->decimal('rate', 10, 4)->default('0');
+132:             $table->string('tax_kind', 32)->default('icms');
+133:             $table->json('metadata')->nullable();
+134:             $table->string('status', 16)->default('active');
+135:             $table->timestamps();
+136:
+137:             $table->index(['erp_company_id', 'status']);
+
+backend/app/Models/Erp/ErpTaxRate.php:16-26
+16:     protected $fillable = [
+17:         'erp_company_id', 'erp_establishment_id', 'name', 'rate', 'tax_kind', 'metadata', 'status',
+18:     ];
+19:
+20:     /** @return array<string, string> */
+21:     protected function casts(): array
+22:     {
+23:         return [
+24:             'rate' => 'decimal:4',
+25:             'metadata' => 'array',
+26:         ];
+
+backend/routes/erp-catalogs.php:80-84
+80: Route::get('/tax-settings/tax-rates', [ErpTaxRateController::class, 'index'])->name('erp.tax-rates.index');
+81: Route::post('/tax-settings/tax-rates', [ErpTaxRateController::class, 'store'])->name('erp.tax-rates.store');
+82: Route::get('/tax-settings/tax-rates/{taxRate}', [ErpTaxRateController::class, 'show'])->whereNumber('taxRate')->name('erp.tax-rates.show');
+83: Route::patch('/tax-settings/tax-rates/{taxRate}', [ErpTaxRateController::class, 'update'])->whereNumber('taxRate')->name('erp.tax-rates.update');
+84: Route::delete('/tax-settings/tax-rates/{taxRate}', [ErpTaxRateController::class, 'archive'])->whereNumber('taxRate')->name('erp.tax-rates.archive');
+
+backend/app/Enums/Erp/ErpEstablishmentResource.php:60-65
+60:     public static function forModel(string $modelClass): ?self
+61:     {
+62:         return match ($modelClass) {
+63:             ErpEstablishment::class => self::Establishment,
+64:             ErpTaxRate::class => self::TaxRate,
+65:             ErpOperationNature::class => self::OperationNature,
+
+backend/app/Erp/ErpEstablishmentAccess.php:55-74
+55:     public function apply(Builder $query, CurrentCompany $context, ErpEstablishmentResource $resource): Builder
+56:     {
+57:         $ids = $this->allowedIds($context);
+58:         if ($ids === null) {
+59:             if ($this->allowsCompanywideNullableRecords($context)) {
+60:                 return $query;
+61:             }
+62:
+63:             return match ($resource) {
+64:                 ErpEstablishmentResource::FinancialAccount => $query->whereNotNull('erp_financial_accounts.erp_establishment_id'),
+65:                 ErpEstablishmentResource::Obligation => $query->whereNotNull('erp_obligations.erp_establishment_id'),
+66:                 ErpEstablishmentResource::Payment => $query->whereNotNull('erp_payments.erp_establishment_id'),
+67:                 ErpEstablishmentResource::FiscalCertificate => $query->whereNotNull('erp_fiscal_certificates.erp_establishment_id'),
+68:                 default => $query,
+69:             };
+70:         }
+71:
+72:         return match ($resource) {
+73:             ErpEstablishmentResource::Establishment => $query->whereIn('erp_establishments.id', $ids),
+74:             ErpEstablishmentResource::TaxRate => $query->where(fn (Builder $inner) => $inner->whereNull('erp_tax_rates.erp_establishment_id')->orWhereIn('erp_tax_rates.erp_establishment_id', $ids)),
+
+frontend/app/utils/erpCompanySettingsFields.ts:22-22
+22:   { key: 'currency_id', label: 'Moeda (ID legado)', type: 'number' },
+
+reference/sistema-e7b77be/app/Models/Business.php:171-174
+171:     public function currency()
+172:     {
+173:         return $this->belongsTo(\App\Models\Currency::class);
+174:     }
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:382-382
+382:         $currencies = $this->businessUtil->allCurrencies();
+
+reference/sistema-e7b77be/app/Utils/BusinessUtil.php:148-154
+148:     public function allCurrencies()
+149:     {
+150:         $currencies = Currency::select('id', DB::raw("concat(country, ' - ',currency, '(', code, ') ') as info"))
+151:         ->orderBy('country')
+152:         ->pluck('info', 'id');
+153:
+154:         return $currencies;
+
+reference/sistema-e7b77be/resources/views/business/partials/settings_business.blade.php:73-78
+73:                 {!! Form::label('currency_id', __('business.currency') . ':') !!}
+74:                 <div class="input-group">
+75:                     <span class="input-group-addon">
+76:                         <i class="fas fa-money-bill-alt"></i>
+77:                     </span>
+78:                     {!! Form::select('currency_id', $currencies, $business->currency_id, ['class' => 'form-control select2','placeholder' => __('business.currency'), 'required']); !!}
+
+frontend/shared/utils/erpCatalogs.ts:4-26
+4: export const erpCatalogRoutes = {
+5:   contacts: '/erp/contacts',
+6:   products: '/erp/products',
+7:   units: '/erp/units',
+8:   categories: '/erp/categories',
+9:   brands: '/erp/brands',
+10:   priceGroups: '/erp/price-groups',
+11:   customerGroups: '/erp/customer-groups',
+12:   discountRules: '/erp/discount-rules',
+13:   taxRates: '/erp/tax-settings/tax-rates',
+14:   operationNatures: '/erp/tax-settings/operation-natures',
+15:   carriers: '/erp/carriers',
+16:   vehicles: '/erp/vehicles',
+17:   drivers: '/erp/drivers',
+18:   importProductsPreview: '/erp/catalog/import/products/preview',
+19:   importProductsConfirm: '/erp/catalog/import/products/confirm',
+20:   importContactsPreview: '/erp/catalog/import/contacts/preview',
+21:   importContactsConfirm: '/erp/catalog/import/contacts/confirm',
+22:   printSettings: '/erp/catalog/print-settings',
+23:   productLabels: '/erp/catalog/product-labels',
+24:   labelLayouts: '/erp/catalog/label-layouts',
+25:   printerProfiles: '/erp/catalog/printer-profiles'
+26: } as const satisfies Record<string, string>
+
+frontend/app/pages/erp/configuracoes/compras.vue:9-12
+9:     :fields="[
+10:       { key: 'purchase_in_diff_currency', label: 'Compra em outra moeda', type: 'checkbox' },
+11:       { key: 'purchase_currency_id', label: 'Moeda compra (ID)', type: 'number' },
+12:       { key: 'p_exchange_rate', label: 'Taxa de câmbio' },
+
+reference/sistema-e7b77be/resources/views/business/partials/settings_purchase.blade.php:18-23
+18:             {!! Form::label('purchase_currency_id', __('purchase.purchase_currency') . ':') !!}
+19:             <div class="input-group">
+20:                 <span class="input-group-addon">
+21:                     <i class="fas fa-money-bill-alt"></i>
+22:                 </span>
+23:                 {!! Form::select('purchase_currency_id', $currencies, $business->purchase_currency_id, ['class' => 'form-control select2', 'placeholder' => __('business.currency'), 'required', 'style' => 'width:100% !important']); !!}
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:656-664
+656:             //Check for Purchase currency
+657:             if (!empty($request->input('purchase_in_diff_currency')) &&  $request->input('purchase_in_diff_currency') == 1) {
+658:                 $business_details['purchase_in_diff_currency'] = 1;
+659:                 $business_details['purchase_currency_id'] = $request->input('purchase_currency_id');
+660:                 $business_details['p_exchange_rate'] = $request->input('p_exchange_rate');
+661:             } else {
+662:                 $business_details['purchase_in_diff_currency'] = 0;
+663:                 $business_details['purchase_currency_id'] = null;
+664:                 $business_details['p_exchange_rate'] = 1;
+
+frontend/app/utils/erpCompanySettingsFields.ts:32-32
+32:   { key: 'cidade_id', label: 'Cidade (ID legado)', type: 'number' },
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:556-563
+556:     private function prepareCities(){
+557:         $cities = City::all();
+558:         $temp = [];
+559:         foreach($cities as $c){
+560:             // array_push($temp, $c->id => $c->nome);
+561:             $temp[$c->id] = $c->nome . " (" . $c->uf . ")";
+562:         }
+563:         return $temp;
+
+reference/sistema-e7b77be/resources/views/business/partials/settings_business.blade.php:280-281
+280:                 {!! Form::label('cidade_id', 'Cidade:*') !!}
+281:                 {!! Form::select('cidade_id', $cities, $business->cidade_id, ['class' => 'form-control select2', 'required']); !!}
+
+reference/sistema-e7b77be/app/Models/City.php:9-16
+9:     public static function getCidadeCod($codMun){
+10:     	return City::
+11:     	where('codigo', $codMun)
+12:     	->first();
+13: 	}
+14:
+15: 	protected $fillable = [
+16: 		'nome', 'uf', 'codigo'
+
+frontend/app/composables/useErpCatalogList.ts:8-22
+8: const catalogReadPermissions: Record<string, string> = {
+9:   [erpCatalogRoutes.contacts]: 'erp.contacts.index',
+10:   [erpCatalogRoutes.products]: 'erp.products.index',
+11:   [erpCatalogRoutes.units]: 'erp.units.index',
+12:   [erpCatalogRoutes.categories]: 'erp.categories.index',
+13:   [erpCatalogRoutes.brands]: 'erp.brands.index',
+14:   [erpCatalogRoutes.priceGroups]: 'erp.price-groups.index',
+15:   [erpCatalogRoutes.customerGroups]: 'erp.customer-groups.index',
+16:   [erpCatalogRoutes.discountRules]: 'erp.discount-rules.index',
+17:   [erpCatalogRoutes.taxRates]: 'erp.tax-rates.index',
+18:   [erpCatalogRoutes.operationNatures]: 'erp.operation-natures.index',
+19:   [erpCatalogRoutes.carriers]: 'erp.carriers.index',
+20:   [erpCatalogRoutes.vehicles]: 'erp.vehicles.index',
+21:   [erpCatalogRoutes.drivers]: 'erp.drivers.index',
+22:   '/erp/establishments': 'erp.establishments.index'
+
+frontend/shared/utils/erpCatalogs.ts:28-32
+28: export function erpCatalogListQuery(search: string, page = 1) {
+29:   const params = new URLSearchParams({ page: String(page) })
+30:   if (search.trim())
+31:     params.set('search', search.trim())
+32:   return params.toString()
+
+backend/app/Erp/ErpCatalogScope.php:106-115
+106:     /** @return array{per_page: int, search: ?string, status: ?string} */
+107:     public function listParams(Request $request): array
+108:     {
+109:         $status = $request->query('status');
+110:         $status = is_string($status) && in_array($status, ['active', 'archived', 'all'], true) ? $status : 'active';
+111:
+112:         return [
+113:             'per_page' => min(100, max(1, (int) $request->query('per_page', 15))),
+114:             'search' => is_string($request->query('search')) ? trim($request->query('search')) : null,
+115:             'status' => $status === 'all' ? null : $status,
+
+backend/app/Http/Controllers/Api/V1/Erp/Catalogs/ErpCatalogController.php:33-78
+33:     public function index(Request $request): JsonResponse
+34:     {
+35:         $companyId = $this->companyId($request);
+36:         $params = app(ErpCatalogScope::class)->listParams($request);
+37:
+38:         /** @var Builder<Model> $query */
+39:         $query = $this->modelClass()::query()
+40:             ->with($this->indexRelations())
+41:             ->where('erp_company_id', $companyId)
+42:             ->orderBy('id');
+43:         $resource = ErpEstablishmentResource::forModel($this->modelClass());
+44:         if ($resource !== null) {
+45:             app(ErpEstablishmentAccess::class)->apply($query, CurrentCompany::fromRequest($request), $resource);
+46:         }
+47:
+48:         if ($params['status'] !== null) {
+49:             $query->where('status', $params['status']);
+50:         }
+51:
+52:         if ($params['search'] !== null && $params['search'] !== '') {
+53:             $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $params['search']).'%';
+54:             $query->where(function (Builder $inner) use ($needle): void {
+55:                 foreach ($this->searchableColumns() as $column) {
+56:                     $inner->orWhere($column, 'like', $needle);
+57:                 }
+58:             });
+59:         }
+60:
+61:         $page = $query->paginate($params['per_page']);
+62:
+63:         return response()->json([
+64:             'data' => $page->getCollection()->map(fn (Model $row): array => $this->serialize($row))->all(),
+65:             'meta' => [
+66:                 'current_page' => $page->currentPage(),
+67:                 'last_page' => $page->lastPage(),
+68:                 'per_page' => $page->perPage(),
+69:                 'total' => $page->total(),
+70:             ],
+71:         ]);
+72:     }
+73:
+74:     public function show(Request $request, int $id): JsonResponse
+75:     {
+76:         $model = $this->findForCompany($request, $id);
+77:
+78:         return response()->json(['data' => $this->serialize($model)]);
+
+backend/app/Erp/ErpCatalogScope.php:33-55
+33:     /**
+34:      * New or changed catalog references must point at active rows. An unchanged archived
+35:      * reference is allowed so existing records remain editable without losing history.
+36:      *
+37:      * @param  class-string<Model>  $modelClass
+38:      */
+39:     public function assertActiveReference(string $modelClass, int $companyId, ?int $id, string $field, ?int $unchangedHistoricalId = null): void
+40:     {
+41:         if ($id === null) {
+42:             return;
+43:         }
+44:
+45:         $query = $modelClass::query()
+46:             ->whereKey($id)
+47:             ->where('erp_company_id', $companyId);
+48:         if ($id === $unchangedHistoricalId) {
+49:             $exists = $query->exists();
+50:         } else {
+51:             $exists = $query->where('status', 'active')->exists();
+52:         }
+53:
+54:         if (! $exists) {
+55:             throw ValidationException::withMessages([$field => 'Registro inválido para esta empresa']);
+
+backend/app/Http/Middleware/ResolveCompany.php:32-110
+32:         abort_unless($request->user(), 401);
+33:         $companyId = $request->session()->get('current_company_id');
+34:         if (! is_int($companyId) && ! (is_string($companyId) && ctype_digit($companyId))) {
+35:             abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));
+36:         }
+37:         $companyId = (int) $companyId;
+38:         $officeId = $request->session()->get('current_account_id');
+39:         $officeId = is_int($officeId) || (is_string($officeId) && ctype_digit($officeId)) ? (int) $officeId : null;
+40:
+41:         return DB::transaction(function () use ($request, $next, $companyId, $officeId) {
+42:             AccessTransaction::boundLockWaits();
+43:             $company = ErpCompany::lockForUpdate()->find($companyId);
+44:             if (! $company) {
+45:                 abort(response()->json(['code' => 'company_required', 'message' => 'Selecione uma empresa'], 403));
+46:             }
+47:
+48:             $access = $this->authorization->resolveAccess($request->user(), $company, $officeId, ! $request->isMethodSafe() || $request->routeIs('erp.operations.lookup', 'erp.payments.allocation-candidates'));
+49:             if ($access === null) {
+50:                 abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
+51:             }
+52:
+53:             $sessionKind = $request->session()->get('current_company_access_kind');
+54:             $sessionOffice = $request->session()->get('current_company_office_id');
+55:             $sessionDelegation = $request->session()->get('current_company_delegation_id');
+56:             if ($access['kind'] === 'delegated') {
+57:                 if ($sessionKind !== 'delegated'
+58:                     || (int) $sessionOffice !== $access['office_id']
+59:                     || (int) $sessionDelegation !== (int) $access['delegation']->id) {
+60:                     abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
+61:                 }
+62:             } elseif ($sessionKind === 'delegated') {
+63:                 abort(response()->json(['code' => 'membership_required', 'message' => 'Acesso à empresa negado'], 403));
+64:             }
+65:
+66:             $assertion = $request->header('X-Company-Id');
+67:             if (! is_string($assertion) || ! ctype_digit($assertion) || strlen($assertion) > 16 || (int) $assertion < 1 || (int) $assertion > 9007199254740991) {
+68:                 abort(response()->json(['code' => 'validation_error', 'message' => 'Informe a empresa exibida', 'errors' => ['company_id' => ['Informe a empresa exibida']]], 422));
+69:             }
+70:             if ((int) $assertion !== $companyId) {
+71:                 abort(response()->json(['code' => 'company_context_changed', 'message' => 'A empresa selecionada mudou. Atualize a página.'], 409));
+72:             }
+73:             if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS']) && $request->exists('company_id')) {
+74:                 abort(response()->json(['code' => 'validation_error', 'message' => 'Empresa não pode ser informada no conteúdo', 'errors' => ['company_id' => ['Campo não permitido']]], 422));
+75:             }
+76:             if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS']) && $request->exists('account_id')) {
+77:                 abort(response()->json(['code' => 'validation_error', 'message' => 'Escritório não pode ser informado no conteúdo', 'errors' => ['account_id' => ['Campo não permitido']]], 422));
+78:             }
+79:
+80:             $operationLookup = $request->routeIs('erp.operations.lookup');
+81:             if ($operationLookup) {
+82:                 $request->validate(['operation' => ['required', 'string', Rule::in(ErpOperationJournal::operations())]]);
+83:             }
+84:             $effectiveWrite = ! $request->isMethodSafe() || $operationLookup || $request->routeIs('erp.payments.allocation-candidates');
+85:             $foundationSettingsWrite = $request->routeIs('erp.company.settings.update');
+86:             if ($effectiveWrite && ! $foundationSettingsWrite && ! $this->commercialGate->allowsOperatingWrites($company)) {
+87:                 abort(response()->json(['code' => 'erp_subscription_inactive', 'message' => 'Contrato ERP inativo'], 403));
+88:             }
+89:             if ($effectiveWrite
+90:                 && ! config('erp.operating_writes_enabled')
+91:                 && ! $foundationSettingsWrite) {
+92:                 abort(response()->json(['code' => 'erp_operating_disabled', 'message' => 'Operações ERP ainda não disponíveis'], 403));
+93:             }
+94:             $erpContext = resolve(ErpCompanyContext::class);
+95:             $previousCompanyId = $erpContext->companyId;
+96:             $erpContext->companyId = $companyId;
+97:             $context = new CurrentCompany(
+98:                 $company,
+99:                 $access['kind'],
+100:                 $access['kind'] === 'direct' ? $access['membership'] : null,
+101:                 $access['kind'] === 'delegated' ? $access['delegation'] : null,
+102:                 $access['kind'] === 'delegated' ? $access['office_id'] : null,
+103:                 $access['kind'] === 'delegated' ? $access['office_role'] : null,
+104:             );
+105:             $request->attributes->set(CurrentCompany::class, $context);
+106:             try {
+107:                 if ($request->routeIs('erp.members.index', 'erp.members.show', 'erp.members.permissions', 'erp.members.identity-lookup', 'erp.members.store', 'erp.members.update', 'erp.members.destroy')) {
+108:                     app(ErpCompanyAdministration::class)->assertOwner($request);
+109:                 } else {
+110:                     $context->assertPermission($operationLookup ? $request->input('operation') : $this->effectiveAction($request), $effectiveWrite);
+
+backend/app/Http/Controllers/Api/V1/Erp/ErpCompanySettingsController.php:94-105
+94:     private function formMeta(): array
+95:     {
+96:         return [
+97:             'date_formats' => LegacyBusinessReference::dateFormats(),
+98:             'accounting_methods' => LegacyBusinessReference::accountingMethods(),
+99:             'months' => LegacyBusinessReference::fiscalYearMonths(),
+100:             'time_formats' => [12 => '12 horas', 24 => '24 horas'],
+101:             'currency_symbol_placements' => ['before' => 'Antes do valor', 'after' => 'Depois do valor'],
+102:             'regimes' => ['1' => 'Simples', '3' => 'Normal'],
+103:             'ambientes' => ['1' => 'Produção', '2' => 'Homologação'],
+104:             'decimal_places' => ['2' => '2 casas decimais', '3' => '3 casas decimais', '4' => '4 casas decimais'],
+105:         ];
+
+backend/app/Erp/ErpCompanyOperatingSettings.php:90-120
+90:     public function extractPersistable(array $input): array
+91:     {
+92:         $top = [];
+93:         foreach (['name', 'cnpj', 'razao_social', 'ie'] as $key) {
+94:             if (array_key_exists($key, $input)) {
+95:                 $top[$key] = $input[$key];
+96:             }
+97:         }
+98:
+99:         $settings = [];
+100:         foreach (array_merge(self::SCALAR_KEYS, self::JSON_KEYS) as $key) {
+101:             if (array_key_exists($key, $input)) {
+102:                 $settings[$key] = $input[$key];
+103:             }
+104:         }
+105:
+106:         if (array_key_exists('shortcuts', $input)) {
+107:             $settings['keyboard_shortcuts'] = $input['shortcuts'];
+108:         }
+109:
+110:         return [
+111:             ...$top,
+112:             'operating_settings' => $settings,
+113:         ];
+114:     }
+115:
+116:     /** @param  array<string, mixed>  $persistedSettings */
+117:     public function mergeOperating(ErpCompany $company, array $persistedSettings): void
+118:     {
+119:         $current = is_array($company->operating_settings) ? $company->operating_settings : [];
+120:         $company->operating_settings = array_replace($current, $persistedSettings);
+
+frontend/app/components/erp/ErpSettingsSectionForm.vue:35-73
+35: function syncForm() {
+36:   if (!state.value) {
+37:     for (const key of Object.keys(form)) Reflect.deleteProperty(form, key)
+38:     return
+39:   }
+40:   for (const field of props.fields) {
+41:     const key = field.key as string
+42:     form[key] = state.value[key] ?? (field.type === 'checkbox' ? 0 : '')
+43:   }
+44: }
+45:
+46: async function refreshSettings() {
+47:   if (!canRead.value || pending.value) return
+48:   const authority = authorityKey.value
+49:   loadError.value = ''
+50:   try {
+51:     await refresh()
+52:   } catch {
+53:     if (canRead.value && authority === authorityKey.value) loadError.value = 'Não foi possível carregar as configurações.'
+54:   }
+55: }
+56:
+57: async function onSubmit() {
+58:   if (!canWrite.value || pending.value || !state.value) return
+59:   const authority = authorityKey.value
+60:   clearSaveFeedback()
+61:   const patch: Record<string, unknown> = {}
+62:   for (const field of props.fields)
+63:     patch[field.key as string] = form[field.key as string]
+64:   try {
+65:     const response = await save(patch)
+66:     if (!response || !canWrite.value || authority !== authorityKey.value) return
+67:     toast.add({ title: 'Configurações salvas', color: 'success', icon: 'i-lucide-check' })
+68:   } catch (error) {
+69:     if (!canWrite.value || authority !== authorityKey.value) return
+70:     const failure = apiFailure(error)
+71:     fieldErrors.value = failure.errors ?? {}
+72:     saveError.value = failure.message
+73:   }
+
+frontend/app/components/erp/ErpSettingsSectionForm.vue:176-182
+176:           <UInput
+177:             v-else
+178:             :disabled="!canWrite || pending || !state"
+179:             :model-value="String(form[field.key as string] ?? '')"
+180:             :type="field.type === 'number' ? 'number' : 'text'"
+181:             class="w-full sm:max-w-md"
+182:             @update:model-value="form[field.key as string] = field.type === 'number' ? Number($event) : $event"
+
+backend/routes/erp.php:11-35
+11: Route::prefix('erp')->group(function (): void {
+12:     Route::post('/company/switch', [ErpAccessController::class, 'switchCompany'])->name('erp.company.switch');
+13:     Route::post('/companies', [ErpAccessController::class, 'createCompany'])->name('erp.companies.create');
+14:     Route::post('/delegations', [ErpAccessController::class, 'acceptDelegation'])->name('erp.delegations.accept');
+15:     Route::delete('/delegations/{delegation}', [ErpAccessController::class, 'revokeDelegation'])->whereNumber('delegation')->name('erp.delegations.revoke');
+16:
+17:     Route::middleware(ResolveCompany::class)->group(function (): void {
+18:         Route::get('/subscription', [ErpSubscriptionController::class, 'show'])->name('erp.subscription.show');
+19:         Route::get('/establishments', [ErpEstablishmentController::class, 'index'])->name('erp.establishments.index');
+20:         Route::get('/establishments/{establishment}', [ErpEstablishmentController::class, 'show'])->whereNumber('establishment')->name('erp.establishments.show');
+21:         Route::post('/establishments', [ErpEstablishmentController::class, 'store'])->name('erp.establishments.store');
+22:         Route::patch('/establishments/{establishment}', [ErpEstablishmentController::class, 'update'])->whereNumber('establishment')->name('erp.establishments.update');
+23:         Route::get('/member-permissions', [ErpCompanyMemberController::class, 'permissions'])->name('erp.members.permissions');
+24:         Route::get('/members', [ErpCompanyMemberController::class, 'index'])->name('erp.members.index');
+25:         Route::post('/members/identity-lookup', [ErpCompanyMemberController::class, 'identityLookup'])->middleware('throttle:30,1')->name('erp.members.identity-lookup');
+26:         Route::get('/members/{membership}', [ErpCompanyMemberController::class, 'show'])->whereNumber('membership')->name('erp.members.show');
+27:         Route::post('/members', [ErpCompanyMemberController::class, 'store'])->name('erp.members.store');
+28:         Route::patch('/members/{membership}', [ErpCompanyMemberController::class, 'update'])->whereNumber('membership')->name('erp.members.update');
+29:         Route::delete('/members/{membership}', [ErpCompanyMemberController::class, 'destroy'])->whereNumber('membership')->name('erp.members.destroy');
+30:         Route::get('/company/settings', [ErpCompanySettingsController::class, 'show'])->name('erp.company.settings.show');
+31:         Route::patch('/company/settings', [ErpCompanySettingsController::class, 'update'])->name('erp.company.settings.update');
+32:         require __DIR__.'/erp-catalogs.php';
+33:         foreach (['erp-operations', 'erp-accounting-reports'] as $erpRouteFile) {
+34:             $path = __DIR__."/{$erpRouteFile}.php";
+35:             if (is_file($path)) {
+
+reference/sistema-e7b77be/app/Http/Controllers/BusinessController.php:587-590
+587:             $cidade_id = $request->cidade_id;
+588:             $cidade = City::find($cidade_id);
+589:
+590:             $request->merge([ 'city' => $cidade->nome]);
