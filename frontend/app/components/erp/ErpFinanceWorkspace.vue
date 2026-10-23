@@ -475,7 +475,13 @@ function downloadReceipt() {
         </p>
       </div>
 
-      <div class="overflow-x-auto rounded-lg border border-muted">
+      <UEmpty
+        v-if="finance.meta.value && !finance.loading.value && !finance.pageError.value && finance.rows.value.length === 0"
+        icon="i-lucide-search"
+        title="Nenhum registro corresponde aos filtros."
+        description="Ajuste a busca ou crie um lançamento."
+      />
+      <div v-else class="overflow-x-auto rounded-lg border border-muted">
         <UTable
           :data="finance.rows.value as FinanceRow[]"
           :columns="columns"
@@ -556,9 +562,7 @@ function downloadReceipt() {
             </div>
           </template>
           <template #empty>
-            <div v-if="finance.meta.value" class="p-8 text-center text-sm text-muted">
-              Nenhum registro corresponde aos filtros. Ajuste a busca ou crie um lançamento.
-            </div>
+            <span />
           </template>
         </UTable>
       </div>

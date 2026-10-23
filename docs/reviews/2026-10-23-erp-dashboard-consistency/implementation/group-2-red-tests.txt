@@ -1,0 +1,125 @@
+▶ finance forms use actual form submissions and exact decimal strings
+  ✔ submits a financial account body with only supported fields (202.849335ms)
+  ✔ submits an obligation while preserving amount text and nullable references (25.200246ms)
+  ✔ rejects malformed decimal text and submits cash payment only with a selected session (70.754396ms)
+✔ finance forms use actual form submissions and exact decimal strings (299.981407ms)
+▶ finance permission family matching
+  ✔ matches CurrentCompany last-dot family grants for nested allocation history (0.361215ms)
+✔ finance permission family matching (0.544983ms)
+▶ finance workspace
+  ✔ renders authoritative list state for unknown (1421.071469ms)
+  ✔ renders authoritative list state for pending (765.68043ms)
+  ✔ renders authoritative list state for failed (498.525577ms)
+  ✖ renders authoritative list state for confirmed-empty (343.633011ms)
+  ✔ renders authoritative list state for populated (557.268947ms)
+  ✔ renders authoritative list state for failed-refresh (1098.113703ms)
+  ✖ renders authoritative list state for failed-empty-refresh (412.918402ms)
+  ✖ renders authoritative list state for pending-empty-refresh (411.987891ms)
+  ✔ offers an explicit list-first create action for the selected finance area (593.615854ms)
+  ✔ retains create drafts across close and area changes while focusing the editor and returning to its opener (504.904016ms)
+  ✔ uses the validated Finance hash for initial load and browser history without duplicate requests (379.981291ms)
+  ✔ normalizes an invalid initial Finance hash without issuing a duplicate list read (308.88999ms)
+  ✔ hydrates a direct accounts hash from the stable obligations presentation with one accounts read (395.089173ms)
+  ✔ translates known Finance enum values and labels unknown values safely (498.009062ms)
+  ✔ keeps a create editor open after 422 with its exact draft and errors (337.211457ms)
+  ✔ retains a create draft and unresolved identity after an ordinary reconciliation 409 (269.928548ms)
+  ✔ closes a create editor only after the server confirms the write (297.935428ms)
+  ✔ clears the private create draft after definitive permission invalidation (215.988264ms)
+  ✔ keeps finance blocked when a superseded committed identity refresh returns stale grants after a newer refresh fails (26.117254ms)
+  ✔ keeps finance blocked after the actual shared auth refresh fails (52.82131ms)
+  ✔ unlocks finance only after the actual shared auth refresh commits the current identity (94.595609ms)
+  ✔ retains mounted form drafts across tabs and resets them on authority changes (617.215347ms)
+  ✔ closes and clears an allocation confirmation when the company authority changes (279.303482ms)
+  ✔ paginates reference, candidate, and allocation choices without overwriting account options with list rows (24.573209ms)
+  ✔ does not resume payment history under a new company after the detail read resolves (25.847291ms)
+  ✔ keeps authorized finance references when establishment access is absent (58.222965ms)
+  ✔ loads and renders financial-account details from its actual GET route (228.270011ms)
+  ✔ clears a denied cached finance read, refreshes auth, and ignores an older successful callback (177.04694ms)
+  ✔ keeps all finance actions blocked after a 401 when identity refresh fails and preserves pending identity (91.99242ms)
+  ✔ blocks authority and clears private references after direct POST authorization and context denials (133.232807ms)
+  ✔ commits refreshed grants after a direct POST denial before deciding which Finance actions remain available (60.957089ms)
+  ✔ does not apply an old POST denial after a newer authority refresh wins (38.240338ms)
+  ✔ keeps all finance actions blocked after a 409 when identity refresh fails and preserves pending identity (19.067885ms)
+  ✔ does not let a delayed Company A list denial erase Company B rows after identity refresh (47.788653ms)
+  ✔ does not let a delayed Company A reference denial overwrite Company B references (36.147803ms)
+  ✔ reloads typed current payment detail and linked allocations after allocation mutation (182.913936ms)
+  ✔ uses operation lookup only as an outcome and reloads current typed detail (19.786757ms)
+  ✔ uses per-resource selection sequences for details, candidates and receipts, including close races (18.912641ms)
+  ✔ keeps legacy-observed lookup records unresolved without clearing or creating a new key (48.675775ms)
+  ✔ preserves the original idempotency key and payload when an exact retry receives a business 409 (23.755659ms)
+  ✔ mounts the real workspace and child form, emits its submission, and retains decimal input after 422 (263.83614ms)
+  ✔ keeps an allocation dialog and amount after 422, then closes only after corrected submission succeeds (211.631037ms)
+  ✔ refuses a write before POST when session recovery storage cannot persist the identity (26.741918ms)
+  ✔ prevents a different action from replacing any unresolved payment identity (63.908462ms)
+  ✔ restores Company A pending identity after switching A to B and back in the same mount (27.727858ms)
+  ✔ clears busy state on authority change and ignores a late Company A result after Company B succeeds (18.634565ms)
+  ✔ fences a company switch during CSRF refresh before any finance POST is sent (19.53993ms)
+  ✔ remounts from the persisted key, reconciles a 404, and retries the frozen payload exactly (18.896862ms)
+  ✔ keeps the original unknown identity after an exact retry is refused with 403 (27.712256ms)
+  ✔ keeps server pagination, grouped totals and prior rows when refresh fails (19.802727ms)
+  ✔ reconciles an uncertain write and retries only the frozen body with the same key (19.174527ms)
+  ✔ uses the private receipt endpoint and enforces action-specific read versus write access (20.264453ms)
+  ✔ loads scoped allocation candidates and posts allocation and linked reversals with exact bodies (61.405338ms)
+  ✔ drops a response after authority changes and never invents empty success data (20.987482ms)
+✖ finance workspace (12439.71039ms)
+ℹ tests 58
+ℹ suites 3
+ℹ pass 55
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13812.75726
+
+✖ failing tests:
+
+test at tests/erpFinanceWorkflows.test.ts:454:5
+✖ renders authoritative list state for confirmed-empty (343.633011ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:488:14)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/erpFinanceWorkflows.test.ts:454:5
+✖ renders authoritative list state for failed-empty-refresh (412.918402ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:494:50)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/erpFinanceWorkflows.test.ts:454:5
+✖ renders authoritative list state for pending-empty-refresh (411.987891ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpFinanceWorkflows.test.ts:494:50)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

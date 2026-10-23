@@ -1,0 +1,39 @@
+{
+  "scenario": "synthetic-client-only-populated",
+  "requestsIssued": 0,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "page": {
+    "clientWidth": 390,
+    "scrollWidth": 390
+  },
+  "table": {
+    "rect": {
+      "x": -183,
+      "right": 1111.5625,
+      "y": 470,
+      "width": 1294.5625,
+      "height": 104
+    },
+    "rows": 1
+  },
+  "nativeScroll": {
+    "clientWidth": 768,
+    "scrollWidth": 1295,
+    "scrollLeft": 100
+  },
+  "visibleFrame": {
+    "rect": {
+      "x": 16,
+      "right": 374,
+      "y": 469,
+      "width": 358,
+      "height": 106
+    },
+    "clientWidth": 356,
+    "scrollWidth": 768,
+    "scrollLeft": 100
+  }
+}

@@ -124,7 +124,7 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
       ...(context.slots['effective_status-cell']?.({ row: { original } }) ?? []),
       ...(context.slots['actions-cell']?.({ row: { original } }) ?? [])
     ])),
-    ...(context.slots.empty?.() ?? [])
+    ...((props.data as unknown[]).length ? [] : context.slots.empty?.() ?? [])
   ]) }
   components.UModal = { props: ['open', 'title', 'unmountOnHide'], setup: (props, context) => {
     const index = modalOpenStates.length
@@ -173,6 +173,18 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
   const app = renderer.createApp(components.ErpFinanceWorkspace)
   for (const [name, component] of Object.entries(components)) app.component(name, component)
   app.mount(root)
+  function componentProps(name: string) {
+    const matches: Record<string, unknown>[] = []
+    const visit = (vnode: Vue.VNode) => {
+      if (vnode.component?.type === components[name]) matches.push(vnode.props ?? {})
+      if (vnode.component?.subTree) visit(vnode.component.subTree)
+      for (const child of Array.isArray(vnode.children) ? vnode.children : []) {
+        if (child && typeof child === 'object') visit(child as Vue.VNode)
+      }
+    }
+    if (app._instance) visit(app._instance.subTree)
+    return matches
+  }
   function exposed(name: string): Record<string, unknown> {
     const visit = (vnode: Vue.VNode): Record<string, unknown> | null => {
       const instance = vnode.component
@@ -243,7 +255,7 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
     })
     return { props }
   }
-  return { exposed, button, control, hasText, overlay, modalOpenStates, navigation, navigationItems: () => navigationItems, firstNavigationItems: () => firstNavigationItems, initialTabArguments, finance: () => mountedFinance, unmount: () => app.unmount() }
+  return { componentProps, exposed, button, control, hasText, overlay, modalOpenStates, navigation, navigationItems: () => navigationItems, firstNavigationItems: () => firstNavigationItems, initialTabArguments, finance: () => mountedFinance, unmount: () => app.unmount() }
 }
 
 const emptyMeta = { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] as ErpFinanceTotals[] }
@@ -436,6 +448,74 @@ describe('finance permission family matching', () => {
 })
 
 describe('finance workspace', { concurrency: 1 }, () => {
+  // These mounted cases catch empty guidance presented without a successful idle read,
+  // and a missing native empty branch that leaves guidance inside the wide table.
+  for (const scenario of ['unknown', 'pending', 'failed', 'confirmed-empty', 'populated', 'failed-refresh', 'failed-empty-refresh', 'pending-empty-refresh'] as const) {
+    it(`renders authoritative list state for ${scenario}`, async (t) => {
+      const pending = deferred<ErpFinancePage<ErpObligation>>()
+      let fail = scenario === 'failed'
+      let reads = 0
+      const app = createWorkspace(async () => {
+        if (fail) throw { statusCode: 503, data: { message: 'Financeiro indisponível' } }
+        reads++
+        if (scenario === 'pending' || (scenario === 'pending-empty-refresh' && reads > 1)) return pending.promise
+        return page(scenario === 'populated' || scenario === 'failed-refresh' ? [obligation] : [])
+      })
+      t.after(app.stop)
+      const state = app.state as { load: () => Promise<void>, loading: Vue.Ref<boolean>, meta: Vue.Ref<unknown> }
+      const mounted = mountFinanceWorkspace(app.state)
+      t.after(mounted.unmount)
+      if (scenario === 'pending') {
+        const request = state.load()
+        await settle()
+        assert.equal(state.loading.value, true)
+        t.after(async () => {
+          pending.resolve(page([]))
+          await request
+        })
+      } else if (scenario !== 'unknown') {
+        await state.load()
+        if (scenario === 'pending-empty-refresh') {
+          const request = state.load()
+          await settle()
+          assert.equal(state.loading.value, true)
+          t.after(async () => {
+            pending.resolve(page([]))
+            await request
+          })
+        }
+        if (scenario === 'failed-refresh' || scenario === 'failed-empty-refresh') {
+          fail = true
+          await state.load()
+        }
+      }
+      await settle()
+      const empty = mounted.componentProps('UEmpty')
+      assert.equal(empty.length, scenario === 'confirmed-empty' ? 1 : 0)
+      if (scenario === 'confirmed-empty') {
+        assert.match(String(empty[0]?.title), /Nenhum registro/)
+        assert.match(String(empty[0]?.description), /Ajuste a busca ou crie um lançamento/)
+        assert.equal(mounted.componentProps('UTable').length, 0, 'empty guidance must render independently of the wide table')
+      }
+      if (scenario !== 'confirmed-empty') assert.equal(mounted.hasText('Nenhum registro corresponde'), false)
+      if (scenario === 'unknown' || scenario === 'pending' || scenario === 'failed') {
+        assert.equal(mounted.hasText('0 registros no resultado filtrado'), false)
+        assert.equal(mounted.hasText('Nenhum registro corresponde'), false)
+      }
+      if (scenario === 'failed' || scenario === 'failed-refresh' || scenario === 'failed-empty-refresh') {
+        const alert = mounted.componentProps('UAlert').find(props => String(props.title).includes('Financeiro indisponível'))
+        assert.ok(alert, 'failed reads retain actionable error feedback')
+        assert.equal((alert.actions as { label: string }[])[0]?.label, 'Tentar novamente')
+      }
+      if (scenario === 'populated' || scenario === 'failed-refresh') {
+        const table = mounted.componentProps('UTable')[0]
+        assert.deepEqual(table?.data, [obligation], 'previously confirmed rows remain inspectable after failure')
+        assert.ok(mounted.button('Detalhes'))
+      }
+      assert.ok(mounted.button('Nova obrigação'), 'toolbar action remains reachable in every state')
+    })
+  }
+
   it('offers an explicit list-first create action for the selected finance area', async (t) => {
     const app = createWorkspace(async () => page([]))
     t.after(app.stop)
