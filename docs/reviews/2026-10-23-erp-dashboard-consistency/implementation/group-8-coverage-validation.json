@@ -1,0 +1,27 @@
+{
+  "total": 97,
+  "kinds": {
+    "component": 57,
+    "page": 40
+  },
+  "dispositions": {
+    "justified exception": 8,
+    "changed": 29,
+    "already conforming": 37,
+    "inherited shared correction": 23
+  },
+  "families": {
+    "admin": 4,
+    "finance": 11,
+    "catalog": 31,
+    "sales": 5,
+    "fiscal": 8,
+    "other": 4,
+    "purchase": 6,
+    "report": 4,
+    "settings": 18,
+    "stock": 6
+  },
+  "unique_files": 97,
+  "exact_inventory_match": true
+}

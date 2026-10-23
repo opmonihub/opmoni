@@ -432,6 +432,18 @@ describe('ERP administration context request fence', () => {
   })
 })
 
+function assertFieldErrorAssociation(root: HostNode, control: HostNode, message: string) {
+  assert.equal(control.props['aria-invalid'], true)
+  const ids = String(control.props['aria-describedby'] ?? '').split(' ').filter(Boolean)
+  assert.ok(ids.length, 'rejected control must describe its visible error')
+  const descriptions = ids.map((id) => {
+    const nodes = findHostNodes(root, node => node.props.id === id)
+    assert.equal(nodes.length, 1, 'error ID must resolve to one mounted description')
+    return hostText(nodes[0]!)
+  })
+  assert.ok(descriptions.some(text => text.includes(message)))
+}
+
 describe('ERP administration rendered SFC interactions', () => {
   it('retains establishment fields and server validation feedback after a 422 submit', async (t) => {
     let submissions = 0
@@ -439,7 +451,7 @@ describe('ERP administration rendered SFC interactions', () => {
       if (path.startsWith('/erp/establishments?')) return { data: [], meta: { current_page: 1, last_page: 1, all_establishments: true } }
       if (path === '/erp/establishments' && options?.method === 'POST') {
         submissions++
-        throw { statusCode: 422, data: { errors: { name: ['Este nome já está em uso.'] } } }
+        throw { statusCode: 422, data: { errors: { name: ['Este nome já está em uso.'], cnpj: ['CNPJ recusado.'] } } }
       }
       throw new Error(`Unexpected ERP request: ${path}`)
     })
@@ -459,6 +471,81 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.equal(hostText(mount.root as never).includes('Este nome já está em uso.'), true)
     assert.equal((mount.instance.form as { name: string }).name, 'Filial Centro')
     assert.equal((mount.instance.formOpen as boolean), true)
+    const name = findHostNodes(mount.root, node => node.tag === 'input' && node.props.maxlength === '255')[0]!
+    assertFieldErrorAssociation(mount.root, name, 'Este nome já está em uso.')
+    assertFieldErrorAssociation(mount.root, findHostNodes(mount.root, node => node.tag === 'input' && node.props.maxlength === '20')[0]!, 'CNPJ recusado.')
+  })
+
+  it('associates visible member lookup and permission errors with their native controls', async (t) => {
+    const mount = compileAndMount(companyAdministrationFile, { kind: 'members' }, defaultOwnerIdentity(), async (path) => {
+      if (path.startsWith('/erp/members?') || path.startsWith('/erp/establishments?')) return { data: [], meta: { current_page: 1, last_page: 1 } }
+      if (path === '/erp/member-permissions') return { data: [] }
+      if (path === '/erp/members/identity-lookup') throw { statusCode: 422, data: { errors: { email: ['E-mail recusado.'], user_id: ['Identidade indisponível.'], action_permissions: ['Permissões recusadas.'], establishment_ids: ['Seleção recusada.'] } } }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+    clickButton(mount.root, 'Adicionar membro')
+    await Vue.nextTick()
+    const email = findHostNodes(mount.root, node => node.tag === 'input' && node.props.type === 'email')[0]!
+    assert.equal(email.props['aria-describedby'], undefined)
+    changeInput(mount.root, node => node.props.type === 'email', 'member@example.test')
+    clickButton(mount.root, 'Localizar identidade')
+    await flushVue()
+    assertFieldErrorAssociation(mount.root, email, 'E-mail recusado.')
+    assertFieldErrorAssociation(mount.root, email, 'Identidade indisponível.')
+    const groups = findHostNodes(mount.root, node => node.tag === 'fieldset')
+    assertFieldErrorAssociation(mount.root, groups[0]!, 'Permissões recusadas.')
+    assertFieldErrorAssociation(mount.root, groups[1]!, 'Seleção recusada.')
+    assert.equal(email.value, 'member@example.test')
+    assert.equal(mount.instance.formOpen, true)
+  })
+
+  it('associates rejected delegation ID feedback without submitting a delegation', async (t) => {
+    const mount = compileAndMount(mappingApprovalFile, { mode: 'owner' }, defaultOwnerIdentity(), async (path) => {
+      if (path === '/erp/accounting-mappings') return { data: { delegation_id: null, status: 'not_delegated', delegation: null, mappings: [] } }
+      if (path === '/erp/member-permissions') return { data: [] }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+    mount.instance.accountId = '-1'
+    mount.instance.requestDelegationGrant()
+    await Vue.nextTick()
+    const control = findHostNodes(mount.root, node => node.tag === 'input' && node.props.type === 'number')[0]!
+    assertFieldErrorAssociation(mount.root, control, 'Informe o ID positivo')
+    assert.equal(mount.instance.accountId, '-1')
+    assert.equal(mount.calls.some(call => call.options?.method === 'POST'), false)
+    mount.instance.accountId = '55'
+    mount.instance.requestDelegationGrant()
+    await Vue.nextTick()
+    assert.equal(control.props['aria-describedby'], undefined)
+    assert.equal(control.props['aria-invalid'], false)
+  })
+
+  it('associates office mapping field errors with the current native selectors and search', async (t) => {
+    const identity = defaultOwnerIdentity()
+    identity.current_account = { id: 55, name: 'Escritório', status: 'active', role: 'admin' }
+    const mount = compileAndMount(mappingApprovalFile, { mode: 'office' }, identity, async (path) => {
+      if (path.startsWith('/account/erp-accounting-mappings/context?')) return { data: { delegation_id: 31, status: 'active', establishments: [{ id: 42, name: 'Matriz' }] }, meta: { current_page: 1, last_page: 1 } }
+      if (path.startsWith('/account/erp-accounting-mappings?')) return { data: [] }
+      if (path.startsWith('/clients?')) return { data: [{ id: 73, name: 'Cliente', status: 'active' }], meta: { current_page: 1, last_page: 1 } }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+    mount.instance.selectOfficeCompany('10')
+    await flushVue()
+    await mount.instance.searchClients('Cliente')
+    await flushVue()
+    // Exercise renderer feedback independently of permission/transport decisions.
+    mount.instance.fieldErrors = { erp_establishment_id: 'Estabelecimento recusado.', client_query: 'Busca recusada.', client_id: 'Cliente recusado.' }
+    await Vue.nextTick()
+    const selects = findHostNodes(mount.root, node => node.tag === 'select')
+    assertFieldErrorAssociation(mount.root, selects[1]!, 'Estabelecimento recusado.')
+    assertFieldErrorAssociation(mount.root, selects[2]!, 'Cliente recusado.')
+    assertFieldErrorAssociation(mount.root, findHostNodes(mount.root, node => node.tag === 'input' && node.props.placeholder === 'Nome ou documento')[0]!, 'Busca recusada.')
+    assert.equal(mount.calls.some(call => call.options?.method === 'POST'), false)
   })
 
   it('does not issue establishment writes for a read-only delegated member', async (t) => {

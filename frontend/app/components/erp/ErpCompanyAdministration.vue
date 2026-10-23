@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 
 type AdministrationKind = 'establishments' | 'members'
@@ -42,6 +43,7 @@ const listStale = ref(false)
 const authorityBlocked = ref(false)
 const errorMessage = ref('')
 const fieldErrors = ref<Record<string, string>>({})
+const fieldErrorId = useId()
 const formOpen = ref(false)
 const confirmTarget = ref<Establishment | CompanyMember | null>(null)
 const identityMatch = ref<IdentityMatch | null>(null)
@@ -446,8 +448,9 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
             maxlength="255"
             class="w-full rounded-lg border border-default bg-default px-3 py-2"
             :aria-invalid="!!fieldErrors.name"
+            :aria-describedby="fieldErrors.name ? `${fieldErrorId}-name` : undefined"
           >
-          <span v-if="fieldErrors.name" class="text-error">{{ fieldErrors.name }}</span>
+          <span v-if="fieldErrors.name" :id="`${fieldErrorId}-name`" class="text-error">{{ fieldErrors.name }}</span>
         </label>
         <label class="block space-y-1 text-sm">
           <span>CNPJ (opcional)</span>
@@ -457,8 +460,9 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
             maxlength="20"
             class="w-full rounded-lg border border-default bg-default px-3 py-2"
             :aria-invalid="!!fieldErrors.cnpj"
+            :aria-describedby="fieldErrors.cnpj ? `${fieldErrorId}-cnpj` : undefined"
           >
-          <span v-if="fieldErrors.cnpj" class="text-error">{{ fieldErrors.cnpj }}</span>
+          <span v-if="fieldErrors.cnpj" :id="`${fieldErrorId}-cnpj`" class="text-error">{{ fieldErrors.cnpj }}</span>
         </label>
         <label v-if="form.id" class="block space-y-1 text-sm">
           <span>Situação</span>
@@ -478,7 +482,8 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
               type="email"
               autocomplete="off"
               class="w-full rounded-lg border border-default bg-default px-3 py-2"
-              :aria-invalid="!!fieldErrors.email"
+              :aria-invalid="!!fieldErrors.email || !!fieldErrors.user_id"
+              :aria-describedby="[fieldErrors.email ? `${fieldErrorId}-email` : null, fieldErrors.user_id ? `${fieldErrorId}-user_id` : null].filter(Boolean).join(' ') || undefined"
             >
           </label>
           <UButton
@@ -494,10 +499,10 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           <p v-if="identityMatch" class="text-sm" role="status">
             {{ identityMatch.name }} · {{ identityMatch.email }}
           </p>
-          <p v-if="fieldErrors.email" class="text-error text-sm">
+          <p v-if="fieldErrors.email" :id="`${fieldErrorId}-email`" class="text-error text-sm">
             {{ fieldErrors.email }}
           </p>
-          <p v-if="fieldErrors.user_id" class="text-error text-sm">
+          <p v-if="fieldErrors.user_id" :id="`${fieldErrorId}-user_id`" class="text-error text-sm">
             {{ fieldErrors.user_id }}
           </p>
         </div>
@@ -514,7 +519,11 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           </select>
         </label>
 
-        <fieldset class="space-y-2">
+        <fieldset
+          class="space-y-2"
+          :aria-invalid="!!fieldErrors.action_permissions"
+          :aria-describedby="fieldErrors.action_permissions ? `${fieldErrorId}-action_permissions` : undefined"
+        >
           <legend class="text-sm font-medium">
             Permissões de ação
           </legend>
@@ -535,12 +544,16 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
               <span>{{ choice.label }} <span class="text-muted">{{ choice.write ? '· escrita' : '· leitura' }}</span></span>
             </label>
           </div>
-          <p v-if="fieldErrors.action_permissions" class="text-error text-sm">
+          <p v-if="fieldErrors.action_permissions" :id="`${fieldErrorId}-action_permissions`" class="text-error text-sm">
             {{ fieldErrors.action_permissions }}
           </p>
         </fieldset>
 
-        <fieldset class="space-y-2">
+        <fieldset
+          class="space-y-2"
+          :aria-invalid="!!fieldErrors.establishment_ids"
+          :aria-describedby="fieldErrors.establishment_ids ? `${fieldErrorId}-establishment_ids` : undefined"
+        >
           <legend class="text-sm font-medium">
             Estabelecimentos permitidos
           </legend>
@@ -576,7 +589,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
               Seleção preservada: {{ form.establishmentIds.map(id => establishments.find(item => item.id === id)?.name ?? `#${id}`).join(', ') }}
             </p>
           </div>
-          <p v-if="fieldErrors.establishment_ids" class="text-error text-sm">
+          <p v-if="fieldErrors.establishment_ids" :id="`${fieldErrorId}-establishment_ids`" class="text-error text-sm">
             {{ fieldErrors.establishment_ids }}
           </p>
         </fieldset>

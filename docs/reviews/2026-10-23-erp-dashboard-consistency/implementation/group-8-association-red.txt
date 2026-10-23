@@ -1,0 +1,83 @@
+▶ ERP administration rendered SFC interactions
+  ✖ retains establishment fields and server validation feedback after a 422 submit (892.718449ms)
+  ✖ associates visible member lookup and permission errors with their native controls (401.949707ms)
+  ✖ associates rejected delegation ID feedback without submitting a delegation (402.892643ms)
+  ✖ associates office mapping field errors with the current native selectors and search (207.442809ms)
+✖ ERP administration rendered SFC interactions (1907.108682ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3030.019415
+
+✖ failing tests:
+
+test at tests/erpAdministrationWorkflows.test.ts:448:3
+✖ retains establishment fields and server validation feedback after a 422 submit (892.718449ms)
+  AssertionError [ERR_ASSERTION]: rejected control must describe its visible error
+      at assertFieldErrorAssociation (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:438:10)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:475:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1794:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/erpAdministrationWorkflows.test.ts:479:3
+✖ associates visible member lookup and permission errors with their native controls (401.949707ms)
+  AssertionError [ERR_ASSERTION]: rejected control must describe its visible error
+      at assertFieldErrorAssociation (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:438:10)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:495:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/erpAdministrationWorkflows.test.ts:504:3
+✖ associates rejected delegation ID feedback without submitting a delegation (402.892643ms)
+  AssertionError [ERR_ASSERTION]: rejected control must describe its visible error
+      at assertFieldErrorAssociation (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:438:10)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:516:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/erpAdministrationWorkflows.test.ts:526:3
+✖ associates office mapping field errors with the current native selectors and search (207.442809ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - true
+  
+      at assertFieldErrorAssociation (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:436:10)
+      at TestContext.<anonymous> (file:///home/obsidian/dev/opmoni/.worktrees/erp-ui-audit-shell/frontend/tests/erpAdministrationWorkflows.test.ts:545:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

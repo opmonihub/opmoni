@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useId } from 'vue'
+
 type ApprovalMode = 'owner' | 'office'
 type Delegation = {
   id: number
@@ -54,6 +56,7 @@ const authorityBlocked = ref(false)
 const errorMessage = ref('')
 const listError = ref('')
 const fieldErrors = ref<Record<string, string>>({})
+const fieldErrorId = useId()
 const confirmAction = ref<'grant' | 'revoke' | 'approval' | 'mapping-revoke' | ''>('')
 const pendingMapping = ref<Mapping | null>(null)
 
@@ -620,8 +623,9 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
               type="number"
               class="w-full rounded-lg border border-default bg-default px-3 py-2"
               :aria-invalid="!!fieldErrors.account_id"
+              :aria-describedby="fieldErrors.account_id ? `${fieldErrorId}-account_id` : undefined"
             >
-            <span v-if="fieldErrors.account_id" class="text-error">{{ fieldErrors.account_id }}</span>
+            <span v-if="fieldErrors.account_id" :id="`${fieldErrorId}-account_id`" class="text-error">{{ fieldErrors.account_id }}</span>
           </label>
           <fieldset class="space-y-2">
             <legend class="text-sm font-medium">
@@ -721,11 +725,17 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
             </div>
             <label class="block space-y-1 text-sm">
               <span>Estabelecimento ativo</span>
-              <select v-model.number="selectedEstablishmentId" class="w-full rounded-lg border border-default bg-default px-3 py-2" :disabled="loading || officeDataStale">
+              <select
+                v-model.number="selectedEstablishmentId"
+                :aria-invalid="!!fieldErrors.erp_establishment_id"
+                :aria-describedby="fieldErrors.erp_establishment_id ? `${fieldErrorId}-erp_establishment_id` : undefined"
+                class="w-full rounded-lg border border-default bg-default px-3 py-2"
+                :disabled="loading || officeDataStale"
+              >
                 <option :value="null">Selecione um estabelecimento</option>
                 <option v-for="establishment in officeContext.establishments" :key="establishment.id" :value="establishment.id">{{ establishment.name }}</option>
               </select>
-              <span v-if="fieldErrors.erp_establishment_id" class="text-error">{{ fieldErrors.erp_establishment_id }}</span>
+              <span v-if="fieldErrors.erp_establishment_id" :id="`${fieldErrorId}-erp_establishment_id`" class="text-error">{{ fieldErrors.erp_establishment_id }}</span>
             </label>
             <div v-if="officeLastPage > officePage" class="flex flex-wrap items-center justify-between gap-3">
               <span class="text-muted text-xs">{{ officeContext.establishments.length }} estabelecimentos carregados · página {{ officePage }} de {{ officeLastPage }}</span>
@@ -747,10 +757,11 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
                   class="w-full rounded-lg border border-default bg-default px-3 py-2"
                   placeholder="Nome ou documento"
                   :aria-invalid="!!fieldErrors.client_query"
+                  :aria-describedby="fieldErrors.client_query ? `${fieldErrorId}-client_query` : undefined"
                   autocomplete="off"
                 >
               </label>
-              <p v-if="fieldErrors.client_query" class="text-error text-sm">
+              <p v-if="fieldErrors.client_query" :id="`${fieldErrorId}-client_query`" class="text-error text-sm">
                 {{ fieldErrors.client_query }}
               </p>
               <UButton
@@ -768,7 +779,13 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
             </form>
             <label v-if="clients.length" class="block space-y-1 text-sm">
               <span>Cliente do escritório</span>
-              <select v-model.number="selectedClientId" class="w-full rounded-lg border border-default bg-default px-3 py-2" :disabled="clientResultsStale || officeDataStale || searchingClients">
+              <select
+                v-model.number="selectedClientId"
+                :aria-invalid="!!fieldErrors.client_id"
+                :aria-describedby="fieldErrors.client_id ? `${fieldErrorId}-client_id` : undefined"
+                class="w-full rounded-lg border border-default bg-default px-3 py-2"
+                :disabled="clientResultsStale || officeDataStale || searchingClients"
+              >
                 <option :value="null">Selecione um cliente</option>
                 <option v-for="client in clients" :key="client.id" :value="client.id">{{ client.name }}{{ client.tax_id ? ` · ${client.tax_id}` : '' }}</option>
               </select>
@@ -785,7 +802,7 @@ defineExpose({ ownerState, permissionChoices, officeContext, mappings, clients, 
                 Carregar mais clientes
               </UButton>
             </div>
-            <p v-if="fieldErrors.client_id" class="text-error text-sm">
+            <p v-if="fieldErrors.client_id" :id="`${fieldErrorId}-client_id`" class="text-error text-sm">
               {{ fieldErrors.client_id }}
             </p>
             <div v-if="selectedClient && selectedEstablishment" class="rounded-lg border border-default p-3 text-sm">

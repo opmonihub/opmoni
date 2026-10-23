@@ -1,0 +1,2715 @@
+{
+  "inventory_sha256": "a7fd42ce1f516f88a772b0f02e7a9e8b055b0a8c82d917efc9c705d5f2398a58",
+  "source_base": "5ce7d51",
+  "review_head": "97e4ddf plus group8 ARIA corrections",
+  "review_type": "all 97 inventory source files read, including dormant ErpModuleHub; marker excerpts are navigation aids, not substitutes for behavior/browser checks",
+  "files": [
+    {
+      "file": "frontend/app/components/erp/ErpAccountingDeliveries.vue",
+      "sha256": "22db63ff69e3fc711a78b6473ca96c9b46a9db24df9c5507f59c668d0f93eb4c",
+      "bytes": 30597,
+      "reviewed_role": "admin",
+      "markers": [
+        {
+          "line": 428,
+          "source": "<UFormField class=\"min-w-0 flex-1\" label=\"Documento fiscal autorizado\" name=\"accounting_source\">"
+        },
+        {
+          "line": 450,
+          "source": "<UFormField label=\"Estado\" name=\"delivery_status\">"
+        },
+        {
+          "line": 535,
+          "source": "<table class=\"w-full min-w-[44rem] text-left text-sm\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpAccountingMappingApproval.vue",
+      "sha256": "1419ae52d05168977aca69e47a81ff3c611986c306a865fcf6c00a53d55fa4ec",
+      "bytes": 39857,
+      "reviewed_role": "admin",
+      "markers": [
+        {
+          "line": 612,
+          "source": "<form class=\"space-y-4 rounded-xl border border-default p-4\" @submit.prevent=\"requestDelegationGrant\">"
+        },
+        {
+          "line": 630,
+          "source": "<fieldset class=\"space-y-2\">"
+        },
+        {
+          "line": 752,
+          "source": "<form class=\"space-y-2\" @submit.prevent=\"searchClients()\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashCloseForm.vue",
+      "sha256": "85ed98934d6413d0c40caf61e12f7f992826109cbdf128e534a1ee54b9c90e91",
+      "bytes": 2486,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 44,
+          "source": "<UForm :state=\"state\" class=\"space-y-3\" @submit=\"submit\">"
+        },
+        {
+          "line": 45,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashMovementForm.vue",
+      "sha256": "48f0110649d68829ee7fd8388c4f8b94d38d4d559da613929c93218778f51cea",
+      "bytes": 2224,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 31,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 32,
+          "source": "<UFormField"
+        },
+        {
+          "line": 40,
+          "source": "<UFormField"
+        },
+        {
+          "line": 54,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashPaymentForm.vue",
+      "sha256": "966d1ab162402c79334e95a6411eafb9e76babf70715974568096078d9a9bc26",
+      "bytes": 3198,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 44,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 45,
+          "source": "<UFormField"
+        },
+        {
+          "line": 53,
+          "source": "<UFormField"
+        },
+        {
+          "line": 66,
+          "source": "<UFormField label=\"Conta financeira\" name=\"erp_financial_account_id\" :error=\"errors?.erp_financial_account_id\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashSessionForm.vue",
+      "sha256": "3b4c4c105973db3069e3f4e186a3c43d54cbaba992bdd5f10b44323da019ef65",
+      "bytes": 4309,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 53,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 55,
+          "source": "<UFormField"
+        },
+        {
+          "line": 63,
+          "source": "<UFormField"
+        },
+        {
+          "line": 73,
+          "source": "<UFormField"
+        },
+        {
+          "line": 81,
+          "source": "<UFormField"
+        },
+        {
+          "line": 95,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashWorkspace.vue",
+      "sha256": "50997f2f740718d17c8435a801755955185a1e335be8ba6312c2994bfd1832e8",
+      "bytes": 26631,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 209,
+          "source": "<ErpCatalogPageShell title=\"Caixa\" description=\"Aberturas, movimentos e fechamentos com saldos reconciliados pelo servidor.\">"
+        },
+        {
+          "line": 305,
+          "source": "<UTable"
+        },
+        {
+          "line": 306,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 344,
+          "source": "<UFormField label=\"Situa\u00e7\u00e3o\" name=\"status\">"
+        },
+        {
+          "line": 347,
+          "source": "<UFormField label=\"Caixa\" name=\"erp_cash_register_id\">"
+        },
+        {
+          "line": 359,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\">"
+        },
+        {
+          "line": 362,
+          "source": "<UFormField label=\"Moeda\" name=\"currency\">"
+        },
+        {
+          "line": 365,
+          "source": "<UFormField label=\"De\" name=\"date_from\">"
+        },
+        {
+          "line": 368,
+          "source": "<UFormField label=\"At\u00e9\" name=\"date_to\">"
+        },
+        {
+          "line": 378,
+          "source": "<UTable"
+        },
+        {
+          "line": 379,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 511,
+          "source": "<UTable"
+        },
+        {
+          "line": 512,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 529,
+          "source": "<UModal"
+        },
+        {
+          "line": 555,
+          "source": "<UModal"
+        },
+        {
+          "line": 581,
+          "source": "<UModal"
+        },
+        {
+          "line": 591,
+          "source": "<UModal"
+        },
+        {
+          "line": 608,
+          "source": "<UModal"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCatalogPageShell.vue",
+      "sha256": "491b4673dbb0405a345f29dd2f946bb92d21bd3c8a816653a2400c56f8efdf29",
+      "bytes": 1214,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpPageBodyClass } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 33,
+          "source": "<div :class=\"erpPageBodyClass\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCatalogPagination.vue",
+      "sha256": "a56fd2138e316e035c3893b0eac66314b7cc717924115382db39a8a974c9195b",
+      "bytes": 1771,
+      "reviewed_role": "catalog",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCommercialDraftForm.vue",
+      "sha256": "8bbb0d2433bc2bf7360e6035126fac539cbc763081ff150e33daac5a32cc6343",
+      "bytes": 17237,
+      "reviewed_role": "sales",
+      "markers": [
+        {
+          "line": 122,
+          "source": "<UForm :state=\"draft\" class=\"min-w-0 space-y-5\" @submit=\"submit\">"
+        },
+        {
+          "line": 124,
+          "source": "<UFormField"
+        },
+        {
+          "line": 139,
+          "source": "<UFormField name=\"erp_contact_id\" label=\"Cliente\" :error=\"formName('erp_contact_id')\">"
+        },
+        {
+          "line": 148,
+          "source": "<UFormField name=\"erp_operation_nature_id\" label=\"Natureza da opera\u00e7\u00e3o\" :error=\"formName('erp_operation_nature_id')\">"
+        },
+        {
+          "line": 169,
+          "source": "<UFormField"
+        },
+        {
+          "line": 182,
+          "source": "<UFormField"
+        },
+        {
+          "line": 195,
+          "source": "<UFormField"
+        },
+        {
+          "line": 211,
+          "source": "<UFormField"
+        },
+        {
+          "line": 229,
+          "source": "<UFormField"
+        },
+        {
+          "line": 280,
+          "source": "<UFormField :name=\"`lines.${index}.erp_product_variant_id`\" label=\"Produto ou servi\u00e7o\" :error=\"formName(`lines.${index}.erp_product_variant_id`)\">"
+        },
+        {
+          "line": 289,
+          "source": "<UFormField :name=\"`lines.${index}.description`\" label=\"Descri\u00e7\u00e3o\" :error=\"formName(`lines.${index}.description`)\">"
+        },
+        {
+          "line": 292,
+          "source": "<UFormField :name=\"`lines.${index}.erp_unit_id`\" label=\"Unidade\" :error=\"formName(`lines.${index}.erp_unit_id`)\">"
+        },
+        {
+          "line": 301,
+          "source": "<UFormField"
+        },
+        {
+          "line": 317,
+          "source": "<UFormField :name=\"`lines.${index}.discount_amount`\" label=\"Desconto (R$)\" :error=\"formName(`lines.${index}.discount_amount`)\">"
+        },
+        {
+          "line": 328,
+          "source": "<UFormField :name=\"`lines.${index}.tax_amount`\" label=\"Imposto informado (R$)\" :error=\"formName(`lines.${index}.tax_amount`)\">"
+        },
+        {
+          "line": 339,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCompanyAdministration.vue",
+      "sha256": "e99df836510058fc213f323d24e1ecb7c559580cee1e6e576a7927b601cc73e6",
+      "bytes": 31465,
+      "reviewed_role": "admin",
+      "markers": [
+        {
+          "line": 426,
+          "source": "<form v-if=\"formOpen && canView\" class=\"space-y-4 rounded-xl border border-default p-4\" @submit.prevent=\"submitForm\">"
+        },
+        {
+          "line": 522,
+          "source": "<fieldset"
+        },
+        {
+          "line": 552,
+          "source": "<fieldset"
+        },
+        {
+          "line": 646,
+          "source": "<form v-if=\"canView\" class=\"flex flex-wrap gap-2\" @submit.prevent=\"applySearch\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFinanceWorkspace.vue",
+      "sha256": "2f013937a5a9c8f222f8cda4eb81c6477b6a9c5c9fb55a6f255a84d343703af6",
+      "bytes": 43940,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 316,
+          "source": "<ErpCatalogPageShell title=\"Financeiro\" description=\"Obriga\u00e7\u00f5es, pagamentos e contas da empresa, com hist\u00f3rico e saldos concili\u00e1veis.\">"
+        },
+        {
+          "line": 366,
+          "source": "<UFormField label=\"Situa\u00e7\u00e3o\" name=\"status\">"
+        },
+        {
+          "line": 369,
+          "source": "<UFormField v-if=\"finance.tab.value !== 'accounts'\" label=\"Dire\u00e7\u00e3o\" name=\"direction\">"
+        },
+        {
+          "line": 372,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\">"
+        },
+        {
+          "line": 375,
+          "source": "<UFormField v-if=\"finance.tab.value !== 'accounts'\" label=\"Conta financeira\" name=\"erp_financial_account_id\">"
+        },
+        {
+          "line": 378,
+          "source": "<UFormField label=\"Moeda\" name=\"currency\">"
+        },
+        {
+          "line": 386,
+          "source": "<UFormField label=\"Lan\u00e7ado de\" name=\"date_from\">"
+        },
+        {
+          "line": 389,
+          "source": "<UFormField label=\"At\u00e9\" name=\"date_to\">"
+        },
+        {
+          "line": 486,
+          "source": "<UTable"
+        },
+        {
+          "line": 487,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 692,
+          "source": "<UModal"
+        },
+        {
+          "line": 703,
+          "source": "<UFormField"
+        },
+        {
+          "line": 720,
+          "source": "<UFormField"
+        },
+        {
+          "line": 734,
+          "source": "<UFormField"
+        },
+        {
+          "line": 752,
+          "source": "<UFormField"
+        },
+        {
+          "line": 786,
+          "source": "<UModal"
+        },
+        {
+          "line": 817,
+          "source": "<UModal"
+        },
+        {
+          "line": 848,
+          "source": "<UModal"
+        },
+        {
+          "line": 880,
+          "source": "<UModal"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFinancialAccountForm.vue",
+      "sha256": "ac92ebdd2e8460546811c1003d8154d1c115c7907decb96939ff46e682b6b5b0",
+      "bytes": 2538,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 29,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 30,
+          "source": "<UFormField"
+        },
+        {
+          "line": 38,
+          "source": "<UFormField"
+        },
+        {
+          "line": 46,
+          "source": "<UFormField"
+        },
+        {
+          "line": 54,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\" :error=\"errors?.erp_establishment_id\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalCertificateForm.vue",
+      "sha256": "95d3be9a160a4ab3b6fa5c504cc12f6905f9b95f43a0fb84bfbd516fb442fee7",
+      "bytes": 4097,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 52,
+          "source": "<UForm :state=\"{ label, password, certificateFile }\" class=\"space-y-4\" @submit=\"submit\">"
+        },
+        {
+          "line": 57,
+          "source": "<UFormField"
+        },
+        {
+          "line": 72,
+          "source": "<UFormField"
+        },
+        {
+          "line": 88,
+          "source": "<UFormField label=\"Arquivo PKCS#12\" name=\"certificate\" :error=\"fieldErrors?.certificate\">"
+        },
+        {
+          "line": 99,
+          "source": "<UFormField label=\"Senha do certificado\" name=\"password\" :error=\"fieldErrors?.password\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalConfigurationForm.vue",
+      "sha256": "589e9ebc8493b828aa3a1a02359788db43478ffa9b8403432e7c2426555c80c4",
+      "bytes": 26586,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 173,
+          "source": "<UForm :state=\"form\" class=\"space-y-5\" @submit=\"submit\">"
+        },
+        {
+          "line": 188,
+          "source": "<UFormField label=\"Ambiente\" name=\"environment\" :error=\"fieldErrors?.environment\">"
+        },
+        {
+          "line": 197,
+          "source": "<UFormField label=\"Regime tribut\u00e1rio\" name=\"issuer.tax_regime\" :error=\"fieldErrors?.['issuer.tax_regime']\">"
+        },
+        {
+          "line": 207,
+          "source": "<UFormField label=\"Inscri\u00e7\u00e3o estadual\" name=\"issuer.state_registration\" :error=\"fieldErrors?.['issuer.state_registration']\">"
+        },
+        {
+          "line": 210,
+          "source": "<UFormField label=\"UF do emissor\" name=\"issuer.uf\" :error=\"fieldErrors?.['issuer.uf']\">"
+        },
+        {
+          "line": 214,
+          "source": "<fieldset class=\"grid gap-4 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 218,
+          "source": "<UFormField"
+        },
+        {
+          "line": 249,
+          "source": "<UFormField label=\"S\u00e9rie\" :name=\"`models.${model.id}.series`\" :error=\"fieldErrors?.[`models.${model.id}.series`]\">"
+        },
+        {
+          "line": 252,
+          "source": "<UFormField label=\"Pr\u00f3ximo n\u00famero\" :name=\"`models.${model.id}.next_number`\" :error=\"fieldErrors?.[`models.${model.id}.next_number`]\">"
+        },
+        {
+          "line": 255,
+          "source": "<UFormField"
+        },
+        {
+          "line": 277,
+          "source": "<UFormField"
+        },
+        {
+          "line": 307,
+          "source": "<UFormField"
+        },
+        {
+          "line": 349,
+          "source": "<UFormField label=\"Modo\" name=\"models.65.nfce_qr.mode\" :error=\"fieldErrors?.['models.65.nfce_qr.mode']\">"
+        },
+        {
+          "line": 359,
+          "source": "<UFormField label=\"URL p\u00fablica de consulta\" name=\"models.65.nfce_qr.consultation_url\" :error=\"fieldErrors?.['models.65.nfce_qr.consultation_url']\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalDocumentDetail.vue",
+      "sha256": "9eacdfc63c838f0c2d0221ed4b6392e5127fbf8aedc26c4dc476ace8efff656b",
+      "bytes": 8577,
+      "reviewed_role": "fiscal",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalDocumentForm.vue",
+      "sha256": "c3cf8bfb1a9aa92b06757349df3ccc69ed54cb10397fbaaa92067f1738838bd3",
+      "bytes": 43315,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 223,
+          "source": "<UForm :state=\"facts\" class=\"space-y-5\" @submit=\"submit\">"
+        },
+        {
+          "line": 239,
+          "source": "<UFormField label=\"Modelo fiscal\" name=\"model\">"
+        },
+        {
+          "line": 248,
+          "source": "<UFormField label=\"Tipo de documento\" name=\"document_kind\">"
+        },
+        {
+          "line": 263,
+          "source": "<UFormField"
+        },
+        {
+          "line": 278,
+          "source": "<UFormField"
+        },
+        {
+          "line": 297,
+          "source": "<UFormField"
+        },
+        {
+          "line": 311,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 315,
+          "source": "<UFormField"
+        },
+        {
+          "line": 324,
+          "source": "<UFormField label=\"Finalidade definida pelo tipo de documento\" name=\"identity.purpose\" :error=\"fieldErrors?.['source.identity.purpose']\">"
+        },
+        {
+          "line": 327,
+          "source": "<UFormField label=\"CFOP confirmado para esta opera\u00e7\u00e3o\" name=\"operation_nature.cfop\" :error=\"fieldErrors?.['source.operation_nature.cfop']\">"
+        },
+        {
+          "line": 331,
+          "source": "<fieldset v-if=\"offlineNfce\" class=\"grid gap-3 rounded-lg border border-warning p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 338,
+          "source": "<UFormField"
+        },
+        {
+          "line": 351,
+          "source": "<UFormField label=\"Justificativa (15 a 256 caracteres)\" name=\"identity.contingency_justification\" :error=\"fieldErrors?.['source.identity.contingency_justification']\">"
+        },
+        {
+          "line": 355,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 359,
+          "source": "<UFormField label=\"Indicador de inscri\u00e7\u00e3o estadual\" name=\"recipient.state_registration_indicator\" :error=\"fieldErrors?.['source.recipient.state_registration_indicator']\">"
+        },
+        {
+          "line": 362,
+          "source": "<UFormField"
+        },
+        {
+          "line": 372,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 380,
+          "source": "<UFormField label=\"Descri\u00e7\u00e3o fiscal\" :name=\"`items.${index}.description`\">"
+        },
+        {
+          "line": 384,
+          "source": "<UFormField label=\"Quantidade complementar\" :name=\"`items.${index}.quantity`\">"
+        },
+        {
+          "line": 387,
+          "source": "<UFormField label=\"Valor unit\u00e1rio complementar\" :name=\"`items.${index}.unit_price`\">"
+        },
+        {
+          "line": 390,
+          "source": "<UFormField label=\"Valor bruto complementar\" :name=\"`items.${index}.gross_total`\">"
+        },
+        {
+          "line": 394,
+          "source": "<UFormField label=\"Incluir no total (0 n\u00e3o, 1 sim)\" :name=\"`items.${index}.ind_total`\" :error=\"fieldErrors?.[`source.items.${index}.ind_total`]\">"
+        },
+        {
+          "line": 397,
+          "source": "<UFormField"
+        },
+        {
+          "line": 408,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 412,
+          "source": "<UFormField"
+        },
+        {
+          "line": 422,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 426,
+          "source": "<UFormField label=\"Modalidade do frete\" name=\"freight.modality\" :error=\"fieldErrors?.['source.freight.modality']\">"
+        },
+        {
+          "line": 429,
+          "source": "<UFormField label=\"Meio de pagamento\" name=\"payment.0.method\" :error=\"fieldErrors?.['source.payment.0.method']\">"
+        },
+        {
+          "line": 432,
+          "source": "<UFormField label=\"Valor pago\" name=\"payment.0.amount\" :error=\"fieldErrors?.['source.payment.0.amount']\">"
+        },
+        {
+          "line": 440,
+          "source": "<UFormField"
+        },
+        {
+          "line": 454,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 458,
+          "source": "<UFormField"
+        },
+        {
+          "line": 498,
+          "source": "<UFormField"
+        },
+        {
+          "line": 534,
+          "source": "<fieldset class=\"grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 541,
+          "source": "<UFormField"
+        },
+        {
+          "line": 579,
+          "source": "<UFormField label=\"Documento autorizado dispon\u00edvel\" name=\"transport_manifest.document\">"
+        },
+        {
+          "line": 588,
+          "source": "<UFormField label=\"Modelo da refer\u00eancia externa (55, 65 ou 57)\" name=\"transport_manifest.external_model\">"
+        },
+        {
+          "line": 596,
+          "source": "<UFormField label=\"Chave de acesso da refer\u00eancia (44 d\u00edgitos)\" name=\"transport_manifest.external_access_key\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalEventForm.vue",
+      "sha256": "7389e326cbe06ef30a00c4c608035d23e1b107e11b1394a449bd730ef80344a5",
+      "bytes": 7664,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 68,
+          "source": "<UForm :state=\"form\" class=\"space-y-4\" @submit=\"submit\">"
+        },
+        {
+          "line": 72,
+          "source": "<UFormField label=\"Evento\" name=\"event_type\" :error=\"fieldErrors?.event_type\">"
+        },
+        {
+          "line": 83,
+          "source": "<UFormField label=\"Justificativa (15 a 255 caracteres)\" name=\"justification\" :error=\"fieldErrors?.justification\">"
+        },
+        {
+          "line": 88,
+          "source": "<UFormField label=\"Texto da carta de corre\u00e7\u00e3o (15 a 1000 caracteres)\" name=\"correction\" :error=\"fieldErrors?.correction\">"
+        },
+        {
+          "line": 94,
+          "source": "<UFormField label=\"Observa\u00e7\u00e3o complementar do CT-e\" name=\"corrections.0.value\" :error=\"fieldErrors?.corrections\">"
+        },
+        {
+          "line": 100,
+          "source": "<UFormField label=\"NFC-e de substitui\u00e7\u00e3o autorizada\" name=\"replacement_document_id\" :error=\"fieldErrors?.replacement_document_id\">"
+        },
+        {
+          "line": 112,
+          "source": "<UFormField label=\"Data de encerramento\" name=\"closed_on\" :error=\"fieldErrors?.closed_on\">"
+        },
+        {
+          "line": 115,
+          "source": "<UFormField label=\"UF de encerramento\" name=\"closing_uf\" :error=\"fieldErrors?.closing_uf\">"
+        },
+        {
+          "line": 118,
+          "source": "<UFormField label=\"C\u00f3digo IBGE do munic\u00edpio\" name=\"closing_city_code\" :error=\"fieldErrors?.closing_city_code\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalInvalidationForm.vue",
+      "sha256": "3380b3d9847f22c6e0e534e383459f833913c67aa6ecf4f051c991d803fbf99e",
+      "bytes": 3883,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 38,
+          "source": "<UForm :state=\"form\" class=\"space-y-4\" @submit=\"submit\">"
+        },
+        {
+          "line": 43,
+          "source": "<UFormField label=\"Modelo\" name=\"model\" :error=\"fieldErrors?.model\">"
+        },
+        {
+          "line": 52,
+          "source": "<UFormField label=\"Ano atual\" name=\"year\" :error=\"fieldErrors?.year\">"
+        },
+        {
+          "line": 55,
+          "source": "<UFormField label=\"S\u00e9rie\" name=\"series\" :error=\"fieldErrors?.series\">"
+        },
+        {
+          "line": 59,
+          "source": "<UFormField label=\"N\u00famero inicial\" name=\"number_from\" :error=\"fieldErrors?.number_from\">"
+        },
+        {
+          "line": 62,
+          "source": "<UFormField label=\"N\u00famero final\" name=\"number_to\" :error=\"fieldErrors?.number_to\">"
+        },
+        {
+          "line": 67,
+          "source": "<UFormField label=\"Justificativa (15 a 255 caracteres)\" name=\"justification\" :error=\"fieldErrors?.justification\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalWorkspace.vue",
+      "sha256": "92dbce4041ce139b7a351d1b1200d4afaa7159270e4066d6c60f32df6ebc0c98",
+      "bytes": 32653,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 223,
+          "source": "<ErpCatalogPageShell title=\"Fiscal\" description=\"Configura\u00e7\u00e3o, emiss\u00e3o e acompanhamento de documentos fiscais vinculados \u00e0 empresa ativa.\">"
+        },
+        {
+          "line": 609,
+          "source": "<UModal v-model:open=\"actionConfirmationOpen\" title=\"Confirmar opera\u00e7\u00e3o fiscal\">"
+        },
+        {
+          "line": 633,
+          "source": "<UModal v-model:open=\"eventConfirmationOpen\" title=\"Confirmar envio do evento\">"
+        },
+        {
+          "line": 650,
+          "source": "<UModal v-model:open=\"recoveredEventConfirmationOpen\" title=\"Continuar evento recuperado\">"
+        },
+        {
+          "line": 668,
+          "source": "<UModal v-model:open=\"invalidationConfirmationOpen\" title=\"Confirmar inutiliza\u00e7\u00e3o de faixa\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpModuleHub.vue",
+      "sha256": "fad18b61b8dd0698820155caf6a40f2a1b91659ccd7571210bc6ffc16e7f31f9",
+      "bytes": 7945,
+      "reviewed_role": "other",
+      "markers": [
+        {
+          "line": 147,
+          "source": "<ErpCatalogPageShell :title=\"contract.title\" :description=\"contract.description\">"
+        },
+        {
+          "line": 183,
+          "source": "<form v-else-if=\"activeTab?.mode === 'report'\" class=\"flex flex-wrap items-end gap-3\" @submit.prevent=\"load\">"
+        },
+        {
+          "line": 184,
+          "source": "<UFormField label=\"De\" name=\"date_from\">"
+        },
+        {
+          "line": 187,
+          "source": "<UFormField label=\"At\u00e9\" name=\"date_to\">"
+        },
+        {
+          "line": 229,
+          "source": "<UTable"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpObligationForm.vue",
+      "sha256": "c52568f9c22b619089feded6209655be45b1ee66bf8ef365120cad017694bc63",
+      "bytes": 4226,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 46,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2 lg:grid-cols-3\" @submit=\"submit\">"
+        },
+        {
+          "line": 47,
+          "source": "<UFormField"
+        },
+        {
+          "line": 55,
+          "source": "<UFormField"
+        },
+        {
+          "line": 63,
+          "source": "<UFormField"
+        },
+        {
+          "line": 77,
+          "source": "<UFormField"
+        },
+        {
+          "line": 85,
+          "source": "<UFormField label=\"Vencimento\" name=\"due_on\" :error=\"errors?.due_on\">"
+        },
+        {
+          "line": 88,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\" :error=\"errors?.erp_establishment_id\">"
+        },
+        {
+          "line": 91,
+          "source": "<UFormField label=\"Conta financeira\" name=\"erp_financial_account_id\" :error=\"errors?.erp_financial_account_id\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPaymentForm.vue",
+      "sha256": "0a2c01f74511b9ce09a4a05ab9df6a08d6684e6edfb1e0fa19ca5c179bd9dc01",
+      "bytes": 5168,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 47,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2 lg:grid-cols-3\" @submit=\"submit\">"
+        },
+        {
+          "line": 48,
+          "source": "<UFormField"
+        },
+        {
+          "line": 56,
+          "source": "<UFormField"
+        },
+        {
+          "line": 70,
+          "source": "<UFormField"
+        },
+        {
+          "line": 78,
+          "source": "<UFormField"
+        },
+        {
+          "line": 86,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\" :error=\"errors?.erp_establishment_id\">"
+        },
+        {
+          "line": 89,
+          "source": "<UFormField label=\"Conta financeira\" name=\"erp_financial_account_id\" :error=\"errors?.erp_financial_account_id\">"
+        },
+        {
+          "line": 92,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseForm.vue",
+      "sha256": "dbea0ecfaa5d2c25a23a198465aaed4e0635d084ed9cdc4dd040a70b340735a1",
+      "bytes": 16150,
+      "reviewed_role": "purchase",
+      "markers": [
+        {
+          "line": 165,
+          "source": "<form class=\"space-y-5\" @submit.prevent=\"submit\">"
+        },
+        {
+          "line": 175,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\" :error=\"fieldErrors?.erp_establishment_id\">"
+        },
+        {
+          "line": 187,
+          "source": "<UFormField label=\"Fornecedor\" name=\"erp_contact_id\" :error=\"fieldErrors?.erp_contact_id\">"
+        },
+        {
+          "line": 199,
+          "source": "<UFormField label=\"N\u00famero do documento\" name=\"document_no\" :error=\"fieldErrors?.document_no\">"
+        },
+        {
+          "line": 208,
+          "source": "<UFormField label=\"Moeda\" name=\"currency\" :error=\"fieldErrors?.currency\">"
+        },
+        {
+          "line": 260,
+          "source": "<UFormField label=\"Produto ou variante\" :name=\"`lines.${index}.erp_product_variant_id`\" :error=\"fieldErrors?.[`lines.${index}.erp_product_variant_id`]\">"
+        },
+        {
+          "line": 272,
+          "source": "<UFormField label=\"Unidade\" :name=\"`lines.${index}.erp_unit_id`\" :error=\"fieldErrors?.[`lines.${index}.erp_unit_id`]\">"
+        },
+        {
+          "line": 284,
+          "source": "<UFormField label=\"Quantidade\" :name=\"`lines.${index}.quantity`\" :error=\"fieldErrors?.[`lines.${index}.quantity`]\">"
+        },
+        {
+          "line": 295,
+          "source": "<UFormField label=\"Custo unit\u00e1rio\" :name=\"`lines.${index}.unit_cost`\" :error=\"fieldErrors?.[`lines.${index}.unit_cost`]\">"
+        },
+        {
+          "line": 306,
+          "source": "<UFormField"
+        },
+        {
+          "line": 319,
+          "source": "<UFormField label=\"Desconto\" :name=\"`lines.${index}.discount_amount`\" :error=\"fieldErrors?.[`lines.${index}.discount_amount`]\">"
+        },
+        {
+          "line": 329,
+          "source": "<UFormField label=\"Imposto\" :name=\"`lines.${index}.tax_amount`\" :error=\"fieldErrors?.[`lines.${index}.tax_amount`]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseOperationRecovery.vue",
+      "sha256": "4988ca77223cf5adaf900c64f7702ccba9c4e6e89b59cb0b83a25c37470c8f86",
+      "bytes": 1586,
+      "reviewed_role": "purchase",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseReturnForm.vue",
+      "sha256": "7e418ce879d0a1bdfe8e4f63cd5f0924391a343336c6bb69ce513f3937ba1428",
+      "bytes": 8154,
+      "reviewed_role": "purchase",
+      "markers": [
+        {
+          "line": 157,
+          "source": "<UFormField label=\"Quantidade a devolver\" :name=\"`lines.${line.source_line_id}.quantity`\" :error=\"fieldErrors?.[`lines.${line.source_line_id}.quantity`]\">"
+        },
+        {
+          "line": 171,
+          "source": "<UFormField label=\"Motivo da devolu\u00e7\u00e3o\" name=\"reason\" :error=\"fieldErrors?.reason\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseWorkspace.vue",
+      "sha256": "b16d63503f191bbf5c10900a831ece3763aa4592b0f9839510e6e65dffa814e5",
+      "bytes": 46555,
+      "reviewed_role": "purchase",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 463,
+          "source": "<ErpCatalogPageShell title=\"Compras\" description=\"Entradas de fornecedor, confer\u00eancia de XML e devolu\u00e7\u00f5es vinculadas ao hist\u00f3rico recebido.\">"
+        },
+        {
+          "line": 577,
+          "source": "<UTable"
+        },
+        {
+          "line": 578,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 658,
+          "source": "<UTable"
+        },
+        {
+          "line": 659,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 695,
+          "source": "<UModal v-model:open=\"createOpen\" title=\"Nova compra\" :ui=\"{ content: 'sm:max-w-5xl' }\">"
+        },
+        {
+          "line": 721,
+          "source": "<UModal v-model:open=\"editOpen\" title=\"Editar rascunho\" :ui=\"{ content: 'sm:max-w-5xl' }\">"
+        },
+        {
+          "line": 749,
+          "source": "<UModal"
+        },
+        {
+          "line": 878,
+          "source": "<UModal v-model:open=\"returnOpen\" title=\"Devolu\u00e7\u00e3o de fornecedor\" :ui=\"{ content: 'sm:max-w-4xl' }\">"
+        },
+        {
+          "line": 939,
+          "source": "<UModal v-model:open=\"postOpen\" title=\"Lan\u00e7ar recebimento\" :ui=\"{ content: 'sm:max-w-xl' }\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseXmlPreview.vue",
+      "sha256": "96a26dcadaa0b59b395ccc48264e16acda481f12df3f8e1b905eaedb43689446",
+      "bytes": 11802,
+      "reviewed_role": "purchase",
+      "markers": [
+        {
+          "line": 93,
+          "source": "<UFormField label=\"Estabelecimento de entrada\" name=\"xml.erp_establishment_id\">"
+        },
+        {
+          "line": 104,
+          "source": "<UFormField label=\"Arquivo XML\" name=\"xml.file\" hint=\"At\u00e9 2 MB. O arquivo \u00e9 usado apenas para conferir e mapear a entrada.\">"
+        },
+        {
+          "line": 189,
+          "source": "<UFormField label=\"Fornecedor verificado\" name=\"xml.erp_contact_id\">"
+        },
+        {
+          "line": 216,
+          "source": "<UFormField label=\"Produto/variante\" :name=\"`xml.items.${index}.erp_product_variant_id`\" :error=\"fieldErrors?.[`xml.items.${index}.erp_product_variant_id`]\">"
+        },
+        {
+          "line": 227,
+          "source": "<UFormField label=\"Unidade do estoque\" :name=\"`xml.items.${index}.erp_unit_id`\" :error=\"fieldErrors?.[`xml.items.${index}.erp_unit_id`]\">"
+        },
+        {
+          "line": 239,
+          "source": "<UFormField label=\"Fator de convers\u00e3o\" :name=\"`xml.items.${index}.unit_conversion_factor`\" :error=\"fieldErrors?.[`xml.items.${index}.unit_conversion_factor`]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportExportPanel.vue",
+      "sha256": "ae5203d34c478390d2026842ef611c1bd82be358eb64802256d66d5dc032eb6c",
+      "bytes": 16886,
+      "reviewed_role": "report",
+      "markers": [
+        {
+          "line": 355,
+          "source": "<form class=\"flex flex-wrap items-end gap-3\" @submit.prevent=\"inspect()\">"
+        },
+        {
+          "line": 356,
+          "source": "<UFormField label=\"Refer\u00eancia da exporta\u00e7\u00e3o\" name=\"export_reference\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportMetrics.vue",
+      "sha256": "27e6a628eae9f640fe2cd2c7f6d059ed595bcbdd5b2ce894afafe630dce3e6fb",
+      "bytes": 11813,
+      "reviewed_role": "report",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 146,
+          "source": "<UTable"
+        },
+        {
+          "line": 147,
+          "source": ":ui=\"erpOperationalTableUi\""
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportsWorkspace.vue",
+      "sha256": "c0c1c59759da28b770844b4534c8f15557513db703cddca1e4a54905c778932b",
+      "bytes": 11480,
+      "reviewed_role": "report",
+      "markers": [
+        {
+          "line": 122,
+          "source": "<ErpCatalogPageShell :title=\"contract.title\" :description=\"contract.description\">"
+        },
+        {
+          "line": 129,
+          "source": "<form class=\"flex flex-wrap items-end gap-3\" @submit.prevent=\"load\">"
+        },
+        {
+          "line": 130,
+          "source": "<UFormField label=\"Atividade de\" name=\"date_from\">"
+        },
+        {
+          "line": 133,
+          "source": "<UFormField label=\"Atividade at\u00e9\" name=\"date_to\">"
+        },
+        {
+          "line": 136,
+          "source": "<UFormField label=\"Estabelecimento\" name=\"erp_establishment_id\">"
+        },
+        {
+          "line": 139,
+          "source": "<UFormField v-if=\"hasCurrency\" label=\"Moeda\" name=\"currency\">"
+        },
+        {
+          "line": 148,
+          "source": "<UFormField v-if=\"statuses.length\" :label=\"category === 'financial' ? 'Status da obriga\u00e7\u00e3o' : category === 'fiscal' ? 'Status fiscal' : 'Status do documento'\" name=\"status\">"
+        },
+        {
+          "line": 151,
+          "source": "<UFormField v-if=\"category === 'financial'\" label=\"Dire\u00e7\u00e3o da obriga\u00e7\u00e3o\" name=\"direction\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSaleDetail.vue",
+      "sha256": "270795e5f2e40215e47381f10ed81bffbd202503cc6fc2c821b0d966b9a28f17",
+      "bytes": 14623,
+      "reviewed_role": "sales",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSaleReturnForm.vue",
+      "sha256": "d461bb4ac3c600f9a7a1f6af71003b45e276d4eb02b719453511d74049758bef",
+      "bytes": 5012,
+      "reviewed_role": "sales",
+      "markers": [
+        {
+          "line": 48,
+          "source": "<UForm :state=\"{ reason, quantities }\" class=\"min-w-0 space-y-5\" @submit=\"submit\">"
+        },
+        {
+          "line": 55,
+          "source": "<UFormField"
+        },
+        {
+          "line": 76,
+          "source": "<UFormField :name=\"`lines.${line.source_line_id}.quantity`\" label=\"Quantidade\" :error=\"lineError(line.source_line_id)\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSalesWorkspace.vue",
+      "sha256": "24253d8993f69c1963d61426c0c2847895d3787404b34b4f079a3a67eb7fb46e",
+      "bytes": 50740,
+      "reviewed_role": "sales",
+      "markers": [
+        {
+          "line": 535,
+          "source": "<ErpCatalogPageShell title=\"Vendas\" description=\"Or\u00e7amentos, pedidos, vendas de balc\u00e3o e devolu\u00e7\u00f5es com valores confirmados pelo servidor.\">"
+        },
+        {
+          "line": 582,
+          "source": "<UFormField label=\"Situa\u00e7\u00e3o\" class=\"w-full min-w-0 sm:w-52\">"
+        },
+        {
+          "line": 751,
+          "source": "<UModal"
+        },
+        {
+          "line": 874,
+          "source": "<UFormField :label=\"detailArea === 'quotes' ? 'N\u00famero do pedido (opcional)' : 'Documento de balc\u00e3o (opcional)'\">"
+        },
+        {
+          "line": 902,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSettingsSectionForm.vue",
+      "sha256": "2fcbe483920731ef1e8f057639c1c9e5506df798c728c68655ed74e3b57eee98",
+      "bytes": 6572,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 111,
+          "source": "<UForm :state=\"form\" :disabled=\"!canWrite || pending || !state\" @submit=\"onSubmit\">"
+        },
+        {
+          "line": 151,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockAdjustmentForm.vue",
+      "sha256": "3b960b0f1c9b9d488d39152b9be29fb285903c5aaf86ad0d28200b1ecd1892f4",
+      "bytes": 3407,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 45,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 46,
+          "source": "<UFormField"
+        },
+        {
+          "line": 54,
+          "source": "<UFormField"
+        },
+        {
+          "line": 62,
+          "source": "<UFormField"
+        },
+        {
+          "line": 77,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockMovementDetail.vue",
+      "sha256": "08852cde7238b51b2789ef9a3cf36b43111056822c4dbf89f1eff7afa1254885",
+      "bytes": 12851,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 237,
+          "source": "<UForm :state=\"{ quantity, reason, confirmed }\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submitReversal\">"
+        },
+        {
+          "line": 238,
+          "source": "<UFormField"
+        },
+        {
+          "line": 251,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockTransferDetail.vue",
+      "sha256": "76287296a413308d676f8ef4015472151ae728e4fb055e85f169af367e39c4b9",
+      "bytes": 7463,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 153,
+          "source": "<UForm :state=\"{ quantity, reason, confirmed }\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submitReversal\">"
+        },
+        {
+          "line": 154,
+          "source": "<UFormField"
+        },
+        {
+          "line": 167,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockTransferForm.vue",
+      "sha256": "869966e281925ff9614f8c3769f14d0a5b821efe60d4cec6f215e0d71d8c3cfa",
+      "bytes": 3766,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 51,
+          "source": "<UForm :state=\"state\" class=\"grid gap-3 sm:grid-cols-2\" @submit=\"submit\">"
+        },
+        {
+          "line": 52,
+          "source": "<UFormField"
+        },
+        {
+          "line": 60,
+          "source": "<UFormField"
+        },
+        {
+          "line": 68,
+          "source": "<UFormField"
+        },
+        {
+          "line": 76,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockWorkspace.vue",
+      "sha256": "14cee2432d985697947b8aefe2332f846d46b590ed1e5c5c82143a36b862cfc2",
+      "bytes": 42291,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 281,
+          "source": "<ErpCatalogPageShell title=\"Estoque\" description=\"Consulte saldos, movimentos e camadas com origem rastre\u00e1vel. Custos desconhecidos permanecem identificados como desconhecidos.\" data-stock-workspace>"
+        },
+        {
+          "line": 484,
+          "source": "<UTable"
+        },
+        {
+          "line": 485,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 640,
+          "source": "<UModal"
+        },
+        {
+          "line": 693,
+          "source": "<UModal"
+        },
+        {
+          "line": 747,
+          "source": "<UModal"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpBrandCatalogForm.vue",
+      "sha256": "61f7ac6c14f6a821b0f7e5422600344b54c067689768495db8c5efc7c5c5843f",
+      "bytes": 1611,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 27,
+          "source": "<UForm"
+        },
+        {
+          "line": 33,
+          "source": "<fieldset :disabled=\"disabled\" class=\"space-y-4\">"
+        },
+        {
+          "line": 37,
+          "source": "<ErpCatalogField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCarrierCatalogForm.vue",
+      "sha256": "cead74ebd98039c4e2b45be8ff702210b5ed145c8720295256f91ce2e681866b",
+      "bytes": 5056,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 44,
+          "source": "<UForm"
+        },
+        {
+          "line": 50,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 54,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 68,
+          "source": "<ErpCatalogField label=\"CPF/CNPJ\" name=\"tax_id\" :error=\"fieldErrors?.tax_id?.[0]\">"
+        },
+        {
+          "line": 77,
+          "source": "<ErpCatalogField label=\"Inscri\u00e7\u00e3o estadual\" name=\"ie\" :error=\"fieldErrors?.ie?.[0]\">"
+        },
+        {
+          "line": 87,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 91,
+          "source": "<ErpCatalogField label=\"Tipo de logradouro\" name=\"street_type\" :error=\"fieldErrors?.address?.[0]\">"
+        },
+        {
+          "line": 94,
+          "source": "<ErpCatalogField label=\"Logradouro\" name=\"street\">"
+        },
+        {
+          "line": 102,
+          "source": "<ErpCatalogField label=\"N\u00famero\" name=\"number\">"
+        },
+        {
+          "line": 105,
+          "source": "<ErpCatalogField label=\"Complemento\" name=\"complement\">"
+        },
+        {
+          "line": 113,
+          "source": "<ErpCatalogField label=\"Bairro\" name=\"district\">"
+        },
+        {
+          "line": 116,
+          "source": "<ErpCatalogField label=\"CEP\" name=\"postal_code\">"
+        },
+        {
+          "line": 125,
+          "source": "<ErpCatalogField label=\"Cidade\" name=\"city\">"
+        },
+        {
+          "line": 133,
+          "source": "<ErpCatalogField label=\"UF\" name=\"state\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogField.vue",
+      "sha256": "e8bfd6c821cdc3b10d1278517213a7e44a358344ffa5c8d981d7a401b08834f7",
+      "bytes": 347,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 12,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogReferenceSelect.vue",
+      "sha256": "1eaacb27f73f0f00da0d24412c2b23e0cf3836103296a134c8621935c184d77b",
+      "bytes": 9114,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 144,
+          "source": "<UFormField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogResource.vue",
+      "sha256": "383691c0deb4f2504bf3a1435587cabed91701428b53c9f808e2ecd63bd1b534",
+      "bytes": 17817,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 379,
+          "source": "<UFormField :label=\"`Buscar ${title.toLocaleLowerCase()}`\" class=\"min-w-0 w-full flex-1 sm:max-w-md\">"
+        },
+        {
+          "line": 389,
+          "source": "<UTable"
+        },
+        {
+          "line": 391,
+          "source": ":ui=\"erpOperationalTableUi\""
+        },
+        {
+          "line": 428,
+          "source": "<USlideover"
+        },
+        {
+          "line": 505,
+          "source": "<UModal v-model:open=\"archiveOpen\" title=\"Arquivar cadastro\" :description=\"archiveTarget ? `Arquivar ${labelFor(archiveTarget)}? Os registros e refer\u00eancias hist\u00f3ricas ser\u00e3o mantidos.` : 'Confirme o arquivamento do cadastro.'\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCategoryCatalogForm.vue",
+      "sha256": "c6a8f5876b4028c3326d707b42fd34180646f0a17ab73b8f364af4eedf32bf25",
+      "bytes": 2238,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 30,
+          "source": "<UForm"
+        },
+        {
+          "line": 36,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 40,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 54,
+          "source": "<ErpCatalogReferenceSelect"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpContactCatalogForm.vue",
+      "sha256": "fc69d893a25ecab8ef6baa162d2795344b0548f0707ff00b8907042b2f2ec3d0",
+      "bytes": 7939,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 65,
+          "source": "<UForm"
+        },
+        {
+          "line": 71,
+          "source": "<fieldset :disabled=\"disabled\" class=\"min-w-0 space-y-4\">"
+        },
+        {
+          "line": 76,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 90,
+          "source": "<ErpCatalogField label=\"Nome fantasia\" name=\"trade_name\" :error=\"fieldErrors?.trade_name?.[0]\">"
+        },
+        {
+          "line": 93,
+          "source": "<ErpCatalogField label=\"CPF/CNPJ\" name=\"tax_id\" :error=\"fieldErrors?.tax_id?.[0]\">"
+        },
+        {
+          "line": 101,
+          "source": "<ErpCatalogField label=\"E-mail\" name=\"email\" :error=\"fieldErrors?.email?.[0]\">"
+        },
+        {
+          "line": 110,
+          "source": "<ErpCatalogField label=\"Telefone\" name=\"phone\" :error=\"fieldErrors?.phone?.[0]\">"
+        },
+        {
+          "line": 121,
+          "source": "<fieldset :disabled=\"disabled\" class=\"min-w-0 space-y-3\">"
+        },
+        {
+          "line": 126,
+          "source": "<UFormField name=\"is_customer\" :error=\"fieldErrors?.is_customer?.[0]\">"
+        },
+        {
+          "line": 129,
+          "source": "<UFormField name=\"is_supplier\" :error=\"fieldErrors?.is_supplier?.[0]\">"
+        },
+        {
+          "line": 132,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 144,
+          "source": "<fieldset :disabled=\"disabled\" class=\"min-w-0 space-y-4\">"
+        },
+        {
+          "line": 149,
+          "source": "<ErpCatalogField label=\"Tipo de logradouro\" name=\"street_type\" :error=\"fieldErrors?.address?.[0]\">"
+        },
+        {
+          "line": 152,
+          "source": "<ErpCatalogField label=\"Logradouro\" name=\"street\">"
+        },
+        {
+          "line": 160,
+          "source": "<ErpCatalogField label=\"N\u00famero\" name=\"number\">"
+        },
+        {
+          "line": 163,
+          "source": "<ErpCatalogField label=\"Complemento\" name=\"complement\">"
+        },
+        {
+          "line": 171,
+          "source": "<ErpCatalogField label=\"Bairro\" name=\"district\">"
+        },
+        {
+          "line": 174,
+          "source": "<ErpCatalogField label=\"CEP\" name=\"postal_code\">"
+        },
+        {
+          "line": 183,
+          "source": "<ErpCatalogField label=\"Cidade\" name=\"city\">"
+        },
+        {
+          "line": 191,
+          "source": "<ErpCatalogField label=\"UF\" name=\"state\">"
+        },
+        {
+          "line": 202,
+          "source": "<fieldset :disabled=\"disabled\" class=\"min-w-0 space-y-4\">"
+        },
+        {
+          "line": 206,
+          "source": "<ErpCatalogField label=\"Observa\u00e7\u00f5es do cadastro\" name=\"notes\" :error=\"fieldErrors?.notes?.[0]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpContactNotesPanel.vue",
+      "sha256": "6e9d232a52ecab093ed36d15ddff8593b3ac7412f188a0793a1c5d3ee9f615bb",
+      "bytes": 24350,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 303,
+          "source": "<UForm"
+        },
+        {
+          "line": 312,
+          "source": "<UFormField label=\"T\u00edtulo\" name=\"heading\" :error=\"fieldErrors.heading?.[0]\">"
+        },
+        {
+          "line": 320,
+          "source": "<UFormField label=\"Anota\u00e7\u00e3o\" name=\"description\" :error=\"fieldErrors.description?.[0]\">"
+        },
+        {
+          "line": 329,
+          "source": "<UFormField name=\"is_private\" :error=\"fieldErrors.is_private?.[0]\">"
+        },
+        {
+          "line": 454,
+          "source": "<UForm"
+        },
+        {
+          "line": 460,
+          "source": "<UFormField label=\"T\u00edtulo\" name=\"heading\" :error=\"fieldErrors.heading?.[0]\">"
+        },
+        {
+          "line": 468,
+          "source": "<UFormField label=\"Anota\u00e7\u00e3o\" name=\"description\" :error=\"fieldErrors.description?.[0]\">"
+        },
+        {
+          "line": 477,
+          "source": "<UFormField v-if=\"selectedNote.can_change_privacy\" name=\"is_private\" :error=\"privacyError(selectedNote)\">"
+        },
+        {
+          "line": 485,
+          "source": "<UFormField v-else name=\"is_private\" label=\"Privacidade\">"
+        },
+        {
+          "line": 522,
+          "source": "<UForm"
+        },
+        {
+          "line": 528,
+          "source": "<UFormField label=\"Selecionar arquivo\" name=\"file\" :error=\"fieldErrors.file?.[0]\">"
+        },
+        {
+          "line": 599,
+          "source": "<UModal v-model:open=\"removalOpen\" title=\"Confirmar remo\u00e7\u00e3o\" :description=\"removalTarget?.kind === 'attachment' ? 'O arquivo ficar\u00e1 indispon\u00edvel enquanto a remo\u00e7\u00e3o aguarda conclus\u00e3o.' : 'A anota\u00e7\u00e3o ficar\u00e1 dispon\u00edvel no filtro de remo\u00e7\u00f5es pendentes enquanto o processo termina.'\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCustomerGroupCatalogForm.vue",
+      "sha256": "754fc436c465d60691b646a79c3f2bf3bb1384d50a9a480b2ca792e048b9c210",
+      "bytes": 2310,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 28,
+          "source": "<UForm"
+        },
+        {
+          "line": 34,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 38,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 52,
+          "source": "<ErpCatalogField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpDiscountRuleCatalogForm.vue",
+      "sha256": "17661588752e05fd523f11ef09605488e1b67ae252eaf3954e7b8a6a8fffe6eb",
+      "bytes": 3170,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 30,
+          "source": "<UForm"
+        },
+        {
+          "line": 36,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 40,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 54,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 68,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 84,
+          "source": "<ErpCatalogField label=\"Cupom\" name=\"coupon_code\" :error=\"fieldErrors?.coupon_code?.[0]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpDriverCatalogForm.vue",
+      "sha256": "8bc1e153fffb49b7b3a9de47ba88f17330733f04bca180a4ea0d550531a52f60",
+      "bytes": 2428,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 29,
+          "source": "<UForm"
+        },
+        {
+          "line": 35,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 39,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 53,
+          "source": "<ErpCatalogField label=\"CPF\" name=\"tax_id\" :error=\"fieldErrors?.tax_id?.[0]\">"
+        },
+        {
+          "line": 62,
+          "source": "<ErpCatalogField label=\"CNH\" name=\"license_number\" :error=\"fieldErrors?.license_number?.[0]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpOperationNatureCatalogForm.vue",
+      "sha256": "b49c5fb79db58a4a7aa1d32fd8490a70e311b3b091d3fd2e5fe15c70bd0d72cd",
+      "bytes": 3386,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 31,
+          "source": "<UForm"
+        },
+        {
+          "line": 37,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 42,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 53,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 67,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 81,
+          "source": "<ErpCatalogField"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpPriceGroupCatalogForm.vue",
+      "sha256": "b08dd3eff0f98acb228de90de080b7b21888de083d0e3f1255dffdac47ec7b3d",
+      "bytes": 2509,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 29,
+          "source": "<UForm"
+        },
+        {
+          "line": 35,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 39,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 53,
+          "source": "<ErpCatalogField label=\"Ajuste percentual\" name=\"percentage_adjustment\" :error=\"fieldErrors?.percentage_adjustment?.[0]\">"
+        },
+        {
+          "line": 63,
+          "source": "<UFormField name=\"is_default\" :error=\"fieldErrors?.is_default?.[0]\" class=\"sm:col-span-2\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpProductCatalogForm.vue",
+      "sha256": "240bcad1046475d8267837faedbc04ada1290972318b66040c7dca4f93f98869",
+      "bytes": 23932,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 191,
+          "source": "<UForm"
+        },
+        {
+          "line": 197,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 201,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 215,
+          "source": "<ErpCatalogField label=\"SKU\" name=\"sku\" :error=\"fieldErrors?.sku?.[0]\">"
+        },
+        {
+          "line": 224,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 240,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 244,
+          "source": "<ErpCatalogField label=\"Pre\u00e7o de venda\" name=\"sale_price\" :error=\"fieldErrors?.sale_price?.[0]\">"
+        },
+        {
+          "line": 254,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 263,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 273,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 283,
+          "source": "<UFormField name=\"track_stock\" :error=\"fieldErrors?.track_stock?.[0]\" class=\"sm:col-span-2\">"
+        },
+        {
+          "line": 291,
+          "source": "<ErpCatalogField label=\"Garantia (meses)\" name=\"warranty_months\" :error=\"fieldErrors?.warranty_months?.[0]\">"
+        },
+        {
+          "line": 301,
+          "source": "<ErpCatalogField label=\"Descri\u00e7\u00e3o da garantia\" name=\"warranty_description\" :error=\"fieldErrors?.warranty_description?.[0]\">"
+        },
+        {
+          "line": 309,
+          "source": "<ErpCatalogField label=\"C\u00f3digo de barras\" name=\"barcode\" :error=\"fieldErrors?.barcode?.[0]\">"
+        },
+        {
+          "line": 318,
+          "source": "<ErpCatalogField label=\"Simbologia do c\u00f3digo de barras\" name=\"barcode_type\" :error=\"fieldErrors?.barcode_type?.[0]\">"
+        },
+        {
+          "line": 340,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3\">"
+        },
+        {
+          "line": 344,
+          "source": "<ErpCatalogField label=\"NCM\" name=\"ncm\" :error=\"fieldErrors?.ncm?.[0]\">"
+        },
+        {
+          "line": 355,
+          "source": "<ErpCatalogField label=\"CEST\" name=\"cest\" :error=\"fieldErrors?.cest?.[0]\">"
+        },
+        {
+          "line": 366,
+          "source": "<ErpCatalogField label=\"Origem\" name=\"origin_code\" :error=\"fieldErrors?.origin_code?.[0]\">"
+        },
+        {
+          "line": 379,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3\">"
+        },
+        {
+          "line": 383,
+          "source": "<ErpCatalogField label=\"CST do ICMS\" name=\"icms_cst\" :error=\"fieldErrors?.icms_cst?.[0]\">"
+        },
+        {
+          "line": 394,
+          "source": "<ErpCatalogField label=\"CSOSN\" name=\"icms_csosn\" :error=\"fieldErrors?.icms_csosn?.[0]\">"
+        },
+        {
+          "line": 405,
+          "source": "<ErpCatalogField label=\"Al\u00edquota de ICMS (%)\" name=\"icms_rate\" :error=\"fieldErrors?.icms_rate?.[0]\">"
+        },
+        {
+          "line": 416,
+          "source": "<ErpCatalogField label=\"Cr\u00e9dito do Simples Nacional (%)\" name=\"simple_national_credit_rate\" :error=\"fieldErrors?.simple_national_credit_rate?.[0]\">"
+        },
+        {
+          "line": 429,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 433,
+          "source": "<ErpCatalogField label=\"CST do PIS\" name=\"pis_cst\" :error=\"fieldErrors?.pis_cst?.[0]\">"
+        },
+        {
+          "line": 444,
+          "source": "<ErpCatalogField label=\"Al\u00edquota do PIS (%)\" name=\"pis_rate\" :error=\"fieldErrors?.pis_rate?.[0]\">"
+        },
+        {
+          "line": 455,
+          "source": "<ErpCatalogField label=\"CST da COFINS\" name=\"cofins_cst\" :error=\"fieldErrors?.cofins_cst?.[0]\">"
+        },
+        {
+          "line": 466,
+          "source": "<ErpCatalogField label=\"Al\u00edquota da COFINS (%)\" name=\"cofins_rate\" :error=\"fieldErrors?.cofins_rate?.[0]\">"
+        },
+        {
+          "line": 477,
+          "source": "<ErpCatalogField label=\"CST do IPI\" name=\"ipi_cst\" :error=\"fieldErrors?.ipi_cst?.[0]\">"
+        },
+        {
+          "line": 488,
+          "source": "<ErpCatalogField label=\"Al\u00edquota do IPI (%)\" name=\"ipi_rate\" :error=\"fieldErrors?.ipi_rate?.[0]\">"
+        },
+        {
+          "line": 501,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3\">"
+        },
+        {
+          "line": 505,
+          "source": "<ErpCatalogField label=\"CST IBS/CBS\" name=\"ibs_cbs_cst\" :error=\"fieldErrors?.ibs_cbs_cst?.[0]\">"
+        },
+        {
+          "line": 516,
+          "source": "<ErpCatalogField label=\"Classifica\u00e7\u00e3o IBS/CBS\" name=\"ibs_cbs_classification_code\" :error=\"fieldErrors?.ibs_cbs_classification_code?.[0]\">"
+        },
+        {
+          "line": 553,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 568,
+          "source": "<ErpCatalogField label=\"SKU da variante\" :name=\"`variants.${index}.sku`\" :error=\"fieldErrors?.[`variants.${index}.sku`]?.[0]\">"
+        },
+        {
+          "line": 578,
+          "source": "<ErpCatalogField label=\"Pre\u00e7o da variante\" :name=\"`variants.${index}.sale_price`\" :error=\"fieldErrors?.[`variants.${index}.sale_price`]?.[0]\">"
+        },
+        {
+          "line": 589,
+          "source": "<ErpCatalogField label=\"C\u00f3digo de barras da variante\" :name=\"`variants.${index}.barcode`\" :error=\"fieldErrors?.[`variants.${index}.barcode`]?.[0]\">"
+        },
+        {
+          "line": 599,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 650,
+          "source": "<UModal"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpTaxRateCatalogForm.vue",
+      "sha256": "023e936311ef7a48fe89d19cbee9fc48fee62b1b845d7eaaab5ea357e6de44eb",
+      "bytes": 3262,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 31,
+          "source": "<UForm"
+        },
+        {
+          "line": 37,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 42,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 53,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 67,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 83,
+          "source": "<ErpCatalogField label=\"Tipo de tributo\" name=\"tax_kind\" :error=\"fieldErrors?.tax_kind?.[0]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpUnitCatalogForm.vue",
+      "sha256": "fdb8a7490afe3b496c31163b37d9ee1a5971ccd029748afdc10ead5e2d622a24",
+      "bytes": 3881,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 40,
+          "source": "<UForm"
+        },
+        {
+          "line": 46,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 50,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 64,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 79,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 83,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 93,
+          "source": "<ErpCatalogField label=\"Fator de convers\u00e3o\" name=\"conversion_factor\" :error=\"fieldErrors?.conversion_factor?.[0]\">"
+        },
+        {
+          "line": 104,
+          "source": "<UFormField name=\"allow_decimal\" :error=\"fieldErrors?.allow_decimal?.[0]\" class=\"sm:col-span-2\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpVehicleCatalogForm.vue",
+      "sha256": "73b68dc9e9895a9b58082051dab9ab61eb4d9dae07a631303f00c8f46442a75a",
+      "bytes": 5159,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 52,
+          "source": "<UForm"
+        },
+        {
+          "line": 58,
+          "source": "<fieldset :disabled=\"disabled\" class=\"grid min-w-0 gap-4 sm:grid-cols-2\">"
+        },
+        {
+          "line": 63,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 74,
+          "source": "<ErpCatalogField"
+        },
+        {
+          "line": 89,
+          "source": "<ErpCatalogField label=\"Tipo de ve\u00edculo\" name=\"vehicle_type\" :error=\"fieldErrors?.vehicle_type?.[0]\">"
+        },
+        {
+          "line": 97,
+          "source": "<ErpCatalogField label=\"UF\" name=\"uf\" :error=\"fieldErrors?.uf?.[0]\">"
+        },
+        {
+          "line": 106,
+          "source": "<ErpCatalogField label=\"Modelo\" name=\"model\" :error=\"fieldErrors?.model?.[0]\">"
+        },
+        {
+          "line": 114,
+          "source": "<ErpCatalogField label=\"Marca\" name=\"brand\" :error=\"fieldErrors?.brand?.[0]\">"
+        },
+        {
+          "line": 122,
+          "source": "<ErpCatalogField label=\"Cor\" name=\"color\" :error=\"fieldErrors?.color?.[0]\">"
+        },
+        {
+          "line": 130,
+          "source": "<ErpCatalogField label=\"Tipo de roda\" name=\"wheel_type\" :error=\"fieldErrors?.wheel_type?.[0]\">"
+        },
+        {
+          "line": 138,
+          "source": "<ErpCatalogField label=\"Tipo de carroceria\" name=\"body_type\" :error=\"fieldErrors?.body_type?.[0]\">"
+        },
+        {
+          "line": 146,
+          "source": "<ErpCatalogField label=\"Tipo de propriet\u00e1rio\" name=\"owner_type\" :error=\"fieldErrors?.owner_type?.[0]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastro.vue",
+      "sha256": "fd61e4078b57c649a63bbd2c5b71854a157ad3275acf1d88fa958b6aa7a9e9fd",
+      "bytes": 3932,
+      "reviewed_role": "other",
+      "markers": [
+        {
+          "line": 82,
+          "source": "<UForm"
+        },
+        {
+          "line": 89,
+          "source": "<UFormField label=\"Seu nome\" name=\"name\" :error=\"fieldErrors.name?.[0]\">"
+        },
+        {
+          "line": 92,
+          "source": "<UFormField label=\"Email\" name=\"email\" :error=\"fieldErrors.email?.[0]\">"
+        },
+        {
+          "line": 95,
+          "source": "<UFormField label=\"Senha\" name=\"password\" :error=\"fieldErrors.password?.[0]\">"
+        },
+        {
+          "line": 98,
+          "source": "<UFormField label=\"Empresa\" name=\"company_name\" :error=\"fieldErrors.company_name?.[0]\">"
+        },
+        {
+          "line": 101,
+          "source": "<UFormField label=\"CNPJ\" name=\"cnpj\" :error=\"fieldErrors.cnpj?.[0]\">"
+        },
+        {
+          "line": 104,
+          "source": "<UFormField label=\"Estabelecimento (opcional)\" name=\"establishment_name\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/categorias.vue",
+      "sha256": "d001eed539b4917e1c3553c1f47b2beeba3962cbe6823a940dbea5f71dda0828",
+      "bytes": 1887,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 21,
+          "source": "<ErpCatalogPageShell title=\"Categorias\" description=\"Organize os produtos em uma hierarquia da pr\u00f3pria empresa.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/contatos.vue",
+      "sha256": "edcca5a5894cc60099c7e5390c0206b178b883a24d5ed27eccdbeb6bda5870fd",
+      "bytes": 2435,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 24,
+          "source": "<ErpCatalogPageShell title=\"Contatos\" description=\"Clientes e fornecedores comerciais da empresa, separados do portf\u00f3lio do escrit\u00f3rio.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/etiquetas.vue",
+      "sha256": "6b927c8a85daf1eced443c43464f1e74ad0964d02978a08d50eb361f51036c09",
+      "bytes": 26563,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 86,
+          "source": "<ErpCatalogPageShell title=\"Etiquetas e impress\u00e3o\" description=\"Selecione produtos e variantes, defina as quantidades e confira a impress\u00e3o.\">"
+        },
+        {
+          "line": 118,
+          "source": "<UFormField label=\"Buscar produtos\" name=\"product_search\">"
+        },
+        {
+          "line": 135,
+          "source": "<UTable"
+        },
+        {
+          "line": 139,
+          "source": ":ui=\"{ ...erpOperationalTableUi, td: `${erpOperationalTableUi.td} whitespace-normal`, empty: 'py-8' }\""
+        },
+        {
+          "line": 196,
+          "source": "<UFormField"
+        },
+        {
+          "line": 238,
+          "source": "<UFormField"
+        },
+        {
+          "line": 309,
+          "source": "<form class=\"grid gap-4 sm:grid-cols-2 lg:grid-cols-4\" @submit.prevent=\"labels.saveSettings()\">"
+        },
+        {
+          "line": 310,
+          "source": "<UFormField label=\"Largura b\u00e1sica (mm)\" name=\"label_width_mm\" :error=\"fieldError('label_width_mm', 'settings')\">"
+        },
+        {
+          "line": 321,
+          "source": "<UFormField label=\"Altura b\u00e1sica (mm)\" name=\"label_height_mm\" :error=\"fieldError('label_height_mm', 'settings')\">"
+        },
+        {
+          "line": 410,
+          "source": "<form class=\"space-y-4\" @submit.prevent=\"labels.saveLayout()\">"
+        },
+        {
+          "line": 411,
+          "source": "<fieldset :disabled=\"controlsDisabled\" class=\"grid gap-4 sm:grid-cols-2 lg:grid-cols-4\">"
+        },
+        {
+          "line": 412,
+          "source": "<UFormField"
+        },
+        {
+          "line": 425,
+          "source": "<UFormField"
+        },
+        {
+          "line": 433,
+          "source": "<UFormField"
+        },
+        {
+          "line": 448,
+          "source": "<UFormField label=\"Colunas por linha\" name=\"columns_per_row\" :error=\"fieldError('columns_per_row', 'layout')\">"
+        },
+        {
+          "line": 456,
+          "source": "<UFormField"
+        },
+        {
+          "line": 528,
+          "source": "<form v-if=\"canCreateProfile || (profileEditingId !== null && canUpdateProfile)\" class=\"grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4\" @submit.prevent=\"labels.saveProfile()\">"
+        },
+        {
+          "line": 529,
+          "source": "<UFormField label=\"Nome da impressora\" name=\"name\" :error=\"fieldError('name', 'profile')\">"
+        },
+        {
+          "line": 538,
+          "source": "<UFormField label=\"Perfil de compatibilidade\" name=\"capability_profile\" :error=\"fieldError('capability_profile', 'profile')\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/fiscal.vue",
+      "sha256": "dca2c1bd51c52c2abb753a28ec2527aaf73babef486e8083a4667779c2b6865b",
+      "bytes": 4319,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 55,
+          "source": "<ErpCatalogPageShell title=\"Refer\u00eancias fiscais\" description=\"Al\u00edquotas e naturezas de opera\u00e7\u00e3o por empresa e estabelecimento.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/grupos-clientes.vue",
+      "sha256": "74ca48b838a1ce126359885e028e0084c93deba333b67b6d9d74062a8a0c8385",
+      "bytes": 2076,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 22,
+          "source": "<ErpCatalogPageShell title=\"Grupos de clientes\" description=\"Organize contatos de clientes por grupo e ajuste percentual.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/importacao.vue",
+      "sha256": "df4144e020c97db147b22a3fdbd392fdfb6edb63acbbfb47063899bc1dc08e27",
+      "bytes": 7094,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpOperationalTableUi } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 25,
+          "source": "<ErpCatalogPageShell title=\"Importa\u00e7\u00e3o\" description=\"Revise o CSV antes de confirmar. Nenhum cadastro \u00e9 criado na pr\u00e9-visualiza\u00e7\u00e3o.\">"
+        },
+        {
+          "line": 44,
+          "source": "<UFormField label=\"Tipo de cadastro\" name=\"kind\">"
+        },
+        {
+          "line": 52,
+          "source": "<UFormField"
+        },
+        {
+          "line": 76,
+          "source": "<ErpCatalogReferenceSelect"
+        },
+        {
+          "line": 146,
+          "source": "<UTable"
+        },
+        {
+          "line": 147,
+          "source": ":ui=\"erpOperationalTableUi\""
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/index.vue",
+      "sha256": "55138039ee9fb54b44cebc56ed1e7078a1d0a50c8ee9cbe26935fc221f7fe426",
+      "bytes": 1030,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 14,
+          "source": "<ErpCatalogPageShell"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/logistica.vue",
+      "sha256": "3097858b6fb7e7eb4afe33e10f029cb0a00e35ff9c7d91551afefb5bb1d54f69",
+      "bytes": 4364,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 62,
+          "source": "<ErpCatalogPageShell title=\"Log\u00edstica\" description=\"Transportadoras, ve\u00edculos e motoristas para opera\u00e7\u00f5es de transporte.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/marcas.vue",
+      "sha256": "e7c100ae34365edcb6d7965f7b57845669bbe0ae03a357626db31504a2dff848",
+      "bytes": 1706,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 20,
+          "source": "<ErpCatalogPageShell title=\"Marcas\" description=\"Marcas comerciais dispon\u00edveis para os produtos da empresa.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/precos.vue",
+      "sha256": "735995fd65653d2adcb4c91c77144c23ca315afa2598bad5a2f1d7ec3bf026c3",
+      "bytes": 4188,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 54,
+          "source": "<ErpCatalogPageShell title=\"Pre\u00e7os e descontos\" description=\"Grupos de pre\u00e7o e regras comerciais com valores decimais exatos.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/produtos.vue",
+      "sha256": "87b93d799244f28d6826235622a02c3320c01aea004e9dece7e53b309be49942",
+      "bytes": 2230,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 24,
+          "source": "<ErpCatalogPageShell title=\"Produtos\" description=\"Mercadorias, servi\u00e7os e suas varia\u00e7\u00f5es.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/unidades.vue",
+      "sha256": "89fce160e79ebe574259694dcd78890893aede5f04286c90cd62d2e4117d5f20",
+      "bytes": 2300,
+      "reviewed_role": "catalog",
+      "markers": [
+        {
+          "line": 24,
+          "source": "<ErpCatalogPageShell title=\"Unidades\" description=\"Unidades de medida e fatores de convers\u00e3o decimal.\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/caixa/index.vue",
+      "sha256": "8b17ff963de6e14977b1df9d272e364ad1ac71ea6d8abc9c3990cca8eb92a776",
+      "bytes": 136,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpCashWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/compras/index.vue",
+      "sha256": "50d46744bbc1e9c554cfa2ff48a82ae158d86f615d8e260c674ed51110ff11b5",
+      "bytes": 140,
+      "reviewed_role": "purchase",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpPurchaseWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes.vue",
+      "sha256": "3c0e836e7990628d82e516dcc7bea87e7dd5193f2369f81df11dec7cde6b3b2d",
+      "bytes": 1185,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 2,
+          "source": "import { erpPageBodyClass } from '~/components/erp/erpPresentation'"
+        },
+        {
+          "line": 28,
+          "source": "<div :class=\"['mx-auto w-full max-w-4xl', erpPageBodyClass]\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/compras.vue",
+      "sha256": "4c28a105da9caa8ee1e16b6a790e54543e81137b599b65c0963f37051f50470c",
+      "bytes": 778,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/email.vue",
+      "sha256": "430fd12bb4a606cf8bd1fa6a11ef59112226300b5f4678467cdd32778c1c3891",
+      "bytes": 4414,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 76,
+          "source": "<UForm :state=\"form\" :disabled=\"!canWrite || pending || !state\" @submit=\"onSubmit\">"
+        },
+        {
+          "line": 113,
+          "source": "<UFormField label=\"Host SMTP\" name=\"mail_host\" :error=\"fieldError('mail_host')\">"
+        },
+        {
+          "line": 116,
+          "source": "<UFormField label=\"Porta\" name=\"mail_port\" :error=\"fieldError('mail_port')\">"
+        },
+        {
+          "line": 119,
+          "source": "<UFormField label=\"Remetente (e-mail)\" name=\"mail_from_address\" :error=\"fieldError('mail_from_address')\">"
+        },
+        {
+          "line": 122,
+          "source": "<UFormField label=\"Nome remetente\" name=\"mail_from_name\" :error=\"fieldError('mail_from_name')\">"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/empresa.vue",
+      "sha256": "0fb70d491eba8f6c101401231bcf8a3f9a569b5a6d743c6c393853c872925960",
+      "bytes": 373,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 8,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/escritorio.vue",
+      "sha256": "4fa52778470ec8b95951317b2e1a2e93251676d3ce276c394fc0788923def333",
+      "bytes": 146,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/estabelecimentos.vue",
+      "sha256": "e8ca69e3809efadab1adb3d6c429891f7771aa606a37b9f425b287bf65829f68",
+      "bytes": 151,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/index.vue",
+      "sha256": "6cd17efa3296a23b05530247151e219e3c2cf7f9dd345faadecfabc99def89c8",
+      "bytes": 135,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/membros.vue",
+      "sha256": "404218c73b6e90846e76f897eaa21b5ec572273f3972648c0621978d283ffec2",
+      "bytes": 144,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/modulos.vue",
+      "sha256": "b010b8a2b064aa26d825ea5cfcc7a4045752bda21dc5dfbfb85b5f71bdcd53d8",
+      "bytes": 1022,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/pontos.vue",
+      "sha256": "b65185e5ed8818e06978761736dc6025ae0f75b3afeeb69caa9828462b69cc28",
+      "bytes": 1069,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/prefixos.vue",
+      "sha256": "dac7079b13cb964ef6dc6eb836423b58f33dcbe6ac27d463969aec335b143584",
+      "bytes": 351,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/produto.vue",
+      "sha256": "6e8b859339ebc9c2bf36d01028972d89bb191d7c86c8482ad7dd9df4efd071e6",
+      "bytes": 1041,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/rotulos.vue",
+      "sha256": "f6f538f0dd52c178b034fb7a4d92082da3bdf04673aa85b59af631ab081a5737",
+      "bytes": 221,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/sistema.vue",
+      "sha256": "fd26c896568dfb66654e64b9c62d53fba8b7493972a12d5a468a1b2064f1ea51",
+      "bytes": 1128,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/sms.vue",
+      "sha256": "8a43096c0f02ccbc4f42d59862800a6e3f8de53eab5180772265f53d40edbed6",
+      "bytes": 280,
+      "reviewed_role": "settings",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/taxas.vue",
+      "sha256": "f53e286a29bc6f660547f7f4e7206b50ff0fdf081ea53320ff3e9396692aa50d",
+      "bytes": 353,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 8,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/vendas.vue",
+      "sha256": "c2ca224073a37d15e80d731885cb70684f3272363058c86452feefd99063e44b",
+      "bytes": 650,
+      "reviewed_role": "settings",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSettingsSectionForm"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/contabilidade/index.vue",
+      "sha256": "06e27dde6a54c976c9ca82e12bd2bdef1cdb541337782a496bae32f66e2587f8",
+      "bytes": 342,
+      "reviewed_role": "admin",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpCatalogPageShell"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/contrato.vue",
+      "sha256": "4ebc9cb0e1290d312c633c560b4e58ed03149ca21d35ac49cad1c279daa7dc82",
+      "bytes": 3379,
+      "reviewed_role": "other",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/estoque/index.vue",
+      "sha256": "5e29260b5657a64c7990813011078b7e0f6c0092e063fe025bc5f7ea5385e0ba",
+      "bytes": 137,
+      "reviewed_role": "stock",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpStockWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/financeiro/index.vue",
+      "sha256": "37ad7eff9f39b0d0fd0bd81896e040fae9aa3db3b0a32a57cb13720849992989",
+      "bytes": 139,
+      "reviewed_role": "finance",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpFinanceWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/fiscal/index.vue",
+      "sha256": "fb8fe4587f99cc17edba308fa8fa992f807f7ca9af0a30a46109d4d9e678e794",
+      "bytes": 138,
+      "reviewed_role": "fiscal",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpFiscalWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/index.vue",
+      "sha256": "859965a33026c25d182c6d8fc550d1444a3f9e0b496ab6792e7dc007dc949998",
+      "bytes": 801,
+      "reviewed_role": "other",
+      "markers": []
+    },
+    {
+      "file": "frontend/app/pages/erp/relatorios/index.vue",
+      "sha256": "36febbb30ba7e96663558134c4f7ba994ddfece11fcd2b9cce52079acb406ff4",
+      "bytes": 139,
+      "reviewed_role": "report",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpReportsWorkspace />"
+        }
+      ]
+    },
+    {
+      "file": "frontend/app/pages/erp/vendas/index.vue",
+      "sha256": "5dc6d1fa622a6a954a2bddbc4e2ff0479800c55ca984a1bb093f91668e43c055",
+      "bytes": 137,
+      "reviewed_role": "sales",
+      "markers": [
+        {
+          "line": 6,
+          "source": "<ErpSalesWorkspace />"
+        }
+      ]
+    }
+  ]
+}

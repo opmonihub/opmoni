@@ -1,0 +1,23 @@
+product-create-desktop-top: no document horizontal overflow
+product-create-desktop-bottom: no document horizontal overflow
+product-create-desktop-bottom: final action reachable, disabled=False
+product-create-mobile-top: no document horizontal overflow
+product-create-mobile-bottom: no document horizontal overflow
+product-create-mobile-bottom: final action reachable, disabled=False
+product-detail-desktop: no document horizontal overflow
+product-detail-desktop: all actual visible-size controls disabled and no submit
+product-detail-mobile: no document horizontal overflow
+product-detail-mobile: all actual visible-size controls disabled and no submit
+purchase-create-desktop-top: no document horizontal overflow
+purchase-create-desktop-top: final action reachable, disabled=False
+purchase-create-mobile-bottom: no document horizontal overflow
+purchase-create-mobile-bottom: final action reachable, disabled=False
+product-rejected-desktop: no document horizontal overflow
+product-rejected-desktop: native field error association resolves
+product-rejected-mobile: no document horizontal overflow
+product-rejected-mobile: native field error association resolves
+product-create-mobile-close: closed and focus restored to Adicionar produto
+product-edit-desktop-close: closed and focus restored to Ações de Produto de auditoria 01
+product-detail-mobile-close: closed and focus restored to Ações de Produto de auditoria 01
+purchase-create-desktop-close: closed and focus restored to Nova compra
+product edit: synthetic422 preserves edited name; no successful save

@@ -1,0 +1,40 @@
+▶ ERP company administration navigation
+  ✔ includes the office approval header tab only for the selected active Account administrator (480.468416ms)
+  ✔ shows owner controls only for a direct owner company context (23.586441ms)
+  ✔ does not infer owner-only controls from a wildcard grant or a delegated office admin (104.411072ms)
+✔ ERP company administration navigation (609.925611ms)
+▶ ERP administration context request fence
+  ✔ invalidates the real composable token on session, actor, Account, Company authority, grants, and disposal (79.122561ms)
+✔ ERP administration context request fence (79.320816ms)
+▶ ERP administration rendered SFC interactions
+  ✔ retains establishment fields and server validation feedback after a 422 submit (527.875191ms)
+  ✔ associates visible member lookup and permission errors with their native controls (271.14906ms)
+  ✔ associates rejected delegation ID feedback without submitting a delegation (502.522276ms)
+  ✔ associates office mapping field errors with the current native selectors and search (323.386908ms)
+  ✔ does not issue establishment writes for a read-only delegated member (567.842025ms)
+  ✔ separates establishment store and update grants and respects the real scope (499.344012ms)
+  ✔ keeps selected establishment IDs while moving through the member picker pages (107.561858ms)
+  ✔ searches member establishments without saving edits on click or Enter (218.568082ms)
+  ✔ ignores an older same-context list response after a newer request completes (112.200653ms)
+  ✔ keeps the owner row immutable and submits selected empty scope for a newly looked-up member (88.196764ms)
+  ✔ shows office approval state to the owner without exposing office client details (383.593976ms)
+  ✔ prevents duplicate owner delegation writes and requires the confirmation button (287.67148ms)
+  ✔ approves a selected establishment against an active Account-owned client without switching ERP Company (209.158275ms)
+  ✔ discards client search results and errors when the query changes during a request (403.238105ms)
+  ✔ marks same-office client results stale on transient errors and clears protected results on authorization loss (89.296476ms)
+  ✔ clears establishment rows and blocks controls after a forbidden list refresh (101.457382ms)
+  ✔ clears protected member rows and identity results after a forbidden exact-email lookup (111.956235ms)
+  ✔ blocks a stale company editor on context conflict while preserving ordinary conflict edits (299.693107ms)
+  ✔ clears protected establishment state after a forbidden write response (112.069239ms)
+  ✔ clears office establishment and mapping context after a forbidden explicit context read (172.031873ms)
+  ✔ clears office candidates after a forbidden accounting approval write (105.394314ms)
+  ✔ clears owner delegation state after a forbidden grant response (95.560131ms)
+✔ ERP administration rendered SFC interactions (5592.020427ms)
+ℹ tests 26
+ℹ suites 3
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9536.573001
