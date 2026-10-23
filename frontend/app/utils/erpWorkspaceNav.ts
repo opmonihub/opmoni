@@ -1,4 +1,4 @@
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import type { CompanyMembership } from '../../shared/types/access.ts'
 import { erpCadastrosPages } from '#shared/utils/erpCatalogs'
 import {
@@ -24,6 +24,11 @@ export interface ErpWorkspaceNavGroup {
   icon: string
   destinations: readonly ErpWorkspaceNavDestination[]
 }
+
+const erpSidebarModuleGroups = [
+  ['overview', 'vendas', 'compras', 'estoque', 'financeiro', 'caixa', 'fiscal', 'contabilidade', 'relatorios'],
+  ['cadastros', 'configuracoes']
+] as const
 
 export const erpCatalogNavigationGroups: readonly ErpWorkspaceNavGroup[] = [
   {
@@ -249,7 +254,7 @@ export function erpWorkspaceSidebarItems(
   if (!company || company.status !== 'active')
     return []
 
-  const items: NavigationMenuItem[] = []
+  const items = new Map<string, NavigationMenuItem>()
   for (const module of erpNavModules) {
     const contract = moduleContract(module.id)
     let children: NavigationMenuItem[] = []
@@ -276,7 +281,7 @@ export function erpWorkspaceSidebarItems(
     }
 
     if (!children.length) {
-      items.push({
+      items.set(module.id, {
         label: module.label,
         icon: module.icon,
         to: module.to,
@@ -288,7 +293,7 @@ export function erpWorkspaceSidebarItems(
     }
 
     const active = path === module.to || path.startsWith(`${module.to}/`)
-    items.push({
+    items.set(module.id, {
       label: module.label,
       icon: module.icon,
       type: 'trigger',
@@ -299,5 +304,25 @@ export function erpWorkspaceSidebarItems(
     })
   }
 
-  return [items]
+  const groups = erpSidebarModuleGroups.map(moduleIds => moduleIds.flatMap((id) => {
+    const item = items.get(id)
+    return item ? [item] : []
+  }))
+  return groups.some(group => group.length) ? groups : []
+}
+
+export function erpWorkspaceSearchGroups(navigation: NavigationMenuItem[][]): CommandPaletteGroup<CommandPaletteItem>[] {
+  const items = navigation.flat().flatMap(module => (module.children?.length ? module.children : [module])
+    .flatMap((destination) => {
+      if (typeof destination.to !== 'string' || destination.disabled)
+        return []
+      return [{
+        id: destination.to,
+        label: module.children?.length ? `${module.label} · ${destination.label}` : destination.label ?? '',
+        icon: destination.icon ?? module.icon,
+        to: destination.to,
+        onSelect: destination.onSelect
+      }]
+    }))
+  return items.length ? [{ id: 'erp-links', label: 'Ir para', items }] : []
 }

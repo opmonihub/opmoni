@@ -151,18 +151,13 @@ const groups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => [{
       collapsible
       resizable
       class="bg-elevated/25"
-      :ui="{ header: 'h-auto min-h-(--ui-header-height) py-3', footer: 'lg:border-t lg:border-default' }"
+      :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
-      <template #header="{ collapsed, collapse }">
-        <UButton
-          v-if="collapsed"
-          icon="i-lucide-building-2"
-          :aria-label="user?.current_account?.name || 'Selecionar escritório'"
-          color="neutral"
-          variant="ghost"
-          @click="collapse(false)"
+      <template #header="{ collapsed }">
+        <WorkspaceContextMenu
+          v-if="user?.current_account || user?.companies?.length"
+          :collapsed="collapsed"
         />
-        <WorkspaceContextMenu v-else-if="user?.current_account || user?.companies?.length" class="w-full min-w-0" />
       </template>
 
       <template #default="{ collapsed }">

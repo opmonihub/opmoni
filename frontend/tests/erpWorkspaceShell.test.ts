@@ -12,12 +12,19 @@ describe('ERP workspace shell', () => {
     assert.match(nav, /\/erp\/configuracoes/)
   })
 
-  it('WorkspaceContextMenu separates offices and companies', async () => {
+  it('shares the compact context menu between office and ERP layouts', async () => {
     const menu = await readFile(new URL('../app/components/WorkspaceContextMenu.vue', import.meta.url), 'utf8')
+    const office = await readFile(new URL('../app/layouts/default.vue', import.meta.url), 'utf8')
+    const erp = await readFile(new URL('../app/layouts/erp.vue', import.meta.url), 'utf8')
     assert.match(menu, /Escritórios/)
     assert.match(menu, /Empresas/)
-    assert.match(menu, /AccountMenu/)
-    assert.match(menu, /CompanyMenu/)
+    assert.match(menu, /UDropdownMenu/)
+    assert.match(office, /WorkspaceContextMenu[\s\S]*?:collapsed="collapsed"/)
+    assert.match(erp, /WorkspaceContextMenu[\s\S]*?:collapsed="collapsed"/)
+    assert.doesNotMatch(office, /header: 'h-auto/)
+    assert.doesNotMatch(erp, /header: 'h-auto/)
+    assert.match(erp, /UDashboardSearchButton/)
+    assert.match(erp, /UDashboardSearch :groups="groups"/)
   })
 
   it('company switch clears cached data like account switch', async () => {

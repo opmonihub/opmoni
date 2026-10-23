@@ -5,8 +5,25 @@ import { loadAppComposable } from './helpers/loadAppComposable.ts'
 const {
   erpWorkspaceCatalogGroups,
   erpWorkspaceSettingsGroups,
-  erpWorkspaceSidebarItems
+  erpWorkspaceSidebarItems,
+  erpWorkspaceSearchGroups
 } = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
+
+it('searches only authorized sidebar destinations and retains module context and navigation callbacks', () => {
+  const close = () => {}
+  const sidebar = erpWorkspaceSidebarItems('/erp', company({ permissions: ['erp.read', 'erp.obligations.index'] }), close)
+  const entries = erpWorkspaceSearchGroups(sidebar).flatMap(group => group.items)
+  const allowed = sidebar.flat().flatMap(item => item.children?.length ? item.children : [item]).map(item => item.to)
+  assert.ok(entries.length)
+  assert.ok(entries.every(item => allowed.includes(item.to)))
+  assert.ok(entries.every(item => typeof item.to === 'string'))
+  const obligation = entries.find(item => item.to === '/erp/financeiro#obligations')
+  assert.equal(obligation?.label, 'Financeiro · Obrigações')
+  assert.equal(obligation?.onSelect, close)
+  const narrow = erpWorkspaceSearchGroups(erpWorkspaceSidebarItems('/erp', company({ permissions: ['erp.obligations.index'], access_kind: 'delegated', role: 'user' })))
+    .flatMap(group => group.items)
+  assert.deepEqual(narrow.map(item => item.to), ['/erp/financeiro#obligations'])
+})
 
 function company(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +47,26 @@ function children(group: { children?: Array<{ label?: string, to?: string, activ
 }
 
 describe('ERP workspace navigation registry', () => {
+  it('preserves primary and secondary menu positions after filtering exact permissions', () => {
+    const links = erpWorkspaceSidebarItems('/erp/financeiro', company({
+      role: 'viewer',
+      access_kind: 'delegated',
+      permissions: ['erp.obligations.index']
+    }))
+    assert.deepEqual(links[0]?.map(item => item.label), ['Financeiro'])
+    assert.deepEqual(links[1], [])
+    assert.deepEqual(erpWorkspaceSearchGroups(links).flatMap(group => group.items).map(item => item.to), ['/erp/financeiro#obligations'])
+
+    const settings = erpWorkspaceSidebarItems('/erp/configuracoes/empresa', company({
+      role: 'viewer',
+      permissions: ['erp.company.settings.show']
+    }))
+    assert.deepEqual(settings[0], [])
+    assert.deepEqual(settings[1]?.map(item => item.label), ['Configurações'])
+    assert.equal(settings[1]?.[0]?.defaultOpen, true)
+    assert.deepEqual(erpWorkspaceSidebarItems('/erp', company({ role: 'viewer', permissions: [] })), [])
+  })
+
   it('filters catalog destinations by exact read grants and omits empty groups', () => {
     const links = erpWorkspaceCatalogGroups('/erp/cadastros/produtos', company({ permissions: ['erp.products.index'] }))
     assert.deepEqual(links.flatMap(group => children(group[0]).map(child => child.to)), ['/erp/cadastros/produtos', '/erp/cadastros/etiquetas'])

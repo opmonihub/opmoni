@@ -9,6 +9,7 @@ import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const erpPresentation = loadAppComposable('components/erp/erpPresentation.ts')
 const workspaceNav = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
+const access = loadAppComposable('../shared/utils/access.ts')
 
 function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const output = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -16,6 +17,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
     if (name === 'vue') return { ...Vue, resolveComponent: globals.resolveComponent ?? ((name: string) => ({ name })), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
     if (name === '~/utils/erpModulesNav') return nav
+    if (name === '#shared/utils/access') return access
     if (name === '~/components/erp/erpPresentation') return erpPresentation
     assert.equal(name, '~/utils/erpWorkspaceNav')
     return workspaceNav
@@ -45,7 +47,11 @@ function nodes(node: Vue.VNode): Vue.VNode[] {
   const children = Array.isArray(node.children)
     ? node.children
     : node.children && typeof node.children === 'object'
-      ? Object.values(node.children).filter(value => typeof value === 'function').flatMap(slot => slot({ collapsed: false, collapse() {} }))
+      ? Object.entries(node.children).filter(([, value]) => typeof value === 'function').flatMap(([name, slot]) => {
+          if (name === 'item-trailing' && Array.isArray(node.props?.items))
+            return node.props.items.flat().filter(item => item.type !== 'label').flatMap(item => slot({ item, active: item.active }))
+          return slot({ collapsed: false, collapse() {} })
+        })
       : []
   return [node, ...children.filter(Vue.isVNode).flatMap(nodes)]
 }
@@ -117,7 +123,7 @@ describe('ERP mobile shell and contract', () => {
     currentCompany.value = { ...company(), name: 'Empresa B' }
     assert.equal(named(view.render(), 'UDashboardNavbar')[0]!.props!.title, 'Empresa B')
     const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items
-    assert.ok(links.some((link: { label: string, children?: Array<{ to?: string }> }) => link.label === 'Relatórios' && link.children?.some(child => child.to === '/erp/relatorios#sales')))
+    assert.ok(links.flat().some((link: { label: string, children?: Array<{ to?: string }> }) => link.label === 'Relatórios' && link.children?.some(child => child.to === '/erp/relatorios#sales')))
   })
   it('lets every catalog route provide its own single native panel', (t) => {
     const route = Vue.reactive({ path: '/erp/cadastros/contatos' })
@@ -171,11 +177,16 @@ describe('ERP mobile shell and contract', () => {
     updateMenu!([])
     await Vue.nextTick()
     assert.deepEqual(menuProps?.modelValue, [], 'a user can collapse the active module without an immediate watcher reopening it')
+
+    route.path = '/erp/configuracoes/empresa'
+    route.hash = ''
+    await Vue.nextTick()
+    assert.ok(menuProps?.modelValue.includes('erp-configuracoes'), 'the active module also opens in the template secondary menu')
   })
   it('keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount', async (t) => {
     const route = Vue.reactive({ path: '/erp/financeiro', hash: '#payments' })
     const activeFinanceTarget = (items: Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>) =>
-      items.find(item => item.label === 'Financeiro')?.children?.find(child => child.active)?.to
+      items.flat().find(item => item.label === 'Financeiro')?.children?.find(child => child.active)?.to
     const serverView = surface('layouts/erp.vue', {
       useRoute: () => route,
       useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) })
@@ -277,10 +288,16 @@ describe('ERP mobile shell and contract', () => {
     const view = contract(async () => payload())
     t.after(view.close)
     assert.equal(view.metadata[0]?.layout, 'erp')
-    const menu = surface('components/WorkspaceContextMenu.vue', { useAuth: () => ({ user: Vue.ref({ accounts: [], companies: [company()] }) }) })
+    const menu = surface('components/WorkspaceContextMenu.vue', {
+      useAuth: () => ({ user: Vue.ref({ accounts: [], companies: [company()], current_company: company() }) }),
+      useToast: () => ({ add() {} })
+    })
     t.after(menu.close)
-    assert.equal(named(menu.render(), 'AccountMenu').length, 0)
-    assert.equal(named(menu.render(), 'CompanyMenu').length, 1)
+    const groups = named(menu.render(), 'UDropdownMenu')[0]!.props!.items
+    assert.deepEqual(groups.map((group: { label: string }[]) => group[0]?.label), ['Empresas'])
+    assert.equal(groups[0][1].active, true)
+    assert.equal(named(menu.render(), 'UIcon').filter(node => node.props?.name === 'i-lucide-check').length, 1)
+    assert.equal(named(menu.render(), 'UButton')[0]!.props!.label, 'Empresa A')
   })
   for (const [status, expected] of [['pending', 'Pendente de habilitação'], ['active', 'Ativo'], ['past_due', 'Em atraso'], ['canceled', 'Cancelado']]) {
     it(`preserves ${status} contract feedback`, async (t) => {

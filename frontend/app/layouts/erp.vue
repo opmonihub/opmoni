@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { erpModuleActive, erpModuleNavbarTitle, erpNavModules } from '~/utils/erpModulesNav'
-import { erpWorkspaceSidebarItems } from '~/utils/erpWorkspaceNav'
+import { erpWorkspaceSearchGroups, erpWorkspaceSidebarItems } from '~/utils/erpWorkspaceNav'
 
 const route = useRoute()
 const { currentCompany, currentAccount } = useAuth()
@@ -16,11 +16,12 @@ const pageOwnsPanel = computed(() => erpNavModules.some(module =>
 ))
 
 const links = computed(() => erpWorkspaceSidebarItems(route.path, currentCompany.value, closeForNavigation, sidebarHash.value))
+const groups = computed(() => erpWorkspaceSearchGroups(links.value))
 
 watch(
   () => [route.path, sidebarHash.value, workspaceKey.value],
   () => {
-    const activeModule = links.value[0]?.find(item => item.type === 'trigger' && item.active)
+    const activeModule = links.value.flat().find(item => item.type === 'trigger' && item.active)
     const value = activeModule?.value
     if (typeof value === 'string' && !expandedModules.value.includes(value))
       expandedModules.value = [...expandedModules.value, value]
@@ -47,28 +48,35 @@ const navbarTitle = computed(() => {
       collapsible
       resizable
       class="bg-elevated/25"
-      :ui="{ header: 'h-auto min-h-(--ui-header-height) py-3', footer: 'lg:border-t lg:border-default' }"
+      :ui="{ footer: 'lg:border-t lg:border-default' }"
     >
-      <template #header="{ collapsed, collapse }">
-        <UButton
-          v-if="collapsed"
-          icon="i-lucide-factory"
-          :aria-label="currentCompany?.name || 'Selecionar empresa'"
-          color="neutral"
-          variant="ghost"
-          @click="collapse(false)"
-        />
-        <WorkspaceContextMenu v-else class="w-full min-w-0" />
+      <template #header="{ collapsed }">
+        <WorkspaceContextMenu :collapsed="collapsed" context="company" />
       </template>
 
       <template #default="{ collapsed }">
+        <UDashboardSearchButton :collapsed="collapsed" label="Pesquisar…" class="bg-transparent ring-default" />
+
         <UNavigationMenu
           v-model="expandedModules"
           :collapsed="collapsed"
           :items="links[0]"
           orientation="vertical"
-          :tooltip="collapsed"
+          tooltip
           popover
+          aria-label="Navegação do ERP"
+        />
+
+        <UNavigationMenu
+          v-if="links[1]?.length"
+          v-model="expandedModules"
+          :collapsed="collapsed"
+          :items="links[1]"
+          orientation="vertical"
+          tooltip
+          popover
+          class="mt-auto"
+          aria-label="Administração do ERP"
         />
       </template>
 
@@ -76,6 +84,8 @@ const navbarTitle = computed(() => {
         <UserMenu :collapsed="collapsed" />
       </template>
     </UDashboardSidebar>
+
+    <UDashboardSearch :groups="groups" placeholder="Pesquisar no ERP…" />
 
     <slot v-if="pageOwnsPanel" :key="workspaceKey" />
     <UDashboardPanel v-else :ui="{ body: 'p-0 sm:p-0' }">
