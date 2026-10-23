@@ -1,0 +1,99 @@
+{
+  "source_branch": "codex/align-erp-template-and-product-setup",
+  "source_baseline_commit": "7ad09947a65562db340be8bcbff450c6ac37912f",
+  "worktree": "/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup",
+  "task_runtime": {
+    "backend": {
+      "container": "opmoni-erp-template-backend-1",
+      "id": "b7e07ec461f9",
+      "image": "opmoni-backend:dev",
+      "working_dir": "/workspace/backend",
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup",
+          "Destination": "/workspace"
+        }
+      ],
+      "ports": {
+        "8000/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "18840"
+          }
+        ]
+      },
+      "network_names": [
+        "opmoni-erp-template-net"
+      ]
+    },
+    "postgres": {
+      "container": "opmoni-erp-template-postgres-1",
+      "id": "b3b1e23d8e83",
+      "image": "postgres:18-alpine",
+      "working_dir": "/",
+      "mounts": [
+        {
+          "Type": "volume",
+          "Source": "/var/lib/docker/volumes/opmoni-erp-template-postgres/_data",
+          "Destination": "/var/lib/postgresql"
+        }
+      ],
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "15440"
+          }
+        ]
+      },
+      "network_names": [
+        "opmoni-erp-template-net"
+      ]
+    },
+    "redis": {
+      "container": "opmoni-erp-template-redis-1",
+      "id": "ea312544f931",
+      "image": "redis:8-alpine",
+      "working_dir": "/data",
+      "mounts": [
+        {
+          "Type": "volume",
+          "Source": "/var/lib/docker/volumes/opmoni-erp-template-redis/_data",
+          "Destination": "/data"
+        }
+      ],
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "16340"
+          }
+        ]
+      },
+      "network_names": [
+        "opmoni-erp-template-net"
+      ]
+    },
+    "frontend": {
+      "kind": "host_process",
+      "pid": 2888502,
+      "node": "/home/obsidian/.nvm/versions/node/v24.18.0/bin/node",
+      "cwd": "/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup/frontend",
+      "bind": "127.0.0.1:3340",
+      "backend_target": "http://127.0.0.1:18840",
+      "private_ingress_configured_without_output": true
+    }
+  },
+  "preservation": {
+    "main_dirty_untracked_status_equal": true,
+    "main_source_and_env_files_unchanged": 30,
+    "main_containers_unchanged": 6,
+    "env_mode_0600": true,
+    "app_key_preserved": true,
+    "dependency_copy_sample_inodes_independent": true,
+    "main_store_commands_executed": false,
+    "development_redis_0_2_commands_executed": false
+  },
+  "exit_status": 0
+}

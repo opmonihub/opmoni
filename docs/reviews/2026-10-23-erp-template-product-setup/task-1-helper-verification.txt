@@ -1,0 +1,9 @@
+Preservation assertions: PASS (30 files and six main containers; private before-snapshot retained only in ignored task ledger). exit_status=0
+Bash and all Python helper syntax: PASS. exit_status=0
+$ scripts/erp-template-runtime/run backend php -l /workspace/scripts/erp-template-runtime/verify-stores.php
+No syntax errors detected in /workspace/scripts/erp-template-runtime/verify-stores.php
+
+exit_status=0
+$ scripts/erp-template-runtime/run backend vendor/bin/pint /workspace/scripts/erp-template-runtime/verify-stores.php --format agent
+{"tool":"pint","result":"passed"}
+exit_status=0

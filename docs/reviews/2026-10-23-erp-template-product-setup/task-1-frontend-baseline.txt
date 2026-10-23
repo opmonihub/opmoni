@@ -1,0 +1,57 @@
+$ scripts/erp-template-runtime/run frontend node --experimental-strip-types --test tests/erpSidebarNavigation.test.ts tests/erpWorkspaceShell.test.ts tests/erpMobileShell.test.ts tests/clientsNavigationHeader.test.ts
+▶ Clients sidebar navigation
+  ✔ places Painel and Meus clientes under a native collapsible Clients trigger (1100.083699ms)
+  ✔ keeps Clients children text-only like the established module submenus (318.452151ms)
+  ✔ marks only the current submenu across dashboard, both lists, statuses and client details (289.843815ms)
+  ✔ exposes the current child on direct entry and reopens Clients after a route transition (484.472435ms)
+  ✔ uses stable single group values and preserves Fiscal, Members and specialized obligation activity (318.645595ms)
+  ✔ highlights only the active child in expanded groups while retaining icon activity (1485.498254ms)
+  ✔ keeps a single fully open group through opening, closing and toggling the pinned module (90.574757ms)
+  ✔ keeps group models explicitly controlled even with no expanded module (105.837408ms)
+  ✔ preserves Settings permission gates and unconditional Members visibility when folded (111.893385ms)
+  ✔ preserves collapsed popovers and closes the mobile sidebar from either Clients child (19.356224ms)
+  ✔ keeps both Clients destinations in the command palette alongside the gated Admin menu (185.94802ms)
+✔ Clients sidebar navigation (4512.547762ms)
+▶ Clients document selector and header
+  ✔ uses only two compact document links on list routes, selected from the route and targeting Todos (87.641433ms)
+  ✔ hides document selection outside the lists and preserves the detail back action (16.935435ms)
+  ✔ preserves permission-gated creation and navigation-before-create on Painel (82.016637ms)
+  ✔ lets the compact header wrap instead of restoring a full navigation toolbar (12.88457ms)
+✔ Clients document selector and header (199.783956ms)
+▶ ERP mobile shell and contract
+  ✔ keeps the operational native header visible with company/user controls and one sidebar toggle (398.487591ms)
+  ✔ lets every catalog route provide its own single native panel (114.429204ms)
+  ✔ controls active sidebar expansion after mounted route and history changes while preserving manual collapse (198.289599ms)
+  ✔ keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount (591.731687ms)
+  ✔ changes the catalog content key when company or Account context changes (96.982411ms)
+  ✔ disposes the old protected child and mounts a fresh child after selected company context changes (114.891589ms)
+  ✔ lets operational routes retain their own native panel without nesting (189.444875ms)
+  ✔ uses a native panel, page title, context controls and one marked sidebar toggle for catalogs (94.622924ms)
+  ✔ renders overview content inside the ERP layout panel (8.367508ms)
+  ✔ uses ERP layout for a company-only contract route (390.913304ms)
+  ✔ preserves pending contract feedback (115.48053ms)
+  ✔ preserves active contract feedback (91.775133ms)
+  ✔ preserves past_due contract feedback (88.214521ms)
+  ✔ preserves canceled contract feedback (16.350432ms)
+  ✔ offers refresh/retry and retains confirmed contract on refresh failure (84.578889ms)
+  ✔ clears contract state and rejects late replies on company/Account switch (101.156266ms)
+✔ ERP mobile shell and contract (2697.829307ms)
+▶ ERP mobile sidebar navigation focus
+  ✔ closes the menu and focuses the new page trigger only after navigation finishes (285.700842ms)
+  ✔ restores focus after same-page hash navigation, but leaves page transitions to page:finish (87.13608ms)
+✔ ERP mobile sidebar navigation focus (374.056937ms)
+▶ ERP workspace shell
+  ✔ erp layout uses WorkspaceContextMenu and company-aware navigation (93.889041ms)
+  ✔ shares the compact context menu between office and ERP layouts (5.712374ms)
+  ✔ company switch clears cached data like account switch (2.65209ms)
+✔ ERP workspace shell (103.607045ms)
+ℹ tests 36
+ℹ suites 5
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6903.044377
+
+exit_status=0

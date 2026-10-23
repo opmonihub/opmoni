@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+export OPMONI_TASK_WORKTREE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+export OPMONI_TASK_UID="$(id -u)" OPMONI_TASK_GID="$(id -g)"
+expected=/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup
+[[ "$OPMONI_TASK_WORKTREE" == "$expected" ]] || { echo 'Unexpected task checkout.' >&2; exit 1; }
+[[ "$(git -C "$expected" branch --show-current)" == codex/align-erp-template-and-product-setup ]] || { echo 'Unexpected task branch.' >&2; exit 1; }
+compose=(docker compose --project-name opmoni-erp-template --env-file "$expected/.env" --file "$expected/scripts/erp-template-runtime/compose.yml")
+
+case "${1:-}" in
+  prepare)
+    python3 "$expected/scripts/erp-template-runtime/prepare.py"
+    ;;
+  up)
+    "${compose[@]}" config --quiet
+    "${compose[@]}" up -d --no-build
+    python3 "$expected/scripts/erp-template-runtime/start-frontend.py"
+    ;;
+  verify)
+    python3 "$expected/scripts/erp-template-runtime/verify-containers.py"
+    "${compose[@]}" exec -T backend php /workspace/scripts/erp-template-runtime/verify-stores.php
+    ;;
+  backend|frontend)
+    service="$1"
+    shift
+    python3 "$expected/scripts/erp-template-runtime/verify-containers.py" >/dev/null
+    if [[ "$service" == frontend ]]; then
+      cd "$expected/frontend"
+      "$@"
+    else
+      "${compose[@]}" exec -T "$service" "$@"
+    fi
+    ;;
+  ps)
+    "${compose[@]}" ps
+    ;;
+  *)
+    echo 'Usage: scripts/erp-template-runtime/run {prepare|up|verify|ps|backend COMMAND...|frontend COMMAND...}' >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,13 @@
+$ scripts/erp-template-runtime/run backend env FRONTEND_ORIGIN=http://localhost:3000 vendor/bin/phpunit --colors=never tests/Feature/ApiHealthTest.php tests/Feature/BusinessAccessBoundaryTest.php tests/Feature/AccessFoundationTest.php
+PHPUnit 12.5.39 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.27
+Configuration: /workspace/backend/phpunit.xml
+
+..............                                                    14 / 14 (100%)
+
+Time: 00:16.214, Memory: 64.50 MB
+
+OK (14 tests, 143 assertions)
+
+exit_status=0

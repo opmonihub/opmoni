@@ -1,0 +1,10 @@
+$ scripts/erp-template-runtime/run verify
+PASS: task ownership, whole-worktree mount/source contents, host frontend PID/cwd/loopback command, private dependencies, aliases, independent volumes, no workers/scheduler
+PASS: PostgreSQL 18 opmoni_test, Redis 8 databases 13/14/15, disabled ERP gates and external dispatch
+
+exit_status=0
+GET http://127.0.0.1:18840/up: HTTP 200; expected response verified; exit_status=0
+GET http://127.0.0.1:18840/api/v1/health: HTTP 200; expected response verified; exit_status=0
+GET http://localhost:3340/api/v1/health: HTTP 200; expected response verified; exit_status=0
+GET http://localhost:3340/api/v1/me: HTTP 401; expected response verified; exit_status=0
+GET http://localhost:3340/api/v1/erp/registration-status: HTTP 200; expected response verified; exit_status=0

@@ -1,0 +1,98 @@
+name: opmoni-erp-template
+
+x-backend: &backend
+  image: opmoni-backend:dev
+  pull_policy: never
+  init: true
+  user: "${OPMONI_TASK_UID}:${OPMONI_TASK_GID}"
+  entrypoint: []
+  working_dir: /workspace/backend
+  env_file:
+    - ${OPMONI_TASK_WORKTREE}/backend/.env
+  environment:
+    APP_ENV: local
+    APP_DEBUG: "false"
+    APP_URL: http://localhost:18840
+    FRONTEND_ORIGIN: http://localhost:3340
+    FRONTEND_INGRESS_KEY: ${FRONTEND_INGRESS_KEY:?Configure the existing root .env}
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_DATABASE: opmoni_test
+    DB_USERNAME: opmoni
+    DB_PASSWORD: opmoni
+    DB_URL: ""
+    CACHE_STORE: redis
+    SESSION_DRIVER: redis
+    SESSION_CONNECTION: sessions
+    SESSION_STORE: sessions
+    REDIS_CLIENT: phpredis
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    REDIS_PASSWORD: "null"
+    REDIS_URL: ""
+    REDIS_DB: 13
+    REDIS_CACHE_DB: 14
+    REDIS_SESSION_DB: 15
+    REDIS_PREFIX: opmoni-erp-template-
+    CACHE_PREFIX: opmoni-erp-template-cache-
+    REDIS_CACHE_LOCK_CONNECTION: cache
+    QUEUE_CONNECTION: redis
+    MAIL_MAILER: array
+    WHATSAPP_DISPATCH_ENABLED: "false"
+    ERP_REGISTRATION_ENABLED: "false"
+    ERP_OPERATING_WRITES_ENABLED: "false"
+    ERP_RELEASE_ENABLED: "false"
+    ERP_RELEASE_MODE: disabled
+    ERP_FISCAL_PROVIDER: fake
+    ERP_FISCAL_PRODUCTION_ENABLED: "false"
+    FISCAL_ENVIRONMENT: homologacao
+    FISCAL_CTE_ENABLED: "false"
+    FISCAL_NFSE_ENABLED: "false"
+    FISCAL_MANIFESTACAO_ENABLED: "false"
+    FISCAL_MANIFESTACAO_ROLLOUT_MODE: disabled
+  volumes:
+    - ${OPMONI_TASK_WORKTREE}:/workspace
+  networks: [task]
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    pull_policy: never
+    environment:
+      POSTGRES_DB: opmoni_test
+      POSTGRES_USER: opmoni
+      POSTGRES_PASSWORD: opmoni
+    ports: ["127.0.0.1:15440:5432"]
+    volumes: ["postgres:/var/lib/postgresql"]
+    networks: [task]
+    healthcheck:
+      test: [CMD, pg_isready, -U, opmoni, -d, opmoni_test]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:8-alpine
+    pull_policy: never
+    command: [redis-server, --appendonly, "yes"]
+    ports: ["127.0.0.1:16340:6379"]
+    volumes: ["redis:/data"]
+    networks: [task]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  backend:
+    <<: *backend
+    command: [php, artisan, serve, --host=0.0.0.0, --port=8000, --no-reload]
+    ports: ["127.0.0.1:18840:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+networks:
+  task:
+    name: opmoni-erp-template-net
+volumes:
+  postgres: {name: opmoni-erp-template-postgres}
+  redis: {name: opmoni-erp-template-redis}
