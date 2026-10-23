@@ -29,7 +29,7 @@ const exactOverrideActions = new Set(['erp.sales.price.override', 'erp.sales.dis
 const readActions = new Set([
   'erp.quotes.index', 'erp.quotes.show', 'erp.orders.index', 'erp.orders.show',
   'erp.sales.index', 'erp.sales.show', 'erp.sale-returns.index', 'erp.sale-returns.show',
-  'erp.establishments.index', 'erp.contacts.index', 'erp.units.index', 'erp.products.index',
+  'erp.establishments.index', 'erp.contacts.index', 'erp.units.index', 'erp.products.index', 'erp.operation-natures.index',
   'erp.payments.index', 'erp.payments.show', 'erp.payments.receipt',
   'erp.obligations.index', 'erp.obligations.show', 'erp.fiscal.documents.index'
 ])
@@ -62,10 +62,15 @@ export function erpCommercialDocumentToDraft(document: ErpCommercialDocument): E
   const discountInput = record(headerDiscount.submitted)
   const hasHeaderDiscount = headerDiscount.mode === 'manual' || headerDiscount.mode === 'rule'
   const hasHeaderTax = typeof headerTax.rate_percent === 'string'
+  const frozenNatureIds = document.lines.map(line => id(record(record(line.product_snapshot).operation_nature).id))
+  const headerNatureId = id(document.erp_operation_nature_id)
+  const frozenNatureId = frozenNatureIds.length && frozenNatureIds.every(value => value === frozenNatureIds[0]) ? frozenNatureIds[0] ?? null : null
+  const operationNatureId = headerNatureId && (!frozenNatureIds.length || frozenNatureId === headerNatureId) ? headerNatureId : headerNatureId ? null : frozenNatureId
   const draft: ErpCommercialDraftPayload = {
     erp_establishment_id: document.erp_establishment_id,
     erp_contact_id: document.erp_contact_id,
     erp_price_group_id: document.erp_price_group_id,
+    erp_operation_nature_id: operationNatureId,
     currency: 'BRL',
     draft_revision: document.draft_revision ?? undefined,
     quote_no: document.quote_no ?? undefined,

@@ -1,3 +1,4 @@
+import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
 import type {
   ErpCommercialDraftPayload,
   ErpCommercialDocument,
@@ -22,7 +23,7 @@ type SalesAction = string
 type SalesRow = ErpCommercialDocument | ErpSaleReturn
 type Page<T> = ErpSalesPage<T>
 type PendingSalesOperation = ErpPendingOperation & { method: 'POST' | 'PATCH' }
-type SalesReferences = { establishments: ErpSalesEstablishment[], contacts: ErpSalesContact[], units: ErpSalesUnit[], variants: ErpSalesVariant[] }
+type SalesReferences = { establishments: ErpSalesEstablishment[], contacts: ErpSalesContact[], units: ErpSalesUnit[], variants: ErpSalesVariant[], operationNatures: ErpOperationNatureRecord[] }
 
 const paths: Record<ErpSalesArea, string> = { quotes: '/erp/quotes', orders: '/erp/orders', sales: '/erp/sales', returns: '/erp/sale-returns' }
 const indexActions: Record<ErpSalesArea, SalesAction> = { quotes: 'erp.quotes.index', orders: 'erp.orders.index', sales: 'erp.sales.index', returns: 'erp.sale-returns.index' }
@@ -64,9 +65,10 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   const loading = reactive<Record<ErpSalesArea, boolean>>({ quotes: false, orders: false, sales: false, returns: false })
   const stale = reactive<Record<ErpSalesArea, boolean>>({ quotes: false, orders: false, sales: false, returns: false })
   const listErrors = reactive<Record<ErpSalesArea, string>>({ quotes: '', orders: '', sales: '', returns: '' })
-  const references = reactive<SalesReferences>({ establishments: [], contacts: [], units: [], variants: [] })
+  const references = reactive<SalesReferences>({ establishments: [], contacts: [], units: [], variants: [], operationNatures: [] })
   const referenceLoading = ref(false)
   const referenceError = ref('')
+  const operationNatureState = reactive({ permitted: false, loading: false, confirmed: false, error: '' })
   const selected = ref<SalesRow | null>(null)
   const paymentDetails = ref<ErpPayment[]>([])
   const selectedObligation = ref<ErpObligation | null>(null)
@@ -159,6 +161,8 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     references.contacts = []
     references.units = []
     references.variants = []
+    references.operationNatures = []
+    Object.assign(operationNatureState, { permitted: false, loading: false, confirmed: false, error: '' })
     referenceLoading.value = false
     referenceError.value = ''
     selected.value = null
@@ -275,8 +279,12 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     const sequence = ++referenceSequence
     referenceLoading.value = true
     referenceError.value = ''
+    operationNatureState.permitted = allowed('erp.operation-natures.index')
+    operationNatureState.loading = operationNatureState.permitted
+    operationNatureState.error = ''
     const configs = [
-      ['/erp/establishments', 'erp.establishments.index'], ['/erp/contacts', 'erp.contacts.index'], ['/erp/units', 'erp.units.index'], ['/erp/products', 'erp.products.index']
+      ['/erp/establishments', 'erp.establishments.index'], ['/erp/contacts', 'erp.contacts.index'], ['/erp/units', 'erp.units.index'], ['/erp/products', 'erp.products.index'],
+      ['/erp/tax-settings/operation-natures', 'erp.operation-natures.index']
     ] as const
     const results = await Promise.allSettled(configs.map(([path, action]) => loadAllPages<Record<string, unknown>>(path, action, token, generation)))
     if (!authorityCurrent(token, generation) || sequence !== referenceSequence) return
@@ -297,6 +305,17 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
         product: { id: Number(product.id), name: String(product.name ?? ''), kind: typeof product.kind === 'string' ? product.kind : undefined, track_stock: product.track_stock === true }
       }))
     })
+    const natureResult = results[4]
+    if (operationNatureState.permitted && natureResult?.status === 'fulfilled') {
+      references.operationNatures = natureResult.value.filter(row => row.status === 'active' && Number.isSafeInteger(Number(row.id)) && Number(row.id) > 0 && ['in', 'out'].includes(String(row.movement))).map(row => ({
+        id: Number(row.id), erp_establishment_id: row.erp_establishment_id === null ? null : Number(row.erp_establishment_id), cfop: String(row.cfop ?? ''), description: String(row.description ?? ''), movement: row.movement as 'in' | 'out',
+        fiscal_metadata: typeof row.fiscal_metadata === 'object' && row.fiscal_metadata !== null ? row.fiscal_metadata as Record<string, unknown> : null, status: 'active'
+      }))
+      operationNatureState.confirmed = true
+    } else if (natureResult?.status === 'rejected') {
+      operationNatureState.error = message(natureResult.reason, 'Não foi possível carregar as naturezas da operação.')
+    }
+    operationNatureState.loading = false
     if (failures.length) referenceError.value = message(failures[0], 'Algumas referências não puderam ser carregadas.')
     if (authorityCurrent(token, generation) && sequence === referenceSequence) referenceLoading.value = false
   }
@@ -709,7 +728,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
 
   return {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
-    references, referenceLoading, referenceError, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
+    references, referenceLoading, referenceError, operationNatureState, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
     mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, authorityNeedsRefresh, operationIntentSequence,
     completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,
     allowed, canRead, load, loadReferences, selectArea, setPage, setStatus, refreshArea, inspect, closeSelected, saveDraft, convertQuote,

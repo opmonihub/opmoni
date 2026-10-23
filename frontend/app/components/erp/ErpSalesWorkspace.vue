@@ -84,6 +84,7 @@ function emptyDraft(establishmentId: number | null = null): ErpCommercialDraftPa
   return {
     erp_establishment_id: establishmentId,
     erp_contact_id: null,
+    erp_operation_nature_id: null,
     currency: 'BRL',
     lines: [{ erp_product_variant_id: null, erp_unit_id: null, description: '', quantity: '1.0000', discount_amount: '0.0000', tax_amount: '0.0000' }]
   }
@@ -808,6 +809,7 @@ onMounted(() => {
             :kind="createKind"
             :draft="createDrafts[createKind]"
             :references="sales.references"
+            :nature-state="sales.operationNatureState"
             :errors="sales.fieldErrors.value"
             :saving="sales.mutating.value"
             :can-override-price="sales.allowed('erp.sales.price.override')"
@@ -823,6 +825,7 @@ onMounted(() => {
             :kind="editKind"
             :draft="editDraft"
             :references="sales.references"
+            :nature-state="sales.operationNatureState"
             :errors="sales.fieldErrors.value"
             :saving="sales.mutating.value"
             :can-override-price="sales.allowed('erp.sales.price.override')"

@@ -1,16 +1,18 @@
 <script setup lang="ts">
+import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
 import type { ErpCommercialDraftPayload, ErpCommercialKind, ErpSalesContact, ErpSalesEstablishment, ErpSalesUnit, ErpSalesVariant } from '#shared/types/erpBusiness'
 
 const props = defineProps<{
   kind: ErpCommercialKind
   draft: ErpCommercialDraftPayload
-  references: { establishments: ErpSalesEstablishment[], contacts: ErpSalesContact[], units: ErpSalesUnit[], variants: ErpSalesVariant[] }
+  references: { establishments: ErpSalesEstablishment[], contacts: ErpSalesContact[], units: ErpSalesUnit[], variants: ErpSalesVariant[], operationNatures?: ErpOperationNatureRecord[] }
   errors: Record<string, string>
   saving: boolean
   canOverridePrice: boolean
   canOverrideDiscount: boolean
   disabled?: boolean
   editing?: boolean
+  natureState?: { permitted: boolean, loading: boolean, confirmed: boolean, error: string }
 }>()
 const emit = defineEmits<{ 'update:draft': [payload: ErpCommercialDraftPayload], 'save': [payload: ErpCommercialDraftPayload], 'cancel': [] }>()
 const draft = ref(JSON.parse(JSON.stringify(props.draft)) as ErpCommercialDraftPayload)
@@ -42,6 +44,16 @@ const establishmentItems = computed(() => props.references.establishments.map(ro
 const contactItems = computed(() => [{ label: 'Sem cliente vinculado', value: 0 }, ...props.references.contacts.map(row => ({ label: row.trade_name || row.name, value: row.id }))])
 const unitItems = computed(() => [{ label: 'Unidade do catálogo', value: 0 }, ...props.references.units.map(row => ({ label: row.symbol ? `${row.name} (${row.symbol})` : row.name, value: row.id }))])
 const variantItems = computed(() => [{ label: 'Item sem produto', value: 0 }, ...props.references.variants.map(row => ({ label: `${row.name}${row.sku ? ` · ${row.sku}` : ''}`, value: row.id }))])
+const operationNatureItems = computed(() => {
+  const choices = (props.references.operationNatures ?? []).filter(row => row.status === 'active' && (row.erp_establishment_id === null || row.erp_establishment_id === draft.value.erp_establishment_id)).map(row => ({ label: `${row.cfop} · ${row.description}`, value: row.id, disabled: false }))
+  const currentId = draft.value.erp_operation_nature_id
+  if (currentId && !choices.some(row => row.value === currentId)) choices.unshift({ label: `Natureza #${currentId} indisponível — selecione outra para substituir`, value: currentId, disabled: true })
+  return [{ label: 'Sem natureza vinculada', value: 0, disabled: false }, ...choices]
+})
+watch(() => draft.value.erp_establishment_id, (establishmentId) => {
+  const nature = props.references.operationNatures?.find(row => row.id === draft.value.erp_operation_nature_id)
+  if (nature?.erp_establishment_id !== null && nature?.erp_establishment_id !== undefined && nature.erp_establishment_id !== establishmentId) draft.value.erp_operation_nature_id = null
+}, { flush: 'sync' })
 const formName = (field: string) => props.errors[field] ?? ''
 function clearLineTotals() {
   for (const line of draft.value.lines) line.line_total = undefined
@@ -132,6 +144,27 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
           :disabled="disabled || saving"
           @update:model-value="draft.erp_contact_id = selectValue($event)"
         />
+      </UFormField>
+      <UFormField name="erp_operation_nature_id" label="Natureza da operação" :error="formName('erp_operation_nature_id')">
+        <USelect
+          :model-value="draft.erp_operation_nature_id ?? 0"
+          :items="operationNatureItems"
+          class="w-full"
+          :disabled="disabled || saving || !natureState?.permitted || natureState.loading || !natureState.confirmed || Boolean(natureState.error)"
+          @update:model-value="draft.erp_operation_nature_id = selectValue($event)"
+        />
+        <p v-if="natureState?.loading" class="mt-1 text-xs text-muted">
+          Carregando naturezas da operação…
+        </p>
+        <p v-else-if="!natureState?.permitted" class="mt-1 text-xs text-muted">
+          Seu acesso não permite consultar naturezas da operação. O vínculo atual será preservado.
+        </p>
+        <p v-else-if="natureState.error" class="mt-1 text-xs text-error" role="alert">
+          {{ natureState.error }} O vínculo atual será preservado.
+        </p>
+        <p v-else-if="natureState.confirmed && operationNatureItems.length === 1" class="mt-1 text-xs text-muted">
+          Nenhuma natureza ativa disponível para este estabelecimento.
+        </p>
       </UFormField>
       <UFormField
         v-if="kind === 'quote'"

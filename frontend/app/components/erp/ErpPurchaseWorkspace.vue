@@ -16,6 +16,8 @@ const returnOpen = ref(false)
 const postOpen = ref(false)
 const modalAttempt = reactive({ create: 0, edit: 0, detail: 0, return: 0, xml: 0, post: 0 })
 type RecoveryOwner = { kind: 'create' | 'edit' | 'post', authority: number, identity: string, fingerprint: string, sourceId: number | null }
+const pendingEditHandoff = ref<ReturnType<typeof begin> | null>(null)
+const detailHandoffFocus = ref<ReturnType<typeof begin> | null>(null)
 const recoveryOwners = new Map<string, RecoveryOwner>()
 const createDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
 const editDraft = ref<ErpPurchaseDraftPayload>(emptyDraft())
@@ -168,7 +170,7 @@ function startCreate() {
 }
 function startEdit(row: ErpPurchase) {
   if (!allowed('erp.purchases.update') || row.status !== 'draft' || purchase.isPurchaseConfirmedPosted(row.id)) return
-  begin('edit')
+  const token = begin('edit', row.id)
   editPurchaseId.value = row.id
   editAuthority.value = purchase.authorityGeneration.value
   purchase.clearOperationNotice()
@@ -205,7 +207,24 @@ function startEdit(row: ErpPurchase) {
       }))
     }
   }
-  editOpen.value = true
+  if (detailOpen.value) {
+    pendingEditHandoff.value = token
+    detailHandoffFocus.value = token
+    detailOpen.value = false
+  } else {
+    editOpen.value = true
+  }
+}
+function completeEditHandoff() {
+  const token = pendingEditHandoff.value
+  pendingEditHandoff.value = null
+  const selected = purchase.selected.value
+  if (token && selected && currentModal(token) && !detailOpen.value && allowed('erp.purchases.update')
+    && editDraftIdentity.value === `${token.authority}:${selected.id}:${selected.draft_revision ?? 'none'}`
+    && selected.status === 'draft' && !purchase.isPurchaseConfirmedPosted(selected.id)) editOpen.value = true
+}
+function detailCloseAutoFocus(event: Event) {
+  if (detailHandoffFocus.value && currentModal(detailHandoffFocus.value)) event.preventDefault()
 }
 async function saveDraft(payload: ErpPurchaseDraftPayload, editing: boolean) {
   const token = begin(editing ? 'edit' : 'create')
@@ -242,11 +261,15 @@ async function openEdit(row: ErpPurchase) {
 }
 async function openDetail(row: ErpPurchase) {
   if (!allowed('erp.purchases.show')) return
+  if (pendingEditHandoff.value) begin('edit')
+  pendingEditHandoff.value = null
+  detailHandoffFocus.value = null
   begin('detail')
   const result = await purchase.inspect(row.id)
   if (result) detailOpen.value = true
 }
 function closeDetail() {
+  if (pendingEditHandoff.value && currentModal(pendingEditHandoff.value)) return
   begin('detail')
   detailOpen.value = false
   returnOpen.value = false
@@ -364,6 +387,8 @@ watch([createOpen, editOpen, returnOpen, postOpen], ([create, edit, returns, pos
   })
 })
 watch(purchase.authorityGeneration, () => {
+  pendingEditHandoff.value = null
+  detailHandoffFocus.value = null
   recoveryOwners.clear()
   for (const key of Object.keys(modalAttempt) as Array<keyof typeof modalAttempt>) begin(key)
   createOpen.value = false
@@ -388,6 +413,7 @@ watch(purchase.authorityGeneration, () => {
 })
 watch(() => purchase.selected.value?.id, (id, previous) => {
   if (previous !== undefined && id !== previous) {
+    pendingEditHandoff.value = null
     const expectedReturnTransition = id !== undefined && id === pendingReturnSourceId
     const expectedEditTransition = id !== undefined && id === pendingEditSourceId
     for (const key of ['detail', 'post'] as const) begin(key)
@@ -746,7 +772,9 @@ onMounted(() => {
     <UModal
       v-model:open="detailOpen"
       :title="`Compra #${purchase.selected.value?.id ?? ''}`"
+      :content="{ onCloseAutoFocus: detailCloseAutoFocus }"
       :ui="{ content: 'sm:max-w-5xl' }"
+      @after:leave="completeEditHandoff"
       @update:open="value => !value && closeDetail()"
     >
       <template #body>

@@ -119,6 +119,7 @@ function mountXmlPreview(total: Record<string, string>) {
 function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Record<string, unknown>) {
   const route = Vue.reactive({ path: '/erp/compras', query: {}, hash: initialHash })
   const replacements: Array<Record<string, unknown>> = []
+  const modalLeaves: Array<() => void> = []
   const authorityGeneration = Vue.ref(0)
   const mutationError = Vue.ref('')
   const draftSaveResults: unknown[] = []
@@ -150,7 +151,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
   const components: Record<string, Vue.Component> = {
     ErpCatalogPageShell: { setup: (_props, context) => () => Vue.h('main', {}, [context.slots.actions?.(), context.slots.toolbar?.(), context.slots.default?.()]) },
     UButton: { props: ['label'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, onClick: context.attrs.onClick }, context.slots.default?.() ?? String(props.label ?? '')) },
-    UModal: { props: ['open', 'title'], setup: (props, context) => () => props.open ? Vue.h('section', { 'data-modal': props.title }, context.slots.body?.()) : Vue.createCommentVNode() },
+    UModal: { props: ['open', 'title'], emits: ['after:leave', 'update:open'], setup: (props, context) => { Vue.watch(() => props.open, (open, previous) => { if (previous && !open) modalLeaves.push(() => context.emit('after:leave')) }); return () => props.open ? Vue.h('section', { 'data-modal': props.title }, context.slots.body?.()) : Vue.createCommentVNode() } },
     UNavigationMenu: { setup: (_props, context) => () => { navItems.value = context.attrs.items as Array<Array<Record<string, unknown>>>; return Vue.h('nav') } },
     UTable: { props: ['data', 'columns', 'empty'], setup: (props, context) => () => Vue.h('div', {}, (props.data as Array<Record<string, unknown>> ?? []).length === 0
       ? String(props.empty ?? '')
@@ -228,7 +229,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
     const record = node as { tag?: string, props?: Record<string, unknown>, children?: unknown[] }
     return [...(predicate(record) ? [record] : []), ...(record.children ?? []).flatMap(child => findAll(child, predicate))]
   }
-  return { app, route, replacements, authorityGeneration, mutationError, draftSaveResults, loads, navItems, root, state, find, findAll, findInModal, textContent, renderErrors }
+  return { app, route, replacements, modalLeaves, authorityGeneration, mutationError, draftSaveResults, loads, navItems, root, state, find, findAll, findInModal, textContent, renderErrors }
 }
 
 function deferred<T>() {
@@ -1626,6 +1627,8 @@ describe('purchase decimal and source helpers', () => {
     await Vue.nextTick()
     app.findInModal('Compra #77', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Editar rascunho'))?.props?.onClick?.()
     await Vue.nextTick()
+    for (const leave of app.modalLeaves.splice(0)) leave()
+    await Vue.nextTick()
     assert.equal((app.state.selected as Vue.Ref<{ id: number } | null>).value?.id, 77, 'the edit action loads the current authorized draft')
     assert.ok(app.find(app.root, node => node.props?.['data-modal'] === 'Editar rascunho'), `edit modal did not remain open: ${JSON.stringify(app.renderErrors)}`)
     assert.equal((app.state.selected as Vue.Ref<{ id: number } | null>).value?.id, 77)
@@ -1658,6 +1661,8 @@ describe('purchase decimal and source helpers', () => {
     await Vue.nextTick()
     app.findInModal('Compra #79', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Editar rascunho'))?.props?.onClick?.()
     await Vue.nextTick()
+    for (const leave of app.modalLeaves.splice(0)) leave()
+    await Vue.nextTick()
     assert.ok(app.find(app.root, node => node.props?.['data-modal'] === 'Editar rascunho'))
     latest = makeDraft(2)
     ;(app.state.selected as Vue.Ref<unknown>).value = latest
@@ -1665,7 +1670,7 @@ describe('purchase decimal and source helpers', () => {
     await Vue.nextTick()
     assert.equal(app.find(app.root, node => node.props?.['data-modal'] === 'Editar rascunho'), null)
     assert.match(app.textContent(app.root as { text?: string, children?: unknown[] }), /Reabra o rascunho para conferir a versão atual/)
-    app.findInModal('Compra #79', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Editar rascunho'))?.props?.onClick?.()
+    await (app.find(app.root, node => node.props?.['aria-label'] === 'Editar compra STALE-79')?.props?.onClick as () => Promise<void>)()
     await Vue.nextTick()
     const refreshedForm = app.find(app.root, node => node.tag === 'form')
     assert.ok(refreshedForm)
@@ -1685,6 +1690,8 @@ describe('purchase decimal and source helpers', () => {
     await (open?.props?.onClick as () => Promise<void>)()
     await Vue.nextTick()
     app.findInModal('Compra #80', node => node.tag === 'button' && app.textContent(node as { text?: string, children?: unknown[] }).includes('Editar rascunho'))?.props?.onClick?.()
+    await Vue.nextTick()
+    for (const leave of app.modalLeaves.splice(0)) leave()
     await Vue.nextTick()
     assert.ok(app.find(app.root, node => node.props?.['data-modal'] === 'Editar rascunho'))
     ;(app.state.staleRevisionRefreshed as Vue.Ref<unknown>).value = { id: 79, revision: 3 }
@@ -1773,5 +1780,57 @@ describe('purchase decimal and source helpers', () => {
       expected_total: '12.3452',
       lines: [{ id: 51, erp_product_variant_id: 71, erp_unit_id: 9, description: 'Item original', quantity: '1.2345', unit_cost: '10.0001', unit_conversion_factor: '2.00000000', discount_amount: '0.0001', tax_amount: '0.0002' }]
     })
+  })
+})
+
+describe('native acceptance purchase dialog handoff', () => {
+  it('leaves detail before editing while retaining source and rejects a stale leave callback', async () => {
+    const row = { id: 77, erp_establishment_id: 3, erp_contact_id: 8, document_no: 'NATIVE-77', status: 'draft', currency: 'BRL', total_amount: '5.0000', draft_revision: 4, supplier_snapshot: null, source_access_key: null, needs_reconciliation: false, lines: [{ id: 1, erp_product_variant_id: null, erp_unit_id: null, description: 'Compra nativa', quantity: '1.0000', unit_cost: '5.0000', unit_conversion_factor: '1.00000000', discount_amount: '0.0000', tax_amount: '0.0000' }] }
+    const selected = Vue.ref<typeof row | null>(null)
+    const saved: Array<Record<string, unknown>> = []
+    let acceptSave = false
+    const mounted = mountPurchaseWorkspace('#purchases', { saveDraft: async (payload: Record<string, unknown>) => { saved.push(payload); return acceptSave ? row : null }, purchases: Vue.ref([row]), selected, inspect: async () => { selected.value = row; return row }, closeDetail: () => { selected.value = null } })
+    const click = async (predicate: (node: { tag?: string, props?: Record<string, unknown> }) => boolean) => {
+      const node = mounted.find(mounted.root, predicate)
+      assert.ok(node)
+      await (node.props?.onClick as () => unknown)()
+      await Vue.nextTick()
+    }
+    try {
+      await click(node => node.props?.['aria-label'] === 'Abrir compra NATIVE-77')
+      await click(node => node.tag === 'button' && mounted.textContent(node).includes('Editar rascunho'))
+      assert.equal(mounted.findAll(mounted.root, node => Boolean(node.props?.['data-modal'])).length, 0, 'editor waits for the detail leave transition')
+      assert.equal(selected.value?.id, 77, 'handoff must not clear the authoritative selected purchase')
+      assert.equal(mounted.modalLeaves.length, 1)
+      mounted.modalLeaves.shift()!()
+      await Vue.nextTick()
+      assert.equal(mounted.findAll(mounted.root, node => Boolean(node.props?.['data-modal'])).length, 1)
+      assert.ok(mounted.findInModal('Editar rascunho', node => node.tag === 'form'))
+      const documentField = () => mounted.findInModal('Editar rascunho', node => node.props?.['aria-label'] === 'Número do documento')!
+      ;(documentField().props?.onInput as (event: unknown) => void)({ target: { value: 'EDIT-RETAINED' } })
+      await Vue.nextTick()
+      ;(mounted.findInModal('Editar rascunho', node => node.tag === 'form')!.props?.onSubmit as (event: unknown) => void)({ preventDefault() {} })
+      await Vue.nextTick()
+      assert.equal(saved[0]?.document_no, 'EDIT-RETAINED')
+      assert.equal(saved[0]?.draft_revision, 4)
+      assert.ok(mounted.findInModal('Editar rascunho', node => node.tag === 'form'), 'failed save keeps the editor')
+      await click(node => node.tag === 'button' && mounted.textContent(node) === 'Fechar')
+      await click(node => node.props?.['aria-label'] === 'Editar compra NATIVE-77')
+      assert.equal(documentField().props?.value, 'EDIT-RETAINED', 'list edit opens immediately and retains this draft')
+      acceptSave = true
+      ;(mounted.findInModal('Editar rascunho', node => node.tag === 'form')!.props?.onSubmit as (event: unknown) => void)({ preventDefault() {} })
+      await Vue.nextTick()
+      await Vue.nextTick()
+      assert.equal(mounted.findInModal('Editar rascunho', () => true), null, 'confirmed save closes the editor')
+      mounted.modalLeaves.splice(0)
+      await click(node => node.props?.['aria-label'] === 'Abrir compra NATIVE-77')
+      await click(node => node.tag === 'button' && mounted.textContent(node).includes('Editar rascunho'))
+      mounted.authorityGeneration.value++
+      await Vue.nextTick()
+      for (const leave of mounted.modalLeaves.splice(0)) leave()
+      await Vue.nextTick()
+      assert.equal(mounted.findAll(mounted.root, node => Boolean(node.props?.['data-modal'])).length, 0)
+      assert.deepEqual(mounted.renderErrors, [])
+    } finally { mounted.app.unmount() }
   })
 })

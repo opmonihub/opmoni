@@ -177,8 +177,8 @@ describe('sales authoritative denial boundaries', () => {
   })
 })
 
-function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes') {
-  const { state, currentCompany, stop } = createSalesWorkspace(api)
+function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes', permissions = ['*']) {
+  const { state, currentCompany, stop } = createSalesWorkspace(api, permissions)
   const route = Vue.reactive({ path: '/erp/vendas', hash, query: {} })
   const router = { replace: async (location: { hash?: string }) => { if (location.hash) route.hash = location.hash } }
   const workspaceSource = readFileSync(new URL('../app/components/erp/ErpSalesWorkspace.vue', import.meta.url), 'utf8')
@@ -277,7 +277,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     ...context.attrs,
     value: props.modelValue,
     onChange: (event: { target: { value: string } }) => context.emit('update:modelValue', event.target.value)
-  }, (props.items ?? []).map((item: unknown) => Vue.h('option', { value: (item as { value: unknown }).value }, (item as { label?: string }).label ?? ''))) })
+  }, (props.items ?? []).map((item: unknown) => Vue.h('option', { value: (item as { value: unknown }).value, disabled: (item as { disabled?: boolean }).disabled }, (item as { label?: string }).label ?? ''))) })
   for (const name of ['UCheckbox', 'UBadge', 'UIcon', 'CompanyMenu', 'UserMenu', 'UDropdownMenu']) app.component(name, passthrough)
   app.component('USelect', select)
   app.component('UAlert', alert)
@@ -1685,3 +1685,177 @@ describe('commercial API lifecycle', () => {
     }
   })
 })
+
+describe('native acceptance typed commercial nature', () => {
+  it('selects a scoped nature and retains its ID through validation failure and cancel/reopen', async () => {
+    const storage = installSessionStorage()
+    const writes: Array<Record<string, unknown>> = []
+    const natureReads: number[] = []
+    let natureOffline = false
+    const page = (data: unknown[], last_page = 1) => ({ data, meta: { current_page: 1, last_page, total: data.length, per_page: 100 } })
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      if (options?.method === 'POST') { writes.push(options.body as Record<string, unknown>); throw { status: 422, data: { message: 'Confira os itens.', errors: { lines: ['Confira os itens.'] } } } }
+      if (path.startsWith('/erp/tax-settings/operation-natures?')) {
+        if (natureOffline) throw new Error('Naturezas temporariamente indisponíveis')
+        const currentPage = Number(new URL(path, 'http://localhost').searchParams.get('page'))
+        natureReads.push(currentPage)
+        if (currentPage === 2) return page([{ id: 22, erp_establishment_id: 3, cfop: '6102', description: 'Venda matriz', movement: 'out', status: 'active' }])
+        return page([
+          { id: 21, erp_establishment_id: null, cfop: '5102', description: 'Venda geral', movement: 'out', status: 'active' },
+          { id: 23, erp_establishment_id: 4, cfop: '5101', description: 'Outra filial', movement: 'out', status: 'active' },
+          { id: 24, erp_establishment_id: null, cfop: '5103', description: 'Arquivada', movement: 'out', status: 'archived' }
+        ], 2)
+      }
+      if (path.startsWith('/erp/establishments?')) return page([{ id: 3, name: 'Matriz', status: 'active' }, { id: 4, name: 'Filial', status: 'active' }])
+      return page([])
+    }
+    const mounted = mountSalesWorkspace(api)
+    const selectFor = (name: string) => {
+      const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === name)
+      assert.ok(field, `Expected field ${name}`)
+      const select = mounted.walk(field).find(node => node.tag === 'select')
+      assert.ok(select)
+      return select
+    }
+    const choose = async (name: string, value: string) => { (selectFor(name).props.onChange as (event: unknown) => void)({ target: { value } }); await Vue.nextTick() }
+    try {
+      await mounted.click('Novo registro')
+      await choose('erp_establishment_id', '3')
+      assert.deepEqual(mounted.walk(selectFor('erp_operation_nature_id')).filter(node => node.tag === 'option').map(node => node.props.value), [0, 21, 22])
+      await choose('erp_operation_nature_id', '22')
+      mounted.submitDraft()
+      await new Promise(resolve => setImmediate(resolve))
+      await Vue.nextTick()
+      assert.equal(writes[0]?.erp_operation_nature_id, 22)
+      assert.equal(selectFor('erp_operation_nature_id').props.value, 22)
+      await mounted.click('Cancelar')
+      await mounted.click('Novo registro')
+      assert.equal(selectFor('erp_operation_nature_id').props.value, 22)
+      await choose('erp_establishment_id', '4')
+      assert.equal(selectFor('erp_operation_nature_id').props.value, 0)
+      await choose('erp_operation_nature_id', '21')
+      await choose('erp_establishment_id', '3')
+      assert.equal(selectFor('erp_operation_nature_id').props.value, 21, 'company-wide nature survives establishment changes')
+      assert.deepEqual(natureReads, [1, 2], 'selectable scoped nature was loaded from the second page')
+      natureOffline = true
+      await (mounted.state.loadReferences as () => Promise<void>)()
+      await Vue.nextTick()
+      assert.equal(selectFor('erp_operation_nature_id').props.value, 21, 'failed reference refresh must preserve this draft')
+      assert.equal(selectFor('erp_operation_nature_id').props.disabled, true)
+      assert.match(mounted.textContent(mounted.root), /vínculo atual será preservado/)
+      assert.doesNotMatch(mounted.textContent(mounted.root), /Nenhuma natureza ativa/)
+    } finally { mounted.dispose(); storage.restore() }
+  })
+})
+
+describe('native acceptance immutable commercial nature handoff', () => {
+  it('restores edit from frozen line metadata and preserves that source through actual quote/order conversion actions', async () => {
+    const storage = installSessionStorage()
+    const calls: Array<{ path: string, options?: Record<string, unknown> }> = []
+    const line = { id: 11, erp_product_variant_id: null, erp_unit_id: null, quantity: '1.0000', unit_price: '10.0000', unit_conversion_factor: '1.00000000', discount_amount: '0.0000', tax_amount: '0.0000', line_total: '10.0000', product_snapshot: { description: 'Fonte aprovada', operation_nature: { id: 21, cfop: '5102', description: 'CFOP congelado' } } }
+    const base = { erp_establishment_id: 3, erp_contact_id: null, erp_price_group_id: null, currency: 'BRL' as const, draft_revision: 1, total_amount: '10.0000', subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', stock_reserved: false, needs_reconciliation: false, lines: [line] }
+    const quote = { ...base, id: 5, quote_no: 'NATURE-5', status: 'draft' }
+    const order = { ...base, id: 8, order_no: 'NATURE-8', status: 'confirmed', erp_quote_id: 5 }
+    const sale = { ...base, id: 13, invoice_no: 'NATURE-13', status: 'draft', erp_order_id: 8 }
+    const page = (data: unknown[]) => ({ data, meta: { current_page: 1, last_page: 1, per_page: 100, total: data.length } })
+    const api = async (path: string, options?: Record<string, unknown>) => {
+      calls.push({ path, options })
+      if (path === '/erp/quotes/5/convert') { quote.status = 'converted'; return { data: { quote: { id: 5 }, order: { id: 8 } } } }
+      if (path === '/erp/orders/8/convert') { order.status = 'converted'; return { data: { order: { id: 8 }, sale: { id: 13 } } } }
+      if (path === '/erp/quotes/5' && options?.method === 'PATCH') return { data: { id: 5 } }
+      if (path === '/erp/quotes/5') return { data: quote }
+      if (path === '/erp/orders/8') return { data: order }
+      if (path === '/erp/sales/13') return { data: sale }
+      if (path.startsWith('/erp/quotes?')) return page([quote])
+      if (path.startsWith('/erp/establishments?')) return page([{ id: 3, name: 'Matriz', status: 'active' }])
+      if (path.startsWith('/erp/tax-settings/operation-natures?')) return page([{ id: 21, cfop: '6108', description: 'Catálogo atual diferente', erp_establishment_id: null, movement: 'out', status: 'active' }])
+      return page([])
+    }
+    const mounted = mountSalesWorkspace(api)
+    try {
+      await mounted.click('Orçamentos')
+      const row = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes('NATURE-5'))!
+      ;(row.props.onClick as () => void)()
+      await flushSettingsForSales()
+      await mounted.click('Editar rascunho')
+      const field = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'erp_operation_nature_id')!
+      assert.equal(mounted.walk(field).find(node => node.tag === 'select')?.props.value, 21, 'backend omits the header; frozen line identity restores selection')
+      mounted.submitDraft()
+      await flushSettingsForSales()
+      const patch = calls.find(call => call.options?.method === 'PATCH')!
+      assert.equal((patch.options?.body as Record<string, unknown>).erp_operation_nature_id, 21)
+      await mounted.click('Fechar modal')
+      const updatedRow = mounted.walk(mounted.root).find(node => node.tag === 'button' && mounted.textContent(node).includes('NATURE-5'))!
+      ;(updatedRow.props.onClick as () => void)()
+      await flushSettingsForSales()
+      await mounted.click('Converter')
+      await mounted.click('Confirmar conversão para pedido')
+      assert.equal((mounted.state.selected as Vue.Ref<typeof order>).value.id, 8)
+      await mounted.click('Converter')
+      await mounted.click('Confirmar conversão para venda')
+      const accepted = (mounted.state.selected as Vue.Ref<typeof sale>).value
+      assert.equal(accepted.id, 13)
+      assert.equal(accepted.lines[0]?.product_snapshot.operation_nature.cfop, '5102', 'fresh authorized destination retains immutable source rather than current catalog CFOP')
+      assert.equal(erpCommercialDocumentToDraft(accepted).erp_operation_nature_id, 21)
+      assert.deepEqual(calls.filter(call => call.path.endsWith('/convert')).map(call => call.options?.body), [{ draft_revision: 1 }, { draft_revision: 1 }], 'conversion never overrides frozen source with current catalog')
+    } finally { mounted.dispose(); storage.restore() }
+  })
+
+  it('shows denied reads and unavailable historical nature without inventing a default or making a forbidden request', async () => {
+    const calls: string[] = []
+    const page = { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } }
+    const mounted = mountSalesWorkspace(async (path) => { calls.push(path); return page }, '#quotes', ['erp.quotes.index', 'erp.quotes.store', 'erp.quotes.show'])
+    try {
+      mounted.currentCompany.value.permissions = ['erp.quotes.index', 'erp.quotes.store', 'erp.quotes.show']
+      await mounted.click('Novo registro')
+      assert.equal(calls.some(path => path.startsWith('/erp/tax-settings/operation-natures?')), false)
+      assert.match(mounted.textContent(mounted.root), /não permite consultar naturezas/)
+      assert.doesNotMatch(mounted.textContent(mounted.root), /Nenhuma natureza ativa/)
+      const denied = mounted.walk(mounted.root).find(node => node.props['data-field-name'] === 'erp_operation_nature_id')!
+      assert.equal(mounted.walk(denied).find(node => node.tag === 'select')?.props.disabled, true)
+    } finally { mounted.dispose() }
+    const historical = { id: 5, erp_establishment_id: 3, erp_contact_id: null, erp_price_group_id: null, currency: 'BRL' as const, draft_revision: 1, total_amount: '10.0000', subtotal_amount: '10.0000', discount_amount: '0.0000', tax_amount: '0.0000', stock_reserved: false, status: 'draft' as const, lines: [{ id: 1, erp_product_variant_id: null, erp_unit_id: null, quantity: '1.0000', unit_price: '10.0000', unit_conversion_factor: '1.00000000', line_total: '10.0000', product_snapshot: { operation_nature: { id: 99, cfop: '5102' } } }] }
+    assert.equal(erpCommercialDocumentToDraft(historical).erp_operation_nature_id, 99)
+    assert.equal(erpCommercialDocumentToDraft({ ...historical, lines: [{ ...historical.lines[0]!, product_snapshot: {} }] }).erp_operation_nature_id, null, 'historical unselected source stays optional')
+    assert.equal(erpCommercialDocumentToDraft({ ...historical, lines: [...historical.lines, { ...historical.lines[0]!, id: 2, product_snapshot: { operation_nature: { id: 100, cfop: '6102' } } }] }).erp_operation_nature_id, null, 'inconsistent snapshots never invent one header identity')
+    const editor = mountSalesWorkspace(async path => path === '/erp/quotes/5' ? { data: historical } : path.startsWith('/erp/quotes?') ? { ...page, data: [{ ...historical, quote_no: 'HISTORICAL' }] } : page)
+    try {
+      await editor.click('Orçamentos')
+      const row = editor.walk(editor.root).find(node => node.tag === 'button' && editor.textContent(node).includes('HISTORICAL'))!
+      ;(row.props.onClick as () => void)()
+      await flushSettingsForSales()
+      await editor.click('Editar rascunho')
+      const field = editor.walk(editor.root).find(node => node.props['data-field-name'] === 'erp_operation_nature_id')!
+      const select = editor.walk(field).find(node => node.tag === 'select')!
+      assert.equal(select.props.value, 99)
+      assert.match(editor.textContent(select), /Natureza #99 indisponível/)
+      assert.equal(editor.walk(select).find(node => node.tag === 'option' && node.props.value === 99)?.props.disabled, true)
+    } finally { editor.dispose() }
+  })
+
+  it('drops delayed nature references from a prior company while accepting the current company response', async () => {
+    let resolveOld!: (value: unknown) => void
+    let first = true
+    const currentNature = { id: 72, erp_establishment_id: null, cfop: '5102', description: 'Atual', movement: 'out', status: 'active' }
+    const page = (data: unknown[]) => ({ data, meta: { current_page: 1, last_page: 1, per_page: 100, total: data.length } })
+    const harness = createSalesWorkspace(async (path) => {
+      if (path.startsWith('/erp/tax-settings/operation-natures?')) {
+        if (first) { first = false; return new Promise((resolve) => { resolveOld = resolve }) }
+        return page([currentNature])
+      }
+      return page([])
+    })
+    try {
+      const request = (harness.state.loadReferences as () => Promise<void>)()
+      harness.currentCompany.value.id = 8
+      assert.deepEqual((harness.state.references as { operationNatures: unknown[] }).operationNatures, [])
+      await flushSettingsForSales()
+      resolveOld(page([{ ...currentNature, id: 71, description: 'Antiga' }]))
+      await request
+      assert.deepEqual((harness.state.references as { operationNatures: Array<{ id: number }> }).operationNatures.map(row => row.id), [72])
+      assert.equal((harness.state.operationNatureState as { confirmed: boolean }).confirmed, true)
+    } finally { harness.stop() }
+  })
+})
+
+async function flushSettingsForSales() { await new Promise(resolve => setImmediate(resolve)); await Vue.nextTick() }

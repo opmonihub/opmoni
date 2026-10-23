@@ -162,6 +162,7 @@ export interface ErpSaleFinanceProjection {
 
 export interface ErpCommercialDocument {
   id: number
+  erp_operation_nature_id?: number | null
   erp_establishment_id: number
   erp_contact_id: number | null
   erp_price_group_id: number | null
