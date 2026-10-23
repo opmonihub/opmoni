@@ -20,7 +20,12 @@
     "command": "git diff --cached --check 5b752b1",
     "exitCode": 0
   },
-  "exactCommittedRangeCheck": "pending correction commit; will record git diff --check 5b752b1 HEAD",
+  "exactCommittedRangeCheck": {
+    "command": "git diff --check 5b752b1 HEAD",
+    "checkedCommit": "9dfca4d67a92f925307fe39f32f7d7e7452fbb29",
+    "exitCode": 0,
+    "diagnostics": []
+  },
   "currentDiffChecks": [
     {
       "command": "git diff --check",

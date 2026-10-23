@@ -25,7 +25,7 @@ Earlier group9 unstaged/staged exit0 checks described only those differences, an
 | `pnpm --dir frontend typecheck` | 0 | passed; 62.02s | `final-fix-typecheck.txt` |
 | `pnpm --dir frontend build` | 0 | passed; 144.94s | `final-fix-build.txt` |
 | `openspec validate standardize-erp-dashboard-ui --strict --no-interactive` | 0 | valid | `final-fix-openspec.txt` |
-| `git diff --check 5b752b1`, staged range and final HEAD range | 0 | explicit full implementation range (postcommit record follows) | `final-fix-integrity.json` |
+| `git diff --check 5b752b1`, staged range and final HEAD range | 0 | explicit full implementation range verified at correction commit9dfca4d | `final-fix-integrity.json` |
 
 
 Fresh logs are separate `final-fix-*` artifacts and preserve untrimmed captured streams in `.txt.raw.gz`. All heavy commands run in one serial pipeline, with no duplicate tests/typecheck/build or browser/server workload. Previous group9 successful results are retained as checkpoint4f8646d rather than presented as validation of this runtime revision.

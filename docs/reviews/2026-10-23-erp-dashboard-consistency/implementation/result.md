@@ -29,7 +29,7 @@ Rollback descriptions are review checkpoints, not executed operations. Restore a
 | `pnpm --dir frontend typecheck` | 0 | passed; 62.02s | `final-fix-typecheck.txt` |
 | `pnpm --dir frontend build` | 0 | passed; 144.94s | `final-fix-build.txt` |
 | `openspec validate standardize-erp-dashboard-ui --strict --no-interactive` | 0 | valid | `final-fix-openspec.txt` |
-| `git diff --check 5b752b1`, staged range and final HEAD range | 0 | explicit full implementation range (postcommit record follows) | `final-fix-integrity.json` |
+| `git diff --check 5b752b1`, staged range and final HEAD range | 0 | explicit full implementation range verified at correction commit9dfca4d | `final-fix-integrity.json` |
 
 
 Current `final-fix-*` logs validate the description/failed-empty correction; prior `group-9-*` logs and archived `group-9-final-*-checkpoint-4f8646d.json` describe the earlier checkpoint. Readable logs normalize trailing whitespace only; matching `.txt.raw.gz` retains untrimmed captured output. Current full commands ran in one serial pipeline with no browsers/servers reopened. The current build reports two PLUGIN_TIMINGS performance warnings (callbacks21.5/22.9s and25.1/26.5s), without an error; no benchmark claim is made. The earlier checkpoint's initial build was deliberately SIGINT-interrupted under load (exit130), then its own final build passed; that historical interruption is not a current build result.

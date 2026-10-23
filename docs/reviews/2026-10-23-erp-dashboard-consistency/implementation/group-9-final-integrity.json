@@ -18,6 +18,11 @@
     "command": "git diff --cached --check 5b752b1",
     "exitCode": 0
   },
-  "exactCommittedImplementationRangeCheck": "pending correction commit; follows in final-fix-integrity.json",
+  "exactCommittedImplementationRangeCheck": {
+    "command": "git diff --check 5b752b1 HEAD",
+    "checkedCommit": "9dfca4d67a92f925307fe39f32f7d7e7452fbb29",
+    "exitCode": 0,
+    "diagnostics": []
+  },
   "detailedFixIntegrity": "final-fix-integrity.json"
 }

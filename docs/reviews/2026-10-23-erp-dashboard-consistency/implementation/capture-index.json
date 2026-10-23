@@ -504,8 +504,8 @@
     {
       "file": "group-9-final-integrity.json",
       "kind": "final-verification-result",
-      "bytes": 815,
-      "sha256": "386eeeaeb1dbfd52e7ea8fde5ff1188d8e81da2878c8b1225ff2d4512fc8cd48"
+      "bytes": 910,
+      "sha256": "9f097760810781a87d2e6a03b8c45c1369c9dd867dbbfc6fcab6f0e022f4801b"
     },
     {
       "file": "group-9-final-lint-result.json",
@@ -582,8 +582,8 @@
     {
       "file": "final-fix-integrity.json",
       "kind": "combined-final-review-fix-evidence",
-      "bytes": 930,
-      "sha256": "7e6597b3674c3cbaf6c7f2e0646ee8d1f3ac7ec7bcbcf3235736e1cce10225e1"
+      "bytes": 1019,
+      "sha256": "cbc586655198aebc6e0413de354c875744bb327d04ae0ef6b371c63f3df556cc"
     },
     {
       "file": "final-fix-lint.txt",
@@ -630,8 +630,8 @@
     {
       "file": "final-fix-report.md",
       "kind": "combined-final-review-fix-evidence",
-      "bytes": 6106,
-      "sha256": "564777e99deeecd316bf037aa030312ee1a499be5aed7cc0d5b5ba51e7bc1198"
+      "bytes": 6115,
+      "sha256": "209ebb235d90c9d85137859fda1bcd07e2a57f398eb54021738f8c2f01a6dca5"
     },
     {
       "file": "final-fix-secret-scan.json",
