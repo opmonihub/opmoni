@@ -111,9 +111,9 @@
 
 **Interfaces:** preserve `ErpCatalogField`, `ErpCatalogReferenceSelect`, contextual catalog slideover, archive confirmations, native dialog titles/descriptions, and every existing draft/error/recovery event. Maintain the catalog editor's 48rem desktop maximum, full-width mobile layout, and justified 64rem purchase dialogs.
 
-- [ ] 8.1 Give all 40 page and 57 component inventory rows a disposition: changed, inherited shared correction, already conforming, or justified exception. Verify the count is exactly 97 and every active form/table family is represented; no bulk edits are required to claim coverage.
-- [ ] 8.2 Fix only residual mismatches identified by that comparison using existing native components and chosen group/control/overlay spacing. Verify label/control/error association, read-only/busy behavior, visible first content, close/focus return, and access to final actions on desktop/mobile, with no custom UI primitive or changed business flow.
-- [ ] 8.3 Run the affected catalog forms/editor/reference/authority suites and any touched purchase/stock/sales/cash/fiscal/accounting suites, plus changed-path lint. Verify dialogs retain edited values after a rejected submit and protected context changes still clear stale content; checkpoint only demonstrated fixes.
+- [x] 8.1 Give all 40 page and 57 component inventory rows a disposition: changed, inherited shared correction, already conforming, or justified exception. Verify the count is exactly 97 and every active form/table family is represented; no bulk edits are required to claim coverage.
+- [x] 8.2 Fix only residual mismatches identified by that comparison using existing native components and chosen group/control/overlay spacing. Verify label/control/error association, read-only/busy behavior, visible first content, close/focus return, and access to final actions on desktop/mobile, with no custom UI primitive or changed business flow.
+- [x] 8.3 Run the affected catalog forms/editor/reference/authority suites and any touched purchase/stock/sales/cash/fiscal/accounting suites, plus changed-path lint. Verify dialogs retain edited values after a rejected submit and protected context changes still clear stale content; checkpoint only demonstrated fixes.
 
 ## 9. Validate the integrated refactor and retain acceptance evidence
 
