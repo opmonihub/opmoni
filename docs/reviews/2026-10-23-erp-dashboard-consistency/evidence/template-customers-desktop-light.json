@@ -1,0 +1,696 @@
+{
+  "buttons": [
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 text-sm gap-1.5 w-full justify-center text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent data-[state=open]:bg-elevated py-2",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 36,
+      "label": "Nuxt",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "8px",
+        "10px",
+        "8px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 14
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 ring ring-inset text-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted bg-transparent ring-default",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Search…Ctrlk",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 72
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Settings",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 216
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 w-full justify-center text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent data-[state=open]:bg-elevated",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Benjamin Canac",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 860
+    },
+    {
+      "class": "rounded-md font-medium items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 hidden lg:flex",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Collapse sidebar",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 264,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-inverted bg-primary hover:bg-primary/75 active:bg-primary/75 disabled:bg-primary aria-disabled:bg-primary outline-primary/25 focus-visible:outline-3",
+      "clientWidth": 140,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "New customer",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 140,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 140.3125,
+      "x": 1201.6875,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-error ring ring-inset ring-error/25 bg-error/10 hover:bg-error/15 active:bg-error/15 disabled:bg-error/10 aria-disabled:bg-error/10 outline-error/25 focus-visible:outline-3 focus-visible:ring-error",
+      "clientWidth": 115,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Delete1",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 115,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 114.75,
+      "x": 1008.9375,
+      "y": 88
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm min-w-28",
+      "clientWidth": 112,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "All",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 112,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 112,
+      "x": 1129.6875,
+      "y": 88
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 ring ring-inset ring-accented text-default bg-default hover:bg-elevated active:bg-elevated disabled:bg-default aria-disabled:bg-default outline-inverted/25 focus-visible:outline-3 focus-visible:ring-inverted",
+      "clientWidth": 94,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Display",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 94,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 94.3125,
+      "x": 1247.6875,
+      "y": 88
+    },
+    {
+      "class": "rounded-sm ring ring-inset ring-accented overflow-hidden size-4 outline-primary/25 focus-visible:outline-solid focus-visible:outline-3 focus-visible:ring-primary",
+      "clientWidth": 16,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 16,
+      "label": "",
+      "lineHeight": "20px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 16,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 16,
+      "x": 281,
+      "y": 161
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent -mx-2.5",
+      "clientWidth": 83,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Email",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 83,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 82.53125,
+      "x": 617.578125,
+      "y": 153
+    },
+    {
+      "class": "rounded-sm ring ring-inset ring-accented overflow-hidden size-4 outline-primary/25 focus-visible:outline-solid focus-visible:outline-3 focus-visible:ring-primary",
+      "clientWidth": 16,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 16,
+      "label": "",
+      "lineHeight": "20px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 16,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 16,
+      "x": 280,
+      "y": 222
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 ml-auto",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 1294,
+      "y": 214
+    },
+    {
+      "class": "rounded-sm ring ring-inset ring-accented overflow-hidden size-4 outline-primary/25 focus-visible:outline-solid focus-visible:outline-3 focus-visible:ring-primary",
+      "clientWidth": 16,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 16,
+      "label": "",
+      "lineHeight": "20px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 16,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 16,
+      "x": 280,
+      "y": 295
+    }
+  ],
+  "colors": {
+    "muted": "oklch(55.2% 0.016 285.938)",
+    "primary": "#00C16A",
+    "success": "#00C16A"
+  },
+  "firstInput": {
+    "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+    "clientWidth": 217,
+    "fontSize": "14px",
+    "gap": "6px",
+    "height": 32,
+    "lineHeight": "20px",
+    "overflowX": "clip",
+    "padding": [
+      "6px",
+      "10px",
+      "6px",
+      "36px"
+    ],
+    "scrollWidth": 217,
+    "slot": "base",
+    "tag": "INPUT",
+    "width": 217,
+    "x": 264,
+    "y": 88
+  },
+  "h1": [
+    {
+      "class": "flex items-center gap-1.5 font-semibold text-highlighted truncate",
+      "clientWidth": 82,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 24,
+      "lineHeight": "24px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 82,
+      "slot": "title",
+      "tag": "H1",
+      "text": "Customers",
+      "width": 82.15625,
+      "x": 302,
+      "y": 19.5
+    }
+  ],
+  "inputAncestors": [
+    {
+      "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+      "clientWidth": 217,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "clip",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 217,
+      "slot": "base",
+      "tag": "INPUT",
+      "width": 217,
+      "x": 264,
+      "y": 88
+    },
+    {
+      "class": "relative inline-flex items-center max-w-sm",
+      "clientWidth": 217,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 217,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 217,
+      "x": 264,
+      "y": 88
+    },
+    {
+      "class": "flex flex-wrap items-center justify-between gap-1.5",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": null,
+      "tag": "DIV",
+      "width": 1078,
+      "x": 264,
+      "y": 88
+    },
+    {
+      "class": "flex flex-col gap-4 sm:gap-6 flex-1 overflow-y-auto p-4 sm:p-6",
+      "clientWidth": 1126,
+      "fontSize": "16px",
+      "gap": "24px",
+      "height": 836,
+      "lineHeight": "24px",
+      "overflowX": "auto",
+      "padding": [
+        "24px",
+        "24px",
+        "24px",
+        "24px"
+      ],
+      "scrollWidth": 1126,
+      "slot": "body",
+      "tag": "DIV",
+      "width": 1126,
+      "x": 240,
+      "y": 64
+    },
+    {
+      "class": "relative flex flex-col min-w-0 min-h-svh lg:not-last:border-e lg:not-last:border-default flex-1",
+      "clientWidth": 1126,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 900,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1126,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 1126,
+      "x": 240,
+      "y": 0
+    },
+    {
+      "class": "fixed inset-0 flex overflow-hidden",
+      "clientWidth": 1366,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 900,
+      "lineHeight": "24px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1366,
+      "slot": null,
+      "tag": "DIV",
+      "width": 1366,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "class": "isolate",
+      "clientWidth": 1366,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 0,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1366,
+      "slot": null,
+      "tag": "DIV",
+      "width": 1366,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "class": null,
+      "clientWidth": 1366,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 0,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1366,
+      "slot": null,
+      "tag": "BODY",
+      "width": 1366,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "navbar": {
+    "class": "h-(--ui-header-height) shrink-0 flex items-center justify-between border-b border-default px-4 sm:px-6 gap-1.5",
+    "clientWidth": 1126,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 64,
+    "lineHeight": "24px",
+    "overflowX": "visible",
+    "padding": [
+      "0px",
+      "24px",
+      "0px",
+      "24px"
+    ],
+    "scrollWidth": 1126,
+    "slot": "root",
+    "tag": "DIV",
+    "width": 1126,
+    "x": 240,
+    "y": 0
+  },
+  "page": {
+    "clientWidth": 1366,
+    "scrollHeight": 900,
+    "scrollWidth": 1366
+  },
+  "rootFontSize": "16px",
+  "search": {
+    "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+    "clientWidth": 217,
+    "fontSize": "14px",
+    "gap": "6px",
+    "height": 32,
+    "lineHeight": "20px",
+    "overflowX": "clip",
+    "padding": [
+      "6px",
+      "10px",
+      "6px",
+      "36px"
+    ],
+    "scrollWidth": 217,
+    "slot": "base",
+    "tag": "INPUT",
+    "width": 217,
+    "x": 264,
+    "y": 88
+  },
+  "table": {
+    "count": 1,
+    "firstCell": {
+      "class": "p-4 text-sm text-muted whitespace-nowrap [&:has([role=checkbox])]:pe-0 border-b border-default",
+      "clientWidth": 44,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 73,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "16px",
+        "0px",
+        "16px",
+        "16px"
+      ],
+      "scrollWidth": 44,
+      "slot": "td",
+      "tag": "TD",
+      "width": 43.5625,
+      "x": 264,
+      "y": 194
+    },
+    "firstDataRow": {
+      "class": "data-[selected=true]:bg-elevated/50",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 73,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "tr",
+      "tag": "TR",
+      "width": 1078,
+      "x": 264,
+      "y": 194
+    },
+    "firstHeader": {
+      "class": "px-4 text-sm text-highlighted text-start font-semibold [&:has([role=checkbox])]:pe-0 py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r",
+      "clientWidth": 43,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 50,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "8px",
+        "0px",
+        "8px",
+        "16px"
+      ],
+      "scrollWidth": 43,
+      "slot": "th",
+      "tag": "TH",
+      "width": 43.5625,
+      "x": 264,
+      "y": 144
+    },
+    "root": {
+      "class": "relative overflow-auto outline-primary/25 focus-visible:outline-3 shrink-0",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 779,
+      "lineHeight": "24px",
+      "overflowX": "auto",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 1078,
+      "x": 264,
+      "y": 144
+    },
+    "table": {
+      "class": "min-w-full overflow-clip table-fixed border-separate border-spacing-0",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 779,
+      "lineHeight": "24px",
+      "overflowX": "clip",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "base",
+      "tag": "TABLE",
+      "width": 1078,
+      "x": 264,
+      "y": 144
+    },
+    "visibleRows": 10
+  },
+  "theme": "light",
+  "url": "http://127.0.0.1:3340/customers",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 900,
+    "width": 1366
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "dialog": {
+    "height": 900,
+    "width": 768,
+    "x": 598,
+    "y": 0
+  },
+  "inputs": [
+    {
+      "fontSize": "14px",
+      "height": 32,
+      "name": "name",
+      "type": "text",
+      "width": 352
+    },
+    {
+      "fontSize": "14px",
+      "height": 32,
+      "name": "sku",
+      "type": "text",
+      "width": 352
+    },
+    {
+      "fontSize": "14px",
+      "height": 32,
+      "name": "sale_price",
+      "type": "text",
+      "width": 352
+    },
+    {
+      "fontSize": "14px",
+      "height": 1,
+      "name": "erp_unit_id",
+      "type": "text",
+      "width": 1
+    },
+    {
+      "fontSize": "14px",
+      "height": 1,
+      "name": "erp_brand_id",
+      "type": "text",
+      "width": 1
+    },
+    {
+      "fontSize": "14px",
+      "height": 1,
+      "name": "erp_category_id",
+      "type": "text",
+      "width": 1
+    },
+    {
+      "fontSize": "14px",
+      "height": 1,
+      "name": "track_stock",
+      "type": "checkbox",
+      "width": 1
+    },
+    {
+      "fontSize": "14px",
+      "height": 32,
+      "name": "warranty_months",
+      "type": "number",
+      "width": 352
+    }
+  ],
+  "url": "http://localhost:3000/erp/cadastros/produtos",
+  "viewport": {
+    "height": 900,
+    "width": 1366
+  }
+}

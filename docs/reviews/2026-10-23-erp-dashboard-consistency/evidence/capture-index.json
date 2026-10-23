@@ -1,0 +1,88 @@
+{
+  "source_commit": "5ce7d51",
+  "browser": "agent-browser Chromium",
+  "viewports": [
+    "1366x900",
+    "390x844"
+  ],
+  "cases": [
+    {
+      "screenshot": "erp-finance-desktop-light.png",
+      "sha256": "d8ba31f05d84f552ddc6e1de398efda24930d1429be1a4e6d42909fe26027cf3",
+      "metrics": "erp-finance-desktop-light.json",
+      "company": "existing demo company 1"
+    },
+    {
+      "screenshot": "erp-finance-mobile-light.png",
+      "sha256": "f105b122dd2c1717bd750d8c6a315f9f34a101e366b456a788ad4facccf64164",
+      "metrics": "erp-finance-mobile-light.json",
+      "company": "existing demo company 1"
+    },
+    {
+      "screenshot": "erp-product-editor-desktop-light.png",
+      "sha256": "2be14113b488d196e56e1be1f37e674fb176e93d73cc32880406a34c1ef3c649",
+      "metrics": "erp-product-editor-desktop-light.json",
+      "company": "audit fixture company 2"
+    },
+    {
+      "screenshot": "erp-product-editor-mobile-light.png",
+      "sha256": "dcd4a1bde07c230b4821698660ab4bc8df163fdb80530db09812e8c555d63fc1",
+      "metrics": null,
+      "company": "audit fixture company 2"
+    },
+    {
+      "screenshot": "erp-products-desktop-light.png",
+      "sha256": "1254301827791e3491639adceb1890767975fdd41c76f79e5c161ee9ef245c43",
+      "metrics": "erp-products-desktop-light.json",
+      "company": "audit fixture company 2"
+    },
+    {
+      "screenshot": "erp-products-mobile-dark.png",
+      "sha256": "3ae292cad0d4979ad9e27397ba5dfabbf860b14f2c7888496a62817051c31deb",
+      "metrics": "erp-products-mobile-dark.json",
+      "company": "audit fixture company 2"
+    },
+    {
+      "screenshot": "erp-products-mobile-light.png",
+      "sha256": "66613c7aa21843345a89c0632208726cf80846e3373c676aacd1635c1166aca1",
+      "metrics": "erp-products-mobile-light.json",
+      "company": "audit fixture company 2"
+    },
+    {
+      "screenshot": "erp-settings-desktop-light.png",
+      "sha256": "4438a4b05dc05241886217f4e6edc9508a742fb9f6964f4584f62b58acd09f5b",
+      "metrics": "erp-settings-desktop-light.json",
+      "company": "existing demo company 1"
+    },
+    {
+      "screenshot": "erp-settings-mobile-light.png",
+      "sha256": "f3964cc89aa1dbd3de84883508b68c813967883759a58ba8614bd7d66d7924f2",
+      "metrics": "erp-settings-mobile-light.json",
+      "company": "existing demo company 1"
+    },
+    {
+      "screenshot": "template-customers-desktop-light.png",
+      "sha256": "22325ccb1acf83db1f615057d747d9fef9c700d23bdcab6977dbe5f3bfdb0fb8",
+      "metrics": "template-customers-desktop-light.json",
+      "company": "local dashboard reference"
+    },
+    {
+      "screenshot": "template-customers-mobile-light.png",
+      "sha256": "f21cfed2c423ebad11e7918cd5c54bf5f51b1ab89eddda39cfd908eb46353d8b",
+      "metrics": "template-customers-mobile-light.json",
+      "company": "local dashboard reference"
+    },
+    {
+      "screenshot": "template-settings-desktop-light.png",
+      "sha256": "8c2aeae7bded3abea5f8e10f5c9ec5be8e74a41a90aafed715b3c0298de197f3",
+      "metrics": "template-settings-desktop-light.json",
+      "company": "local dashboard reference"
+    },
+    {
+      "screenshot": "template-settings-mobile-light.png",
+      "sha256": "9b561333a3c5abd40b53514ea0ccb56a0be74a80c008c1f6e8a7421b780d841c",
+      "metrics": "template-settings-mobile-light.json",
+      "company": "local dashboard reference"
+    }
+  ]
+}

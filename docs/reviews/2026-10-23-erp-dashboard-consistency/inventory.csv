@@ -1,0 +1,98 @@
+file,kind,route,family,table_sites,form_sites,field_sites,modal_sites,slideover_sites,direct_erp_components,direct_nuxt_ui_components,explicit_sizes,referenced_by_application
+frontend/app/components/erp/ErpAccountingDeliveries.vue,component,,ERP components,0,0,2,0,0,,UAlert:5;UFormField:2;USelect:2;UButton:12;USkeleton:2;UEmpty:2;UBadge:1,UButton:sm:2,true
+frontend/app/components/erp/ErpAccountingMappingApproval.vue,component,,ERP components,0,0,0,0,0,,UAlert:8;UButton:17;UCard:2;UBadge:4,,true
+frontend/app/components/erp/ErpCashCloseForm.vue,component,,ERP components,0,1,1,0,0,,UAlert:1;UForm:1;UFormField:1;UInput:1;UCheckbox:1;UButton:1,,true
+frontend/app/components/erp/ErpCashMovementForm.vue,component,,ERP components,0,1,3,0,0,,UAlert:1;UForm:1;UFormField:3;USelect:1;UInput:1;UTextarea:1;UButton:1,,true
+frontend/app/components/erp/ErpCashPaymentForm.vue,component,,ERP components,0,1,3,0,0,,UAlert:1;UForm:1;UFormField:3;USelect:2;UInput:1;UButton:1,,true
+frontend/app/components/erp/ErpCashSessionForm.vue,component,,ERP components,0,1,5,0,0,,UAlert:1;UForm:1;UFormField:5;UInput:3;USelect:2;UButton:1,,true
+frontend/app/components/erp/ErpCashWorkspace.vue,component,,ERP components,3,0,6,5,0,ErpCatalogPageShell;ErpCashSessionForm;ErpCashMovementForm;ErpCashPaymentForm;ErpCashCloseForm,UButton:20;UNavigationMenu:1;UAlert:5;UTable:3;UFormField:6;USelect:3;UInput:3;UModal:5,UButton:sm:14,true
+frontend/app/components/erp/ErpCatalogPageShell.vue,component,,ERP components,0,0,0,0,0,,UDashboardPanel:1;UDashboardNavbar:1;UDashboardSidebarCollapse:1;UDashboardSidebarToggle:1;UDashboardToolbar:1,,true
+frontend/app/components/erp/ErpCatalogPagination.vue,component,,ERP components,0,0,0,0,0,,UAlert:1;UButton:1;UPagination:1,,true
+frontend/app/components/erp/ErpCommercialDraftForm.vue,component,,ERP components,0,1,15,0,0,,UForm:1;UFormField:15;USelect:6;UInput:10;UButton:5;UAlert:1,UButton:sm:2;UButton:xs:1,true
+frontend/app/components/erp/ErpCompanyAdministration.vue,component,,ERP components,0,0,0,0,0,,UButton:16;UAlert:4;UBadge:2,UButton:sm:2,true
+frontend/app/components/erp/ErpFinanceWorkspace.vue,component,,ERP components,1,0,11,5,0,ErpCatalogPageShell;ErpFinancialAccountForm;ErpObligationForm;ErpPaymentForm,UButton:23;UNavigationMenu:1;UFormField:11;USelect:6;UInput:4;UAlert:6;UTable:1;UPagination:3;UModal:5;UTextarea:1,UButton:xs:9;UButton:sm:2,true
+frontend/app/components/erp/ErpFinancialAccountForm.vue,component,,ERP components,0,1,4,0,0,,UAlert:1;UForm:1;UFormField:4;UInput:2;USelect:2;UButton:1,,true
+frontend/app/components/erp/ErpFiscalCertificateForm.vue,component,,ERP components,0,1,4,0,0,,UForm:1;UFormField:4;UInput:2;USelect:1;UFileUpload:1;UAlert:2;UButton:1,,true
+frontend/app/components/erp/ErpFiscalConfigurationForm.vue,component,,ERP components,0,1,12,0,0,,UForm:1;UAlert:4;UFormField:12;USelect:6;UInput:8;UBadge:1;UCheckbox:1;UButton:1,,true
+frontend/app/components/erp/ErpFiscalDocumentDetail.vue,component,,ERP components,0,0,0,0,0,,UBadge:2;UButton:8;UAlert:3,,true
+frontend/app/components/erp/ErpFiscalDocumentForm.vue,component,,ERP components,0,1,29,0,0,,UForm:1;UAlert:4;UFormField:29;USelect:17;UInput:20;UTextarea:1;UButton:1,,true
+frontend/app/components/erp/ErpFiscalEventForm.vue,component,,ERP components,0,1,8,0,0,,UForm:1;UFormField:8;USelect:2;UTextarea:3;UCheckbox:2;UInput:3;UAlert:2;UButton:1,,true
+frontend/app/components/erp/ErpFiscalInvalidationForm.vue,component,,ERP components,0,1,6,0,0,,UForm:1;UFormField:6;USelect:1;UInput:4;UTextarea:1;UAlert:1;UButton:1,,true
+frontend/app/components/erp/ErpFiscalWorkspace.vue,component,,ERP components,0,0,0,4,0,ErpCatalogPageShell;ErpFiscalDocumentForm;ErpFiscalDocumentDetail;ErpFiscalEventForm;ErpFiscalConfigurationForm;ErpFiscalCertificateForm;ErpFiscalInvalidationForm,UButton:17;USelect:2;UBadge:4;UAlert:9;UCard:6;UModal:4,UButton:sm:7,true
+frontend/app/components/erp/ErpModuleHub.vue,component,,ERP components,1,0,2,0,0,ErpCatalogPageShell;ErpReportMetrics,UNavigationMenu:1;UBadge:1;UAlert:2;UButton:2;UFormField:2;UInput:2;UPageGrid:1;UEmpty:1;UCard:1;UTable:1;UPagination:1,,false
+frontend/app/components/erp/ErpObligationForm.vue,component,,ERP components,0,1,7,0,0,,UAlert:1;UForm:1;UFormField:7;USelect:3;UInput:4;UButton:1,,true
+frontend/app/components/erp/ErpPaymentForm.vue,component,,ERP components,0,1,7,0,0,,UAlert:1;UForm:1;UFormField:7;USelect:5;UInput:2;UButton:1,,true
+frontend/app/components/erp/ErpPurchaseForm.vue,component,,ERP components,0,0,11,0,0,,UAlert:4;UFormField:11;UInputMenu:4;UInput:7;UButton:4,,true
+frontend/app/components/erp/ErpPurchaseOperationRecovery.vue,component,,ERP components,0,0,0,0,0,,UAlert:1;UButton:3,UButton:xs:3,true
+frontend/app/components/erp/ErpPurchaseReturnForm.vue,component,,ERP components,0,0,2,0,0,,UAlert:6;UButton:4;UFormField:2;UInput:1;UTextarea:1,,true
+frontend/app/components/erp/ErpPurchaseWorkspace.vue,component,,ERP components,2,0,0,5,0,ErpCatalogPageShell;ErpPurchaseXmlPreview;ErpPurchaseForm;ErpPurchaseOperationRecovery;ErpPurchaseReturnForm,UButton:23;UNavigationMenu:1;UInput:1;USelect:2;UAlert:10;UTable:2;UBadge:2;UModal:5,UButton:xs:8;UButton:sm:4,true
+frontend/app/components/erp/ErpPurchaseXmlPreview.vue,component,,ERP components,0,0,6,0,0,,UFormField:6;UInputMenu:4;UAlert:5;UButton:3;UInput:1,,true
+frontend/app/components/erp/ErpReportExportPanel.vue,component,,ERP components,0,0,1,0,0,,UButton:5;UAlert:2;UFormField:1;UInput:1,UButton:sm:1,true
+frontend/app/components/erp/ErpReportMetrics.vue,component,,ERP components,1,0,0,0,0,,UCard:1;UTable:1;UButton:1,UButton:sm:1,true
+frontend/app/components/erp/ErpReportsWorkspace.vue,component,,ERP components,0,0,6,0,0,ErpCatalogPageShell;ErpReportMetrics;ErpReportExportPanel,UNavigationMenu:1;UAlert:1;UFormField:6;UInput:3;USelect:3;UButton:1;UEmpty:1,,true
+frontend/app/components/erp/ErpSaleDetail.vue,component,,ERP components,0,0,0,0,0,,UBadge:3;UAlert:4;UButton:6,UButton:xs:1,true
+frontend/app/components/erp/ErpSaleReturnForm.vue,component,,ERP components,0,1,2,0,0,,UForm:1;UAlert:2;UFormField:2;UTextarea:1;UInput:1;UButton:2,,true
+frontend/app/components/erp/ErpSalesWorkspace.vue,component,,ERP components,0,0,3,1,0,ErpCatalogPageShell;ErpCommercialDraftForm;ErpSaleDetail;ErpSaleReturnForm,UButton:20;UDropdownMenu:1;UFormField:3;USelect:1;UAlert:15;UBadge:1;UIcon:1;UModal:1;UInput:2;UCheckbox:1,UButton:sm:9,true
+frontend/app/components/erp/ErpSettingsSectionForm.vue,component,,ERP components,0,1,1,0,0,,UForm:1;UPageCard:2;UButton:2;USeparator:1;UFormField:1;UCheckbox:1;USelect:1;UInput:1,,true
+frontend/app/components/erp/ErpStockAdjustmentForm.vue,component,,ERP components,0,1,4,0,0,,UAlert:1;UForm:1;UFormField:4;USelect:2;UInput:1;UTextarea:1;UButton:1,,true
+frontend/app/components/erp/ErpStockMovementDetail.vue,component,,ERP components,0,1,2,0,0,,UButton:6;UAlert:5;UForm:1;UFormField:2;UInput:1;UTextarea:1;UCheckbox:1,,true
+frontend/app/components/erp/ErpStockTransferDetail.vue,component,,ERP components,0,1,2,0,0,,UAlert:5;UButton:3;UForm:1;UFormField:2;UInput:1;UTextarea:1;UCheckbox:1,,true
+frontend/app/components/erp/ErpStockTransferForm.vue,component,,ERP components,0,1,4,0,0,,UAlert:1;UForm:1;UFormField:4;USelect:3;UInput:1;UButton:1,,true
+frontend/app/components/erp/ErpStockWorkspace.vue,component,,ERP components,1,0,0,3,0,ErpCatalogPageShell;ErpStockAdjustmentForm;ErpStockTransferForm;ErpStockMovementDetail;ErpStockTransferDetail,UButton:23;UNavigationMenu:1;USelect:5;UInput:3;UAlert:13;UTable:1;UModal:3;USkeleton:2,UButton:xs:4;UButton:sm:2,true
+frontend/app/components/erp/catalogs/ErpBrandCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField,UForm:1;UInput:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpCarrierCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField,UForm:1;UInput:11;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpCatalogField.vue,component,,catalog components,0,0,1,0,0,,UFormField:1,,true
+frontend/app/components/erp/catalogs/ErpCatalogReferenceSelect.vue,component,,catalog components,0,0,1,0,0,,UFormField:1;USelectMenu:1;UBadge:2;UButton:3;UAlert:1,,true
+frontend/app/components/erp/catalogs/ErpCatalogResource.vue,component,,catalog components,1,0,1,1,1,ErpCatalogPagination,UDashboardToolbar:1;UFormField:1;UInput:1;UTable:1;UButton:4;USlideover:1;UBadge:1;UTabs:1;UModal:1,,true
+frontend/app/components/erp/catalogs/ErpCategoryCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField;ErpCatalogReferenceSelect,UForm:1;UInput:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpContactCatalogForm.vue,component,,catalog components,0,1,2,0,0,ErpCatalogField;ErpCatalogReferenceSelect,UForm:1;UInput:13;UFormField:2;UCheckbox:2;UTextarea:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpContactNotesPanel.vue,component,,catalog components,0,3,8,1,0,,UButton:15;UAlert:1;UForm:3;UFormField:8;UInput:2;UTextarea:2;UCheckbox:2;UBadge:2;UPagination:2;UFileUpload:1;UModal:1,UButton:xs:1;UButton:sm:5,true
+frontend/app/components/erp/catalogs/ErpCustomerGroupCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField,UForm:1;UInput:2;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpDiscountRuleCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField,UForm:1;UInput:3;USelect:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpDriverCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogField,UForm:1;UInput:3;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpOperationNatureCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogReferenceSelect;ErpCatalogField,UForm:1;UInput:2;USelect:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpPriceGroupCatalogForm.vue,component,,catalog components,0,1,1,0,0,ErpCatalogField,UForm:1;UInput:2;UFormField:1;UCheckbox:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpProductCatalogForm.vue,component,,catalog components,0,1,1,1,0,ErpCatalogField;ErpCatalogReferenceSelect,UForm:1;UInput:25;USelect:3;UFormField:1;UCheckbox:1;UButton:6;UModal:1,,true
+frontend/app/components/erp/catalogs/ErpTaxRateCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogReferenceSelect;ErpCatalogField,UForm:1;UInput:3;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpUnitCatalogForm.vue,component,,catalog components,0,1,1,0,0,ErpCatalogField;ErpCatalogReferenceSelect,UForm:1;UInput:3;UFormField:1;UCheckbox:1;UButton:1,,true
+frontend/app/components/erp/catalogs/ErpVehicleCatalogForm.vue,component,,catalog components,0,1,0,0,0,ErpCatalogReferenceSelect;ErpCatalogField,UForm:1;UInput:9;UButton:1,,true
+frontend/app/pages/erp/cadastro.vue,page,/erp/cadastro,public registration,0,1,6,0,0,,UAlert:2;UForm:1;UFormField:6;UInput:6;UButton:1,UButton:lg:1,true
+frontend/app/pages/erp/cadastros/categorias.vue,page,/erp/cadastros/categorias,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UButton:1,,true
+frontend/app/pages/erp/cadastros/contatos.vue,page,/erp/cadastros/contatos,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource;ErpContactNotesPanel,UButton:1,,true
+frontend/app/pages/erp/cadastros/etiquetas.vue,page,/erp/cadastros/etiquetas,catalogs,1,0,12,0,0,ErpCatalogPageShell,UAlert:7;UButton:19;UFormField:12;UInput:7;UTable:1;UCheckbox:4;UPagination:1;UInputNumber:3;USelect:2;UCollapsible:2,,true
+frontend/app/pages/erp/cadastros/fiscal.vue,page,/erp/cadastros/fiscal,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UDropdownMenu:1;UButton:1,,true
+frontend/app/pages/erp/cadastros/grupos-clientes.vue,page,/erp/cadastros/grupos-clientes,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UButton:1,,true
+frontend/app/pages/erp/cadastros/importacao.vue,page,/erp/cadastros/importacao,catalogs,1,0,2,0,0,ErpCatalogPageShell;ErpCatalogReferenceSelect,UAlert:6;UButton:6;UCard:2;UFormField:2;USelect:1;UFileUpload:1;UTable:1,,true
+frontend/app/pages/erp/cadastros/index.vue,page,/erp/cadastros,catalogs,0,0,0,0,0,ErpCatalogPageShell,UNavigationMenu:1;UAlert:1,,true
+frontend/app/pages/erp/cadastros/logistica.vue,page,/erp/cadastros/logistica,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UDropdownMenu:1;UButton:1,,true
+frontend/app/pages/erp/cadastros/marcas.vue,page,/erp/cadastros/marcas,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UButton:1,,true
+frontend/app/pages/erp/cadastros/precos.vue,page,/erp/cadastros/precos,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UDropdownMenu:1;UButton:1,,true
+frontend/app/pages/erp/cadastros/produtos.vue,page,/erp/cadastros/produtos,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UButton:1,,true
+frontend/app/pages/erp/cadastros/unidades.vue,page,/erp/cadastros/unidades,catalogs,0,0,0,0,0,ErpCatalogPageShell;ErpCatalogResource,UButton:1,,true
+frontend/app/pages/erp/caixa/index.vue,page,/erp/caixa,operations,0,0,0,0,0,ErpCashWorkspace,,,true
+frontend/app/pages/erp/compras/index.vue,page,/erp/compras,operations,0,0,0,0,0,ErpPurchaseWorkspace,,,true
+frontend/app/pages/erp/configuracoes.vue,page,/erp/configuracoes,settings,0,0,0,0,0,,UDashboardPanel:1;UDashboardNavbar:1;UDashboardSidebarCollapse:1;UDashboardSidebarToggle:1;UDashboardToolbar:1;UNavigationMenu:1,,true
+frontend/app/pages/erp/configuracoes/compras.vue,page,/erp/configuracoes/compras,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/email.vue,page,/erp/configuracoes/email,settings,0,1,4,0,0,,UForm:1;UPageCard:2;UButton:2;UFormField:4;UInput:4,,true
+frontend/app/pages/erp/configuracoes/empresa.vue,page,/erp/configuracoes/empresa,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/escritorio.vue,page,/erp/configuracoes/escritorio,settings,0,0,0,0,0,ErpAccountingMappingApproval,,,true
+frontend/app/pages/erp/configuracoes/estabelecimentos.vue,page,/erp/configuracoes/estabelecimentos,settings,0,0,0,0,0,ErpCompanyAdministration,,,true
+frontend/app/pages/erp/configuracoes/index.vue,page,/erp/configuracoes,settings,0,0,0,0,0,,,,true
+frontend/app/pages/erp/configuracoes/membros.vue,page,/erp/configuracoes/membros,settings,0,0,0,0,0,ErpCompanyAdministration,,,true
+frontend/app/pages/erp/configuracoes/modulos.vue,page,/erp/configuracoes/modulos,settings,0,0,0,0,0,,,,true
+frontend/app/pages/erp/configuracoes/pontos.vue,page,/erp/configuracoes/pontos,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/prefixos.vue,page,/erp/configuracoes/prefixos,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/produto.vue,page,/erp/configuracoes/produto,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/rotulos.vue,page,/erp/configuracoes/rotulos,settings,0,0,0,0,0,,,,true
+frontend/app/pages/erp/configuracoes/sistema.vue,page,/erp/configuracoes/sistema,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/sms.vue,page,/erp/configuracoes/sms,settings,0,0,0,0,0,,,,true
+frontend/app/pages/erp/configuracoes/taxas.vue,page,/erp/configuracoes/taxas,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/configuracoes/vendas.vue,page,/erp/configuracoes/vendas,settings,0,0,0,0,0,ErpSettingsSectionForm,,,true
+frontend/app/pages/erp/contabilidade/index.vue,page,/erp/contabilidade,operations,0,0,0,0,0,ErpCatalogPageShell;ErpAccountingDeliveries,,,true
+frontend/app/pages/erp/contrato.vue,page,/erp/contrato,contract,0,0,0,0,0,,UButton:2;UAlert:1;UCard:1;UBadge:1;USkeleton:1,,true
+frontend/app/pages/erp/estoque/index.vue,page,/erp/estoque,operations,0,0,0,0,0,ErpStockWorkspace,,,true
+frontend/app/pages/erp/financeiro/index.vue,page,/erp/financeiro,operations,0,0,0,0,0,ErpFinanceWorkspace,,,true
+frontend/app/pages/erp/fiscal/index.vue,page,/erp/fiscal,operations,0,0,0,0,0,ErpFiscalWorkspace,,,true
+frontend/app/pages/erp/index.vue,page,/erp,overview,0,0,0,0,0,,UAlert:1,,true
+frontend/app/pages/erp/relatorios/index.vue,page,/erp/relatorios,operations,0,0,0,0,0,ErpReportsWorkspace,,,true
+frontend/app/pages/erp/vendas/index.vue,page,/erp/vendas,operations,0,0,0,0,0,ErpSalesWorkspace,,,true

@@ -1,0 +1,676 @@
+{
+  "buttons": [
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 pe-9 md:text-sm w-full",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Selecionar escritório",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": -6
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 pe-9 md:text-sm w-full",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Selecionar empresa",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 60
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-primary before:bg-elevated",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Cadastros",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 104
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Financeiro",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 488
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Caixa",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 520
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Compras",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 552
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Estoque",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 584
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Vendas",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 616
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Fiscal",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 648
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Relatórios",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 712
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 flex-row px-2.5 py-1.5 before:inset-y-px before:inset-x-0 text-muted hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Configurações",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 744
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 w-full justify-center text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent data-[state=open]:bg-elevated",
+      "clientWidth": 207,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "AAdministrador",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 207,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 207,
+      "x": 16,
+      "y": 860
+    },
+    {
+      "class": "rounded-md font-medium items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 hidden lg:flex",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Recolher menu ERP",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 264,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-inverted bg-primary hover:bg-primary/75 active:bg-primary/75 disabled:bg-primary aria-disabled:bg-primary outline-primary/25 focus-visible:outline-3",
+      "clientWidth": 163,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Adicionar produto",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 163,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 163.328125,
+      "x": 1178.671875,
+      "y": 15.5
+    }
+  ],
+  "colors": {
+    "muted": "oklch(44.2% 0.017 285.786)",
+    "primary": "#0A5331",
+    "success": "#016538"
+  },
+  "firstInput": {
+    "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+    "clientWidth": 448,
+    "fontSize": "14px",
+    "gap": "6px",
+    "height": 32,
+    "lineHeight": "20px",
+    "overflowX": "clip",
+    "padding": [
+      "6px",
+      "10px",
+      "6px",
+      "36px"
+    ],
+    "scrollWidth": 448,
+    "slot": "base",
+    "tag": "INPUT",
+    "width": 448,
+    "x": 288,
+    "y": 152
+  },
+  "h1": [
+    {
+      "class": "flex items-center gap-1.5 font-semibold text-highlighted min-w-0 truncate",
+      "clientWidth": 68,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 24,
+      "lineHeight": "24px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 68,
+      "slot": "title",
+      "tag": "H1",
+      "text": "Produtos",
+      "width": 68.484375,
+      "x": 302,
+      "y": 19.5
+    }
+  ],
+  "inputAncestors": [
+    {
+      "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+      "clientWidth": 448,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "clip",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 448,
+      "slot": "base",
+      "tag": "INPUT",
+      "width": 448,
+      "x": 288,
+      "y": 152
+    },
+    {
+      "class": "relative inline-flex items-center w-full",
+      "clientWidth": 448,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 448,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 448,
+      "x": 288,
+      "y": 152
+    },
+    {
+      "class": "relative mt-1",
+      "clientWidth": 448,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 448,
+      "slot": null,
+      "tag": "DIV",
+      "width": 448,
+      "x": 288,
+      "y": 152
+    },
+    {
+      "class": "text-sm min-w-0 w-full flex-1 sm:max-w-md",
+      "clientWidth": 448,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 56,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 448,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 448,
+      "x": 288,
+      "y": 128
+    },
+    {
+      "class": "flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end",
+      "clientWidth": 1018,
+      "fontSize": "16px",
+      "gap": "12px",
+      "height": 56,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1018,
+      "slot": null,
+      "tag": "DIV",
+      "width": 1018,
+      "x": 288,
+      "y": 128
+    },
+    {
+      "class": "flex items-center gap-1.5 w-full min-w-0 flex-1",
+      "clientWidth": 1018,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 56,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1018,
+      "slot": "left",
+      "tag": "DIV",
+      "width": 1018,
+      "x": 288,
+      "y": 128
+    },
+    {
+      "class": "shrink-0 flex border-b border-default px-4 sm:px-6 min-h-[49px] w-full min-w-0 flex-col items-stretch justify-start gap-3 overflow-visible sm:flex-row sm:items-end sm:justify-between",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "12px",
+      "height": 57,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "24px",
+        "0px",
+        "24px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 1078,
+      "x": 264,
+      "y": 128
+    },
+    {
+      "class": "space-y-4",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1143,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": null,
+      "tag": "DIV",
+      "width": 1078,
+      "x": 264,
+      "y": 128
+    }
+  ],
+  "navbar": {
+    "class": "h-(--ui-header-height) shrink-0 flex items-center justify-between border-b border-default px-4 sm:px-6 gap-1.5",
+    "clientWidth": 1126,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 64,
+    "lineHeight": "24px",
+    "overflowX": "visible",
+    "padding": [
+      "0px",
+      "24px",
+      "0px",
+      "24px"
+    ],
+    "scrollWidth": 1126,
+    "slot": "root",
+    "tag": "DIV",
+    "width": 1126,
+    "x": 240,
+    "y": 0
+  },
+  "page": {
+    "clientWidth": 1366,
+    "scrollHeight": 900,
+    "scrollWidth": 1366
+  },
+  "rootFontSize": "16px",
+  "search": null,
+  "table": {
+    "count": 1,
+    "firstCell": {
+      "class": "p-4 text-sm text-muted whitespace-nowrap [&:has([role=checkbox])]:pe-0",
+      "clientWidth": 340,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 64.5,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "16px",
+        "16px",
+        "16px",
+        "16px"
+      ],
+      "scrollWidth": 340,
+      "slot": "td",
+      "tag": "TD",
+      "width": 339.984375,
+      "x": 264,
+      "y": 249
+    },
+    "firstDataRow": {
+      "class": "data-[selected=true]:bg-elevated/50",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 64.5,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "tr",
+      "tag": "TR",
+      "width": 1078,
+      "x": 264,
+      "y": 249
+    },
+    "firstHeader": {
+      "class": "px-4 py-3.5 text-sm text-highlighted text-start font-semibold [&:has([role=checkbox])]:pe-0",
+      "clientWidth": 340,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 48,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "14px",
+        "16px",
+        "14px",
+        "16px"
+      ],
+      "scrollWidth": 340,
+      "slot": "th",
+      "tag": "TH",
+      "width": 339.984375,
+      "x": 264,
+      "y": 201
+    },
+    "root": {
+      "class": "relative overflow-auto outline-primary/25 focus-visible:outline-3 flex-1",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1022,
+      "lineHeight": "24px",
+      "overflowX": "auto",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 1078,
+      "x": 264,
+      "y": 201
+    },
+    "table": {
+      "class": "min-w-full overflow-clip",
+      "clientWidth": 1078,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1022,
+      "lineHeight": "24px",
+      "overflowX": "clip",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 1078,
+      "slot": "base",
+      "tag": "TABLE",
+      "width": 1078,
+      "x": 264,
+      "y": 201
+    },
+    "visibleRows": 15
+  },
+  "theme": "light",
+  "url": "http://localhost:3000/erp/cadastros/produtos",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 900,
+    "width": 1366
+  }
+}

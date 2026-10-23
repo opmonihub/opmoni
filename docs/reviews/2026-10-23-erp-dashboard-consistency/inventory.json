@@ -1,0 +1,6446 @@
+{
+  "scope": "Static Vue template sites; excludes h()/resolveComponent sites and runtime expansion of dynamic/repeated components.",
+  "source_commit": "5ce7d51",
+  "pages": 40,
+  "components": 57,
+  "nuxt_ui_template_sites": {
+    "UAlert": 159,
+    "UFormField": 209,
+    "USelect": 86,
+    "UButton": 320,
+    "USkeleton": 5,
+    "UEmpty": 4,
+    "UBadge": 27,
+    "UCard": 13,
+    "UForm": 37,
+    "UInput": 193,
+    "UCheckbox": 19,
+    "UTextarea": 15,
+    "UNavigationMenu": 8,
+    "UTable": 12,
+    "UModal": 26,
+    "UDashboardPanel": 2,
+    "UDashboardNavbar": 2,
+    "UDashboardSidebarCollapse": 2,
+    "UDashboardSidebarToggle": 2,
+    "UDashboardToolbar": 3,
+    "UPagination": 8,
+    "UFileUpload": 3,
+    "UPageGrid": 1,
+    "UInputMenu": 8,
+    "UDropdownMenu": 4,
+    "UIcon": 1,
+    "UPageCard": 4,
+    "USeparator": 1,
+    "USelectMenu": 1,
+    "USlideover": 1,
+    "UTabs": 1,
+    "UInputNumber": 3,
+    "UCollapsible": 2
+  },
+  "files": [
+    {
+      "file": "frontend/app/components/erp/ErpAccountingDeliveries.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 5,
+        "UFormField": 2,
+        "USelect": 2,
+        "UButton": 12,
+        "USkeleton": 2,
+        "UEmpty": 2,
+        "UBadge": 1
+      },
+      "sizes": {
+        "UButton:sm": 2
+      },
+      "classes": [
+        {
+          "tag": "div",
+          "line": 416,
+          "value": "flex w-full flex-col gap-5"
+        },
+        {
+          "tag": "section",
+          "line": 427,
+          "value": "flex flex-col gap-3 rounded-lg border border-default p-4 sm:flex-row sm:items-end"
+        },
+        {
+          "tag": "UFormField",
+          "line": 428,
+          "value": "min-w-0 flex-1"
+        },
+        {
+          "tag": "p",
+          "line": 445,
+          "value": "text-sm text-error"
+        },
+        {
+          "tag": "div",
+          "line": 449,
+          "value": "flex w-full flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+        },
+        {
+          "tag": "p",
+          "line": 505,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "table",
+          "line": 535,
+          "value": "w-full min-w-[44rem] text-left text-sm"
+        },
+        {
+          "tag": "thead",
+          "line": 536,
+          "value": "bg-elevated text-muted"
+        },
+        {
+          "tag": "th",
+          "line": 538,
+          "value": "px-4 py-3 font-medium"
+        },
+        {
+          "tag": "th",
+          "line": 540,
+          "value": "px-4 py-3 font-medium"
+        },
+        {
+          "tag": "th",
+          "line": 542,
+          "value": "px-4 py-3 font-medium"
+        },
+        {
+          "tag": "th",
+          "line": 544,
+          "value": "px-4 py-3 font-medium"
+        },
+        {
+          "tag": "th",
+          "line": 546,
+          "value": "px-4 py-3 font-medium"
+        },
+        {
+          "tag": "td",
+          "line": 553,
+          "value": "px-4 py-3 align-top"
+        },
+        {
+          "tag": "button",
+          "line": 554,
+          "value": "font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+        },
+        {
+          "tag": "p",
+          "line": 563,
+          "value": "mt-1 max-w-[24rem] break-all text-xs text-muted"
+        },
+        {
+          "tag": "td",
+          "line": 567,
+          "value": "px-4 py-3 align-top"
+        },
+        {
+          "tag": "td",
+          "line": 570,
+          "value": "px-4 py-3 align-top tabular-nums"
+        },
+        {
+          "tag": "td",
+          "line": 573,
+          "value": "px-4 py-3 align-top text-muted"
+        },
+        {
+          "tag": "td",
+          "line": 576,
+          "value": "px-4 py-3 align-top text-right"
+        },
+        {
+          "tag": "div",
+          "line": 601,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 602,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 605,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 623,
+          "value": "flex flex-col gap-3 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 624,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 628,
+          "value": "mt-1 text-sm text-muted"
+        },
+        {
+          "tag": "dl",
+          "line": 642,
+          "value": "grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3"
+        },
+        {
+          "tag": "dt",
+          "line": 644,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 651,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 658,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 665,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 672,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 679,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 686,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 693,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 715,
+          "value": "text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "22db63ff69e3fc711a78b6473ca96c9b46a9db24df9c5507f59c668d0f93eb4c"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpAccountingMappingApproval.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 8,
+        "UButton": 17,
+        "UCard": 2,
+        "UBadge": 4
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "section",
+          "line": 498,
+          "value": "mx-auto w-full max-w-4xl space-y-5"
+        },
+        {
+          "tag": "h2",
+          "line": 501,
+          "value": "text-xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 504,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 532,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 537,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 545,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 548,
+          "value": "flex flex-wrap gap-1"
+        },
+        {
+          "tag": "p",
+          "line": 562,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "li",
+          "line": 566,
+          "value": "flex flex-wrap items-center justify-between gap-2 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 581,
+          "value": "rounded-lg border border-warning/50 p-3"
+        },
+        {
+          "tag": "p",
+          "line": 582,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 585,
+          "value": "mt-2 flex gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 605,
+          "value": "rounded-xl border border-dashed border-default p-5 text-sm"
+        },
+        {
+          "tag": "form",
+          "line": 609,
+          "value": "space-y-4 rounded-xl border border-default p-4"
+        },
+        {
+          "tag": "label",
+          "line": 613,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "input",
+          "line": 615,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "span",
+          "line": 624,
+          "value": "text-error"
+        },
+        {
+          "tag": "legend",
+          "line": 627,
+          "value": "text-sm font-medium"
+        },
+        {
+          "tag": "label",
+          "line": 630,
+          "value": "flex items-start gap-2 text-sm"
+        },
+        {
+          "tag": "span",
+          "line": 632,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 634,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 638,
+          "value": "rounded-lg border border-warning/50 p-3"
+        },
+        {
+          "tag": "p",
+          "line": 639,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 642,
+          "value": "mt-2 flex gap-2"
+        },
+        {
+          "tag": "h2",
+          "line": 670,
+          "value": "text-xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 673,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 700,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "select",
+          "line": 702,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "div",
+          "line": 710,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 714,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 722,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "select",
+          "line": 724,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "span",
+          "line": 728,
+          "value": "text-error"
+        },
+        {
+          "tag": "div",
+          "line": 730,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 731,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "label",
+          "line": 743,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "input",
+          "line": 745,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "p",
+          "line": 753,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 765,
+          "value": "text-warning text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 769,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "select",
+          "line": 771,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "div",
+          "line": 776,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 777,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 788,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 791,
+          "value": "rounded-lg border border-default p-3 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 800,
+          "value": "rounded-lg border border-warning/50 p-3"
+        },
+        {
+          "tag": "p",
+          "line": 801,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 804,
+          "value": "mt-2 flex gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 817,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 826,
+          "value": "text-muted rounded-xl border border-dashed border-default p-4 text-sm"
+        },
+        {
+          "tag": "article",
+          "line": 829,
+          "value": "flex flex-wrap items-center justify-between gap-3 rounded-xl border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 834,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 848,
+          "value": "rounded-lg border border-warning/50 p-3"
+        },
+        {
+          "tag": "p",
+          "line": 849,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 852,
+          "value": "mt-2 flex gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 872,
+          "value": "text-muted rounded-xl border border-dashed border-default p-5 text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "1c59aec308ffd9c352b6da5b24ea9d1e4f45c03626adc9c4db6b65937f7e0396"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashCloseForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 1,
+        "UInput": 1,
+        "UCheckbox": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 32,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 35,
+          "value": "text-sm text-muted"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "85ed98934d6413d0c40caf61e12f7f992826109cbdf128e534a1ee54b9c90e91"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashMovementForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 3,
+        "USelect": 1,
+        "UInput": 1,
+        "UTextarea": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "UForm",
+          "line": 31,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "48f0110649d68829ee7fd8388c4f8b94d38d4d559da613929c93218778f51cea"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashPaymentForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 3,
+        "USelect": 2,
+        "UInput": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 35,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 44,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "966d1ab162402c79334e95a6411eafb9e76babf70715974568096078d9a9bc26"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashSessionForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 5,
+        "UInput": 3,
+        "USelect": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "UForm",
+          "line": 53,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3b4c4c105973db3069e3f4e186a3c43d54cbaba992bdd5f10b44323da019ef65"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCashWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 20,
+        "UNavigationMenu": 1,
+        "UAlert": 5,
+        "UTable": 3,
+        "UFormField": 6,
+        "USelect": 3,
+        "UInput": 3,
+        "UModal": 5,
+        "ErpCashSessionForm": 2,
+        "ErpCashMovementForm": 1,
+        "ErpCashPaymentForm": 1,
+        "ErpCashCloseForm": 1
+      },
+      "sizes": {
+        "UButton:sm": 14
+      },
+      "classes": [
+        {
+          "tag": "header",
+          "line": 224,
+          "value": "flex flex-wrap items-end justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 226,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 229,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 258,
+          "value": "flex flex-wrap items-center gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 259,
+          "value": "basis-full text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 318,
+          "value": "flex items-center justify-between text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 320,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 342,
+          "value": "flex flex-wrap items-end gap-3"
+        },
+        {
+          "tag": "div",
+          "line": 396,
+          "value": "flex items-center justify-between text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 398,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "header",
+          "line": 420,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h3",
+          "line": 422,
+          "value": "text-base font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 425,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 429,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "dl",
+          "line": 462,
+          "value": "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        },
+        {
+          "tag": "dt",
+          "line": 464,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 466,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 471,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 473,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 478,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 480,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 485,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 487,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "section",
+          "line": 493,
+          "value": "grid gap-3 border-y border-default py-4 sm:grid-cols-3"
+        },
+        {
+          "tag": "dt",
+          "line": 495,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 497,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 502,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 504,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 509,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 511,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 525,
+          "value": "flex items-center justify-between text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 527,
+          "value": "flex gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 549,
+          "attributes": "<UModal\n      :key=\"`register:${cash.authorityGeneration.value}`\"\n      v-model:open=\"registerOpen\"\n      title=\"Cadastrar caixa\"\n      :unmount-on-hide=\"false\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 575,
+          "attributes": "<UModal\n      :key=\"`open:${cash.authorityGeneration.value}`\"\n      v-model:open=\"openSessionOpen\"\n      title=\"Abrir sessão de caixa\"\n      :unmount-on-hide=\"false\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 601,
+          "attributes": "<UModal\n      :key=\"`movement:${cash.selectedSession.value?.id ?? 'none'}:${cash.authorityGeneration.value}`\"\n      v-model:open=\"movementOpen\"\n      title=\"Registrar movimento\"\n      :unmount-on-hide=\"false\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 611,
+          "attributes": "<UModal\n      :key=\"`payment:${cash.selectedSession.value?.id ?? 'none'}:${cash.authorityGeneration.value}`\"\n      v-model:open=\"paymentOpen\"\n      title=\"Pagamento em dinheiro\"\n      :unmount-on-hide=\"false\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 628,
+          "attributes": "<UModal\n      :key=\"`close:${cash.selectedSession.value?.id ?? 'none'}:${cash.authorityGeneration.value}`\"\n      v-model:open=\"closeOpen\"\n      title=\"Fechar sessão de caixa\"\n      :unmount-on-hide=\"false\"\n    >"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "8ff7f1e6609d80d2c2b8837f2e39fc4760feedc40c4e0f26958bff7eeb4923f6"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCatalogPageShell.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UDashboardPanel": 1,
+        "UDashboardNavbar": 1,
+        "UDashboardSidebarCollapse": 1,
+        "UDashboardSidebarToggle": 1,
+        "UDashboardToolbar": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "CompanyMenu",
+          "line": 22,
+          "value": "min-w-0 max-w-40 lg:hidden"
+        },
+        {
+          "tag": "div",
+          "line": 31,
+          "value": "space-y-5 p-4 sm:p-6"
+        },
+        {
+          "tag": "p",
+          "line": 32,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "a908c31d32b4c9b8659f310596d5d9c5a035688fe4f3955e835cd72dd2e83805"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCatalogPagination.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UButton": 1,
+        "UPagination": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 21,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 24,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 27,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 30,
+          "value": "text-sm text-warning"
+        },
+        {
+          "tag": "p",
+          "line": 33,
+          "value": "text-sm text-muted"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "7b2df6673aeb5db3bfef4da68385834670803aaf1b97d436382474f3506f9dcd"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCommercialDraftForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UFormField": 15,
+        "USelect": 6,
+        "UInput": 10,
+        "UButton": 5,
+        "UAlert": 1
+      },
+      "sizes": {
+        "UButton:sm": 2,
+        "UButton:xs": 1
+      },
+      "classes": [
+        {
+          "tag": "UForm",
+          "line": 122,
+          "value": "min-w-0 space-y-5"
+        },
+        {
+          "tag": "div",
+          "line": 123,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 156,
+          "value": "mt-1 text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 159,
+          "value": "mt-1 text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 162,
+          "value": "mt-1 text-xs text-error"
+        },
+        {
+          "tag": "p",
+          "line": 165,
+          "value": "mt-1 text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 208,
+          "value": "self-end text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 217,
+          "value": "grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 246,
+          "value": "min-w-0 space-y-3"
+        },
+        {
+          "tag": "div",
+          "line": 247,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 248,
+          "value": "text-sm font-semibold text-highlighted"
+        },
+        {
+          "tag": "article",
+          "line": 262,
+          "value": "min-w-0 space-y-3 rounded-lg border border-muted p-3"
+        },
+        {
+          "tag": "div",
+          "line": 263,
+          "value": "flex min-w-0 items-start justify-between gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 264,
+          "value": "text-sm font-medium text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 279,
+          "value": "grid min-w-0 gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 366,
+          "value": "self-end text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 379,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "8bbb0d2433bc2bf7360e6035126fac539cbc763081ff150e33daac5a32cc6343"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpCompanyAdministration.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UButton": 16,
+        "UAlert": 4,
+        "UBadge": 2
+      },
+      "sizes": {
+        "UButton:sm": 2
+      },
+      "classes": [
+        {
+          "tag": "header",
+          "line": 386,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 388,
+          "value": "text-xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 391,
+          "value": "text-muted mt-1 text-sm"
+        },
+        {
+          "tag": "form",
+          "line": 424,
+          "value": "space-y-4 rounded-xl border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 425,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "label",
+          "line": 441,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "input",
+          "line": 443,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "span",
+          "line": 450,
+          "value": "text-error"
+        },
+        {
+          "tag": "label",
+          "line": 452,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "input",
+          "line": 454,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "span",
+          "line": 461,
+          "value": "text-error"
+        },
+        {
+          "tag": "label",
+          "line": 463,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "select",
+          "line": 465,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "label",
+          "line": 474,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "input",
+          "line": 476,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "p",
+          "line": 494,
+          "value": "text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 497,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 500,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 504,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 508,
+          "value": "block space-y-1 text-sm"
+        },
+        {
+          "tag": "select",
+          "line": 510,
+          "value": "w-full rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "legend",
+          "line": 518,
+          "value": "text-sm font-medium"
+        },
+        {
+          "tag": "label",
+          "line": 521,
+          "value": "flex items-center gap-2 text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 525,
+          "value": "flex items-center gap-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 529,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 532,
+          "value": "grid gap-2 sm:grid-cols-2"
+        },
+        {
+          "tag": "label",
+          "line": 533,
+          "value": "flex items-start gap-2 text-sm"
+        },
+        {
+          "tag": "span",
+          "line": 535,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 538,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "legend",
+          "line": 544,
+          "value": "text-sm font-medium"
+        },
+        {
+          "tag": "label",
+          "line": 547,
+          "value": "flex items-center gap-2 text-sm"
+        },
+        {
+          "tag": "label",
+          "line": 548,
+          "value": "flex items-center gap-2 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 549,
+          "value": "grid gap-2 sm:grid-cols-2"
+        },
+        {
+          "tag": "div",
+          "line": 550,
+          "value": "col-span-full flex flex-wrap gap-2"
+        },
+        {
+          "tag": "input",
+          "line": 552,
+          "value": "min-w-0 flex-1 rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "label",
+          "line": 568,
+          "value": "flex items-center gap-2 text-sm"
+        },
+        {
+          "tag": "span",
+          "line": 570,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 572,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 575,
+          "value": "col-span-full text-muted text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 579,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 585,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 601,
+          "value": "rounded-xl border border-warning/50 bg-warning/5 p-4"
+        },
+        {
+          "tag": "p",
+          "line": 610,
+          "value": "text-muted mt-1 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 613,
+          "value": "mt-3 flex gap-2"
+        },
+        {
+          "tag": "form",
+          "line": 633,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "input",
+          "line": 635,
+          "value": "min-w-0 flex-1 rounded-lg border border-default bg-default px-3 py-2"
+        },
+        {
+          "tag": "div",
+          "line": 652,
+          "value": "text-muted py-8 text-center"
+        },
+        {
+          "tag": "div",
+          "line": 655,
+          "value": "rounded-xl border border-dashed border-default p-6 text-center"
+        },
+        {
+          "tag": "p",
+          "line": 659,
+          "value": "text-muted mt-1 text-sm"
+        },
+        {
+          "tag": "article",
+          "line": 663,
+          "value": "flex flex-wrap items-start justify-between gap-4 rounded-xl border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 664,
+          "value": "min-w-0 space-y-1"
+        },
+        {
+          "tag": "p",
+          "line": 669,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 679,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 682,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 685,
+          "value": "flex flex-wrap gap-1 pt-1"
+        },
+        {
+          "tag": "div",
+          "line": 697,
+          "value": "flex shrink-0 gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 717,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 721,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 731,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 742,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 751,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3e41a080c4c8dad5a833833d4c3d02826b4d6738d10f9295ef6905fe61f4bd59"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFinanceWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 23,
+        "UNavigationMenu": 1,
+        "UFormField": 11,
+        "USelect": 6,
+        "UInput": 4,
+        "UAlert": 6,
+        "UTable": 1,
+        "UPagination": 3,
+        "UModal": 5,
+        "UTextarea": 1,
+        "ErpFinancialAccountForm": 1,
+        "ErpObligationForm": 1,
+        "ErpPaymentForm": 1
+      },
+      "sizes": {
+        "UButton:xs": 9,
+        "UButton:sm": 2
+      },
+      "classes": [
+        {
+          "tag": "div",
+          "line": 336,
+          "value": "flex flex-wrap items-end justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 338,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 340,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 352,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 364,
+          "value": "flex flex-wrap items-end gap-3"
+        },
+        {
+          "tag": "div",
+          "line": 393,
+          "value": "flex flex-wrap gap-2 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 403,
+          "value": "flex flex-wrap gap-2 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 413,
+          "value": "flex flex-wrap gap-2 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 469,
+          "value": "flex flex-wrap gap-x-6 gap-y-2 border-y border-muted py-3 text-sm tabular-nums"
+        },
+        {
+          "tag": "strong",
+          "line": 471,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 473,
+          "value": "w-full text-xs text-muted"
+        },
+        {
+          "tag": "UTable",
+          "line": 479,
+          "value": "min-w-[48rem]"
+        },
+        {
+          "tag": "button",
+          "line": 487,
+          "value": "font-medium text-primary underline-offset-4 hover:underline"
+        },
+        {
+          "tag": "button",
+          "line": 489,
+          "value": "block text-left text-xs text-primary underline-offset-4 hover:underline"
+        },
+        {
+          "tag": "span",
+          "line": 491,
+          "value": "block text-xs text-muted"
+        },
+        {
+          "tag": "button",
+          "line": 491,
+          "value": "text-primary underline-offset-4 hover:underline"
+        },
+        {
+          "tag": "div",
+          "line": 523,
+          "value": "flex flex-wrap gap-1"
+        },
+        {
+          "tag": "div",
+          "line": 559,
+          "value": "p-8 text-center text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 576,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 578,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 580,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 590,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 602,
+          "value": "flex flex-wrap items-center justify-between gap-2 border-b border-muted py-2 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 625,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 627,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 629,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 639,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 642,
+          "value": "text-sm"
+        },
+        {
+          "tag": "button",
+          "line": 643,
+          "value": "text-primary underline-offset-4 hover:underline"
+        },
+        {
+          "tag": "p",
+          "line": 647,
+          "value": "text-sm"
+        },
+        {
+          "tag": "button",
+          "line": 648,
+          "value": "text-primary underline-offset-4 hover:underline"
+        },
+        {
+          "tag": "div",
+          "line": 660,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 662,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 665,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 676,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "details",
+          "line": 681,
+          "value": "border-t border-muted pt-3 text-sm"
+        },
+        {
+          "tag": "pre",
+          "line": 685,
+          "value": "mt-2 overflow-x-auto rounded bg-elevated p-3 text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 696,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "dl",
+          "line": 789,
+          "value": "grid gap-2 text-sm sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 790,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 792,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 794,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 796,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 798,
+          "value": "text-muted"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 688,
+          "attributes": "<UModal\n        v-model:open=\"dialogOpenModel\"\n        :title=\"action === 'allocate' ? 'Alocar pagamento' : action === 'reverse-allocation' ? 'Desfazer alocação' : 'Estornar pagamento'\"\n        :description=\"action === 'reverse-payment' ? 'A ação cria uma compensação vinculada e preserva o pagamento original.' : 'A correção será registrada com uma operação identificável.'\"\n        :ui=\"{ footer: 'justify-end' }\"\n      >"
+        },
+        {
+          "tag": "UModal",
+          "line": 782,
+          "attributes": "<UModal\n        v-model:open=\"receiptOpen\"\n        title=\"Recibo privado\"\n        description=\"Documento JSON protegido pela sessão da empresa.\"\n        :ui=\"{ footer: 'justify-end' }\"\n      >"
+        },
+        {
+          "tag": "UModal",
+          "line": 813,
+          "attributes": "<UModal\n        :open=\"createEditor === 'accounts'\"\n        :title=\"createTitles.accounts\"\n        description=\"A conta pertence à empresa ERP selecionada.\"\n        :unmount-on-hide=\"false\"\n        :ui=\"{ footer: 'justify-end' }\"\n        @update:open=\"open =>"
+        },
+        {
+          "tag": "UModal",
+          "line": 844,
+          "attributes": "<UModal\n        :open=\"createEditor === 'obligations'\"\n        :title=\"createTitles.obligations\"\n        description=\"Lançamento manual sem cobrança automática ou movimento bancário.\"\n        :unmount-on-hide=\"false\"\n        :ui=\"{ footer: 'justify-end' }\"\n        @update:open=\"open =>"
+        },
+        {
+          "tag": "UModal",
+          "line": 876,
+          "attributes": "<UModal\n        :open=\"createEditor === 'payments'\"\n        :title=\"createTitles.payments\"\n        description=\"Este registro não envia cobrança nem inicia transação bancária.\"\n        :unmount-on-hide=\"false\"\n        :ui=\"{ footer: 'justify-end' }\"\n        @update:open=\"open =>"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "a26db01dc8eee6a03565d204baf7c0fb79897d328898f85e69a677e6cbc1cc66"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFinancialAccountForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 4,
+        "UInput": 2,
+        "USelect": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "UForm",
+          "line": 29,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "ac92ebdd2e8460546811c1003d8154d1c115c7907decb96939ff46e682b6b5b0"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalCertificateForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UFormField": 4,
+        "UInput": 2,
+        "USelect": 1,
+        "UFileUpload": 1,
+        "UAlert": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 53,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 107,
+          "value": "text-muted mt-1 text-xs"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "95d3be9a160a4ab3b6fa5c504cc12f6905f9b95f43a0fb84bfbd516fb442fee7"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalConfigurationForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UAlert": 4,
+        "UFormField": 12,
+        "USelect": 6,
+        "UInput": 8,
+        "UBadge": 1,
+        "UCheckbox": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 174,
+          "value": "rounded-lg border border-default bg-elevated p-4 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 176,
+          "value": "mt-1 text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 187,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 214,
+          "value": "grid gap-4 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 215,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 228,
+          "value": "grid gap-4 xl:grid-cols-2"
+        },
+        {
+          "tag": "section",
+          "line": 229,
+          "value": "space-y-3 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 230,
+          "value": "flex items-start justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 234,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 237,
+          "value": "flex items-center gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 248,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 273,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 276,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 303,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 306,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 333,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 336,
+          "value": "text-xs text-warning"
+        },
+        {
+          "tag": "section",
+          "line": 341,
+          "value": "space-y-3 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 345,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 348,
+          "value": "grid gap-4 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "589e9ebc8493b828aa3a1a02359788db43478ffa9b8403432e7c2426555c80c4"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalDocumentDetail.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UBadge": 2,
+        "UButton": 8,
+        "UAlert": 3
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "header",
+          "line": 42,
+          "value": "flex flex-wrap items-start justify-between gap-4"
+        },
+        {
+          "tag": "p",
+          "line": 44,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "h2",
+          "line": 46,
+          "value": "mt-1 text-xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 48,
+          "value": "mt-1 break-all font-mono text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 56,
+          "value": "rounded-lg border border-warning bg-warning/5 p-4 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 59,
+          "value": "mt-1 text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 63,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 138,
+          "value": "rounded-lg border border-default p-4 text-sm text-muted"
+        },
+        {
+          "tag": "span",
+          "line": 145,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "li",
+          "line": 148,
+          "value": "rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 149,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 154,
+          "value": "mt-1 text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 161,
+          "value": "mt-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 164,
+          "value": "mt-2 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 169,
+          "value": "rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 181,
+          "value": "rounded-lg border border-dashed border-default p-8 text-center text-sm text-muted"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "9eacdfc63c838f0c2d0221ed4b6392e5127fbf8aedc26c4dc476ace8efff656b"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalDocumentForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UAlert": 4,
+        "UFormField": 29,
+        "USelect": 17,
+        "UInput": 20,
+        "UTextarea": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 238,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 258,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 294,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "fieldset",
+          "line": 311,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 312,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "fieldset",
+          "line": 331,
+          "value": "grid gap-3 rounded-lg border border-warning p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 332,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 335,
+          "value": "text-muted text-sm sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 355,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 356,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "fieldset",
+          "line": 372,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 373,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 376,
+          "value": "col-span-full grid gap-3 rounded-md bg-elevated p-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 377,
+          "value": "text-sm font-medium sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 408,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 409,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "fieldset",
+          "line": 422,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 423,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "fieldset",
+          "line": 454,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 455,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 495,
+          "value": "text-muted text-sm sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 534,
+          "value": "grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 535,
+          "value": "px-1 text-sm font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 538,
+          "value": "text-muted text-sm sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "c3cf8bfb1a9aa92b06757349df3ccc69ed54cb10397fbaaa92067f1738838bd3"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalEventForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UFormField": 8,
+        "USelect": 2,
+        "UTextarea": 3,
+        "UCheckbox": 2,
+        "UInput": 3,
+        "UAlert": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 69,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 111,
+          "value": "grid gap-3 sm:grid-cols-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "7389e326cbe06ef30a00c4c608035d23e1b107e11b1394a449bd730ef80344a5"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalInvalidationForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UFormField": 6,
+        "USelect": 1,
+        "UInput": 4,
+        "UTextarea": 1,
+        "UAlert": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 39,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 42,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "div",
+          "line": 58,
+          "value": "grid grid-cols-2 gap-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3380b3d9847f22c6e0e534e383459f833913c67aa6ecf4f051c991d803fbf99e"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpFiscalWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 17,
+        "USelect": 2,
+        "UBadge": 4,
+        "UAlert": 9,
+        "UCard": 6,
+        "ErpFiscalDocumentForm": 1,
+        "ErpFiscalDocumentDetail": 1,
+        "ErpFiscalEventForm": 1,
+        "ErpFiscalConfigurationForm": 1,
+        "ErpFiscalCertificateForm": 1,
+        "ErpFiscalInvalidationForm": 1,
+        "UModal": 4
+      },
+      "sizes": {
+        "UButton:sm": 7
+      },
+      "classes": [
+        {
+          "tag": "div",
+          "line": 234,
+          "value": "flex w-full flex-col gap-3 px-1 py-2 sm:flex-row sm:items-center sm:justify-between"
+        },
+        {
+          "tag": "USelect",
+          "line": 235,
+          "value": "w-full sm:max-w-md"
+        },
+        {
+          "tag": "nav",
+          "line": 299,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 330,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 333,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 338,
+          "value": "grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]"
+        },
+        {
+          "tag": "h2",
+          "line": 341,
+          "value": "text-lg font-semibold"
+        },
+        {
+          "tag": "span",
+          "line": 343,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "button",
+          "line": 346,
+          "value": "w-full rounded-lg border p-3 text-left transition hover:bg-elevated"
+        },
+        {
+          "tag": "span",
+          "line": 354,
+          "value": "flex items-center justify-between gap-2"
+        },
+        {
+          "tag": "span",
+          "line": 355,
+          "value": "mt-1 block text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 357,
+          "value": "rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 363,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 367,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 398,
+          "value": "rounded-xl border border-default p-4 sm:p-5"
+        },
+        {
+          "tag": "div",
+          "line": 485,
+          "value": "grid gap-5 xl:grid-cols-2"
+        },
+        {
+          "tag": "h2",
+          "line": 504,
+          "value": "text-lg font-semibold"
+        },
+        {
+          "tag": "article",
+          "line": 506,
+          "value": "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 510,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 512,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 523,
+          "value": "rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 531,
+          "value": "grid gap-4 md:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 539,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 541,
+          "value": "mt-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 550,
+          "value": "mt-1 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 557,
+          "value": "rounded-lg border border-dashed border-default p-6 text-center text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 560,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 580,
+          "value": "grid gap-4 md:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 588,
+          "value": "text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 590,
+          "value": "mt-1 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 592,
+          "value": "mt-2 text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 611,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 623,
+          "value": "flex justify-end gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 635,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 640,
+          "value": "flex justify-end gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 657,
+          "value": "flex justify-end gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 670,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 675,
+          "value": "flex justify-end gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 609,
+          "attributes": "<UModal v-model:open=\"actionConfirmationOpen\" title=\"Confirmar operação fiscal\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 633,
+          "attributes": "<UModal v-model:open=\"eventConfirmationOpen\" title=\"Confirmar envio do evento\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 650,
+          "attributes": "<UModal v-model:open=\"recoveredEventConfirmationOpen\" title=\"Continuar evento recuperado\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 668,
+          "attributes": "<UModal v-model:open=\"invalidationConfirmationOpen\" title=\"Confirmar inutilização de faixa\">"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "92dbce4041ce139b7a351d1b1200d4afaa7159270e4066d6c60f32df6ebc0c98"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpModuleHub.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UNavigationMenu": 1,
+        "UBadge": 1,
+        "UAlert": 2,
+        "UButton": 2,
+        "UFormField": 2,
+        "UInput": 2,
+        "UPageGrid": 1,
+        "ErpReportMetrics": 1,
+        "UEmpty": 1,
+        "UCard": 1,
+        "UTable": 1,
+        "UPagination": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 159,
+          "value": "flex flex-col gap-4"
+        },
+        {
+          "tag": "section",
+          "line": 170,
+          "value": "rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 171,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "form",
+          "line": 183,
+          "value": "flex flex-wrap items-end gap-3"
+        },
+        {
+          "tag": "UPageGrid",
+          "line": 210,
+          "value": "gap-3 lg:grid-cols-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": false,
+      "source_sha256": "fad18b61b8dd0698820155caf6a40f2a1b91659ccd7571210bc6ffc16e7f31f9"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpObligationForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 7,
+        "USelect": 3,
+        "UInput": 4,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 37,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 46,
+          "value": "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "c52568f9c22b619089feded6209655be45b1ee66bf8ef365120cad017694bc63"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPaymentForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 7,
+        "USelect": 5,
+        "UInput": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 38,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 47,
+          "value": "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "0a2c01f74511b9ce09a4a05ab9df6a08d6684e6edfb1e0fa19ca5c179bd9dc01"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 4,
+        "UFormField": 11,
+        "UInputMenu": 4,
+        "UInput": 7,
+        "UButton": 4
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "section",
+          "line": 174,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "div",
+          "line": 219,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 221,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 224,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 245,
+          "value": "flex items-center justify-between gap-3"
+        },
+        {
+          "tag": "h4",
+          "line": 246,
+          "value": "text-sm font-medium text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 259,
+          "value": "grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        },
+        {
+          "tag": "div",
+          "line": 340,
+          "value": "flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted tabular-nums"
+        },
+        {
+          "tag": "p",
+          "line": 347,
+          "value": "text-right text-sm text-muted"
+        },
+        {
+          "tag": "strong",
+          "line": 348,
+          "value": "text-lg text-highlighted tabular-nums"
+        },
+        {
+          "tag": "div",
+          "line": 353,
+          "value": "flex flex-wrap justify-end gap-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "dbea0ecfaa5d2c25a23a198465aaed4e0635d084ed9cdc4dd040a70b340735a1"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseOperationRecovery.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UButton": 3
+      },
+      "sizes": {
+        "UButton:xs": 3
+      },
+      "classes": [
+        {
+          "tag": "section",
+          "line": 14,
+          "value": "space-y-2 rounded-md border p-3"
+        },
+        {
+          "tag": "p",
+          "line": 21,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 24,
+          "value": "flex flex-wrap gap-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "4988ca77223cf5adaf900c64f7702ccba9c4e6e89b59cb0b83a25c37470c8f86"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseReturnForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 6,
+        "UButton": 4,
+        "UFormField": 2,
+        "UInput": 1,
+        "UTextarea": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 68,
+          "value": "grid gap-3 rounded-md bg-elevated/50 p-3 text-sm sm:grid-cols-3"
+        },
+        {
+          "tag": "p",
+          "line": 70,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 77,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 84,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 90,
+          "value": "text-xs text-muted sm:col-span-3"
+        },
+        {
+          "tag": "dl",
+          "line": 99,
+          "value": "grid gap-3 text-sm sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 101,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 106,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 113,
+          "value": "flex justify-end gap-2"
+        },
+        {
+          "tag": "article",
+          "line": 137,
+          "value": "grid gap-3 rounded-md border border-default p-3 sm:grid-cols-[minmax(0,1fr)_12rem]"
+        },
+        {
+          "tag": "div",
+          "line": 143,
+          "value": "space-y-1 text-sm"
+        },
+        {
+          "tag": "h4",
+          "line": 144,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 147,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 150,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 153,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 180,
+          "value": "flex justify-end gap-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "7e418ce879d0a1bdfe8e4f63cd5f0924391a343336c6bb69ce513f3937ba1428"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 23,
+        "UNavigationMenu": 1,
+        "UInput": 1,
+        "USelect": 2,
+        "UAlert": 10,
+        "UTable": 2,
+        "UBadge": 2,
+        "ErpPurchaseXmlPreview": 1,
+        "UModal": 5,
+        "ErpPurchaseForm": 2,
+        "ErpPurchaseOperationRecovery": 5,
+        "ErpPurchaseReturnForm": 1
+      },
+      "sizes": {
+        "UButton:xs": 8,
+        "UButton:sm": 4
+      },
+      "classes": [
+        {
+          "tag": "UNavigationMenu",
+          "line": 482,
+          "value": "min-w-0 flex-1 overflow-x-auto"
+        },
+        {
+          "tag": "div",
+          "line": 488,
+          "value": "flex w-full flex-wrap items-center gap-2 pt-2"
+        },
+        {
+          "tag": "UInput",
+          "line": 489,
+          "value": "min-w-48 flex-1"
+        },
+        {
+          "tag": "div",
+          "line": 511,
+          "value": "flex w-full flex-wrap items-center gap-2 pt-2"
+        },
+        {
+          "tag": "div",
+          "line": 548,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 594,
+          "value": "flex justify-end gap-1"
+        },
+        {
+          "tag": "div",
+          "line": 617,
+          "value": "flex items-center justify-between gap-3 text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 619,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 639,
+          "value": "space-y-3 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "h2",
+          "line": 640,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 695,
+          "value": "flex items-center justify-between gap-3 text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 697,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 783,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 785,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 787,
+          "value": "mt-1 text-lg font-semibold tabular-nums"
+        },
+        {
+          "tag": "div",
+          "line": 791,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 834,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 837,
+          "value": "grid gap-2 rounded-md border border-default p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto]"
+        },
+        {
+          "tag": "p",
+          "line": 841,
+          "value": "text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 850,
+          "value": "space-y-3 rounded-lg bg-elevated/50 p-4"
+        },
+        {
+          "tag": "h3",
+          "line": 851,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 854,
+          "value": "grid gap-3 text-sm sm:grid-cols-3"
+        },
+        {
+          "tag": "NuxtLink",
+          "line": 862,
+          "value": "text-primary underline"
+        },
+        {
+          "tag": "p",
+          "line": 865,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "ul",
+          "line": 868,
+          "value": "space-y-2 text-sm"
+        },
+        {
+          "tag": "li",
+          "line": 869,
+          "value": "flex flex-wrap justify-between gap-2 border-t border-default pt-2"
+        },
+        {
+          "tag": "h3",
+          "line": 875,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 878,
+          "value": "flex flex-wrap justify-between gap-2 text-sm"
+        },
+        {
+          "tag": "h3",
+          "line": 883,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 886,
+          "value": "flex flex-wrap items-center justify-between gap-2 border-t border-default pt-2 text-sm"
+        },
+        {
+          "tag": "section",
+          "line": 928,
+          "value": "space-y-4 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 939,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 948,
+          "value": "flex justify-between gap-3 border-t border-default pt-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 978,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 981,
+          "value": "flex justify-end gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 718,
+          "attributes": "<UModal v-model:open=\"createOpen\" title=\"Nova compra\" :ui=\"{ content: 'sm:max-w-5xl' }\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 744,
+          "attributes": "<UModal v-model:open=\"editOpen\" title=\"Editar rascunho\" :ui=\"{ content: 'sm:max-w-5xl' }\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 772,
+          "attributes": "<UModal\n      v-model:open=\"detailOpen\"\n      :title=\"`Compra #${purchase.selected.value?.id ?? ''}`\"\n      :content=\"{ onCloseAutoFocus: detailCloseAutoFocus }\"\n      :ui=\"{ content: 'sm:max-w-5xl' }\"\n      @after:leave=\"completeEditHandoff\"\n      @update:open=\"value =>"
+        },
+        {
+          "tag": "UModal",
+          "line": 901,
+          "attributes": "<UModal v-model:open=\"returnOpen\" title=\"Devolução de fornecedor\" :ui=\"{ content: 'sm:max-w-4xl' }\">"
+        },
+        {
+          "tag": "UModal",
+          "line": 962,
+          "attributes": "<UModal v-model:open=\"postOpen\" title=\"Lançar recebimento\" :ui=\"{ content: 'sm:max-w-xl' }\">"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "9688425d32044c6ef0bbf3e67bec8fb6acfa802944d66f8439b22d749967a3a0"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpPurchaseXmlPreview.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UFormField": 6,
+        "UInputMenu": 4,
+        "UAlert": 5,
+        "UButton": 3,
+        "UInput": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 92,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "input",
+          "line": 105,
+          "value": "block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-elevated file:px-3 file:py-2"
+        },
+        {
+          "tag": "div",
+          "line": 124,
+          "value": "space-y-4 rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "div",
+          "line": 125,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h3",
+          "line": 127,
+          "value": "font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 130,
+          "value": "mt-1 break-all text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 133,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 137,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "dl",
+          "line": 166,
+          "value": "grid gap-3 text-sm sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 168,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 170,
+          "value": "text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 175,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 177,
+          "value": "text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 182,
+          "value": "text-muted"
+        },
+        {
+          "tag": "UInputMenu",
+          "line": 190,
+          "value": "w-full sm:max-w-xl"
+        },
+        {
+          "tag": "h4",
+          "line": 201,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "article",
+          "line": 204,
+          "value": "space-y-3 rounded-md bg-elevated/50 p-3"
+        },
+        {
+          "tag": "div",
+          "line": 210,
+          "value": "flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm"
+        },
+        {
+          "tag": "span",
+          "line": 212,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 215,
+          "value": "grid gap-3 sm:grid-cols-3"
+        },
+        {
+          "tag": "p",
+          "line": 262,
+          "value": "text-xs text-muted"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "96a26dcadaa0b59b395ccc48264e16acda481f12df3f8e1b905eaedb43689446"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportExportPanel.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UButton": 5,
+        "UAlert": 2,
+        "UFormField": 1,
+        "UInput": 1
+      },
+      "sizes": {
+        "UButton:sm": 1
+      },
+      "classes": [
+        {
+          "tag": "h2",
+          "line": 267,
+          "value": "text-highlighted font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 270,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 281,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 298,
+          "value": "text-muted space-y-1 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 310,
+          "value": "space-y-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 312,
+          "value": "text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 315,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dl",
+          "line": 318,
+          "value": "flex flex-wrap gap-x-5 gap-y-2"
+        },
+        {
+          "tag": "dt",
+          "line": 320,
+          "value": "inline text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 336,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 340,
+          "value": "space-y-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 341,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 344,
+          "value": "flex flex-wrap items-center gap-2"
+        },
+        {
+          "tag": "form",
+          "line": 355,
+          "value": "flex flex-wrap items-end gap-3"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "ae5203d34c478390d2026842ef611c1bd82be358eb64802256d66d5dc032eb6c"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportMetrics.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UCard": 1,
+        "UTable": 1,
+        "UButton": 1
+      },
+      "sizes": {
+        "UButton:sm": 1
+      },
+      "classes": [
+        {
+          "tag": "p",
+          "line": 79,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "dl",
+          "line": 86,
+          "value": "grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        },
+        {
+          "tag": "dt",
+          "line": 88,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "dd",
+          "line": 91,
+          "value": "text-highlighted mt-1 text-xl font-semibold tabular-nums"
+        },
+        {
+          "tag": "section",
+          "line": 97,
+          "value": "min-w-0 space-y-3 border-t border-muted pt-4"
+        },
+        {
+          "tag": "h3",
+          "line": 103,
+          "value": "text-highlighted font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 106,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "dl",
+          "line": 130,
+          "value": "grid gap-3 text-sm sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 132,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 135,
+          "value": "text-highlighted break-words font-medium tabular-nums"
+        },
+        {
+          "tag": "p",
+          "line": 140,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "UTable",
+          "line": 145,
+          "value": "max-w-full"
+        },
+        {
+          "tag": "div",
+          "line": 152,
+          "value": "space-y-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 153,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 156,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 168,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "9c40104877ad396f6568da942546fda736a8cb814c146936e11041a22b297ba8"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpReportsWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UNavigationMenu": 1,
+        "UAlert": 1,
+        "UFormField": 6,
+        "UInput": 3,
+        "USelect": 3,
+        "UButton": 1,
+        "UEmpty": 1,
+        "ErpReportMetrics": 1,
+        "ErpReportExportPanel": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 126,
+          "value": "flex flex-col gap-4"
+        },
+        {
+          "tag": "form",
+          "line": 129,
+          "value": "flex flex-wrap items-end gap-3"
+        },
+        {
+          "tag": "p",
+          "line": 163,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 166,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "dl",
+          "line": 170,
+          "value": "text-muted flex flex-wrap gap-x-5 gap-y-2 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 207,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 216,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "c0c1c59759da28b770844b4534c8f15557513db703cddca1e4a54905c778932b"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSaleDetail.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UBadge": 3,
+        "UAlert": 4,
+        "UButton": 6
+      },
+      "sizes": {
+        "UButton:xs": 1
+      },
+      "classes": [
+        {
+          "tag": "section",
+          "line": 57,
+          "value": "min-w-0 space-y-5"
+        },
+        {
+          "tag": "div",
+          "line": 58,
+          "value": "flex min-w-0 flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "div",
+          "line": 59,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 60,
+          "value": "text-xs uppercase tracking-wide text-muted"
+        },
+        {
+          "tag": "h2",
+          "line": 63,
+          "value": "break-words text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 67,
+          "value": "flex flex-wrap items-center gap-2"
+        },
+        {
+          "tag": "dl",
+          "line": 93,
+          "value": "grid min-w-0 gap-3 rounded-lg border border-muted p-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 95,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 97,
+          "value": "break-all text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 102,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 104,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 109,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 111,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 116,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 118,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 123,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 125,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 130,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 132,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dl",
+          "line": 137,
+          "value": "grid min-w-0 gap-3 rounded-lg border border-muted p-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "dt",
+          "line": 139,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 141,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 146,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 148,
+          "value": "font-medium text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 153,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 155,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "dt",
+          "line": 160,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dd",
+          "line": 162,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "section",
+          "line": 168,
+          "value": "min-w-0 space-y-2"
+        },
+        {
+          "tag": "h3",
+          "line": 169,
+          "value": "text-sm font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 172,
+          "value": "grid min-w-0 gap-2 rounded-lg border border-muted p-3 sm:grid-cols-[minmax(0,1fr)_7rem_10rem]"
+        },
+        {
+          "tag": "div",
+          "line": 173,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 174,
+          "value": "break-words text-sm font-medium text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 176,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 180,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 183,
+          "value": "text-sm font-medium text-highlighted"
+        },
+        {
+          "tag": "span",
+          "line": 184,
+          "value": "block text-xs font-normal text-muted"
+        },
+        {
+          "tag": "span",
+          "line": 184,
+          "value": "block text-xs font-normal text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 189,
+          "value": "min-w-0 space-y-3 rounded-lg border border-muted p-3"
+        },
+        {
+          "tag": "div",
+          "line": 190,
+          "value": "flex flex-wrap items-start justify-between gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 192,
+          "value": "text-sm font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 194,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "NuxtLink",
+          "line": 198,
+          "value": "text-sm text-primary underline"
+        },
+        {
+          "tag": "dl",
+          "line": 200,
+          "value": "grid gap-2 text-sm sm:grid-cols-3"
+        },
+        {
+          "tag": "dt",
+          "line": 202,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 207,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 212,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 217,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 222,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 227,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "h4",
+          "line": 233,
+          "value": "text-xs font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 236,
+          "value": "flex flex-wrap items-center justify-between gap-2 rounded-md bg-elevated px-3 py-2 text-sm"
+        },
+        {
+          "tag": "NuxtLink",
+          "line": 238,
+          "value": "text-primary underline"
+        },
+        {
+          "tag": "h4",
+          "line": 248,
+          "value": "text-xs font-semibold text-highlighted"
+        },
+        {
+          "tag": "div",
+          "line": 251,
+          "value": "flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md bg-elevated px-3 py-2 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 272,
+          "value": "flex flex-wrap gap-3 text-sm"
+        },
+        {
+          "tag": "NuxtLink",
+          "line": 273,
+          "value": "text-primary underline"
+        },
+        {
+          "tag": "NuxtLink",
+          "line": 274,
+          "value": "text-primary underline"
+        },
+        {
+          "tag": "div",
+          "line": 278,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "270795e5f2e40215e47381f10ed81bffbd202503cc6fc2c821b0d966b9a28f17"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSaleReturnForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UAlert": 2,
+        "UFormField": 2,
+        "UTextarea": 1,
+        "UInput": 1,
+        "UButton": 2
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "UForm",
+          "line": 48,
+          "value": "min-w-0 space-y-5"
+        },
+        {
+          "tag": "section",
+          "line": 66,
+          "value": "min-w-0 space-y-3"
+        },
+        {
+          "tag": "article",
+          "line": 67,
+          "value": "grid min-w-0 gap-3 rounded-lg border border-muted p-3 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center"
+        },
+        {
+          "tag": "div",
+          "line": 68,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 69,
+          "value": "truncate text-sm font-medium text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 72,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 89,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "d461bb4ac3c600f9a7a1f6af71003b45e276d4eb02b719453511d74049758bef"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSalesWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 20,
+        "UDropdownMenu": 1,
+        "UFormField": 3,
+        "USelect": 1,
+        "UAlert": 15,
+        "UBadge": 1,
+        "UIcon": 1,
+        "UModal": 1,
+        "ErpCommercialDraftForm": 2,
+        "ErpSaleDetail": 1,
+        "UInput": 2,
+        "UCheckbox": 1,
+        "ErpSaleReturnForm": 1
+      },
+      "sizes": {
+        "UButton:sm": 9
+      },
+      "classes": [
+        {
+          "tag": "CompanyMenu",
+          "line": 560,
+          "value": "hidden max-w-52 lg:block"
+        },
+        {
+          "tag": "div",
+          "line": 565,
+          "value": "flex w-full min-w-0 flex-col gap-3"
+        },
+        {
+          "tag": "nav",
+          "line": 566,
+          "value": "w-full min-w-0 overflow-x-auto"
+        },
+        {
+          "tag": "div",
+          "line": 567,
+          "value": "flex min-w-max gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 581,
+          "value": "flex w-full min-w-0 flex-wrap items-end gap-3"
+        },
+        {
+          "tag": "UFormField",
+          "line": 582,
+          "value": "w-full min-w-0 sm:w-52"
+        },
+        {
+          "tag": "span",
+          "line": 600,
+          "value": "text-xs text-warning"
+        },
+        {
+          "tag": "section",
+          "line": 605,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "div",
+          "line": 606,
+          "value": "flex flex-wrap items-end justify-between gap-2"
+        },
+        {
+          "tag": "h1",
+          "line": 608,
+          "value": "text-lg font-semibold text-highlighted"
+        },
+        {
+          "tag": "p",
+          "line": 610,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 621,
+          "value": "rounded-lg border border-muted p-5 text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 624,
+          "value": "rounded-lg border border-dashed border-muted p-8 text-center text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 627,
+          "value": "min-w-0 divide-y divide-muted overflow-hidden rounded-lg border border-muted"
+        },
+        {
+          "tag": "button",
+          "line": 628,
+          "value": "grid w-full min-w-0 gap-3 p-4 text-left transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary sm:grid-cols-[minmax(0,1fr)_8rem_12rem_auto] sm:items-center"
+        },
+        {
+          "tag": "span",
+          "line": 636,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "span",
+          "line": 636,
+          "value": "block truncate font-medium text-highlighted"
+        },
+        {
+          "tag": "span",
+          "line": 636,
+          "value": "block text-xs text-muted"
+        },
+        {
+          "tag": "span",
+          "line": 640,
+          "value": "text-sm text-highlighted"
+        },
+        {
+          "tag": "UIcon",
+          "line": 641,
+          "value": "size-4 text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 644,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 653,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 684,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 713,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 759,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "div",
+          "line": 784,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 839,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "div",
+          "line": 877,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        },
+        {
+          "tag": "p",
+          "line": 897,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 917,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 921,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        },
+        {
+          "tag": "p",
+          "line": 941,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 944,
+          "value": "flex flex-wrap justify-end gap-2 border-t border-muted pt-4"
+        },
+        {
+          "tag": "div",
+          "line": 974,
+          "value": "p-5 text-sm text-muted"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 751,
+          "attributes": "<UModal\n      v-model:open=\"modalOpen\"\n      :title=\"modalTitle\"\n      :dismissible=\"!sales.mutating.value && !sales.needsReconciliation.value\"\n      :close=\"!sales.mutating.value\"\n      :ui=\"{ content: 'w-full max-w-3xl', body: 'max-h-[80vh] overflow-y-auto' }\"\n    >"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "24253d8993f69c1963d61426c0c2847895d3787404b34b4f079a3a67eb7fb46e"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpSettingsSectionForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UForm": 1,
+        "UPageCard": 2,
+        "UButton": 2,
+        "USeparator": 1,
+        "UFormField": 1,
+        "UCheckbox": 1,
+        "USelect": 1,
+        "UInput": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 117,
+          "value": "mb-4 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 121,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UFormField",
+          "line": 136,
+          "value": "flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+        },
+        {
+          "tag": "USelect",
+          "line": 148,
+          "value": "w-full sm:max-w-xs"
+        },
+        {
+          "tag": "UInput",
+          "line": 158,
+          "value": "w-full sm:max-w-md"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "91b200ff81a0b17ac67c7790626e5eda16fecd8fef99b9388be40a99a626067c"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockAdjustmentForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 4,
+        "USelect": 2,
+        "UInput": 1,
+        "UTextarea": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 36,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 45,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3b960b0f1c9b9d488d39152b9be29fb285903c5aaf86ad0d28200b1ecd1892f4"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockMovementDetail.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UButton": 6,
+        "UAlert": 5,
+        "UForm": 1,
+        "UFormField": 2,
+        "UInput": 1,
+        "UTextarea": 1,
+        "UCheckbox": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "section",
+          "line": 60,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 62,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 69,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 76,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 83,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 88,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 92,
+          "value": "sm:col-span-2 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 101,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "li",
+          "line": 105,
+          "value": "grid gap-1 p-3 text-sm sm:grid-cols-3"
+        },
+        {
+          "tag": "span",
+          "line": 109,
+          "value": "sm:col-span-3 text-muted"
+        },
+        {
+          "tag": "span",
+          "line": 110,
+          "value": "sm:col-span-3 text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 119,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "li",
+          "line": 123,
+          "value": "grid gap-1 p-3 text-sm sm:grid-cols-2"
+        },
+        {
+          "tag": "section",
+          "line": 132,
+          "value": "rounded-lg border border-default p-4"
+        },
+        {
+          "tag": "p",
+          "line": 136,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 139,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 166,
+          "value": "mt-2 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 169,
+          "value": "mt-2 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 172,
+          "value": "mt-2 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 175,
+          "value": "mt-2 text-sm text-muted"
+        },
+        {
+          "tag": "li",
+          "line": 185,
+          "value": "flex flex-wrap justify-between gap-2 p-3 text-sm"
+        },
+        {
+          "tag": "section",
+          "line": 192,
+          "value": "space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4"
+        },
+        {
+          "tag": "div",
+          "line": 198,
+          "value": "flex flex-wrap justify-end gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 219,
+          "value": "rounded-lg border border-default p-4 text-sm text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 222,
+          "value": "space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4"
+        },
+        {
+          "tag": "p",
+          "line": 227,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 237,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "div",
+          "line": 274,
+          "value": "flex flex-wrap justify-end gap-2 sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "08852cde7238b51b2789ef9a3cf36b43111056822c4dbf89f1eff7afa1254885"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockTransferDetail.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 5,
+        "UButton": 3,
+        "UForm": 1,
+        "UFormField": 2,
+        "UInput": 1,
+        "UTextarea": 1,
+        "UCheckbox": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "section",
+          "line": 52,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 54,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 61,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 68,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 75,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 81,
+          "value": "sm:col-span-2 text-sm text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 86,
+          "value": "space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4"
+        },
+        {
+          "tag": "div",
+          "line": 92,
+          "value": "flex flex-wrap justify-end gap-2"
+        },
+        {
+          "tag": "li",
+          "line": 118,
+          "value": "grid gap-1 p-3 text-sm sm:grid-cols-3"
+        },
+        {
+          "tag": "span",
+          "line": 122,
+          "value": "sm:col-span-3 text-muted"
+        },
+        {
+          "tag": "li",
+          "line": 126,
+          "value": "p-3 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 132,
+          "value": "rounded-lg border border-default p-4 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 135,
+          "value": "rounded-lg border border-default p-4 text-sm text-muted"
+        },
+        {
+          "tag": "section",
+          "line": 138,
+          "value": "space-y-3 rounded-lg border border-warning/40 bg-warning/5 p-4"
+        },
+        {
+          "tag": "p",
+          "line": 143,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 153,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "div",
+          "line": 190,
+          "value": "flex flex-wrap justify-end gap-2 sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "76287296a413308d676f8ef4015472151ae728e4fb055e85f169af367e39c4b9"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockTransferForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "UAlert": 1,
+        "UForm": 1,
+        "UFormField": 4,
+        "USelect": 3,
+        "UInput": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 42,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UForm",
+          "line": 51,
+          "value": "grid gap-3 sm:grid-cols-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "869966e281925ff9614f8c3769f14d0a5b821efe60d4cec6f215e0d71d8c3cfa"
+    },
+    {
+      "file": "frontend/app/components/erp/ErpStockWorkspace.vue",
+      "kind": "component",
+      "route": "",
+      "family": "ERP components",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 23,
+        "UNavigationMenu": 1,
+        "USelect": 5,
+        "UInput": 3,
+        "UAlert": 13,
+        "UTable": 1,
+        "UModal": 3,
+        "ErpStockAdjustmentForm": 1,
+        "ErpStockTransferForm": 1,
+        "USkeleton": 2,
+        "ErpStockMovementDetail": 1,
+        "ErpStockTransferDetail": 1
+      },
+      "sizes": {
+        "UButton:xs": 4,
+        "UButton:sm": 2
+      },
+      "classes": [
+        {
+          "tag": "div",
+          "line": 312,
+          "value": "flex w-full min-w-0 flex-col items-stretch gap-2"
+        },
+        {
+          "tag": "UNavigationMenu",
+          "line": 313,
+          "value": "w-full min-w-0 overflow-x-auto"
+        },
+        {
+          "tag": "div",
+          "line": 319,
+          "value": "flex w-full min-w-0 flex-wrap items-center gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 430,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 519,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 525,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 531,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 537,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 543,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 553,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 556,
+          "value": "text-xs text-warning"
+        },
+        {
+          "tag": "p",
+          "line": 564,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 572,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 575,
+          "value": "text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 583,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 591,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 597,
+          "value": "flex justify-end gap-1"
+        },
+        {
+          "tag": "div",
+          "line": 637,
+          "value": "flex items-center justify-between border-t border-default px-4 py-3"
+        },
+        {
+          "tag": "span",
+          "line": 638,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 639,
+          "value": "flex gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 849,
+          "value": "grid gap-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 855,
+          "value": "text-sm text-muted"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 660,
+          "attributes": "<UModal\n      :open=\"adjustmentOpen\"\n      title=\"Novo ajuste de estoque\"\n      :unmount-on-hide=\"false\"\n      :ui=\"{ content: 'sm:max-w-3xl' }\"\n      @update:open=\"updateAdjustmentOpen\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 713,
+          "attributes": "<UModal\n      :open=\"transferOpen\"\n      title=\"Nova transferência de estoque\"\n      :unmount-on-hide=\"false\"\n      :ui=\"{ content: 'sm:max-w-3xl' }\"\n      @update:open=\"updateTransferOpen\"\n    >"
+        },
+        {
+          "tag": "UModal",
+          "line": 767,
+          "attributes": "<UModal\n      v-model:open=\"workspace.detailOpen.value\"\n      :title=\"detailTitle\"\n      :unmount-on-hide=\"false\"\n      scrollable\n      :ui=\"{ content: 'sm:max-w-5xl' }\"\n      @update:open=\"open =>"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "be4f07a2c4668cd6c9a0a7426a79d81ef571db0df9e82be973441fb2f86fd17d"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpBrandCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 1,
+        "UInput": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "legend",
+          "line": 34,
+          "value": "text-highlighted font-medium"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "61f7ac6c14f6a821b0f7e5422600344b54c067689768495db8c5efc7c5c5843f"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCarrierCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 11,
+        "UInput": 11,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 50,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 51,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 87,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 88,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "cead74ebd98039c4e2b45be8ff702210b5ed145c8720295256f91ce2e681866b"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogField.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UFormField": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "e8bfd6c821cdc3b10d1278517213a7e44a358344ffa5c8d981d7a401b08834f7"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogReferenceSelect.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UFormField": 1,
+        "USelectMenu": 1,
+        "UBadge": 2,
+        "UButton": 3,
+        "UAlert": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "span",
+          "line": 174,
+          "value": "text-muted px-2 py-1.5 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 193,
+          "value": "border-default space-y-2 border-t p-2"
+        },
+        {
+          "tag": "p",
+          "line": 194,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 197,
+          "value": "flex items-center justify-between text-xs text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 237,
+          "value": "text-warning mt-2 text-xs"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "1eaacb27f73f0f00da0d24412c2b23e0cf3836103296a134c8621935c184d77b"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCatalogResource.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UDashboardToolbar": 1,
+        "UFormField": 1,
+        "UInput": 1,
+        "UTable": 1,
+        "ErpCatalogPagination": 1,
+        "UButton": 4,
+        "USlideover": 1,
+        "UBadge": 1,
+        "UTabs": 1,
+        "UModal": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "h2",
+          "line": 374,
+          "value": "text-highlighted text-lg font-semibold"
+        },
+        {
+          "tag": "div",
+          "line": 379,
+          "value": "flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end"
+        },
+        {
+          "tag": "UFormField",
+          "line": 380,
+          "value": "min-w-0 w-full flex-1 sm:max-w-md"
+        },
+        {
+          "tag": "p",
+          "line": 388,
+          "value": "text-muted shrink-0 pb-2 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 419,
+          "value": "border-error/30 bg-error/5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
+        },
+        {
+          "tag": "p",
+          "line": 420,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 449,
+          "value": "flex items-center gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 451,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 455,
+          "value": "text-error border-error/30 bg-error/5 rounded-md border p-3 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 458,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "UTabs",
+          "line": 461,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 512,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 515,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 520,
+          "value": "flex w-full justify-end gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "USlideover",
+          "line": 433,
+          "attributes": "<USlideover\n    v-model:open=\"editorOpen\"\n    :title=\"mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}`\"\n    :description=\"mode === 'detail' ? 'Consulta do cadastro.' : 'Preencha os dados e salve para atualizar o cadastro.'\"\n    :dismissible=\"!isSaving\"\n    :unmount-on-hide=\"true\"\n    :content=\"{ onCloseAutoFocus: preventNativeEditorFocusRestore }\"\n    :ui=\"{ content: 'w-full sm:max-w-3xl' }\"\n  >"
+        },
+        {
+          "tag": "UModal",
+          "line": 510,
+          "attributes": "<UModal v-model:open=\"archiveOpen\" title=\"Arquivar cadastro\" :description=\"archiveTarget ? `Arquivar ${labelFor(archiveTarget)}? Os registros e referências históricas serão mantidos.` : 'Confirme o arquivamento do cadastro.'\">"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "f1f5e84e8de48ca8f2edb6b949d0aa902e9563c7bd3dae39eff91613233b006b"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCategoryCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 1,
+        "UInput": 1,
+        "ErpCatalogReferenceSelect": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 36,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 37,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "c6a8f5876b4028c3326d707b42fd34180646f0a17ab73b8f364af4eedf32bf25"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpContactCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 14,
+        "UInput": 13,
+        "UFormField": 2,
+        "UCheckbox": 2,
+        "ErpCatalogReferenceSelect": 1,
+        "UTextarea": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 71,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "legend",
+          "line": 72,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 75,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 121,
+          "value": "min-w-0 space-y-3"
+        },
+        {
+          "tag": "legend",
+          "line": 122,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 125,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 144,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "legend",
+          "line": 145,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 148,
+          "value": "grid gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 202,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "legend",
+          "line": 203,
+          "value": "text-highlighted font-medium"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fc69d893a25ecab8ef6baa162d2795344b0548f0707ff00b8907042b2f2ec3d0"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpContactNotesPanel.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UButton": 15,
+        "UAlert": 1,
+        "UForm": 3,
+        "UFormField": 8,
+        "UInput": 2,
+        "UTextarea": 2,
+        "UCheckbox": 2,
+        "UBadge": 2,
+        "UPagination": 2,
+        "UFileUpload": 1,
+        "UModal": 1
+      },
+      "sizes": {
+        "UButton:xs": 1,
+        "UButton:sm": 5
+      },
+      "classes": [
+        {
+          "tag": "section",
+          "line": 248,
+          "value": "min-w-0 space-y-5 py-2"
+        },
+        {
+          "tag": "header",
+          "line": 249,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "h3",
+          "line": 251,
+          "value": "text-highlighted text-lg font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 254,
+          "value": "text-muted mt-1 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 258,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 289,
+          "value": "text-warning text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 299,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "UForm",
+          "line": 303,
+          "value": "border-default grid gap-4 rounded-lg border p-4"
+        },
+        {
+          "tag": "h4",
+          "line": 309,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "div",
+          "line": 343,
+          "value": "grid min-w-0 gap-5 xl:grid-cols-[minmax(16rem,0.9fr)_minmax(0,1.4fr)]"
+        },
+        {
+          "tag": "section",
+          "line": 344,
+          "value": "min-w-0 space-y-3"
+        },
+        {
+          "tag": "div",
+          "line": 345,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 348,
+          "value": "text-muted border-default rounded-lg border p-4 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 351,
+          "value": "text-muted border-default rounded-lg border p-4 text-sm"
+        },
+        {
+          "tag": "article",
+          "line": 354,
+          "value": "border-default rounded-lg border p-3"
+        },
+        {
+          "tag": "div",
+          "line": 355,
+          "value": "flex items-start justify-between gap-2"
+        },
+        {
+          "tag": "div",
+          "line": 356,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "h4",
+          "line": 357,
+          "value": "text-highlighted truncate font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 360,
+          "value": "text-muted mt-1 line-clamp-3 whitespace-pre-wrap text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 363,
+          "value": "text-muted mt-2 text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 366,
+          "value": "text-warning mt-1 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 377,
+          "value": "mt-3 flex flex-wrap gap-2"
+        },
+        {
+          "tag": "section",
+          "line": 408,
+          "value": "border-default min-w-0 space-y-4 rounded-lg border p-4"
+        },
+        {
+          "tag": "div",
+          "line": 409,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 412,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 416,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 426,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 430,
+          "value": "flex flex-wrap items-start justify-between gap-3"
+        },
+        {
+          "tag": "div",
+          "line": 431,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "h4",
+          "line": 432,
+          "value": "text-highlighted break-words font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 435,
+          "value": "text-muted mt-1 text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 450,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 486,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 499,
+          "value": "border-default bg-elevated/40 rounded-md border p-3"
+        },
+        {
+          "tag": "p",
+          "line": 500,
+          "value": "whitespace-pre-wrap text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 506,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "h5",
+          "line": 508,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 511,
+          "value": "text-muted mt-1 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 518,
+          "value": "text-warning mt-3 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 546,
+          "value": "text-muted mt-3 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 551,
+          "value": "flex flex-wrap items-center justify-between gap-3 py-3"
+        },
+        {
+          "tag": "div",
+          "line": 552,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 553,
+          "value": "text-highlighted break-all text-sm font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 556,
+          "value": "text-muted mt-1 text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 560,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 582,
+          "value": "text-muted mt-4 text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 601,
+          "value": "text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 606,
+          "value": "flex w-full justify-end gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 599,
+          "attributes": "<UModal v-model:open=\"removalOpen\" title=\"Confirmar remoção\" :description=\"removalTarget?.kind === 'attachment' ? 'O arquivo ficará indisponível enquanto a remoção aguarda conclusão.' : 'A anotação ficará disponível no filtro de remoções pendentes enquanto o processo termina.'\">"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "6e9d232a52ecab093ed36d15ddff8593b3ac7412f188a0793a1c5d3ee9f615bb"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpCustomerGroupCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 2,
+        "UInput": 2,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 34,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 35,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "754fc436c465d60691b646a79c3f2bf3bb1384d50a9a480b2ca792e048b9c210"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpDiscountRuleCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 4,
+        "UInput": 3,
+        "USelect": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 36,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 37,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "p",
+          "line": 93,
+          "value": "text-muted text-xs sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "17661588752e05fd523f11ef09605488e1b67ae252eaf3954e7b8a6a8fffe6eb"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpDriverCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 3,
+        "UInput": 3,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 35,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 36,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "8bc1e153fffb49b7b3a9de47ba88f17330733f04bca180a4ea0d550531a52f60"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpOperationNatureCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogReferenceSelect": 1,
+        "ErpCatalogField": 3,
+        "UInput": 2,
+        "USelect": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 37,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 38,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "div",
+          "line": 41,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 95,
+          "value": "text-muted text-xs sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "b49c5fb79db58a4a7aa1d32fd8490a70e311b3b091d3fd2e5fe15c70bd0d72cd"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpPriceGroupCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 2,
+        "UInput": 2,
+        "UFormField": 1,
+        "UCheckbox": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 35,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 36,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "b08dd3eff0f98acb228de90de080b7b21888de083d0e3f1255dffdac47ec7b3d"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpProductCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 28,
+        "UInput": 25,
+        "USelect": 3,
+        "ErpCatalogReferenceSelect": 3,
+        "UFormField": 1,
+        "UCheckbox": 1,
+        "UButton": 6,
+        "UModal": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 197,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 198,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 240,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 241,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "h3",
+          "line": 332,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 335,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "fieldset",
+          "line": 340,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        },
+        {
+          "tag": "legend",
+          "line": 341,
+          "value": "text-highlighted font-medium sm:col-span-2 xl:col-span-3"
+        },
+        {
+          "tag": "fieldset",
+          "line": 379,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        },
+        {
+          "tag": "legend",
+          "line": 380,
+          "value": "text-highlighted font-medium sm:col-span-2 xl:col-span-3"
+        },
+        {
+          "tag": "fieldset",
+          "line": 429,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 430,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 501,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        },
+        {
+          "tag": "legend",
+          "line": 502,
+          "value": "text-highlighted font-medium sm:col-span-2 xl:col-span-3"
+        },
+        {
+          "tag": "div",
+          "line": 531,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 533,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 536,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 549,
+          "value": "border-default grid gap-3 rounded-lg border p-3 sm:grid-cols-2"
+        },
+        {
+          "tag": "p",
+          "line": 550,
+          "value": "text-muted text-xs sm:col-span-2"
+        },
+        {
+          "tag": "p",
+          "line": 632,
+          "value": "text-error text-xs sm:col-span-2"
+        },
+        {
+          "tag": "p",
+          "line": 636,
+          "value": "text-error text-xs"
+        },
+        {
+          "tag": "div",
+          "line": 656,
+          "value": "flex w-full justify-end gap-2"
+        }
+      ],
+      "overlays": [
+        {
+          "tag": "UModal",
+          "line": 650,
+          "attributes": "<UModal\n    v-model:open=\"variantArchiveOpen\"\n    title=\"Arquivar variante\"\n    :description=\"variantArchiveDescription\"\n  >"
+        }
+      ],
+      "referenced_by_application": true,
+      "source_sha256": "240bcad1046475d8267837faedbc04ada1290972318b66040c7dca4f93f98869"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpTaxRateCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogReferenceSelect": 1,
+        "ErpCatalogField": 3,
+        "UInput": 3,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 37,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 38,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "div",
+          "line": 41,
+          "value": "min-w-0"
+        },
+        {
+          "tag": "p",
+          "line": 91,
+          "value": "text-muted text-xs sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "023e936311ef7a48fe89d19cbee9fc48fee62b1b845d7eaaab5ea357e6de44eb"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpUnitCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogField": 3,
+        "UInput": 3,
+        "ErpCatalogReferenceSelect": 1,
+        "UFormField": 1,
+        "UCheckbox": 1,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 46,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 47,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "fieldset",
+          "line": 79,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 80,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fdb8a7490afe3b496c31163b37d9ee1a5971ccd029748afdc10ead5e2d622a24"
+    },
+    {
+      "file": "frontend/app/components/erp/catalogs/ErpVehicleCatalogForm.vue",
+      "kind": "component",
+      "route": "",
+      "family": "catalog components",
+      "tags": {
+        "UForm": 1,
+        "ErpCatalogReferenceSelect": 1,
+        "ErpCatalogField": 9,
+        "UInput": 9,
+        "UButton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "fieldset",
+          "line": 58,
+          "value": "grid min-w-0 gap-4 sm:grid-cols-2"
+        },
+        {
+          "tag": "legend",
+          "line": 59,
+          "value": "text-highlighted font-medium sm:col-span-2"
+        },
+        {
+          "tag": "div",
+          "line": 62,
+          "value": "min-w-0"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "73b68dc9e9895a9b58082051dab9ab61eb4d9dae07a631303f00c8f46442a75a"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastro.vue",
+      "kind": "page",
+      "route": "/erp/cadastro",
+      "family": "public registration",
+      "tags": {
+        "UAlert": 2,
+        "UForm": 1,
+        "UFormField": 6,
+        "UInput": 6,
+        "UButton": 1
+      },
+      "sizes": {
+        "UButton:lg": 1
+      },
+      "classes": [
+        {
+          "tag": "div",
+          "line": 67,
+          "value": "mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-6 p-6"
+        },
+        {
+          "tag": "h1",
+          "line": 69,
+          "value": "text-2xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 72,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fd61e4078b57c649a63bbd2c5b71854a157ad3275acf1d88fa958b6aa7a9e9fd"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/categorias.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/categorias",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "d001eed539b4917e1c3553c1f47b2beeba3962cbe6823a940dbea5f71dda0828"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/contatos.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/contatos",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1,
+        "ErpContactNotesPanel": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "edcca5a5894cc60099c7e5390c0206b178b883a24d5ed27eccdbeb6bda5870fd"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/etiquetas.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/etiquetas",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UAlert": 7,
+        "UButton": 19,
+        "UFormField": 12,
+        "UInput": 7,
+        "UTable": 1,
+        "UCheckbox": 4,
+        "UPagination": 1,
+        "UInputNumber": 3,
+        "USelect": 2,
+        "UCollapsible": 2
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 97,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 101,
+          "value": "grid min-w-0 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+        },
+        {
+          "tag": "section",
+          "line": 102,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "div",
+          "line": 103,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "h2",
+          "line": 104,
+          "value": "text-highlighted text-lg font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 127,
+          "value": "text-warning text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 130,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 149,
+          "value": "min-w-32 space-y-1"
+        },
+        {
+          "tag": "p",
+          "line": 150,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 153,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "span",
+          "line": 159,
+          "value": "text-sm break-all"
+        },
+        {
+          "tag": "div",
+          "line": 176,
+          "value": "flex flex-wrap items-center justify-between gap-2"
+        },
+        {
+          "tag": "h3",
+          "line": 177,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "p",
+          "line": 189,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 193,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "span",
+          "line": 194,
+          "value": "min-w-0 flex-1 text-sm break-words"
+        },
+        {
+          "tag": "p",
+          "line": 220,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 224,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 227,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "section",
+          "line": 233,
+          "value": "min-w-0 space-y-4"
+        },
+        {
+          "tag": "h2",
+          "line": 234,
+          "value": "text-highlighted text-lg font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 259,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 263,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 266,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 290,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 294,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "h2",
+          "line": 301,
+          "value": "text-highlighted text-lg font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 304,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "form",
+          "line": 308,
+          "value": "grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        },
+        {
+          "tag": "p",
+          "line": 356,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "li",
+          "line": 360,
+          "value": "flex flex-wrap items-center justify-between gap-3 py-3"
+        },
+        {
+          "tag": "p",
+          "line": 364,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 368,
+          "value": "flex flex-wrap gap-1"
+        },
+        {
+          "tag": "div",
+          "line": 397,
+          "value": "flex flex-wrap items-center justify-between gap-3"
+        },
+        {
+          "tag": "h3",
+          "line": 398,
+          "value": "text-highlighted font-medium"
+        },
+        {
+          "tag": "fieldset",
+          "line": 410,
+          "value": "grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        },
+        {
+          "tag": "p",
+          "line": 470,
+          "value": "text-muted text-xs"
+        },
+        {
+          "tag": "p",
+          "line": 495,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 499,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "li",
+          "line": 503,
+          "value": "flex flex-wrap items-center justify-between gap-3 py-3"
+        },
+        {
+          "tag": "div",
+          "line": 507,
+          "value": "flex gap-1"
+        },
+        {
+          "tag": "form",
+          "line": 527,
+          "value": "grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "1bda2267705eb0dd6b4f1ccc1af182b21bb43e721be088ec2278d626d0450277"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/fiscal.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/fiscal",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UDropdownMenu": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 2
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "d512aab2c9a98c84ed6e3a610169719b81b4e30dd3b86bc847d2f5b1350b7c9d"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/grupos-clientes.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/grupos-clientes",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "c93377350f8e1a477e753382de0c0ce738cbb27e461be9baeb05fd094aa4e06a"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/importacao.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/importacao",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UAlert": 6,
+        "UButton": 6,
+        "UCard": 2,
+        "UFormField": 2,
+        "USelect": 1,
+        "UFileUpload": 1,
+        "ErpCatalogReferenceSelect": 1,
+        "UTable": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 72,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 86,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 89,
+          "value": "flex flex-wrap gap-2"
+        },
+        {
+          "tag": "p",
+          "line": 138,
+          "value": "text-error text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 141,
+          "value": "text-warning text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "cc28abf7fd8aec0aee4ec1296e4166e7e3be54464496486e5e66fae65bcb4671"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/index.vue",
+      "kind": "page",
+      "route": "/erp/cadastros",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UNavigationMenu": 1,
+        "UAlert": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "55138039ee9fb54b44cebc56ed1e7078a1d0a50c8ee9cbe26935fc221f7fe426"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/logistica.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/logistica",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UDropdownMenu": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 3
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3097858b6fb7e7eb4afe33e10f029cb0a00e35ff9c7d91551afefb5bb1d54f69"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/marcas.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/marcas",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "e7c100ae34365edcb6d7965f7b57845669bbe0ae03a357626db31504a2dff848"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/precos.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/precos",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UDropdownMenu": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 2
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "ad5d8404496e23465262d048172bbe7f2972591f9bd66c97bccb9cea2937a155"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/produtos.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/produtos",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "574bbf24e4e83600618957bda476d3e24ff2254282501938670a663eb5c869f0"
+    },
+    {
+      "file": "frontend/app/pages/erp/cadastros/unidades.vue",
+      "kind": "page",
+      "route": "/erp/cadastros/unidades",
+      "family": "catalogs",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "UButton": 1,
+        "ErpCatalogResource": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "1bbf7f6d153887f880ca1e45d24d5213025f59d3c13c4c9eb61a4f3fb0e126a5"
+    },
+    {
+      "file": "frontend/app/pages/erp/caixa/index.vue",
+      "kind": "page",
+      "route": "/erp/caixa",
+      "family": "operations",
+      "tags": {
+        "ErpCashWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "8b17ff963de6e14977b1df9d272e364ad1ac71ea6d8abc9c3990cca8eb92a776"
+    },
+    {
+      "file": "frontend/app/pages/erp/compras/index.vue",
+      "kind": "page",
+      "route": "/erp/compras",
+      "family": "operations",
+      "tags": {
+        "ErpPurchaseWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "50d46744bbc1e9c554cfa2ff48a82ae158d86f615d8e260c674ed51110ff11b5"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes",
+      "family": "settings",
+      "tags": {
+        "UDashboardPanel": 1,
+        "UDashboardNavbar": 1,
+        "UDashboardSidebarCollapse": 1,
+        "UDashboardSidebarToggle": 1,
+        "UDashboardToolbar": 1,
+        "UNavigationMenu": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 27,
+          "value": "mx-auto w-full max-w-4xl p-4 sm:p-6"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "3670a4da23fafae6612950276d4c1b404fa5c1d6fee04739ef82da9835184ba0"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/compras.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/compras",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "12322f2e8515babe333c730b3341ca9f49fa2b8ea9f4f1999234d323f294c229"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/email.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/email",
+      "family": "settings",
+      "tags": {
+        "UForm": 1,
+        "UPageCard": 2,
+        "UButton": 2,
+        "UFormField": 4,
+        "UInput": 4
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 76,
+          "value": "mb-4 text-sm text-muted"
+        },
+        {
+          "tag": "p",
+          "line": 80,
+          "value": "text-sm text-muted"
+        },
+        {
+          "tag": "UInput",
+          "line": 94,
+          "value": "max-w-md"
+        },
+        {
+          "tag": "UInput",
+          "line": 97,
+          "value": "max-w-md"
+        },
+        {
+          "tag": "UInput",
+          "line": 100,
+          "value": "max-w-md"
+        },
+        {
+          "tag": "UInput",
+          "line": 103,
+          "value": "max-w-md"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "424e969961b56b3fba0c53c900d91035f438b61e42fa53acd053945fc57792cc"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/empresa.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/empresa",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "9eb4994fb79ce2848eb3f42f1d0fabd058a4d7a5a0a60faf1b85480fc803323e"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/escritorio.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/escritorio",
+      "family": "settings",
+      "tags": {
+        "ErpAccountingMappingApproval": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "4fa52778470ec8b95951317b2e1a2e93251676d3ce276c394fc0788923def333"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/estabelecimentos.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/estabelecimentos",
+      "family": "settings",
+      "tags": {
+        "ErpCompanyAdministration": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "e8ca69e3809efadab1adb3d6c429891f7771aa606a37b9f425b287bf65829f68"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/index.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes",
+      "family": "settings",
+      "tags": {},
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "6cd17efa3296a23b05530247151e219e3c2cf7f9dd345faadecfabc99def89c8"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/membros.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/membros",
+      "family": "settings",
+      "tags": {
+        "ErpCompanyAdministration": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "404218c73b6e90846e76f897eaa21b5ec572273f3972648c0621978d283ffec2"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/modulos.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/modulos",
+      "family": "settings",
+      "tags": {},
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 22,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "p",
+          "line": 26,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "ul",
+          "line": 29,
+          "value": "list-inside list-disc text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "b010b8a2b064aa26d825ea5cfcc7a4045752bda21dc5dfbfb85b5f71bdcd53d8"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/pontos.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/pontos",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "ce363566e5346edc33f52ebac57a5055f388dd44dc4d63ba3ee16c2290027e7f"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/prefixos.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/prefixos",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fc3d612fdd05ed307426f63fa3e59c4a1cd3575cd918a2bbcd23fe3973c6b217"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/produto.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/produto",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "d8d69a20284e591e350482f2e911445921b879a46267c977630d6bbeccdecebc"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/rotulos.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/rotulos",
+      "family": "settings",
+      "tags": {},
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 6,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "1762ecdf7b0975396f6400b58fd35a7ef464ae69d2bb8ce4265281b59d72eea5"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/sistema.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/sistema",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fc191316801d3ff93db7fe8bdc30721189efccfc7e84a614b062b135f74fc512"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/sms.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/sms",
+      "family": "settings",
+      "tags": {},
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "p",
+          "line": 6,
+          "value": "text-muted text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "8a43096c0f02ccbc4f42d59862800a6e3f8de53eab5180772265f53d40edbed6"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/taxas.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/taxas",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "f3ef9d40ce4114677be89b4044ece863af6981f2d2a20ab2b5edbb5df19a7f5a"
+    },
+    {
+      "file": "frontend/app/pages/erp/configuracoes/vendas.vue",
+      "kind": "page",
+      "route": "/erp/configuracoes/vendas",
+      "family": "settings",
+      "tags": {
+        "ErpSettingsSectionForm": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "316754cbf38151a84d08f07c5b5a4fdcb73de023295df7a03dbf613a8cab6a12"
+    },
+    {
+      "file": "frontend/app/pages/erp/contabilidade/index.vue",
+      "kind": "page",
+      "route": "/erp/contabilidade",
+      "family": "operations",
+      "tags": {
+        "ErpCatalogPageShell": 1,
+        "ErpAccountingDeliveries": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "06e27dde6a54c976c9ca82e12bd2bdef1cdb541337782a496bae32f66e2587f8"
+    },
+    {
+      "file": "frontend/app/pages/erp/contrato.vue",
+      "kind": "page",
+      "route": "/erp/contrato",
+      "family": "contract",
+      "tags": {
+        "UButton": 2,
+        "UAlert": 1,
+        "UCard": 1,
+        "UBadge": 1,
+        "USkeleton": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 61,
+          "value": "mx-auto max-w-2xl space-y-6 p-6"
+        },
+        {
+          "tag": "div",
+          "line": 62,
+          "value": "flex items-start justify-between gap-3"
+        },
+        {
+          "tag": "h1",
+          "line": 64,
+          "value": "text-2xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 67,
+          "value": "text-muted text-sm"
+        },
+        {
+          "tag": "dl",
+          "line": 88,
+          "value": "grid gap-3 text-sm"
+        },
+        {
+          "tag": "div",
+          "line": 89,
+          "value": "flex justify-between gap-4"
+        },
+        {
+          "tag": "dt",
+          "line": 90,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 95,
+          "value": "flex justify-between gap-4"
+        },
+        {
+          "tag": "dt",
+          "line": 96,
+          "value": "text-muted"
+        },
+        {
+          "tag": "div",
+          "line": 101,
+          "value": "flex justify-between gap-4"
+        },
+        {
+          "tag": "dt",
+          "line": 102,
+          "value": "text-muted"
+        },
+        {
+          "tag": "dt",
+          "line": 108,
+          "value": "text-muted mb-1"
+        },
+        {
+          "tag": "dd",
+          "line": 111,
+          "value": "flex flex-wrap gap-1"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "4ebc9cb0e1290d312c633c560b4e58ed03149ca21d35ac49cad1c279daa7dc82"
+    },
+    {
+      "file": "frontend/app/pages/erp/estoque/index.vue",
+      "kind": "page",
+      "route": "/erp/estoque",
+      "family": "operations",
+      "tags": {
+        "ErpStockWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "5e29260b5657a64c7990813011078b7e0f6c0092e063fe025bc5f7ea5385e0ba"
+    },
+    {
+      "file": "frontend/app/pages/erp/financeiro/index.vue",
+      "kind": "page",
+      "route": "/erp/financeiro",
+      "family": "operations",
+      "tags": {
+        "ErpFinanceWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "37ad7eff9f39b0d0fd0bd81896e040fae9aa3db3b0a32a57cb13720849992989"
+    },
+    {
+      "file": "frontend/app/pages/erp/fiscal/index.vue",
+      "kind": "page",
+      "route": "/erp/fiscal",
+      "family": "operations",
+      "tags": {
+        "ErpFiscalWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "fb8fe4587f99cc17edba308fa8fa992f807f7ca9af0a30a46109d4d9e678e794"
+    },
+    {
+      "file": "frontend/app/pages/erp/index.vue",
+      "kind": "page",
+      "route": "/erp",
+      "family": "overview",
+      "tags": {
+        "UAlert": 1
+      },
+      "sizes": {},
+      "classes": [
+        {
+          "tag": "div",
+          "line": 8,
+          "value": "space-y-4 p-4 sm:p-6"
+        },
+        {
+          "tag": "h1",
+          "line": 10,
+          "value": "text-highlighted text-2xl font-semibold"
+        },
+        {
+          "tag": "p",
+          "line": 13,
+          "value": "text-muted mt-1 text-sm"
+        }
+      ],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "859965a33026c25d182c6d8fc550d1444a3f9e0b496ab6792e7dc007dc949998"
+    },
+    {
+      "file": "frontend/app/pages/erp/relatorios/index.vue",
+      "kind": "page",
+      "route": "/erp/relatorios",
+      "family": "operations",
+      "tags": {
+        "ErpReportsWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "36febbb30ba7e96663558134c4f7ba994ddfece11fcd2b9cce52079acb406ff4"
+    },
+    {
+      "file": "frontend/app/pages/erp/vendas/index.vue",
+      "kind": "page",
+      "route": "/erp/vendas",
+      "family": "operations",
+      "tags": {
+        "ErpSalesWorkspace": 1
+      },
+      "sizes": {},
+      "classes": [],
+      "overlays": [],
+      "referenced_by_application": true,
+      "source_sha256": "5dc6d1fa622a6a954a2bddbc4e2ff0479800c55ca984a1bb093f91668e43c055"
+    }
+  ],
+  "unreferenced_components": [
+    "frontend/app/components/erp/ErpModuleHub.vue"
+  ],
+  "table_sites": {
+    "all_erp_declarations": 12,
+    "referenced_by_erp_pages": 11,
+    "unreferenced_module_hub": 1,
+    "native_html_deliveries": 1
+  }
+}

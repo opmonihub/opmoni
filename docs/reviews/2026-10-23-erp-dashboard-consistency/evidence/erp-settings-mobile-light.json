@@ -1,0 +1,576 @@
+{
+  "buttons": [
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 lg:hidden",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Abrir menu ERP",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 16,
+      "y": 15.5
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 px-2.5 py-1.5 before:inset-x-px before:inset-y-0 after:absolute after:-bottom-2 after:inset-x-2.5 after:block after:h-px after:rounded-full after:transition-colors data-[state=open]:before:bg-elevated/50 text-primary hover:before:bg-elevated/50 before:transition-colors after:bg-primary",
+      "clientWidth": 130,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Empresa",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 130,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 129.578125,
+      "x": 12,
+      "y": 72
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 px-2.5 py-1.5 before:inset-x-px before:inset-y-0 text-muted after:absolute after:-bottom-2 after:inset-x-2.5 after:block after:h-px after:rounded-full after:transition-colors hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors data-[state=open]:text-highlighted data-[state=open]:before:bg-elevated/50",
+      "clientWidth": 135,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Operação",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 135,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 135.015625,
+      "x": 242.984375,
+      "y": 72
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 px-2.5 py-1.5 before:inset-x-px before:inset-y-0 text-muted after:absolute after:-bottom-2 after:inset-x-2.5 after:block after:h-px after:rounded-full after:transition-colors hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors data-[state=open]:text-highlighted data-[state=open]:before:bg-elevated/50",
+      "clientWidth": 125,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Sistema",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 125,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 125.34375,
+      "x": 12,
+      "y": 126
+    },
+    {
+      "class": "group relative w-full flex items-center gap-1.5 font-medium text-sm before:absolute before:z-[-1] before:rounded-md focus:outline-none focus-visible:outline-none focus-visible:before:outline-3 before:outline-primary/25 px-2.5 py-1.5 before:inset-x-px before:inset-y-0 text-muted after:absolute after:-bottom-2 after:inset-x-2.5 after:block after:h-px after:rounded-full after:transition-colors hover:text-highlighted hover:before:bg-elevated/50 transition-colors before:transition-colors data-[state=open]:text-highlighted data-[state=open]:before:bg-elevated/50",
+      "clientWidth": 167,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Administração",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 167,
+      "slot": "link",
+      "tag": "BUTTON",
+      "width": 166.78125,
+      "x": 211.21875,
+      "y": 126
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-inverted bg-primary hover:bg-primary/75 active:bg-primary/75 disabled:bg-primary aria-disabled:bg-primary outline-primary/25 focus-visible:outline-3 w-fit lg:ms-auto",
+      "clientWidth": 62,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Salvar",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 62,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 61.515625,
+      "x": 32,
+      "y": 310.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "2 casas decimais",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 1144.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Antes do valor",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 1386.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Janeiro",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 1628.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "FIFO",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 1749.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "dd/mm/yyyy",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 1991.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "12 horas",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 2112.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "1",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 2959.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary pe-9 md:text-sm w-full sm:max-w-xs",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Homologação",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 294,
+      "x": 48,
+      "y": 4169.5
+    }
+  ],
+  "colors": {
+    "muted": "oklch(44.2% 0.017 285.786)",
+    "primary": "#0A5331",
+    "success": "#016538"
+  },
+  "firstInput": {
+    "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary md:text-sm",
+    "clientWidth": 294,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 32,
+    "lineHeight": "20px",
+    "overflowX": "clip",
+    "padding": [
+      "6px",
+      "10px",
+      "6px",
+      "10px"
+    ],
+    "scrollWidth": 294,
+    "slot": "base",
+    "tag": "INPUT",
+    "width": 294,
+    "x": 48,
+    "y": 418.5
+  },
+  "h1": [
+    {
+      "class": "flex items-center gap-1.5 font-semibold text-highlighted truncate",
+      "clientWidth": 201,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 24,
+      "lineHeight": "24px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 201,
+      "slot": "title",
+      "tag": "H1",
+      "text": "Configurações da empresa",
+      "width": 200.984375,
+      "x": 54,
+      "y": 19.5
+    }
+  ],
+  "inputAncestors": [
+    {
+      "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary md:text-sm",
+      "clientWidth": 294,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "clip",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 294,
+      "slot": "base",
+      "tag": "INPUT",
+      "width": 294,
+      "x": 48,
+      "y": 418.5
+    },
+    {
+      "class": "relative inline-flex items-center w-full sm:max-w-md",
+      "clientWidth": 294,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 294,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 294,
+      "x": 48,
+      "y": 418.5
+    },
+    {
+      "class": "relative mt-1",
+      "clientWidth": 294,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 294,
+      "slot": null,
+      "tag": "DIV",
+      "width": 294,
+      "x": 48,
+      "y": 418.5
+    },
+    {
+      "class": "text-sm flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between",
+      "clientWidth": 294,
+      "fontSize": "14px",
+      "gap": "8px",
+      "height": 88,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "12px",
+        "0px",
+        "12px",
+        "0px"
+      ],
+      "scrollWidth": 294,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 294,
+      "x": 48,
+      "y": 374.5
+    },
+    {
+      "class": "relative flex flex-col flex-1 lg:grid gap-x-8 gap-y-4 p-4 sm:p-6",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "16px 32px",
+      "height": 4234,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "16px",
+        "16px",
+        "16px",
+        "16px"
+      ],
+      "scrollWidth": 326,
+      "slot": "container",
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 358.5
+    },
+    {
+      "class": "relative flex rounded-lg bg-elevated/50 ring ring-default space-y-0",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 4234,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 358.5
+    },
+    {
+      "class": "",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 4393.5,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": null,
+      "tag": "FORM",
+      "width": 326,
+      "x": 32,
+      "y": 199
+    },
+    {
+      "class": "mx-auto w-full max-w-4xl p-4 sm:p-6",
+      "clientWidth": 358,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 4425.5,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "16px",
+        "16px",
+        "16px",
+        "16px"
+      ],
+      "scrollWidth": 358,
+      "slot": null,
+      "tag": "DIV",
+      "width": 358,
+      "x": 16,
+      "y": 183
+    }
+  ],
+  "navbar": {
+    "class": "h-(--ui-header-height) shrink-0 flex items-center justify-between border-b border-default px-4 sm:px-6 gap-1.5",
+    "clientWidth": 390,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 64,
+    "lineHeight": "24px",
+    "overflowX": "visible",
+    "padding": [
+      "0px",
+      "16px",
+      "0px",
+      "16px"
+    ],
+    "scrollWidth": 390,
+    "slot": "root",
+    "tag": "DIV",
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "page": {
+    "clientWidth": 390,
+    "scrollHeight": 844,
+    "scrollWidth": 390
+  },
+  "rootFontSize": "16px",
+  "search": null,
+  "table": {
+    "count": 0,
+    "firstCell": null,
+    "firstDataRow": null,
+    "firstHeader": null,
+    "root": null,
+    "table": null,
+    "visibleRows": 0
+  },
+  "theme": "light",
+  "url": "http://localhost:3000/erp/configuracoes/empresa",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 844,
+    "width": 390
+  }
+}

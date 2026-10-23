@@ -1,0 +1,676 @@
+{
+  "buttons": [
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 lg:hidden",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Abrir menu ERP",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 16,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors px-2.5 py-1.5 text-sm gap-1.5 text-inverted bg-primary hover:bg-primary/75 active:bg-primary/75 disabled:bg-primary aria-disabled:bg-primary outline-primary/25 focus-visible:outline-3",
+      "clientWidth": 40,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Adicionar produto",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "10px"
+      ],
+      "scrollWidth": 40,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 40,
+      "x": 134,
+      "y": 15.5
+    },
+    {
+      "class": "relative group rounded-md inline-flex items-center disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented hover:bg-elevated disabled:bg-default outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 pe-9 md:text-sm w-full",
+      "clientWidth": 104,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Selecionar empresa",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "36px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 104,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 103.9375,
+      "x": 178,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 w-full justify-center text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5 lg:hidden data-[state=open]:bg-elevated",
+      "clientWidth": 88,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Menu do usuário",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 88,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 88.0625,
+      "x": 285.9375,
+      "y": 15.5
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 01",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 309
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 02",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 374
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 03",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 439
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 04",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 504
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 05",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 569
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 06",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 634
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 07",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 699
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 08",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 764
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 09",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 829
+    },
+    {
+      "class": "rounded-md font-medium inline-flex items-center disabled:cursor-not-allowed aria-disabled:cursor-not-allowed disabled:opacity-75 aria-disabled:opacity-75 transition-colors text-sm gap-1.5 text-default hover:bg-elevated active:bg-elevated outline-inverted/25 focus-visible:outline-3 hover:disabled:bg-transparent dark:hover:disabled:bg-transparent hover:aria-disabled:bg-transparent dark:hover:aria-disabled:bg-transparent p-1.5",
+      "clientWidth": 32,
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Ações de Produto de auditoria 10",
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "6px",
+        "6px",
+        "6px",
+        "6px"
+      ],
+      "scrollWidth": 32,
+      "slot": "base",
+      "tag": "BUTTON",
+      "width": 32,
+      "x": 584.15625,
+      "y": 894
+    }
+  ],
+  "colors": {
+    "muted": "oklch(70.5% 0.015 286.067)",
+    "primary": "#00DC82",
+    "success": "#00DC82"
+  },
+  "firstInput": {
+    "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+    "clientWidth": 326,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 32,
+    "lineHeight": "20px",
+    "overflowX": "clip",
+    "padding": [
+      "6px",
+      "10px",
+      "6px",
+      "36px"
+    ],
+    "scrollWidth": 326,
+    "slot": "base",
+    "tag": "INPUT",
+    "width": 326,
+    "x": 32,
+    "y": 144
+  },
+  "h1": [
+    {
+      "class": "flex items-center gap-1.5 font-semibold text-highlighted min-w-0 truncate",
+      "clientWidth": 68,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 24,
+      "lineHeight": "24px",
+      "overflowX": "hidden",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 68,
+      "slot": "title",
+      "tag": "H1",
+      "text": "Produtos",
+      "width": 68.484375,
+      "x": 54,
+      "y": 19.5
+    }
+  ],
+  "inputAncestors": [
+    {
+      "class": "w-full rounded-md border-0 appearance-none placeholder:text-dimmed disabled:cursor-not-allowed disabled:opacity-75 transition-colors px-2.5 py-1.5 text-base/5 gap-1.5 text-highlighted bg-default ring ring-inset ring-accented outline-primary/25 focus-visible:outline-3 focus-visible:ring-primary ps-9 md:text-sm",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "clip",
+      "padding": [
+        "6px",
+        "10px",
+        "6px",
+        "36px"
+      ],
+      "scrollWidth": 326,
+      "slot": "base",
+      "tag": "INPUT",
+      "width": 326,
+      "x": 32,
+      "y": 144
+    },
+    {
+      "class": "relative inline-flex items-center w-full",
+      "clientWidth": 326,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 144
+    },
+    {
+      "class": "relative mt-1",
+      "clientWidth": 326,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 32,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": null,
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 144
+    },
+    {
+      "class": "text-sm min-w-0 w-full flex-1 sm:max-w-md",
+      "clientWidth": 326,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 56,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 120
+    },
+    {
+      "class": "flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "12px",
+      "height": 96,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": null,
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 120
+    },
+    {
+      "class": "flex items-center gap-1.5 w-full min-w-0 flex-1",
+      "clientWidth": 326,
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 96,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 326,
+      "slot": "left",
+      "tag": "DIV",
+      "width": 326,
+      "x": 32,
+      "y": 120
+    },
+    {
+      "class": "shrink-0 flex border-b border-default px-4 sm:px-6 min-h-[49px] w-full min-w-0 flex-col items-stretch justify-start gap-3 overflow-visible sm:flex-row sm:items-end sm:justify-between",
+      "clientWidth": 358,
+      "fontSize": "16px",
+      "gap": "12px",
+      "height": 109,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "16px",
+        "0px",
+        "16px"
+      ],
+      "scrollWidth": 358,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 358,
+      "x": 16,
+      "y": 120
+    },
+    {
+      "class": "space-y-4",
+      "clientWidth": 358,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1195,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 358,
+      "slot": null,
+      "tag": "DIV",
+      "width": 358,
+      "x": 16,
+      "y": 120
+    }
+  ],
+  "navbar": {
+    "class": "h-(--ui-header-height) shrink-0 flex items-center justify-between border-b border-default px-4 sm:px-6 gap-1.5",
+    "clientWidth": 390,
+    "fontSize": "16px",
+    "gap": "6px",
+    "height": 64,
+    "lineHeight": "24px",
+    "overflowX": "visible",
+    "padding": [
+      "0px",
+      "16px",
+      "0px",
+      "16px"
+    ],
+    "scrollWidth": 390,
+    "slot": "root",
+    "tag": "DIV",
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "page": {
+    "clientWidth": 390,
+    "scrollHeight": 844,
+    "scrollWidth": 390
+  },
+  "rootFontSize": "16px",
+  "search": null,
+  "table": {
+    "count": 1,
+    "firstCell": {
+      "class": "p-4 text-sm text-muted whitespace-nowrap [&:has([role=checkbox])]:pe-0",
+      "clientWidth": 185,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 64.5,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "16px",
+        "16px",
+        "16px",
+        "16px"
+      ],
+      "scrollWidth": 185,
+      "slot": "td",
+      "tag": "TD",
+      "width": 185.140625,
+      "x": 16,
+      "y": 293
+    },
+    "firstDataRow": {
+      "class": "data-[selected=true]:bg-elevated/50",
+      "clientWidth": 616,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 64.5,
+      "lineHeight": "24px",
+      "overflowX": "visible",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 616,
+      "slot": "tr",
+      "tag": "TR",
+      "width": 616.15625,
+      "x": 16,
+      "y": 293
+    },
+    "firstHeader": {
+      "class": "px-4 py-3.5 text-sm text-highlighted text-start font-semibold [&:has([role=checkbox])]:pe-0",
+      "clientWidth": 185,
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 48,
+      "lineHeight": "20px",
+      "overflowX": "visible",
+      "padding": [
+        "14px",
+        "16px",
+        "14px",
+        "16px"
+      ],
+      "scrollWidth": 185,
+      "slot": "th",
+      "tag": "TH",
+      "width": 185.140625,
+      "x": 16,
+      "y": 245
+    },
+    "root": {
+      "class": "relative overflow-auto outline-primary/25 focus-visible:outline-3 flex-1",
+      "clientWidth": 358,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1022,
+      "lineHeight": "24px",
+      "overflowX": "auto",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 616,
+      "slot": "root",
+      "tag": "DIV",
+      "width": 358,
+      "x": 16,
+      "y": 245
+    },
+    "table": {
+      "class": "min-w-full overflow-clip",
+      "clientWidth": 616,
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 1022,
+      "lineHeight": "24px",
+      "overflowX": "clip",
+      "padding": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "scrollWidth": 616,
+      "slot": "base",
+      "tag": "TABLE",
+      "width": 616.15625,
+      "x": 16,
+      "y": 245
+    },
+    "visibleRows": 15
+  },
+  "theme": "dark",
+  "url": "http://localhost:3000/erp/cadastros/produtos",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 844,
+    "width": 390
+  }
+}
