@@ -15,9 +15,9 @@
 
 ## 3. Align shared visual roles and copy
 
-- [ ] 3.1 Reconcile ERP-only semantic overrides with the shared green/zinc theme and native action/status variants; verify computed role parity, measured foreground/background contrast, teleported overlays and office → ERP → office transitions in light/dark mode.
-- [ ] 3.2 Apply shared typography, gutters, task-specific widths and native control/card/table proportions through live shells and tokens; verify aligned settings/catalog edges, one outer gutter and purposeful operational column scrolling with matched reference screenshots.
-- [ ] 3.3 Remove redundant framing and rewrite technical/generic copy at shared consumers and affected pages; verify the audit's visible examples are addressed while distinct task headings, warnings and demonstration notices remain understandable in Brazilian Portuguese.
+- [x] 3.1 Reconcile ERP-only semantic overrides with the shared green/zinc theme and native action/status variants; verify computed role parity, measured foreground/background contrast, teleported overlays and office → ERP → office transitions in light/dark mode.
+- [x] 3.2 Apply shared typography, gutters, task-specific widths and native control/card/table proportions through live shells and tokens; verify aligned settings/catalog edges, one outer gutter and purposeful operational column scrolling with matched reference screenshots.
+- [x] 3.3 Remove redundant framing and rewrite technical/generic copy at shared consumers and affected pages; verify the audit's visible examples are addressed while distinct task headings, warnings and demonstration notices remain understandable in Brazilian Portuguese.
 - [x] 3.4 Align Sales navigation/list/footer composition with existing table/pagination patterns; verify server totals/page transitions, mobile records, existing detail actions and pending-operation recovery through `erpSalesWorkflows` plus browser evidence.
 
 ## 4. Simplify products and typed settings
@@ -34,7 +34,7 @@
 - [x] 5.3 Expose typed `native_defaults` alongside preserved legacy settings and connect default unit/currency to their product/commercial consumers; verify first-product unit resolution, unavailable-reference recovery, BRL propagation and no same-number mapping of opaque legacy IDs.
 - [x] 5.4 Connect the native default customer to eligible counter sales without inventing recipient facts; verify same-company selection, authorized override, existing explicit customer preservation and model-specific fiscal incompleteness feedback.
 - [x] 5.5 Connect existing invoice schemes to the authoritative commercial allocator; verify new-company blank-prefix/four-digit sales, unchanged quote/order and existing-company numbering, collision skipping, immutable draft numbers and no sequence reset on rerun/default change.
-- [ ] 5.6 Connect native commercial layouts to an authorized sale representation/print action with frozen relevant labels/settings; verify localized output, retained historical layout, company access, retry/failure behavior and clear separation from payment receipts and fiscal DANFE artifacts.
+- [x] 5.6 Connect native commercial layouts to an authorized sale representation/print action with frozen relevant labels/settings; verify localized output, retained historical layout, company access, retry/failure behavior and clear separation from payment receipts and fiscal DANFE artifacts.
 
 ## 6. Reconcile existing-company setup safely
 
@@ -68,7 +68,7 @@
 
 - [x] 9.1 Replace whole-catalog commercial/purchase reference loading with bounded search and selected-record hydration using the existing picker plus a focused variant adapter; verify multi-page SKU/name search, identical variant labels, unavailable historical selection, lookup failures and rapid context switches.
 - [x] 9.2 Reconcile contact municipality/state/code editing with fiscal-readiness projection while preserving unrelated address keys; verify minimal contact save, city/UF changes with old hidden codes, explicit clearing and failed lookup recovery through catalog/fiscal contract tests.
-- [ ] 9.3 Align typed CT-e/MDF-e field descriptors, required conditions and backend/frontend error paths, and make Fiscal creation action-triggered; verify nested party/tax/vehicle/route errors focus the real control, edits persist, browsing stays primary and builders/gates remain strict.
+- [x] 9.3 Align typed CT-e/MDF-e field descriptors, required conditions and backend/frontend error paths, and make Fiscal creation action-triggered; verify nested party/tax/vehicle/route errors focus the real control, edits persist, browsing stays primary and builders/gates remain strict.
 - [x] 9.4 Validate retained financial account/session choices against current currency/establishment/method before submit; verify incompatible visible selections, failed refresh, open-session requirements and unchanged backend rejections in finance/cash tests.
 - [x] 9.5 Convert company administration to existing native form/editor patterns and disclose detailed grants on demand; verify protected owner behavior, direct-owner restrictions, identity lookup, establishment scope, stale mutation blocking and focus return.
 - [x] 9.6 Reproduce the office-Fiscal populated scrolling risk using isolated representative data; verify and document either no defect or a focused correction with scroll/focus evidence, without reporting the original unconfirmed risk as already reproduced.
@@ -83,8 +83,8 @@
 
 ## 11. Complete integrated acceptance and evidence
 
-- [ ] 11.1 Run affected focused frontend/backend suites during each phase, then the integrated frontend scripts `pnpm --dir frontend lint`, `typecheck`, `test` and `build`; verify passing exit statuses and retain output tied to the implementation source identity.
-- [ ] 11.2 Run the complete regular backend checks from the host repository layout with `FISCAL_ENVIRONMENT=producao composer test` and changed-PHP formatting with `vendor/bin/pint --dirty --format agent` from `backend/`; verify results distinguish optional live-provider skips from local contract acceptance.
-- [ ] 11.3 Record matched template/Opmoni/ERP browser evidence at desktop 1366px, mobile 390px, an intermediate viewport and 200% zoom in light/dark; verify settings, product/basic/advanced editors, Finance, Sales, Fiscal, Reports and office regressions for geometry, contrast, hierarchy, scroll, keyboard/focus and overlay behavior.
-- [ ] 11.4 Exercise isolated fresh-company defaults, existing-company preview/apply, product profile adoption/overrides, nature choice/default/exception setup, reviewed commercial tax/CFOP refresh and fiscal-readiness correction as real browser/API flows; verify denied/stale/failure/retry states, old-source consultation and retained operation identities without live dispatch or changed production gates.
+- [x] 11.1 Run affected focused frontend/backend suites during each phase, then the integrated frontend scripts `pnpm --dir frontend lint`, `typecheck`, `test` and `build`; verify passing exit statuses and retain output tied to the implementation source identity.
+- [x] 11.2 Run the complete regular backend checks from the host repository layout with `FISCAL_ENVIRONMENT=producao composer test` and changed-PHP formatting with `vendor/bin/pint --dirty --format agent` from `backend/`; verify results distinguish optional live-provider skips from local contract acceptance.
+- [x] 11.3 Record matched template/Opmoni/ERP browser evidence at desktop 1366px, mobile 390px, an intermediate viewport and 200% zoom in light/dark; verify settings, product/basic/advanced editors, Finance, Sales, Fiscal, Reports and office regressions for geometry, contrast, hierarchy, scroll, keyboard/focus and overlay behavior.
+- [x] 11.4 Exercise isolated fresh-company defaults, existing-company preview/apply, product profile adoption/overrides, nature choice/default/exception setup, reviewed commercial tax/CFOP refresh and fiscal-readiness correction as real browser/API flows; verify denied/stale/failure/retry states, old-source consultation and retained operation identities without live dispatch or changed production gates.
 - [ ] 11.5 Deliver an implementation evidence ledger mapping A/F/V and adopted B items plus spec scenarios to results, remaining dependencies and live-provider limits, update affected architecture/reconciliation documentation truthfully, and verify `openspec validate align-erp-template-and-product-setup --strict --no-interactive`; leave sync/archive and production rollout as separate workflows.

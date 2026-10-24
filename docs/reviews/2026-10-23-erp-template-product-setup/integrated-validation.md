@@ -1,5 +1,24 @@
 # Integrated frontend validation
 
+## Final acceptance — 2026-10-24
+
+All four complete package scripts passed serially at `7d9b6bf1d2866cc8dc4969a721b7a0c52d3f3e95`, including the shared warning contrast correction and the final legacy-harness/authority coverage. All **559 tracked frontend file hashes** were identical before and after the checks. The task Nuxt development process was verified and stopped before compilation to avoid concurrent generated-file writes.
+
+| Native package script | Final result |
+| --- | --- |
+| `pnpm --dir frontend lint` | exit 0; one existing `vue/attributes-order` warning at `app/pages/admin/usuarios.vue:134`, zero errors |
+| `pnpm --dir frontend typecheck` | exit 0; Nuxt and contract TypeScript checks |
+| `pnpm --dir frontend test` | exit 0; **1,817 tests, 247 suites, 1,817 passed; zero failures, cancellations, skips or todos** |
+| `pnpm --dir frontend build` | exit 0; completed Nuxt/Nitro production build |
+
+Native logs and exit files are retained in the ignored canonical `.superpowers/sdd/align-erp-template-and-product-setup/frontend-7d9b6bf-{lint,typecheck,test,build}.{log,exit}` and the before/source and summary JSON manifests. Test duration was 325,644.299789 ms. This is one complete run, not an aggregate of focused selections.
+
+The preceding full run at `e6e7916` failed 13 of 1,809 tests; its native exit 1 and logs remain preserved. Six stale standalone harnesses were corrected in `d2be311`: actual Portuguese labels and Cancel action, actual catalog parent composition, Vue host style support, real helper import maps and explicit component boundaries. Behavioral counts, grants, recovery and source assertions were preserved. Separately, `dc723db` adds eight direct real Form → preview/adoption → editor PATCH tests across Company, delegated Account, session and update-grant changes, each with late success and 403. These test-only changes are included in the complete 1,817-case result. No application guard was weakened to make tests pass.
+
+The browser acceptance in [final-local-acceptance.md](final-local-acceptance.md) supplements these checks. A successful build/test does not establish live fiscal/SERPRO/provider acceptance or a complete accessibility certification. The lint warning above remains disclosed.
+
+## Earlier integrated checkpoint — historical, superseded where covered above
+
 Status: code checks passed; browser acceptance remains in progress. Task 3.1 remains pending until the missing computed state/transition measurements are complete.
 
 Canonical worktree: `/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup`. Compilation began at `f1eb923`; actual HEAD advanced through backend-only `b37efbb` to `293f623`. The tested frontend tree remained unchanged. No full suite or production build was run. Checks ran serially in the reserved heavy slot, with independently copied dependencies.
