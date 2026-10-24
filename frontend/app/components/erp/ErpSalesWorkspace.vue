@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { h, resolveComponent } from 'vue'
+import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpCommercialDocument, ErpCommercialDraftPayload, ErpCommercialKind, ErpCommercialTaxReviewOptions, ErpSaleReturn } from '#shared/types/erpBusiness'
 import type { ErpSalesArea } from '~/composables/useErpSalesWorkspace'
 import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
+import { erpOperationalTableUi } from '~/components/erp/erpPresentation'
 import { erpTaxReviewOptions } from '#shared/utils/erpCommercialTaxReview'
 import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
 import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
@@ -39,6 +42,11 @@ const modalOpen = computed({
 })
 
 const visibleAreas = computed(() => erpWorkspaceModuleDestinations('vendas', sales.allowed))
+const areaLinks = computed<NavigationMenuItem[][]>(() => [visibleAreas.value.map(item => ({
+  label: item.label,
+  to: { path: route.path, query: route.query, hash: `#${item.id}` },
+  active: sales.area.value === item.id
+}))])
 const areaLabel = computed(() => erpWorkspaceModuleSelection('vendas', `#${sales.area.value}`, sales.allowed).destination?.label ?? 'Vendas')
 const modalTitle = computed(() => {
   if (modalKind.value === 'create') return createKind.value === 'quote' ? 'Novo orçamento' : createKind.value === 'order' ? 'Novo pedido' : 'Nova venda de balcão'
@@ -162,6 +170,40 @@ function totalForRow(row: Record<string, unknown>) {
   const total = typeof row.total_amount === 'string' ? row.total_amount : 'Indisponível'
   return `${currency} ${total}`
 }
+const salesListColumns = computed<TableColumn<Record<string, unknown>>[]>(() => [
+  {
+    id: 'document',
+    header: 'Documento',
+    cell: ({ row }) => h('span', { class: 'font-medium text-highlighted' }, titleForRow(row.original, sales.area.value))
+  },
+  {
+    accessorKey: 'erp_establishment_id',
+    header: 'Estabelecimento',
+    cell: ({ row }) => `#${String(row.original.erp_establishment_id)}`
+  },
+  {
+    accessorKey: 'status',
+    header: 'Situação',
+    cell: ({ row }) => h(resolveComponent('UBadge'), { color: 'neutral', variant: 'subtle' }, () => statusForRow(row.original))
+  },
+  {
+    id: 'total',
+    header: 'Total',
+    cell: ({ row }) => totalForRow(row.original)
+  },
+  {
+    id: 'actions',
+    header: 'Ações',
+    cell: ({ row }) => h(resolveComponent('UButton'), {
+      color: 'neutral',
+      variant: 'outline',
+      size: 'sm',
+      label: 'Abrir detalhe',
+      disabled: !sales.allowed(({ quotes: 'erp.quotes.show', orders: 'erp.orders.show', sales: 'erp.sales.show', returns: 'erp.sale-returns.show' } as const)[sales.area.value]),
+      onClick: () => openDetail(sales.area.value, row.original)
+    })
+  }
+])
 function areaFromHash(hash: string): ErpSalesArea | null {
   return (erpWorkspaceModuleSelection('vendas', hash, sales.allowed).destination?.id ?? null) as ErpSalesArea | null
 }
@@ -607,21 +649,12 @@ onMounted(() => {
 
     <template #toolbar>
       <div class="flex w-full min-w-0 flex-col gap-3">
-        <nav class="w-full min-w-0 overflow-x-auto" aria-label="Áreas de vendas">
-          <div class="flex min-w-max gap-2">
-            <UButton
-              v-for="item in visibleAreas"
-              :key="item.id"
-              type="button"
-              size="sm"
-              :color="sales.area.value === item.id ? 'primary' : 'neutral'"
-              :variant="sales.area.value === item.id ? 'solid' : 'outline'"
-              :aria-pressed="sales.area.value === item.id"
-              :label="item.label"
-              @click="setArea(item.id as ErpSalesArea)"
-            />
-          </div>
-        </nav>
+        <UNavigationMenu
+          :items="areaLinks"
+          highlight
+          aria-label="Áreas de vendas"
+          class="-mx-1 w-full min-w-0 overflow-x-auto"
+        />
         <div class="flex w-full min-w-0 flex-wrap items-end gap-3">
           <UFormField label="Situação" class="w-full min-w-0 sm:w-52">
             <USelect
@@ -651,9 +684,7 @@ onMounted(() => {
         <div>
           <h1 class="text-lg font-semibold text-highlighted">
             {{ areaLabel }}
-          </h1><p v-if="sales.canRead.value && sales.currentMeta.value" class="text-sm text-muted">
-            {{ sales.currentMeta.value.total }} registros · página {{ sales.currentMeta.value.current_page }} de {{ sales.currentMeta.value.last_page }}
-          </p>
+          </h1>
         </div>
       </div>
       <UAlert
@@ -671,42 +702,35 @@ onMounted(() => {
       <div v-else-if="sales.currentRows.value.length === 0" class="rounded-lg border border-dashed border-muted p-8 text-center text-sm text-muted">
         {{ listEmptyMessage() }}
       </div>
-      <div v-else class="min-w-0 divide-y divide-muted overflow-hidden rounded-lg border border-muted">
-        <button
-          v-for="row in sales.currentRows.value"
-          :key="`${sales.area.value}-${row.id}`"
-          type="button"
-          class="grid w-full min-w-0 gap-3 p-4 text-left transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary sm:grid-cols-[minmax(0,1fr)_8rem_12rem_auto] sm:items-center"
-          :disabled="!sales.allowed(({ quotes: 'erp.quotes.show', orders: 'erp.orders.show', sales: 'erp.sales.show', returns: 'erp.sale-returns.show' } as const)[sales.area.value])"
-          @click="openDetail(sales.area.value, row as unknown as Record<string, unknown>)"
-        >
-          <span class="min-w-0"><span class="block truncate font-medium text-highlighted">{{ titleForRow(row as unknown as Record<string, unknown>, sales.area.value) }}</span><span class="block text-xs text-muted">Registro #{{ row.id }} · Estabelecimento #{{ row.erp_establishment_id }}</span></span>
-          <UBadge class="w-fit" color="neutral" variant="subtle">
-            {{ statusForRow(row as unknown as Record<string, unknown>) }}
-          </UBadge>
-          <span class="text-sm text-highlighted">{{ totalForRow(row as unknown as Record<string, unknown>) }}</span>
-          <UIcon name="i-lucide-chevron-right" class="size-4 text-muted" aria-hidden="true" />
-        </button>
+      <div v-else class="min-w-0">
+        <div class="sm:hidden min-w-0 divide-y divide-muted overflow-hidden rounded-lg border border-muted">
+          <button
+            v-for="row in sales.currentRows.value"
+            :key="`${sales.area.value}-${row.id}`"
+            type="button"
+            class="grid w-full min-w-0 gap-3 p-4 text-left transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            :disabled="!sales.allowed(({ quotes: 'erp.quotes.show', orders: 'erp.orders.show', sales: 'erp.sales.show', returns: 'erp.sale-returns.show' } as const)[sales.area.value])"
+            @click="openDetail(sales.area.value, row as unknown as Record<string, unknown>)"
+          >
+            <span class="min-w-0"><span class="block truncate font-medium text-highlighted">{{ titleForRow(row as unknown as Record<string, unknown>, sales.area.value) }}</span><span class="block text-xs text-muted">Registro #{{ row.id }} · Estabelecimento #{{ row.erp_establishment_id }}</span></span>
+            <span class="flex flex-wrap items-center gap-2"><UBadge class="w-fit" color="neutral" variant="subtle">{{ statusForRow(row as unknown as Record<string, unknown>) }}</UBadge><span class="text-sm text-highlighted">{{ totalForRow(row as unknown as Record<string, unknown>) }}</span></span>
+          </button>
+        </div>
+        <div class="hidden min-w-0 overflow-x-auto sm:block">
+          <UTable
+            :data="sales.currentRows.value as unknown as Record<string, unknown>[]"
+            :columns="salesListColumns"
+            :ui="erpOperationalTableUi"
+          />
+        </div>
       </div>
-      <div v-if="sales.canRead.value && sales.currentMeta.value && sales.currentMeta.value.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          label="Anterior"
-          :disabled="sales.filters.page <= 1 || sales.currentLoading.value"
-          @click="sales.setPage(sales.filters.page - 1)"
-        />
-        <span class="text-sm text-muted">Página {{ sales.filters.page }} / {{ sales.currentMeta.value.last_page }}</span>
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          label="Próxima"
-          :disabled="sales.filters.page >= sales.currentMeta.value.last_page || sales.currentLoading.value"
-          @click="sales.setPage(sales.filters.page + 1)"
-        />
-      </div>
+      <ErpListFooter
+        v-if="sales.canRead.value && sales.currentMeta.value"
+        :page="sales.filters.page"
+        :meta="sales.currentMeta.value"
+        :pending="sales.currentLoading.value"
+        @update:page="sales.setPage"
+      />
     </section>
 
     <UAlert

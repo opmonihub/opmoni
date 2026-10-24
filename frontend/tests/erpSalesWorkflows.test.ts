@@ -201,7 +201,8 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     '~/composables/useErpSalesWorkspace': { useErpSalesWorkspace: () => state },
     '#shared/utils/erpCommercialTaxReview': taxReviewHelpers,
     '#shared/utils/erpSales': salesHelpers,
-    '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts')
+    '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts'),
+    '~/components/erp/erpPresentation': loadAppComposable('components/erp/erpPresentation.ts')
   }, globals)
   const workspace = workspaceExports.default as Vue.Component
   type Node = { style?: Record<string, string>, tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
@@ -296,6 +297,14 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   app.component('UForm', formShell)
   app.component('UModal', modal)
   app.component('ErpCatalogPageShell', pageShell)
+  app.component('UNavigationMenu', Vue.defineComponent({
+    props: ['items'],
+    setup: (props, context) => () => Vue.h('nav', (props.items as Array<Array<{ label: string }>> ?? []).flat().map(item => Vue.h('button', {
+      onClick: () => context.emit('select', item)
+    }, item.label)))
+  }))
+  app.component('ErpListFooter', passthrough)
+  app.component('UTable', passthrough)
   app.component('ErpSaleDetail', detail)
   app.component('ErpCommercialDraftForm', instrumentedDraftForm)
   app.component('ErpSaleReturnForm', instrumentedReturnForm)
