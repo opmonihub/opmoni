@@ -121,13 +121,16 @@ export interface ErpFiscalSale {
   id: number
   status: string
   erp_establishment_id: number
+  fiscal_model?: '55' | '65' | null
   erp_sale_id?: number
   commercial_snapshot?: {
+    version?: string
+    fiscal_context?: Record<string, unknown> | null
     accepted?: unknown
     party?: Record<string, unknown> | null
     totals?: Record<string, string> | null
     lines?: ErpFiscalSaleLine[]
-  }
+  } | null
   lines?: ErpFiscalSaleLine[]
 }
 

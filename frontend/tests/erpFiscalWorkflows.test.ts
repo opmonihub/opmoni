@@ -8,6 +8,8 @@ import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/useApiError.ts'
 import type { ErpFiscalSale } from '../shared/types/erpFiscal.ts'
 import { buildErpFiscalCertificateUpload, buildErpFiscalDraftSource, createErpFiscalRecoveryRecord } from '../shared/utils/erpFiscal.ts'
+import { erpTaxRecord, erpTaxSourceLabel } from '../shared/utils/erpCommercialTaxReview.ts'
+import * as typedFiscalForm from '../app/utils/erpTypedFiscalForm.ts'
 
 const certificate = new File(['pkcs12-private-bytes'], 'issuer.p12', { type: 'application/x-pkcs12' })
 const certificateFormFile = new URL('../app/components/erp/ErpFiscalCertificateForm.vue', import.meta.url)
@@ -150,10 +152,12 @@ function mountDocumentForm(props: Record<string, unknown>) {
   const script = compileScript(descriptor, { id: 'erp-fiscal-document-form-test' })
   const compiledScript = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } })
   const exports = {} as { default: Record<string, unknown> }
-  const globals = { ref: Vue.ref, computed: Vue.computed, reactive: Vue.reactive, watch: Vue.watch }
+  const globals = { ref: Vue.ref, computed: Vue.computed, reactive: Vue.reactive, watch: Vue.watch, nextTick: Vue.nextTick }
   new Function('require', 'exports', ...Object.keys(globals), compiledScript.outputText)((name: string) => {
     if (name === 'vue') return Vue
     if (name === '#shared/utils/erpFiscal') return { buildErpFiscalDraftSource }
+    if (name === '#shared/utils/erpCommercialTaxReview') return { erpTaxRecord, erpTaxSourceLabel }
+    if (name === '~/utils/erpTypedFiscalForm') return typedFiscalForm
     throw new Error(`Unexpected document SFC import: ${name}`)
   }, exports, ...Object.values(globals))
   const template = compileTemplate({ source: descriptor.template?.content ?? '', filename: documentFormFile.pathname, id: 'erp-fiscal-document-template-test', compilerOptions: { mode: 'function', hoistStatic: false, bindingMetadata: script.bindings, expressionPlugins: ['typescript'] } })
@@ -857,19 +861,19 @@ function nfeSfcFacts(model: '55' | '65', offline = false): Record<string, string
 
 function cteSfcFacts(): Record<string, string> {
   const facts: Record<string, string> = {
-    'transport_service.service_type': '0', 'transport_service.emission_type': '1', 'transport_service.operation_nature': 'Prestacao de servico de transporte',
-    'transport_service.cfop': '5353', 'transport_service.rntrc': '12345678', 'transport_service.service_value': '250.00',
-    'transport_service.received_value': '250.00', 'transport_service.tax_cst': '00', 'transport_service.tax_base': '250.00',
-    'transport_service.tax_rate': '12.00', 'transport_service.tax_value': '30.00', 'transport_service.cargo_description': 'Mercadorias diversas',
-    'transport_service.cargo_measure_type': 'PESO BRUTO', 'transport_service.cargo_unit': '01', 'transport_service.cargo_quantity': '1.0000',
-    'transport_service.cargo_value': '250.00', 'sender_cnpj': '11222333000181', 'sender_name': 'Remetente LTDA',
-    'sender_state_registration': '110042490114', 'sender_state_registration_indicator': '1', 'sender_street': 'Rua Um', 'sender_number': '10',
-    'sender_district': 'Centro', 'sender_city_code': '3550308', 'sender_city': 'Sao Paulo', 'sender_postal_code': '01001000', 'sender_uf': 'SP',
-    'receiver_cnpj': '11222333000181', 'receiver_name': 'Destinatario LTDA', 'receiver_state_registration': '110042490114',
-    'receiver_state_registration_indicator': '1', 'receiver_street': 'Rua Dois', 'receiver_number': '20', 'receiver_district': 'Centro',
-    'receiver_city_code': '3304557', 'receiver_city': 'Rio de Janeiro', 'receiver_postal_code': '20000000', 'receiver_uf': 'RJ',
-    'taker_role': '0', 'origin_uf': 'SP', 'origin_city_code': '3550308', 'origin_city': 'Sao Paulo', 'destination_uf': 'RJ',
-    'destination_city_code': '3304557', 'destination_city': 'Rio de Janeiro', 'pickup': '0'
+    'source.transport_service.service_type': '0', 'source.transport_service.emission_type': '1', 'source.transport_service.operation_nature': 'Prestacao de servico de transporte',
+    'source.transport_service.cfop': '5353', 'source.transport_service.rntrc': '12345678', 'source.transport_service.service_value': '250.00',
+    'source.transport_service.received_value': '250.00', 'source.transport_service.tax.cst': '00', 'source.transport_service.tax.base': '250.00',
+    'source.transport_service.tax.rate': '12.00', 'source.transport_service.tax.value': '30.00', 'source.transport_service.cargo.description': 'Mercadorias diversas',
+    'source.transport_service.cargo.measure_type': 'PESO BRUTO', 'source.transport_service.cargo.unit': '01', 'source.transport_service.cargo.quantity': '1.0000',
+    'source.transport_service.cargo.value': '250.00', 'source.transport_service.sender.cnpj': '11222333000181', 'source.transport_service.sender.legal_name': 'Remetente LTDA',
+    'source.transport_service.sender.state_registration': '110042490114', 'source.transport_service.sender.state_registration_indicator': '1', 'source.transport_service.sender.address.street': 'Rua Um', 'source.transport_service.sender.address.number': '10',
+    'source.transport_service.sender.address.district': 'Centro', 'source.transport_service.sender.address.city_code': '3550308', 'source.transport_service.sender.address.city': 'Sao Paulo', 'source.transport_service.sender.address.postal_code': '01001000', 'source.transport_service.sender.address.uf': 'SP',
+    'source.transport_service.receiver.cnpj': '11222333000181', 'source.transport_service.receiver.legal_name': 'Destinatario LTDA', 'source.transport_service.receiver.state_registration': '110042490114',
+    'source.transport_service.receiver.state_registration_indicator': '1', 'source.transport_service.receiver.address.street': 'Rua Dois', 'source.transport_service.receiver.address.number': '20', 'source.transport_service.receiver.address.district': 'Centro',
+    'source.transport_service.receiver.address.city_code': '3304557', 'source.transport_service.receiver.address.city': 'Rio de Janeiro', 'source.transport_service.receiver.address.postal_code': '20000000', 'source.transport_service.receiver.address.uf': 'RJ',
+    'source.transport_service.taker.role': '0', 'source.transport_service.route.origin_uf': 'SP', 'source.transport_service.route.origin_city_code': '3550308', 'source.transport_service.route.origin_city': 'Sao Paulo', 'source.transport_service.route.destination_uf': 'RJ',
+    'source.transport_service.route.destination_city_code': '3304557', 'source.transport_service.route.destination_city': 'Rio de Janeiro', 'source.transport_service.route.pickup': '0'
   }
   return facts
 }
@@ -885,21 +889,21 @@ function assertCtePartyLocations(service: Record<string, unknown>) {
 
 function mdfeSfcFacts(externalReference = true): Record<string, string> {
   return {
-    'transport_manifest.manifest_emission_type': '1', 'transport_manifest.manifest_modal': '1',
-    'transport_manifest.manifest_issuer_type': '2', 'transport_manifest.manifest_rntrc': '12345678',
-    'transport_manifest.manifest_route_ufs': 'SP,RJ', 'transport_manifest.manifest_load_municipality_name': 'Sao Paulo',
-    'transport_manifest.manifest_load_municipality_code': '3550308', 'transport_manifest.manifest_unload_municipality_name': 'Rio de Janeiro',
-    'transport_manifest.manifest_unload_municipality_code': '3304557', 'transport_manifest.vehicle_plate': 'ABC1D23',
-    'transport_manifest.vehicle_renavam': '12345678901', 'transport_manifest.vehicle_registry': '12345678',
-    'transport_manifest.vehicle_tare': '1000', 'transport_manifest.vehicle_capacity': '10000',
-    'transport_manifest.vehicle_road_type': '02', 'transport_manifest.vehicle_trailer_type': '00',
-    'transport_manifest.vehicle_uf': 'SP', 'transport_manifest.driver_name': 'Motorista teste',
-    'transport_manifest.driver_cpf': '12345678909', 'transport_manifest.cargo_product_description': 'Mercadorias diversas',
-    'transport_manifest.cargo_product_type': '01', 'transport_manifest.cargo_ncm': '12345678',
-    'transport_manifest.cargo_total_value': '250.00', 'transport_manifest.cargo_unit_manifest': '01',
-    'transport_manifest.cargo_quantity_manifest': '1.0000', 'transport_manifest.cte_total': '0',
-    'transport_manifest.nfe_total': '1', 'transport_manifest.mdfe_total': '0',
-    ...(externalReference ? { 'transport_manifest.external_model': '55', 'transport_manifest.external_access_key': '35261011222333000181550010000001231123456783' } : { 'transport_manifest.document': '91' })
+    'source.transport_manifest.emission_type': '1', 'source.transport_manifest.modal': '1',
+    'source.transport_manifest.issuer_type': '2', 'source.transport_manifest.rntrc': '12345678',
+    'source.transport_manifest.route_ufs': 'SP,RJ', 'source.transport_manifest.municipalities.0.name': 'Sao Paulo',
+    'source.transport_manifest.municipalities.0.code': '3550308', 'source.transport_manifest.municipalities.1.name': 'Rio de Janeiro',
+    'source.transport_manifest.municipalities.1.code': '3304557', 'source.transport_manifest.vehicle.plate': 'ABC1D23',
+    'source.transport_manifest.vehicle.renavam': '12345678901', 'source.transport_manifest.vehicle.registry': '12345678',
+    'source.transport_manifest.vehicle.tare': '1000', 'source.transport_manifest.vehicle.capacity_kg': '10000',
+    'source.transport_manifest.vehicle.road_type': '02', 'source.transport_manifest.vehicle.trailer_type': '00',
+    'source.transport_manifest.vehicle.uf': 'SP', 'source.transport_manifest.driver.name': 'Motorista teste',
+    'source.transport_manifest.driver.cpf': '12345678909', 'source.transport_manifest.cargo.product_description': 'Mercadorias diversas',
+    'source.transport_manifest.cargo.product_type': '01', 'source.transport_manifest.cargo.ncm': '12345678',
+    'source.transport_manifest.cargo.total_value': '250.00', 'source.transport_manifest.cargo.unit': '01',
+    'source.transport_manifest.cargo.quantity': '1.0000', 'source.transport_manifest.total_cte': '0',
+    'source.transport_manifest.total_nfe': '1', 'source.transport_manifest.total_mdfe': '0',
+    ...(externalReference ? { 'source.transport_manifest.documents.0.model': '55', 'source.transport_manifest.documents.0.access_key': '35261011222333000181550010000001231123456783' } : { 'transport_manifest.document': '91' })
   }
 }
 
@@ -976,9 +980,9 @@ describe('ERP fiscal typed request helpers', () => {
     assert.equal(cte.emitted[0]?.document_kind, 'transport_service')
     assert.equal((cte.emitted[0]?.source as Record<string, Record<string, unknown>>).transport_service.rntrc, '12345678')
     assertCtePartyLocations((cte.emitted[0]?.source as Record<string, Record<string, unknown>>).transport_service)
-    const cargoDescription = findNode(cte.root, node => node.tag === 'input' && node.props['data-field'] === 'transport_service.cargo_description')
+    const cargoDescription = findNode(cte.root, node => node.tag === 'input' && node.props['data-field'] === 'source.transport_service.cargo.description')
     assert.equal(cargoDescription?.value, 'Mercadorias diversas', 'free-text CT-e facts remain visible after the form update tick')
-    const serviceType = findNode(cte.root, node => node.tag === 'select' && node.props['data-field'] === 'transport_service.service_type')
+    const serviceType = findNode(cte.root, node => node.tag === 'select' && node.props['data-field'] === 'source.transport_service.service_type')
     assert.equal(serviceType?.value, '0', 'numeric enum zero remains selected after the form update tick')
     cte.app.unmount()
 
@@ -1086,7 +1090,11 @@ describe('ERP fiscal typed request helpers', () => {
       await Vue.nextTick()
       const fields = {
         'models.57.series': '1', 'models.57.next_number': '123', 'models.57.transport.cte_type': '0',
-        ...Object.fromEntries(Object.entries(cteSfcFacts()).map(([field, value]) => [`models.57.transport.${field.replace('transport_service.', '')}`, value]))
+        ...Object.fromEntries(Object.entries(cteSfcFacts()).map(([field, value]) => {
+          const descriptor = typedFiscalForm.erpTypedFiscalFieldDescriptors('57', 'transport_service').find(descriptor => `source.${descriptor.path}` === field)
+          assert.ok(descriptor, `CT-e fixture field has a native descriptor: ${field}`)
+          return [`models.57.transport.${descriptor.key}`, value]
+        }))
       }
       for (const [field, value] of Object.entries(fields)) setFiscalField(mounted.root, field, value)
       await Vue.nextTick()

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ErpFiscalConfiguration, ErpFiscalDocument, ErpFiscalModel, ErpFiscalSale, ErpFiscalSaleLine } from '#shared/types/erpFiscal'
 import { buildErpFiscalDraftSource, type ErpFiscalSaleFormFacts } from '#shared/utils/erpFiscal'
+import { erpTaxRecord, erpTaxSourceLabel } from '#shared/utils/erpCommercialTaxReview'
 import { focusErpTypedFiscalField, mapErpTypedFiscalFieldErrors, requiredErpTypedFiscalFields, erpTypedFiscalFieldDescriptors, type ErpTypedFiscalFieldDescriptor } from '~/utils/erpTypedFiscalForm'
 
 const props = defineProps<{
@@ -109,6 +110,35 @@ const totalFields = [
   ['products', 'Produtos'], ['invoice', 'Total do documento'], ['icms_base', 'Base ICMS'], ['icms', 'ICMS'], ['icms_desonerated', 'ICMS desonerado'], ['fcp', 'FCP'], ['st_base', 'Base ICMS-ST'], ['st', 'ICMS-ST'], ['fcp_st', 'FCP-ST'], ['fcp_st_retained', 'FCP-ST retido'], ['freight', 'Frete'], ['insurance', 'Seguro'], ['discount', 'Desconto'], ['ii', 'Imposto de importação'], ['ipi', 'IPI'], ['ipi_returned', 'IPI devolvido'], ['pis', 'PIS'], ['cofins', 'COFINS'], ['other', 'Outras despesas'], ['taxes_total', 'Tributos aproximados']
 ] as const
 const saleLines = computed<ErpFiscalSaleLine[]>(() => props.selectedSale?.commercial_snapshot?.lines ?? [])
+const acceptedSaleSource = computed(() => {
+  const accepted = props.selectedSale?.commercial_snapshot?.accepted
+  return props.selectedSale?.status === 'posted' && accepted !== null && typeof accepted === 'object' && !Array.isArray(accepted)
+})
+const savedSourceContext = computed(() => erpTaxRecord(props.selectedSale?.commercial_snapshot?.fiscal_context))
+const savedFiscalIntent = computed(() => {
+  const model = props.selectedSale?.fiscal_model
+  if (model === '55') return 'Intenção fiscal salva: NF-e (55)'
+  if (model === '65') return 'Intenção fiscal salva: NFC-e (65)'
+  return model === null ? 'Sem intenção fiscal declarada' : 'Intenção fiscal não informada neste histórico'
+})
+const sourceModelMismatch = computed(() => ['55', '65'].includes(props.selectedSale?.fiscal_model ?? '') && props.selectedSale?.fiscal_model !== selectedModel.value)
+const frozenSaleRows = computed(() => saleLines.value.map((line) => {
+  const facts = erpTaxRecord(line.product_snapshot)
+  const product = erpTaxRecord(facts.product)
+  const nature = erpTaxRecord(facts.operation_nature)
+  const cfop = erpTaxRecord(facts.cfop_resolution)
+  const taxSources = erpTaxRecord(erpTaxRecord(facts.product_tax_resolution).sources)
+  return {
+    id: line.id, ncm: savedValue(product.ncm), origin: savedValue(product.origin_code),
+    effectiveCfop: savedValue(nature.cfop), defaultCfop: savedValue(cfop.default_cfop),
+    cfopSource: erpTaxSourceLabel(cfop), cfopRevision: savedValue(cfop.configuration_revision),
+    hasProvenance: Object.keys(cfop).length > 0 || Object.keys(taxSources).length > 0,
+    taxSources: Object.entries(taxSources).map(([field, source]) => ({ field, value: savedValue(product[field]), label: erpTaxSourceLabel(source) }))
+  }
+}))
+function savedValue(value: unknown): string {
+  return (typeof value === 'string' && value.trim() !== '') || typeof value === 'number' ? String(value) : 'Não informado'
+}
 const sourceLines = computed<ErpFiscalSaleLine[]>(() => kind.value === 'return'
   ? (props.selectedReturn?.lines ?? []).map(line => ({ ...line, product_snapshot: line.source_snapshot?.line?.product_snapshot }))
   : saleLines.value)
@@ -359,6 +389,57 @@ function submit() {
             @update:model-value="emit('select-return', Number($event))"
           />
         </UFormField>
+        <section v-if="kind === 'posted_sale' && selectedSale" aria-label="Fonte comercial da venda" class="space-y-3 rounded-lg border border-default p-4 text-sm">
+          <template v-if="acceptedSaleSource">
+            <h3 class="font-semibold">
+              Fonte comercial congelada · Venda #{{ selectedSale.id }}
+            </h3>
+            <p class="text-muted">
+              {{ savedFiscalIntent }}
+            </p>
+            <p v-if="savedSourceContext.readiness === 'source_prerequisites_checked'" class="text-muted">
+              Pré-requisitos da fonte comercial verificados no lançamento.
+            </p>
+            <p v-else class="text-muted">
+              A verificação dos pré-requisitos da fonte comercial não está confirmada neste histórico.
+            </p>
+            <UAlert
+              v-if="sourceModelMismatch"
+              color="warning"
+              variant="subtle"
+              title="Modelo selecionado para emissão difere da intenção fiscal salva"
+              description="Revise a seleção. O servidor mantém a validação de compatibilidade da fonte comercial."
+            />
+            <div v-for="line in frozenSaleRows" :key="line.id" class="space-y-1 rounded-md bg-elevated p-3">
+              <p class="font-medium">
+                Linha #{{ line.id }} · NCM {{ line.ncm }} · Origem {{ line.origin }}
+              </p>
+              <p>CFOP efetivo: {{ line.effectiveCfop }} · Padrão da natureza salvo: {{ line.defaultCfop }}</p>
+              <p class="text-muted">
+                {{ line.cfopSource }} · Revisão CFOP: {{ line.cfopRevision }}
+              </p>
+              <p v-for="source in line.taxSources" :key="source.field" class="text-muted">
+                {{ source.field }}: {{ source.value }} · {{ source.label }}
+              </p>
+            </div>
+            <p v-if="!frozenSaleRows.length" class="text-muted">
+              Não há classificação por item disponível neste histórico.
+            </p>
+            <p v-if="frozenSaleRows.some(line => !line.hasProvenance)" class="text-muted">
+              Metadados de resolução não disponíveis neste histórico. A validação fiscal mantém as verificações da fonte aceita.
+            </p>
+          </template>
+          <UAlert
+            v-else
+            color="warning"
+            variant="subtle"
+            title="Fonte comercial sem confirmação de snapshot aceito"
+            description="Os fatos congelados não podem ser confirmados nesta seleção. A validação fiscal indicará os dados necessários; o catálogo atual não será usado para preencher o histórico."
+          />
+          <p class="text-muted">
+            A emissão ainda valida os dados próprios do modelo, identidade fiscal, inscrição do destinatário, certificado e valores tributários. Este resumo não representa autorização.
+          </p>
+        </section>
         <template v-if="selectedSale || selectedReturn">
           <p class="text-muted text-sm">
             Os itens e a identidade comercial vêm do snapshot lançado. Dados fiscais sem fonte confirmada precisam ser informados; nenhum valor tributário será preenchido automaticamente.

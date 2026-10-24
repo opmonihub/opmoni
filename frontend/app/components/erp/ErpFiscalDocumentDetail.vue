@@ -53,6 +53,13 @@ const canShowXml = computed(() => !!props.document && (props.document.artifact_r
         {{ statusLabels[document.status] ?? 'Estado não reconhecido pela interface' }}
       </UBadge>
     </header>
+    <UAlert
+      v-if="document.erp_sale_id"
+      color="info"
+      variant="subtle"
+      :title="`Origem comercial: venda #${document.erp_sale_id}`"
+      description="Os fatos comerciais da venda não são exibidos neste detalhe. Consulte a venda com o acesso correspondente. O vínculo não confirma autorização fiscal."
+    />
     <div v-if="document.contingency" class="rounded-lg border border-warning bg-warning/5 p-4 text-sm">
       <p class="font-medium">
         Contingência local registrada
