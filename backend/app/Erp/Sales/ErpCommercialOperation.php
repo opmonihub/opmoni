@@ -38,7 +38,7 @@ final class ErpCommercialOperation
             ErpCommercialDraftService::id($id, 'source_id');
         }
         if (isset($body['lines']) && is_array($body['lines'])) {
-            $lineFields = str_ends_with($this->kind($operation), '_return') ? ['source_line_id', 'quantity'] : ['id', 'erp_product_variant_id', 'description', 'erp_unit_id', 'quantity', 'unit_price', 'discount_amount', 'tax_amount', 'unit_conversion_factor', 'erp_tax_rate_id', 'erp_discount_rule_id', 'line_total'];
+            $lineFields = str_ends_with($this->kind($operation), '_return') ? ['source_line_id', 'quantity'] : ['id', 'erp_product_variant_id', 'description', 'erp_unit_id', 'quantity', 'unit_price', 'discount_amount', 'tax_amount', 'unit_conversion_factor', 'erp_tax_rate_id', 'erp_discount_rule_id', 'line_total', 'cfop'];
             foreach ($body['lines'] as $i => $line) {
                 if (! is_array($line) || array_diff(array_keys($line), $lineFields) !== []) {
                     throw ValidationException::withMessages(['lines.'.$i => 'Conteúdo da linha não suportado.']);
@@ -54,6 +54,9 @@ final class ErpCommercialOperation
             str_ends_with($operation, '.convert') => ['draft_revision', $kind === 'quote' ? 'order_no' : 'invoice_no'],
             default => ['erp_establishment_id', 'erp_contact_id', 'erp_price_group_id', 'erp_operation_nature_id', 'currency', ErpCommercialDraftService::numberField($kind), ...($kind === 'sale' ? ['sale_no'] : []), 'lines', 'expected_total', 'total_amount', 'subtotal_amount', 'discount_amount', 'tax_amount', 'discount', 'tax_rate_percent', 'erp_discount_rule_id', 'draft_revision'],
         };
+        if (! $isReturn && ! str_ends_with($operation, '.post') && ! str_ends_with($operation, '.convert')) {
+            $allowed = [...$allowed, 'tax_context', ...(str_ends_with($operation, '.update') ? ['tax_refresh'] : [])];
+        }
         if (array_diff(array_keys($body), $allowed) !== []) {
             throw ValidationException::withMessages(['operation' => 'Conteúdo não suportado.']);
         }

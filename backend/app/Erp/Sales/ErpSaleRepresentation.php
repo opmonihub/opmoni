@@ -55,7 +55,7 @@ class ErpSaleRepresentation
         $facts = $sale->commercial_snapshot;
         $settings = is_array($layout) ? $this->settings($layout['settings'] ?? null) : null;
         $this->requireAvailable(is_array($layout) && ($layout['version'] ?? null) === self::VERSION && $settings !== null
-            && is_array($facts) && ($facts['version'] ?? null) === ErpCommercialDraftService::VERSION
+            && is_array($facts) && ErpCommercialSnapshotVersions::valid($facts)
             && ($layout['layout_id'] ?? null) === $sale->erp_invoice_layout_id
             && ($facts['company']['id'] ?? null) === $sale->erp_company_id
             && ($facts['document']['id'] ?? null) === $sale->id

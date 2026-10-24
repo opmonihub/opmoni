@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalDocumentController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalEventController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalInvalidationController;
 use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalOperatorCanaryController;
+use App\Http\Controllers\Api\V1\Erp\Sales\ErpCommercialTaxPreviewController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpOrderController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpQuoteController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpSaleController;
@@ -85,6 +86,9 @@ Route::prefix('stock')->name('erp.stock.')->group(function (): void {
 });
 
 Route::get('/quotes', [ErpQuoteController::class, 'index'])->name('erp.quotes.index');
+Route::post('/quotes/{id}/tax-refresh-preview', ErpCommercialTaxPreviewController::class)->whereNumber('id')->name('erp.quotes.tax-refresh-preview');
+Route::post('/orders/{id}/tax-refresh-preview', ErpCommercialTaxPreviewController::class)->whereNumber('id')->name('erp.orders.tax-refresh-preview');
+Route::post('/sales/{id}/tax-refresh-preview', ErpCommercialTaxPreviewController::class)->whereNumber('id')->name('erp.sales.tax-refresh-preview');
 Route::post('/quotes', [ErpQuoteController::class, 'store'])->name('erp.quotes.store');
 Route::get('/quotes/{quote}', [ErpQuoteController::class, 'show'])->whereNumber('quote')->name('erp.quotes.show');
 Route::post('/quotes/{quote}/convert', [ErpQuoteController::class, 'convert'])->whereNumber('quote')->name('erp.quotes.convert');

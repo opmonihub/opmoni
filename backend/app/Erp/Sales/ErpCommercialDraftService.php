@@ -119,7 +119,15 @@ final class ErpCommercialDraftService
 
     public function save(Request $request, string $kind, array $input, ?int $id): Model
     {
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
         $context = CurrentCompany::fromRequest($request);
+        if (array_key_exists('tax_refresh', $input)) {
+            if ($id === null) {
+                $this->error('tax_refresh', 'Selecione um rascunho salvo para revisar a classificação.');
+            }
+
+            return app(ErpCommercialTaxReview::class)->apply($request, $kind, $id, $input);
+        }
         $model = $id === null ? null : $this->resource($request, $kind, $id, true);
         if ($model) {
             abort_unless(in_array($model->status, ['draft', 'confirmed'], true), 409, 'Documento já consumido ou lançado.');
@@ -177,6 +185,13 @@ final class ErpCommercialDraftService
             $nature = $this->scopedReference($request, ErpOperationNature::class, self::id($input['erp_operation_nature_id'], 'erp_operation_nature_id'), $establishment, 'erp_operation_nature_id');
         }
         $oldIds = $model?->lines()->pluck('id')->all() ?? [];
+        $oldLines = $model?->lines()->get()->keyBy('id');
+        $taxSnapshots = app(ErpCommercialTaxSnapshot::class);
+        $actualTaxContext = $taxSnapshots->context($input, $establishment);
+        $sameTaxContext = $model !== null && $establishment === $model->erp_establishment_id
+            && $contact?->id === $model->erp_contact_id
+            && $taxSnapshots->context($model->draft_input ?? [], $model->erp_establishment_id) === $actualTaxContext;
+        $taxSnapshots->lock($context, array_filter(array_column($input['lines'], 'erp_product_variant_id')), array_filter([$nature?->id]));
         $seen = [];
         $lines = [];
         foreach ($input['lines'] as $index => $line) {
@@ -278,6 +293,10 @@ final class ErpCommercialDraftService
                 'manual_discount' => bccomp($discount, '0', 4) > 0 && ($rule === null || (isset($line['discount_amount']) && $discount !== $ruleDiscount)), 'discount_actor_id' => $request->user()->id,
                 'tax_rate' => $rate?->only(['id', 'name', 'rate', 'tax_kind', 'erp_establishment_id']), 'discount_rule' => $rule?->only(['id', 'name', 'kind', 'value']), 'operation_nature' => $nature?->only(['id', 'cfop', 'description', 'movement', 'erp_establishment_id']),
             ];
+            $previous = isset($line['id']) ? $oldLines?->get((int) $line['id'])?->product_snapshot : null;
+            $snapshot = $taxSnapshots->retain($previous, $line, $product, $nature, $actualTaxContext, $sameTaxContext)
+                ? $taxSnapshots->copyClassification($snapshot, $previous)
+                : $taxSnapshots->project($context, $product, $nature, $snapshot, $actualTaxContext, $taxSnapshots->explicit($line, $previous, $path), $path);
             $lines[] = ['erp_company_id' => $company, 'id' => $line['id'] ?? null, 'ordinal' => $index + 1, 'erp_product_variant_id' => $variant?->id, 'erp_unit_id' => $unit?->id, 'quantity' => $quantity, 'base_quantity' => $baseQuantity, 'unit_conversion_factor' => $factor, 'unit_price' => $price, 'gross_amount' => $gross, 'discount_amount' => $discount, 'tax_amount' => $tax, 'product_snapshot' => $snapshot, '_expected_tax' => $rate !== null && array_key_exists('tax_amount', $line) ? $tax : null];
         }
         $totals = $this->totals($request, $lines, $input, $company);
@@ -307,6 +326,7 @@ final class ErpCommercialDraftService
             $model->erp_invoice_scheme_id = $allocation['scheme_id'];
             $model->fill(app(ErpSaleRepresentation::class)->capture($company));
         }
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
         $model->save();
         $kept = [];
         foreach ($lines as $line) {
@@ -321,10 +341,12 @@ final class ErpCommercialDraftService
         $model->commercial_snapshot = $model->commercial_snapshot + ['manual_header_discount' => isset($input['discount']) && ! isset($input['erp_discount_rule_id']) && bccomp($totals['discount_amount'], '0', 4) > 0, 'header_discount_rule_id' => $input['erp_discount_rule_id'] ?? null, 'price_group_resolution' => array_key_exists('erp_price_group_id', $input) ? ($input['erp_price_group_id'] === null ? 'explicit_null' : 'explicit') : 'default'];
         $model->save();
 
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
+
         return $model->fresh('lines');
     }
 
-    /** Omitted lines retain the accepted normalized evidence; refresh requires explicit lines. */
+    /** Omitted lines retain money and classification unless the supplied operation context changes. */
     private function saveRetainedLines(Request $request, string $kind, Model $model, array $input): Model
     {
         abort_unless($model->draft_revision !== null && $model->lines()->exists(), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
@@ -363,12 +385,26 @@ final class ErpCommercialDraftService
             $this->error('erp_operation_nature_id', 'Envie as linhas explicitamente para atualizar a natureza da operação.');
         }
         $natureId = array_key_exists('erp_operation_nature_id', $input) ? $input['erp_operation_nature_id'] : $model->erp_operation_nature_id;
+        $nature = null;
         if ($natureId !== null) {
-            $this->scopedReference($request, ErpOperationNature::class, self::id($natureId, 'erp_operation_nature_id'), $establishment, 'erp_operation_nature_id');
+            $nature = $this->scopedReference($request, ErpOperationNature::class, self::id($natureId, 'erp_operation_nature_id'), $establishment, 'erp_operation_nature_id');
+        }
+        $taxSnapshots = app(ErpCommercialTaxSnapshot::class);
+        $actualTaxContext = $taxSnapshots->context(array_replace($model->draft_input ?? [], $input), $establishment);
+        $reclassifies = $taxSnapshots->context($model->draft_input ?? [], $model->erp_establishment_id) !== $actualTaxContext;
+        if ($reclassifies) {
+            $taxSnapshots->lock($context, $model->lines->pluck('erp_product_variant_id')->filter()->all(), array_filter([$nature?->id]));
         }
         foreach ($model->lines as $index => $line) {
             if ($line->product_snapshot['tax_rate']['id'] ?? null) {
                 $this->scopedReference($request, ErpTaxRate::class, $line->product_snapshot['tax_rate']['id'], $establishment, 'lines.'.$index.'.erp_tax_rate_id');
+            }
+            if ($reclassifies) {
+                $previous = $line->product_snapshot;
+                $product = $line->erp_product_variant_id === null ? null : ErpProductVariant::findOrFail($line->erp_product_variant_id)->product;
+                $line->product_snapshot = $taxSnapshots->project($context, $product, $nature, $previous, $actualTaxContext, $taxSnapshots->explicit([], $previous), 'lines.'.$index);
+                app(ErpCommercialTaxReview::class)->assertAuthority($request);
+                $line->save();
             }
         }
         $adjustsDiscount = array_key_exists('discount', $input) || array_key_exists('erp_discount_rule_id', $input);
@@ -414,14 +450,16 @@ final class ErpCommercialDraftService
             unset($raw['discount'],$raw['erp_discount_rule_id']);
         }
         $model->draft_input = array_replace($raw, $input);
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
         $model->save();
         $snapshot = $model->commercial_snapshot;
         $snapshot['party'] = $model->party_snapshot;
         $snapshot['document'] = $model->only(['id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']);
         $snapshot['totals'] = $totals;
         $snapshot['establishment'] = $model->establishment()->first()?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']);
-        if ($adjustsDiscount || $adjustsTax) {
+        if ($adjustsDiscount || $adjustsTax || $reclassifies) {
             $snapshot['lines'] = $model->fresh('lines')->lines->map(fn (Model $line): array => $line->attributesToArray())->all();
+            $snapshot['version'] = ErpCommercialSnapshotVersions::documentVersion($snapshot['lines']);
             $first = $model->fresh('lines')->lines->first()->product_snapshot;
             $snapshot['header_adjustments'] = ['discount' => $first['header_discount'] ?? null, 'tax' => $first['header_tax'] ?? null];
             if ($adjustsDiscount) {
@@ -430,7 +468,9 @@ final class ErpCommercialDraftService
             }
         }
         $model->commercial_snapshot = $snapshot;
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
         $model->save();
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
 
         return $model->fresh('lines');
     }
@@ -532,7 +572,7 @@ final class ErpCommercialDraftService
         $context = CurrentCompany::fromRequest();
         $establishment = $model->establishment()->first();
 
-        return ['version' => self::VERSION, 'company' => $context->company->only(['id', 'name', 'cnpj', 'razao_social', 'ie']), 'establishment' => $establishment?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']), 'party' => $model->party_snapshot, 'currency' => $model->currency, 'document' => $model->only(['id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']), 'totals' => $model->only(['subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount']), 'lines' => $model->lines->map(fn (Model $line): array => $line->attributesToArray())->all(), 'header_adjustments' => ['discount' => $model->lines->first()?->product_snapshot['header_discount'] ?? null, 'tax' => $model->lines->first()?->product_snapshot['header_tax'] ?? null], 'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null]];
+        return ['version' => ErpCommercialSnapshotVersions::documentVersion($model->lines->map(fn (Model $line): array => $line->attributesToArray())->all()), 'company' => $context->company->only(['id', 'name', 'cnpj', 'razao_social', 'ie']), 'establishment' => $establishment?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']), 'party' => $model->party_snapshot, 'currency' => $model->currency, 'document' => $model->only(['id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']), 'totals' => $model->only(['subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount']), 'lines' => $model->lines->map(fn (Model $line): array => $line->attributesToArray())->all(), 'header_adjustments' => ['discount' => $model->lines->first()?->product_snapshot['header_discount'] ?? null, 'tax' => $model->lines->first()?->product_snapshot['header_tax'] ?? null], 'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null]];
     }
 
     public function postedSnapshot(ErpSale $sale): array
@@ -545,7 +585,7 @@ final class ErpCommercialDraftService
     public function acceptedSnapshot(Model $model, int $actorId): array
     {
         $snapshot = $model->commercial_snapshot;
-        abort_unless(is_array($snapshot) && ($snapshot['version'] ?? null) === self::VERSION, response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
+        abort_unless(is_array($snapshot) && ErpCommercialSnapshotVersions::valid($snapshot), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
         $snapshot['accepted'] = ['actor_id' => $actorId, 'at' => now()->toISOString(), 'draft_revision' => $model->draft_revision];
 
         return $snapshot;
@@ -553,9 +593,11 @@ final class ErpCommercialDraftService
 
     public function convert(Request $request, string $kind, int $id, array $input): array
     {
+        app(ErpCommercialTaxReview::class)->assertAuthority($request);
         $source = $this->resource($request, $kind, $id, true)->load('lines');
         abort_unless(in_array($source->status, ['draft', 'confirmed'], true), 409, 'Documento já convertido.');
         abort_unless($source->draft_revision !== null && $source->lines->isNotEmpty(), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
+        abort_unless(is_array($source->commercial_snapshot) && ErpCommercialSnapshotVersions::valid($source->commercial_snapshot), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
         $this->assertRevision($source, $input);
         $targetClass = self::modelClass($kind === 'quote' ? 'order' : 'sale');
         abort_if($targetClass::where($kind === 'quote' ? 'erp_quote_id' : 'erp_order_id', $source->id)->exists(), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));

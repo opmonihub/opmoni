@@ -48,6 +48,9 @@ class CurrentCompany
             'erp.company.initialization.preview', 'erp.company.initialization.apply' => 'erp.company.settings.update',
             'erp.products.tax-preview' => 'erp.products.update',
             'erp.product-tax-profiles.show' => 'erp.product-tax-profiles.index',
+            'erp.quotes.tax-refresh-preview' => 'erp.quotes.update',
+            'erp.orders.tax-refresh-preview' => 'erp.orders.update',
+            'erp.sales.tax-refresh-preview' => 'erp.sales.update',
             default => $permission,
         };
         if ($this->accessKind === 'delegated') {
