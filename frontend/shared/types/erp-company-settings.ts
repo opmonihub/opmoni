@@ -1,3 +1,5 @@
+import type { ErpNativeDefaults } from './erpNativeDefaults'
+
 export type ErpCompanySettingsPayload = {
   name: string
   cnpj: string
@@ -7,6 +9,7 @@ export type ErpCompanySettingsPayload = {
   time_zone?: string
   accounting_method?: string
   transaction_edit_days?: number
+  native_defaults?: ErpNativeDefaults
   [key: string]: unknown
 }
 

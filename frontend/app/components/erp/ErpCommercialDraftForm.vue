@@ -41,7 +41,26 @@ const headerTaxRate = computed({
   }
 })
 const establishmentItems = computed(() => props.references.establishments.map(row => ({ label: row.name, value: row.id })))
-const contactItems = computed(() => [{ label: 'Sem cliente vinculado', value: 0 }, ...props.references.contacts.map(row => ({ label: row.trade_name || row.name, value: row.id }))])
+const canUseDefaultCustomer = computed(() => props.kind === 'sale' && !props.editing)
+const contactItems = computed(() => [
+  ...(canUseDefaultCustomer.value ? [{ label: 'Usar cliente padrão da empresa', value: -1 }] : []),
+  { label: 'Sem cliente vinculado', value: 0 },
+  ...props.references.contacts.map(row => ({ label: row.trade_name || row.name, value: row.id }))
+])
+const customerSelection = computed(() => canUseDefaultCustomer.value && !Object.hasOwn(draft.value, 'erp_contact_id') ? -1 : draft.value.erp_contact_id ?? 0)
+function selectCustomer(value: unknown) {
+  if (canUseDefaultCustomer.value && (value === -1 || value === '-1')) delete draft.value.erp_contact_id
+  else draft.value.erp_contact_id = selectValue(value)
+}
+const currencyItems = computed(() => [
+  ...(!props.editing ? [{ label: 'Usar moeda padrão da empresa', value: 'default' }] : []),
+  { label: 'BRL · Real brasileiro', value: 'BRL' }
+])
+const currencySelection = computed(() => draft.value.currency ?? 'default')
+function selectCurrency(value: unknown) {
+  if (value === 'BRL') draft.value.currency = 'BRL'
+  else if (value === 'default' && !props.editing) delete draft.value.currency
+}
 const unitItems = computed(() => [{ label: 'Unidade do catálogo', value: 0 }, ...props.references.units.map(row => ({ label: row.symbol ? `${row.name} (${row.symbol})` : row.name, value: row.id }))])
 const variantItems = computed(() => [{ label: 'Item sem produto', value: 0 }, ...props.references.variants.map(row => ({ label: `${row.name}${row.sku ? ` · ${row.sku}` : ''}`, value: row.id }))])
 const operationNatureItems = computed(() => {
@@ -101,7 +120,6 @@ function useCurrentCatalog(line: ErpCommercialDraftPayload['lines'][number]) {
 }
 function submit() {
   const payload = JSON.parse(JSON.stringify(draft.value)) as ErpCommercialDraftPayload
-  payload.currency = 'BRL'
   if (!payload.discount?.discount_amount.trim()) delete payload.discount
   if (!payload.tax_rate_percent?.trim()) delete payload.tax_rate_percent
   payload.lines = payload.lines.map((line) => {
@@ -138,11 +156,20 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
       </UFormField>
       <UFormField name="erp_contact_id" label="Cliente" :error="formName('erp_contact_id')">
         <USelect
-          :model-value="draft.erp_contact_id ?? 0"
+          :model-value="customerSelection"
           :items="contactItems"
           class="w-full"
           :disabled="disabled || saving"
-          @update:model-value="draft.erp_contact_id = selectValue($event)"
+          @update:model-value="selectCustomer($event)"
+        />
+      </UFormField>
+      <UFormField name="currency" label="Moeda" :error="formName('currency')">
+        <USelect
+          :model-value="currencySelection"
+          :items="currencyItems"
+          class="w-full"
+          :disabled="disabled || saving"
+          @update:model-value="selectCurrency($event)"
         />
       </UFormField>
       <UFormField name="erp_operation_nature_id" label="Natureza da operação" :error="formName('erp_operation_nature_id')">

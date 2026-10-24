@@ -81,9 +81,7 @@ const selectedNeedsRefresh = computed(() => {
 function emptyDraft(establishmentId: number | null = null): ErpCommercialDraftPayload {
   return {
     erp_establishment_id: establishmentId,
-    erp_contact_id: null,
     erp_operation_nature_id: null,
-    currency: 'BRL',
     lines: [{ erp_product_variant_id: null, erp_unit_id: null, description: '', quantity: '1.0000', discount_amount: '0.0000', tax_amount: '0.0000' }]
   }
 }

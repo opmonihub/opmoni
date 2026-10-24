@@ -131,7 +131,7 @@ export interface ErpCommercialDraftPayload {
   erp_contact_id?: number | null
   erp_price_group_id?: number | null
   erp_operation_nature_id?: number | null
-  currency: 'BRL'
+  currency?: 'BRL'
   quote_no?: string
   order_no?: string
   invoice_no?: string
