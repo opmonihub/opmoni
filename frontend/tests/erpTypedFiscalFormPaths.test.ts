@@ -11,6 +11,7 @@ import {
   requiredErpTypedFiscalFields
 } from '../app/utils/erpTypedFiscalForm.ts'
 import * as typedFiscalForm from '../app/utils/erpTypedFiscalForm.ts'
+import { erpTaxRecord, erpTaxSourceLabel } from '../shared/utils/erpCommercialTaxReview.ts'
 
 type HostNode = {
   tag: string
@@ -85,6 +86,7 @@ function mountDocumentForm(model: ErpFiscalModel, fieldErrors: Record<string, st
   new Function('require', 'exports', ...Object.keys(globals), compiledScript.outputText)((name: string) => {
     if (name === 'vue') return Vue
     if (name === '#shared/utils/erpFiscal') return { buildErpFiscalDraftSource: () => ({}) }
+    if (name === '#shared/utils/erpCommercialTaxReview') return { erpTaxRecord, erpTaxSourceLabel }
     if (name === '~/utils/erpTypedFiscalForm') return typedFiscalForm
     throw new Error(`Unexpected fiscal form import: ${name}`)
   }, exports, ...Object.values(globals))

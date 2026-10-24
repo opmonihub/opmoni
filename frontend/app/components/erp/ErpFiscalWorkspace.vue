@@ -18,6 +18,7 @@ const destinationLinks = computed(() => [destinations.value.map(destination => (
   active: selection.value.permitted && selection.value.destination?.id === destination.id
 }))])
 function selectModel(model: ErpFiscalModel) {
+  if (draftFormOpen.value && draftLocked.value) return
   const destination = destinations.value.find(item => item.fiscalModel === model)
   if (destination) void router.push({ path: route.path, query: route.query, hash: `#${destination.id}` })
 }
@@ -32,6 +33,10 @@ const invalidationConfirmationOpen = ref(false)
 const pendingEvent = ref<{ type: string, fields: Record<string, unknown>, key: string } | null>(null)
 const draftFormEpoch = ref(0)
 const draftFormOpen = ref(false)
+const draftDirty = ref(false)
+const discardDraftOpen = ref(false)
+let discardDraftContext: string | null = null
+let currentFiscalDestination: { id: string, path: string, context: string } | null = null
 const eventFormEpoch = ref(0)
 const invalidationFormEpoch = ref(0)
 const localBusy = ref(false)
@@ -52,6 +57,35 @@ const canSubmitEvent = computed(() => workspace.canCreateEvents
   && workspace.configuration?.release_gates.provider !== 'unavailable'
   && (workspace.configuration?.environment === 'homologation' || workspace.configuration?.release_gates.production_transmission_enabled === true))
 const contextFormKey = computed(() => `${uiAuthority.key.value}:${workspace.authorityGeneration}`)
+const draftLocked = computed(() => workspace.saving || !!workspace.pendingRecovery || !!workspace.pendingCertificateRecovery || workspace.certificateMutationInFlight)
+
+function updateDraftDirty(dirty: boolean) {
+  draftDirty.value = draftFormOpen.value && dirty
+}
+function closeDraft() {
+  discardDraftOpen.value = false
+  discardDraftContext = null
+  draftFormOpen.value = false
+  draftDirty.value = false
+  draftFormEpoch.value++
+  workspace.selectedSale = null
+  workspace.selectedReturn = null
+  workspace.fieldErrors = {}
+  requestError.value = ''
+}
+function requestDraftClose() {
+  if (draftLocked.value) return
+  if (draftDirty.value) {
+    discardDraftContext = contextFormKey.value
+    discardDraftOpen.value = true
+    return
+  }
+  closeDraft()
+}
+function confirmDraftDiscard() {
+  if (draftLocked.value || discardDraftContext !== contextFormKey.value) return
+  closeDraft()
+}
 
 const visibleListState = computed(() => activeArea.value === 'configuration' ? null : workspace.listStates?.[activeArea.value as 'documents' | 'certificates' | 'events' | 'invalidations'])
 
@@ -79,10 +113,24 @@ watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId, workspace
   selectedCertificate.value = null
   certificateMode.value = 'upload'
   draftFormOpen.value = false
+  draftDirty.value = false
+  discardDraftOpen.value = false
+  discardDraftContext = null
+  currentFiscalDestination = null
 }, { flush: 'sync' })
 
 watch(() => [mounted.value, selection.value.destination?.id, selection.value.permitted, uiAuthority.key.value, workspace.authorityGeneration] as const, () => {
   if (!mounted.value) return
+  const destination = selection.value.destination?.id
+  if (draftFormOpen.value && draftLocked.value && selection.value.permitted
+    && currentFiscalDestination?.context === contextFormKey.value
+    && currentFiscalDestination.path === route.path && currentFiscalDestination.id !== destination) {
+    void router.replace({ path: route.path, query: route.query, hash: `#${currentFiscalDestination.id}` })
+    return
+  }
+  currentFiscalDestination = destination && selection.value.permitted
+    ? { id: destination, path: route.path, context: contextFormKey.value }
+    : null
   workspace.setDocumentModel(selectedModel.value)
   if (selection.value.permitted) void workspace.load()
 }, { immediate: true, flush: 'sync' })
@@ -374,7 +422,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
             </div>
             <UCard v-if="workspace.canCreateDocuments && workspace.configuration" class="mt-5">
               <template #header>
-                <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 class="font-semibold">
                       {{ draftFormOpen ? 'Novo rascunho fiscal' : 'Criar documento fiscal' }}
@@ -382,16 +430,26 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                       {{ draftFormOpen ? 'A numeração e a chave ficam vinculadas aos dados confirmados neste envio.' : 'Consulte a lista e os detalhes. Abra o formulário quando for preparar um documento.' }}
                     </p>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <USelect
-                      v-if="draftFormOpen"
-                      :model-value="selectedModel"
-                      :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }, { label: 'MDF-e (58)', value: '58' }]"
-                      value-key="value"
-                      label-key="label"
-                      class="w-36"
-                      @update:model-value="selectModel($event as ErpFiscalModel)"
-                    />
+                  <div class="flex flex-wrap items-center gap-2">
+                    <template v-if="draftFormOpen">
+                      <USelect
+                        :model-value="selectedModel"
+                        :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }, { label: 'MDF-e (58)', value: '58' }]"
+                        value-key="value"
+                        label-key="label"
+                        class="w-36"
+                        :disabled="draftLocked"
+                        @update:model-value="selectModel($event as ErpFiscalModel)"
+                      />
+                      <UButton
+                        color="neutral"
+                        variant="outline"
+                        :disabled="draftLocked"
+                        @click="requestDraftClose"
+                      >
+                        Fechar rascunho
+                      </UButton>
+                    </template>
                     <UButton v-else data-testid="open-fiscal-draft" @click="draftFormOpen = true">
                       Novo rascunho
                     </UButton>
@@ -410,12 +468,13 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                 :selected-return="workspace.selectedReturn"
                 :original-documents="workspace.documentSources"
                 :can-create="workspace.canCreateDocuments"
-                :busy="workspace.saving"
+                :busy="draftLocked"
                 :field-errors="workspace.fieldErrors"
                 @update:model="selectModel"
                 @select-sale="selectSale"
                 @select-return="selectReturn"
                 @create="createDraft"
+                @dirty="updateDraftDirty"
               />
             </UCard>
           </section>
@@ -629,6 +688,25 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
         </div>
       </template>
     </template>
+
+    <UModal v-model:open="discardDraftOpen" title="Descartar alterações?" description="Os dados não enviados deste formulário, em todos os modelos, serão perdidos.">
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Continuar editando"
+            @click="discardDraftOpen = false"
+          />
+          <UButton
+            color="error"
+            label="Descartar alterações"
+            :disabled="draftLocked"
+            @click="confirmDraftDiscard"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal v-model:open="actionConfirmationOpen" title="Confirmar operação fiscal">
       <template #body>

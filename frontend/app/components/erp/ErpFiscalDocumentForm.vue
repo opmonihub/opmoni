@@ -23,6 +23,7 @@ const emit = defineEmits<{
   'create': [body: Record<string, unknown>]
   'select-sale': [id: number]
   'select-return': [id: number]
+  'dirty': [dirty: boolean]
 }>()
 
 const selectedModel = ref<ErpFiscalModel>(props.model)
@@ -150,24 +151,111 @@ const manifestDocuments = computed(() => props.originalDocuments.filter(row => [
   && row.environment === props.configuration?.environment))
 const selectedManifestDocument = computed(() => manifestDocuments.value.find(row => row.id === selectedManifestDocumentId.value) ?? null)
 
-watch(selectedModel, (model, previous) => {
-  if (model !== props.model) emit('update:model', model)
-  kind.value = defaultKind(model)
-  selectedOriginalId.value = undefined
-  selectedManifestDocumentId.value = undefined
+type LocalDraft = {
+  facts: Record<string, string>
+  totals: Record<string, string>
+  lines: ErpFiscalLineFormFacts[]
+  originalId?: number
+  manifestId?: number
+  key: string
+  source: string
+  baseline: string
+  dirty: boolean
+  sourceRequested: boolean
+}
+const localDrafts: Record<string, LocalDraft> = {}
+const lastKinds: Partial<Record<ErpFiscalModel, string>> = {}
+let activeModel = selectedModel.value
+let activeKind = kind.value
+let baseline = ''
+let restoring = false
+let sourceRequested = false
+let activeSource = ''
+
+function sourceIdentity() {
+  if (activeModel !== '55' && activeModel !== '65') return ''
+  return activeKind === 'return' ? `return:${props.selectedReturn?.id ?? ''}` : `sale:${props.selectedSale?.id ?? ''}`
+}
+function initialLines(): ErpFiscalLineFormFacts[] {
+  return sourceLines.value.map(line => ({ description: line.product_snapshot?.product?.name ?? '', ind_total: '', quantity: '', unit_price: '', gross_total: '', icms_base: '', icms_rate: '', icms_value: '', pis_value: '', cofins_value: '' }))
+}
+function draftContent() {
+  return JSON.stringify({ facts, totals, lines: lineFacts.value, originalId: selectedOriginalId.value, manifestId: selectedManifestDocumentId.value, source: activeSource })
+}
+function reportDirty() {
+  emit('dirty', sourceRequested || draftContent() !== baseline || Object.entries(localDrafts).some(([key, draft]) => key !== `${activeModel}:${activeKind}` && draft.dirty))
+}
+function saveLocalDraft() {
+  localDrafts[`${activeModel}:${activeKind}`] = JSON.parse(JSON.stringify({
+    facts, totals, lines: lineFacts.value, originalId: selectedOriginalId.value, manifestId: selectedManifestDocumentId.value,
+    key: idempotencyKey.value, source: activeSource, baseline, dirty: sourceRequested || draftContent() !== baseline, sourceRequested
+  })) as LocalDraft
+}
+function activateDraft(model: ErpFiscalModel, documentKind: string) {
+  activeModel = model
+  activeKind = documentKind
+  lastKinds[model] = documentKind
+  const draft = localDrafts[`${model}:${documentKind}`]
+  for (const field of Object.keys(facts)) facts[field] = draft?.facts[field] ?? ''
+  for (const field of Object.keys(totals)) Reflect.deleteProperty(totals, field)
+  Object.assign(totals, draft?.totals ?? {})
+  selectedOriginalId.value = draft?.originalId
+  selectedManifestDocumentId.value = draft?.manifestId
+  idempotencyKey.value = draft?.key ?? crypto.randomUUID()
+  lineFacts.value = draft?.source === sourceIdentity() ? draft.lines : initialLines()
+  activeSource = sourceIdentity()
+  baseline = draft && (draft.dirty || draft.source === activeSource) ? draft.baseline : draftContent()
+  sourceRequested = draft?.sourceRequested ?? false
   localError.value = ''
-  idempotencyKey.value = crypto.randomUUID()
-  if (model !== previous) {
-    for (const key of Object.keys(facts)) facts[key] = ''
-    for (const key of Object.keys(totals)) totals[key] = ''
+  reportDirty()
+}
+activateDraft(activeModel, activeKind)
+
+watch(selectedModel, (model, previous) => {
+  if (restoring || model === previous) return
+  if (props.busy) {
+    restoring = true
+    selectedModel.value = previous
+    restoring = false
+    return
   }
-})
+  saveLocalDraft()
+  restoring = true
+  kind.value = lastKinds[model] ?? defaultKind(model)
+  activateDraft(model, kind.value)
+  restoring = false
+  if (model !== props.model) emit('update:model', model)
+}, { flush: 'sync' })
+watch(kind, (documentKind, previous) => {
+  if (restoring || documentKind === previous) return
+  if (props.busy) {
+    restoring = true
+    kind.value = previous
+    restoring = false
+    return
+  }
+  saveLocalDraft()
+  activateDraft(selectedModel.value, documentKind)
+}, { flush: 'sync' })
 watch(() => props.model, (value) => {
   selectedModel.value = value
 })
-watch(() => [kind.value, props.selectedSale?.id, props.selectedReturn?.id], () => {
-  lineFacts.value = sourceLines.value.map(line => ({ description: line.product_snapshot?.product?.name ?? '', ind_total: '', quantity: '', unit_price: '', gross_total: '', icms_base: '', icms_rate: '', icms_value: '', pis_value: '', cofins_value: '' }))
-}, { immediate: true })
+watch(() => [props.selectedSale?.id, props.selectedReturn?.id], () => {
+  const pristine = !sourceRequested && draftContent() === baseline
+  lineFacts.value = initialLines()
+  activeSource = sourceIdentity()
+  if (pristine) baseline = draftContent()
+  sourceRequested = false
+  reportDirty()
+}, { flush: 'sync' })
+watch([facts, totals, lineFacts, selectedOriginalId, selectedManifestDocumentId], reportDirty, { deep: true, flush: 'post' })
+
+function selectSource(type: 'sale' | 'return', id: number) {
+  sourceRequested = true
+  reportDirty()
+  if (type === 'sale') emit('select-sale', id)
+  else emit('select-return', id)
+}
 
 function makeTypedSaleFacts(): ErpFiscalSaleFormFacts {
   const payment = facts.payment_method && facts.payment_amount ? [{ method: facts.payment_method, amount: facts.payment_amount }] : []
@@ -371,7 +459,7 @@ function submit() {
             value-key="value"
             label-key="label"
             placeholder="Selecione uma venda lançada"
-            @update:model-value="emit('select-sale', Number($event))"
+            @update:model-value="selectSource('sale', Number($event))"
           />
         </UFormField>
         <UFormField
@@ -386,7 +474,7 @@ function submit() {
             value-key="value"
             label-key="label"
             placeholder="Selecione uma devolução lançada"
-            @update:model-value="emit('select-return', Number($event))"
+            @update:model-value="selectSource('return', Number($event))"
           />
         </UFormField>
         <section v-if="kind === 'posted_sale' && selectedSale" aria-label="Fonte comercial da venda" class="space-y-3 rounded-lg border border-default p-4 text-sm">
