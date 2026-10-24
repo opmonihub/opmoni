@@ -373,6 +373,7 @@ final class ErpCommercialDraftService
         if (array_key_exists('erp_price_group_id', $input) && $input['erp_price_group_id'] !== $model->erp_price_group_id && (string) $input['erp_price_group_id'] !== (string) $model->erp_price_group_id) {
             $this->error('erp_price_group_id', 'Envie as linhas explicitamente para atualizar o preço.');
         }
+        $previousContactId = $model->erp_contact_id;
         if (array_key_exists('erp_contact_id', $input)) {
             $contact = $input['erp_contact_id'] === null ? null : $this->active(ErpContact::class, $company, self::id($input['erp_contact_id'], 'erp_contact_id'), 'erp_contact_id');
             if ($contact && ! $contact->is_customer) {
@@ -391,7 +392,8 @@ final class ErpCommercialDraftService
         }
         $taxSnapshots = app(ErpCommercialTaxSnapshot::class);
         $actualTaxContext = $taxSnapshots->context(array_replace($model->draft_input ?? [], $input), $establishment);
-        $reclassifies = $taxSnapshots->context($model->draft_input ?? [], $model->erp_establishment_id) !== $actualTaxContext;
+        $reclassifies = $previousContactId !== $model->erp_contact_id
+            || $taxSnapshots->context($model->draft_input ?? [], $model->erp_establishment_id) !== $actualTaxContext;
         if ($reclassifies) {
             $taxSnapshots->lock($context, $model->lines->pluck('erp_product_variant_id')->filter()->all(), array_filter([$nature?->id]));
         }

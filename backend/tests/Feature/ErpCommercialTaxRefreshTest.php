@@ -2,18 +2,23 @@
 
 namespace Tests\Feature;
 
+use App\Erp\Sales\ErpCommercialTaxReview;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\Sales\ErpQuote;
+use App\Models\Erp\Sales\ErpQuoteLine;
 use App\Models\Erp\Sales\ErpSale;
 use App\Support\CurrentCompany;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\BuildsReviewedCommercialTax;
 use Tests\Support\ErpCommercialTestCase;
 
@@ -333,5 +338,81 @@ class ErpCommercialTaxRefreshTest extends ErpCommercialTestCase
         $this->assertTrue($triggered);
         $this->assertSame($before, $this->commercialDetail('quotes', $id));
         $this->assertSame(0, DB::table('erp_operation_receipts')->where('operation', 'erp.quotes.update')->count());
+    }
+
+    public function test_public_refresh_apply_rejects_calls_outside_the_protected_transaction_before_queries_or_effects(): void
+    {
+        $id = $this->send('quotes', $this->reviewedBody())->assertCreated()->json('data.id');
+        $this->updateTaxProfile();
+        $preview = $this->preview('quotes', $id, 1);
+        $before = ErpQuote::findOrFail($id)->getAttributes();
+        $beforeLines = ErpQuote::findOrFail($id)->lines()->get()->map(fn ($line): array => $line->getAttributes())->all();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $input = ['draft_revision' => 1, 'tax_refresh' => ['reviewed_fingerprint' => $preview['reviewed_fingerprint']]];
+        $request = Request::create('/api/v1/erp/quotes/'.$id, 'PATCH', $input);
+        $request->setUserResolver(fn () => $this->user);
+        $request->setLaravelSession($this->app['session']->driver());
+        $route = new Route(['PATCH'], '/api/v1/erp/quotes/{id}', fn () => null);
+        $route->name('erp.quotes.update');
+        $request->setRouteResolver(fn () => $route);
+        $membership = ErpCompanyMembership::where('erp_company_id', $this->company->id)->where('user_id', $this->user->id)->firstOrFail();
+        $request->attributes->set(CurrentCompany::class, new CurrentCompany($this->company->fresh(), 'direct', $membership, null, null));
+
+        // Only this isolated SQLite fixture is committed, so RefreshDatabase cannot mask the boundary.
+        $this->assertSame('sqlite', DB::connection()->getDriverName());
+        $this->assertSame(':memory:', DB::connection()->getConfig('database'));
+        while (DB::transactionLevel() > 0) {
+            DB::commit();
+        }
+        $this->assertSame(0, DB::transactionLevel());
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+        $status = null;
+        try {
+            app(ErpCommercialTaxReview::class)->apply($request, 'quote', $id, $input);
+        } catch (HttpException $error) {
+            $status = $error->getStatusCode();
+        }
+        $queriesDuringApply = $queries;
+        $this->assertSame(500, $status);
+        $this->assertSame(0, $queriesDuringApply);
+        $this->assertSame(0, DB::transactionLevel());
+        $this->assertSame($before, ErpQuote::findOrFail($id)->getAttributes());
+        $this->assertSame($beforeLines, ErpQuote::findOrFail($id)->lines()->get()->map(fn ($line): array => $line->getAttributes())->all());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoCommercialEffects();
+    }
+
+    public function test_protected_refresh_rolls_back_a_failure_after_the_first_line_write_and_retries_once(): void
+    {
+        $id = $this->send('quotes', $this->reviewedBody(['lines' => [$this->reviewedLine(), $this->reviewedLine()]]))->assertCreated()->json('data.id');
+        $before = ErpQuote::findOrFail($id)->getAttributes();
+        $beforeLines = ErpQuote::findOrFail($id)->lines()->get()->map(fn ($line): array => $line->getAttributes())->all();
+        $this->updateTaxProfile();
+        $preview = $this->preview('quotes', $id, 1);
+        $event = 'eloquent.updated: '.ErpQuoteLine::class;
+        $wroteLine = false;
+        Event::listen($event, function (ErpQuoteLine $line) use ($id, &$wroteLine): void {
+            if ($line->erp_quote_id === $id) {
+                $wroteLine = true;
+                throw new \RuntimeException('Synthetic reviewed classification publication failure.');
+            }
+        });
+        try {
+            $this->applyReview('quotes', $id, 1, $preview, 'review-publication-failure')->assertStatus(503);
+        } finally {
+            Event::forget($event);
+        }
+        $this->assertTrue($wroteLine);
+        $this->assertSame($before, ErpQuote::findOrFail($id)->getAttributes());
+        $this->assertSame($beforeLines, ErpQuote::findOrFail($id)->lines()->get()->map(fn ($line): array => $line->getAttributes())->all());
+        $this->assertSame(0, DB::table('erp_operation_receipts')->where('operation', 'erp.quotes.update')->count());
+        $this->assertNoCommercialEffects();
+        $this->applyReview('quotes', $id, 1, $preview, 'review-publication-failure')->assertOk()->assertJsonPath('data.draft_revision', 2);
+        $this->assertSame(1, DB::table('erp_operation_receipts')->where('operation', 'erp.quotes.update')->count());
+        $this->assertSame(['02', '02'], ErpQuote::findOrFail($id)->lines()->get()->map(fn ($line): string => $line->product_snapshot['product']['pis_cst'])->all());
+        $this->assertNoCommercialEffects();
     }
 }

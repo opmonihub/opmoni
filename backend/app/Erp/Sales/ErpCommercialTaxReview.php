@@ -57,6 +57,7 @@ final class ErpCommercialTaxReview
 
     public function apply(Request $request, string $kind, int $id, array $input): Model
     {
+        abort_unless(DB::transactionLevel() > 0, 500);
         $this->assertAuthority($request);
         $unexpected = array_diff(array_keys($input), ['draft_revision', 'tax_refresh', 'expected_total', 'total_amount', 'subtotal_amount', 'discount_amount', 'tax_amount']);
         if ($unexpected !== []) {

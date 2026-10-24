@@ -6,6 +6,7 @@ use App\Erp\Sales\ErpCommercialDraftService;
 use App\Erp\Sales\ErpSaleRepresentation;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpCompanySetupState;
+use App\Models\Erp\ErpContact;
 use App\Models\Erp\Sales\ErpInvoiceLayout;
 use App\Models\Erp\Sales\ErpQuote;
 use App\Models\Erp\Sales\ErpSale;
@@ -295,6 +296,61 @@ class ErpReviewedCommercialSnapshotTest extends ErpCommercialTestCase
         $this->send('quotes/'.$id.'/convert', ['draft_revision' => 1], 'incoherent-source')->assertConflict();
         $this->assertSame($before, $quote->fresh()->getAttributes());
         $this->assertDatabaseCount('erp_orders', 0);
+        $this->assertNoCommercialEffects();
+    }
+
+    public static function customerChanges(): iterable
+    {
+        yield 'customer A to B' => [false];
+        yield 'customer A to explicit null' => [true];
+    }
+
+    #[DataProvider('customerChanges')]
+    public function test_customer_changes_reclassify_omitted_and_explicit_lines_equally_and_same_customer_retains_facts(bool $clear): void
+    {
+        $customer = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_customer' => true]);
+        $replacement = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_customer' => true]);
+        $laterDefault = ErpContact::factory()->create(['erp_company_id' => $this->company->id, 'is_customer' => true]);
+        $documents = [];
+        foreach (['omitted', 'explicit'] as $mode) {
+            $id = $this->send('sales', $this->reviewedBody(['erp_contact_id' => $customer->id]))->assertCreated()->json('data.id');
+            $documents[$mode] = $this->commercialDetail('sales', $id);
+            $this->assertSame(1, $documents[$mode]['lines'][0]['product_snapshot']['product_tax_resolution']['profile']['revision']);
+        }
+        ErpCompanySetupState::query()->create(['erp_company_id' => $this->company->id, 'preset_version' => 'br-basic-v1', 'revision' => 1, 'currency' => 'BRL', 'default_customer_id' => $laterDefault->id]);
+        $this->updateTaxProfile();
+        $target = $clear ? null : $replacement->id;
+        $classified = [];
+        foreach ($documents as $mode => $before) {
+            $input = ['draft_revision' => 1, 'erp_contact_id' => $target];
+            if ($mode === 'explicit') {
+                $input['lines'] = [$this->reviewedLine(['id' => $before['lines'][0]['id']])];
+            }
+            $this->patchJson('/api/v1/erp/sales/'.$before['id'], $input, ['Idempotency-Key' => 'customer-change-'.$mode])
+                ->assertOk()->assertJsonPath('data.erp_contact_id', $target)->assertJsonPath('data.total_amount', '20.9000');
+            $after = $this->commercialDetail('sales', $before['id']);
+            $classified[$mode] = $after['lines'][0]['product_snapshot'];
+            $this->assertSame('02', $classified[$mode]['product']['pis_cst']);
+            $this->assertSame(2, $classified[$mode]['product_tax_resolution']['profile']['revision']);
+            $this->assertSame($before['invoice_no'], $after['invoice_no']);
+            foreach (['quantity', 'base_quantity', 'erp_unit_id', 'unit_conversion_factor', 'unit_price', 'gross_amount', 'discount_amount', 'tax_amount', 'line_total'] as $field) {
+                $this->assertSame($before['lines'][0][$field], $after['lines'][0][$field]);
+            }
+        }
+        foreach (['product_tax_resolution', 'cfop_resolution', 'operation_nature'] as $field) {
+            $this->assertSame($classified['explicit'][$field], $classified['omitted'][$field]);
+        }
+        $this->patchJson('/api/v1/erp/tax-settings/product-tax-profiles/'.$this->taxProfileId, ['expected_revision' => 2, 'fields' => ['pis_cst' => '03']])->assertOk();
+        foreach ($documents as $mode => $before) {
+            $input = ['draft_revision' => 2, 'erp_contact_id' => $target];
+            if ($mode === 'explicit') {
+                $input['lines'] = [$this->reviewedLine(['id' => $before['lines'][0]['id']])];
+            }
+            $this->patchJson('/api/v1/erp/sales/'.$before['id'], $input, ['Idempotency-Key' => 'same-customer-'.$mode])
+                ->assertOk()->assertJsonPath('data.erp_contact_id', $target);
+            $this->assertSame($classified[$mode], $this->commercialDetail('sales', $before['id'])['lines'][0]['product_snapshot']);
+        }
+        $this->assertSame($laterDefault->id, ErpCompanySetupState::query()->where('erp_company_id', $this->company->id)->firstOrFail()->default_customer_id);
         $this->assertNoCommercialEffects();
     }
 }
