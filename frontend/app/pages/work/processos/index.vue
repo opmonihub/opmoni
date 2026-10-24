@@ -642,7 +642,7 @@ watch([filterModels, search, referenceMonth], () => {
       v-else-if="groups.length === 0"
       icon="i-lucide-layers"
       title="Nenhum processo neste mês"
-      description="Os processos gerados a partir dos modelos aparecem aqui agrupados por processo, cliente e tarefa."
+      description="Os processos são gerados a partir dos modelos."
       variant="naked"
       :actions="[{ label: 'Atualizar', icon: 'i-lucide-refresh-cw', onClick: () => refresh() }]"
     />

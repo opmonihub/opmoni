@@ -88,7 +88,7 @@ watch([debouncedQ, typeFilter], () => {
 <template>
   <DataTablePanelList
     title="Usuários"
-    description="Pessoas com acesso ao sistema."
+    hide-heading
   >
     <template #toolbar>
       <UInput
@@ -130,6 +130,7 @@ watch([debouncedQ, typeFilter], () => {
 
       <template v-if="!showError || hasLoaded">
         <UTable
+          aria-label="Usuários"
           v-model:column-visibility="columnVisibility"
           :data="users"
           :columns="columns"

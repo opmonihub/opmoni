@@ -29,15 +29,18 @@ import { panelCardUi, panelToolbarClass } from '~/components/data-table/panel'
 withDefaults(defineProps<{
   title: string
   description?: string
+  hideHeading?: boolean
 }>(), {
-  description: undefined
+  description: undefined,
+  hideHeading: false
 })
 </script>
 
 <template>
   <UPageCard
-    :title="title"
-    :description="description"
+    v-if="!hideHeading || $slots.action"
+    :title="hideHeading ? undefined : title"
+    :description="hideHeading ? undefined : description"
     variant="naked"
     orientation="horizontal"
     class="mb-4"

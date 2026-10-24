@@ -42,7 +42,7 @@ const presentation = computed(() => {
     return {
       icon: 'i-lucide-search-x',
       title: 'Nenhum cliente encontrado',
-      description: 'Não há clientes que correspondam à busca ou aos filtros aplicados. Ajuste os critérios para continuar.'
+      description: 'Ajuste a busca ou limpe os filtros.'
     }
   }
 

@@ -496,7 +496,7 @@ defineExpose({ createAction })
     :dismissible="false"
     :unmount-on-hide="true"
     :content="{ onCloseAutoFocus: preventNativeEditorFocusRestore }"
-    :ui="{ content: 'w-full sm:max-w-3xl' }"
+    :ui="{ content: 'w-full sm:max-w-3xl', description: 'sr-only' }"
     @close:prevent="requestEditorClose"
   >
     <template #body>
@@ -508,9 +508,6 @@ defineExpose({ createAction })
       >
         <div v-if="mode === 'detail'" class="flex items-center gap-2">
           <UBadge label="Somente leitura" color="neutral" variant="subtle" />
-          <p class="text-muted text-sm">
-            Consulta do cadastro.
-          </p>
         </div>
         <p v-if="editorError" role="alert" class="text-error border-error/30 bg-error/5 rounded-md border p-3 text-sm">
           {{ editorError }}

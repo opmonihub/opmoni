@@ -365,7 +365,7 @@ onBeforeUnmount(() => {
         Conexão com o Integra Contador
       </h2>
       <p class="text-sm text-muted">
-        A credencial é única, pertence à plataforma e vale para todas as contas. O segredo é somente escrita: a API nunca o devolve e esta tela não o exibe.
+        Esta conexão é compartilhada por todos os escritórios da plataforma.
       </p>
     </div>
 
@@ -448,7 +448,7 @@ onBeforeUnmount(() => {
         </dl>
 
         <p class="text-sm text-muted">
-          O segredo, a senha e o arquivo do certificado não são devolvidos pela API e não aparecem aqui. A chave aparece apenas como pista: o que está gravado não é devolvido.
+          O segredo, a senha e o arquivo do certificado salvos não podem ser consultados. A chave é exibida apenas parcialmente.
         </p>
 
         <div class="flex justify-end">
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
             label="Segredo do consumidor"
             name="consumer_secret"
             :error="fieldErrors.consumer_secret"
-            help="Somente escrita: a API nunca devolve o segredo guardado, e um campo em branco preserva o que já está gravado."
+            help="O segredo salvo não pode ser consultado. Deixe em branco para preservar o valor atual."
           >
             <UInput
               v-model="state.consumer_secret"
