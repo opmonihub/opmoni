@@ -637,7 +637,14 @@ describe('sales authority and mounted draft form', () => {
       : null })
     const app = renderer.createApp(host)
     const passthrough = Vue.defineComponent({ setup: (_props, context) => () => Vue.h('div', context.slots.default?.() ?? []) })
+    const referenceSelect = Vue.defineComponent({
+      inheritAttrs: false,
+      props: ['path', 'query', 'modelValue'],
+      emits: ['update:modelValue', 'selection-record', 'selection-validity'],
+      setup: (_props, context) => () => Vue.h('div', { ...context.attrs, 'data-reference-select-stub': 'true' })
+    })
     for (const name of ['UForm', 'UFormField', 'UInput', 'USelect', 'UAlert', 'UButton']) app.component(name, passthrough)
+    app.component('ErpCatalogReferenceSelect', referenceSelect)
     app.mount(root)
     assert.ok(instance.value)
     instance.value.draft.lines[0]!.quantity = '0.5000'
