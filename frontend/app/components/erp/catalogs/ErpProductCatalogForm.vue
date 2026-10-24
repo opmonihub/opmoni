@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick } from 'vue'
 import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
+import { useErpNativeUnitDefault } from '~/composables/useErpNativeUnitDefault'
 import type { ErpBarcodeType, ErpCatalogEditorMode, ErpProductRecord } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
@@ -55,6 +56,7 @@ const form = reactive({
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
 const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
+let nativeBaseline = ''
 const openProductSections = ref<string[]>([])
 const pendingVariantArchive = ref<number | null>(null)
 const variantArchiveOpen = computed({
@@ -112,8 +114,22 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
       }))
     : [newVariant()]
   pendingVariantArchive.value = null
+  nativeBaseline = JSON.stringify(form)
   void nextTick(markClean)
 }, { immediate: true })
+
+const nativeUnitId = computed({
+  get: () => form.erp_unit_id,
+  set: (id: number | null) => {
+    const pristine = JSON.stringify(form) === nativeBaseline
+    form.erp_unit_id = id
+    if (pristine) {
+      nativeBaseline = JSON.stringify(form)
+      markClean()
+    }
+  }
+})
+const nativeUnit = useErpNativeUnitDefault({ mode: computed(() => props.mode), unitId: nativeUnitId })
 
 watch(() => form.kind, (kind) => {
   if (kind === 'service')
@@ -280,7 +296,19 @@ function submit() {
           name="erp_unit_id"
           :disabled="disabled"
           :error="fieldErrors?.erp_unit_id?.[0]"
+          @update:model-value="nativeUnit.markExplicit"
         />
+        <div v-if="mode === 'create' && nativeUnit.error.value" class="space-y-2 sm:col-span-2">
+          <UAlert color="warning" :title="nativeUnit.error.value" />
+          <UButton
+            label="Consultar unidade padrão novamente"
+            color="neutral"
+            variant="outline"
+            :loading="nativeUnit.pending.value"
+            :disabled="disabled || nativeUnit.pending.value"
+            @click="nativeUnit.retry"
+          />
+        </div>
         <ErpCatalogField label="Preço de venda" name="sale_price" :error="fieldErrors?.sale_price?.[0]">
           <UInput
             v-model="form.sale_price"

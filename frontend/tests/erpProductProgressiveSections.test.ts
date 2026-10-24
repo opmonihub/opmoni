@@ -113,6 +113,7 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
     fieldErrors: {}
   })
   productFormComponent ??= compileVueComponent('components/erp/catalogs/ErpProductCatalogForm.vue', {}, {
+    '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
     '~/components/erp/catalogs/ErpCatalogField.vue': field,
     '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect
   })
@@ -212,6 +213,7 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
       ])
     }
   }))
+  app.component('UAlert', Vue.defineComponent({ props: ['title'], setup: props => () => Vue.h('div', { role: 'alert' }, String(props.title ?? '')) }))
   app.component('UButton', Vue.defineComponent({
     inheritAttrs: false,
     props: ['label', 'type', 'disabled', 'loading'],

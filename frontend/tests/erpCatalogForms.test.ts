@@ -127,6 +127,7 @@ function mountForm(
     }
   })
   const component = compileVueComponent(path, {}, {
+    '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
     '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect
   })
   const { renderer, makeNode } = createHostRenderer()
@@ -213,6 +214,7 @@ function mountForm(
       })
     }
   }))
+  app.component('UAlert', Vue.defineComponent({ props: ['title'], setup: props => () => Vue.h('div', { role: 'alert' }, String(props.title ?? '')) }))
   app.component('UButton', Vue.defineComponent({
     inheritAttrs: false,
     props: ['label', 'type', 'disabled', 'loading'],
