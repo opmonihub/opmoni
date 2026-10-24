@@ -51,6 +51,8 @@ class CurrentCompany
             'erp.quotes.tax-refresh-preview' => 'erp.quotes.update',
             'erp.orders.tax-refresh-preview' => 'erp.orders.update',
             'erp.sales.tax-refresh-preview' => 'erp.sales.update',
+            'erp.product-variants.index' => 'erp.products.index',
+            'erp.product-variants.show' => 'erp.products.index',
             default => $permission,
         };
         if ($this->accessKind === 'delegated') {

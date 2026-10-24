@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpOperationNatureController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpPriceGroupController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductTaxProfileController;
+use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductVariantReferenceController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpTaxRateController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpUnitController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpVehicleController;
@@ -37,6 +38,8 @@ Route::get('/contacts/{contact}/notes/{note}/attachments/{attachment}/download',
 Route::delete('/contacts/{contact}/notes/{note}/attachments/{attachment}', [ErpContactNoteController::class, 'archiveAttachment'])->whereNumber('contact')->whereNumber('note')->whereNumber('attachment')->name('erp.contacts.notes.attachments.archive');
 
 Route::get('/products', [ErpProductController::class, 'index'])->name('erp.products.index');
+Route::get('/product-variants', [ErpProductVariantReferenceController::class, 'index'])->name('erp.product-variants.index');
+Route::get('/product-variants/{variant}', [ErpProductVariantReferenceController::class, 'show'])->whereNumber('variant')->name('erp.product-variants.show');
 Route::post('/products', [ErpProductController::class, 'store'])->name('erp.products.store');
 Route::post('/products/tax-preview', [ErpProductController::class, 'taxPreview'])->name('erp.products.tax-preview');
 Route::get('/products/{product}', [ErpProductController::class, 'show'])->whereNumber('product')->name('erp.products.show');
