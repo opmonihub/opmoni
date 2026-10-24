@@ -188,7 +188,7 @@ final class ErpCompanyInitializationReconciliation
                     $conflict = ($native !== null && ! $this->compatible($name, $native))
                         || ($name === 'unit' && $native === null && $records[$name]['collision'] !== null);
                     $items[] = $this->result($name, $conflict ? 'conflict' : 'skip', $conflict ? 'unresolved_reference_requires_review' : 'explicit_value_preserved', null, null);
-                } elseif ($selected === null || $selected->status !== 'active' || ($selected->native_key === $manifest['records'][$name]['key'] && ! $this->compatible($name, $selected))) {
+                } elseif ($selected === null || $selected->status !== 'active' || ($name === 'customer' && ! $selected->is_customer) || ($selected->native_key === $manifest['records'][$name]['key'] && ! $this->compatible($name, $selected))) {
                     $items[] = $this->result($name, 'conflict', 'selected_reference_unavailable_or_customized', $state->{$pointer}, $state->{$pointer});
                 } else {
                     $items[] = $this->result($name, 'reuse', 'existing_native_selection', $selected->id, $selected->id);

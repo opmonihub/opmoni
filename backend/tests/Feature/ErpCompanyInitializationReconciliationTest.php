@@ -217,6 +217,34 @@ class ErpCompanyInitializationReconciliationTest extends TestCase
         $this->assertNull($layout->fresh()->native_key);
     }
 
+    public function test_custom_default_contact_that_becomes_supplier_only_remains_a_persistent_conflict(): void
+    {
+        $ctx = $this->context();
+        $state = app(ErpCompanyInitializer::class)->initialize($ctx['company']);
+        $customer = ErpContact::factory()->create([
+            'erp_company_id' => $ctx['company']->id, 'name' => 'Cliente escolhido',
+            'is_customer' => true, 'is_supplier' => false, 'status' => 'active',
+        ]);
+        $state->update(['default_customer_id' => $customer->id]);
+        $this->assertSame('reuse', $this->item($this->preview(), 'customer')['status']);
+        $this->patchJson('/api/v1/erp/contacts/'.$customer->id, ['is_customer' => false, 'is_supplier' => true])->assertOk();
+        $beforeContact = $customer->fresh()->getRawOriginal();
+        $beforeState = $state->fresh()->getRawOriginal();
+
+        foreach (['supplier-only', 'supplier-only-again'] as $key) {
+            $preview = $this->preview();
+            $this->assertSame('conflict', $this->item($preview, 'customer')['status']);
+            $this->assertTrue($preview['has_conflicts']);
+            $this->postJson(self::APPLY, $this->applyBody($preview), ['Idempotency-Key' => $key])
+                ->assertOk()->assertJsonPath('data.completed', false)->assertJsonPath('data.has_conflicts', true);
+            $this->assertSame($beforeState, $state->fresh()->getRawOriginal());
+            $this->assertSame($beforeContact, $customer->fresh()->getRawOriginal());
+            $this->assertNull($customer->fresh()->native_key);
+            $this->assertSame($customer->id, $state->fresh()->default_customer_id);
+        }
+        $this->assertDatabaseCount('erp_contacts', 2);
+    }
+
     public function test_archived_native_records_stay_conflicts_without_reactivation(): void
     {
         $ctx = $this->context();
