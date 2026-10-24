@@ -898,7 +898,7 @@ function downloadReceipt() {
             :establishments="finance.establishments.value"
             :accounts="finance.accountOptions.value"
             :sessions="finance.cashSessions.value"
-            :references-current="finance.referencesCurrent.value"
+            :reference-availability="finance.referenceAvailability.value"
             @submit="payload => submitCreate('payments', payload)"
           />
         </template>

@@ -47,7 +47,11 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   const referenceLoading = reactive<Record<ReferenceKind, boolean>>({ establishments: false, accounts: false, cashSessions: false })
   const referenceErrors = reactive<Record<ReferenceKind, string>>({ establishments: '', accounts: '', cashSessions: '' })
   const referenceError = computed(() => Object.values(referenceErrors).filter(Boolean).join(' '))
-  const referencesCurrent = computed(() => (['establishments', 'accounts', 'cashSessions'] as const).every(kind => referenceMeta[kind] !== null && !referenceErrors[kind] && !referenceLoading[kind]))
+  const referenceAvailability = computed(() => ({
+    establishments: referenceMeta.establishments !== null && !referenceErrors.establishments && !referenceLoading.establishments,
+    accounts: referenceMeta.accounts !== null && !referenceErrors.accounts && !referenceLoading.accounts,
+    cashSessions: referenceMeta.cashSessions !== null && !referenceErrors.cashSessions && !referenceLoading.cashSessions
+  }))
   const allocations = ref<ErpPaymentAllocation[]>([])
   const allocationMeta = ref<ErpFinancePage<ErpPaymentAllocation>['meta'] | null>(null)
   const candidates = ref<ErpObligation[]>([])
@@ -670,7 +674,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   return {
     tab, rows, meta, filters, establishments, accountOptions, cashSessions, referenceMeta, referenceLoading, referenceErrors,
     allocations, allocationMeta, candidates, candidateMeta, receipt, selected, operationOutcome, authorityGeneration,
-    pageError, referenceError, referencesCurrent, mutationError, fieldErrors, loading, mutating, selectedOperation,
+    pageError, referenceError, referenceAvailability, mutationError, fieldErrors, loading, mutating, selectedOperation,
     canRead, canWrite, canRetryExact, needsReconciliation, allowed, paths,
     load, loadReferences, loadMoreReferences, selectTab, inspect, inspectPayment, inspectObligation, closeSelected,
     loadAllocations, loadCandidates, closeCandidates, loadReceipt, closeReceipt, post, reconcile, retryExact

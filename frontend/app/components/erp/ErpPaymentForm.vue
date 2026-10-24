@@ -2,14 +2,14 @@
 import { decimalTextIsValid } from '#shared/utils/erpFinance'
 import { erpFinancialChoiceError, retainedChoiceItem } from '~/utils/erpFinancialChoiceCompatibility'
 
-const props = withDefaults(defineProps<{ busy?: boolean, errors?: Record<string, string>, referencesCurrent?: boolean, establishments?: { id: number, name: string, status?: string }[], accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null, status?: string }[], sessions?: { id: number, currency: string | null, erp_establishment_id: number | null, status: string, can_operate?: boolean, needs_reconciliation?: boolean }[] }>(), { referencesCurrent: true, establishments: () => [], accounts: () => [], sessions: () => [] })
+const props = withDefaults(defineProps<{ busy?: boolean, errors?: Record<string, string>, referenceAvailability?: { establishments: boolean, accounts: boolean, cashSessions: boolean }, establishments?: { id: number, name: string, status?: string }[], accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null, status?: string }[], sessions?: { id: number, currency: string | null, erp_establishment_id: number | null, status: string, can_operate?: boolean, needs_reconciliation?: boolean }[] }>(), { referenceAvailability: () => ({ establishments: true, accounts: true, cashSessions: true }), establishments: () => [], accounts: () => [], sessions: () => [] })
 const emit = defineEmits<{ submit: [payload: Record<string, unknown>] }>()
 const state = reactive({ direction: 'in', amount: '', method: 'bank_transfer', currency: 'BRL', erp_establishment_id: 'all', erp_financial_account_id: 'none', erp_cash_session_id: 'none' })
 const localError = ref('')
 const compatibleSessions = computed(() => props.sessions.filter(session => session.currency === state.currency && (state.erp_establishment_id === 'all' || session.erp_establishment_id === null || String(session.erp_establishment_id) === state.erp_establishment_id)))
 const compatibleAccounts = computed(() => props.accounts.filter(account => (account.status === undefined || account.status === 'active') && account.currency === state.currency && (account.erp_establishment_id === null || String(account.erp_establishment_id) === state.erp_establishment_id)))
 const availableEstablishments = computed(() => props.establishments.filter(establishment => establishment.status !== 'inactive'))
-const establishmentItems = computed(() => retainedChoiceItem(availableEstablishments.value, state.erp_establishment_id, establishment => establishment.name, id => `Estabelecimento #${id} (seleção indisponível)`))
+const establishmentItems = computed(() => retainedChoiceItem(availableEstablishments.value, state.erp_establishment_id, establishment => establishment.name, id => `Estabelecimento #${id} (seleção indisponível)`, ['none', 'all']))
 const accountItems = computed(() => retainedChoiceItem(compatibleAccounts.value, state.erp_financial_account_id, account => account.name, id => `Conta #${id} (seleção incompatível)`))
 const sessionItems = computed(() => retainedChoiceItem(compatibleSessions.value, state.erp_cash_session_id, session => `Caixa #${session.id} · ${session.currency ?? 'moeda indisponível'}`, id => `Caixa #${id} (seleção incompatível)`))
 function submit() {
@@ -22,6 +22,9 @@ function submit() {
     localError.value = 'Informe a moeda em três letras maiúsculas.'
     return
   }
+  const referencesCurrent = (state.erp_establishment_id === 'all' || props.referenceAvailability.establishments)
+    && (state.erp_financial_account_id === 'none' || props.referenceAvailability.accounts)
+    && ((state.erp_cash_session_id === 'none' && state.method !== 'cash') || props.referenceAvailability.cashSessions)
   const compatibilityError = erpFinancialChoiceError({
     currency: state.currency,
     establishmentSelected: state.erp_establishment_id !== 'all',
@@ -32,7 +35,7 @@ function submit() {
     establishments: props.establishments,
     accounts: props.accounts,
     sessions: props.sessions,
-    referencesCurrent: props.referencesCurrent
+    referencesCurrent
   })
   if (compatibilityError) {
     localError.value = compatibilityError

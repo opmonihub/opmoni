@@ -86,9 +86,9 @@ function createCashWorkspace(api: (path: string, options?: { method?: string, bo
   return { state, mount: () => mounted(), stop: () => scope.stop() }
 }
 
-function createFinanceWorkspace(api: (path: string, options?: { method?: string, body?: unknown, headers?: Record<string, string> }) => Promise<unknown>) {
+function createFinanceWorkspace(api: (path: string, options?: { method?: string, body?: unknown, headers?: Record<string, string> }) => Promise<unknown>, permissions: string[] = ['*']) {
   const user = Vue.ref({ id: 42 })
-  const currentCompany = Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' })
+  const currentCompany = Vue.ref({ id: 7, permissions, role: 'owner', access_kind: 'direct', status: 'active' })
   const context = workspaceContext()
   const moduleExports = compileComposable('../app/composables/useErpFinanceWorkspace.ts', {
     '#shared/types/erpBusiness': {},
@@ -114,7 +114,7 @@ function createFinanceWorkspace(api: (path: string, options?: { method?: string,
 describe('financial choice compatibility', () => {
   it('keeps an incompatible retained account visible and blocks its submission', (t) => {
     const form = setupForm('ErpPaymentForm', {
-      referencesCurrent: true,
+      referenceAvailability: { establishments: true, accounts: true, cashSessions: true },
       accounts: [account],
       establishments: [{ id: 3, name: 'Matriz' }, { id: 4, name: 'Filial', status: 'active' }],
       sessions: [session]
@@ -141,7 +141,7 @@ describe('financial choice compatibility', () => {
 
   it('requires a current compatible open session for cash method', (t) => {
     const form = setupForm('ErpPaymentForm', {
-      referencesCurrent: true,
+      referenceAvailability: { establishments: true, accounts: true, cashSessions: true },
       accounts: [account],
       establishments: [{ id: 3, name: 'Matriz' }, { id: 4, name: 'Filial', status: 'active' }],
       sessions: [session]
@@ -165,7 +165,7 @@ describe('financial choice compatibility', () => {
 
   it('keeps a retained cash session visible and rejects it when the method changes', (t) => {
     const form = setupForm('ErpPaymentForm', {
-      referencesCurrent: true,
+      referenceAvailability: { establishments: true, accounts: true, cashSessions: true },
       accounts: [account],
       establishments: [{ id: 3, name: 'Matriz', status: 'active' }],
       sessions: [session]
@@ -179,6 +179,14 @@ describe('financial choice compatibility', () => {
     assert.equal(state.erp_cash_session_id, '9')
     assert.equal(form.emitted.length, 0)
     assert.match(String((form.exposed.localError as Vue.Ref<string>).value), /método dinheiro/i)
+  })
+
+  it('renders the whole-company sentinel only once as an available choice', (t) => {
+    const form = setupForm('ErpPaymentForm', { establishments: [], accounts: [], sessions: [] })
+    t.after(form.stop)
+
+    const items = (form.exposed.establishmentItems as Vue.ComputedRef<Array<{ value: string, label: string, disabled?: boolean }>>).value
+    assert.deepEqual(items, [])
   })
 
   it('keeps an incompatible account visible and blocks a cash-form payment', (t) => {
@@ -204,7 +212,7 @@ describe('financial choice compatibility', () => {
       accounts: [account],
       establishments: [{ id: 3, name: 'Matriz' }],
       sessions: [session],
-      referencesCurrent: false,
+      referenceAvailability: { establishments: true, accounts: false, cashSessions: false },
       referenceError: 'Não foi possível atualizar as referências.'
     })
     t.after(form.stop)
@@ -217,9 +225,24 @@ describe('financial choice compatibility', () => {
     assert.match(String((form.exposed.localError as Vue.Ref<string>).value), /atualiz|referência/i)
   })
 
+  it('blocks a retained session when its own reference list is not current', (t) => {
+    const form = setupForm('ErpPaymentForm', {
+      referenceAvailability: { establishments: true, accounts: true, cashSessions: false },
+      sessions: [session]
+    })
+    t.after(form.stop)
+    const state = form.exposed.state as Record<string, string>
+    Object.assign(state, { amount: '10.00', method: 'cash', erp_cash_session_id: '9' })
+    ;(form.exposed.submit as () => void)()
+
+    assert.equal(state.erp_cash_session_id, '9')
+    assert.equal(form.emitted.length, 0)
+    assert.match(String((form.exposed.localError as Vue.Ref<string>).value), /atualiz|referência/i)
+  })
+
   it('preserves a compatible payment payload for the existing server validation contract', (t) => {
     const form = setupForm('ErpPaymentForm', {
-      referencesCurrent: true,
+      referenceAvailability: { establishments: true, accounts: true, cashSessions: false },
       accounts: [companyAccount],
       establishments: [{ id: 3, name: 'Matriz' }],
       sessions: [session]
@@ -239,6 +262,55 @@ describe('financial choice compatibility', () => {
       erp_financial_account_id: 5,
       erp_cash_session_id: null
     })
+  })
+
+  it('submits a noncash payment with exact grants when the unused cash-session index is not granted', async (t) => {
+    const prior = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+      getItem: () => null, setItem: () => {}, removeItem: () => {}
+    } })
+    t.after(() => prior ? Object.defineProperty(globalThis, 'sessionStorage', prior) : Reflect.deleteProperty(globalThis, 'sessionStorage'))
+    const calls: Array<{ path: string, method?: string }> = []
+    const app = createFinanceWorkspace(async (path, options) => {
+      calls.push({ path, method: options?.method })
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] } }
+    }, ['erp.payments.store', 'erp.payments.index', 'erp.establishments.index', 'erp.financial-accounts.index'])
+    t.after(app.stop)
+    await (app.state.loadReferences as () => Promise<void>)()
+
+    const form = setupForm('ErpPaymentForm', {
+      referenceAvailability: (app.state.referenceAvailability as Vue.ComputedRef<Record<string, boolean>>).value,
+      accounts: (app.state.accountOptions as Vue.Ref<unknown[]>).value,
+      establishments: (app.state.establishments as Vue.Ref<unknown[]>).value,
+      sessions: (app.state.cashSessions as Vue.Ref<unknown[]>).value
+    })
+    t.after(form.stop)
+    const state = form.exposed.state as Record<string, string>
+    Object.assign(state, { amount: '10.00', method: 'bank_transfer', erp_cash_session_id: 'none' })
+    ;(form.exposed.submit as () => void)()
+
+    assert.equal(form.emitted.length, 1)
+    assert.equal((app.state.referenceAvailability as Vue.ComputedRef<Record<string, boolean>>).value.cashSessions, false)
+    await (app.state.post as (path: string, body: Record<string, unknown>) => Promise<unknown>)('/erp/payments', form.emitted[0]!)
+    assert.equal(calls.some(call => call.path === '/erp/payments' && call.method === 'POST'), true)
+  })
+
+  it('submits a payment without optional references for a payments-only grant', (t) => {
+    const app = createFinanceWorkspace(async () => ({ data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] } }), ['erp.payments.store', 'erp.payments.index'])
+    t.after(app.stop)
+
+    const form = setupForm('ErpPaymentForm', {
+      referenceAvailability: (app.state.referenceAvailability as Vue.ComputedRef<Record<string, boolean>>).value,
+      accounts: (app.state.accountOptions as Vue.Ref<unknown[]>).value,
+      establishments: (app.state.establishments as Vue.Ref<unknown[]>).value,
+      sessions: (app.state.cashSessions as Vue.Ref<unknown[]>).value
+    })
+    t.after(form.stop)
+    const state = form.exposed.state as Record<string, string>
+    Object.assign(state, { amount: '10.00', method: 'bank_transfer' })
+    ;(form.exposed.submit as () => void)()
+
+    assert.equal(form.emitted.length, 1)
   })
 
   it('requires an active current register before opening a cash session', (t) => {

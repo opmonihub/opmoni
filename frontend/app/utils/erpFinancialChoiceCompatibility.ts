@@ -50,8 +50,8 @@ export function erpFinancialChoiceError(choices: FinancialChoices): string | nul
   return null
 }
 
-export function retainedChoiceItem<T extends { id: number }>(items: T[], selectedId: string, label: (item: T) => string, unavailableLabel: (id: string) => string) {
-  if (selectedId === 'none' || items.some(item => String(item.id) === selectedId)) {
+export function retainedChoiceItem<T extends { id: number }>(items: T[], selectedId: string, label: (item: T) => string, unavailableLabel: (id: string) => string, emptyValues: string[] = ['none']) {
+  if (emptyValues.includes(selectedId) || items.some(item => String(item.id) === selectedId)) {
     return items.map(item => ({ label: label(item), value: String(item.id) }))
   }
 
