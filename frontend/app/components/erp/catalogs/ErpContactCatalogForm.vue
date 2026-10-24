@@ -12,14 +12,24 @@ const props = defineProps<{
   fieldErrors?: Record<string, string[]>
 }>()
 const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
-const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state'] as const
+const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state', 'city_code'] as const
+const initialCity = ref('')
+const initialState = ref('')
+const municipalityCodeReviewed = ref(false)
 const form = reactive({
   name: '', trade_name: '', tax_id: '', email: '', phone: '', notes: '', is_customer: true, is_supplier: false,
   erp_customer_group_id: null as number | null,
   address: {} as Record<string, string>,
-  street_type: '', street: '', number: '', complement: '', district: '', postal_code: '', city: '', state: ''
+  street_type: '', street: '', number: '', complement: '', district: '', postal_code: '', city: '', state: '', city_code: ''
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+
+watch(() => [form.city, form.state] as const, ([city, state]) => {
+  if (city !== initialCity.value || state !== initialState.value) {
+    form.city_code = ''
+    municipalityCodeReviewed.value = false
+  }
+})
 
 watch(() => [props.record, props.mode] as const, ([record]) => {
   const address = record?.address ?? {}
@@ -33,6 +43,9 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.is_supplier = record?.is_supplier ?? false
   form.erp_customer_group_id = record?.erp_customer_group_id ?? null
   form.address = { ...address }
+  initialCity.value = address.city ?? ''
+  initialState.value = address.state ?? ''
+  municipalityCodeReviewed.value = false
   for (const key of addressKeys)
     form[key] = address[key] ?? ''
 }, { immediate: true })
@@ -46,6 +59,8 @@ function submit() {
     if (form[key] !== '')
       address[key] = form[key]
   }
+  if ((form.city !== initialCity.value || form.state !== initialState.value) && !municipalityCodeReviewed.value)
+    delete address.city_code
   emit('save', {
     name: form.name,
     trade_name: form.trade_name || null,
@@ -195,6 +210,22 @@ function submit() {
             maxlength="2"
             autocomplete="address-level1"
             class="w-full"
+          />
+        </ErpCatalogField>
+        <ErpCatalogField
+          label="Código IBGE do município"
+          name="address.city_code"
+          description="Alterar a cidade ou UF remove o código anterior para revisão."
+          :error="fieldErrors?.['address.city_code']?.[0]"
+        >
+          <UInput
+            v-model="form.city_code"
+            name="city_code"
+            inputmode="numeric"
+            maxlength="7"
+            autocomplete="off"
+            class="w-full"
+            @update:model-value="municipalityCodeReviewed = true"
           />
         </ErpCatalogField>
       </div>
