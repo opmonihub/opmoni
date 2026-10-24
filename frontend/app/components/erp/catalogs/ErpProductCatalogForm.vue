@@ -2,7 +2,7 @@
 import { nextTick } from 'vue'
 import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import { useErpNativeUnitDefault } from '~/composables/useErpNativeUnitDefault'
-import { erpProductTaxProfileFields, type ErpBarcodeType, type ErpCatalogEditorMode, type ErpProductRecord, type ErpProductTaxFieldIntent, type ErpProductTaxPreviewCandidate, type ErpProductTaxProfileField } from '#shared/types/erpCatalogs'
+import { erpProductTaxProfileFields, type ErpBarcodeType, type ErpCatalogEditorMode, type ErpProductRecord, type ErpProductTaxFieldIntent, type ErpProductTaxPreviewCandidate, type ErpProductTaxProfileField, type ErpProductTaxProfileResolution } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
@@ -85,8 +85,12 @@ const pendingVariantArchive = ref<number | null>(null)
 const taxPreview = useErpProductTaxProfilePreview()
 const taxSetupMode = ref<'none' | 'company_default' | 'profile'>('none')
 const taxIntentTouched = ref(false)
-const profileChangedForExisting = ref(false)
+const stagedProfileId = ref<number | null>(null)
+const hasStagedProfile = ref(false)
 const profileIndexPath = '/erp/tax-settings/product-tax-profiles'
+const selectedProfileId = computed(() => props.mode === 'create' || !hasStagedProfile.value
+  ? form.erp_product_tax_profile_id
+  : stagedProfileId.value)
 const variantArchiveOpen = computed({
   get: () => pendingVariantArchive.value !== null,
   set: (open: boolean) => {
@@ -133,7 +137,8 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.tax_field_intents = { ...(record?.tax_field_intents ?? {}) }
   taxIntentTouched.value = record?.tax_field_intents != null
   taxSetupMode.value = record?.erp_product_tax_profile_id ? 'profile' : 'none'
-  profileChangedForExisting.value = false
+  stagedProfileId.value = form.erp_product_tax_profile_id
+  hasStagedProfile.value = false
   taxPreview.clear()
   form.variants = record?.variants.length
     ? record.variants.map(variant => ({
@@ -170,7 +175,7 @@ watch(() => form.kind, (kind) => {
     form.track_stock = false
 })
 
-watch(() => [form.erp_product_tax_profile_id, form.kind, ...erpProductTaxProfileFields.map(field => form[field]), ...erpProductTaxProfileFields.map(field => form.tax_field_intents[field])], () => {
+watch(() => [selectedProfileId.value, form.kind, ...erpProductTaxProfileFields.map(field => form[field]), ...erpProductTaxProfileFields.map(field => form.tax_field_intents[field])], () => {
   taxPreview.markStale()
 }, { flush: 'sync' })
 
@@ -225,12 +230,18 @@ function clearTaxSetup() {
   form.erp_product_tax_profile_id = null
   form.tax_field_intents = {}
   taxIntentTouched.value = false
-  profileChangedForExisting.value = false
+  stagedProfileId.value = null
+  hasStagedProfile.value = false
   taxPreview.clear()
 }
 
-function setAllTaxFieldsToInherit() {
-  form.tax_field_intents = Object.fromEntries(erpProductTaxProfileFields.map(field => [field, 'inherit'])) as Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
+function initializeProfileIntents() {
+  const intents = { ...form.tax_field_intents }
+  for (const field of erpProductTaxProfileFields) {
+    if (!intents[field])
+      intents[field] = form[field] === '' ? 'inherit' : 'value'
+  }
+  form.tax_field_intents = intents
   taxIntentTouched.value = true
 }
 
@@ -239,25 +250,26 @@ function useCompanyDefaultProfile() {
     return
   taxSetupMode.value = 'company_default'
   form.erp_product_tax_profile_id = null
-  setAllTaxFieldsToInherit()
-  profileChangedForExisting.value = false
+  initializeProfileIntents()
+  stagedProfileId.value = null
+  hasStagedProfile.value = false
   taxPreview.clear()
 }
 
 function onTaxProfileSelected(id: number | null) {
-  form.erp_product_tax_profile_id = id
-  taxSetupMode.value = id === null ? 'none' : 'profile'
   if (props.mode === 'create') {
+    form.erp_product_tax_profile_id = id
+    taxSetupMode.value = id === null ? 'none' : 'profile'
     if (id !== null)
-      setAllTaxFieldsToInherit()
+      initializeProfileIntents()
     else {
       form.tax_field_intents = {}
       taxIntentTouched.value = false
     }
   } else {
-    profileChangedForExisting.value = id !== (props.record?.erp_product_tax_profile_id ?? null)
+    stagedProfileId.value = id
+    hasStagedProfile.value = id !== form.erp_product_tax_profile_id
   }
-  taxPreview.clear()
 }
 
 function fieldIntent(field: ErpProductTaxProfileField): ErpProductTaxFieldIntent {
@@ -276,16 +288,14 @@ function setFieldIntent(field: ErpProductTaxProfileField, value: unknown) {
 }
 
 function taxCandidateForPreview(): ErpProductTaxPreviewCandidate {
-  const previewAllInherited = taxSetupMode.value !== 'none'
-    && (props.mode === 'create' || profileChangedForExisting.value)
   const intents = Object.fromEntries(erpProductTaxProfileFields.map(field => [
     field,
-    previewAllInherited ? 'inherit' : fieldIntent(field)
+    fieldIntent(field)
   ])) as Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
   const candidate: ErpProductTaxPreviewCandidate = {
     ...(props.record?.id ? { product_id: props.record.id } : {}),
     kind: form.kind,
-    erp_product_tax_profile_id: form.erp_product_tax_profile_id,
+    erp_product_tax_profile_id: selectedProfileId.value,
     tax_field_intents: intents
   }
   for (const field of erpProductTaxProfileFields) {
@@ -300,6 +310,26 @@ async function previewTax() {
   await taxPreview.preview(taxCandidateForPreview())
 }
 
+const taxPreviewComparison = computed(() => {
+  const result = taxPreview.result.value
+  const previous = result?.previous
+  if (!result || !previous || 'errors' in previous)
+    return []
+  return taxFields.map(field => ({
+    ...field,
+    before: previous.values[field.name] ?? 'Sem valor resolvido',
+    candidate: result.values[field.name] ?? 'Sem valor resolvido',
+    beforeSource: previewSourceLabel(previous.sources[field.name]),
+    candidateSource: previewSourceLabel(result.sources[field.name])
+  }))
+})
+
+function previewSourceLabel(source: ErpProductTaxProfileResolution['sources'][ErpProductTaxProfileField] | undefined): string {
+  if (!source)
+    return 'Origem não informada'
+  return source.revision ? `${source.source} · revisão ${source.revision}` : source.source
+}
+
 const canAdoptTaxPreview = computed(() => props.mode !== 'create'
   && taxPreview.result.value !== null
   && !taxPreview.pending.value
@@ -309,14 +339,10 @@ const canAdoptTaxPreview = computed(() => props.mode !== 'create'
 function adoptReviewedTaxProfile() {
   if (!canAdoptTaxPreview.value)
     return
-  const intents = { ...form.tax_field_intents }
-  for (const field of erpProductTaxProfileFields) {
-    if (fieldIntent(field) !== 'value')
-      intents[field] = 'inherit'
-  }
-  form.tax_field_intents = intents
+  form.erp_product_tax_profile_id = selectedProfileId.value
+  stagedProfileId.value = form.erp_product_tax_profile_id
+  hasStagedProfile.value = false
   taxIntentTouched.value = true
-  profileChangedForExisting.value = false
   taxSetupMode.value = form.erp_product_tax_profile_id === null ? 'company_default' : 'profile'
   taxPreview.markFresh()
 }
@@ -373,21 +399,20 @@ function submit() {
     || props.record?.tax_field_intents != null
   if (hasProfileMetadata) {
     payload.erp_product_tax_profile_id = form.erp_product_tax_profile_id
-    if (taxIntentTouched.value || props.record?.tax_field_intents != null) {
-      payload.tax_field_intents = { ...form.tax_field_intents }
-      const inheritedFields = new Set<ErpProductTaxProfileField>()
-      for (const field of erpProductTaxProfileFields) {
-        const intent = form.tax_field_intents[field]
-        if (intent === 'inherit')
-          inheritedFields.add(field)
-        else if (intent === 'unset')
-          payload[field] = null
-      }
-      if (inheritedFields.size) {
-        const serialized = Object.fromEntries(Object.entries(payload).filter(([key]) => !inheritedFields.has(key as ErpProductTaxProfileField)))
-        emit('save', serialized)
-        return
-      }
+    const intents = Object.fromEntries(erpProductTaxProfileFields.map(field => [field, fieldIntent(field)])) as Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>
+    payload.tax_field_intents = intents
+    const inheritedFields = new Set<ErpProductTaxProfileField>()
+    for (const field of erpProductTaxProfileFields) {
+      const intent = intents[field]
+      if (intent === 'inherit')
+        inheritedFields.add(field)
+      else if (intent === 'unset')
+        payload[field] = null
+    }
+    if (inheritedFields.size) {
+      const serialized = Object.fromEntries(Object.entries(payload).filter(([key]) => !inheritedFields.has(key as ErpProductTaxProfileField)))
+      emit('save', serialized)
+      return
     }
   }
   emit('save', payload)
@@ -620,7 +645,7 @@ function submit() {
               />
             </div>
             <ErpCatalogReferenceSelect
-              v-model="form.erp_product_tax_profile_id"
+              :model-value="selectedProfileId"
               :path="profileIndexPath"
               label="Perfil tributário"
               label-key="name"
@@ -687,6 +712,24 @@ function submit() {
                 <p v-else-if="taxPreview.result.value.company_default.profile_id" class="text-muted text-sm">
                   Padrão da empresa · perfil #{{ taxPreview.result.value.company_default.profile_id }} · revisão {{ taxPreview.result.value.company_default.profile_revision }}
                 </p>
+              </div>
+              <div v-if="mode !== 'create' && taxPreviewComparison.length" class="space-y-2">
+                <h6 class="text-highlighted text-sm font-medium">
+                  Comparação com a configuração atual
+                </h6>
+                <div v-for="field in taxPreviewComparison" :key="field.name" class="border-default grid gap-1 rounded border p-2 sm:grid-cols-3">
+                  <p class="text-muted text-xs sm:col-span-3">
+                    {{ field.label }}
+                  </p>
+                  <p class="text-sm">
+                    <span class="text-muted">Antes:</span> {{ field.before }}
+                    <span class="text-muted block text-xs">{{ field.beforeSource }}</span>
+                  </p>
+                  <p class="text-sm sm:col-span-2">
+                    <span class="text-muted">Candidato:</span> {{ field.candidate }}
+                    <span class="text-muted block text-xs">{{ field.candidateSource }}</span>
+                  </p>
+                </div>
               </div>
               <dl class="grid gap-2 sm:grid-cols-2">
                 <div v-for="field in taxFields" :key="field.name" class="border-default rounded border p-2">

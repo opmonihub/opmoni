@@ -52,7 +52,7 @@ function mountProduct(record: Record<string, unknown> | null = null, permissions
             'aria-label': props.label,
             'value': props.modelValue ?? '',
             'onChange': (event: Event) => emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null)
-          }, [Vue.h('option', { value: '' }, 'Nenhum'), Vue.h('option', { value: '12' }, 'Perfil A')]),
+          }, [Vue.h('option', { value: '' }, 'Nenhum'), Vue.h('option', { value: '12' }, 'Perfil A'), Vue.h('option', { value: '13' }, 'Perfil B')]),
           props.error ? Vue.h('span', { role: 'alert' }, String(props.error)) : null
         ])
       }
@@ -191,6 +191,11 @@ const existingRecord = {
   status: 'active',
   variants: [{ id: 91, name: 'Padrão', sku: 'A-1', sale_price: null, barcode: null, barcode_type: null, status: 'active' }]
 }
+const existingRecordIntents = {
+  icms_cst: 'inherit', icms_csosn: 'unset', icms_rate: 'value', simple_national_credit_rate: 'unset',
+  pis_cst: 'unset', pis_rate: 'unset', cofins_cst: 'unset', cofins_rate: 'unset',
+  ipi_cst: 'unset', ipi_rate: 'unset', ibs_cbs_cst: 'unset', ibs_cbs_classification_code: 'unset'
+}
 
 describe('ERP product tax profile form', () => {
   it('offers an explicit company-default preview and a profile-free basic-save choice', (t) => {
@@ -206,7 +211,7 @@ describe('ERP product tax profile form', () => {
     t.after(form.unmount)
     await form.submit()
     assert.equal(form.emitted[0]?.erp_product_tax_profile_id, 12)
-    assert.deepEqual(form.emitted[0]?.tax_field_intents, { icms_cst: 'inherit', icms_rate: 'value', pis_cst: 'unset' })
+    assert.deepEqual(form.emitted[0]?.tax_field_intents, existingRecordIntents)
     assert.equal(Object.hasOwn(form.emitted[0]!, 'icms_cst'), false, 'inherited raw values are omitted from the payload')
     assert.equal(form.emitted[0]?.icms_rate, '0.0000')
     assert.equal(form.emitted[0]?.pis_cst, null)
@@ -233,11 +238,14 @@ describe('ERP product tax profile form', () => {
       context: { tax_regime: '1', kind: 'goods', movement: null },
       applicability: { profile: null, company_profile: null },
       company_settings_fingerprint: 'settings-4', fingerprint: 'preview-4',
-      previous: { version: 'product-tax-v1', product_id: 77, values: { icms_cst: '01' }, sources: {}, unresolved_fields: [], profile: null, company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 }, context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null }, company_settings_fingerprint: 'settings-4', fingerprint: 'previous-3' }
+      previous: { version: 'product-tax-v1', product_id: 77, values: { icms_cst: '00' }, sources: { icms_cst: { source: 'product', intent: 'value' } }, unresolved_fields: [], profile: null, company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 }, context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null }, company_settings_fingerprint: 'settings-4', fingerprint: 'previous-3' }
     } })
     await new Promise(resolve => setImmediate(resolve))
     await Vue.nextTick()
     assert.match(form.text(), /Prévia tributária/)
+    assert.match(form.text(), /Antes/)
+    assert.match(form.text(), /Candidato/)
+    assert.match(form.text(), /00/)
     assert.match(form.text(), /0\.0000/)
     assert.match(form.text(), /Perfil #12 · revisão 3/)
     assert.match(form.text(), /pis_cst/)
@@ -250,25 +258,135 @@ describe('ERP product tax profile form', () => {
     const form = mountProduct(legacyProduct)
     t.after(form.unmount)
     await form.select('erp_product_tax_profile_id', '12')
+    await form.submit()
+    assert.equal(form.emitted[0]?.erp_product_tax_profile_id, null, 'staged profile selection is not saved without explicit adoption')
     assert.deepEqual(form.state()?.tax_field_intents, legacyProduct.tax_field_intents)
+    form.emitted.length = 0
     await form.click('Pré-visualizar tributos')
     assert.equal(form.requests[0]?.options?.body?.erp_product_tax_profile_id, 12)
     form.requests[0]!.resolve({ data: {
       version: 'product-tax-v1', product_id: 77,
-      values: { icms_cst: '01', icms_rate: '0.0000' },
-      sources: { icms_cst: { source: 'profile', intent: 'inherit', profile_id: 12, revision: 3, revision_id: 31 }, icms_rate: { source: 'product', intent: 'value' } },
-      unresolved_fields: [], profile: { profile_id: 12, revision: 3, revision_id: 31 },
+      values: { icms_rate: '0.0000' },
+      sources: { icms_rate: { source: 'product', intent: 'value' } },
+      unresolved_fields: ['icms_cst'], profile: { profile_id: 12, revision: 3, revision_id: 31 },
       company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 },
       context: { tax_regime: '1', kind: 'goods', movement: null },
       applicability: { profile: null, company_profile: null }, company_settings_fingerprint: 'settings-4', fingerprint: 'preview-5',
-      previous: { version: 'product-tax-v1', product_id: 77, values: { icms_cst: '01' }, sources: {}, unresolved_fields: [], profile: null, company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 }, context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null }, company_settings_fingerprint: 'settings-4', fingerprint: 'previous-4' }
+      previous: { version: 'product-tax-v1', product_id: 77, values: {}, sources: {}, unresolved_fields: ['icms_cst'], profile: null, company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 }, context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null }, company_settings_fingerprint: 'settings-4', fingerprint: 'previous-4' }
     } })
     await new Promise(resolve => setImmediate(resolve))
     await Vue.nextTick()
     assert.deepEqual(form.state()?.tax_field_intents, legacyProduct.tax_field_intents)
     await form.click('Adotar configuração revisada')
-    assert.equal((form.state()?.tax_field_intents as Record<string, string>).icms_cst, 'inherit')
+    assert.equal((form.state()?.erp_product_tax_profile_id), 12)
+    assert.equal((form.state()?.tax_field_intents as Record<string, string>).icms_cst, 'unset')
     assert.equal((form.state()?.tax_field_intents as Record<string, string>).icms_rate, 'value')
+    await form.submit()
+    assert.equal(form.emitted[0]?.erp_product_tax_profile_id, 12)
+    assert.equal((form.emitted[0]?.tax_field_intents as Record<string, string>).icms_cst, 'unset')
+  })
+
+  it('reviews and saves one unchanged candidate for an existing profile adoption', async (t) => {
+    const form = mountProduct(existingRecord)
+    t.after(form.unmount)
+    await form.select('erp_product_tax_profile_id', '13')
+    await form.click('Pré-visualizar tributos')
+    const candidate = form.requests[0]?.options?.body ?? {}
+    assert.equal(candidate.erp_product_tax_profile_id, 13)
+    assert.equal(candidate.icms_rate, '0.0000')
+    assert.equal(candidate.pis_cst, null)
+    assert.equal((candidate.tax_field_intents as Record<string, string>).icms_cst, 'inherit')
+    assert.equal((candidate.tax_field_intents as Record<string, string>).icms_rate, 'value')
+    assert.equal((candidate.tax_field_intents as Record<string, string>).pis_cst, 'unset')
+    form.requests[0]!.resolve({ data: {
+      version: 'product-tax-v1', product_id: 77,
+      values: { icms_cst: '20', icms_rate: '0.0000' },
+      sources: {
+        icms_cst: { source: 'profile', intent: 'inherit', profile_id: 13, revision: 2, revision_id: 22 },
+        icms_rate: { source: 'product', intent: 'value' },
+        pis_cst: { source: 'unresolved', intent: 'unset' }
+      },
+      unresolved_fields: ['pis_cst'], profile: { profile_id: 13, revision: 2, revision_id: 22 },
+      company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 },
+      context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null },
+      company_settings_fingerprint: 'settings-4', fingerprint: 'candidate-13',
+      previous: {
+        version: 'product-tax-v1', product_id: 77, values: { icms_cst: '01', icms_rate: '0.0000' },
+        sources: { icms_cst: { source: 'profile', intent: 'inherit', profile_id: 12, revision: 3, revision_id: 31 }, icms_rate: { source: 'product', intent: 'value' } },
+        unresolved_fields: ['pis_cst'], profile: { profile_id: 12, revision: 3, revision_id: 31 },
+        company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 },
+        context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null },
+        company_settings_fingerprint: 'settings-4', fingerprint: 'previous-12'
+      }
+    } })
+    await new Promise(resolve => setImmediate(resolve))
+    await Vue.nextTick()
+    assert.equal(form.state()?.erp_product_tax_profile_id, 12, 'selection stays staged until explicit adoption')
+    assert.match(form.text(), /Antes:\s+01/)
+    assert.match(form.text(), /Candidato:\s+20/)
+    await form.click('Adotar configuração revisada')
+    await form.submit()
+    assert.equal(form.emitted[0]?.erp_product_tax_profile_id, 13)
+    assert.equal(form.emitted[0]?.icms_rate, '0.0000')
+    assert.equal(form.emitted[0]?.pis_cst, null)
+    assert.deepEqual(form.emitted[0]?.tax_field_intents, candidate.tax_field_intents)
+  })
+
+  it('does not save an existing profile replacement or clear before reviewed adoption', async () => {
+    for (const requestedId of ['13', '']) {
+      const form = mountProduct(existingRecord)
+      await form.select('erp_product_tax_profile_id', requestedId)
+      await form.submit()
+      assert.equal(form.emitted[0]?.erp_product_tax_profile_id, 12, 'existing relationship stays committed until adoption')
+      assert.deepEqual(form.emitted[0]?.tax_field_intents, existingRecordIntents)
+      form.unmount()
+    }
+  })
+
+  it('previews and saves the exact company-default candidate including explicit zero and unset', async (t) => {
+    const form = mountProduct()
+    t.after(form.unmount)
+    const state = form.state()!
+    state.icms_rate = '0.0000'
+    state.icms_cst = '01'
+    state.pis_cst = '01'
+    await form.click('Padrão da empresa')
+    await form.select('tax_field_intents.icms_rate', 'value')
+    await form.select('tax_field_intents.icms_cst', 'value')
+    await form.select('tax_field_intents.pis_cst', 'unset')
+    await form.click('Pré-visualizar tributos')
+    const candidate = form.requests[0]?.options?.body ?? {}
+    assert.equal(candidate.icms_rate, '0.0000')
+    assert.equal(candidate.icms_cst, '01')
+    assert.equal(candidate.pis_cst, null)
+    assert.equal((candidate.tax_field_intents as Record<string, string>).icms_rate, 'value')
+    assert.equal((candidate.tax_field_intents as Record<string, string>).pis_cst, 'unset')
+    await form.submit()
+    assert.equal(form.emitted[0]?.icms_rate, '0.0000')
+    assert.equal(form.emitted[0]?.icms_cst, '01')
+    assert.equal(form.emitted[0]?.pis_cst, null)
+    assert.deepEqual(form.emitted[0]?.tax_field_intents, candidate.tax_field_intents)
+  })
+
+  it('discards a pending preview when the edited candidate changes', async (t) => {
+    const form = mountProduct(existingRecord)
+    t.after(form.unmount)
+    await form.click('Pré-visualizar tributos')
+    await form.select('tax_field_intents.icms_rate', 'unset')
+    form.requests[0]!.resolve({ data: {
+      version: 'product-tax-v1', product_id: 77,
+      values: { icms_rate: '0.0000' },
+      sources: { icms_rate: { source: 'product', intent: 'value' } },
+      unresolved_fields: [], profile: { profile_id: 12, revision: 3, revision_id: 31 },
+      company_default: { revision: 4, profile_id: 12, profile_revision: 3, profile_revision_id: 31 },
+      context: { tax_regime: '1', kind: 'goods', movement: null }, applicability: { profile: null, company_profile: null },
+      company_settings_fingerprint: 'settings-4', fingerprint: 'old-candidate'
+    } })
+    await new Promise(resolve => setImmediate(resolve))
+    await Vue.nextTick()
+    assert.doesNotMatch(form.text(), /Adotar configuração revisada/)
+    assert.match(form.text(), /Prévia desatualizada/)
+    assert.equal(form.state()?.tax_field_intents && (form.state()?.tax_field_intents as Record<string, string>).icms_rate, 'unset')
   })
 
   it('keeps the last preview marked stale after a revision conflict without changing the draft', async (t) => {

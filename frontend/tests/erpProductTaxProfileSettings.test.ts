@@ -11,20 +11,29 @@ function walk(root: TreeNode): TreeNode[] {
   return [root, ...root.children.flatMap(walk)]
 }
 
-function mountDefaultProfile(options: { initialProfileId: number | null, revision: number, rejectSave?: boolean }) {
+function mountDefaultProfile(options: { initialProfileId: number | null, revision: number, rejectSaveCount?: number, failRefreshCount?: number }) {
   const state = Vue.ref<Record<string, unknown> | null>({ default_product_tax_profile_id: options.initialProfileId, tax_default_revision: options.revision })
   const pending = Vue.ref(false)
   const authorityKey = Vue.ref('account-1:company-41:session-1')
   const canRead = Vue.computed(() => true)
   const canWrite = Vue.computed(() => true)
   const saves: Record<string, unknown>[] = []
+  let refreshCount = 0
+  let successfulRefreshCount = 0
   const settings = {
     state, pending, authorityKey, canRead, canWrite,
-    refresh: async () => null,
+    refresh: async () => {
+      refreshCount++
+      if (refreshCount <= (options.failRefreshCount ?? 0))
+        throw new Error('refresh failed')
+      successfulRefreshCount++
+      state.value = { ...state.value, default_product_tax_profile_id: 12, tax_default_revision: options.revision + successfulRefreshCount }
+      return { data: state.value, meta: {} }
+    },
     save: async (patch: Record<string, unknown>) => {
       saves.push(patch)
-      if (options.rejectSave)
-        throw { status: 409, data: { message: 'A configuração mudou. Atualize e tente novamente.' } }
+      if (saves.length <= (options.rejectSaveCount ?? 0))
+        throw { status: 409, data: { code: 'product_tax_default_changed', message: 'O padrão tributário mudou. Revise a configuração novamente.' } }
       state.value = {
         ...state.value,
         default_product_tax_profile_id: patch.default_product_tax_profile_id,
@@ -106,6 +115,7 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
     root,
     state,
     saves,
+    refreshCount: () => refreshCount,
     unmount: () => app.unmount(),
     async chooseProfile(id: string) {
       const select = walk(root).find(node => node.tag === 'select')
@@ -117,6 +127,13 @@ function mountDefaultProfile(options: { initialProfileId: number | null, revisio
       const button = walk(root).find(node => node.tag === 'button' && node.text.includes('Salvar perfil padrão'))
       assert.ok(button)
       assert.notEqual(button.props.disabled, true, 'a validated profile choice should enable saving')
+      const handler = button.props.onClick as (() => unknown) | undefined
+      await handler?.()
+      await Vue.nextTick()
+    },
+    async click(label: string) {
+      const button = walk(root).find(node => node.tag === 'button' && node.text.includes(label))
+      assert.ok(button, `Expected button ${label}`)
       const handler = button.props.onClick as (() => unknown) | undefined
       await handler?.()
       await Vue.nextTick()
@@ -156,12 +173,26 @@ describe('ERP company product tax profile default settings integration', () => {
   })
 
   it('preserves the draft profile choice and reports a stale revision conflict', async (t) => {
-    const form = mountDefaultProfile({ initialProfileId: null, revision: 8, rejectSave: true })
+    const form = mountDefaultProfile({ initialProfileId: null, revision: 8, rejectSaveCount: 1, failRefreshCount: 1 })
     t.after(form.unmount)
     await form.chooseProfile('24')
     await form.save()
     assert.equal(form.selected(), 24)
-    assert.match(form.text(), /A configuração mudou/)
+    assert.match(form.text(), /O padrão tributário mudou/)
     assert.deepEqual(form.saves, [{ default_product_tax_profile_id: 24, expected_tax_default_revision: 8 }])
+    await form.click('Recarregar e revisar')
+    assert.equal(form.selected(), 24, 'failed reload keeps the explicit profile draft')
+    assert.match(form.text(), /Não foi possível atualizar a configuração tributária/)
+    await form.click('Recarregar e revisar')
+    assert.equal(form.refreshCount(), 2)
+    assert.equal(form.selected(), 24, 'reload retains the explicit profile draft')
+    assert.equal(form.state.value?.tax_default_revision, 9)
+    await form.save()
+    assert.deepEqual(form.saves, [
+      { default_product_tax_profile_id: 24, expected_tax_default_revision: 8 },
+      { default_product_tax_profile_id: 24, expected_tax_default_revision: 9 }
+    ])
+    assert.equal(form.state.value?.default_product_tax_profile_id, 24)
+    assert.equal(form.state.value?.tax_default_revision, 10)
   })
 })

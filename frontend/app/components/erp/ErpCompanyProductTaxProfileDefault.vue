@@ -8,6 +8,9 @@ const loadError = ref('')
 const saveError = ref('')
 const profileError = ref('')
 const savePending = ref(false)
+const reviewPending = ref(false)
+const reviewConflict = ref(false)
+const reviewNotice = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
 
 const currentProfileId = computed(() => settings.state.value?.default_product_tax_profile_id ?? null)
@@ -15,17 +18,43 @@ const hasSelectionChanges = computed(() => selectedProfileId.value !== currentPr
 const canSave = computed(() => settings.canWrite.value
   && !settings.pending.value
   && !savePending.value
+  && !reviewPending.value
+  && !reviewConflict.value
   && !!settings.state.value
   && (!hasSelectionChanges.value || selectedProfileId.value === null || selectedProfileValid.value))
 
-watch([settings.authorityKey, settings.state], () => {
-  selectedProfileId.value = currentProfileId.value
-  selectedProfileValid.value = false
+let hydratedAuthority: string | null = null
+let draftInitialized = false
+
+function clearFeedback() {
   loadError.value = ''
   saveError.value = ''
   profileError.value = ''
-  savePending.value = false
+  reviewConflict.value = false
+  reviewNotice.value = ''
   fieldErrors.value = {}
+}
+
+watch([settings.authorityKey, settings.canRead, settings.canWrite], ([authority, canRead, canWrite]) => {
+  hydratedAuthority = authority
+  draftInitialized = false
+  selectedProfileId.value = null
+  selectedProfileValid.value = false
+  savePending.value = false
+  reviewPending.value = false
+  clearFeedback()
+  if ((canRead || canWrite) && settings.state.value) {
+    selectedProfileId.value = currentProfileId.value
+    draftInitialized = true
+  }
+}, { flush: 'sync', immediate: true })
+
+watch(settings.state, (state) => {
+  if (!state || draftInitialized || hydratedAuthority !== settings.authorityKey.value)
+    return
+  selectedProfileId.value = currentProfileId.value
+  loadError.value = ''
+  draftInitialized = true
 }, { flush: 'sync', immediate: true })
 
 watch(selectedProfileId, (id, previous) => {
@@ -34,6 +63,7 @@ watch(selectedProfileId, (id, previous) => {
     profileError.value = ''
     fieldErrors.value = {}
     saveError.value = ''
+    reviewNotice.value = ''
   }
 }, { flush: 'sync' })
 
@@ -59,6 +89,7 @@ async function saveDefault() {
 
   const authority = settings.authorityKey.value
   saveError.value = ''
+  reviewNotice.value = ''
   fieldErrors.value = {}
   savePending.value = true
   try {
@@ -74,9 +105,35 @@ async function saveDefault() {
     const details = apiFailure(failure)
     saveError.value = details.message
     fieldErrors.value = details.errors ?? {}
+    reviewConflict.value = details.status === 409 && details.code === 'product_tax_default_changed'
   } finally {
     if (authority === settings.authorityKey.value)
       savePending.value = false
+  }
+}
+
+async function reviewLatestDefault() {
+  if (!reviewConflict.value || !settings.canRead.value || settings.pending.value || reviewPending.value)
+    return
+  const authority = settings.authorityKey.value
+  reviewPending.value = true
+  loadError.value = ''
+  try {
+    const response = await settings.refresh()
+    if (!response || authority !== settings.authorityKey.value || !settings.canRead.value)
+      return
+    reviewConflict.value = false
+    saveError.value = ''
+    fieldErrors.value = {}
+    reviewNotice.value = hasSelectionChanges.value
+      ? 'Configuração atualizada. Confira a escolha mantida e salve novamente para aplicá-la.'
+      : 'Configuração atualizada. A escolha mantida já corresponde ao padrão da empresa.'
+  } catch {
+    if (authority === settings.authorityKey.value)
+      loadError.value = 'Não foi possível atualizar a configuração tributária.'
+  } finally {
+    if (authority === settings.authorityKey.value)
+      reviewPending.value = false
   }
 }
 
@@ -129,12 +186,34 @@ async function refreshSettings() {
           optional
           @selection-validity="updateSelectionValidity"
         />
+        <p v-if="hasSelectionChanges" role="status" class="text-sm text-muted">
+          Esta escolha está em rascunho e só será aplicada depois de salvar explicitamente.
+        </p>
         <p class="text-xs text-muted">
           O produto ainda exige a confirmação do perfil ou a escolha de uma configuração diferente antes de salvar.
         </p>
         <p v-if="saveError" role="alert" class="text-sm text-error">
           {{ saveError }}
         </p>
+        <p v-if="loadError" role="alert" class="text-sm text-error">
+          {{ loadError }}
+        </p>
+        <p v-if="reviewNotice" role="status" class="text-sm text-muted">
+          {{ reviewNotice }}
+        </p>
+        <div v-if="reviewConflict" class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm text-warning">
+            Revise a configuração atual antes de tentar salvar novamente.
+          </p>
+          <UButton
+            label="Recarregar e revisar"
+            color="neutral"
+            variant="outline"
+            :loading="reviewPending || settings.pending.value"
+            :disabled="reviewPending || settings.pending.value || !settings.canRead.value"
+            @click="reviewLatestDefault"
+          />
+        </div>
         <div class="flex justify-end">
           <UButton
             label="Salvar perfil padrão"

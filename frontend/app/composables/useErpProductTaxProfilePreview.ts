@@ -50,11 +50,13 @@ export function useErpProductTaxProfilePreview() {
   })
 
   let sequence = 0
+  let activeCandidateFingerprint: string | null = null
   let activeController: AbortController | null = null
   let disposed = false
 
   function invalidate(clearResult: boolean) {
     sequence++
+    activeCandidateFingerprint = null
     activeController?.abort()
     activeController = null
     pending.value = false
@@ -70,7 +72,9 @@ export function useErpProductTaxProfilePreview() {
   }
 
   function markStale() {
-    if (result.value)
+    const hadPreview = result.value !== null || pending.value
+    invalidate(false)
+    if (hadPreview)
       stale.value = true
   }
 
@@ -96,12 +100,17 @@ export function useErpProductTaxProfilePreview() {
     }
     invalidate(false)
     const attempt = sequence
+    const candidateFingerprint = JSON.stringify(erpProductTaxPreviewPayload(candidate))
+    activeCandidateFingerprint = candidateFingerprint
     const token = context.capture()
     const controller = new AbortController()
     activeController = controller
     pending.value = true
     error.value = ''
-    const current = () => !disposed && sequence === attempt && context.isCurrent(token)
+    const current = () => !disposed
+      && sequence === attempt
+      && activeCandidateFingerprint === candidateFingerprint
+      && context.isCurrent(token)
 
     try {
       const response = await api<{ data: ErpProductTaxProfileResolution }>('/erp/products/tax-preview', {
