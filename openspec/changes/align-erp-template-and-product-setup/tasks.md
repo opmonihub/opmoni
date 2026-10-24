@@ -7,7 +7,7 @@
 
 ## 2. Correct navigation and sidebar state
 
-- [ ] 2.1 Extend the existing destination registry with route/hash, grants and Fiscal area/model metadata, including stock cost layers and Fiscal configuration; verify sidebar/search/body agreement with `erpWorkspaceNav`, `erpModulesNav` and `erpFiscalWorkflows` tests plus restricted-grant cases.
+- [x] 2.1 Extend the existing destination registry with route/hash, grants and Fiscal area/model metadata, including stock cost layers and Fiscal configuration; verify sidebar/search/body agreement with `erpWorkspaceNav`, `erpModulesNav` and `erpFiscalWorkflows` tests plus restricted-grant cases.
 - [ ] 2.2 Derive Finance/Cash/Sales visible areas and section-root fallbacks from the permitted registry; verify payments-only, sessions-only, establishments-only and explicitly denied deep-link cases without weakening backend authorization.
 - [ ] 2.3 Give settings/catalog child pages one persistent shell and direct-link toolbar without nested panels; verify reload/history, active-link reachability and native horizontal navigation at 390px and desktop.
 - [ ] 2.4 Replace accumulated ERP expansion with one controlled group shared by both menu regions and reuse the office folding pattern where appropriate; verify sequential opens, manual fold/same-module hash, pinned child, leaf route, permission/context changes and collapsed/mobile keyboard/focus behavior in the existing sidebar suites.
