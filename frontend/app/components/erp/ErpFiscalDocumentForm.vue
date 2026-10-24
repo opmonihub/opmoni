@@ -51,7 +51,7 @@ const typedDescriptors = computed(() => ['57', '58'].includes(selectedModel.valu
 const typedRequiredKeys = computed(() => new Set(requiredErpTypedFiscalFields(selectedModel.value as '57' | '58', typedKind.value, facts).map(field => field.key)))
 const typedFieldErrors = computed(() => selectedModel.value === '57' || selectedModel.value === '58'
   ? mapErpTypedFiscalFieldErrors(props.fieldErrors ?? {}, selectedModel.value, typedKind.value)
-  : { fields: {}, summary: [], firstFieldKey: null })
+  : { fields: {}, summary: [], corrections: [], firstFieldKey: null })
 const cteServiceFields = computed(() => typedDescriptors.value.filter(field => ['service', 'tax', 'cargo'].includes(field.section)))
 const ctePartyFields = computed(() => typedDescriptors.value.filter(field => field.section === 'party' && !field.key.startsWith('taker_')))
 const cteTakerFields = computed(() => typedDescriptors.value.filter(field => field.key.startsWith('taker_')))
@@ -64,6 +64,10 @@ function errorForTypedField(field: ErpTypedFiscalFieldDescriptor): string | unde
 
 function typedFieldRequired(field: ErpTypedFiscalFieldDescriptor): boolean {
   return typedRequiredKeys.value.has(field.key)
+}
+
+function focusTypedErrorTarget(key: string): void {
+  focusErpTypedFiscalField(formRoot.value, key)
 }
 
 watch(() => [props.fieldErrors, selectedModel.value, typedKind.value] as const, async () => {
@@ -259,6 +263,33 @@ function submit() {
         title="Revise os dados fiscais rejeitados"
         :description="message"
       />
+      <section
+        v-for="correction in typedFieldErrors.corrections"
+        :key="correction.sourcePath"
+        role="group"
+        :aria-label="correction.title"
+        class="space-y-2"
+      >
+        <UAlert
+          color="error"
+          variant="subtle"
+          :title="correction.title"
+          :description="correction.description"
+        />
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-for="target in correction.targets"
+            :key="target.key"
+            type="button"
+            variant="outline"
+            :aria-label="`Ir para ${target.label}`"
+            :data-fiscal-error-target="target.key"
+            @click="focusTypedErrorTarget(target.key)"
+          >
+            {{ target.label }}
+          </UButton>
+        </div>
+      </section>
       <UAlert
         v-if="configuration?.release_gates.provider === 'unavailable'"
         color="warning"

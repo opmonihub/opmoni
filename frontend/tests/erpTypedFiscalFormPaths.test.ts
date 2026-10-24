@@ -252,3 +252,61 @@ it('keeps unrecognized and malformed 422 errors in the summary without guessing 
   assert.equal(parsed.summary.length, 1, 'unknown builder paths stay visible and do not select an unrelated input')
   assert.match(builderAlias.fields.sender_city_code ?? '', /código ibge/, 'the builder participant path focuses the shared municipality control')
 })
+
+it('offers explicit correction targets for the factory aggregate MDF-e geography errors', async () => {
+  const cases = [
+    {
+      path: 'transport_manifest.uf',
+      targets: [
+        { key: 'manifest_route_ufs', label: 'UFs do percurso' },
+        { key: 'vehicle_uf', label: 'UF do veículo' }
+      ],
+      fact: 'SP,XX'
+    },
+    {
+      path: 'transport_manifest.municipalities.code',
+      targets: [
+        { key: 'manifest_load_municipality_code', label: 'Código IBGE do município de carregamento' },
+        { key: 'manifest_unload_municipality_code', label: 'Código IBGE do município de descarregamento' }
+      ],
+      fact: 'abc'
+    },
+    {
+      path: 'transport_manifest.municipalities.name',
+      targets: [
+        { key: 'manifest_load_municipality_name', label: 'Município de carregamento' },
+        { key: 'manifest_unload_municipality_name', label: 'Município de descarregamento' }
+      ],
+      fact: 'X'
+    }
+  ]
+
+  for (const item of cases) {
+    const fieldErrors = Vue.reactive<Record<string, string>>({})
+    const { app, root } = mountDocumentForm('58', fieldErrors)
+    try {
+      const firstControl = findNode(root, node => node.tag === 'input' && node.props['data-fiscal-field-key'] === item.targets[0]!.key)
+      assert.ok(firstControl, `the first explicit correction target ${item.targets[0]!.key} is mounted`)
+      ;(firstControl.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: item.fact } })
+      await Vue.nextTick()
+
+      fieldErrors.source = `Dados fiscais obrigatórios ausentes ou inválidos: ${item.path}.`
+      await Vue.nextTick()
+      await Vue.nextTick()
+
+      for (const target of item.targets) {
+        const action = findNode(root, node => node.tag === 'button' && node.props['data-fiscal-error-target'] === target.key)
+        assert.ok(action, `${item.path} exposes an explicit correction action for ${target.label}`)
+        assert.equal(action.props['aria-label'], `Ir para ${target.label}`)
+        ;(action.props.onClick as () => void)()
+        await Vue.nextTick()
+        const control = findNode(root, node => node.tag === 'input' && node.props['data-fiscal-field-key'] === target.key)
+        assert.equal(control?.focused, true, `${target.label} action focuses its corresponding real control`)
+        assert.equal(firstControl.value, item.fact, 'the server rejection does not discard the entered fact')
+        if (target.key !== item.targets[0]!.key) firstControl.focused = false
+      }
+    } finally {
+      app.unmount()
+    }
+  }
+})

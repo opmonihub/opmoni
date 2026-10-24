@@ -88,11 +88,11 @@ const mdfeFields: ErpTypedFiscalFieldDescriptor[] = [
   { key: 'manifest_modal', path: 'transport_manifest.modal', label: 'Modal (fluxo local suporta 1 rodoviário)', section: 'manifest', control: 'select', requiredWhen: 'always', options: [{ label: '1 · Rodoviário', value: 1 }] },
   { key: 'manifest_issuer_type', path: 'transport_manifest.issuer_type', label: 'Tipo do emitente (fluxo local suporta veículo próprio 2)', section: 'manifest', control: 'select', requiredWhen: 'always', options: [{ label: '2 · Transportador de carga própria', value: 2 }] },
   { key: 'manifest_rntrc', path: 'transport_manifest.rntrc', label: 'RNTRC (8 dígitos)', section: 'manifest', requiredWhen: 'always', inputMode: 'numeric', maxlength: 8 },
-  { key: 'manifest_route_ufs', path: 'transport_manifest.route_ufs', label: 'UFs do percurso, separadas por vírgula', section: 'route', requiredWhen: 'always' },
+  { key: 'manifest_route_ufs', path: 'transport_manifest.route_ufs', label: 'UFs do percurso', section: 'route', requiredWhen: 'always' },
   { key: 'manifest_load_municipality_name', path: 'transport_manifest.municipalities.0.name', label: 'Município de carregamento', section: 'route', requiredWhen: 'always' },
-  { key: 'manifest_load_municipality_code', path: 'transport_manifest.municipalities.0.code', label: 'Código IBGE de carregamento', section: 'route', requiredWhen: 'always', inputMode: 'numeric' },
+  { key: 'manifest_load_municipality_code', path: 'transport_manifest.municipalities.0.code', label: 'Código IBGE do município de carregamento', section: 'route', requiredWhen: 'always', inputMode: 'numeric' },
   { key: 'manifest_unload_municipality_name', path: 'transport_manifest.municipalities.1.name', label: 'Município de descarregamento', section: 'route', requiredWhen: 'always' },
-  { key: 'manifest_unload_municipality_code', path: 'transport_manifest.municipalities.1.code', label: 'Código IBGE de descarregamento', section: 'route', requiredWhen: 'always', inputMode: 'numeric' },
+  { key: 'manifest_unload_municipality_code', path: 'transport_manifest.municipalities.1.code', label: 'Código IBGE do município de descarregamento', section: 'route', requiredWhen: 'always', inputMode: 'numeric' },
   { key: 'vehicle_plate', path: 'transport_manifest.vehicle.plate', label: 'Placa', section: 'vehicle', requiredWhen: 'always' },
   { key: 'vehicle_renavam', path: 'transport_manifest.vehicle.renavam', label: 'RENAVAM', section: 'vehicle', requiredWhen: 'always', inputMode: 'numeric' },
   { key: 'vehicle_registry', path: 'transport_manifest.vehicle.registry', label: 'Registro', section: 'vehicle', requiredWhen: 'always' },
@@ -136,7 +136,33 @@ export function requiredErpTypedFiscalFields(model: ErpTypedFiscalModel, kind: E
 export interface ErpTypedFiscalFieldErrors {
   fields: Record<string, string>
   summary: string[]
+  corrections: ErpTypedFiscalCorrectionGroup[]
   firstFieldKey: string | null
+}
+
+export interface ErpTypedFiscalCorrectionGroup {
+  sourcePath: string
+  title: string
+  description: string
+  targets: Array<{ key: string, label: string }>
+}
+
+const mdfeGeographicCorrections: Record<string, { title: string, description: string, targetKeys: string[] }> = {
+  'transport_manifest.uf': {
+    title: 'Revise as UFs do percurso e do veículo',
+    description: 'O servidor identificou uma UF inválida, mas não informou qual. Confira os dois campos.',
+    targetKeys: ['manifest_route_ufs', 'vehicle_uf']
+  },
+  'transport_manifest.municipalities.code': {
+    title: 'Revise os códigos IBGE dos municípios',
+    description: 'O servidor identificou um código de município inválido, mas não informou se é o de carregamento ou descarregamento. Confira os dois campos.',
+    targetKeys: ['manifest_load_municipality_code', 'manifest_unload_municipality_code']
+  },
+  'transport_manifest.municipalities.name': {
+    title: 'Revise os municípios de carregamento e descarregamento',
+    description: 'O servidor identificou um nome de município inválido, mas não informou se é o de carregamento ou descarregamento. Confira os dois campos.',
+    targetKeys: ['manifest_load_municipality_name', 'manifest_unload_municipality_name']
+  }
 }
 
 function flattenErrors(value: unknown, prefix = ''): Array<[string, string]> {
@@ -159,6 +185,8 @@ export function mapErpTypedFiscalFieldErrors(errors: Record<string, unknown>, mo
   const byPath = new Map(fields.flatMap(field => [field.path, ...(field.aliases ?? [])].map(path => [path, field] as const)))
   const mapped: Record<string, string> = {}
   const summary: string[] = []
+  const corrections: ErpTypedFiscalCorrectionGroup[] = []
+  const correctedSourcePaths = new Set<string>()
   const entries = flattenErrors(errors)
 
   for (const [path, message] of entries) {
@@ -171,7 +199,21 @@ export function mapErpTypedFiscalFieldErrors(errors: Record<string, unknown>, mo
       for (const sourcePath of paths) {
         const field = byPath.get(sourcePath)
         if (field) mapped[field.key] = `Revise ${field.label.toLocaleLowerCase('pt-BR')} informado.`
-        else summary.push(message)
+        else {
+          const group = model === '58' && kind === 'transport_manifest' ? mdfeGeographicCorrections[sourcePath] : undefined
+          const targets = group?.targetKeys.flatMap((key) => {
+            const target = fields.find(candidate => candidate.key === key)
+            return target ? [{ key: target.key, label: target.label }] : []
+          })
+          if (group && targets?.length === group.targetKeys.length) {
+            if (!correctedSourcePaths.has(sourcePath)) {
+              corrections.push({ sourcePath, title: group.title, description: group.description, targets })
+              correctedSourcePaths.add(sourcePath)
+            }
+          } else {
+            summary.push(message)
+          }
+        }
       }
       continue
     }
@@ -184,7 +226,7 @@ export function mapErpTypedFiscalFieldErrors(errors: Record<string, unknown>, mo
 
   const firstFieldKey = fields.find(field => Object.hasOwn(mapped, field.key))?.key ?? null
 
-  return { fields: mapped, summary: [...new Set(summary)], firstFieldKey }
+  return { fields: mapped, summary: [...new Set(summary)], corrections, firstFieldKey }
 }
 
 export function focusErpTypedFiscalField(root: Pick<HTMLElement, 'querySelector'> | null | undefined, key: string | null): boolean {
