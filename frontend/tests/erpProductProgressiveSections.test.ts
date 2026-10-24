@@ -87,14 +87,17 @@ const referenceSelect = Vue.defineComponent({
   props: ['modelValue', 'label', 'name', 'disabled', 'error'],
   emits: ['update:modelValue'],
   setup(props, { attrs, emit }) {
-    return () => Vue.h('select', {
-      ...attrs,
-      'name': props.name,
-      'aria-label': props.label,
-      'value': props.modelValue ?? '',
-      'disabled': props.disabled,
-      'onChange': (event: Event) => emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null)
-    }, [Vue.h('option', { value: '' }, 'Selecione'), Vue.h('option', { value: '17' }, 'UN')])
+    return () => Vue.h('div', [
+      Vue.h('select', {
+        ...attrs,
+        'name': props.name,
+        'aria-label': props.label,
+        'value': props.modelValue ?? '',
+        'disabled': props.disabled,
+        'onChange': (event: Event) => emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null)
+      }, [Vue.h('option', { value: '' }, 'Selecione'), Vue.h('option', { value: '17' }, 'UN')]),
+      props.error ? Vue.h('span', { role: 'alert' }, String(props.error)) : null
+    ])
   }
 })
 let productFormComponent: Vue.Component | undefined
@@ -137,20 +140,21 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
   }))
   app.component('UFormField', field)
   app.component('UAccordion', Vue.defineComponent({
-    props: ['items', 'type', 'unmountOnHide'],
-    setup(props, { slots }) {
-      const active = Vue.ref<string[]>([])
+    props: ['items', 'type', 'unmountOnHide', 'modelValue'],
+    emits: ['update:modelValue'],
+    setup(props, { emit, slots }) {
       return () => Vue.h('div', { 'data-accordion-unmount': props.unmountOnHide }, (props.items as Array<{ label: string, value: string, slot: string }>).flatMap((item) => {
-        const isOpen = active.value.includes(item.value)
+        const active = Array.isArray(props.modelValue) ? props.modelValue : []
+        const isOpen = active.includes(item.value)
         return [
           Vue.h('button', {
             'type': 'button',
             'data-accordion-value': item.value,
             'aria-expanded': isOpen,
             'onClick': () => {
-              active.value = isOpen
-                ? active.value.filter(value => value !== item.value)
-                : [...active.value, item.value]
+              emit('update:modelValue', isOpen
+                ? active.filter(value => value !== item.value)
+                : [...active, item.value])
             }
           }, item.label),
           Vue.h('section', { 'data-accordion-panel': item.value, 'hidden': !isOpen }, slots[item.slot]?.({ item }))
@@ -230,6 +234,11 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
       await Vue.nextTick()
     },
     inputValue: (name: string) => find(item => item.tag === 'input' && item.props.name === name)?.props.value,
+    setFieldErrors: async (fieldErrors: Record<string, string[]>) => {
+      componentProps.fieldErrors = fieldErrors
+      await Vue.nextTick()
+    },
+    sectionOpen: (value: string) => find(item => item.tag === 'button' && item.props['data-accordion-value'] === value)?.props['aria-expanded'] === true,
     select: async (name: string, value: string) => {
       const node = find(item => item.tag === 'select' && (item.props.name === name || item.props['aria-label'] === name))
       assert.ok(node, `Expected select ${name}`)
@@ -310,6 +319,61 @@ describe('ERP product progressive sections', () => {
     assert.equal(form.inputValue('ncm'), '12345678')
     await form.submit()
     assert.equal(form.emitted[0]?.ncm, '12345678')
+  })
+
+  it('opens every advanced section that receives server validation errors while preserving entered values', async (t) => {
+    const form = mountProductForm({
+      id: 78,
+      name: 'Mercadoria',
+      sku: 'ABC',
+      kind: 'goods',
+      track_stock: true,
+      erp_unit_id: 17,
+      sale_price: '19.2500',
+      warranty_months: null,
+      warranty_description: null,
+      barcode: null,
+      barcode_type: 'C128',
+      ncm: null,
+      cest: null,
+      origin_code: null,
+      icms_cst: '00',
+      icms_csosn: null,
+      icms_rate: '0.0000',
+      simple_national_credit_rate: null,
+      pis_cst: null,
+      pis_rate: null,
+      cofins_cst: null,
+      cofins_rate: null,
+      ipi_cst: null,
+      ipi_rate: null,
+      ibs_cbs_cst: null,
+      ibs_cbs_classification_code: null,
+      status: 'active',
+      variants: [{ id: 91, name: 'Padrão', sku: 'ABC', sale_price: null, barcode: null, barcode_type: null, status: 'active' }]
+    })
+    t.after(form.unmount)
+
+    for (const section of ['commercial', 'fiscal', 'variants'])
+      assert.equal(form.find(node => node.props['data-accordion-panel'] === section)?.props.hidden, true)
+
+    await form.input('ncm', '12345678')
+    await form.input('variants.0.sku', 'ABC-EDITED')
+    await form.setFieldErrors({
+      'erp_brand_id': ['Selecione uma marca válida.'],
+      'icms_rate': ['Revise a alíquota.'],
+      'variants.0.sku': ['Este SKU já está em uso.'],
+      'variants': ['Há uma variante inválida.']
+    })
+
+    for (const section of ['commercial', 'fiscal', 'variants']) {
+      assert.equal(form.sectionOpen(section), true, `Expected ${section} to open for its server error`)
+      assert.equal(form.find(node => node.props['data-accordion-panel'] === section)?.props.hidden, false)
+    }
+    for (const message of ['Selecione uma marca válida.', 'Revise a alíquota.', 'Este SKU já está em uso.', 'Há uma variante inválida.'])
+      assert.ok(descendants(form.root).some(node => node.text.includes(message)), `Expected visible server error: ${message}`)
+    assert.equal(form.inputValue('ncm'), '12345678')
+    assert.equal(form.inputValue('variants.0.sku'), 'ABC-EDITED')
   })
 
   it('preserves existing product values, variant IDs, archive state and inherited variant prices on a basic edit', async (t) => {

@@ -154,7 +154,7 @@ function mountForm(
   }))
   app.component('UAccordion', Vue.defineComponent({
     inheritAttrs: false,
-    props: ['items', 'type', 'unmountOnHide', 'defaultValue'],
+    props: ['items', 'type', 'unmountOnHide', 'defaultValue', 'modelValue'],
     emits: ['update:modelValue'],
     setup(props, { attrs, emit, slots }) {
       const initialValue = Array.isArray(props.defaultValue)
@@ -167,7 +167,8 @@ function mountForm(
         'data-uaccordion': true,
         'data-accordion-unmount-on-hide': props.unmountOnHide
       }, (props.items as Array<{ label: string, value: string, slot?: string }> | undefined)?.flatMap((item) => {
-        const isOpen = active.value.includes(item.value)
+        const currentValue = props.modelValue === undefined ? active.value : Array.isArray(props.modelValue) ? props.modelValue.map(String) : [String(props.modelValue)]
+        const isOpen = currentValue.includes(item.value)
         const shouldRenderContent = props.unmountOnHide === false || isOpen
         const panel = Vue.h('div', {
           'data-accordion-panel': item.value,
@@ -181,13 +182,18 @@ function mountForm(
             'aria-expanded': isOpen,
             'onClick': () => {
               if (props.type === 'multiple') {
-                active.value = isOpen
-                  ? active.value.filter(value => value !== item.value)
-                  : [...active.value, item.value]
+                const nextValue = isOpen
+                  ? currentValue.filter(value => value !== item.value)
+                  : [...currentValue, item.value]
+                if (props.modelValue === undefined)
+                  active.value = nextValue
+                emit('update:modelValue', nextValue)
               } else {
-                active.value = isOpen ? [] : [item.value]
+                const nextValue = isOpen ? [] : [item.value]
+                if (props.modelValue === undefined)
+                  active.value = nextValue
+                emit('update:modelValue', props.type === 'multiple' ? nextValue : nextValue[0])
               }
-              emit('update:modelValue', props.type === 'multiple' ? active.value : active.value[0])
             }
           }, item.label),
           panel

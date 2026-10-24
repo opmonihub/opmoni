@@ -51,6 +51,7 @@ const form = reactive({
   ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[]
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+const openProductSections = ref<string[]>([])
 const pendingVariantArchive = ref<number | null>(null)
 const variantArchiveOpen = computed({
   get: () => pendingVariantArchive.value !== null,
@@ -113,6 +114,21 @@ watch(() => form.kind, (kind) => {
   if (kind === 'service')
     form.track_stock = false
 })
+
+watch(() => props.fieldErrors, (errors) => {
+  const sectionsWithErrors = new Set<string>()
+  for (const [field, messages] of Object.entries(errors ?? {})) {
+    if (!messages.length)
+      continue
+    if (['erp_brand_id', 'erp_category_id', 'track_stock', 'warranty_months', 'warranty_description', 'barcode', 'barcode_type'].includes(field))
+      sectionsWithErrors.add('commercial')
+    else if (['ncm', 'cest', 'origin_code', 'icms_cst', 'icms_csosn', 'icms_rate', 'simple_national_credit_rate', 'pis_cst', 'pis_rate', 'cofins_cst', 'cofins_rate', 'ipi_cst', 'ipi_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code'].includes(field))
+      sectionsWithErrors.add('fiscal')
+    else if (field === 'variants' || field.startsWith('variants.'))
+      sectionsWithErrors.add('variants')
+  }
+  openProductSections.value = [...new Set([...openProductSections.value, ...sectionsWithErrors])]
+}, { deep: true })
 
 function addVariant() {
   if (!disabled.value)
@@ -272,6 +288,7 @@ function submit() {
     </section>
 
     <UAccordion
+      v-model="openProductSections"
       :items="productSectionItems"
       type="multiple"
       :unmount-on-hide="false"
