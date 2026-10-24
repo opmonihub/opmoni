@@ -228,6 +228,9 @@ final class ErpCompanyPermissions
             || self::ACTIONS[$permission] !== $write) {
             return false;
         }
+        if (str_starts_with($permission, 'erp.product-tax-profiles.') && ! in_array($permission, $allowlist, true)) {
+            return false;
+        }
         if ($permission === 'erp.read') {
             return in_array('erp.read', $allowlist, true) || in_array('*', $allowlist, true);
         }
