@@ -126,9 +126,26 @@ function mountForm(
       ])
     }
   })
+  const operationNatureRules = Vue.defineComponent({
+    props: ['natureId', 'movement', 'defaultCfop', 'defaultCfopUnverified', 'canRead', 'canWrite', 'rootDirty'],
+    emits: ['stage-default'],
+    setup(props, { emit }) {
+      return () => Vue.h('section', { 'data-operation-nature-rules': true }, [
+        props.defaultCfopUnverified ? Vue.h('p', 'O valor histórico não foi verificado.') : null,
+        props.canWrite && !props.rootDirty
+          ? Vue.h('button', {
+              'type': 'button',
+              'data-stage-default': true,
+              'onClick': () => emit('stage-default', { code: '5102', expected_revision: 4 })
+            }, 'Usar 5102 como padrão')
+          : null
+      ])
+    }
+  })
   const component = compileVueComponent(path, {}, {
     '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
-    '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect
+    '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect,
+    '~/components/erp/catalogs/ErpOperationNatureCfopRules.vue': operationNatureRules
   })
   const { renderer, makeNode } = createHostRenderer()
   const wrapper = Vue.defineComponent({
@@ -234,6 +251,17 @@ function mountForm(
       ])
     }
   }))
+  app.component('UAlert', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['title', 'description'],
+    setup(props, { attrs, slots }) {
+      return () => Vue.h('div', { ...attrs, role: 'status' }, [
+        Vue.h('span', String(props.title ?? '')),
+        Vue.h('span', String(props.description ?? '')),
+        ...(slots.default?.() ?? [])
+      ])
+    }
+  }))
   app.component('USelect', Vue.defineComponent({
     inheritAttrs: false,
     props: ['modelValue', 'items', 'valueKey'],
@@ -331,6 +359,14 @@ function mountForm(
     selectValue: (label: string) => descendants(root).find(item => item.tag === 'select' && item.props['aria-label'] === label)?.props.value,
     text: () => descendants(root).map(node => node.text).join(' '),
     buttons: () => descendants(root).filter(node => node.tag === 'button'),
+    stageDefault: async () => {
+      const button = descendants(root).find(node => node.props['data-stage-default'] === true)
+      assert.ok(button, `Expected an explicit default review action in ${path}`)
+      const onClick = button.props.onClick as (() => void) | undefined
+      assert.ok(onClick)
+      onClick()
+      await Vue.nextTick()
+    },
     accordionPanel: (value: string) => descendants(root).find(node => node.props['data-accordion-panel'] === value),
     openSection: async (value: string) => {
       await toggleAccordionSection(value, true)
@@ -679,6 +715,49 @@ describe('ERP catalog family forms', () => {
       await form.setFieldErrors({ [name]: [message] })
       assert.ok(form.text().includes(message), `Expected server error for ${name} to be visible`)
     }
+  })
+
+  it('marks an existing operation-nature CFOP as unverified until the operator deliberately adopts a reference', async (t) => {
+    const form = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', {
+      id: 32,
+      erp_establishment_id: 2,
+      cfop: '5102',
+      description: 'Venda de mercadoria adquirida',
+      movement: 'out',
+      configuration_revision: 4,
+      cfop_reference_version: null
+    }, 'edit')
+    t.after(form.unmount)
+
+    assert.match(form.text(), /não (foi )?verificado/i)
+    assert.equal(form.inputValue('cfop'), '5102')
+    await form.input('description', 'Venda revisada')
+    await form.submit()
+
+    assert.deepEqual(form.emitted, [{
+      erp_establishment_id: 2,
+      cfop: '5102',
+      description: 'Venda revisada',
+      movement: 'out'
+    }])
+  })
+
+  it('submits only a deliberately reviewed CFOP default with its captured revision', async (t) => {
+    const form = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', {
+      id: 32,
+      erp_establishment_id: 2,
+      cfop: '5102',
+      description: 'Venda de mercadoria adquirida',
+      movement: 'out',
+      configuration_revision: 4,
+      cfop_reference_version: null
+    }, 'edit')
+    t.after(form.unmount)
+
+    await form.stageDefault()
+    await form.submit()
+
+    assert.deepEqual(form.emitted, [{ cfop: '5102', expected_revision: 4 }])
   })
 
   for (const item of editCases) {
