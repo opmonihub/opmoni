@@ -31,6 +31,7 @@ const invalidationConfirmation = ref<ErpFiscalInvalidation | null>(null)
 const invalidationConfirmationOpen = ref(false)
 const pendingEvent = ref<{ type: string, fields: Record<string, unknown>, key: string } | null>(null)
 const draftFormEpoch = ref(0)
+const draftFormOpen = ref(false)
 const eventFormEpoch = ref(0)
 const invalidationFormEpoch = ref(0)
 const localBusy = ref(false)
@@ -77,6 +78,7 @@ watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId, workspace
   invalidationConfirmation.value = null
   selectedCertificate.value = null
   certificateMode.value = 'upload'
+  draftFormOpen.value = false
 }, { flush: 'sync' })
 
 watch(() => [mounted.value, selection.value.destination?.id, selection.value.permitted, uiAuthority.key.value, workspace.authorityGeneration] as const, () => {
@@ -375,21 +377,29 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                 <div class="flex items-center justify-between gap-3">
                   <div>
                     <h3 class="font-semibold">
-                      Novo rascunho fiscal
+                      {{ draftFormOpen ? 'Novo rascunho fiscal' : 'Criar documento fiscal' }}
                     </h3><p class="text-sm text-muted">
-                      A numeração e a chave ficam vinculadas aos dados confirmados neste envio.
+                      {{ draftFormOpen ? 'A numeração e a chave ficam vinculadas aos dados confirmados neste envio.' : 'Consulte a lista e os detalhes. Abra o formulário quando for preparar um documento.' }}
                     </p>
-                  </div><USelect
-                    :model-value="selectedModel"
-                    :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }, { label: 'MDF-e (58)', value: '58' }]"
-                    value-key="value"
-                    label-key="label"
-                    class="w-36"
-                    @update:model-value="selectModel($event as ErpFiscalModel)"
-                  />
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <USelect
+                      v-if="draftFormOpen"
+                      :model-value="selectedModel"
+                      :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }, { label: 'MDF-e (58)', value: '58' }]"
+                      value-key="value"
+                      label-key="label"
+                      class="w-36"
+                      @update:model-value="selectModel($event as ErpFiscalModel)"
+                    />
+                    <UButton v-else data-testid="open-fiscal-draft" @click="draftFormOpen = true">
+                      Novo rascunho
+                    </UButton>
+                  </div>
                 </div>
               </template>
               <ErpFiscalDocumentForm
+                v-if="draftFormOpen"
                 :key="`${contextFormKey}:${draftFormEpoch}`"
                 :establishment-id="workspace.selectedEstablishmentId!"
                 :configuration="workspace.configuration"

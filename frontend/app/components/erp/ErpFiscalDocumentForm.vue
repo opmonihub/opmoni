@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ErpFiscalConfiguration, ErpFiscalDocument, ErpFiscalModel, ErpFiscalSale, ErpFiscalSaleLine } from '#shared/types/erpFiscal'
 import { buildErpFiscalDraftSource, type ErpFiscalSaleFormFacts } from '#shared/utils/erpFiscal'
+import { focusErpTypedFiscalField, mapErpTypedFiscalFieldErrors, requiredErpTypedFiscalFields, erpTypedFiscalFieldDescriptors, type ErpTypedFiscalFieldDescriptor } from '~/utils/erpTypedFiscalForm'
 
 const props = defineProps<{
   establishmentId: number
@@ -44,6 +45,32 @@ type ErpFiscalLineFormFacts = { description: string, ind_total: string, quantity
 const lineFacts = ref<ErpFiscalLineFormFacts[]>([])
 const totals = reactive<Record<string, string>>({})
 const localError = ref('')
+const formRoot = ref<HTMLElement | null>(null)
+const typedKind = computed(() => selectedModel.value === '57' ? kind.value as 'transport_service' | 'complement' | 'substitution' : 'transport_manifest')
+const typedDescriptors = computed(() => ['57', '58'].includes(selectedModel.value) ? erpTypedFiscalFieldDescriptors(selectedModel.value as '57' | '58', typedKind.value) : [])
+const typedRequiredKeys = computed(() => new Set(requiredErpTypedFiscalFields(selectedModel.value as '57' | '58', typedKind.value, facts).map(field => field.key)))
+const typedFieldErrors = computed(() => selectedModel.value === '57' || selectedModel.value === '58'
+  ? mapErpTypedFiscalFieldErrors(props.fieldErrors ?? {}, selectedModel.value, typedKind.value)
+  : { fields: {}, summary: [], firstFieldKey: null })
+const cteServiceFields = computed(() => typedDescriptors.value.filter(field => ['service', 'tax', 'cargo'].includes(field.section)))
+const ctePartyFields = computed(() => typedDescriptors.value.filter(field => field.section === 'party' && !field.key.startsWith('taker_')))
+const cteTakerFields = computed(() => typedDescriptors.value.filter(field => field.key.startsWith('taker_')))
+const cteRouteFields = computed(() => typedDescriptors.value.filter(field => field.section === 'route'))
+const mdfeFields = computed(() => typedDescriptors.value)
+
+function errorForTypedField(field: ErpTypedFiscalFieldDescriptor): string | undefined {
+  return typedFieldErrors.value.fields[field.key]
+}
+
+function typedFieldRequired(field: ErpTypedFiscalFieldDescriptor): boolean {
+  return typedRequiredKeys.value.has(field.key)
+}
+
+watch(() => [props.fieldErrors, selectedModel.value, typedKind.value] as const, async () => {
+  if (selectedModel.value !== '57' && selectedModel.value !== '58') return
+  await nextTick()
+  focusErpTypedFiscalField(formRoot.value, typedFieldErrors.value.firstFieldKey)
+}, { deep: true, flush: 'post', immediate: true })
 
 function numericFact(key: string): number | undefined {
   const value = facts[key]
@@ -164,14 +191,15 @@ function createSaleBody() {
 function transportSource() {
   if (selectedModel.value === '57') {
     const cteType = kind.value === 'complement' ? 1 : kind.value === 'substitution' ? 3 : 0
-    const party = (prefix: 'sender' | 'receiver') => ({ cnpj: facts[`${prefix}_cnpj`], legal_name: facts[`${prefix}_name`], state_registration: facts[`${prefix}_state_registration`], state_registration_indicator: Number(facts[`${prefix}_state_registration_indicator`]), city_code: facts[`${prefix}_city_code`], uf: facts[`${prefix}_uf`], address: { street: facts[`${prefix}_street`], number: facts[`${prefix}_number`], district: facts[`${prefix}_district`], city_code: facts[`${prefix}_city_code`], city: facts[`${prefix}_city`], postal_code: facts[`${prefix}_postal_code`], uf: facts[`${prefix}_uf`] } })
+    const party = (prefix: 'sender' | 'receiver') => ({ cnpj: facts[`${prefix}_cnpj`], legal_name: facts[`${prefix}_name`], ...(facts[`${prefix}_state_registration`] ? { state_registration: facts[`${prefix}_state_registration`] } : {}), ...(facts[`${prefix}_state_registration_indicator`] ? { state_registration_indicator: Number(facts[`${prefix}_state_registration_indicator`]) } : {}), city_code: facts[`${prefix}_city_code`], uf: facts[`${prefix}_uf`], address: { street: facts[`${prefix}_street`], number: facts[`${prefix}_number`], district: facts[`${prefix}_district`], city_code: facts[`${prefix}_city_code`], city: facts[`${prefix}_city`], postal_code: facts[`${prefix}_postal_code`], uf: facts[`${prefix}_uf`] } })
+    const taker = { role: Number(facts.taker_role), ...(facts.taker_role === '4' ? { cnpj: facts.taker_cnpj, legal_name: facts.taker_name, address: { street: facts.taker_street, number: facts.taker_number, district: facts.taker_district, city_code: facts.taker_city_code, city: facts.taker_city, postal_code: facts.taker_postal_code, uf: facts.taker_uf } } : {}) }
     return { transport_service: {
       cte_type: cteType, service_type: Number(facts.service_type), emission_type: Number(facts.emission_type), modal: '01', operation_nature: facts.operation_nature,
       cfop: facts.cfop, service_value: facts.service_value, received_value: facts.received_value, rntrc: facts.rntrc,
-      sender: party('sender'), receiver: party('receiver'), taker: { role: Number(facts.taker_role) },
+      sender: party('sender'), receiver: party('receiver'), taker,
       route: { origin_uf: facts.origin_uf, origin_city_code: facts.origin_city_code, origin_city: facts.origin_city, destination_uf: facts.destination_uf, destination_city_code: facts.destination_city_code, destination_city: facts.destination_city, pickup: Number(facts.pickup) },
       tax: { cst: facts.tax_cst, base: facts.tax_base, rate: facts.tax_rate, value: facts.tax_value },
-      cargo: { description: facts.cargo_description, measure_type: facts.cargo_measure_type, unit: facts.cargo_unit, quantity: facts.cargo_quantity, value: facts.cargo_value },
+      cargo: { description: facts.cargo_description, ...(facts.cargo_measure_type ? { measure_type: facts.cargo_measure_type } : {}), unit: facts.cargo_unit, quantity: facts.cargo_quantity, value: facts.cargo_value },
       ...(kind.value !== 'transport_service' ? { original_cte_access_key: props.originalDocuments.find(row => row.id === selectedOriginalId.value)?.access_key ?? '' } : {})
     } }
   }
@@ -189,11 +217,10 @@ function transportSource() {
 
 function createTransportBody() {
   const kindValue = kind.value
-  const transportRequired = selectedModel.value === '57'
-    ? ['service_type', 'emission_type', 'operation_nature', 'cfop', 'sender_cnpj', 'sender_name', 'sender_state_registration_indicator', 'sender_street', 'sender_number', 'sender_district', 'sender_city_code', 'sender_city', 'sender_postal_code', 'sender_uf', 'receiver_cnpj', 'receiver_name', 'receiver_state_registration_indicator', 'receiver_street', 'receiver_number', 'receiver_district', 'receiver_city_code', 'receiver_city', 'receiver_postal_code', 'receiver_uf', 'taker_role', 'origin_uf', 'origin_city_code', 'origin_city', 'destination_uf', 'destination_city_code', 'destination_city', 'pickup', 'rntrc', 'service_value', 'received_value', 'tax_cst', 'tax_base', 'tax_rate', 'tax_value', 'cargo_description', 'cargo_measure_type', 'cargo_unit', 'cargo_quantity', 'cargo_value']
-    : ['manifest_emission_type', 'manifest_modal', 'manifest_issuer_type', 'manifest_rntrc', 'manifest_route_ufs', 'manifest_load_municipality_name', 'manifest_load_municipality_code', 'manifest_unload_municipality_name', 'manifest_unload_municipality_code', 'vehicle_plate', 'vehicle_renavam', 'vehicle_registry', 'vehicle_tare', 'vehicle_capacity', 'vehicle_road_type', 'vehicle_trailer_type', 'vehicle_uf', 'driver_name', 'driver_cpf', 'cargo_product_description', 'cargo_product_type', 'cargo_ncm', 'cargo_total_value', 'cargo_unit_manifest', 'cargo_quantity_manifest', 'cte_total', 'nfe_total', 'mdfe_total']
-  if (transportRequired.some(field => facts[field] === '' || facts[field] === null || facts[field] === undefined)) throw new Error('Preencha os dados reais obrigatórios deste modelo. O formulário não completa valores ausentes.')
+  const transportRequired = requiredErpTypedFiscalFields(selectedModel.value as '57' | '58', typedKind.value, facts)
+  if (transportRequired.some(field => facts[field.key] === '' || facts[field.key] === null || facts[field.key] === undefined)) throw new Error('Preencha os dados reais obrigatórios deste modelo. O formulário não completa valores ausentes.')
   if (selectedModel.value === '58') {
+    if ((facts.manifest_route_ufs ?? '').split(',').map(value => value.trim()).filter(Boolean).length < 2) throw new Error('Informe ao menos duas UFs reais para o percurso do MDF-e.')
     const referenceModel = selectedManifestDocument.value?.model ?? facts.manifest_document_model
     const referenceKey = selectedManifestDocument.value?.access_key ?? facts.access_key_reference
     if (!['55', '65', '57'].includes(referenceModel ?? '') || !/^\d{44}$/.test(referenceKey ?? '')) throw new Error('Informe um documento autorizado para referência: selecione um documento disponível ou digite o modelo e a chave de acesso de 44 dígitos.')
@@ -222,89 +249,241 @@ function submit() {
 </script>
 
 <template>
-  <UForm :state="facts" class="space-y-5" @submit="submit">
-    <UAlert
-      v-if="configuration?.release_gates.provider === 'unavailable'"
-      color="warning"
-      variant="subtle"
-      title="Transmissão indisponível"
-      description="A emissão permanece bloqueada enquanto o serviço fiscal não estiver disponível. O rascunho pode ser preparado para validação local."
-    />
-    <UAlert
-      v-else-if="productionBlocked"
-      color="warning"
-      variant="subtle"
-      title="Produção bloqueada"
-      description="A transmissão em produção continua desabilitada pelas regras atuais."
-    />
-    <div class="grid gap-4 sm:grid-cols-2">
-      <UFormField label="Modelo fiscal" name="model">
-        <USelect
-          v-model="selectedModel"
-          :items="models"
-          value-key="value"
-          label-key="label"
-          :disabled="busy"
-        />
-      </UFormField>
-      <UFormField label="Tipo de documento" name="document_kind">
-        <USelect
-          v-model="kind"
-          :items="kinds"
-          value-key="value"
-          label-key="label"
-          :disabled="busy"
-        />
-      </UFormField>
-    </div>
-    <p class="text-muted text-sm">
-      Série configurada: {{ configuration?.models[selectedModel]?.series ?? 'não configurada' }} · Próximo número atual: {{ configuration?.models[selectedModel]?.next_number ?? 'indisponível' }}. O número é reservado pelo servidor ao criar o rascunho.
-    </p>
+  <div ref="formRoot">
+    <UForm :state="facts" class="space-y-5" @submit="submit">
+      <UAlert
+        v-for="message in typedFieldErrors.summary"
+        :key="message"
+        color="error"
+        variant="subtle"
+        title="Revise os dados fiscais rejeitados"
+        :description="message"
+      />
+      <UAlert
+        v-if="configuration?.release_gates.provider === 'unavailable'"
+        color="warning"
+        variant="subtle"
+        title="Transmissão indisponível"
+        description="A emissão permanece bloqueada enquanto o serviço fiscal não estiver disponível. O rascunho pode ser preparado para validação local."
+      />
+      <UAlert
+        v-else-if="productionBlocked"
+        color="warning"
+        variant="subtle"
+        title="Produção bloqueada"
+        description="A transmissão em produção continua desabilitada pelas regras atuais."
+      />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <UFormField label="Modelo fiscal" name="model">
+          <USelect
+            v-model="selectedModel"
+            :items="models"
+            value-key="value"
+            label-key="label"
+            :disabled="busy"
+          />
+        </UFormField>
+        <UFormField label="Tipo de documento" name="document_kind">
+          <USelect
+            v-model="kind"
+            :items="kinds"
+            value-key="value"
+            label-key="label"
+            :disabled="busy"
+          />
+        </UFormField>
+      </div>
+      <p class="text-muted text-sm">
+        Série configurada: {{ configuration?.models[selectedModel]?.series ?? 'não configurada' }} · Próximo número atual: {{ configuration?.models[selectedModel]?.next_number ?? 'indisponível' }}. O número é reservado pelo servidor ao criar o rascunho.
+      </p>
 
-    <template v-if="selectedModel === '55' || selectedModel === '65'">
-      <UFormField
-        v-if="kind !== 'return'"
-        label="Venda lançada para preservar o snapshot comercial"
-        name="erp_sale_id"
-        :error="fieldErrors?.erp_sale_id"
-      >
-        <USelect
-          :model-value="selectedSale?.id ?? undefined"
-          :items="sales.map(sale => ({ label: `Venda #${sale.id} · ${sale.status}`, value: sale.id }))"
-          value-key="value"
-          label-key="label"
-          placeholder="Selecione uma venda lançada"
-          @update:model-value="emit('select-sale', Number($event))"
-        />
-      </UFormField>
-      <UFormField
-        v-else
-        label="Devolução lançada"
-        name="erp_sale_return_id"
-        :error="fieldErrors?.erp_sale_return_id"
-      >
-        <USelect
-          :model-value="selectedReturn?.id ?? undefined"
-          :items="returns.map(row => ({ label: `Devolução #${row.id} · ${row.status}`, value: row.id }))"
-          value-key="value"
-          label-key="label"
-          placeholder="Selecione uma devolução lançada"
-          @update:model-value="emit('select-return', Number($event))"
-        />
-      </UFormField>
-      <template v-if="selectedSale || selectedReturn">
-        <p class="text-muted text-sm">
-          Os itens e a identidade comercial vêm do snapshot lançado. Dados fiscais sem fonte confirmada precisam ser informados; nenhum valor tributário será preenchido automaticamente.
-        </p>
+      <template v-if="selectedModel === '55' || selectedModel === '65'">
         <UFormField
-          v-if="['return', 'complement'].includes(kind)"
-          label="Documento fiscal original autorizado"
+          v-if="kind !== 'return'"
+          label="Venda lançada para preservar o snapshot comercial"
+          name="erp_sale_id"
+          :error="fieldErrors?.erp_sale_id"
+        >
+          <USelect
+            :model-value="selectedSale?.id ?? undefined"
+            :items="sales.map(sale => ({ label: `Venda #${sale.id} · ${sale.status}`, value: sale.id }))"
+            value-key="value"
+            label-key="label"
+            placeholder="Selecione uma venda lançada"
+            @update:model-value="emit('select-sale', Number($event))"
+          />
+        </UFormField>
+        <UFormField
+          v-else
+          label="Devolução lançada"
+          name="erp_sale_return_id"
+          :error="fieldErrors?.erp_sale_return_id"
+        >
+          <USelect
+            :model-value="selectedReturn?.id ?? undefined"
+            :items="returns.map(row => ({ label: `Devolução #${row.id} · ${row.status}`, value: row.id }))"
+            value-key="value"
+            label-key="label"
+            placeholder="Selecione uma devolução lançada"
+            @update:model-value="emit('select-return', Number($event))"
+          />
+        </UFormField>
+        <template v-if="selectedSale || selectedReturn">
+          <p class="text-muted text-sm">
+            Os itens e a identidade comercial vêm do snapshot lançado. Dados fiscais sem fonte confirmada precisam ser informados; nenhum valor tributário será preenchido automaticamente.
+          </p>
+          <UFormField
+            v-if="['return', 'complement'].includes(kind)"
+            label="Documento fiscal original autorizado"
+            name="source_document_id"
+            :error="fieldErrors?.source_document_id"
+          >
+            <USelect
+              v-model="selectedOriginalId"
+              :items="originalDocuments.filter(row => ['55', '65'].includes(row.model) && row.status === 'authorized' && row.erp_establishment_id === establishmentId && row.environment === configuration?.environment).map(row => ({ label: `${row.model} · ${row.access_key}`, value: row.id }))"
+              value-key="value"
+              label-key="label"
+              placeholder="Selecione o documento original"
+            />
+          </UFormField>
+          <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Identificação da operação
+            </legend>
+            <UFormField
+              v-for="field in [{ key: 'operation_type', label: 'Tipo da operação (0 entrada, 1 saída)' }, { key: 'destination_type', label: 'Destino (1 interna, 2 interestadual, 3 exterior)' }, { key: 'final_consumer', label: 'Consumidor final (0 não, 1 sim)' }, { key: 'presence_indicator', label: 'Presença do comprador' }, { key: 'print_type', label: 'Tipo de impressão' }]"
+              :key="field.key"
+              :label="field.label"
+              :name="`identity.${field.key}`"
+              :error="fieldErrors?.[`source.identity.${field.key}`]"
+            >
+              <UInput v-model="facts[field.key]" inputmode="numeric" />
+            </UFormField>
+            <UFormField label="Finalidade definida pelo tipo de documento" name="identity.purpose" :error="fieldErrors?.['source.identity.purpose']">
+              <UInput :model-value="String(salesDocumentPurpose)" readonly />
+            </UFormField>
+            <UFormField label="CFOP confirmado para esta operação" name="operation_nature.cfop" :error="fieldErrors?.['source.operation_nature.cfop']">
+              <UInput v-model="facts.cfop" inputmode="numeric" />
+            </UFormField>
+          </fieldset>
+          <fieldset v-if="offlineNfce" class="grid gap-3 rounded-lg border border-warning p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Contingência offline NFC-e
+            </legend>
+            <p class="text-muted text-sm sm:col-span-2">
+              Informe fatos reais da contingência. O sistema não cria horário nem justificativa automaticamente.
+            </p>
+            <UFormField
+              label="Início da contingência (data, hora, segundos e fuso UTC)"
+              description="Informe o fuso real em horas inteiras, entre -11:00 e +12:00. Exemplo: 2026-10-21T14:00:00-03:00."
+              name="identity.contingency_started_at"
+              :error="fieldErrors?.['source.identity.contingency_started_at']"
+            >
+              <UInput
+                v-model="facts.contingency_started_at"
+                type="text"
+                placeholder="2026-10-21T14:00:00-03:00"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Justificativa (15 a 256 caracteres)" name="identity.contingency_justification" :error="fieldErrors?.['source.identity.contingency_justification']">
+              <UTextarea v-model="facts.contingency_justification" maxlength="256" />
+            </UFormField>
+          </fieldset>
+          <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Endereço fiscal do destinatário
+            </legend>
+            <UFormField label="Indicador de inscrição estadual" name="recipient.state_registration_indicator" :error="fieldErrors?.['source.recipient.state_registration_indicator']">
+              <UInput v-model="facts.recipient_state_registration_indicator" inputmode="numeric" />
+            </UFormField>
+            <UFormField
+              v-for="field in [{ key: 'recipient_street', path: 'street', label: 'Logradouro' }, { key: 'recipient_number', path: 'number', label: 'Número' }, { key: 'recipient_district', path: 'district', label: 'Bairro' }, { key: 'recipient_city_code', path: 'city_code', label: 'Código IBGE do município' }, { key: 'recipient_city_name', path: 'city', label: 'Município' }, { key: 'recipient_zip_code', path: 'postal_code', label: 'CEP' }, { key: 'recipient_uf', path: 'uf', label: 'UF' }]"
+              :key="field.key"
+              :label="field.label"
+              :name="`recipient.address.${field.path}`"
+              :error="fieldErrors?.[`source.recipient.address.${field.path}`]"
+            >
+              <UInput v-model="facts[field.key]" />
+            </UFormField>
+          </fieldset>
+          <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Tributação por item
+            </legend>
+            <div v-for="(line, index) in sourceLines" :key="line.id" class="col-span-full grid gap-3 rounded-md bg-elevated p-3 sm:grid-cols-2">
+              <p class="text-sm font-medium sm:col-span-2">
+                {{ line.product_snapshot?.product?.name ?? line.product_snapshot?.product?.sku ?? `Item ${index + 1}` }} · {{ line.quantity }} {{ line.product_snapshot?.unit?.short_name }}
+              </p>
+              <UFormField label="Descrição fiscal" :name="`items.${index}.description`">
+                <UInput v-model="lineFacts[index]!.description" />
+              </UFormField>
+              <template v-if="kind === 'complement'">
+                <UFormField label="Quantidade complementar" :name="`items.${index}.quantity`">
+                  <UInput v-model="lineFacts[index]!.quantity" inputmode="decimal" />
+                </UFormField>
+                <UFormField label="Valor unitário complementar" :name="`items.${index}.unit_price`">
+                  <UInput v-model="lineFacts[index]!.unit_price" inputmode="decimal" />
+                </UFormField>
+                <UFormField label="Valor bruto complementar" :name="`items.${index}.gross_total`">
+                  <UInput v-model="lineFacts[index]!.gross_total" inputmode="decimal" />
+                </UFormField>
+              </template>
+              <UFormField label="Incluir no total (0 não, 1 sim)" :name="`items.${index}.ind_total`" :error="fieldErrors?.[`source.items.${index}.ind_total`]">
+                <UInput v-model="lineFacts[index]!.ind_total" inputmode="numeric" />
+              </UFormField>
+              <UFormField
+                v-for="field in [{ key: 'icms_base', label: 'Base ICMS' }, { key: 'icms_rate', label: 'Alíquota ICMS' }, { key: 'icms_value', label: 'Valor ICMS' }, { key: 'pis_value', label: 'Valor PIS' }, { key: 'cofins_value', label: 'Valor COFINS' }]"
+                :key="field.key"
+                :label="field.label"
+                :name="`items.${index}.tax.${field.key}`"
+                :error="fieldErrors?.[`source.items.${index}.tax.${field.key}`]"
+              >
+                <UInput v-model="lineFacts[index]![field.key]" inputmode="decimal" />
+              </UFormField>
+            </div>
+          </fieldset>
+          <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Totais fiscais
+            </legend>
+            <UFormField
+              v-for="[key, label] in totalFields"
+              :key="key"
+              :label="label"
+              :name="`source.totals.${key}`"
+              :error="fieldErrors?.[`source.totals.${key}`]"
+            >
+              <UInput v-model="totals[key]" inputmode="decimal" />
+            </UFormField>
+          </fieldset>
+          <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
+            <legend class="px-1 text-sm font-medium">
+              Frete e pagamento
+            </legend>
+            <UFormField label="Modalidade do frete" name="freight.modality" :error="fieldErrors?.['source.freight.modality']">
+              <UInput v-model="facts.freight_modality" inputmode="numeric" />
+            </UFormField>
+            <UFormField label="Meio de pagamento" name="payment.0.method" :error="fieldErrors?.['source.payment.0.method']">
+              <UInput v-model="facts.payment_method" />
+            </UFormField>
+            <UFormField label="Valor pago" name="payment.0.amount" :error="fieldErrors?.['source.payment.0.amount']">
+              <UInput v-model="facts.payment_amount" inputmode="decimal" />
+            </UFormField>
+          </fieldset>
+        </template>
+      </template>
+
+      <template v-else-if="selectedModel === '57'">
+        <UFormField
+          v-if="kind !== 'transport_service'"
+          label="CT-e original autorizado"
           name="source_document_id"
           :error="fieldErrors?.source_document_id"
         >
           <USelect
             v-model="selectedOriginalId"
-            :items="originalDocuments.filter(row => ['55', '65'].includes(row.model) && row.status === 'authorized' && row.erp_establishment_id === establishmentId && row.environment === configuration?.environment).map(row => ({ label: `${row.model} · ${row.access_key}`, value: row.id }))"
+            :items="originalDocuments.filter(row => row.model === '57' && row.status === 'authorized' && row.erp_establishment_id === establishmentId && row.environment === configuration?.environment).map(row => ({ label: `CT-e ${row.access_key}`, value: row.id }))"
             value-key="value"
             label-key="label"
             placeholder="Selecione o documento original"
@@ -312,311 +491,189 @@ function submit() {
         </UFormField>
         <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
           <legend class="px-1 text-sm font-medium">
-            Identificação da operação
+            Serviço, tributos e carga
           </legend>
           <UFormField
-            v-for="field in [{ key: 'operation_type', label: 'Tipo da operação (0 entrada, 1 saída)' }, { key: 'destination_type', label: 'Destino (1 interna, 2 interestadual, 3 exterior)' }, { key: 'final_consumer', label: 'Consumidor final (0 não, 1 sim)' }, { key: 'presence_indicator', label: 'Presença do comprador' }, { key: 'print_type', label: 'Tipo de impressão' }]"
+            v-for="field in cteServiceFields"
             :key="field.key"
             :label="field.label"
-            :name="`identity.${field.key}`"
-            :error="fieldErrors?.[`source.identity.${field.key}`]"
+            :name="`source.${field.path}`"
+            :required="typedFieldRequired(field)"
+            :error="errorForTypedField(field)"
           >
-            <UInput v-model="facts[field.key]" inputmode="numeric" />
-          </UFormField>
-          <UFormField label="Finalidade definida pelo tipo de documento" name="identity.purpose" :error="fieldErrors?.['source.identity.purpose']">
-            <UInput :model-value="String(salesDocumentPurpose)" readonly />
-          </UFormField>
-          <UFormField label="CFOP confirmado para esta operação" name="operation_nature.cfop" :error="fieldErrors?.['source.operation_nature.cfop']">
-            <UInput v-model="facts.cfop" inputmode="numeric" />
-          </UFormField>
-        </fieldset>
-        <fieldset v-if="offlineNfce" class="grid gap-3 rounded-lg border border-warning p-4 sm:grid-cols-2">
-          <legend class="px-1 text-sm font-medium">
-            Contingência offline NFC-e
-          </legend>
-          <p class="text-muted text-sm sm:col-span-2">
-            Informe fatos reais da contingência. O sistema não cria horário nem justificativa automaticamente.
-          </p>
-          <UFormField
-            label="Início da contingência (data, hora, segundos e fuso UTC)"
-            description="Informe o fuso real em horas inteiras, entre -11:00 e +12:00. Exemplo: 2026-10-21T14:00:00-03:00."
-            name="identity.contingency_started_at"
-            :error="fieldErrors?.['source.identity.contingency_started_at']"
-          >
+            <USelect
+              v-if="field.control === 'select'"
+              :data-fiscal-field-key="field.key"
+              :model-value="field.key === 'tax_cst' ? facts[field.key] : numericFact(field.key)"
+              :items="field.options"
+              value-key="value"
+              label-key="label"
+              @update:model-value="facts[field.key] = String($event ?? '')"
+            />
             <UInput
-              v-model="facts.contingency_started_at"
-              type="text"
-              placeholder="2026-10-21T14:00:00-03:00"
-              class="w-full"
+              v-else
+              v-model="facts[field.key]"
+              :data-fiscal-field-key="field.key"
+              :maxlength="field.maxlength"
+              :inputmode="field.inputMode"
             />
           </UFormField>
-          <UFormField label="Justificativa (15 a 256 caracteres)" name="identity.contingency_justification" :error="fieldErrors?.['source.identity.contingency_justification']">
-            <UTextarea v-model="facts.contingency_justification" maxlength="256" />
-          </UFormField>
+          <p class="text-muted text-sm sm:col-span-2">
+            O suporte local exige modal rodoviário. Informe participantes e município de origem/destino com os dados do CT-e; a substituição também exige comprovação externa ainda não disponível para transmissão.
+          </p>
         </fieldset>
         <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
           <legend class="px-1 text-sm font-medium">
-            Endereço fiscal do destinatário
+            Remetente e destinatário
           </legend>
-          <UFormField label="Indicador de inscrição estadual" name="recipient.state_registration_indicator" :error="fieldErrors?.['source.recipient.state_registration_indicator']">
-            <UInput v-model="facts.recipient_state_registration_indicator" inputmode="numeric" />
-          </UFormField>
           <UFormField
-            v-for="field in [{ key: 'recipient_street', path: 'street', label: 'Logradouro' }, { key: 'recipient_number', path: 'number', label: 'Número' }, { key: 'recipient_district', path: 'district', label: 'Bairro' }, { key: 'recipient_city_code', path: 'city_code', label: 'Código IBGE do município' }, { key: 'recipient_city_name', path: 'city', label: 'Município' }, { key: 'recipient_zip_code', path: 'postal_code', label: 'CEP' }, { key: 'recipient_uf', path: 'uf', label: 'UF' }]"
+            v-for="field in ctePartyFields"
             :key="field.key"
             :label="field.label"
-            :name="`recipient.address.${field.path}`"
-            :error="fieldErrors?.[`source.recipient.address.${field.path}`]"
+            :name="`source.${field.path}`"
+            :required="typedFieldRequired(field)"
+            :error="errorForTypedField(field)"
           >
-            <UInput v-model="facts[field.key]" />
+            <USelect
+              v-if="field.control === 'select'"
+              :data-fiscal-field-key="field.key"
+              :model-value="numericFact(field.key)"
+              :items="field.options"
+              value-key="value"
+              label-key="label"
+              @update:model-value="facts[field.key] = String($event ?? '')"
+            />
+            <UInput
+              v-else
+              v-model="facts[field.key]"
+              :data-fiscal-field-key="field.key"
+              :inputmode="field.inputMode"
+            />
           </UFormField>
         </fieldset>
         <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
           <legend class="px-1 text-sm font-medium">
-            Tributação por item
-          </legend>
-          <div v-for="(line, index) in sourceLines" :key="line.id" class="col-span-full grid gap-3 rounded-md bg-elevated p-3 sm:grid-cols-2">
-            <p class="text-sm font-medium sm:col-span-2">
-              {{ line.product_snapshot?.product?.name ?? line.product_snapshot?.product?.sku ?? `Item ${index + 1}` }} · {{ line.quantity }} {{ line.product_snapshot?.unit?.short_name }}
-            </p>
-            <UFormField label="Descrição fiscal" :name="`items.${index}.description`">
-              <UInput v-model="lineFacts[index]!.description" />
-            </UFormField>
-            <template v-if="kind === 'complement'">
-              <UFormField label="Quantidade complementar" :name="`items.${index}.quantity`">
-                <UInput v-model="lineFacts[index]!.quantity" inputmode="decimal" />
-              </UFormField>
-              <UFormField label="Valor unitário complementar" :name="`items.${index}.unit_price`">
-                <UInput v-model="lineFacts[index]!.unit_price" inputmode="decimal" />
-              </UFormField>
-              <UFormField label="Valor bruto complementar" :name="`items.${index}.gross_total`">
-                <UInput v-model="lineFacts[index]!.gross_total" inputmode="decimal" />
-              </UFormField>
-            </template>
-            <UFormField label="Incluir no total (0 não, 1 sim)" :name="`items.${index}.ind_total`" :error="fieldErrors?.[`source.items.${index}.ind_total`]">
-              <UInput v-model="lineFacts[index]!.ind_total" inputmode="numeric" />
-            </UFormField>
-            <UFormField
-              v-for="field in [{ key: 'icms_base', label: 'Base ICMS' }, { key: 'icms_rate', label: 'Alíquota ICMS' }, { key: 'icms_value', label: 'Valor ICMS' }, { key: 'pis_value', label: 'Valor PIS' }, { key: 'cofins_value', label: 'Valor COFINS' }]"
-              :key="field.key"
-              :label="field.label"
-              :name="`items.${index}.tax.${field.key}`"
-              :error="fieldErrors?.[`source.items.${index}.tax.${field.key}`]"
-            >
-              <UInput v-model="lineFacts[index]![field.key]" inputmode="decimal" />
-            </UFormField>
-          </div>
-        </fieldset>
-        <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
-          <legend class="px-1 text-sm font-medium">
-            Totais fiscais
+            Tomador e percurso
           </legend>
           <UFormField
-            v-for="[key, label] in totalFields"
-            :key="key"
-            :label="label"
-            :name="`source.totals.${key}`"
-            :error="fieldErrors?.[`source.totals.${key}`]"
+            v-for="field in [...cteTakerFields.filter(field => field.key === 'taker_role'), ...cteRouteFields]"
+            :key="field.key"
+            :label="field.label"
+            :name="`source.${field.path}`"
+            :required="typedFieldRequired(field)"
+            :error="errorForTypedField(field)"
           >
-            <UInput v-model="totals[key]" inputmode="decimal" />
+            <USelect
+              v-if="field.control === 'select'"
+              :data-fiscal-field-key="field.key"
+              :model-value="numericFact(field.key)"
+              :items="field.options"
+              value-key="value"
+              label-key="label"
+              @update:model-value="facts[field.key] = String($event ?? '')"
+            />
+            <UInput
+              v-else
+              v-model="facts[field.key]"
+              :data-fiscal-field-key="field.key"
+              :inputmode="field.inputMode"
+            />
           </UFormField>
+          <template v-if="facts.taker_role === '4'">
+            <UFormField
+              v-for="field in cteTakerFields.filter(field => field.key !== 'taker_role')"
+              :key="field.key"
+              :label="field.label"
+              :name="`source.${field.path}`"
+              :required="typedFieldRequired(field)"
+              :error="errorForTypedField(field)"
+            >
+              <UInput v-model="facts[field.key]" :data-fiscal-field-key="field.key" :inputmode="field.inputMode" />
+            </UFormField>
+          </template>
         </fieldset>
+      </template>
+
+      <template v-else>
         <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
           <legend class="px-1 text-sm font-medium">
-            Frete e pagamento
+            Manifesto rodoviário
           </legend>
-          <UFormField label="Modalidade do frete" name="freight.modality" :error="fieldErrors?.['source.freight.modality']">
-            <UInput v-model="facts.freight_modality" inputmode="numeric" />
+          <p class="text-muted text-sm sm:col-span-2">
+            O fluxo local exige veículo próprio, pelo menos dois estados e um documento fiscal correlacionado. Escolha um documento autorizado disponível ou informe seu modelo e chave de acesso. O servidor valida a referência fiscal.
+          </p>
+          <UFormField
+            v-for="field in mdfeFields.filter(field => field.section !== 'reference')"
+            :key="field.key"
+            :label="field.label"
+            :name="`source.${field.path}`"
+            :required="typedFieldRequired(field)"
+            :error="errorForTypedField(field)"
+          >
+            <USelect
+              v-if="field.control === 'select'"
+              :data-fiscal-field-key="field.key"
+              :model-value="numericFact(field.key)"
+              :items="field.options"
+              value-key="value"
+              label-key="label"
+              @update:model-value="facts[field.key] = String($event ?? '')"
+            />
+            <UInput
+              v-else
+              v-model="facts[field.key]"
+              :data-fiscal-field-key="field.key"
+              :maxlength="field.maxlength"
+              :inputmode="field.inputMode"
+            />
           </UFormField>
-          <UFormField label="Meio de pagamento" name="payment.0.method" :error="fieldErrors?.['source.payment.0.method']">
-            <UInput v-model="facts.payment_method" />
+          <UFormField label="Documento autorizado disponível" name="transport_manifest.document">
+            <USelect
+              v-model="selectedManifestDocumentId"
+              data-fiscal-field-key="selected_manifest_document"
+              :items="manifestDocuments.map(row => ({ label: `${row.model} · ${row.access_key}`, value: row.id }))"
+              value-key="value"
+              label-key="label"
+              placeholder="Selecione um documento autorizado"
+            />
           </UFormField>
-          <UFormField label="Valor pago" name="payment.0.amount" :error="fieldErrors?.['source.payment.0.amount']">
-            <UInput v-model="facts.payment_amount" inputmode="decimal" />
+          <UFormField label="Modelo da referência externa (55, 65 ou 57)" name="source.transport_manifest.documents.0.model" :error="errorForTypedField(mdfeFields.find(field => field.key === 'manifest_document_model')!)">
+            <USelect
+              v-model="facts.manifest_document_model"
+              data-fiscal-field-key="manifest_document_model"
+              :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }]"
+              value-key="value"
+              label-key="label"
+            />
+          </UFormField>
+          <UFormField label="Chave de acesso da referência (44 dígitos)" name="source.transport_manifest.documents.0.access_key" :error="errorForTypedField(mdfeFields.find(field => field.key === 'access_key_reference')!)">
+            <UInput
+              v-model="facts.access_key_reference"
+              data-fiscal-field-key="access_key_reference"
+              maxlength="44"
+              inputmode="numeric"
+            />
           </UFormField>
         </fieldset>
       </template>
-    </template>
 
-    <template v-else-if="selectedModel === '57'">
-      <UFormField
-        v-if="kind !== 'transport_service'"
-        label="CT-e original autorizado"
-        name="source_document_id"
-        :error="fieldErrors?.source_document_id"
-      >
-        <USelect
-          v-model="selectedOriginalId"
-          :items="originalDocuments.filter(row => row.model === '57' && row.status === 'authorized' && row.erp_establishment_id === establishmentId && row.environment === configuration?.environment).map(row => ({ label: `CT-e ${row.access_key}`, value: row.id }))"
-          value-key="value"
-          label-key="label"
-          placeholder="Selecione o documento original"
-        />
-      </UFormField>
-      <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
-        <legend class="px-1 text-sm font-medium">
-          Serviço e transporte
-        </legend>
-        <UFormField
-          v-for="field in [{ key: 'service_type', label: 'Tipo de serviço (0 a 4)' }, { key: 'emission_type', label: 'Tipo de emissão (fluxo local suporta 1)' }, { key: 'operation_nature', label: 'Natureza da operação' }, { key: 'cfop', label: 'CFOP' }, { key: 'rntrc', label: 'RNTRC (8 dígitos)' }, { key: 'service_value', label: 'Valor da prestação' }, { key: 'received_value', label: 'Valor a receber' }, { key: 'tax_cst', label: 'CST (fluxo local suporta 00)' }, { key: 'tax_base', label: 'Base do tributo' }, { key: 'tax_rate', label: 'Alíquota' }, { key: 'tax_value', label: 'Valor do tributo' }, { key: 'cargo_description', label: 'Descrição da carga' }, { key: 'cargo_measure_type', label: 'Tipo de medida da carga' }, { key: 'cargo_unit', label: 'Unidade da carga (00 a 05)' }, { key: 'cargo_quantity', label: 'Quantidade da carga' }, { key: 'cargo_value', label: 'Valor da carga' }]"
-          :key="field.key"
-          :label="field.label"
-          :name="`transport_service.${field.key}`"
-          :error="fieldErrors?.[`source.transport_service.${field.key}`]"
-        >
-          <USelect
-            v-if="field.key === 'service_type'"
-            :model-value="numericFact(field.key)"
-            :items="[0, 1, 2, 3, 4].map(value => ({ label: `${value} · Serviço de transporte ${value}`, value }))"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'emission_type'"
-            :model-value="numericFact(field.key)"
-            :items="[{ label: '1 · Normal', value: 1 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'tax_cst'"
-            v-model="facts[field.key]"
-            :items="[{ label: '00 · Tributação integral', value: '00' }]"
-            value-key="value"
-            label-key="label"
-          />
-          <UInput
-            v-else
-            v-model="facts[field.key]"
-            :maxlength="field.key === 'rntrc' ? 8 : undefined"
-            :inputmode="field.key === 'rntrc' ? 'numeric' : undefined"
-          />
-        </UFormField>
-        <p class="text-muted text-sm sm:col-span-2">
-          O suporte local exige modal rodoviário. Informe participantes e município de origem/destino com os dados do CT-e; a substituição também exige comprovação externa ainda não disponível para transmissão.
-        </p>
-        <UFormField
-          v-for="field in [{ key: 'sender_cnpj', label: 'CNPJ remetente' }, { key: 'sender_name', label: 'Nome remetente' }, { key: 'sender_state_registration', label: 'IE remetente' }, { key: 'sender_state_registration_indicator', label: 'Indicador IE remetente (1, 2, 9)' }, { key: 'sender_street', label: 'Logradouro remetente' }, { key: 'sender_number', label: 'Número remetente' }, { key: 'sender_district', label: 'Bairro remetente' }, { key: 'sender_city_code', label: 'Código IBGE remetente' }, { key: 'sender_city', label: 'Município remetente' }, { key: 'sender_postal_code', label: 'CEP remetente' }, { key: 'sender_uf', label: 'UF remetente' }, { key: 'receiver_cnpj', label: 'CNPJ destinatário' }, { key: 'receiver_name', label: 'Nome destinatário' }, { key: 'receiver_state_registration', label: 'IE destinatário' }, { key: 'receiver_state_registration_indicator', label: 'Indicador IE destinatário (1, 2, 9)' }, { key: 'receiver_street', label: 'Logradouro destinatário' }, { key: 'receiver_number', label: 'Número destinatário' }, { key: 'receiver_district', label: 'Bairro destinatário' }, { key: 'receiver_city_code', label: 'Código IBGE destinatário' }, { key: 'receiver_city', label: 'Município destinatário' }, { key: 'receiver_postal_code', label: 'CEP destinatário' }, { key: 'receiver_uf', label: 'UF destinatário' }, { key: 'taker_role', label: 'Papel do tomador (0 a 3)' }, { key: 'origin_uf', label: 'UF de origem' }, { key: 'origin_city_code', label: 'Código IBGE de origem' }, { key: 'origin_city', label: 'Município de origem' }, { key: 'destination_uf', label: 'UF de destino' }, { key: 'destination_city_code', label: 'Código IBGE de destino' }, { key: 'destination_city', label: 'Município de destino' }, { key: 'pickup', label: 'Retirada (0 não, 1 sim)' }]"
-          :key="field.key"
-          :label="field.label"
-          :name="field.key"
-        >
-          <USelect
-            v-if="field.key === 'sender_state_registration_indicator' || field.key === 'receiver_state_registration_indicator'"
-            :model-value="numericFact(field.key)"
-            :items="[{ label: '1 · Contribuinte ICMS', value: 1 }, { label: '2 · Contribuinte isento', value: 2 }, { label: '9 · Não contribuinte', value: 9 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'taker_role'"
-            :model-value="numericFact(field.key)"
-            :items="[0, 1, 2, 3].map(value => ({ label: `${value} · Papel do tomador`, value }))"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'pickup'"
-            :model-value="numericFact(field.key)"
-            :items="[{ label: '0 · Não', value: 0 }, { label: '1 · Sim', value: 1 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <UInput v-else v-model="facts[field.key]" />
-        </UFormField>
-      </fieldset>
-    </template>
-
-    <template v-else>
-      <fieldset class="grid gap-3 rounded-lg border border-default p-4 sm:grid-cols-2">
-        <legend class="px-1 text-sm font-medium">
-          Manifesto rodoviário
-        </legend>
-        <p class="text-muted text-sm sm:col-span-2">
-          O fluxo local exige veículo próprio, pelo menos dois estados e um documento fiscal correlacionado. Escolha um documento autorizado disponível ou informe seu modelo e chave de acesso. O servidor valida a referência fiscal.
-        </p>
-        <UFormField
-          v-for="field in [{ key: 'manifest_emission_type', label: 'Tipo de emissão (fluxo local suporta 1)' }, { key: 'manifest_modal', label: 'Modal (fluxo local suporta 1 rodoviário)' }, { key: 'manifest_issuer_type', label: 'Tipo do emitente (fluxo local suporta veículo próprio 2)' }, { key: 'manifest_rntrc', label: 'RNTRC (8 dígitos)' }, { key: 'manifest_route_ufs', label: 'UFs do percurso, separadas por vírgula' }, { key: 'manifest_load_municipality_name', label: 'Município de carregamento' }, { key: 'manifest_load_municipality_code', label: 'Código IBGE de carregamento' }, { key: 'manifest_unload_municipality_name', label: 'Município de descarregamento' }, { key: 'manifest_unload_municipality_code', label: 'Código IBGE de descarregamento' }, { key: 'vehicle_plate', label: 'Placa' }, { key: 'vehicle_renavam', label: 'RENAVAM' }, { key: 'vehicle_registry', label: 'Registro' }, { key: 'vehicle_tare', label: 'Tara' }, { key: 'vehicle_capacity', label: 'Capacidade em kg' }, { key: 'vehicle_road_type', label: 'Tipo rodoviário' }, { key: 'vehicle_trailer_type', label: 'Tipo de carroceria' }, { key: 'vehicle_uf', label: 'UF do veículo' }, { key: 'driver_name', label: 'Nome do motorista' }, { key: 'driver_cpf', label: 'CPF do motorista' }, { key: 'cargo_product_description', label: 'Descrição do produto predominante' }, { key: 'cargo_product_type', label: 'Tipo de produto' }, { key: 'cargo_ncm', label: 'NCM' }, { key: 'cargo_total_value', label: 'Valor total da carga' }, { key: 'cargo_unit_manifest', label: 'Unidade da carga' }, { key: 'cargo_quantity_manifest', label: 'Quantidade da carga' }, { key: 'cte_total', label: 'Quantidade de CT-e' }, { key: 'nfe_total', label: 'Quantidade de NF-e' }, { key: 'mdfe_total', label: 'Quantidade de MDF-e' }]"
-          :key="field.key"
-          :label="field.label"
-          :name="`transport_manifest.${field.key}`"
-          :error="fieldErrors?.[`source.transport_manifest.${field.key}`]"
-        >
-          <USelect
-            v-if="field.key === 'manifest_emission_type'"
-            :model-value="facts[field.key] === '' ? undefined : Number(facts[field.key])"
-            :items="[{ label: '1 · Normal', value: 1 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'manifest_modal'"
-            :model-value="facts[field.key] === '' ? undefined : Number(facts[field.key])"
-            :items="[{ label: '1 · Rodoviário', value: 1 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <USelect
-            v-else-if="field.key === 'manifest_issuer_type'"
-            :model-value="facts[field.key] === '' ? undefined : Number(facts[field.key])"
-            :items="[{ label: '2 · Transportador de carga própria', value: 2 }]"
-            value-key="value"
-            label-key="label"
-            @update:model-value="facts[field.key] = String($event ?? '')"
-          />
-          <UInput
-            v-else
-            v-model="facts[field.key]"
-            :maxlength="field.key === 'manifest_rntrc' ? 8 : undefined"
-            :inputmode="field.key === 'manifest_rntrc' ? 'numeric' : undefined"
-          />
-        </UFormField>
-        <UFormField label="Documento autorizado disponível" name="transport_manifest.document">
-          <USelect
-            v-model="selectedManifestDocumentId"
-            :items="manifestDocuments.map(row => ({ label: `${row.model} · ${row.access_key}`, value: row.id }))"
-            value-key="value"
-            label-key="label"
-            placeholder="Selecione um documento autorizado"
-          />
-        </UFormField>
-        <UFormField label="Modelo da referência externa (55, 65 ou 57)" name="transport_manifest.external_model">
-          <USelect
-            v-model="facts.manifest_document_model"
-            :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }]"
-            value-key="value"
-            label-key="label"
-          />
-        </UFormField>
-        <UFormField label="Chave de acesso da referência (44 dígitos)" name="transport_manifest.external_access_key">
-          <UInput v-model="facts.access_key_reference" maxlength="44" inputmode="numeric" />
-        </UFormField>
-      </fieldset>
-    </template>
-
-    <UAlert
-      v-if="localError"
-      color="error"
-      variant="subtle"
-      :description="localError"
-    />
-    <UAlert
-      v-if="fieldErrors?.source"
-      color="error"
-      variant="subtle"
-      :description="fieldErrors.source"
-    />
-    <div class="flex justify-end">
-      <UButton type="submit" :disabled="!canCreate || busy || !configuration?.models[selectedModel]?.readiness || configuration.models[selectedModel]?.readiness.status === 'blocked'" :loading="busy">
-        Preparar rascunho fiscal
-      </UButton>
-    </div>
-  </UForm>
+      <UAlert
+        v-if="localError"
+        color="error"
+        variant="subtle"
+        :description="localError"
+      />
+      <UAlert
+        v-if="fieldErrors?.source && selectedModel !== '57' && selectedModel !== '58'"
+        color="error"
+        variant="subtle"
+        :description="fieldErrors.source"
+      />
+      <div class="flex justify-end">
+        <UButton type="submit" :disabled="!canCreate || busy || !configuration?.models[selectedModel]?.readiness || configuration.models[selectedModel]?.readiness.status === 'blocked'" :loading="busy">
+          Preparar rascunho fiscal
+        </UButton>
+      </div>
+    </UForm>
+  </div>
 </template>

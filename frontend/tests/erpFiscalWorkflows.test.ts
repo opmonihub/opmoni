@@ -431,7 +431,12 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
       ])
     }
   }))
-  for (const name of ['UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm', 'ErpFiscalInvalidationForm']) {
+  app.component('UCard', Vue.defineComponent({
+    setup(_props, { slots }) {
+      return () => Vue.h('section', [slots.header?.(), slots.default?.()])
+    }
+  }))
+  for (const name of ['UBadge', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm', 'ErpFiscalInvalidationForm']) {
     app.component(name, Vue.defineComponent({
       props: ['model', 'originalDocuments'],
       setup(props, { slots }) {
@@ -2595,7 +2600,11 @@ describe('Fiscal destination navigation', () => {
       for (let index = 0; index < 15; index++) await Vue.nextTick()
       const request = calls.find(path => path.startsWith('/erp/fiscal/documents?'))
       assert.equal(new URL(request!, 'http://test').searchParams.get('model'), model)
+      assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm'), undefined)
+      ;(findNode(mounted.root, node => node.props['data-testid'] === 'open-fiscal-draft')!.props.onClick as () => void)()
+      await Vue.nextTick()
       assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm')?.props['data-model'], model)
+      assert.equal(mounted.route.hash, `#${hash}`, 'opening a draft does not rewrite the selected fiscal destination')
     })
   }
 
@@ -2709,8 +2718,58 @@ it('keeps cold MDF-e source candidates separate from its filtered model list', a
   t.after(() => mounted.app.unmount())
   for (let index = 0; index < 15; index++) await Vue.nextTick()
   assert.deepEqual(fiscal.workspace.documents.map((row: { model: string }) => row.model), ['58'])
+  assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm'), undefined)
+  ;(findNode(mounted.root, node => node.props['data-testid'] === 'open-fiscal-draft')!.props.onClick as () => void)()
+  await Vue.nextTick()
   assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm')?.props['data-source-models'], '55,57')
   assert.equal(calls.filter(path => !new URL(path, 'http://test').searchParams.has('model')).length, 1)
+})
+
+it('opens a new draft only after explicit action and preserves fiscal browsing context', async (t) => {
+  const fiscal = loadWorkspaceComposable(async () => ({ data: [] }), { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index', 'erp.fiscal.documents.show', 'erp.fiscal.documents.store'] })
+  t.after(fiscal.close)
+  fiscal.workspace.selectedEstablishmentId = 6
+  fiscal.workspace.configuration = fiscalConfiguration('55')
+  const historicalDocument = { id: 19, model: '55', status: 'authorized' }
+  fiscal.workspace.selectedDocument = historicalDocument
+  const pendingRecovery = createErpFiscalRecoveryRecord({
+    actorId: 7,
+    companyId: 22,
+    action: 'document:draft',
+    path: '/erp/fiscal/documents',
+    idempotencyKey: 'pending-document-recovery',
+    body: { model: '55', source: { issuer: 'draft facts' } }
+  })
+  fiscal.workspace.pendingRecovery = pendingRecovery
+  const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, '#nfe')
+  t.after(() => mounted.app.unmount())
+  for (let index = 0; index < 15; index++) await Vue.nextTick()
+
+  assert.ok(findNode(mounted.root, node => node.props['data-testid'] === 'open-fiscal-draft'))
+  assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm'), undefined)
+  assert.equal(mounted.route.hash, '#nfe')
+  assert.equal(fiscal.workspace.selectedDocument.id, historicalDocument.id, 'browsing retains the selected historical detail')
+  ;(findNode(mounted.root, node => node.props['data-testid'] === 'open-fiscal-draft')!.props.onClick as () => void)()
+  await Vue.nextTick()
+
+  assert.ok(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm'))
+  assert.equal(mounted.route.hash, '#nfe', 'the explicit action does not persist a new URL destination')
+  assert.equal(fiscal.workspace.selectedDocument.id, historicalDocument.id, 'opening the form leaves historical detail intact')
+  assert.equal(fiscal.workspace.pendingRecovery.idempotencyKey, pendingRecovery.idempotencyKey, 'opening the form leaves pending operation recovery intact')
+})
+
+it('does not offer draft creation without the document store grant', async (t) => {
+  const fiscal = loadWorkspaceComposable(async () => ({ data: [] }), { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+  t.after(fiscal.close)
+  fiscal.workspace.selectedEstablishmentId = 6
+  fiscal.workspace.configuration = fiscalConfiguration('55')
+  const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, '#nfe')
+  t.after(() => mounted.app.unmount())
+  for (let index = 0; index < 15; index++) await Vue.nextTick()
+
+  assert.equal(findNode(mounted.root, node => node.props['data-testid'] === 'open-fiscal-draft'), undefined)
+  assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm'), undefined)
+  assert.equal(mounted.route.hash, '#nfe')
 })
 
 it('clears Fiscal source candidates when their native read is refused and never reads them without the index grant', async (t) => {
