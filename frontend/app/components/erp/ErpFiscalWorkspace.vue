@@ -10,12 +10,12 @@ const uiAuthority = useErpAdministrationContext(() => workspace.selectedEstablis
 const allowedDestination = (permission: string) => workspace.can(permission)
 const destinations = computed(() => erpWorkspaceModuleDestinations('fiscal', allowedDestination))
 const selection = computed(() => erpWorkspaceModuleSelection('fiscal', mounted.value ? route.hash : '', allowedDestination))
-const activeArea = computed(() => selection.value.permitted ? selection.value.destination?.fiscalArea : null)
-const selectedModel = computed<ErpFiscalModel>(() => selection.value.destination?.fiscalModel ?? '55')
+const activeArea = computed(() => selection.value.permitted ? displayDestination.value?.fiscalArea : null)
+const selectedModel = computed<ErpFiscalModel>(() => displayDestination.value?.fiscalModel ?? '55')
 const destinationLinks = computed(() => [destinations.value.map(destination => ({
   label: destination.label,
   to: { path: route.path, query: route.query, hash: `#${destination.id}` },
-  active: selection.value.permitted && selection.value.destination?.id === destination.id
+  active: selection.value.permitted && displayDestination.value?.id === destination.id
 }))])
 function selectModel(model: ErpFiscalModel) {
   if (draftFormOpen.value && draftLocked.value) return
@@ -36,6 +36,7 @@ const draftFormOpen = ref(false)
 const draftDirty = ref(false)
 const discardDraftOpen = ref(false)
 let discardDraftContext: string | null = null
+let discardDraftDestination: { path: string, query: typeof route.query, hash: string } | null = null
 let currentFiscalDestination: { id: string, path: string, context: string } | null = null
 const eventFormEpoch = ref(0)
 const invalidationFormEpoch = ref(0)
@@ -58,6 +59,16 @@ const canSubmitEvent = computed(() => workspace.canCreateEvents
   && (workspace.configuration?.environment === 'homologation' || workspace.configuration?.release_gates.production_transmission_enabled === true))
 const contextFormKey = computed(() => `${uiAuthority.key.value}:${workspace.authorityGeneration}`)
 const draftLocked = computed(() => workspace.saving || !!workspace.pendingRecovery || !!workspace.pendingCertificateRecovery || workspace.certificateMutationInFlight)
+const displayDestination = computed(() => {
+  const destination = selection.value.destination
+  if (draftFormOpen.value && selection.value.permitted
+    && currentFiscalDestination?.context === contextFormKey.value
+    && currentFiscalDestination.path === route.path
+    && (draftLocked.value || (draftDirty.value && destination?.fiscalArea !== 'documents'))) {
+    return destinations.value.find(item => item.id === currentFiscalDestination?.id) ?? destination
+  }
+  return destination
+})
 
 function updateDraftDirty(dirty: boolean) {
   draftDirty.value = draftFormOpen.value && dirty
@@ -65,16 +76,17 @@ function updateDraftDirty(dirty: boolean) {
 function closeDraft() {
   discardDraftOpen.value = false
   discardDraftContext = null
+  discardDraftDestination = null
   draftFormOpen.value = false
   draftDirty.value = false
   draftFormEpoch.value++
-  workspace.selectedSale = null
-  workspace.selectedReturn = null
+  workspace.clearDraftSources()
   workspace.fieldErrors = {}
   requestError.value = ''
 }
 function requestDraftClose() {
   if (draftLocked.value) return
+  discardDraftDestination = null
   if (draftDirty.value) {
     discardDraftContext = contextFormKey.value
     discardDraftOpen.value = true
@@ -84,8 +96,17 @@ function requestDraftClose() {
 }
 function confirmDraftDiscard() {
   if (draftLocked.value || discardDraftContext !== contextFormKey.value) return
+  const destination = discardDraftDestination
+  if (destination && destination.path !== route.path) return
   closeDraft()
+  if (destination) void router.push(destination)
 }
+watch(discardDraftOpen, (open) => {
+  if (!open) {
+    discardDraftContext = null
+    discardDraftDestination = null
+  }
+}, { flush: 'sync' })
 
 const visibleListState = computed(() => activeArea.value === 'configuration' ? null : workspace.listStates?.[activeArea.value as 'documents' | 'certificates' | 'events' | 'invalidations'])
 
@@ -116,17 +137,27 @@ watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId, workspace
   draftDirty.value = false
   discardDraftOpen.value = false
   discardDraftContext = null
+  discardDraftDestination = null
   currentFiscalDestination = null
 }, { flush: 'sync' })
 
 watch(() => [mounted.value, selection.value.destination?.id, selection.value.permitted, uiAuthority.key.value, workspace.authorityGeneration] as const, () => {
   if (!mounted.value) return
   const destination = selection.value.destination?.id
-  if (draftFormOpen.value && draftLocked.value && selection.value.permitted
+  if (draftFormOpen.value && selection.value.permitted
     && currentFiscalDestination?.context === contextFormKey.value
     && currentFiscalDestination.path === route.path && currentFiscalDestination.id !== destination) {
-    void router.replace({ path: route.path, query: route.query, hash: `#${currentFiscalDestination.id}` })
-    return
+    const leavingDocuments = selection.value.destination?.fiscalArea !== 'documents'
+    if (draftLocked.value || (leavingDocuments && draftDirty.value)) {
+      if (!draftLocked.value) {
+        discardDraftContext = contextFormKey.value
+        discardDraftDestination = { path: route.path, query: { ...route.query }, hash: route.hash }
+        discardDraftOpen.value = true
+      }
+      void router.replace({ path: route.path, query: route.query, hash: `#${currentFiscalDestination.id}` })
+      return
+    }
+    if (leavingDocuments) closeDraft()
   }
   currentFiscalDestination = destination && selection.value.permitted
     ? { id: destination, path: route.path, context: contextFormKey.value }

@@ -1135,6 +1135,12 @@ export function useErpFiscalWorkspace() {
     }
   }
 
+  function clearDraftSources() {
+    sourceSelectionEpoch++
+    selectedSale.value = null
+    selectedReturn.value = null
+  }
+
   async function loadSaleSnapshot(saleId: number) {
     if (!can(actionGrants.documentCreate)) return null
     const selection = ++sourceSelectionEpoch
@@ -1185,6 +1191,6 @@ export function useErpFiscalWorkspace() {
     canDownloadXml: computed(() => can(actionGrants.xml)), canDownloadPdf: computed(() => can(actionGrants.pdf)),
     load, loadDocument, saveConfiguration, uploadCertificate, recoverCertificateMutation, confirmCertificateRecoveryReview,
     createDocumentDraft, transmitDocument, runDocumentAction, recoverPendingOperations, createAndSubmitEvent, continueRecoveredEventDraft, createInvalidation, submitInvalidation,
-    downloadArtifact, loadSaleSnapshot, loadReturnSnapshot
+    downloadArtifact, clearDraftSources, loadSaleSnapshot, loadReturnSnapshot
   }
 }

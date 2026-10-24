@@ -80,6 +80,7 @@ function mountLifecycle(api: Api = defaultApi) {
       replace: async (location: { path: string, query: Record<string, unknown>, hash: string }) => {
         assert.equal(location.path, route.path)
         assert.deepEqual(location.query, route.query)
+        await new Promise(resolve => setImmediate(resolve))
         route.hash = location.hash
       }
     }),
@@ -258,6 +259,80 @@ describe('actual fiscal draft lifecycle', { concurrency: 1, timeout: 120_000 }, 
     assert.equal(page.find(node => node.tag === 'form').length, 0)
     await page.click('Novo rascunho')
     assert.equal(page.control('source.transport_service.operation_nature').props.value, '')
+    assert.equal(page.calls.filter(([, options]) => options?.method === 'POST').length, 0)
+  })
+
+  it('requires explicit discard before leaving a dirty Fiscal area and preserves every slot on continue', { timeout: 30_000 }, async (t) => {
+    const page = mountLifecycle(async (path, options) => {
+      if (options?.method === 'POST') throw { statusCode: 422, data: { errors: { source: ['Revise os fatos.'] } } }
+      return defaultApi(path)
+    })
+    t.after(page.dispose); await settle(); await page.click('Novo rascunho')
+    await page.change('source.transport_service.operation_nature', 'Serviço que exige decisão')
+    await fillCte(page); await page.submit()
+    const original = page.calls.filter(([, options]) => options?.method === 'POST')[0]?.[1]?.body
+    assert.ok(original?.idempotency_key)
+    await page.change('model', '58'); await page.change('source.transport_manifest.vehicle.plate', 'ABC1D23')
+    page.route.hash = '#configuration'; await settle()
+    assert.equal(page.route.hash, '#mdfe', 'Navigation is staged before it can unmount dirty slots')
+    assert.equal(page.find(node => node.props['aria-label'] === 'Descartar alterações?').length, 1)
+    await page.click('Continuar editando')
+    assert.equal(page.control('source.transport_manifest.vehicle.plate').props.value, 'ABC1D23')
+    page.route.hash = '#cte'; await settle(); await page.submit()
+    assert.deepEqual(page.calls.filter(([, options]) => options?.method === 'POST')[1]?.[1]?.body, original)
+    page.route.hash = '#configuration'; await settle(); await page.click('Descartar alterações')
+    assert.equal(page.route.hash, '#configuration')
+    assert.equal(page.find(node => node.tag === 'form').length, 0)
+    page.route.hash = '#cte'; await settle()
+    assert.equal(page.find(node => node.tag === 'form').length, 0, 'Discard returns to browse-first')
+    await page.click('Novo rascunho')
+    assert.equal(page.control('source.transport_service.operation_nature').props.value, '')
+    page.route.hash = '#configuration'; await settle()
+    assert.equal(page.route.hash, '#configuration', 'Pristine navigation needs no discard')
+    assert.equal(page.find(node => node.props.role === 'dialog').length, 0)
+    page.route.hash = '#cte'; await settle(); await page.click('Novo rascunho')
+    await page.change('source.transport_service.operation_nature', 'Somente no contexto anterior')
+    page.route.hash = '#configuration'; await settle()
+    page.company.value.id = 8; page.route.hash = '#configuration'; await settle()
+    assert.equal(page.route.hash, '#configuration', 'Security invalidation supersedes staged navigation')
+    assert.equal(page.find(node => node.props.role === 'dialog').length, 0)
+    assert.equal(page.find(node => node.tag === 'form').length, 0)
+    assert.doesNotMatch(page.text(), /Somente no contexto anterior/)
+    assert.equal(page.calls.filter(([, options]) => options?.method === 'POST').length, 2)
+  })
+
+  for (const sourceKind of ['sale', 'return'] as const) it(`invalidates discarded ${sourceKind} lookups before reopening without clearing a newer selection`, { timeout: 30_000 }, async (t) => {
+    const pending = new Map<number, { resolve: (value: unknown) => void, reject: (error: Error) => void }>()
+    const endpoint = sourceKind === 'sale' ? '/erp/sales/' : '/erp/sale-returns/'
+    const source = (id: number) => ({ id, status: 'posted', erp_establishment_id: 6, commercial_snapshot: { accepted: { actor_id: 91 }, lines: [{ id, product_snapshot: { product: { name: `Fonte sintética ${id}` } } }] }, lines: [] })
+    const page = mountLifecycle(async path => path.startsWith(endpoint)
+      ? new Promise((resolve, reject) => { pending.set(Number(path.slice(endpoint.length)), { resolve, reject }) })
+      : defaultApi(path))
+    t.after(() => { page.dispose(); for (const [id, request] of pending) request.resolve(envelope(source(id))) })
+    await settle(); page.route.hash = '#nfe'; await settle()
+    const open = async () => { await page.click('Novo rascunho'); if (sourceKind === 'return') await page.change('document_kind', 'return') }
+    const select = async (id: number) => {
+      await page.change(sourceKind === 'sale' ? 'erp_sale_id' : 'erp_sale_return_id', String(id))
+      assert.ok(pending.has(id), 'The actual source control issued its native lookup')
+    }
+    const selected = () => sourceKind === 'sale' ? page.state.selectedSale.value : page.state.selectedReturn.value
+    const discard = async () => { await page.click('Fechar rascunho'); await page.click('Descartar alterações') }
+    await open(); await select(77); await discard(); await open()
+    pending.get(77)!.resolve(envelope(source(77))); await settle()
+    assert.equal(selected(), null, 'A discarded lookup cannot hydrate a clean replacement draft')
+    assert.doesNotMatch(page.text(), /Fonte sintética 77/)
+    assert.equal(page.control(sourceKind === 'sale' ? 'erp_sale_id' : 'erp_sale_return_id').props.value, undefined)
+    await select(88); await discard(); await open(); await select(99)
+    pending.get(99)!.resolve(envelope(source(99))); await settle()
+    assert.equal(selected()?.id, 99)
+    pending.get(88)!.resolve(envelope(source(88))); await settle()
+    assert.equal(selected()?.id, 99, 'An older response neither replaces nor clears the newer chosen source')
+    await discard(); await open(); await select(100); await discard(); await open()
+    pending.get(100)!.reject(new Error('Erro obsoleto da fonte descartada')); await settle()
+    assert.equal(selected(), null)
+    assert.equal(page.state.errorMessage.value, '')
+    assert.doesNotMatch(page.text(), /Erro obsoleto/)
+    assert.equal(page.state.pendingRecovery.value, null)
     assert.equal(page.calls.filter(([, options]) => options?.method === 'POST').length, 0)
   })
 
