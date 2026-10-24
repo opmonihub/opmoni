@@ -1,0 +1,40 @@
+{
+  "status": "NEEDS_VALIDATION",
+  "sourceBase": "91b1510",
+  "originalTaskBase": "19df64e",
+  "capturedRecords": [
+    "after-erp-dark.json",
+    "after-office-light.json",
+    "after-overlay-dark.json",
+    "before-erp-dark.json",
+    "before-erp-hover-light.json",
+    "before-erp-light.json",
+    "before-office-light.json",
+    "before-overlay-light.json"
+  ],
+  "sourceSha256": {
+    "frontend/app/assets/css/main.css": "21cd1a85546b251deac3f5211f520e657e23dc9f938c404eb5f106610b6da832",
+    "frontend/app/app.config.ts": "e83059391b32b5ea9f3dca99730fcaeeab7671ad58a8940b01d9c82a183e155c",
+    "frontend/tests/sharedSemanticTheme.test.ts": "3b0f4ee3bb652b4953c794f0ba6ab1245c239df40760782c1e00b9c4016d0f26"
+  },
+  "checks": {
+    "nativeThemeTests": "2 passed, exit0",
+    "changedFileESLint": "exit0",
+    "typecheck": "not run; controller capacity restriction",
+    "taskRuntimeVerifier": "passed before browser access",
+    "browser": "partial; specific pending states in README"
+  },
+  "ownershipReleased": {
+    "namedSession": "opmoni-task10 closed",
+    "frontendPid": 3864329,
+    "verifiedCwd": "/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup/frontend",
+    "port3340Closed": true
+  },
+  "remaining": [
+    "after light ERP and teleported overlay",
+    "office to ERP to office both modes, including office return dark",
+    "actual settled hover/active/focus/disabled computed pairs",
+    "final real typecheck when capacity permits"
+  ],
+  "noAcceptanceClaim": true
+}

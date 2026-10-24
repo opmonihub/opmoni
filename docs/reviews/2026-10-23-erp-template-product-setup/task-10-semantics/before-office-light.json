@@ -1,0 +1,469 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "dialog": null,
+  "erpMounted": false,
+  "hydrated": true,
+  "mode": "light",
+  "path": "/settings",
+  "roles": [
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "rgb(0, 193, 106)",
+      "contrast": 2.316,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        251.9882352941177,
+        251.9882352941177,
+        251.9882352941177
+      ],
+      "effectiveForeground": [
+        0,
+        193,
+        106
+      ],
+      "focusVisible": false,
+      "label": "Geral",
+      "opacity": "1",
+      "outlineColor": "rgb(0, 193, 106)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 181,
+        "x": 42,
+        "y": 418
+      },
+      "role": "active-navigation",
+      "tag": "A"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "rgb(0, 193, 106)",
+      "contrast": 2.377,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        0,
+        193,
+        106
+      ],
+      "focusVisible": false,
+      "label": "General",
+      "opacity": "1",
+      "outlineColor": "rgb(0, 193, 106)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 97.90625,
+        "x": 260,
+        "y": 72
+      },
+      "role": "active-navigation",
+      "tag": "A"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.392,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        244,
+        244,
+        245
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "OS",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 14.28125,
+        "width": 14.171875,
+        "x": 28.90625,
+        "y": 868.859375
+      },
+      "role": "muted-copy",
+      "tag": "SPAN"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.827,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "Dados fictícios para demonstração. As alterações não são salvas nem alteram seu ",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 67.5,
+        "width": 320,
+        "x": 467,
+        "y": 189
+      },
+      "role": "muted-copy",
+      "tag": "DIV"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.587,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        248.9764705882353,
+        248.9764705882353,
+        249.98039215686276
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "Will appear on receipts, invoices, and other communication.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 382.765625,
+        "x": 491,
+        "y": 316.5
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.587,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        248.9764705882353,
+        248.9764705882353,
+        249.98039215686276
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "Used to sign in, for email receipts and product updates.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 356.875,
+        "x": 491,
+        "y": 389.5
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.587,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        248.9764705882353,
+        248.9764705882353,
+        249.98039215686276
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "Your unique username for logging in and your profile URL.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 373.8125,
+        "x": 491,
+        "y": 462.5
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.587,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        248.9764705882353,
+        248.9764705882353,
+        249.98039215686276
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "JPG, GIF or PNG. 1MB Max.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 171.96875,
+        "x": 491,
+        "y": 535.5
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.392,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        244,
+        244,
+        245
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "BC",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 28,
+        "width": 24.625,
+        "x": 1003.796875,
+        "y": 523.5
+      },
+      "role": "muted-copy",
+      "tag": "SPAN"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 4.587,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        248.9764705882353,
+        248.9764705882353,
+        249.98039215686276
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "Brief description for your profile. URLs are hyperlinked.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 40,
+        "width": 220.90625,
+        "x": 491,
+        "y": 608.5
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgb(255, 255, 255)",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.871 0.006 286.286) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "color": "oklch(0.21 0.006 285.885)",
+      "contrast": 17.717,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        24,
+        24,
+        27
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklab(0.711371 -0.161865 0.0801699 / 0.25)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 178,
+        "x": 937,
+        "y": 300.5
+      },
+      "role": "input-text",
+      "tag": "INPUT"
+    },
+    {
+      "backgroundColor": "rgb(255, 255, 255)",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.871 0.006 286.286) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "color": "oklch(0.21 0.006 285.885)",
+      "contrast": 17.717,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        24,
+        24,
+        27
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklab(0.711371 -0.161865 0.0801699 / 0.25)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 178,
+        "x": 937,
+        "y": 373.5
+      },
+      "role": "input-text",
+      "tag": "INPUT"
+    },
+    {
+      "backgroundColor": "rgb(255, 255, 255)",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.871 0.006 286.286) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "color": "oklch(0.21 0.006 285.885)",
+      "contrast": 17.717,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        24,
+        24,
+        27
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklab(0.711371 -0.161865 0.0801699 / 0.25)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 178,
+        "x": 937,
+        "y": 446.5
+      },
+      "role": "input-text",
+      "tag": "INPUT"
+    },
+    {
+      "backgroundColor": "rgb(255, 255, 255)",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.871 0.006 286.286) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "color": "oklch(0.21 0.006 285.885)",
+      "contrast": 17.717,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        255,
+        255,
+        255
+      ],
+      "effectiveForeground": [
+        24,
+        24,
+        27
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklab(0.711371 -0.161865 0.0801699 / 0.25)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 112,
+        "width": 387.09375,
+        "x": 727.90625,
+        "y": 592.5
+      },
+      "role": "input-text",
+      "tag": "TEXTAREA"
+    }
+  ],
+  "rootFontSize": "16px",
+  "tokens": {
+    "--ui-bg": "#fff",
+    "--ui-bg-elevated": "oklch(96.7% 0.001 286.375)",
+    "--ui-primary": "#00C16A",
+    "--ui-success": "#00C16A",
+    "--ui-text": "oklch(37% 0.013 285.805)",
+    "--ui-text-dimmed": "oklch(70.5% 0.015 286.067)",
+    "--ui-text-inverted": "#fff",
+    "--ui-text-muted": "oklch(55.2% 0.016 285.938)"
+  }
+}

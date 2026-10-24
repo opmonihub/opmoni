@@ -1,0 +1,245 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "dialog": null,
+  "erpMounted": true,
+  "hydrated": true,
+  "mode": "dark",
+  "path": "/erp/cadastros/produtos",
+  "roles": [
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "rgb(0, 220, 130)",
+      "contrast": 9.354,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        28.015686274509804,
+        28.015686274509804,
+        31.266666666666666
+      ],
+      "effectiveForeground": [
+        0,
+        220,
+        130
+      ],
+      "focusVisible": false,
+      "label": "Produtos",
+      "opacity": "1",
+      "outlineColor": "rgb(0, 220, 130)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 181,
+        "x": 42,
+        "y": 568
+      },
+      "role": "active-navigation",
+      "tag": "A"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "rgb(0, 220, 130)",
+      "contrast": 9.752,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        24,
+        24,
+        27
+      ],
+      "effectiveForeground": [
+        0,
+        220,
+        130
+      ],
+      "focusVisible": false,
+      "label": "Produtos",
+      "opacity": "1",
+      "outlineColor": "rgb(0, 220, 130)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 79.40625,
+        "x": 480.8125,
+        "y": 72
+      },
+      "role": "active-navigation",
+      "tag": "A"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.705 0.015 286.067)",
+      "contrast": 5.679,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        39,
+        39,
+        42
+      ],
+      "effectiveForeground": [
+        159,
+        159,
+        169
+      ],
+      "focusVisible": false,
+      "label": "OS",
+      "opacity": "1",
+      "outlineColor": "oklch(0.705 0.015 286.067)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 14.28125,
+        "width": 14.171875,
+        "x": 28.90625,
+        "y": 868.859375
+      },
+      "role": "muted-copy",
+      "tag": "SPAN"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.705 0.015 286.067)",
+      "contrast": 6.755,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        24,
+        24,
+        27
+      ],
+      "effectiveForeground": [
+        159,
+        159,
+        169
+      ],
+      "focusVisible": false,
+      "label": "Mercadorias, serviços e suas variações.",
+      "opacity": "1",
+      "outlineColor": "oklch(0.705 0.015 286.067)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 253.875,
+        "x": 264,
+        "y": 137
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.705 0.015 286.067)",
+      "contrast": 6.755,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        24,
+        24,
+        27
+      ],
+      "effectiveForeground": [
+        159,
+        159,
+        169
+      ],
+      "focusVisible": false,
+      "label": "Carregando registros...",
+      "opacity": "1",
+      "outlineColor": "oklch(0.705 0.015 286.067)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 20,
+        "width": 1078,
+        "x": 264,
+        "y": 249
+      },
+      "role": "muted-copy",
+      "tag": "P"
+    },
+    {
+      "backgroundColor": "oklch(0.21 0.006 285.885)",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklch(0.37 0.013 285.805) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "color": "rgb(255, 255, 255)",
+      "contrast": 17.717,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        24,
+        24,
+        27
+      ],
+      "effectiveForeground": [
+        255,
+        255,
+        255
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklab(0.786145 -0.174855 0.0792278 / 0.25)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 448,
+        "x": 264,
+        "y": 201
+      },
+      "role": "input-text",
+      "tag": "INPUT"
+    },
+    {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "boxShadow": "none",
+      "color": "oklch(0.552 0.016 285.938)",
+      "contrast": 3.67,
+      "contrastApplicability": "normal text",
+      "disabled": false,
+      "effectiveBackground": [
+        24,
+        24,
+        27
+      ],
+      "effectiveForeground": [
+        113,
+        113,
+        123
+      ],
+      "focusVisible": false,
+      "label": "",
+      "opacity": "1",
+      "outlineColor": "oklch(0.552 0.016 285.938)",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "rect": {
+        "height": 32,
+        "width": 448,
+        "x": 264,
+        "y": 201
+      },
+      "role": "placeholder",
+      "tag": "INPUT"
+    }
+  ],
+  "rootFontSize": "16px",
+  "tokens": {
+    "--ui-bg": "oklch(21% 0.006 285.885)",
+    "--ui-bg-elevated": "oklch(27.4% 0.006 286.033)",
+    "--ui-primary": "#00DC82",
+    "--ui-success": "#00DC82",
+    "--ui-text": "oklch(92% 0.004 286.32)",
+    "--ui-text-dimmed": "oklch(55.2% 0.016 285.938)",
+    "--ui-text-inverted": "oklch(21% 0.006 285.885)",
+    "--ui-text-muted": "oklch(70.5% 0.015 286.067)"
+  }
+}
