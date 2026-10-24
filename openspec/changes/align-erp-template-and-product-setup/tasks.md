@@ -10,7 +10,7 @@
 - [x] 2.1 Extend the existing destination registry with route/hash, grants and Fiscal area/model metadata, including stock cost layers and Fiscal configuration; verify sidebar/search/body agreement with `erpWorkspaceNav`, `erpModulesNav` and `erpFiscalWorkflows` tests plus restricted-grant cases.
 - [x] 2.2 Derive Finance/Cash/Sales visible areas and section-root fallbacks from the permitted registry; verify payments-only, sessions-only, establishments-only and explicitly denied deep-link cases without weakening backend authorization.
 - [x] 2.3 Give settings/catalog child pages one persistent shell and direct-link toolbar without nested panels; verify reload/history, active-link reachability and native horizontal navigation at 390px and desktop.
-- [ ] 2.4 Replace accumulated ERP expansion with one controlled group shared by both menu regions and reuse the office folding pattern where appropriate; verify sequential opens, manual fold/same-module hash, pinned child, leaf route, permission/context changes and collapsed/mobile keyboard/focus behavior in the existing sidebar suites.
+- [x] 2.4 Replace accumulated ERP expansion with one controlled group shared by both menu regions and reuse the office folding pattern where appropriate; verify sequential opens, manual fold/same-module hash, pinned child, leaf route, permission/context changes and collapsed/mobile keyboard/focus behavior in the existing sidebar suites.
 - [ ] 2.5 Reuse the office Settings registry for consistent Portuguese labels/order while preserving demonstration state; verify `settingsNav` behavior and office/company context navigation in desktop/mobile browser samples.
 
 ## 3. Align shared visual roles and copy
@@ -29,8 +29,8 @@
 
 ## 5. Implement native initialization and default consumers
 
-- [ ] 5.1 Add the setup-state/native-reference migration and `br-basic-v1` manifest with explicit missing-value semantics; verify additive upgrade preserves existing settings, same-company constraints reject foreign references and the manifest contains no identities, tax assumptions or secrets.
-- [ ] 5.2 Implement the idempotent native initializer inside provisioning for locale/time/BRL preferences, whole-unit UN and default customer; verify successful basic setup, fault-injected atomic rollback and unchanged owner/Matriz/subscription/access behavior in backend feature tests.
+- [x] 5.1 Add the setup-state/native-reference migration and `br-basic-v1` manifest with explicit missing-value semantics; verify additive upgrade preserves existing settings, same-company constraints reject foreign references and the manifest contains no identities, tax assumptions or secrets.
+- [x] 5.2 Implement the idempotent native initializer inside provisioning for locale/time/BRL preferences, whole-unit UN and default customer; verify successful basic setup, fault-injected atomic rollback and unchanged owner/Matriz/subscription/access behavior in backend feature tests.
 - [ ] 5.3 Expose typed `native_defaults` alongside preserved legacy settings and connect default unit/currency to their product/commercial consumers; verify first-product unit resolution, unavailable-reference recovery, BRL propagation and no same-number mapping of opaque legacy IDs.
 - [ ] 5.4 Connect the native default customer to eligible counter sales without inventing recipient facts; verify same-company selection, authorized override, existing explicit customer preservation and model-specific fiscal incompleteness feedback.
 - [ ] 5.5 Connect existing invoice schemes to the authoritative commercial allocator; verify new-company blank-prefix/four-digit sales, unchanged quote/order and existing-company numbering, collision skipping, immutable draft numbers and no sequence reset on rerun/default change.
