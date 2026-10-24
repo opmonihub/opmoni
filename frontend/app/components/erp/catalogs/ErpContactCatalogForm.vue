@@ -1,17 +1,20 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import type { ErpCatalogEditorMode, ErpContactRecord } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
 
 const props = defineProps<{
+  formId?: string
   record: ErpContactRecord | null
   mode: ErpCatalogEditorMode
   canSave: boolean
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
+const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state', 'city_code'] as const
 const initialState = ref('')
 const municipalityCodeReview = ref<{ city: string, state: string } | null>(null)
@@ -23,6 +26,7 @@ const form = reactive({
   street_type: '', street: '', number: '', complement: '', district: '', postal_code: '', city: '', state: '', city_code: ''
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
 
 watch(() => [form.city, form.state] as const, ([city, state]) => {
   const reviewedGeography = municipalityCodeReview.value
@@ -53,6 +57,7 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   for (const key of addressKeys)
     form[key] = address[key] ?? ''
   form.state = initialState.value
+  void nextTick(markClean)
 }, { immediate: true })
 
 function submit() {
@@ -101,6 +106,7 @@ function reviewMunicipalityCode() {
 
 <template>
   <UForm
+    :id="formId"
     :state="form"
     :disabled="disabled"
     class="space-y-5"
@@ -266,13 +272,5 @@ function reviewMunicipalityCode() {
         />
       </ErpCatalogField>
     </fieldset>
-    <div v-if="mode !== 'detail'" class="flex justify-end">
-      <UButton
-        type="submit"
-        :label="mode === 'create' ? 'Criar contato' : 'Salvar contato'"
-        :disabled="disabled"
-        :loading="busy"
-      />
-    </div>
   </UForm>
 </template>

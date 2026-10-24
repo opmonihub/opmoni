@@ -1,21 +1,26 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import type { ErpCatalogEditorMode, ErpCustomerGroupRecord } from '#shared/types/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 
 const props = defineProps<{
+  formId?: string
   record: ErpCustomerGroupRecord | null
   mode: ErpCatalogEditorMode
   canSave: boolean
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
+const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const form = reactive({ name: '', percentage_adjustment: '0.0000' })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
 
 watch(() => [props.record, props.mode] as const, ([record]) => {
   form.name = record?.name ?? ''
   form.percentage_adjustment = record?.percentage_adjustment ?? '0.0000'
+  void nextTick(markClean)
 }, { immediate: true })
 
 function submit() {
@@ -26,6 +31,7 @@ function submit() {
 
 <template>
   <UForm
+    :id="formId"
     :state="form"
     :disabled="disabled"
     class="space-y-4"
@@ -66,13 +72,5 @@ function submit() {
         />
       </ErpCatalogField>
     </fieldset>
-    <div v-if="mode !== 'detail'" class="flex justify-end">
-      <UButton
-        type="submit"
-        :label="mode === 'create' ? 'Criar grupo' : 'Salvar grupo'"
-        :disabled="disabled"
-        :loading="busy"
-      />
-    </div>
   </UForm>
 </template>

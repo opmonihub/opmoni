@@ -439,7 +439,7 @@ describe('ERP catalog shared resource authority', () => {
     assert.equal(String(listRegion.props.class).includes('hidden'), false, 'the list stays visible behind the native overlay')
     assert.equal(descendants(resource.root).some(node => node.props['data-slideover-open'] === 'true'), true)
 
-    const close = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Fechar')
+    const close = descendants(resource.root).find(node => node.tag === 'button' && node.text === 'Cancelar')
     assert.ok(close)
     ;(close.props.onClick as (() => void) | undefined)?.()
     await resource.settle()

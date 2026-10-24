@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import type { ErpBarcodeType, ErpCatalogEditorMode, ErpProductRecord } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
@@ -16,6 +18,7 @@ type FormVariant = {
 }
 
 const props = defineProps<{
+  formId?: string
   record: ErpProductRecord | null
   mode: ErpCatalogEditorMode
   canSave: boolean
@@ -23,7 +26,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
+const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const barcodeTypeItems: Array<{ label: string, value: ErpBarcodeType }> = [
   { label: 'Code 128', value: 'C128' },
   { label: 'Code 39', value: 'C39' },
@@ -51,6 +54,7 @@ const form = reactive({
   ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[]
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
 const openProductSections = ref<string[]>([])
 const pendingVariantArchive = ref<number | null>(null)
 const variantArchiveOpen = computed({
@@ -108,6 +112,7 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
       }))
     : [newVariant()]
   pendingVariantArchive.value = null
+  void nextTick(markClean)
 }, { immediate: true })
 
 watch(() => form.kind, (kind) => {
@@ -210,6 +215,7 @@ function submit() {
 
 <template>
   <UForm
+    :id="formId"
     :state="form"
     :disabled="disabled"
     class="space-y-5"
@@ -696,14 +702,6 @@ function submit() {
       </template>
     </UAccordion>
 
-    <div v-if="mode !== 'detail'" class="flex justify-end">
-      <UButton
-        type="submit"
-        :label="mode === 'create' ? 'Criar produto' : 'Salvar produto'"
-        :disabled="disabled"
-        :loading="busy"
-      />
-    </div>
   </UForm>
   <UModal
     v-model:open="variantArchiveOpen"

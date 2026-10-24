@@ -37,6 +37,9 @@ const { record, mode, open, loadingDetail, archiving, error: editorError, fieldE
 const archiveTarget = ref<CatalogRow | null>(null)
 const editorRegion = ref<HTMLElement | null>(null)
 const restoreFocusTarget = ref<FocusTarget | null>(null)
+const editorFormId = computed(() => `erp-catalog-${props.path.replace(/[^a-z0-9]+/gi, '-')}-form`)
+const editorDirty = ref(false)
+const discardConfirmationOpen = ref(false)
 const rowActionTriggers = new Map<number, FocusTarget>()
 const rows = computed(() => state.value?.data ?? [])
 const createLabel = computed(() => ({
@@ -91,8 +94,8 @@ const createAction = computed<CatalogCreateAction>(() => ({
 const editorOpen = computed({
   get: () => open.value,
   set: (value: boolean) => {
-    if (!value && !isSaving.value)
-      editor.cancel()
+    if (!value)
+      requestEditorClose()
   }
 })
 const archiveOpen = computed({
@@ -250,6 +253,8 @@ watch(editor.contextKey, () => {
   restoreFocusTarget.value = null
   resourceBlocked.value = false
   resourceError.value = ''
+  editorDirty.value = false
+  discardConfirmationOpen.value = false
 }, { flush: 'sync' })
 
 watch(() => record.value?.id, () => {
@@ -289,6 +294,8 @@ onScopeDispose(() => {
 
 watch(open, async (isOpen) => {
   if (isOpen) {
+    editorDirty.value = false
+    discardConfirmationOpen.value = false
     if (!restoreFocusTarget.value) {
       const activeElement = typeof document === 'undefined' ? null : document.activeElement
       restoreFocusTarget.value = activeElement && typeof activeElement === 'object' && 'focus' in activeElement
@@ -301,8 +308,26 @@ watch(open, async (isOpen) => {
       editorRegion.value?.focus()
     return
   }
+  editorDirty.value = false
+  discardConfirmationOpen.value = false
   await restoreRowActionFocus()
 })
+
+watch(fieldErrors, async (errors) => {
+  const firstError = Object.entries(errors).find(([, messages]) => messages.length > 0)?.[0]
+  if (!firstError || typeof document === 'undefined')
+    return
+
+  await nextTick()
+  if (!open.value)
+    return
+
+  const formElement = document.getElementById(editorFormId.value)
+  const fields = formElement?.querySelectorAll<HTMLElement>('[name]')
+  const target = [...(fields ?? [])].find(field => field.getAttribute('name') === firstError)
+    ?? fields?.[0]
+  target?.focus()
+}, { deep: true, flush: 'post' })
 
 watch(editor.mutationPending, (pending) => {
   if (!pending && !open.value)
@@ -320,6 +345,29 @@ function handleEditorEscape(event: KeyboardEvent) {
     event.stopPropagation()
     return
   }
+  event.preventDefault()
+  requestEditorClose()
+}
+
+function updateEditorDirty(dirty: boolean) {
+  editorDirty.value = dirty && mode.value !== 'detail'
+}
+
+function requestEditorClose() {
+  if (editor.mutationPending.value)
+    return
+  if (editorDirty.value) {
+    discardConfirmationOpen.value = true
+    return
+  }
+  editor.cancel()
+}
+
+function confirmEditorDiscard() {
+  if (editor.mutationPending.value)
+    return
+  discardConfirmationOpen.value = false
+  editorDirty.value = false
   editor.cancel()
 }
 
@@ -429,9 +477,10 @@ defineExpose({ createAction })
     v-model:open="editorOpen"
     :title="mode === 'detail' ? `Detalhes · ${record ? labelFor(record) : title}` : mode === 'edit' ? `Editar · ${record ? labelFor(record) : title}` : `Novo cadastro · ${title}`"
     :description="mode === 'detail' ? 'Consulta do cadastro.' : 'Preencha os dados e salve para atualizar o cadastro.'"
-    :dismissible="!isSaving"
+    :dismissible="false"
     :unmount-on-hide="true"
     :content="{ onCloseAutoFocus: preventNativeEditorFocusRestore }"
+    @close:prevent="requestEditorClose"
     :ui="{ content: 'w-full sm:max-w-3xl' }"
   >
     <template #body>
@@ -469,6 +518,8 @@ defineExpose({ createAction })
               :can-archive="editor.permissions.archive.value"
               :busy="editor.mutationPending.value"
               :field-errors="fieldErrors"
+              :form-id="editorFormId"
+              @dirty-change="updateEditorDirty"
               @save="editor.save"
             />
           </template>
@@ -485,22 +536,54 @@ defineExpose({ createAction })
           :can-archive="editor.permissions.archive.value"
           :busy="editor.mutationPending.value"
           :field-errors="fieldErrors"
+          :form-id="editorFormId"
+          @dirty-change="updateEditorDirty"
           @save="editor.save"
         />
       </section>
     </template>
     <template #footer>
-      <div class="flex w-full justify-end">
+      <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <UButton
-          label="Fechar"
+          :label="mode === 'detail' ? 'Fechar' : 'Cancelar'"
           color="neutral"
-          variant="ghost"
+          variant="outline"
           :disabled="isSaving"
-          @click="editorOpen = false"
+          @click="requestEditorClose"
+        />
+        <UButton
+          v-if="mode !== 'detail'"
+          type="submit"
+          :form="editorFormId"
+          :label="mode === 'create' ? 'Criar' : 'Salvar'"
+          :loading="isSaving"
+          :disabled="isSaving || !editor.canSave.value"
         />
       </div>
     </template>
   </USlideover>
+
+  <UModal
+    v-model:open="discardConfirmationOpen"
+    title="Descartar alterações?"
+    description="As alterações não salvas serão perdidas."
+  >
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <UButton
+          label="Continuar editando"
+          color="neutral"
+          variant="outline"
+          @click="discardConfirmationOpen = false"
+        />
+        <UButton
+          label="Descartar alterações"
+          color="error"
+          @click="confirmEditorDiscard"
+        />
+      </div>
+    </template>
+  </UModal>
 
   <UModal v-model:open="archiveOpen" title="Arquivar cadastro" :description="archiveTarget ? `Arquivar ${labelFor(archiveTarget)}? Os registros e referências históricas serão mantidos.` : 'Confirme o arquivamento do cadastro.'">
     <template #body>

@@ -1,23 +1,28 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
+import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import type { ErpCatalogEditorMode, ErpCategoryRecord } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
 
 const props = defineProps<{
+  formId?: string
   record: ErpCategoryRecord | null
   mode: ErpCatalogEditorMode
   canSave: boolean
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
+const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const form = reactive({ name: '', parent_id: null as number | null })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
+const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
 
 watch(() => [props.record, props.mode] as const, ([record]) => {
   form.name = record?.name ?? ''
   form.parent_id = record?.parent_id ?? null
+  void nextTick(markClean)
 }, { immediate: true })
 
 function submit() {
@@ -28,6 +33,7 @@ function submit() {
 
 <template>
   <UForm
+    :id="formId"
     :state="form"
     :disabled="disabled"
     class="space-y-4"
@@ -62,13 +68,5 @@ function submit() {
         :error="fieldErrors?.parent_id?.[0]"
       />
     </fieldset>
-    <div v-if="mode !== 'detail'" class="flex justify-end">
-      <UButton
-        type="submit"
-        :label="mode === 'create' ? 'Criar categoria' : 'Salvar categoria'"
-        :disabled="disabled"
-        :loading="busy"
-      />
-    </div>
   </UForm>
 </template>
