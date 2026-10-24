@@ -33,11 +33,15 @@ function setCfop(id: number, mode: string, value = cfops.value[id]?.value ?? '')
   invalidate()
 }
 function options(): ErpCommercialTaxReviewOptions {
-  const lines = props.document.lines.flatMap((line) => {
-    const selection = line.id ? cfops.value[line.id] : null
-    if (!line.id || !selection || selection.mode === 'retain') return []
-    return [{ id: line.id, cfop: selection.mode === 'clear' ? null : selection.value }]
-  })
+  const hasCfopChanges = props.document.lines.some(line => line.id && cfops.value[line.id] && cfops.value[line.id]!.mode !== 'retain')
+  // Keep submitted validator indices aligned with owned-line candidate errors.
+  const lines = hasCfopChanges
+    ? props.document.lines.flatMap((line) => {
+        if (!line.id) return []
+        const selection = cfops.value[line.id]
+        return [{ id: line.id, ...(!selection || selection.mode === 'retain' ? {} : { cfop: selection.mode === 'clear' ? null : selection.value }) }]
+      })
+    : []
   return { ...(contextChanged.value ? { tax_context: { ...context.value } } : {}), ...(lines.length ? { lines } : {}) }
 }
 function product(snapshot: Record<string, unknown>) {

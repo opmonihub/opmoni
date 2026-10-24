@@ -155,6 +155,55 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.ok(page.text().includes('87654321'))
   })
 
+  it('attaches malformed third-line CFOP feedback to its actual control and preserves reviewed options through correction and apply', async (t) => {
+    const calls: Array<[string, RequestOptions | undefined]> = []
+    const document = { ...sale, lines: [20, 41, 33].map(id => ({ ...sale.lines[0]!, id })) }
+    const previews: Array<Record<string, unknown>> = []
+    const page = mountWorkspace(async (path, options) => {
+      calls.push([path, options])
+      if (path === '/erp/sales/5' && !options?.method) return envelope(document)
+      if (path.endsWith('/tax-refresh-preview')) {
+        const body = options?.body ?? {}
+        previews.push(body)
+        const lines = body.lines as Array<{ id: number, cfop?: string | null }>
+        // Native options() validates the submitted list before sorting; errors use its index.
+        const invalid = lines.findIndex(line => Object.hasOwn(line, 'cfop') && line.cfop !== null && (typeof line.cfop !== 'string' || !/^[123567][0-9]{3}$/.test(line.cfop)))
+        if (invalid >= 0) throw { statusCode: 422, data: { errors: { [`lines.${invalid}.cfop`]: ['CFOP inválido na terceira linha.'] } } }
+        return envelope({ ...preview, lines: document.lines.map(line => ({ id: line.id, previous_product_snapshot: oldFacts, product_snapshot: candidateFacts })) })
+      }
+      return defaultApi(path, options)
+    })
+    t.after(() => page.dispose()); await settle(); await page.click('0005'); await page.click('Revisar classificação')
+    const field = (index: number) => {
+      const node = page.find(node => node.props['data-field'] === `lines.${index}.cfop`)[0]
+      assert.ok(node, `Expected editable CFOP field for owned line index ${index}`)
+      return node
+    }
+    const control = (index: number, tag: string) => {
+      const node = page.find(node => node.tag === tag, field(index))[0]
+      assert.ok(node)
+      return node
+    }
+    ;(control(2, 'select').props.onChange as (event: unknown) => void)({ target: { value: 'explicit' } }); await settle()
+    ;(control(2, 'input').props.onChange as (event: unknown) => void)({ target: { value: 'ABCD' } }); await settle()
+    await page.click('Gerar prévia')
+    const feedback = page.find(node => node.text?.includes('CFOP inválido na terceira linha.') === true, field(2))
+    assert.ok(feedback.length, 'The native submitted-index error must identify the rejected third control')
+    assert.equal(page.find(node => node.text?.includes('CFOP inválido na terceira linha.') === true, field(0)).length, 0)
+    assert.equal(page.find(node => node.text?.includes('CFOP inválido na terceira linha.') === true, field(1)).length, 0)
+    assert.equal(control(2, 'input').props.value, 'ABCD')
+    assert.equal(calls.some(([, options]) => options?.method === 'PATCH'), false)
+    ;(control(2, 'input').props.onChange as (event: unknown) => void)({ target: { value: '5102' } }); await settle()
+    await page.click('Gerar prévia')
+    assert.deepEqual(previews[1]?.lines, [{ id: 20 }, { id: 41 }, { id: 33, cfop: '5102' }])
+    await page.click('Aplicar revisão')
+    const apply = calls.find(([, options]) => options?.method === 'PATCH')
+    assert.deepEqual((apply?.[1]?.body?.tax_refresh as Record<string, unknown>)?.lines, previews[1]?.lines)
+    assert.equal((apply?.[1]?.body?.tax_refresh as Record<string, unknown>)?.reviewed_fingerprint, 'signed-preview-v1')
+    assert.ok(apply?.[1]?.headers?.['Idempotency-Key'])
+    assert.equal(calls.some(([path]) => path.endsWith('/post')), false)
+  })
+
   it('invalidates the visible proof when context changes and requires another preview', async (t) => {
     const calls: Array<[string, RequestOptions | undefined]> = []
     const page = mountWorkspace(async (path, options) => { calls.push([path, options]); return defaultApi(path, options) })
