@@ -44,7 +44,7 @@ export function erpFinancialChoiceError(choices: FinancialChoices): string | nul
       return 'A sessão selecionada não está aberta ou é incompatível com a moeda e o estabelecimento.'
     }
   } else if (choices.method === 'cash') {
-    return 'Selecione explicitamente uma sessão de caixa aberta para pagamento em dinheiro.'
+    return 'Selecione explicitamente uma sessão em um caixa aberto para pagamento em dinheiro.'
   }
 
   return null

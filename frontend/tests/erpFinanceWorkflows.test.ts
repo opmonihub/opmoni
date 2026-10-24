@@ -8,6 +8,7 @@ import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as financeUtils from '../shared/utils/erpFinance.ts'
+import * as choiceUtils from '../app/utils/erpFinancialChoiceCompatibility.ts'
 import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
 import type { ErpFinancePage, ErpObligation, ErpPayment, ErpFinanceTotals } from '../shared/types/erpBusiness.ts'
 
@@ -28,7 +29,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   return moduleExports
 }
 
-function setupForm(name: string) {
+function setupForm(name: string, input: Record<string, unknown> = {}) {
   const file = new URL(`../app/components/erp/${name}.vue`, import.meta.url)
   assert.ok(existsSync(file), `${name} should exist`)
   const source = readFileSync(file, 'utf8')
@@ -37,11 +38,13 @@ function setupForm(name: string) {
   const output = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const moduleExports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', 'reactive', 'computed', 'ref', output)
-  runtime((path: string) => path === '#shared/utils/erpFinance' ? financeUtils : Vue, moduleExports, Vue.reactive, Vue.computed, Vue.ref)
+  runtime((path: string) => path === '#shared/utils/erpFinance' ? financeUtils : path === '~/utils/erpFinancialChoiceCompatibility' ? choiceUtils : Vue, moduleExports, Vue.reactive, Vue.computed, Vue.ref)
   const emitted: Record<string, unknown>[] = []
   let exposed: Record<string, unknown> = {}
+  const defaults = name === 'ErpPaymentForm' ? { referenceAvailability: { establishments: true, accounts: true, cashSessions: true }, establishments: [], accounts: [], sessions: [] } : {}
+  const props = Vue.reactive({ ...defaults, ...input })
   const scope = Vue.effectScope()
-  scope.run(() => (moduleExports.default as { setup: (props: unknown, context: unknown) => unknown }).setup({}, {
+  scope.run(() => (moduleExports.default as { setup: (props: unknown, context: unknown) => unknown }).setup(props, {
     expose(value: Record<string, unknown>) { exposed = value },
     emit(event: string, payload: Record<string, unknown>) { if (event === 'submit') emitted.push(payload) }
   }))
@@ -53,7 +56,7 @@ function compileSfc(name: string, imports: Record<string, unknown>, bindings: Bi
   const source = readFileSync(file, 'utf8')
   const { descriptor } = parse(source)
   const script = compileScript(descriptor, { id: name, inlineTemplate: true })
-  return (compileModule(script.content, { 'vue': Vue, '#shared/utils/erpFinance': financeUtils, ...imports }, {
+  return (compileModule(script.content, { 'vue': Vue, '#shared/utils/erpFinance': financeUtils, '~/utils/erpFinancialChoiceCompatibility': choiceUtils, ...imports }, {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, ...bindings
   }).default as Vue.Component)
 }
@@ -441,7 +444,7 @@ describe('finance forms use actual form submissions and exact decimal strings', 
   })
 
   it('rejects malformed decimal text and submits cash payment only with a selected session', (t) => {
-    const form = setupForm('ErpPaymentForm')
+    const form = setupForm('ErpPaymentForm', { sessions: [{ id: 8, currency: 'BRL', erp_establishment_id: null, status: 'open', can_operate: true, needs_reconciliation: false }] })
     t.after(form.stop)
     const state = form.exposed.state as Record<string, string>
     Object.assign(state, { amount: '1,50', method: 'cash' })
