@@ -15,6 +15,7 @@ use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\ExpectationFailedException;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
@@ -427,13 +428,29 @@ class ErpCompanyInitializationConcurrencyTest extends TestCase
     #[DataProvider('mandatoryFailures')]
     public function test_failed_transaction_rolls_back_while_independent_equal_retry_waits_then_commits_once(string $fault): void
     {
+        $evidence = $this->faultRace($fault);
+        $this->assertFaultedIdentitiesRolledBack($evidence['holder']['fault_effect_ids']);
+    }
+
+    private function faultRace(string $fault, bool $commitBefore503 = false): array
+    {
         $first = $this->login();
         $second = $this->login();
         $review = $this->preview($first);
         $before = $this->snapshot();
         $faultBase = $this->directory.'/fault';
-        $a = $this->worker([...$this->applyInput($first, $review, 'rollback-retry'), 'fault' => $fault, 'fault_barrier' => $faultBase]);
+        $a = $this->worker([...$this->applyInput($first, $review, 'rollback-retry'), 'fault' => $fault, 'fault_barrier' => $faultBase, 'commit_before_503' => $commitBefore503]);
         $holder = $this->ready($a, $faultBase);
+        $this->assertSame($this->company->id, $holder['fault_company_id']);
+        $this->assertCount(7, $holder['fault_effect_ids']);
+        $this->assertCount(1, $holder['fault_effect_ids']['erp_units']);
+        $this->assertCount(1, $holder['fault_effect_ids']['erp_contacts']);
+        if ($fault === 'receipt') {
+            foreach (['erp_operation_receipts', 'erp_company_setup_states', 'erp_invoice_schemes', 'erp_invoice_layouts'] as $table) {
+                $this->assertCount(1, $holder['fault_effect_ids'][$table]);
+            }
+            $this->assertCount(3, $holder['fault_effect_ids']['erp_catalog_attributions']);
+        }
         $this->assertSame($before, $this->snapshot(), 'Uncommitted baseline and receipt must be invisible on the independent parent connection.');
         $waitBase = $this->directory.'/retry';
         $b = $this->worker([...$this->applyInput($second, $review, 'rollback-retry'), 'company_barrier' => $waitBase]);
@@ -443,12 +460,47 @@ class ErpCompanyInitializationConcurrencyTest extends TestCase
         touch($waitBase.'.release');
         $this->blockedBy([$waiting], $holder['database_pid']);
         touch($faultBase.'.release');
-        $this->bodyAtStatus($this->response($a), 503);
-        $this->bodyAtStatus($this->response($b), 200);
+        $firstResult = $this->bodyAtStatus($this->response($a), 503);
+        $secondResult = $this->bodyAtStatus($this->response($b), 200);
         $this->baseline(false);
         $this->assertSame(1, ErpOperationReceipt::query()->where('erp_company_id', $this->company->id)->count());
         $this->assertSame(3, DB::table('erp_catalog_attributions')->where('erp_company_id', $this->company->id)->count());
         $this->noBusinessEffects();
+
+        return ['holder' => $holder, 'first_result' => $firstResult, 'second_result' => $secondResult];
+    }
+
+    /** @param array<string, list<int>> $faultedIds */
+    private function assertFaultedIdentitiesRolledBack(array $faultedIds): void
+    {
+        foreach ($faultedIds as $table => $ids) {
+            $survivingIds = DB::table($table)->where('erp_company_id', $this->company->id)->orderBy('id')->pluck('id')->all();
+            $this->assertSame([], array_values(array_intersect($ids, $survivingIds)), 'Faulted transaction identities survived: '.$table);
+            foreach ($ids as $id) {
+                $this->assertDatabaseMissing($table, ['id' => $id, 'erp_company_id' => $this->company->id]);
+            }
+        }
+        fwrite(STDERR, json_encode(['rollback_proof' => 'faulted IDs absent and surviving IDs disjoint', 'company_id' => $this->company->id, 'faulted_ids' => $faultedIds], JSON_THROW_ON_ERROR).PHP_EOL);
+    }
+
+    public function test_rollback_proof_rejects_commit_before_503_replay(): void
+    {
+        $evidence = $this->faultRace('receipt', commitBefore503: true);
+        $rejected = false;
+        try {
+            $this->assertFaultedIdentitiesRolledBack($evidence['holder']['fault_effect_ids']);
+        } catch (ExpectationFailedException $failure) {
+            $this->assertStringContainsString('Faulted transaction identities survived: erp_operation_receipts', $failure->getMessage());
+            $rejected = true;
+        }
+        $this->assertTrue($rejected, 'Rollback proof must reject a committed faulted receipt replayed by the waiting worker.');
+        $receipt = ErpOperationReceipt::query()->where('erp_company_id', $this->company->id)->sole();
+        $this->assertSame($evidence['holder']['fault_effect_ids']['erp_operation_receipts'][0], $receipt->id);
+        $this->assertSame($receipt->response_body, $evidence['first_result']);
+        $this->assertSame($receipt->response_body, $evidence['second_result']);
+        foreach ($evidence['holder']['fault_effect_ids'] as $table => $ids) {
+            $this->assertSame($ids, DB::table($table)->where('erp_company_id', $this->company->id)->orderBy('id')->pluck('id')->all());
+        }
     }
 
     public function test_response_loss_after_commit_recovers_original_result_without_overwriting_later_preferences(): void

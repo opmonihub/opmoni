@@ -7,6 +7,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpOperationReceipt;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -93,11 +94,24 @@ final class ErpCompanyInitializationConcurrencyWorker
                 }
             });
         }
+        if (($input['commit_before_503'] ?? false) && ($input['fault'] ?? null) !== 'receipt') {
+            throw new RuntimeException('Commit-before-503 control requires the receipt boundary.');
+        }
+        $commitBeforeFailure = false;
         if (isset($input['fault'])) {
             $model = $input['fault'] === 'customer' ? ErpContact::class : ErpOperationReceipt::class;
-            $model::created(function () use ($input, $identity): void {
-                self::signal($input['fault_barrier'].'.ready', $identity);
+            $model::created(function (Model $created) use ($input, $identity, &$commitBeforeFailure): void {
+                $effectIds = [];
+                foreach (['erp_operation_receipts', 'erp_company_setup_states', 'erp_units', 'erp_contacts', 'erp_invoice_schemes', 'erp_invoice_layouts', 'erp_catalog_attributions'] as $table) {
+                    $effectIds[$table] = DB::table($table)->where('erp_company_id', $created->erp_company_id)->orderBy('id')->pluck('id')->all();
+                }
+                self::signal($input['fault_barrier'].'.ready', [...$identity, 'fault_company_id' => $created->erp_company_id, 'fault_effect_ids' => $effectIds]);
                 self::await($input['fault_barrier'].'.release');
+                if ($input['commit_before_503'] ?? false) {
+                    $commitBeforeFailure = true;
+
+                    return;
+                }
                 abort(503, 'Falha obrigatória de inicialização injetada pelo teste.');
             });
         }
@@ -125,6 +139,12 @@ final class ErpCompanyInitializationConcurrencyWorker
             }
             $result = ['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'cookies' => $cookies, 'cache_control' => $response->headers->get('Cache-Control')];
             $kernel->terminate($request, $response);
+            if ($commitBeforeFailure) {
+                if ($result['status'] !== 200 || DB::transactionLevel() !== 0) {
+                    throw new RuntimeException('Negative control requires the real operation to commit successfully before reporting 503.');
+                }
+                $result['status'] = 503;
+            }
         }
         echo json_encode([...$identity, ...$result, 'transaction_level' => DB::transactionLevel()], JSON_THROW_ON_ERROR);
         DB::disconnect();
