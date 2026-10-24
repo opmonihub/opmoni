@@ -3,7 +3,6 @@
 namespace App\Erp\Fiscal;
 
 use App\Erp\ErpEstablishmentAccess;
-use App\Erp\Sales\ErpCommercialDraftService;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationNature;
@@ -63,8 +62,10 @@ class ErpFiscalIssuanceService
             if (! $nature || $nature->erp_establishment_id !== null && (int) $nature->erp_establishment_id !== (int) $issuer->id) {
                 throw ValidationException::withMessages(['source.identity.operation_nature' => 'Natureza de operação inválida.']);
             }
-            $source['identity']['operation_nature'] = $nature->description;
-            $source['operation_nature'] = $nature->only(['id', 'description', 'cfop', 'movement', 'fiscal_metadata']);
+            if (! (in_array($data['model'], ['55', '65'], true) && $kind === 'posted_sale')) {
+                $source['identity']['operation_nature'] = $nature->description;
+                $source['operation_nature'] = $nature->only(['id', 'description', 'cfop', 'movement', 'fiscal_metadata']);
+            }
         }
         if ($data['model'] === '65') {
             $source['nfce_qr'] = $settings['nfce_qr'] ?? [];
@@ -83,7 +84,7 @@ class ErpFiscalIssuanceService
                 'return' => 4, 'complement' => 2, default => 1
             };
         }
-        $commercial = $this->freezeSourceRecord($context, $issuer, $kind, $data, $source);
+        $commercial = $this->freezeSourceRecord($context, $issuer, $kind, $data, $settings, $source);
         if (in_array($kind, ['return', 'complement', 'substitution'], true)) {
             $original = ErpFiscalDocument::query()->where('erp_company_id', $issuer->erp_company_id)->whereKey($data['source_document_id'] ?? 0)->first();
             if (! $original || $original->status !== 'authorized' || ! $original->access_key) {
@@ -495,7 +496,7 @@ class ErpFiscalIssuanceService
         return $snapshot;
     }
 
-    private function freezeSourceRecord(CurrentCompany $context, ErpEstablishment $issuer, string $kind, array $data, array &$source): ?array
+    private function freezeSourceRecord(CurrentCompany $context, ErpEstablishment $issuer, string $kind, array $data, array $settings, array &$source): ?array
     {
         if (! in_array($data['model'], ['55', '65'], true) || $kind !== 'posted_sale') {
             return null;
@@ -505,28 +506,41 @@ class ErpFiscalIssuanceService
             throw ValidationException::withMessages(['erp_sale_id' => 'Venda lançada no estabelecimento emissor obrigatória.']);
         }
         app(ErpEstablishmentAccess::class)->assertRelatedResource($context, $sale, 'erp_sale_id');
-        $snapshot = app(ErpCommercialDraftService::class)->postedSnapshot($sale);
+        $projection = app(ErpFiscalFrozenSaleSourceProjection::class)->project($sale, $data['model']);
+        $snapshot = $projection['snapshot'];
+        $nature = $projection['operation_nature'];
+        if ((int) ($nature['id'] ?? 0) !== (int) ($settings['operation_nature_id'] ?? 0)) {
+            throw ValidationException::withMessages(['source.identity.operation_nature' => 'A natureza configurada no emissor deve corresponder à natureza revisada da venda.']);
+        }
+        if ((string) ($source['identity']['operation_nature'] ?? '') !== (string) $nature['description']) {
+            throw ValidationException::withMessages(['source.identity.operation_nature' => 'A natureza informada deve corresponder à natureza revisada da venda.']);
+        }
+        $source['operation_nature'] = $nature;
         if (bccomp((string) ($snapshot['totals']['total_amount'] ?? '-1'), (string) ($source['totals']['invoice'] ?? '-2'), 2) !== 0 || count($snapshot['lines'] ?? []) !== count($source['items'] ?? [])) {
             throw ValidationException::withMessages(['source' => 'Totais e itens precisam corresponder à venda lançada.']);
         }
         foreach ($snapshot['lines'] as $index => $line) {
             $item = $source['items'][$index];
-            $lineSnapshot = $line['product_snapshot'] ?? [];
-            $product = $lineSnapshot['product'] ?? [];
-            $variant = $lineSnapshot['variant'] ?? [];
-            if ((int) ($item['source_line_id'] ?? 0) !== (int) ($line['id'] ?? -1)
-                || (string) ($snapshot['party']['tax_id'] ?? '') !== (string) ($source['recipient']['cnpj'] ?? '')
-                || (string) ($variant['sku'] ?? $product['sku'] ?? '') !== (string) ($item['code'] ?? '')
-                || (string) ($product['ncm'] ?? '') !== (string) ($item['ncm'] ?? '')
-                || (string) ($lineSnapshot['unit']['short_name'] ?? '') !== (string) ($item['unit'] ?? '')
-                || (string) ($lineSnapshot['operation_nature']['cfop'] ?? '') !== (string) ($item['cfop'] ?? '')
-                || (string) ($line['erp_product_variant_id'] ?? '') !== (string) ($item['erp_product_variant_id'] ?? '')) {
+            $frozen = $projection['items'][$index];
+            if ((int) ($item['source_line_id'] ?? 0) !== $frozen['source_line_id']
+                || (string) ($projection['recipient']['cnpj'] ?? '') !== (string) ($source['recipient']['cnpj'] ?? '')
+                || (string) ($projection['recipient']['legal_name'] ?? '') !== (string) ($source['recipient']['legal_name'] ?? '')
+                || ! $this->sameAddress($projection['recipient']['address'] ?? null, $source['recipient']['address'] ?? null)
+                || (string) ($frozen['code'] ?? '') !== (string) ($item['code'] ?? '')
+                || (string) ($frozen['description'] ?? '') !== (string) ($item['description'] ?? '')
+                || (string) ($frozen['ncm'] ?? '') !== (string) ($item['ncm'] ?? '')
+                || (string) ($frozen['unit'] ?? '') !== (string) ($item['unit'] ?? '')
+                || (string) ($frozen['cfop'] ?? '') !== (string) ($item['cfop'] ?? '')
+                || (string) ($frozen['erp_product_variant_id'] ?? '') !== (string) ($item['erp_product_variant_id'] ?? '')) {
                 throw ValidationException::withMessages(['source.items.'.$index => 'Identidade, classificação, destinatário e unidade devem corresponder à venda lançada.']);
             }
-            foreach (['origin_code' => 'origin', 'icms_cst' => 'icms_cst', 'pis_cst' => 'pis_cst', 'cofins_cst' => 'cofins_cst'] as $frozenField => $typedField) {
-                if ((string) ($product[$frozenField] ?? '') !== (string) ($item['tax'][$typedField] ?? '')) {
+            foreach (['origin', 'icms_cst', 'pis_cst', 'cofins_cst'] as $field) {
+                if ((string) ($frozen['tax'][$field] ?? '') !== (string) ($item['tax'][$field] ?? '')) {
                     throw ValidationException::withMessages(['source.items.'.$index.'.tax' => 'Classificação tributária difere da fonte lançada.']);
                 }
+            }
+            if (! isset($item['tax']['icms_rate']) || bccomp((string) $frozen['tax']['icms_rate'], (string) $item['tax']['icms_rate'], 4) !== 0) {
+                throw ValidationException::withMessages(['source.items.'.$index.'.tax.icms_rate' => 'Alíquota de ICMS difere da fonte revisada.']);
             }
 
             foreach (['quantity' => 'quantity', 'unit_price' => 'unit_price', 'gross_amount' => 'gross_total'] as $actual => $typed) {
@@ -538,6 +552,18 @@ class ErpFiscalIssuanceService
         $source['commercial_source'] = $snapshot;
 
         return $snapshot;
+    }
+
+    private function sameAddress(mixed $frozen, mixed $submitted): bool
+    {
+        if (! is_array($frozen) || ! is_array($submitted)) {
+            return false;
+        }
+
+        ksort($frozen);
+        ksort($submitted);
+
+        return $frozen === $submitted;
     }
 
     private function validateCteSubstitution(ErpFiscalDocument $original, array $source): void

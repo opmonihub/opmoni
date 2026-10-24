@@ -9,6 +9,7 @@ use App\Erp\Fiscal\ErpFiscalActionCatalog;
 use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
 use App\Erp\Fiscal\ErpFiscalAttemptService;
 use App\Erp\Fiscal\ErpFiscalDocumentStateMachine;
+use App\Erp\Fiscal\ErpFiscalFrozenSaleSourceProjection;
 use App\Erp\Fiscal\ErpFiscalNumberAllocator;
 use App\Erp\Fiscal\ErpFiscalProviderResult;
 use App\Erp\Fiscal\ErpFiscalSchemaValidator;
@@ -611,6 +612,9 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $source = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($original->attempts()->where('action', 'document:draft')->firstOrFail())['request']['source'];
         $this->assertNull($original->sale->lines()->sole()->erp_product_variant_id);
         $source['items'][0]['erp_product_variant_id'] = null;
+        $projected = app(ErpFiscalFrozenSaleSourceProjection::class)->project($original->sale, '55');
+        $this->assertArrayHasKey('erp_product_variant_id', $projected['items'][0]);
+        $this->assertNull($projected['items'][0]['erp_product_variant_id']);
         $created = $this->withHeaders([...$ctx['headers'], 'X-CSRF-Token' => $this->csrf()])->postJson('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $ctx['establishment']->id, 'model' => '55', 'erp_sale_id' => $original->erp_sale_id, 'source' => $source, 'idempotency_key' => 'review-explicit-null-variant'])->assertCreated();
         $frozen = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot(ErpFiscalAttempt::findOrFail($created->json('data.attempt.id')))['request']['source'];
         $this->assertArrayHasKey('erp_product_variant_id', $frozen['items'][0]);
@@ -838,7 +842,13 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
             '57' => ErpFiscalModelBuilderSchemaTest::builderProvider()['CT-e 57 typed transport service'][2],
             '58' => ErpFiscalModelBuilderSchemaTest::builderProvider()['MDF-e 58 typed manifest'][2],
         };
-        $nature = ErpOperationNature::factory()->create(['erp_company_id' => $ctx['company']->id]);
+        $nature = ErpOperationNature::factory()->create([
+            'erp_company_id' => $ctx['company']->id,
+            'erp_establishment_id' => $ctx['establishment']->id,
+            'description' => $source['identity']['operation_nature'] ?? 'Venda de mercadoria',
+            'cfop' => $source['items'][0]['cfop'] ?? '5102',
+            'movement' => 'out',
+        ]);
         $settings = ['series' => 1, 'next_number' => 1, 'operation_nature_id' => $nature->id];
         if (in_array($model, ['57', '58'], true)) {
             $settings['transport'] = $source[$model === '57' ? 'transport_service' : 'transport_manifest'];
@@ -863,11 +873,46 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/certificates', ['erp_establishment_id' => $ctx['establishment']->id, 'label' => 'Real isolated test issuer', 'certificate_content' => base64_encode($pkcs12), 'password' => ''])->assertCreated();
         $saleId = null;
         if (in_array($model, ['55', '65'], true)) {
-            $sale = ErpSale::query()->create(['erp_company_id' => $ctx['company']->id, 'erp_establishment_id' => $ctx['establishment']->id, 'invoice_no' => 'source-'.Str::uuid(), 'status' => 'posted', 'total_amount' => '100.00']);
+            $sale = ErpSale::query()->create([
+                'erp_company_id' => $ctx['company']->id,
+                'erp_establishment_id' => $ctx['establishment']->id,
+                'erp_operation_nature_id' => $nature->id,
+                'invoice_no' => 'source-'.Str::uuid(),
+                'status' => 'posted',
+                'total_amount' => '100.00',
+            ]);
+            $product = [
+                'name' => $source['items'][0]['description'],
+                'sku' => $source['items'][0]['code'],
+                'ncm' => $source['items'][0]['ncm'],
+                'origin_code' => (string) $source['items'][0]['tax']['origin'],
+                'icms_cst' => $source['items'][0]['tax']['icms_cst'],
+                'pis_cst' => $source['items'][0]['tax']['pis_cst'],
+                'cofins_cst' => $source['items'][0]['tax']['cofins_cst'],
+                'icms_rate' => $source['items'][0]['tax']['icms_rate'],
+            ];
+            $operationNature = $nature->only(['id', 'cfop', 'description', 'movement', 'erp_establishment_id']);
             $line = $sale->lines()->create(['erp_company_id' => $ctx['company']->id, 'ordinal' => 1, 'quantity' => '1.0000', 'unit_price' => '100.0000', 'gross_amount' => '100.00', 'line_total' => '100.00',
-                'product_snapshot' => ['product' => ['sku' => 'SKU-1', 'ncm' => '12345678', 'origin_code' => '0', 'icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07'], 'unit' => ['short_name' => 'UN'], 'operation_nature' => ['cfop' => '5102']]]);
+                'erp_product_variant_id' => null,
+                'product_snapshot' => [
+                    'version' => 'commercial-v1',
+                    'description' => $source['items'][0]['description'],
+                    'product' => $product,
+                    'variant' => null,
+                    'unit' => ['short_name' => $source['items'][0]['unit']],
+                    'operation_nature' => $operationNature,
+                ]]);
             $source['items'][0]['source_line_id'] = $line->id;
-            $sale->update(['commercial_snapshot' => ['accepted' => ['actor_id' => $ctx['user']->id], 'party' => ['tax_id' => $source['recipient']['cnpj']], 'totals' => ['total_amount' => '100.00'], 'lines' => [$line->attributesToArray()]]]);
+            $source['items'][0]['erp_product_variant_id'] = null;
+            $sale->update(['commercial_snapshot' => [
+                'version' => 'commercial-v1',
+                'accepted' => ['actor_id' => $ctx['user']->id],
+                'party' => ['tax_id' => $source['recipient']['cnpj'], 'name' => $source['recipient']['legal_name'], 'address' => $source['recipient']['address']],
+                'document' => ['id' => $sale->id, 'erp_company_id' => $sale->erp_company_id, 'erp_establishment_id' => $sale->erp_establishment_id, 'invoice_no' => $sale->invoice_no],
+                'totals' => ['subtotal_amount' => '100.00', 'discount_amount' => '0.00', 'tax_amount' => '0.00', 'total_amount' => '100.00'],
+                'lines' => [$line->attributesToArray()],
+                'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null],
+            ]]);
             $saleId = $sale->id;
         }
         $response = $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/documents', ['erp_establishment_id' => $ctx['establishment']->id, 'model' => $model, 'environment' => $environment, 'erp_sale_id' => $saleId, 'idempotency_key' => $idempotencyKey, 'source' => $source])->assertCreated();

@@ -22,12 +22,15 @@ use App\Models\Erp\Sales\ErpSale;
 use App\Models\Erp\Stock\ErpStockBalance;
 use App\Models\Erp\Stock\ErpStockMovement;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\BuildsErpFiscalHarness;
+use Tests\Support\BuildsReviewedCommercialTax;
 use Tests\Support\ErpCommercialTestCase;
 
 class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 {
     use BuildsErpFiscalHarness;
+    use BuildsReviewedCommercialTax;
 
     public function test_http_quote_order_sale_preserve_authoritative_lines_without_reserving_stock(): void
     {
@@ -250,18 +253,14 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 
     public function test_fiscal_request_copies_frozen_evidence_after_catalog_and_party_edits(): void
     {
-        $nature = $this->configureFiscalHarness($this->establishment, nextNumber: 17);
-        $this->prepareFiscalVariant($this->variant);
-        $this->variant->update(['sale_price' => '12']);
-        $this->variant->product->update(['kind' => 'service', 'track_stock' => false, 'ncm' => '12345678']);
-        $contact = $this->fiscalHarnessCustomer($this->establishment, 'Original');
-        $id = $this->send('sales', ['erp_establishment_id' => $this->establishment->id, 'erp_contact_id' => $contact->id, 'erp_operation_nature_id' => $nature->id, 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '1']]])->assertCreated()->json('data.id');
+        [$contact, $sale] = $this->createReviewedFiscalSale('workflow-frozen', post: false);
+        $id = $sale->id;
         $this->variant->update(['sale_price' => '99']);
         $contact->update(['name' => 'Changed']);
         $this->send('sales/'.$id.'/post', ['draft_revision' => 1])->assertOk();
         $sale = ErpSale::findOrFail($id);
         $frozen = $sale->commercial_snapshot;
-        $source = $this->fiscalSourceFromAcceptedSale($sale);
+        $source = $this->reviewedFiscalSourceFromAcceptedSale($sale);
         $this->variant->product->update(['ncm' => null, 'status' => 'archived']);
         $contact->update(['status' => 'archived']);
         $this->company->update(['name' => 'Changed company']);
@@ -303,9 +302,8 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
 
     public function test_fiscal_source_cannot_adopt_a_commercial_sale_that_was_not_posted(): void
     {
-        $nature = $this->configureFiscalHarness($this->establishment, nextNumber: 17);
-        $accepted = $this->postFiscalHarnessSale($this->establishment, $nature, 'source-provenance');
-        $source = $this->fiscalSourceFromAcceptedSale($accepted);
+        [, $accepted] = $this->createReviewedFiscalSale('source-provenance');
+        $source = $this->reviewedFiscalSourceFromAcceptedSale($accepted);
         $draft = $this->send('sales', $this->serviceBody())->assertCreated()->json('data.id');
         $before = ErpSale::findOrFail($draft)->getAttributes();
         $this->send('fiscal/documents', ['erp_sale_id' => $draft, 'erp_establishment_id' => $this->establishment->id,
@@ -316,6 +314,83 @@ class ErpCommercialDraftWorkflowTest extends ErpCommercialTestCase
         $this->assertDatabaseCount('erp_fiscal_attempts', 0);
         $this->assertDatabaseCount('erp_obligations', 1);
         $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
+    }
+
+    /** @return array{ErpContact, ErpSale} */
+    private function createReviewedFiscalSale(string $key, bool $post = true): array
+    {
+        $this->configureReviewedCommercialTax();
+        $this->patchJson('/api/v1/erp/tax-settings/product-tax-profiles/'.$this->taxProfileId, [
+            'fields' => ['icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07', 'icms_rate' => '18.0000'],
+            'expected_revision' => 1,
+        ])->assertOk();
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, [
+            'ncm' => '12345678', 'origin_code' => '0', 'sku' => 'READY-SKU', 'track_stock' => false,
+            'tax_field_intents' => ['icms_cst' => 'inherit', 'pis_cst' => 'inherit', 'cofins_cst' => 'inherit', 'icms_rate' => 'inherit'],
+        ])->assertOk();
+        $this->variant->product->unit->update(['short_name' => 'UN']);
+
+        $typed = ErpFiscalModelBuilderSchemaTest::builderProvider()['NF-e 55 posted sale'][2];
+        $contact = $this->fiscalHarnessCustomer($this->establishment, 'Original');
+        $issuerAddress = $typed['issuer']['address'];
+        $this->establishment->update(['cnpj' => $typed['issuer']['cnpj']]);
+        $issuerConfiguration = [
+            'environment' => 'homologation',
+            'issuer' => ['tax_regime' => 3, 'state_registration' => $typed['issuer']['state_registration'], 'uf' => $issuerAddress['uf'],
+                'address' => ['street' => $issuerAddress['street'], 'number' => $issuerAddress['number'], 'district' => $issuerAddress['district'],
+                    'city_code' => $issuerAddress['city_code'], 'city_name' => $issuerAddress['city'], 'zip_code' => $issuerAddress['postal_code']]],
+            'models' => ['55' => ['series' => 1, 'next_number' => 17, 'operation_nature_id' => $this->natureId]],
+        ];
+        $headers = $this->fiscalHarnessHeaders($this->establishment);
+        $this->withHeaders($headers)->patchJson('/api/v1/erp/fiscal/configuration/'.$this->establishment->id, $issuerConfiguration)->assertOk();
+        Storage::fake('local');
+        config(['erp.fiscal_certificate_relaxed_validation' => false]);
+        $this->withHeaders($headers)->postJson('/api/v1/erp/fiscal/certificates', $this->fiscalCertificatePayload($this->establishment))->assertCreated();
+
+        $saleId = $this->send('sales', $this->reviewedBody([
+            'fiscal_model' => '55', 'erp_contact_id' => $contact->id,
+            'tax_context' => $this->classificationContext(['model' => '55', 'final_consumer' => true, 'presence' => '0']),
+            'lines' => [$this->reviewedLine(['quantity' => '1', 'unit_price' => '100', 'discount_amount' => '0', 'erp_tax_rate_id' => null])],
+        ]), $key.'-sale')->assertCreated()->json('data.id');
+        if ($post) {
+            $this->send('sales/'.$saleId.'/post', ['draft_revision' => 1], $key.'-post')->assertOk();
+        }
+
+        return [$contact, ErpSale::query()->findOrFail($saleId)];
+    }
+
+    /** @return array<string, mixed> */
+    private function reviewedFiscalSourceFromAcceptedSale(ErpSale $sale): array
+    {
+        $source = ErpFiscalModelBuilderSchemaTest::builderProvider()['NF-e 55 posted sale'][2];
+        $snapshot = $sale->commercial_snapshot;
+        $source['recipient'] = [
+            'cnpj' => $snapshot['party']['tax_id'], 'legal_name' => $snapshot['party']['name'],
+            'state_registration_indicator' => $source['recipient']['state_registration_indicator'], 'address' => $snapshot['party']['address'],
+        ];
+        $source['identity']['operation_nature'] = $snapshot['lines'][0]['product_snapshot']['operation_nature']['description'];
+        $source['items'] = array_map(function (array $line, int $index) use ($source): array {
+            $facts = $line['product_snapshot'];
+            $product = $facts['product'];
+            $tax = $facts['product_tax_resolution']['values'];
+            $typed = $source['items'][$index];
+
+            return [
+                ...$typed,
+                'source_line_id' => $line['id'], 'erp_product_variant_id' => $line['erp_product_variant_id'],
+                'code' => $facts['variant']['sku'] ?? $product['sku'], 'description' => $product['name'],
+                'ncm' => $product['ncm'], 'cfop' => $facts['operation_nature']['cfop'], 'unit' => $facts['unit']['short_name'],
+                'quantity' => $line['quantity'], 'unit_price' => $line['unit_price'], 'gross_total' => bcadd($line['gross_amount'], '0', 2),
+                'tax' => [...$typed['tax'], 'origin' => $product['origin_code'], 'icms_cst' => $tax['icms_cst'], 'icms_rate' => $tax['icms_rate'],
+                    'pis_cst' => $tax['pis_cst'], 'cofins_cst' => $tax['cofins_cst']],
+            ];
+        }, $snapshot['lines'], array_keys($snapshot['lines']));
+        $source['totals']['products'] = bcadd($snapshot['totals']['subtotal_amount'], '0', 2);
+        $source['totals']['invoice'] = bcadd($snapshot['totals']['total_amount'], '0', 2);
+        $source['totals']['icms_base'] = $source['totals']['products'];
+        $source['payment'] = [['indicator' => 0, 'method' => '01', 'amount' => $source['totals']['invoice']]];
+
+        return $source;
     }
 
     public function test_final_session_fence_failure_rolls_back_sale_finance_and_receipt(): void
