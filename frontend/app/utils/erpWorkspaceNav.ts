@@ -183,6 +183,19 @@ export function erpWorkspaceSettingsGroups(
   return destinationItems(erpSettingsNavigationGroups, path, company, onDestinationSelect)
 }
 
+/** Flat local links share the sidebar's destination/grant contracts. */
+export function erpWorkspaceDirectLinks(section: 'cadastros' | 'configuracoes', path: string, company: CompanyMembership | null): NavigationMenuItem[] {
+  const groups = section === 'cadastros' ? erpCatalogNavigationGroups : erpSettingsNavigationGroups
+  return groups.flatMap(group => group.destinations)
+    .filter(destination => companyCanSeeDestination(company, destination))
+    .map(destination => ({
+      label: destination.label,
+      to: destination.to,
+      active: path === destination.to || path.startsWith(`${destination.to}/`),
+      exact: true
+    }))
+}
+
 function moduleContract(contractId: string): ErpModulePageContract | undefined {
   return erpModulePageContracts.find(contract => contract.id === contractId)
 }

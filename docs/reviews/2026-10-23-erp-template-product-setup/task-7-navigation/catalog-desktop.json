@@ -1,0 +1,180 @@
+{
+  "active": {
+    "bottom": 104,
+    "height": 32,
+    "href": "/erp/cadastros/produtos",
+    "label": "Produtos",
+    "right": 560.21875,
+    "width": 79.40625,
+    "x": 480.8125,
+    "y": 72
+  },
+  "createActions": [
+    {
+      "bottom": 169,
+      "disabled": false,
+      "height": 32,
+      "label": "Adicionar produto",
+      "right": 1342,
+      "width": 163.328125,
+      "x": 1178.671875,
+      "y": 137
+    }
+  ],
+  "focus": {
+    "bottom": 0,
+    "height": 0,
+    "href": null,
+    "label": "Empresa Sintética Task 2Pesquisar…CtrlkVisão geralVendasComp",
+    "right": 1366,
+    "tag": "BODY",
+    "width": 1366,
+    "x": 0,
+    "y": 0
+  },
+  "hydrated": true,
+  "links": [
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/contatos",
+      "label": "Contatos",
+      "right": 338.984375,
+      "width": 78.984375,
+      "x": 260,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/grupos-clientes",
+      "label": "Grupos de clientes",
+      "right": 480.8125,
+      "width": 141.828125,
+      "x": 338.984375,
+      "y": 72
+    },
+    {
+      "active": true,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/produtos",
+      "label": "Produtos",
+      "right": 560.21875,
+      "width": 79.40625,
+      "x": 480.8125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/unidades",
+      "label": "Unidades",
+      "right": 641.484375,
+      "width": 81.265625,
+      "x": 560.21875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/marcas",
+      "label": "Marcas",
+      "right": 709.65625,
+      "width": 68.171875,
+      "x": 641.484375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/categorias",
+      "label": "Categorias",
+      "right": 800.5,
+      "width": 90.84375,
+      "x": 709.65625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/precos",
+      "label": "Preços e descontos",
+      "right": 947.109375,
+      "width": 146.609375,
+      "x": 800.5,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/fiscal",
+      "label": "Referências fiscais",
+      "right": 1090.671875,
+      "width": 143.5625,
+      "x": 947.109375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/logistica",
+      "label": "Logística",
+      "right": 1170.078125,
+      "width": 79.40625,
+      "x": 1090.671875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/importacao",
+      "label": "Importação",
+      "right": 1264.671875,
+      "width": 94.59375,
+      "x": 1170.078125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/cadastros/etiquetas",
+      "label": "Etiquetas",
+      "right": 1346.78125,
+      "width": 82.109375,
+      "x": 1264.671875,
+      "y": 72
+    }
+  ],
+  "mode": "light",
+  "navbarCount": 1,
+  "panelCount": 1,
+  "path": "/erp/cadastros/produtos",
+  "toolbar": {
+    "bottom": 113,
+    "clientWidth": 1126,
+    "height": 49,
+    "overflowX": "auto",
+    "right": 1366,
+    "scrollLeft": 0,
+    "scrollWidth": 1127,
+    "width": 1126,
+    "x": 240,
+    "y": 64
+  },
+  "viewport": {
+    "height": 900,
+    "scrollWidth": 1366,
+    "width": 1366
+  }
+}

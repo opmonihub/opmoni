@@ -22,7 +22,7 @@ function rowErrors(record: number) {
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Importação" description="Revise o CSV antes de confirmar. Nenhum cadastro é criado na pré-visualização.">
+  <ErpCatalogPageShell embedded title="Importação" description="Revise o CSV antes de confirmar. Nenhum cadastro é criado na pré-visualização.">
     <UAlert v-if="!canImport" color="warning" title="Você não tem permissão para importar nesta empresa." />
     <UAlert v-if="error" color="error" :title="error" />
     <UButton

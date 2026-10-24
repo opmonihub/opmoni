@@ -83,7 +83,7 @@ watch(labels.contextKey, () => {
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão.">
+  <ErpCatalogPageShell embedded title="Etiquetas e impressão" description="Selecione produtos e variantes, defina as quantidades e confira a impressão.">
     <UAlert v-if="error" color="error" :title="error">
       <template #actions>
         <UButton

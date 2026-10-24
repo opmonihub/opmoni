@@ -21,7 +21,7 @@ const columns = [
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Unidades" description="Unidades de medida e fatores de conversão decimal.">
+  <ErpCatalogPageShell embedded title="Unidades" description="Unidades de medida e fatores de conversão decimal.">
     <template #actions>
       <UButton
         v-if="catalogResource?.createAction.allowed"

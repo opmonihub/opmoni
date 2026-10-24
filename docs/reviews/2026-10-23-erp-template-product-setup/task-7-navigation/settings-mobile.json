@@ -1,0 +1,213 @@
+{
+  "active": {
+    "bottom": 104,
+    "height": 32,
+    "href": "/erp/configuracoes/sms",
+    "label": "SMS",
+    "right": 389.84375,
+    "width": 51.40625,
+    "x": 338.4375,
+    "y": 72
+  },
+  "createActions": [],
+  "focus": {
+    "bottom": 0,
+    "height": 0,
+    "href": null,
+    "label": "Empresa Sintética Task 2Pesquisar…CtrlkVisão geralVendasComp",
+    "right": 390,
+    "tag": "BODY",
+    "width": 390,
+    "x": 0,
+    "y": 0
+  },
+  "hydrated": true,
+  "links": [
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/empresa",
+      "label": "Empresa",
+      "right": -284.421875,
+      "width": 77.578125,
+      "x": -362,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/estabelecimentos",
+      "label": "Estabelecimentos",
+      "right": -147.515625,
+      "width": 136.90625,
+      "x": -284.421875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/taxas",
+      "label": "Taxas",
+      "right": -89.703125,
+      "width": 57.8125,
+      "x": -147.515625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/produto",
+      "label": "Produto",
+      "right": -17.421875,
+      "width": 72.28125,
+      "x": -89.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/vendas",
+      "label": "Vendas",
+      "right": 50.84375,
+      "width": 68.265625,
+      "x": -17.421875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/compras",
+      "label": "Compras",
+      "right": 129.359375,
+      "width": 78.515625,
+      "x": 50.84375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/sistema",
+      "label": "Sistema",
+      "right": 202.703125,
+      "width": 73.34375,
+      "x": 129.359375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/prefixos",
+      "label": "Prefixos",
+      "right": 276.6875,
+      "width": 73.984375,
+      "x": 202.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/email",
+      "label": "E-mail",
+      "right": 338.4375,
+      "width": 61.75,
+      "x": 276.6875,
+      "y": 72
+    },
+    {
+      "active": true,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/sms",
+      "label": "SMS",
+      "right": 389.84375,
+      "width": 51.40625,
+      "x": 338.4375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/pontos",
+      "label": "Pontos",
+      "right": 454.890625,
+      "width": 65.046875,
+      "x": 389.84375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/modulos",
+      "label": "Módulos",
+      "right": 530.953125,
+      "width": 76.0625,
+      "x": 454.890625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/rotulos",
+      "label": "Rótulos",
+      "right": 600.703125,
+      "width": 69.75,
+      "x": 530.953125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/membros",
+      "label": "Membros",
+      "right": 682.234375,
+      "width": 81.53125,
+      "x": 600.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/escritorio",
+      "label": "Escritório",
+      "right": 765,
+      "width": 82.765625,
+      "x": 682.234375,
+      "y": 72
+    }
+  ],
+  "mode": "light",
+  "navbarCount": 1,
+  "panelCount": 1,
+  "path": "/erp/configuracoes/sms",
+  "toolbar": {
+    "bottom": 113,
+    "clientWidth": 390,
+    "height": 49,
+    "overflowX": "auto",
+    "right": 390,
+    "scrollLeft": 374,
+    "scrollWidth": 1151,
+    "width": 390,
+    "x": 0,
+    "y": 64
+  },
+  "viewport": {
+    "height": 844,
+    "scrollWidth": 390,
+    "width": 390
+  }
+}

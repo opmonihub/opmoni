@@ -51,7 +51,7 @@ const createMenuItems = computed(() => [createActions.value.map(action => ({
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Preços e descontos" description="Grupos de preço e regras comerciais com valores decimais exatos.">
+  <ErpCatalogPageShell embedded title="Preços e descontos" description="Grupos de preço e regras comerciais com valores decimais exatos.">
     <template #actions>
       <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
         <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro de preços" icon="i-lucide-plus">

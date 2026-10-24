@@ -12,17 +12,10 @@ const hasDestinations = computed(() => groups.value.some(group => group[0]?.chil
 
 <template>
   <ErpCatalogPageShell
+    embedded
     title="Cadastros"
     description="Catálogos comerciais e referências fiscais/logísticas da empresa."
   >
-    <template #toolbar>
-      <UNavigationMenu
-        :items="groups"
-        orientation="horizontal"
-        highlight
-        class="w-full flex-1 flex-wrap"
-      />
-    </template>
     <UAlert
       v-if="!hasDestinations"
       color="neutral"

@@ -1,0 +1,213 @@
+{
+  "active": {
+    "bottom": 104,
+    "height": 32,
+    "href": "/erp/configuracoes/pontos",
+    "label": "Pontos",
+    "right": 389.890625,
+    "width": 65.046875,
+    "x": 324.84375,
+    "y": 72
+  },
+  "createActions": [],
+  "focus": {
+    "bottom": 104,
+    "height": 32,
+    "href": "/erp/configuracoes/pontos",
+    "label": "Pontos",
+    "right": 389.890625,
+    "tag": "A",
+    "width": 65.046875,
+    "x": 324.84375,
+    "y": 72
+  },
+  "hydrated": true,
+  "links": [
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/empresa",
+      "label": "Empresa",
+      "right": -349.421875,
+      "width": 77.578125,
+      "x": -427,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/estabelecimentos",
+      "label": "Estabelecimentos",
+      "right": -212.515625,
+      "width": 136.90625,
+      "x": -349.421875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/taxas",
+      "label": "Taxas",
+      "right": -154.703125,
+      "width": 57.8125,
+      "x": -212.515625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/produto",
+      "label": "Produto",
+      "right": -82.421875,
+      "width": 72.28125,
+      "x": -154.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/vendas",
+      "label": "Vendas",
+      "right": -14.15625,
+      "width": 68.265625,
+      "x": -82.421875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/compras",
+      "label": "Compras",
+      "right": 64.359375,
+      "width": 78.515625,
+      "x": -14.15625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/sistema",
+      "label": "Sistema",
+      "right": 137.703125,
+      "width": 73.34375,
+      "x": 64.359375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/prefixos",
+      "label": "Prefixos",
+      "right": 211.6875,
+      "width": 73.984375,
+      "x": 137.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/email",
+      "label": "E-mail",
+      "right": 273.4375,
+      "width": 61.75,
+      "x": 211.6875,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/sms",
+      "label": "SMS",
+      "right": 324.84375,
+      "width": 51.40625,
+      "x": 273.4375,
+      "y": 72
+    },
+    {
+      "active": true,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/pontos",
+      "label": "Pontos",
+      "right": 389.890625,
+      "width": 65.046875,
+      "x": 324.84375,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/modulos",
+      "label": "Módulos",
+      "right": 465.953125,
+      "width": 76.0625,
+      "x": 389.890625,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/rotulos",
+      "label": "Rótulos",
+      "right": 535.703125,
+      "width": 69.75,
+      "x": 465.953125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/membros",
+      "label": "Membros",
+      "right": 617.234375,
+      "width": 81.53125,
+      "x": 535.703125,
+      "y": 72
+    },
+    {
+      "active": false,
+      "bottom": 104,
+      "height": 32,
+      "href": "/erp/configuracoes/escritorio",
+      "label": "Escritório",
+      "right": 700,
+      "width": 82.765625,
+      "x": 617.234375,
+      "y": 72
+    }
+  ],
+  "mode": "light",
+  "navbarCount": 1,
+  "panelCount": 1,
+  "path": "/erp/configuracoes/pontos",
+  "toolbar": {
+    "bottom": 113,
+    "clientWidth": 390,
+    "height": 49,
+    "overflowX": "auto",
+    "right": 390,
+    "scrollLeft": 439,
+    "scrollWidth": 1151,
+    "width": 390,
+    "x": 0,
+    "y": 64
+  },
+  "viewport": {
+    "height": 844,
+    "scrollWidth": 390,
+    "width": 390
+  }
+}

@@ -40,8 +40,8 @@ describe('ERP core catalogs shared contracts', () => {
     assert.equal(samplePostedLineSnapshot.unit_price, '10.5000')
   })
 
-  it('cadastros hub page references catalog routes', async () => {
-    const src = await readFile(new URL('../app/pages/erp/cadastros/index.vue', import.meta.url), 'utf8')
+  it('cadastros persistent parent references authorized catalog routes', async () => {
+    const src = await readFile(new URL('../app/pages/erp/cadastros.vue', import.meta.url), 'utf8')
     const { descriptor } = parse(src)
     const script = compileScript(descriptor, { id: 'catalog-hub' })
     const template = compileTemplate({
@@ -83,17 +83,16 @@ describe('ERP core catalogs shared contracts', () => {
       }
       const rendered = () => nodes(render({ $slots: {} }, [], {}, Vue.proxyRefs(state), {}, {}))
       const destinations = (): string[] => {
-        const menu = rendered().find(node => (node.type as { name?: string }).name === 'UNavigationMenu')
+        const menu = rendered().find(node => (node.type as { name?: string }).name === 'ErpCatalogPageShell')
         assert.ok(menu, 'the actual page passes its computed registry groups to the menu')
         const flatten = (items: NavigationMenuItem[]): NavigationMenuItem[] => items.flatMap(item => [item, ...flatten(item.children ?? [])])
-        return flatten((menu.props!.items as NavigationMenuItem[][]).flat()).flatMap(item => typeof item.to === 'string' ? [item.to] : [])
+        return flatten((menu.props!.navigation as NavigationMenuItem[][]).flat()).flatMap(item => typeof item.to === 'string' ? [item.to] : [])
       }
       assert.deepEqual(destinations(), [erpCadastrosPages.contacts])
       currentCompany.value.permissions = ['erp.products.index']
       assert.ok(!destinations().includes(erpCadastrosPages.contacts), 'the page follows current permission filtering')
       currentCompany.value = null
       assert.deepEqual(destinations(), [])
-      assert.ok(rendered().some(node => node.props?.title === 'Nenhum cadastro disponível'))
     } finally {
       scope.stop()
     }

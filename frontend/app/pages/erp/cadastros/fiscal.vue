@@ -52,7 +52,7 @@ const createMenuItems = computed(() => [createActions.value.map(action => ({
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Referências fiscais" description="Alíquotas e naturezas de operação por empresa e estabelecimento.">
+  <ErpCatalogPageShell embedded title="Referências fiscais" description="Alíquotas e naturezas de operação por empresa e estabelecimento.">
     <template #actions>
       <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
         <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro fiscal" icon="i-lucide-plus">

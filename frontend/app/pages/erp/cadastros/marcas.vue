@@ -17,7 +17,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Marcas" description="Marcas comerciais disponíveis para os produtos da empresa.">
+  <ErpCatalogPageShell embedded title="Marcas" description="Marcas comerciais disponíveis para os produtos da empresa.">
     <template #actions>
       <UButton
         v-if="catalogResource?.createAction.allowed"

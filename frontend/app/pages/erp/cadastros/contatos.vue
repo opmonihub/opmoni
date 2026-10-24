@@ -21,7 +21,7 @@ const recordLabel = (record: Record<string, unknown>) => String(record.name ?? '
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Contatos" description="Clientes e fornecedores comerciais da empresa, separados do portfólio do escritório.">
+  <ErpCatalogPageShell embedded title="Contatos" description="Clientes e fornecedores comerciais da empresa, separados do portfólio do escritório.">
     <template #actions>
       <UButton
         v-if="catalogResource?.createAction.allowed"

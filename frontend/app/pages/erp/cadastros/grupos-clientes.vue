@@ -19,7 +19,7 @@ const columns = [
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Grupos de clientes" description="Organize contatos de clientes por grupo e ajuste percentual.">
+  <ErpCatalogPageShell embedded title="Grupos de clientes" description="Organize contatos de clientes por grupo e ajuste percentual.">
     <template #actions>
       <UButton
         v-if="catalogResource?.createAction.allowed"

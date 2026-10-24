@@ -1,14 +1,28 @@
 <script setup lang="ts">
 import { erpPageBodyClass } from '~/components/erp/erpPresentation'
+import type { NavigationMenuItem } from '@nuxt/ui'
 
 defineProps<{
   title: string
   description?: string
+  embedded?: boolean
+  navigation?: NavigationMenuItem[]
 }>()
 </script>
 
 <template>
-  <UDashboardPanel :ui="{ body: 'p-0 sm:p-0' }">
+  <section v-if="embedded" class="min-w-0 space-y-5" :aria-label="title">
+    <div v-if="description || $slots.actions" class="flex min-w-0 items-start justify-between gap-3">
+      <p v-if="description" class="text-muted text-sm">
+        {{ description }}
+      </p>
+      <div v-if="$slots.actions" class="flex shrink-0 items-center gap-1">
+        <slot name="actions" />
+      </div>
+    </div>
+    <slot />
+  </section>
+  <UDashboardPanel v-else :ui="{ body: 'p-0 sm:p-0' }">
     <template #header>
       <UDashboardNavbar
         :title="title"
@@ -25,7 +39,8 @@ defineProps<{
           <UserMenu collapsed class="lg:hidden" />
         </template>
       </UDashboardNavbar>
-      <UDashboardToolbar v-if="$slots.toolbar">
+      <ErpWorkspaceDestinationToolbar v-if="navigation" :items="navigation" aria-label="Navegação de cadastros" />
+      <UDashboardToolbar v-else-if="$slots.toolbar">
         <slot name="toolbar" />
       </UDashboardToolbar>
     </template>

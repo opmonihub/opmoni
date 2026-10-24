@@ -21,7 +21,7 @@ const columns = [
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Produtos" description="Mercadorias, serviços e suas variações.">
+  <ErpCatalogPageShell embedded title="Produtos" description="Mercadorias, serviços e suas variações.">
     <template #actions>
       <UButton
         v-if="catalogResource?.createAction.allowed"

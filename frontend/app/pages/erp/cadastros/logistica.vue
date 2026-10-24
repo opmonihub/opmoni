@@ -59,7 +59,7 @@ const createMenuItems = computed(() => [createActions.value.map(action => ({
 </script>
 
 <template>
-  <ErpCatalogPageShell title="Logística" description="Transportadoras, veículos e motoristas para operações de transporte.">
+  <ErpCatalogPageShell embedded title="Logística" description="Transportadoras, veículos e motoristas para operações de transporte.">
     <template #actions>
       <UDropdownMenu v-if="createActions.length" :items="createMenuItems" :content="{ onCloseAutoFocus: handoffCreateMenuFocus }">
         <UButton ref="createMenuTrigger" aria-label="Adicionar cadastro de logística" icon="i-lucide-plus">

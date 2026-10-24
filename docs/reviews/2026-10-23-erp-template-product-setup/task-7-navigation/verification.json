@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-23",
+  "reviewBase": "4933153",
+  "runtime": "Task-owned worktree frontend localhost:3340; no reference/main browser used",
+  "session": "opmoni-task7",
+  "viewports": [
+    [
+      390,
+      844
+    ],
+    [
+      1366,
+      900
+    ]
+  ],
+  "geometryCaptures": 10,
+  "screenshots": 4,
+  "assertions": [
+    "Hydrated DOM in every accepted capture",
+    "Exactly one dashboard panel and one page heading/navbar",
+    "Single native 49px toolbar with overflow-x:auto",
+    "No page-level horizontal overflow",
+    "Active link bounds inside toolbar after route/history/reload",
+    "ArrowRight focused adjacent Pontos link, visible without changing the route; Enter navigated and Back restored SMS",
+    "Product create action visible inside mobile viewport; prior child actions removed on transition in real SFC tests"
+  ],
+  "nativeBeforeFix": {
+    "activeSmsAt390": {
+      "x": 712.4375,
+      "width": 51.40625,
+      "scrollLeft": 0
+    },
+    "arrowRightFocusedPontosAt390": {
+      "x": 389.84375,
+      "right": 454.890625
+    }
+  },
+  "correction": "Use native scrollIntoView nearest only when the active/focused native link lies outside toolbar bounds; never call focus",
+  "productionAndTestSourceSha256": {
+    "frontend/app/components/erp/ErpCatalogPageShell.vue": "b5c8e1db6fb22d7cf915b31a219c77d95181af464829c9c5e64b5d7e097c32e4",
+    "frontend/app/pages/erp/cadastros/categorias.vue": "fab88b0785e0cb301f931857b6895351aea79bdcbc5ee165a91b56a024c279ee",
+    "frontend/app/pages/erp/cadastros/contatos.vue": "dd3d55218cbd09c3c782fd0021495a4f6abe3ce717d670a08b75cb21d2d9a0df",
+    "frontend/app/pages/erp/cadastros/etiquetas.vue": "4d6118abf3fe6017c06f8e56fe8d0469650a27ac25129062c709add461549cbd",
+    "frontend/app/pages/erp/cadastros/fiscal.vue": "7bed52b6a349b30a7833958348a39ba8a4fd886a505efe3f61e24128fb58707a",
+    "frontend/app/pages/erp/cadastros/grupos-clientes.vue": "7de7573fc3dca2bd47c1c5f0d4acdbd8035bdb0ab0b0eb7e05607d70c13fb275",
+    "frontend/app/pages/erp/cadastros/importacao.vue": "78f58a93c15fb57d400ccf13f5d82918bd91145da830a68683a9e9b7388b6448",
+    "frontend/app/pages/erp/cadastros/index.vue": "adc081213ceb0826c34f70003728e6599dc79347eb7d81fe85a18ac6e10ab7a4",
+    "frontend/app/pages/erp/cadastros/logistica.vue": "0a62c3717a47f8be25c880413b10aca92dac92420fb416a3423b9991d0d50920",
+    "frontend/app/pages/erp/cadastros/marcas.vue": "2a5d80a88f6c4d20d1a1034f9e8d0d15ed571e2a997321c22da4cf960fffd065",
+    "frontend/app/pages/erp/cadastros/precos.vue": "ad1d13157ec0b146bbb7819f3e7b0e60cc64e29dfe1c48b1e9de53a407457938",
+    "frontend/app/pages/erp/cadastros/produtos.vue": "5c5721bed275f76617e60b36d7c306abfdf209f5cf15478e34d8de2b8b715200",
+    "frontend/app/pages/erp/cadastros/unidades.vue": "02a293aaa06b9b22e31b7d74660b0acc91c2ceb520fe2fd8fc5c7c851e26d8c9",
+    "frontend/app/pages/erp/configuracoes.vue": "470c1cc65c52bdfb949ab35d9089cffbfadd14b3f6ec791f1fda40d4c972532e",
+    "frontend/app/utils/erpWorkspaceNav.ts": "785747ff1e459b58777b3bee0b12c628164dab505f67cc4de6adfe6bc658a120",
+    "frontend/tests/erpCoreCatalogs.test.ts": "61ce4004a820bb6b41286edd2bbfa222dada5f2bbb0ed679c3f8ce487362e4f4",
+    "frontend/app/components/erp/ErpWorkspaceDestinationToolbar.vue": "3d4bf4739d203dac1f292614a9342e86d75ee99ba2817b662650ac6c4fe763d9",
+    "frontend/app/pages/erp/cadastros.vue": "9bfcd883278c33a1edf481ce11bc01419326de19cef239ae5b62adb5212f1fcf",
+    "frontend/tests/erpPersistentNavigation.test.ts": "c9d919e1dff56b9bd84674c9dfbb69a474f9667bac00be705fdba0c693b02535"
+  },
+  "limits": [
+    "Existing light semantic styling and settings placeholder content are retained; visual-role restyling is later",
+    "No business write or provider dispatch; no editor save",
+    "Initial bounded development navigation/evaluation timeouts were not accepted as hydrated evidence"
+  ]
+}
