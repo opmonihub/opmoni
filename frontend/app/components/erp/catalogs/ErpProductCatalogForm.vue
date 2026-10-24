@@ -26,7 +26,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
+const emit = defineEmits<{ 'save': [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const barcodeTypeItems: Array<{ label: string, value: ErpBarcodeType }> = [
   { label: 'Code 128', value: 'C128' },
   { label: 'Code 39', value: 'C39' },
@@ -701,7 +701,6 @@ function submit() {
         </section>
       </template>
     </UAccordion>
-
   </UForm>
   <UModal
     v-model:open="variantArchiveOpen"

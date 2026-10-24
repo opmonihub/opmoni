@@ -480,8 +480,8 @@ defineExpose({ createAction })
     :dismissible="false"
     :unmount-on-hide="true"
     :content="{ onCloseAutoFocus: preventNativeEditorFocusRestore }"
-    @close:prevent="requestEditorClose"
     :ui="{ content: 'w-full sm:max-w-3xl' }"
+    @close:prevent="requestEditorClose"
   >
     <template #body>
       <section

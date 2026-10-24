@@ -14,7 +14,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
+const emit = defineEmits<{ 'save': [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const form = reactive({
   erp_carrier_id: null as number | null, vehicle_type: '', plate: '', uf: '', color: '', model: '', brand: '', wheel_type: '', body_type: '', owner_type: ''
 })

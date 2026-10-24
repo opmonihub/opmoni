@@ -12,7 +12,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
+const emit = defineEmits<{ 'save': [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state'] as const
 const form = reactive({
   legal_name: '', tax_id: '', ie: '', address: {} as Record<string, string>,

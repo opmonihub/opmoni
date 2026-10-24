@@ -14,7 +14,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
+const emit = defineEmits<{ 'save': [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state', 'city_code'] as const
 const initialState = ref('')
 const municipalityCodeReview = ref<{ city: string, state: string } | null>(null)

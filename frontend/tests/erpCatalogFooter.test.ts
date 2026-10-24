@@ -93,8 +93,18 @@ function mountCatalogResource() {
     error,
     fieldErrors,
     contextKey: Vue.computed(() => context.value),
-    create() { mode.value = 'create'; record.value = null; open.value = true; error.value = '' },
-    cancel() { if (!busy.value) { open.value = false; record.value = null } },
+    create() {
+      mode.value = 'create'
+      record.value = null
+      open.value = true
+      error.value = ''
+    },
+    cancel() {
+      if (!busy.value) {
+        open.value = false
+        record.value = null
+      }
+    },
     save() {
       if (busy.value) return
       saveCalls++
@@ -118,7 +128,10 @@ function mountCatalogResource() {
     stale: Vue.ref(false),
     authorityBlocked,
     refresh: async () => undefined,
-    blockAuthority(message = '') { authorityBlocked.value = true; list.error.value = message },
+    blockAuthority(message = '') {
+      authorityBlocked.value = true
+      list.error.value = message
+    },
     retry: async () => undefined
   }
   const editorComposable = { useErpCatalogEditor: () => editor }
@@ -145,7 +158,10 @@ function mountCatalogResource() {
       const input = Vue.ref('')
       return () => Vue.h('form', {
         id: props.formId,
-        onSubmit(event: Event) { event.preventDefault(); emit('save', { name: input.value }) }
+        onSubmit(event: Event) {
+          event.preventDefault()
+          emit('save', { name: input.value })
+        }
       }, [
         Vue.h('input', {
           name: 'name',
@@ -170,9 +186,9 @@ function mountCatalogResource() {
     setup(props, { attrs }) {
       return () => Vue.h('button', {
         ...attrs,
-        type: props.type,
-        form: props.form,
-        disabled: props.disabled,
+        'type': props.type,
+        'form': props.form,
+        'disabled': props.disabled,
         'aria-busy': props.loading ? 'true' : undefined
       }, String(props.label ?? ''))
     }
@@ -222,7 +238,11 @@ function mountCatalogResource() {
     setContext: (value: string) => { context.value = value },
     saveCalls: () => saveCalls,
     attemptDrawerClose: () => attemptDrawerClose(),
-    settle: async () => { await Vue.nextTick(); await Promise.resolve(); await Vue.nextTick() },
+    settle: async () => {
+      await Vue.nextTick()
+      await Promise.resolve()
+      await Vue.nextTick()
+    },
     stop: () => app.unmount()
   }
 }

@@ -12,7 +12,7 @@ const props = defineProps<{
   busy: boolean
   fieldErrors?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ save: [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
+const emit = defineEmits<{ 'save': [payload: Record<string, unknown>], 'dirty-change': [dirty: boolean] }>()
 const form = reactive({ name: '', kind: 'percentage' as 'percentage' | 'fixed', value: '0.0000', coupon_code: '' })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
 const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
