@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class ErpCompanyProvisioning
 {
-    public function __construct(private ErpCommercialCatalog $catalog) {}
+    public function __construct(
+        private ErpCommercialCatalog $catalog,
+        private ErpCompanyInitializer $initializer,
+    ) {}
 
     /**
      * @param  array{name: string, cnpj: string, establishment_name?: string|null}  $companyData
@@ -40,7 +43,9 @@ class ErpCompanyProvisioning
                 'status' => ErpSubscriptionStatus::Pending->value,
             ]);
 
-            return $company->load(['subscription.plan.modules']);
+            $this->initializer->initialize($company);
+
+            return $company->refresh()->load(['subscription.plan.modules']);
         });
     }
 }
