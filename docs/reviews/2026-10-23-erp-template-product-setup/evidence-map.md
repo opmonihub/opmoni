@@ -4,7 +4,7 @@
 
 `acceptance-coverage.csv` is the current row-level result for the 38 selected A/F/V/adopted-B items and all 91 selected delta-spec scenarios. It preserves every ID, source reference, approved task mapping, and the original eight-column CSV schema. B05 remains excluded by the approved scope.
 
-The ledger records **128 accepted local contracts and one partial external-provider boundary**. This is a local evidence disposition, not a claim that task 11.5 or the overall change has been closed. The root retains final checklist authority. Historical implementation-gap tables and old “pending” notes from earlier checkpoints are superseded by the current result below; they are not current source-state claims.
+The ledger records **128 accepted local contracts and one partial external-provider boundary**. Root reviewed all 129 result cells, refined three method mappings against actual source and completed logs, and accepted task 11.5 as delivery of this truthfully bounded ledger. The [execution report](task-execution-status.md) records all 58 tasks accepted within local scope; the conditional external-payment boundary remains partial and is not represented as a provider pass. Historical implementation-gap tables and old “pending” notes from earlier checkpoints are superseded by the current result below; they are not current source-state claims.
 
 ## Completed checks and exact provenance
 
@@ -31,4 +31,4 @@ The browser matrix is representative of page families, not every page/theme/view
 - F5's legacy `currency_id`, `purchase_currency_id`, and `cidade_id` remain opaque and intentionally unresolved. They are not reinterpreted as native IDs or counted as missing native selectors; BRL native defaults are separately verified.
 - Selected browser evidence does not imply an exhaustive visual/accessibility matrix. The 9.6 native wheel input, all page/theme combinations, every 200% zoom surface, and browser access to Admin Users remain outside the verified claim.
 
-The detailed scenario-to-task map remains in the selected OpenSpec change; the ledger is the current result-bearing crosswalk. No task checkbox, OpenSpec requirement/spec, runtime gate, or source file was changed by this documentation update.
+The detailed scenario-to-task map remains in the selected OpenSpec change; the ledger is the current result-bearing crosswalk. The ledger worker changed only its two documents. Root separately accepted the original task checkboxes after reviewing the final evidence and strict validation; no OpenSpec requirement, runtime gate or application source was changed by the final documentation reconciliation.

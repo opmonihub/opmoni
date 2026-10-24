@@ -1,5 +1,7 @@
 # ERP template and product setup — final local acceptance
 
+All **58 original tasks** are accepted within the selected implementation/local scope; the 129-row ledger preserves one explicit external-provider dependency rather than claiming live charge acceptance.
+
 Recorded 2026-10-24 in isolated `codex/align-erp-template-and-product-setup`. This is implementation and local acceptance of the selected change. Main, production configuration, release/registration/provider gates, existing identities and development stores are preserved. Sync, archive, merge, push and production rollout are separate workflows.
 
 ## Complete checks and source identities

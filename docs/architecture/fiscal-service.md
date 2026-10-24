@@ -54,3 +54,12 @@ These paths describe the planned layout; recording it does not scaffold or imple
 Customer A1 certificates (`.pfx`/`.p12`) and captured XML documents belong in persistent Docker volumes, outside the Git repository. Certificates and their passwords must be stored encrypted. Real credentials must not appear in `.env.example`, source code, or logs.
 
 Volume names, container mount paths, storage implementation, API contracts, customer isolation, and capture scheduling will be defined in the service design before implementation.
+
+
+## ERP issuance source boundary — 2026-10-24
+
+ERP fiscal issuance is separate from Office capture and remains inside `backend/app/Erp/Fiscal/`; it does not implement the extraction above. The isolated [template/product setup change](../../openspec/changes/align-erp-template-and-product-setup/proposal.md) adds reviewed commercial source facts consumed by ERP issuance. Product tax profiles and operational CFOP resolution are independent; explicit review freezes their effective facts and provenance without changing money, unit or stock identity.
+
+A nullable sale `fiscal_model` of 55/65 enables applicable pre-post commercial-source prerequisite checks. `source_prerequisites_checked` is a saved source state, not certificate validation, full model readiness or SEFAZ authorization. Basic nonfiscal sales retain their contract. Linked fiscal preparation uses accepted frozen facts, verifies current issuer-nature compatibility before numbering and rejects incomplete/malformed evidence rather than resolving it from today's catalog. Complete historical commercial-v1 sources remain readable without invented provenance; commercial-v2 keeps its validated resolution/configuration evidence and legitimate null intent maps.
+
+The [integration report](../reviews/2026-10-23-erp-template-product-setup/commercial-fiscal-integration.md) records these reader contracts. The [final local acceptance](../reviews/2026-10-23-erp-template-product-setup/final-local-acceptance.md) adds full regular/PostgreSQL/frontend and sequential real-API results, with explicit provider boundaries. Native queue/authorization/unknown-result recovery and private certificate/XML storage remain authoritative. No production provider, release or registration gate was enabled by this change; local source acceptance does not establish live issuance or move capture into a separate service.

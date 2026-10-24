@@ -1,17 +1,17 @@
 # OpenSpec task execution report
 
-Snapshot: 2026-10-24, America/Sao_Paulo. Change: `align-erp-template-and-product-setup`. Implementation source: `7d9b6bf` (frontend), `0c29afc` (regular backend), `53ed7e5` (full PostgreSQL) in isolated branch `codex/align-erp-template-and-product-setup`. The original OpenSpec task checklist controls acceptance. This report is a point-in-time snapshot; implementation continues.
+Snapshot: 2026-10-24, America/Sao_Paulo. Change: `align-erp-template-and-product-setup`. Implementation source: `7d9b6bf` (frontend), `0c29afc` (regular backend), `53ed7e5` (full PostgreSQL) in isolated branch `codex/align-erp-template-and-product-setup`. The original OpenSpec task checklist controls acceptance. This report records final local acceptance. Sync/archive and production rollout remain separate.
 
-**57 of 58 tasks accepted; final evidence reconciliation remains.** Implementation, passing focused tests, source review and full acceptance are distinct states. No merge, push, archive or production/provider rollout was performed.
+**58 of 58 tasks accepted for the selected implementation/local acceptance scope.** Implementation, passing focused tests, source review and full acceptance are distinct states. No merge, push, archive or production/provider rollout was performed.
 
 | State | Tasks |
 |---|---:|
-| Accepted | 57 |
-| Final evidence reconciliation and strict validation | 1 |
+| Accepted | 58 |
+| Remaining original tasks | 0 |
 
 ## Complete task inventory
 
-Every original task appears below, including queued tasks. Queued work has not been executed or accepted.
+Every original task appears below with its final local acceptance evidence and limits.
 
 ### 1. Establish the implementation baseline
 
@@ -124,7 +124,7 @@ Every original task appears below, including queued tasks. Queued work has not b
 | 11.2 | Run the complete regular backend checks from the host repository layout with `FISCAL_ENVIRONMENT=producao composer test` and changed-PHP formatting with `vendor/bin/pint --dirty --format agent` from `backend/`; verify results distinguish optional live-provider skips from local contract acceptance. | **Accepted** | Complete regular composer test at0c29afc native+outer0:3470total3467pass3optional liveSERPROskip32656assertions0errors/failures;1405backend hashes unchanged. Actual changed9PHP dirty Pint0/no formatterdiff and later canonical dirtyPint0 recorded separately. Prior170fixture failures retained; native reviewed producers and local release fixture modes fixed, no persistent gate changes. |
 | 11.3 | Record matched template/Opmoni/ERP browser evidence at desktop 1366px, mobile 390px, an intermediate viewport and 200% zoom in light/dark; verify settings, product/basic/advanced editors, Finance, Sales, Fiscal, Reports and office regressions for geometry, contrast, hierarchy, scroll, keyboard/focus and overlay behavior. | **Accepted** | Representative family matrix from32matched baseline pairs plus final Settings/Product/Finance/Sales/Fiscal/Reports/Office browser reports covers1366/390/intermediate/native200 light/dark samples, overlays, keyboard/focus/internal scroll, actual denial/empty states and measured final contrast. Rejected light-mislabeled-dark image retained and superseded. Not every viewport/theme cross-product or full WCAG certification. |
 | 11.4 | Exercise isolated fresh-company defaults, existing-company preview/apply, product profile adoption/overrides, nature choice/default/exception setup, reviewed commercial tax/CFOP refresh and fiscal-readiness correction as real browser/API flows; verify denied/stale/failure/retry states, old-source consultation and retained operation identities without live dispatch or changed production gates. | **Accepted** | Independent source and runtime review PASS. Actual network-none loopback API clientPID1/serverPID9:96HTTPsteps, all expected,0transporterrors,native/container/outer0. Native freshpendingCompany defaults, existing preview/stale/apply/replay, profile/CFOP setup, reviewed refresh, intended55 correction, real oldpostedv2 consultation and viewer/revoked boundaries. Exactly2posted/2obligations,0fiscal/queue/stock/payment effects. Retained isolated SQLite, no live dispatch/gate change. |
-| 11.5 | Deliver an implementation evidence ledger mapping A/F/V and adopted B items plus spec scenarios to results, remaining dependencies and live-provider limits, update affected architecture/reconciliation documentation truthfully, and verify `openspec validate align-erp-template-and-product-setup --strict --no-interactive`; leave sync/archive and production rollout as separate workflows. | **In progress** | All58 original tasks are inventoried here; evidence map and source provenance delivered. Final scenario results, architecture reconciliation and strict validation remain. |
+| 11.5 | Deliver an implementation evidence ledger mapping A/F/V and adopted B items plus spec scenarios to results, remaining dependencies and live-provider limits, update affected architecture/reconciliation documentation truthfully, and verify `openspec validate align-erp-template-and-product-setup --strict --no-interactive`; leave sync/archive and production rollout as separate workflows. | **Accepted** | All38 A/F/V/adoptedB items and91delta scenarios retain stable IDs/schema/task scope in the129-row ledger.128local results accepted; Provider response is unknown remains explicitly partial at the external payment-adapter boundary, without claiming a real charge test. Architecture/reconciliation and final source/check/browser/API reports updated. Selected-change strict validation passed; remaining provider/physical print/opaque namespace/accessibility limits are disclosed. No sync/archive/rollout. |
 
 ## Verification boundaries
 
@@ -135,4 +135,4 @@ Every original task appears below, including queued tasks. Queued work has not b
 
 ## Parallel execution
 
-Separate project-root worktrees isolate presentation, typed settings, product editor, contact geography, native setup/numbering, profile backend, CFOP lookup, financial choices and typed fiscal forms. Shared source ownership, heavyweight checks, reviews and integration are coordinated. Remaining tasks run in dependency-aware waves; this is not a claim of 50 agents executing simultaneously. Requested model routing and actual token/cost telemetry are distinct; actual per-agent routing/cost is unavailable.
+Separate project-root worktrees isolate presentation, typed settings, product editor, contact geography, native setup/numbering, profile backend, CFOP lookup, financial choices and typed fiscal forms. Shared source ownership, heavyweight checks, reviews and integration are coordinated. Work ran in dependency-aware waves; this is not a claim of 50 agents executing simultaneously. Requested model routing and actual token/cost telemetry are distinct; actual per-agent routing/cost is unavailable.
