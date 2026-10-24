@@ -22,8 +22,8 @@
 
 ## 4. Simplify products and typed settings
 
-- [ ] 4.1 Add grouped settings metadata and string-code/exact-decimal semantics across frontend/API validation; verify save/reload of `00`, `01`, `101`, zero rates, invalid-code feedback and visible unresolved legacy numeric values using settings/catalog tests.
-- [ ] 4.2 Refactor the product editor into a short basic section and optional Commercial details/Fiscal/Variants sections; verify name/unit-only save, service stock rules, unchanged advanced values, existing variant IDs/archive state and nullable price inheritance.
+- [x] 4.1 Add grouped settings metadata and string-code/exact-decimal semantics across frontend/API validation; verify save/reload of `00`, `01`, `101`, zero rates, invalid-code feedback and visible unresolved legacy numeric values using settings/catalog tests.
+- [x] 4.2 Refactor the product editor into a short basic section and optional Commercial details/Fiscal/Variants sections; verify name/unit-only save, service stock rules, unchanged advanced values, existing variant IDs/archive state and nullable price inheritance.
 - [ ] 4.3 Move catalog primary/cancel actions to the reachable shared footer with native form association and consistent dirty-close behavior; verify pending/duplicate prevention, error focus, close/backdrop/Escape, dirty-input preservation and return focus at desktop/mobile.
 - [ ] 4.4 Group company settings into meaningful tasks without losing the current save/error/authority contract; verify field-key preservation, read-only consultation, named 422 feedback and late responses after Company/Account/session changes.
 

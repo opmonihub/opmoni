@@ -1,13 +1,13 @@
 # OpenSpec task execution report
 
-Snapshot: 2026-10-24, America/Sao_Paulo. Change: `align-erp-template-and-product-setup`. Implementation source: `293f623` in isolated branch `codex/align-erp-template-and-product-setup`. The original OpenSpec task checklist controls acceptance. This report is a point-in-time snapshot; implementation continues.
+Snapshot: 2026-10-24, America/Sao_Paulo. Change: `align-erp-template-and-product-setup`. Implementation source: `293f623` (acceptance checkpoint `4ae28ca`) in isolated branch `codex/align-erp-template-and-product-setup`. The original OpenSpec task checklist controls acceptance. This report is a point-in-time snapshot; implementation continues.
 
-**16 of 58 tasks accepted; 42 remain.** Implementation, passing focused tests, source review and full acceptance are distinct states. No merge, push, archive or production/provider rollout was performed.
+**18 of 58 tasks accepted; 40 remain.** Implementation, passing focused tests, source review and full acceptance are distinct states. No merge, push, archive or production/provider rollout was performed.
 
 | State | Tasks |
 |---|---:|
-| Accepted | 16 |
-| Implemented; browser acceptance pending | 3 |
+| Accepted | 18 |
+| Implemented; browser acceptance pending | 1 |
 | Partial implementation | 1 |
 | Queued | 27 |
 | Implemented; final checks and review pending | 1 |
@@ -56,8 +56,8 @@ Every original task appears below, including queued tasks. Queued work has not b
 
 | Task | Requirement | Current state | Evidence / remaining work |
 |---|---|---|---|
-| 4.1 | Add grouped settings metadata and string-code/exact-decimal semantics across frontend/API validation; verify save/reload of `00`, `01`, `101`, zero rates, invalid-code feedback and visible unresolved legacy numeric values using settings/catalog tests. | **Implemented; browser acceptance pending** | 83c495a/aa2b0ae/c6e4170 integrated. Backend 9/66 and frontend66 passed, named error/group fix independently approved; integrated44/478 and frontend172/typecheck/lint passed. Actual browser save/reload acceptance remains. |
-| 4.2 | Refactor the product editor into a short basic section and optional Commercial details/Fiscal/Variants sections; verify name/unit-only save, service stock rules, unchanged advanced values, existing variant IDs/archive state and nullable price inheritance. | **Implemented; browser acceptance pending** | 7bbf6c4/00e185b/df5d8bf integrated. Dedicated6 and legacy65 tests, typecheck/lint passed; hidden422 correction independently approved. Browser/API save acceptance remains. |
+| 4.1 | Add grouped settings metadata and string-code/exact-decimal semantics across frontend/API validation; verify save/reload of `00`, `01`, `101`, zero rates, invalid-code feedback and visible unresolved legacy numeric values using settings/catalog tests. | **Accepted** | 83c495a/aa2b0ae/c6e4170 integrated. Backend 9/66 and frontend66 passed, named error/group fix independently approved; integrated44/478 and frontend172/typecheck/lint passed. Combined browser/API acceptance remains under task11.3/11.4. |
+| 4.2 | Refactor the product editor into a short basic section and optional Commercial details/Fiscal/Variants sections; verify name/unit-only save, service stock rules, unchanged advanced values, existing variant IDs/archive state and nullable price inheritance. | **Accepted** | 7bbf6c4/00e185b/df5d8bf integrated. Dedicated6 and legacy65 tests, typecheck/lint passed; hidden422 correction independently approved. Combined browser/API acceptance remains under task11.3/11.4. |
 | 4.3 | Move catalog primary/cancel actions to the reachable shared footer with native form association and consistent dirty-close behavior; verify pending/duplicate prevention, error focus, close/backdrop/Escape, dirty-input preservation and return focus at desktop/mobile. | **Queued** | Scheduled after its prerequisite interfaces and isolated ownership are available. |
 | 4.4 | Group company settings into meaningful tasks without losing the current save/error/authority contract; verify field-key preservation, read-only consultation, named 422 feedback and late responses after Company/Account/session changes. | **Queued** | Scheduled after its prerequisite interfaces and isolated ownership are available. |
 
