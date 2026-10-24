@@ -512,7 +512,9 @@ class ErpFiscalIssuanceService
         if ((int) ($nature['id'] ?? 0) !== (int) ($settings['operation_nature_id'] ?? 0)) {
             throw ValidationException::withMessages(['source.identity.operation_nature' => 'A natureza configurada no emissor deve corresponder à natureza revisada da venda.']);
         }
-        if ((string) ($source['identity']['operation_nature'] ?? '') !== (string) $nature['description']) {
+        if (! array_key_exists('operation_nature', $source['identity'])) {
+            $source['identity']['operation_nature'] = $nature['description'];
+        } elseif ((string) $source['identity']['operation_nature'] !== (string) $nature['description']) {
             throw ValidationException::withMessages(['source.identity.operation_nature' => 'A natureza informada deve corresponder à natureza revisada da venda.']);
         }
         $source['operation_nature'] = $nature;

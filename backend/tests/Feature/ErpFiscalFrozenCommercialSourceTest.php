@@ -35,6 +35,31 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         yield 'NFC-e 65' => ['65'];
     }
 
+    /** @return iterable<string, array{string, string, string}> */
+    public static function incompleteResolvedProvenanceCases(): iterable
+    {
+        yield 'missing product tax configuration' => ['product-tax-configuration', 'missing', 'source.items.0.provenance.product_tax_configuration'];
+        yield 'malformed product tax configuration identity' => ['product-tax-configuration', 'malformed', 'source.items.0.provenance.product_tax_configuration'];
+        yield 'missing product tax configuration value' => ['product-tax-configuration-values', 'missing', 'source.items.0.provenance.product_tax_configuration'];
+        yield 'selected profile identity mismatch' => ['product-tax-profile-identity', 'malformed', 'source.items.0.provenance.product_tax_resolution.profile'];
+        yield 'missing product tax source map' => ['product-tax-sources', 'missing', 'source.items.0.provenance.product_tax_resolution.sources'];
+        yield 'malformed product tax source entry' => ['product-tax-sources', 'malformed', 'source.items.0.provenance.product_tax_resolution.sources'];
+        yield 'profile source identity mismatch' => ['product-tax-source-identity', 'malformed', 'source.items.0.provenance.product_tax_resolution.sources.pis_cst'];
+        yield 'unknown product tax resolution version' => ['product-tax-version', 'malformed', 'source.items.0.provenance.product_tax_resolution'];
+        yield 'missing CFOP applicability' => ['cfop-applicability', 'missing', 'source.items.0.provenance.cfop_resolution.applicability'];
+        yield 'unsupported CFOP applicability' => ['cfop-applicability', 'malformed', 'source.items.0.provenance.cfop_resolution.applicability'];
+        yield 'product tax identity mismatch' => ['product-tax-identity', 'malformed', 'source.items.0.provenance.product_tax_resolution.product_id'];
+        yield 'CFOP nature identity mismatch' => ['cfop-nature-identity', 'malformed', 'source.items.0'];
+    }
+
+    /** @return iterable<string, array{mixed, string}> */
+    public static function explicitOperationNatureValues(): iterable
+    {
+        yield 'divergent text' => ['Texto deliberadamente divergente', 'consumer-divergent-nature'];
+        yield 'explicit null' => [null, 'consumer-explicit-null-nature'];
+        yield 'explicit empty text' => ['', 'consumer-explicit-empty-nature'];
+    }
+
     #[DataProvider('goodsModels')]
     public function test_linked_fiscal_source_preserves_reviewed_exception_and_tax_facts_after_catalog_edits(string $model): void
     {
@@ -42,6 +67,9 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $saleId = $sale->id;
         $contact = ErpContact::query()->findOrFail($sale->erp_contact_id);
         $frozen = $sale->commercial_snapshot;
+        $productFacts = $frozen['lines'][0]['product_snapshot'];
+        $this->assertArrayHasKey('id', $productFacts['product']);
+        $this->assertSame((int) $productFacts['product']['id'], (int) $productFacts['product_tax_resolution']['product_id']);
         $source = $this->sourceFromFrozenSale($sale, $model);
 
         $this->changeFiscalProfileAfterPosting();
@@ -80,6 +108,7 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $sale = $this->createReadyPostedSale('55', 'nature');
         $saleId = $sale->id;
         $source = $this->sourceFromFrozenSale($sale, '55');
+        unset($source['identity']['operation_nature']);
 
         $otherNature = ErpOperationNature::factory()->create([
             'erp_company_id' => $this->company->id,
@@ -100,6 +129,118 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $this->assertDatabaseCount('erp_fiscal_documents', 0);
         $this->assertDatabaseCount('erp_fiscal_attempts', 0);
         $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
+    }
+
+    #[DataProvider('goodsModels')]
+    public function test_frontend_shaped_linked_sale_source_can_omit_identity_operation_nature(string $model): void
+    {
+        $sale = $this->createReadyPostedSale($model, 'consumer-omits-nature-'.$model);
+        $source = $this->sourceFromFrozenSale($sale, $model);
+        unset($source['identity']['operation_nature']);
+
+        $documentId = $this->send('fiscal/documents', [
+            'erp_sale_id' => $sale->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'model' => $model,
+            'number' => 17,
+            'idempotency_key' => 'consumer-omits-nature-'.$model,
+            'source' => $source,
+        ])->assertCreated()->json('data.id');
+
+        $document = ErpFiscalDocument::query()->findOrFail($documentId);
+        $attempt = $document->attempts()->where('action', 'document:draft')->sole();
+        $request = app(ErpFiscalAttemptAuthorization::class)->sourceSnapshot($attempt)['request']['source'];
+        $this->assertSame($sale->commercial_snapshot['lines'][0]['product_snapshot']['operation_nature']['description'], $request['identity']['operation_nature']);
+        $this->assertSame($sale->commercial_snapshot['lines'][0]['product_snapshot']['operation_nature']['id'], $request['operation_nature']['id']);
+        $this->assertDatabaseMissing('erp_fiscal_attempts', ['action' => 'document:transmit']);
+    }
+
+    #[DataProvider('explicitOperationNatureValues')]
+    public function test_frontend_shaped_source_does_not_replace_explicit_operation_nature(mixed $operationNature, string $key): void
+    {
+        $sale = $this->createReadyPostedSale('55', $key);
+        $source = $this->sourceFromFrozenSale($sale, '55');
+        $source['identity']['operation_nature'] = $operationNature;
+
+        $this->send('fiscal/documents', [
+            'erp_sale_id' => $sale->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'model' => '55',
+            'number' => 17,
+            'idempotency_key' => $key,
+            'source' => $source,
+        ])->assertUnprocessable()->assertJsonValidationErrors('source.identity.operation_nature');
+
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
+    }
+
+    #[DataProvider('incompleteResolvedProvenanceCases')]
+    public function test_incomplete_v2_resolution_metadata_is_rejected_without_repair(string $group, string $mutation, string $errorPath): void
+    {
+        $sale = $this->createReadyPostedSale('55', 'incomplete-v2-'.$group.'-'.$mutation);
+        $source = $this->sourceFromFrozenSale($sale, '55');
+        $snapshot = $sale->commercial_snapshot;
+        $facts = &$snapshot['lines'][0]['product_snapshot'];
+
+        switch ($group) {
+            case 'product-tax-configuration':
+                if ($mutation === 'missing') {
+                    unset($facts['product_tax_configuration']);
+                } else {
+                    $facts['product_tax_configuration']['profile_id'] = 'invalid-profile-id';
+                }
+                break;
+            case 'product-tax-configuration-values':
+                unset($facts['product_tax_configuration']['values']['icms_cst']);
+                break;
+            case 'product-tax-profile-identity':
+                $facts['product_tax_configuration']['profile_id'] = (int) $facts['product_tax_configuration']['profile_id'] + 1;
+                break;
+            case 'product-tax-sources':
+                if ($mutation === 'missing') {
+                    unset($facts['product_tax_resolution']['sources']);
+                } else {
+                    $facts['product_tax_resolution']['sources']['pis_cst'] = [];
+                }
+                break;
+            case 'product-tax-source-identity':
+                $facts['product_tax_resolution']['sources']['pis_cst']['profile_id']++;
+                break;
+            case 'product-tax-version':
+                $facts['product_tax_resolution']['version'] = 'product-tax-v2';
+                break;
+            case 'cfop-applicability':
+                if ($mutation === 'missing') {
+                    unset($facts['cfop_resolution']['applicability']);
+                } else {
+                    $facts['cfop_resolution']['applicability']['status'] = 'unsupported';
+                }
+                break;
+            case 'product-tax-identity':
+                $facts['product_tax_resolution']['product_id'] = (int) $facts['product']['id'] + 1;
+                break;
+            case 'cfop-nature-identity':
+                $facts['cfop_resolution']['nature_id'] = (int) $facts['operation_nature']['id'] + 1;
+                break;
+        }
+        unset($facts);
+        $sale->update(['commercial_snapshot' => $snapshot]);
+
+        $this->send('fiscal/documents', [
+            'erp_sale_id' => $sale->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'model' => '55',
+            'number' => 17,
+            'idempotency_key' => 'incomplete-v2-'.$group.'-'.$mutation,
+            'source' => $source,
+        ])->assertUnprocessable()->assertJsonValidationErrors($errorPath);
+
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
+        $this->assertSame($snapshot, $sale->fresh()->commercial_snapshot);
     }
 
     public function test_linked_source_rejects_each_existing_party_item_tax_and_amount_divergence(): void
@@ -231,6 +372,7 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $sale->update(['fiscal_model' => null, 'commercial_snapshot' => $frozen]);
         $sale = $sale->fresh();
         $source = $this->sourceFromHistoricalSale($sale);
+        unset($source['identity']['operation_nature']);
         $this->assertNull($source['items'][0]['erp_product_variant_id']);
         $this->assertSame('5101', $source['items'][0]['cfop']);
         $this->assertSame('5102', ErpOperationNature::query()->findOrFail($this->natureId)->cfop);
