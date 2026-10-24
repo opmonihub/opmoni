@@ -13,7 +13,7 @@ const itemLabels: Record<string, string> = {
   'operating_settings.time_zone': 'Fuso horário',
   'operating_settings.fy_start_month': 'Início do ano fiscal',
   'operating_settings.accounting_method': 'Método contábil',
-  'operating_settings.stock_overselling_enabled': 'Venda sem excesso de estoque'
+  'operating_settings.stock_overselling_enabled': 'Permitir venda sem estoque suficiente'
 }
 
 const reasonLabels: Record<string, string> = {

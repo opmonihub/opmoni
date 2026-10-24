@@ -353,6 +353,30 @@ describe('company initialization reconciliation authority and recovery', () => {
 })
 
 describe('company initialization reconciliation interface', () => {
+  it('labels the stock preference as permission to sell without sufficient inventory', async (t) => {
+    const workspace = {
+      canPreview: Vue.ref(true),
+      canApply: Vue.ref(false),
+      canRetryExact: Vue.ref(false),
+      busy: Vue.ref(false),
+      review: Vue.ref<InitializationPreview | null>({
+        ...previewResult,
+        items: [{ key: 'operating_settings.stock_overselling_enabled', status: 'create', reason: 'missing_preference', before: true, after: false, effective_changed: true }]
+      }),
+      outcome: Vue.ref<InitializationOutcome | null>(null),
+      error: Vue.ref(''),
+      needsReconciliation: Vue.ref(false),
+      preview: async () => {},
+      apply: async () => {},
+      reconcile: async () => {},
+      retryExact: async () => {}
+    }
+    const mounted = mountReconciliationComponent(t, workspace)
+    await flush()
+    assert.match(mounted.text(), /Permitir venda sem estoque suficiente/)
+    assert.match(mounted.text(), /Sim Não/)
+  })
+
   it('applies the real preview proof when the owner clicks the Apply button', async (t) => {
     const calls: ApiCall[] = []
     const app = initializationHarness(async (path, options) => {
@@ -399,7 +423,7 @@ describe('company initialization reconciliation interface', () => {
     await flush()
     const proposed = mounted.text()
     assert.match(proposed, /Início do ano fiscal/)
-    assert.match(proposed, /Venda sem excesso de estoque/)
+    assert.match(proposed, /Permitir venda sem estoque suficiente/)
     assert.match(proposed, /UN · Unidade · unidade inteira/)
     assert.match(proposed, /Consumidor final/)
     assert.match(proposed, /Vendas · sem prefixo · inicia em 1 · 4 dígitos/)
