@@ -447,7 +447,7 @@ class ErpFiscalDurableAttemptTest extends TestCase
 
     private function httpIssuer(): array
     {
-        config(['access.ingress_key' => 'test-key', 'erp.operating_writes_enabled' => true, 'erp.release_enabled' => true,
+        config(['access.ingress_key' => 'test-key', 'erp.operating_writes_enabled' => true, 'erp.release_enabled' => true, 'erp.release_mode' => 'production',
             'cache.default' => 'array', 'session.driver' => 'array', 'session.store' => null]);
         Storage::fake('local');
         $this->withHeaders(['X-Opmoni-Ingress-Key' => 'test-key', 'X-Opmoni-Client-IP' => '127.0.0.1', 'X-Opmoni-Client-Proto' => 'http', 'Origin' => 'http://localhost:3000']);
