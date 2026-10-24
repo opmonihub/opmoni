@@ -33,7 +33,7 @@
 - [x] 5.2 Implement the idempotent native initializer inside provisioning for locale/time/BRL preferences, whole-unit UN and default customer; verify successful basic setup, fault-injected atomic rollback and unchanged owner/Matriz/subscription/access behavior in backend feature tests.
 - [ ] 5.3 Expose typed `native_defaults` alongside preserved legacy settings and connect default unit/currency to their product/commercial consumers; verify first-product unit resolution, unavailable-reference recovery, BRL propagation and no same-number mapping of opaque legacy IDs.
 - [ ] 5.4 Connect the native default customer to eligible counter sales without inventing recipient facts; verify same-company selection, authorized override, existing explicit customer preservation and model-specific fiscal incompleteness feedback.
-- [ ] 5.5 Connect existing invoice schemes to the authoritative commercial allocator; verify new-company blank-prefix/four-digit sales, unchanged quote/order and existing-company numbering, collision skipping, immutable draft numbers and no sequence reset on rerun/default change.
+- [x] 5.5 Connect existing invoice schemes to the authoritative commercial allocator; verify new-company blank-prefix/four-digit sales, unchanged quote/order and existing-company numbering, collision skipping, immutable draft numbers and no sequence reset on rerun/default change.
 - [ ] 5.6 Connect native commercial layouts to an authorized sale representation/print action with frozen relevant labels/settings; verify localized output, retained historical layout, company access, retry/failure behavior and clear separation from payment receipts and fiscal DANFE artifacts.
 
 ## 6. Reconcile existing-company setup safely
