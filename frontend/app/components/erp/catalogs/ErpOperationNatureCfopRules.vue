@@ -35,15 +35,17 @@ const allChoiceItems = computed(() => {
   const choices = [...rules.choices.value, ...Object.values(rules.exceptionChoiceRefs.value)]
   return [...new Map(choices.filter(choice => choice.id !== null).map(choice => [choice.id, choice])).values()]
 })
-const exceptionChoiceItems = computed(() => allChoiceItems.value.map(choice => ({ label: choice.cfop, value: choice.cfop })))
-const selectedExceptionChoice = computed(() => allChoiceItems.value.find(choice => choice.cfop === exceptionChoiceCode.value && choice.id !== null))
+const activeChoiceItems = computed(() => allChoiceItems.value.filter(choice => choice.status === 'active'))
+const exceptionChoiceItems = computed(() => activeChoiceItems.value.map(choice => ({ label: choice.cfop, value: choice.cfop })))
+const selectedExceptionChoice = computed(() => activeChoiceItems.value.find(choice => choice.cfop === exceptionChoiceCode.value))
 const selectedCfopRecord = computed(() => rules.cfopResults.value.find((item: ErpOperationNatureCfopReference) => item.code === rules.selectedCfop.value?.code))
+const exceptionDraftChoice = (exceptionId: number) => allChoiceItems.value.find(choice => choice.cfop === exceptionChoiceDrafts.value[exceptionId] && choice.id !== null && choice.status === 'active')
 
 watch([rules.exceptions, rules.choices, rules.exceptionChoiceRefs], ([rows]) => {
   for (const exception of rows) {
     const choice = allChoiceItems.value.find(item => item.id === exception.erp_operation_nature_cfop_choice_id)
     if (choice && exceptionChoiceDrafts.value[exception.id] === undefined)
-      exceptionChoiceDrafts.value[exception.id] = choice.cfop
+      exceptionChoiceDrafts.value[exception.id] = choice.status === 'active' ? choice.cfop : ''
   }
 }, { immediate: true })
 
@@ -276,7 +278,7 @@ async function addException() {
             :items="exceptionChoiceItems"
             value-key="value"
             placeholder="Selecione uma opção salva"
-            :disabled="!rules.canMutate.value || !allChoiceItems.length || rules.pending.value"
+            :disabled="!rules.canMutate.value || !activeChoiceItems.length || rules.pending.value"
             class="w-full"
           />
         </UFormField>
@@ -349,20 +351,20 @@ async function addException() {
           v-model="exceptionChoiceDrafts[exception.id]"
           :items="exceptionChoiceItems"
           value-key="value"
-          :placeholder="`CFOP ${rules.choices.value.find(choice => choice.id === exception.erp_operation_nature_cfop_choice_id)?.cfop ?? 'indisponível'}`"
-          :disabled="!rules.canMutate.value || !allChoiceItems.length || rules.pending.value"
+          :placeholder="`CFOP ${allChoiceItems.find(choice => choice.id === exception.erp_operation_nature_cfop_choice_id)?.cfop ?? 'indisponível'}`"
+          :disabled="!rules.canMutate.value || !activeChoiceItems.length || rules.pending.value"
           aria-label="CFOP permitido para exceção"
           class="w-full"
         />
         <div class="flex justify-end gap-1">
           <UButton
-            v-if="exceptionChoiceDrafts[exception.id] && rules.choices.value.some(choice => choice.cfop === exceptionChoiceDrafts[exception.id] && choice.id !== exception.erp_operation_nature_cfop_choice_id)"
+            v-if="exceptionDraftChoice(exception.id) && exceptionDraftChoice(exception.id)!.id !== exception.erp_operation_nature_cfop_choice_id"
             label="Atualizar CFOP"
             size="xs"
             color="neutral"
             variant="outline"
             :disabled="!rules.canMutate.value || rules.pending.value"
-            @click="rules.updateException(exception, rules.choices.value.find(choice => choice.cfop === exceptionChoiceDrafts[exception.id])!.id!)"
+            @click="rules.updateException(exception, exceptionDraftChoice(exception.id)!.id!)"
           />
           <UButton
             :label="archiveExceptionId === exception.id ? 'Cancelar' : 'Arquivar'"

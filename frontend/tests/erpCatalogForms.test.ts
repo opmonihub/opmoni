@@ -93,11 +93,34 @@ function isEffectivelyDisabled(node: HostNode): boolean {
   return false
 }
 
+function mockNatureRules() {
+  const choice = { id: 18, cfop: '6102', reference_version: 'reference-v1', status: 'active', implicit: false }
+  const oldChoice = { id: 17, cfop: '5102', reference_version: 'reference-v1', status: 'active', implicit: false }
+  const exception = { id: 41, erp_product_id: 91, erp_operation_nature_cfop_choice_id: 17, product: { id: 91, name: 'Café', sku: 'CAF-1' } }
+  const updates: Array<{ exception: unknown, choiceId: number }> = []
+  const rules = {
+    choices: Vue.ref([choice]), exceptions: Vue.ref([] as typeof exception[]), exceptionChoiceRefs: Vue.ref({} as Record<number, typeof oldChoice>),
+    cfopResults: Vue.ref([]), productResults: Vue.ref([]), revision: Vue.ref(4), choicesPage: Vue.ref(1), exceptionsPage: Vue.ref(1), cfopsPage: Vue.ref(1), productsPage: Vue.ref(1),
+    choiceSearch: Vue.ref(''), exceptionSearch: Vue.ref(''), cfopSearch: Vue.ref(''), productSearch: Vue.ref(''), selectedProduct: Vue.ref(null), selectedCfop: Vue.ref(null), selectedExceptionChoiceCode: Vue.ref(''),
+    choiceLastPage: Vue.ref(1), exceptionLastPage: Vue.ref(1), cfopsLastPage: Vue.ref(1), productsLastPage: Vue.ref(1), pending: Vue.ref(false), error: Vue.ref(''), reviewRequired: Vue.ref(false),
+    authorityBlocked: Vue.ref(false), requiresReopen: Vue.ref(false), canMutate: Vue.ref(true), canSearchProducts: Vue.ref(false), cfopResultsCurrent: Vue.ref(false), productResultsCurrent: Vue.ref(false),
+    load: async () => {}, reviewCurrent: async () => true, retry: async () => true, addChoice: async () => true, setDefault: async () => ({ code: '6102', expected_revision: 4 }),
+    removeChoice: async () => true, addException: async () => true, removeException: async () => true,
+    updateException: async (row: unknown, choiceId: number) => {
+      updates.push({ exception: row, choiceId })
+      return true
+    },
+    searchCfops: async () => {}, searchProducts: async () => {}, selectCfop: () => {}, selectExceptionChoice: () => {}, selectProduct: () => {}
+  }
+  return { rules, choice, oldChoice, exception, updates }
+}
+
 function mountForm(
   path: string,
   record: Record<string, unknown> | null = null,
   mode: ErpCatalogEditorMode = 'create',
-  initialFieldErrors: Record<string, string[]> = {}
+  initialFieldErrors: Record<string, string[]> = {},
+  options: { realNaturePanel?: boolean, rules?: Record<string, unknown>, bindings?: Record<string, unknown> } = {}
 ) {
   const emitted: Array<Record<string, unknown>> = []
   const componentProps = Vue.reactive({
@@ -142,11 +165,21 @@ function mountForm(
       ])
     }
   })
-  const component = compileVueComponent(path, {}, {
+  const modules: Record<string, unknown> = {
     '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
     '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect,
-    '~/components/erp/catalogs/ErpOperationNatureCfopRules.vue': operationNatureRules
-  })
+    '~/components/erp/catalogs/ErpOperationNatureCfopRules.vue': operationNatureRules,
+    '~/composables/useErpAdministrationContext': { useErpAdministrationContext: () => ({ key: Vue.ref('test-context'), capture: () => ({}), isCurrent: () => true }) }
+  }
+  const bindings = {
+    useAccessApi: () => ({ api: async () => ({ data: { configuration_revision: 4 } }) }),
+    ...options.bindings
+  }
+  if (options.realNaturePanel) {
+    delete modules['~/components/erp/catalogs/ErpOperationNatureCfopRules.vue']
+    modules['~/composables/useErpOperationNatureRules'] = { useErpOperationNatureRules: () => options.rules }
+  }
+  const component = compileVueComponent(path, bindings, modules)
   const { renderer, makeNode } = createHostRenderer()
   const wrapper = Vue.defineComponent({
     setup() {
@@ -231,7 +264,21 @@ function mountForm(
       })
     }
   }))
-  app.component('UAlert', Vue.defineComponent({ props: ['title'], setup: props => () => Vue.h('div', { role: 'alert' }, String(props.title ?? '')) }))
+  app.component('UInputMenu', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'searchTerm', 'items', 'disabled'],
+    emits: ['update:modelValue', 'update:searchTerm'],
+    setup(props, { attrs, emit }) {
+      return () => Vue.h('input', {
+        ...attrs,
+        'data-nuxt-ui-component': 'UInputMenu',
+        'value': props.searchTerm,
+        'disabled': props.disabled,
+        'onInput': (event: Event) => emit('update:searchTerm', (event.target as HTMLInputElement).value)
+      })
+    }
+  }))
+
   app.component('UButton', Vue.defineComponent({
     inheritAttrs: false,
     props: ['label', 'type', 'disabled', 'loading'],
@@ -258,7 +305,8 @@ function mountForm(
       return () => Vue.h('div', { ...attrs, role: 'status' }, [
         Vue.h('span', String(props.title ?? '')),
         Vue.h('span', String(props.description ?? '')),
-        ...(slots.default?.() ?? [])
+        ...(slots.default?.() ?? []),
+        ...(slots.actions?.() ?? [])
       ])
     }
   }))
@@ -271,6 +319,7 @@ function mountForm(
         ...attrs,
         'data-nuxt-ui-component': 'USelect',
         'value': props.modelValue,
+        'items': props.items,
         'onChange': (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value)
       }, (props.items as Array<{ label: string, value: string }> | undefined)?.map(item => Vue.h('option', { value: item.value }, item.label)))
     }
@@ -365,6 +414,14 @@ function mountForm(
       const onClick = button.props.onClick as (() => void) | undefined
       assert.ok(onClick)
       onClick()
+      await Vue.nextTick()
+    },
+    clickButton: async (label: string) => {
+      const button = descendants(root).find(node => node.tag === 'button' && node.text === label)
+      assert.ok(button, `Expected button ${label} in ${path}`)
+      const handler = button.props.onClick as (() => unknown) | undefined
+      assert.ok(handler)
+      await handler()
       await Vue.nextTick()
     },
     accordionPanel: (value: string) => descendants(root).find(node => node.props['data-accordion-panel'] === value),
@@ -758,6 +815,81 @@ describe('ERP catalog family forms', () => {
     await form.submit()
 
     assert.deepEqual(form.emitted, [{ cfop: '5102', expected_revision: 4 }])
+  })
+
+  it('locks other root fields after staging a default in the mounted root and rules panel', async (t) => {
+    const harness = mockNatureRules()
+    const form = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', {
+      id: 32, erp_establishment_id: 2, cfop: '5102', description: 'Venda original', movement: 'out', configuration_revision: 4, cfop_reference_version: null
+    }, 'edit', {}, { realNaturePanel: true, rules: harness.rules })
+    t.after(form.unmount)
+
+    await form.clickButton('Usar como padrão')
+    const description = descendants(form.root).find(node => node.tag === 'input' && node.props.name === 'description')
+
+    assert.ok(description)
+    assert.equal(isEffectivelyDisabled(description), true)
+    assert.match(form.text(), /demais campos ficam bloqueados/i)
+  })
+
+  it('keeps an exception target hydrated off-page savable in the mounted rules panel', async (t) => {
+    const harness = mockNatureRules()
+    harness.rules.choices.value = [harness.oldChoice]
+    harness.rules.exceptions.value = [harness.exception]
+    harness.rules.exceptionChoiceRefs.value = {
+      [harness.choice.id]: harness.choice,
+      19: { id: 19, cfop: '9999', reference_version: null, status: 'archived', implicit: false }
+    }
+    const form = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', {
+      id: 32, erp_establishment_id: 2, cfop: '5102', description: 'Venda', movement: 'out', configuration_revision: 4, cfop_reference_version: null
+    }, 'edit', {}, { realNaturePanel: true, rules: harness.rules })
+    t.after(form.unmount)
+    await Vue.nextTick()
+    const selector = descendants(form.root).find(node => node.tag === 'select' && node.props['aria-label'] === 'CFOP permitido para exceção')
+    assert.ok(selector)
+    assert.deepEqual((selector.props.items as Array<{ value: string }>).map(item => item.value), ['5102', '6102'])
+    ;(selector.props.onChange as (event: Event) => void)({ target: { value: '6102' } } as unknown as Event)
+    await Vue.nextTick()
+
+    await form.clickButton('Atualizar CFOP')
+
+    assert.deepEqual(harness.updates, [{ exception: harness.exception, choiceId: 18 }])
+  })
+
+  it('allows an explicit fresh root review after a stale staged save while preserving its CFOP draft', async (t) => {
+    const harness = mockNatureRules()
+    const reviewRequests: string[] = []
+    let failReview = true
+    const form = mountForm('components/erp/catalogs/ErpOperationNatureCatalogForm.vue', {
+      id: 32, erp_establishment_id: 2, cfop: '5102', description: 'Venda', movement: 'out', configuration_revision: 4, cfop_reference_version: null
+    }, 'edit', {}, {
+      realNaturePanel: true,
+      rules: harness.rules,
+      bindings: { useAccessApi: () => ({ api: async (path: string) => {
+        reviewRequests.push(path)
+        if (failReview)
+          throw new Error('Unavailable')
+        return { data: { configuration_revision: 9, cfop: '5202', description: 'Descrição atual', movement: 'out' } }
+      } }) }
+    })
+    t.after(form.unmount)
+    await form.clickButton('Usar como padrão')
+    await form.submit()
+
+    assert.deepEqual(form.emitted, [{ cfop: '6102', expected_revision: 4 }])
+    await form.setFieldErrors({ expected_revision: ['A configuração mudou.'] })
+    await form.clickButton('Revisar configuração atual')
+    assert.deepEqual(form.emitted, [{ cfop: '6102', expected_revision: 4 }])
+    assert.equal(form.inputValue('description'), 'Venda')
+    await form.submit()
+    assert.deepEqual(form.emitted, [{ cfop: '6102', expected_revision: 4 }])
+    failReview = false
+    await form.clickButton('Revisar configuração atual')
+    await form.submit()
+
+    assert.deepEqual(reviewRequests, ['/erp/tax-settings/operation-natures/32', '/erp/tax-settings/operation-natures/32'])
+    assert.deepEqual(form.emitted.at(-1), { cfop: '6102', expected_revision: 9 })
+    assert.equal(form.inputValue('description'), 'Venda')
   })
 
   for (const item of editCases) {

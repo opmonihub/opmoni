@@ -112,6 +112,69 @@ describe('operation-nature CFOP rules', () => {
     assert.equal(requests.filter(request => request.options?.method).length, 1)
   })
 
+  it('keeps writes blocked when an explicit review fails after a stale conflict', async (t) => {
+    let failReview = false
+    let rejectWrite = false
+    const requests: Request[] = []
+    const harness = setup(async (path, options) => {
+      requests.push({ path, options })
+      if (path.includes('/cfops?'))
+        return { data: [{ code: '6102', description: 'Venda', reference_version: 'reference-v1', source_metadata: {}, applicability: { direction: 'outbound' } }], meta: { last_page: 1 } }
+      if (options?.method && rejectWrite) {
+        rejectWrite = false
+        throw { statusCode: 409, data: { code: 'operation_nature_changed', message: 'The configuration changed.' } }
+      }
+      if (!options?.method && failReview && path.includes('/choices?'))
+        throw { statusCode: 503, data: { message: 'Temporarily unavailable.' } }
+      return { data: [], meta: { configuration_revision: options?.method ? 9 : 8 } }
+    })
+    t.after(harness.stop)
+    await (harness.rules.load as () => Promise<void>)()
+    await (harness.rules.searchCfops as () => Promise<void>)()
+    ;(harness.rules.selectCfop as (value: { code: string, reference_version: string }) => void)({ code: '6102', reference_version: 'reference-v1' })
+    rejectWrite = true
+
+    await (harness.rules.addChoice as (code: string) => Promise<boolean>)('6102')
+    failReview = true
+    const reviewed = await (harness.rules.reviewCurrent as () => Promise<boolean>)()
+    const retry = await (harness.rules.addChoice as (code: string) => Promise<boolean>)('6102')
+
+    assert.equal(reviewed, false)
+    assert.equal(retry, false)
+    assert.equal((harness.rules.reviewRequired as Vue.Ref<boolean>).value, true)
+    assert.equal(requests.filter(request => request.options?.method).length, 1)
+  })
+
+  it('requires a successful explicit review and a separate user retry after a stale conflict', async (t) => {
+    let rejectWrite = true
+    let stale = false
+    const requests: Request[] = []
+    const harness = setup(async (path, options) => {
+      requests.push({ path, options })
+      if (path.includes('/cfops?'))
+        return { data: [{ code: '6102', description: 'Venda', reference_version: 'reference-v1', source_metadata: {}, applicability: { direction: 'outbound' } }], meta: { last_page: 1 } }
+      if (options?.method === 'POST' && rejectWrite) {
+        rejectWrite = false
+        stale = true
+        throw { statusCode: 409, data: { code: 'operation_nature_changed', message: 'The configuration changed.' } }
+      }
+      return { data: [], meta: { configuration_revision: options?.method ? 10 : stale ? 8 : 6 } }
+    })
+    t.after(harness.stop)
+    await (harness.rules.load as () => Promise<void>)()
+    await (harness.rules.searchCfops as () => Promise<void>)()
+    ;(harness.rules.selectCfop as (value: { code: string, reference_version: string }) => void)({ code: '6102', reference_version: 'reference-v1' })
+
+    assert.equal(await (harness.rules.addChoice as (code: string) => Promise<boolean>)('6102'), false)
+    assert.equal(await (harness.rules.addChoice as (code: string) => Promise<boolean>)('6102'), false)
+    assert.equal(await (harness.rules.reviewCurrent as () => Promise<boolean>)(), true)
+    assert.equal((harness.rules.reviewRequired as Vue.Ref<boolean>).value, false)
+    assert.equal(await (harness.rules.addChoice as (code: string) => Promise<boolean>)('6102'), true)
+
+    const writes = requests.filter(request => request.options?.method === 'POST')
+    assert.deepEqual(writes.map(request => request.options?.body?.expected_revision), [6, 8])
+  })
+
   it('ignores late responses after the active company or session context changes', async (t) => {
     const resolvers: Array<(value: unknown) => void> = []
     const harness = setup(() => new Promise((resolve) => {

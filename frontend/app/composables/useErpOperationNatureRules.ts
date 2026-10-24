@@ -177,9 +177,9 @@ export function useErpOperationNatureRules(options: RuleOptions) {
     if (next !== null)
       revision.value = next
   }
-  async function load(): Promise<void> {
+  async function load(): Promise<boolean> {
     if (readOnly.value)
-      return
+      return false
     const currentLoad = ++loadSequence
     const loadToken = context.capture()
     error.value = ''
@@ -188,13 +188,13 @@ export function useErpOperationNatureRules(options: RuleOptions) {
       readPage<ErpOperationNatureProductException>(`${base()}/product-exceptions?${queryString({ search: exceptionSearch.value, page: exceptionsPage.value, per_page: pageSize })}`)
     ])
     if (!choicePage || !exceptionPage || disposed || currentLoad !== loadSequence || !context.isCurrent(loadToken))
-      return
+      return false
     const choiceRevision = revisionOf(choicePage)
     const exceptionRevision = revisionOf(exceptionPage)
     if (choiceRevision === null || exceptionRevision === null || choiceRevision !== exceptionRevision) {
       reviewRequired.value = true
       error.value = 'A configuração mudou durante a consulta. Atualize e revise novamente.'
-      return
+      return false
     }
     choices.value = items(choicePage)
     exceptions.value = items(exceptionPage)
@@ -244,11 +244,11 @@ export function useErpOperationNatureRules(options: RuleOptions) {
         exceptions.value = exceptions.value.map(exception => ({ ...exception, product: byException.get(exception.id) }))
       }
     }
+    return currentLoad === loadSequence && context.isCurrent(loadToken) && !error.value
   }
   async function reviewCurrent(): Promise<boolean> {
-    reviewRequired.value = false
-    await load()
-    if (!loaded.value || error.value)
+    const reviewed = await load()
+    if (!reviewed)
       return false
     reviewRequired.value = false
     return true
