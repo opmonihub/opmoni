@@ -89,7 +89,7 @@ const referenceSelect = Vue.defineComponent({
   setup(props, { attrs, emit }) {
     return () => Vue.h('select', {
       ...attrs,
-      name: props.name,
+      'name': props.name,
       'aria-label': props.label,
       'value': props.modelValue ?? '',
       'disabled': props.disabled,
@@ -144,7 +144,7 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
         const isOpen = active.value.includes(item.value)
         return [
           Vue.h('button', {
-            type: 'button',
+            'type': 'button',
             'data-accordion-value': item.value,
             'aria-expanded': isOpen,
             'onClick': () => {
@@ -153,7 +153,7 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
                 : [...active.value, item.value]
             }
           }, item.label),
-          Vue.h('section', { 'data-accordion-panel': item.value, hidden: !isOpen }, slots[item.slot]?.({ item }))
+          Vue.h('section', { 'data-accordion-panel': item.value, 'hidden': !isOpen }, slots[item.slot]?.({ item }))
         ]
       }))
     }

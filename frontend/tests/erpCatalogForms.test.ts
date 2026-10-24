@@ -152,6 +152,49 @@ function mountForm(
       }, slots.default?.())
     }
   }))
+  app.component('UAccordion', Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['items', 'type', 'unmountOnHide', 'defaultValue'],
+    emits: ['update:modelValue'],
+    setup(props, { attrs, emit, slots }) {
+      const initialValue = Array.isArray(props.defaultValue)
+        ? props.defaultValue.map(String)
+        : props.defaultValue === undefined ? [] : [String(props.defaultValue)]
+      const active = Vue.ref<string[]>(initialValue)
+
+      return () => Vue.h('div', {
+        ...attrs,
+        'data-uaccordion': true,
+        'data-accordion-unmount-on-hide': props.unmountOnHide
+      }, (props.items as Array<{ label: string, value: string, slot?: string }> | undefined)?.flatMap((item) => {
+        const isOpen = active.value.includes(item.value)
+        const shouldRenderContent = props.unmountOnHide === false || isOpen
+        const panel = Vue.h('div', {
+          'data-accordion-panel': item.value,
+          'hidden': !isOpen
+        }, shouldRenderContent ? slots[item.slot ?? item.value]?.({ item }) : undefined)
+
+        return [
+          Vue.h('button', {
+            'type': 'button',
+            'data-accordion-trigger': item.value,
+            'aria-expanded': isOpen,
+            'onClick': () => {
+              if (props.type === 'multiple') {
+                active.value = isOpen
+                  ? active.value.filter(value => value !== item.value)
+                  : [...active.value, item.value]
+              } else {
+                active.value = isOpen ? [] : [item.value]
+              }
+              emit('update:modelValue', props.type === 'multiple' ? active.value : active.value[0])
+            }
+          }, item.label),
+          panel
+        ]
+      }))
+    }
+  }))
   app.component('UInput', Vue.defineComponent({
     inheritAttrs: false,
     props: ['modelValue'],
@@ -243,6 +286,16 @@ function mountForm(
   }))
   const root = makeNode('root')
   app.mount(root)
+  const toggleAccordionSection = async (value: string, open: boolean) => {
+    const trigger = descendants(root).find(node => node.tag === 'button' && node.props['data-accordion-trigger'] === value)
+    assert.ok(trigger, `Expected accordion trigger ${value} in ${path}`)
+    if (trigger.props['aria-expanded'] === open)
+      return
+    const onClick = trigger.props.onClick as (() => void) | undefined
+    assert.ok(onClick, `Expected accordion toggle for ${value} in ${path}`)
+    onClick()
+    await Vue.nextTick()
+  }
   return {
     root,
     emitted,
@@ -270,6 +323,13 @@ function mountForm(
     selectValue: (label: string) => descendants(root).find(item => item.tag === 'select' && item.props['aria-label'] === label)?.props.value,
     text: () => descendants(root).map(node => node.text).join(' '),
     buttons: () => descendants(root).filter(node => node.tag === 'button'),
+    accordionPanel: (value: string) => descendants(root).find(node => node.props['data-accordion-panel'] === value),
+    openSection: async (value: string) => {
+      await toggleAccordionSection(value, true)
+    },
+    closeSection: async (value: string) => {
+      await toggleAccordionSection(value, false)
+    },
     setFieldErrors: async (value: Record<string, string[]>) => {
       componentProps.fieldErrors = value
       await Vue.nextTick()
@@ -509,6 +569,27 @@ describe('ERP catalog family forms', () => {
     assert.deepEqual(form.emitted, [])
   })
 
+  it('keeps collapsed product disclosure fields mounted and their values after reopening', async (t) => {
+    const form = mountForm('components/erp/catalogs/ErpProductCatalogForm.vue', editCases[1]!.record, 'edit')
+    t.after(form.unmount)
+
+    const fiscalPanel = form.accordionPanel('fiscal')
+    assert.ok(fiscalPanel)
+    assert.equal(fiscalPanel.props.hidden, true)
+    assert.equal(descendants(form.root).find(node => node.props['data-uaccordion'] === true)?.props['data-accordion-unmount-on-hide'], false)
+    assert.ok(descendants(fiscalPanel).some(node => node.tag === 'input' && node.props.name === 'icms_cst'))
+
+    await form.openSection('fiscal')
+    await form.input('icms_cst', '00')
+    await form.closeSection('fiscal')
+    assert.equal(form.accordionPanel('fiscal')?.props.hidden, true)
+    assert.equal(form.inputValue('icms_cst'), '00')
+
+    await form.openSection('fiscal')
+    assert.equal(form.accordionPanel('fiscal')?.props.hidden, false)
+    assert.equal(form.inputValue('icms_cst'), '00')
+  })
+
   it('keeps fiscal codes and decimal strings lossless, supports optional clearing, and uses the customer group reference', async (t) => {
     const contact = mountForm('components/erp/catalogs/ErpContactCatalogForm.vue', editCases[0]!.record, 'edit')
     const product = mountForm('components/erp/catalogs/ErpProductCatalogForm.vue', editCases[1]!.record, 'edit')
@@ -516,6 +597,8 @@ describe('ERP catalog family forms', () => {
     t.after(contact.unmount)
     t.after(product.unmount)
     t.after(newProduct.unmount)
+
+    await product.openSection('fiscal')
 
     assert.equal(contact.selectValue('Grupo de clientes'), 8)
     await contact.select('Grupo de clientes', 12)
@@ -562,6 +645,8 @@ describe('ERP catalog family forms', () => {
     const priceGroup = mountForm('components/erp/catalogs/ErpPriceGroupCatalogForm.vue', editCases[5]!.record, 'edit')
     for (const form of [product, discount, operation, contact, unit, priceGroup])
       t.after(form.unmount)
+
+    await product.openSection('commercial')
 
     for (const [form, expectedSelectCount] of [[product, 3], [discount, 1], [operation, 1]] as const) {
       assert.equal(descendants(form.root).filter(node => node.props['data-nuxt-ui-component'] === 'USelect').length, expectedSelectCount)
@@ -653,6 +738,8 @@ describe('ERP catalog family forms', () => {
     const edit = mountForm(item.path, item.record, 'edit')
     t.after(detail.unmount)
     t.after(edit.unmount)
+    await detail.openSection('variants')
+    await edit.openSection('variants')
 
     const detailVariantInputs = detail.inputs().filter(input => String(input.props.name).startsWith('variants.'))
     assert.equal(detailVariantInputs.length, 4)
@@ -672,6 +759,7 @@ describe('ERP catalog family forms', () => {
     const item = editCases.find(candidate => candidate.path.endsWith('ErpProductCatalogForm.vue'))!
     const form = mountForm(item.path, item.record, 'edit')
     t.after(form.unmount)
+    await form.openSection('variants')
     const archive = form.buttons().find(button => button.text.includes('Arquivar variante'))
     assert.ok(archive)
     const openArchive = archive.props.onClick as (() => void) | undefined
