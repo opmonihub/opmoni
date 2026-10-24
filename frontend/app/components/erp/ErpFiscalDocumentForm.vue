@@ -157,7 +157,7 @@ type LocalDraft = {
   lines: ErpFiscalLineFormFacts[]
   originalId?: number
   manifestId?: number
-  key: string
+  key: ReturnType<typeof crypto.randomUUID>
   source: string
   baseline: string
   dirty: boolean
