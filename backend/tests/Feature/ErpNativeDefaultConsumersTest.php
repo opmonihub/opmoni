@@ -9,6 +9,7 @@ use App\Models\Erp\ErpCompanySetupState;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\Sales\ErpSale;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\ErpCommercialTestCase;
 
 class ErpNativeDefaultConsumersTest extends ErpCommercialTestCase
@@ -221,6 +222,34 @@ class ErpNativeDefaultConsumersTest extends ErpCommercialTestCase
         $this->send('sales', $this->body())->assertUnprocessable()->assertJsonValidationErrors('currency');
         $this->send('sales', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.currency', 'BRL');
         $this->assertSame(1, $this->company->fresh()->operating_settings['currency_id']);
+        $this->assertDatabaseCount('erp_company_setup_states', 0);
+    }
+
+    public static function purchaseCurrencyFacts(): iterable
+    {
+        yield 'opaque numeric identifier' => [702];
+        yield 'explicit null' => [null];
+        yield 'explicit zero' => [0];
+        yield 'explicit false' => [false];
+        yield 'explicit empty string' => [''];
+    }
+
+    #[DataProvider('purchaseCurrencyFacts')]
+    public function test_purchase_currency_namespace_alone_remains_unresolved_and_requires_explicit_iso_currency(mixed $value): void
+    {
+        $settings = ['purchase_currency_id' => $value];
+        $this->company->update(['operating_settings' => $settings]);
+        $this->getJson('/api/v1/erp/company/settings')->assertOk()
+            ->assertJsonPath('data.purchase_currency_id', $value)
+            ->assertJsonPath('data.native_defaults.currency', ['status' => 'unresolved', 'code' => null]);
+        $this->send('sales', $this->body())->assertUnprocessable()->assertJsonValidationErrors('currency');
+        $this->assertDatabaseCount('erp_sales', 0);
+        $this->assertDatabaseCount('erp_operation_receipts', 0);
+        $this->assertDatabaseCount('erp_commercial_number_sequences', 0);
+        $this->assertSame($settings, $this->company->fresh()->operating_settings);
+
+        $this->send('sales', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.currency', 'BRL');
+        $this->assertSame($settings, $this->company->fresh()->operating_settings);
         $this->assertDatabaseCount('erp_company_setup_states', 0);
     }
 

@@ -83,7 +83,7 @@ final class ErpCompanyNativeDefaults
     private function currency(ErpCompany $company, ?ErpCompanySetupState $state): array
     {
         if ($state === null) {
-            return ['status' => $this->legacyStatus($company, 'currency_id'), 'code' => null];
+            return ['status' => $this->legacyStatus($company, 'currency_id', 'purchase_currency_id'), 'code' => null];
         }
 
         return ['status' => $state->currency === null ? 'unset' : ($state->currency === 'BRL' ? 'available' : 'unavailable'),
@@ -116,9 +116,15 @@ final class ErpCompanyNativeDefaults
             : $this->reference('unavailable');
     }
 
-    private function legacyStatus(ErpCompany $company, string $field): string
+    private function legacyStatus(ErpCompany $company, string ...$fields): string
     {
-        return array_key_exists($field, $company->operating_settings ?? []) ? 'unresolved' : 'unset';
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $company->operating_settings ?? [])) {
+                return 'unresolved';
+            }
+        }
+
+        return 'unset';
     }
 
     /** @return array{status: string, id: ?int, label: ?string} */
