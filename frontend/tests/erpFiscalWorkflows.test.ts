@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import { apiErrorMessage, apiFieldErrors, apiStatus } from '../app/composables/useApiError.ts'
 import type { ErpFiscalSale } from '../shared/types/erpFiscal.ts'
 import { buildErpFiscalCertificateUpload, buildErpFiscalDraftSource, createErpFiscalRecoveryRecord } from '../shared/utils/erpFiscal.ts'
@@ -349,7 +350,8 @@ function textContent(node: HostNode): string {
   return `${node.text}${node.children.map(textContent).join('')}`
 }
 
-function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { value: { id: number, current_company: { id: number, permissions: string[] } } }) {
+function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { value: { id: number, current_company: { id: number, permissions: string[] } } }, initialHash = '') {
+  const route = Vue.reactive({ path: '/erp/fiscal', query: {}, hash: initialHash })
   const source = readFileSync(workspaceFormFile, 'utf8')
   const { descriptor } = parse(source, { filename: workspaceFormFile.pathname })
   const script = compileScript(descriptor, { id: 'erp-fiscal-workspace-test' })
@@ -357,7 +359,15 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
   const contextKey = Vue.computed(() => `${identity.value.id}:${identity.value.current_company.id}:${identity.value.current_company.permissions.join(',')}`)
   const globals = {
     reactive: Vue.reactive, ref: Vue.ref, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted,
-    useErpFiscalWorkspace: () => workspaceValue,
+    useRoute: () => route,
+    useRouter: () => ({
+      replace: async (location: { hash: string }) => { route.hash = location.hash },
+      push: async (location: { hash: string }) => { route.hash = location.hash }
+    }),
+    useErpFiscalWorkspace: () => Object.assign(workspaceValue, {
+      can: workspaceValue.can ?? ((permission: string) => identity.value.current_company.permissions.includes('*') || identity.value.current_company.permissions.includes(permission)),
+      setDocumentModel: workspaceValue.setDocumentModel ?? (() => {})
+    }),
     useErpAdministrationContext: () => {
       const generation = Vue.ref(0)
       Vue.watch(contextKey, () => generation.value++, { flush: 'sync' })
@@ -371,6 +381,7 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
   const exports = {} as { default: Record<string, unknown> }
   new Function('require', 'exports', ...Object.keys(globals), compiledScript.outputText)((name: string) => {
     if (name === 'vue') return Vue
+    if (name === '~/utils/erpWorkspaceNav') return loadAppComposable('utils/erpWorkspaceNav.ts')
     throw new Error(`Unexpected workspace SFC import: ${name}`)
   }, exports, ...Object.values(globals))
   const template = compileTemplate({ source: descriptor.template?.content ?? '', filename: workspaceFormFile.pathname, id: 'erp-fiscal-workspace-template-test', compilerOptions: { mode: 'function', hoistStatic: false, bindingMetadata: script.bindings, expressionPlugins: ['typescript'] } })
@@ -399,6 +410,16 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
       return () => Vue.h('select')
     }
   }))
+  app.component('UNavigationMenu', Vue.defineComponent({
+    props: ['items'],
+    setup(props) {
+      return () => Vue.h('nav', (props.items as Array<Array<{ label: string, to: { hash: string }, active: boolean }>>).flat().map(item => Vue.h('a', {
+        'href': item.to.hash,
+        'data-active': item.active,
+        'onClick': () => { route.hash = item.to.hash }
+      }, item.label)))
+    }
+  }))
   app.component('UAlert', Vue.defineComponent({
     props: ['title', 'description'],
     setup(alert, { slots }) {
@@ -412,14 +433,15 @@ function mountWorkspaceSfc(workspaceValue: Record<string, unknown>, identity: { 
   }))
   for (const name of ['UBadge', 'UCard', 'ErpFiscalDocumentForm', 'ErpFiscalEventForm', 'ErpFiscalConfigurationForm', 'ErpFiscalCertificateForm', 'ErpFiscalInvalidationForm']) {
     app.component(name, Vue.defineComponent({
-      setup(_props, { slots }) {
-        return () => Vue.h('div', slots.default?.())
+      props: ['model', 'originalDocuments'],
+      setup(props, { slots }) {
+        return () => Vue.h('div', { 'data-fiscal-component': name, 'data-model': props.model, 'data-source-models': (props.originalDocuments as Array<{ model: string }> | undefined)?.map(row => row.model).join(',') }, slots.default?.())
       }
     }))
   }
   const root = createNode('root')
   app.mount(root as never)
-  return { app, root }
+  return { app, root, route }
 }
 
 function loadWorkspaceComposable(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, context: { actorId: number, companyId: number | null, grants: string[], accessKind?: 'direct' | 'delegated', companyRole?: string, accountRole?: string, accountId?: number, delegatedOfficeId?: number | null }, refreshWithStatus: () => Promise<{ committed: boolean, identity?: unknown }> = async () => ({ committed: true, identity: { id: context.actorId } })) {
@@ -2174,7 +2196,7 @@ describe('ERP fiscal durable workspace operations', () => {
     const identity = Vue.ref({ id: 7, current_company: { id: 22, permissions: ['*'] } })
     const mounted = mountWorkspaceSfc(fiscal.workspace, identity)
     await Vue.nextTick()
-    const certificatesTab = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === 'Certificados')
+    const certificatesTab = findNode(mounted.root, node => node.tag === 'a' && textContent(node).trim() === 'Certificados')
     assert.ok(certificatesTab)
     ;(certificatesTab.props.onClick as () => void)()
     await Vue.nextTick()
@@ -2445,7 +2467,7 @@ describe('confirmed fiscal list states', () => {
     memory.set('opmoni:erp-fiscal:recovery:v1:7:22', JSON.stringify(record))
     let detailReads = 0
     const fiscal = loadWorkspaceComposable(async (path) => {
-      if (path === '/erp/fiscal/documents?per_page=100') throw new Error('synthetic index unavailable')
+      if (path.startsWith('/erp/fiscal/documents?per_page=100')) throw new Error('synthetic index unavailable')
       if (path === '/erp/fiscal/documents/91') {
         detailReads++
         return { data: { id: 91, idempotency_key: record.idempotencyKey, model: '55', status: 'queued', attempts: [{ id: 1, action: record.action, status: 'pending', idempotency_key: record.idempotencyKey, safe_result: null }] } }
@@ -2477,9 +2499,9 @@ describe('confirmed fiscal list states', () => {
       t.after(() => mounted.app.unmount())
       for (let index = 0; index < 15; index++) await Vue.nextTick()
       assert.match(textContent(mounted.root), /Nenhum documento fiscal/, 'independent successful document list stays confirmed')
-      const tab = findNode(mounted.root, node => node.tag === 'button' && textContent(node).trim() === area.label)!
+      const tab = findNode(mounted.root, node => node.tag === 'a' && textContent(node).trim() === area.label)!
       ;(tab.props.onClick as () => void)()
-      await Vue.nextTick()
+      for (let index = 0; index < 15; index++) await Vue.nextTick()
       assert.doesNotMatch(textContent(mounted.root), new RegExp(area.empty))
       assert.match(textContent(mounted.root), /Não foi possível confirmar a listagem/)
       mounted.app.unmount()
@@ -2555,4 +2577,161 @@ describe('confirmed fiscal list states', () => {
     assert.deepEqual(fiscal.workspace.documents, [])
     assert.equal((fiscal.workspace.listStates as Record<string, { confirmed: boolean }>).documents.confirmed, false)
   })
+})
+
+describe('Fiscal destination navigation', () => {
+  for (const [hash, model] of [['nfe', '55'], ['nfce', '65'], ['cte', '57'], ['mdfe', '58']]) {
+    it(`uses #${hash} for the actual document query and create context`, async (t) => {
+      const calls: string[] = []
+      const fiscal = loadWorkspaceComposable(async (path) => {
+        calls.push(path)
+        return { data: [] }
+      }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.*'] })
+      t.after(fiscal.close)
+      fiscal.workspace.selectedEstablishmentId = 6
+      fiscal.workspace.configuration = fiscalConfiguration('55')
+      const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, `#${hash}`)
+      t.after(() => mounted.app.unmount())
+      for (let index = 0; index < 15; index++) await Vue.nextTick()
+      const request = calls.find(path => path.startsWith('/erp/fiscal/documents?'))
+      assert.equal(new URL(request!, 'http://test').searchParams.get('model'), model)
+      assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm')?.props['data-model'], model)
+    })
+  }
+
+  for (const [hash, grant, expected] of [
+    ['configuration', 'erp.fiscal.configuration.show', 'ErpFiscalConfigurationForm'],
+    ['certificates', 'erp.fiscal.certificates.index', 'Certificados do emissor'],
+    ['events', 'erp.fiscal.events.index', 'Nenhum evento fiscal registrado.'],
+    ['invalidations', 'erp.fiscal.invalidations.index', 'ErpFiscalInvalidationForm']
+  ]) {
+    it(`opens the real #${hash} body with its narrow read grant and on root entry`, async (t) => {
+      const fiscal = loadWorkspaceComposable(async () => ({ data: [] }), { actorId: 7, companyId: 22, grants: [grant!] })
+      t.after(fiscal.close)
+      const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, `#${hash}`)
+      t.after(() => mounted.app.unmount())
+      for (let index = 0; index < 15; index++) await Vue.nextTick()
+      const assertBody = () => expected!.startsWith('Erp')
+        ? assert.ok(findNode(mounted.root, node => node.props['data-fiscal-component'] === expected))
+        : assert.ok(textContent(mounted.root).includes(expected!))
+      assertBody()
+      mounted.route.hash = ''
+      for (let index = 0; index < 15; index++) await Vue.nextTick()
+      assertBody()
+      mounted.route.hash = '#nfe'
+      await Vue.nextTick()
+      assert.match(textContent(mounted.root), /não permite consultar esta área fiscal/)
+      assert.equal(mounted.route.hash, '#nfe')
+    })
+  }
+
+  it('fences late model list responses while preserving the historical selected detail', async (t) => {
+    const finishes = new Map<string, (value: unknown) => void>()
+    const calls: string[] = []
+    const fiscal = loadWorkspaceComposable(async (path) => {
+      calls.push(path)
+      if (!new URL(path, 'http://test').searchParams.has('model')) return { data: [] }
+      return await new Promise(resolve => finishes.set(new URL(path, 'http://test').searchParams.get('model') ?? 'none', resolve))
+    }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+    t.after(fiscal.close)
+    const historic = { id: 19, model: '55', status: 'authorized' }
+    fiscal.workspace.selectedDocument = historic
+    const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, '#nfe')
+    t.after(() => mounted.app.unmount())
+    mounted.route.hash = '#nfce'
+    await Vue.nextTick()
+    assert.equal(calls.filter(path => new URL(path, 'http://test').searchParams.has('model')).length, 2)
+    finishes.get('65')!({ data: [{ id: 65, model: '65', status: 'draft' }] })
+    for (let index = 0; index < 8; index++) await Vue.nextTick()
+    finishes.get('55')!({ data: [{ id: 55, model: '55', status: 'draft' }] })
+    for (let index = 0; index < 8; index++) await Vue.nextTick()
+    assert.deepEqual(fiscal.workspace.documents.map((row: { model: string }) => row.model), ['65'])
+    assert.equal(fiscal.workspace.selectedDocument.id, historic.id)
+  })
+})
+
+it('discards late Fiscal source candidates on company or grant change', async (t) => {
+  for (const change of ['company', 'grants']) {
+    let finish!: (value: unknown) => void
+    const fiscal = loadWorkspaceComposable(async path => new URL(path, 'http://test').searchParams.has('model')
+      ? { data: [{ id: 58, model: '58' }] }
+      : await new Promise((resolve) => { finish = resolve }), { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+    t.after(fiscal.close)
+    fiscal.workspace.setDocumentModel('58')
+    const pending = fiscal.workspace.load()
+    if (change === 'company') fiscal.identity.value.current_company!.id = 23
+    else fiscal.identity.value.current_company!.permissions = []
+    finish({ data: [{ id: 55, model: '55' }] })
+    await pending
+    assert.deepEqual(fiscal.workspace.documentSources, [])
+    assert.deepEqual(fiscal.workspace.documents, [])
+  }
+})
+
+it('does not use a filtered MDF-e list as source candidates after the source read fails', async (t) => {
+  const fiscal = loadWorkspaceComposable(async (path) => {
+    if (!new URL(path, 'http://test').searchParams.has('model')) throw { status: 503 }
+    return { data: [{ id: 58, model: '58' }] }
+  }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+  t.after(fiscal.close)
+  fiscal.workspace.setDocumentModel('58')
+  await fiscal.workspace.load()
+  assert.deepEqual(fiscal.workspace.documentSources, [])
+  assert.deepEqual(fiscal.workspace.documents.map((row: { model: string }) => row.model), ['58'])
+  assert.ok(fiscal.workspace.errorMessage)
+})
+
+it('synchronizes the native draft model selector through the parent destination event', async (t) => {
+  const updates: string[] = []
+  const mounted = mountDocumentForm({
+    'establishmentId': 6, 'configuration': fiscalConfiguration('55'), 'model': '55', 'sales': [], 'returns': [],
+    'selectedSale': null, 'selectedReturn': null, 'originalDocuments': [], 'canCreate': true,
+    'onUpdate:model': (model: string) => updates.push(model)
+  })
+  t.after(() => mounted.app.unmount())
+  const model = findNode(mounted.root, node => node.tag === 'select' && node.props.value === '55')!
+  assert.ok(model)
+  ;(model.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '57' } })
+  await Vue.nextTick()
+  assert.deepEqual(updates, ['57'])
+})
+
+it('keeps cold MDF-e source candidates separate from its filtered model list', async (t) => {
+  const calls: string[] = []
+  const fiscal = loadWorkspaceComposable(async (path) => {
+    calls.push(path)
+    return { data: new URL(path, 'http://test').searchParams.has('model') ? [{ id: 58, model: '58', status: 'draft' }] : [{ id: 55, model: '55', status: 'authorized' }, { id: 57, model: '57', status: 'authorized' }] }
+  }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.*'] })
+  t.after(fiscal.close)
+  fiscal.workspace.selectedEstablishmentId = 6
+  fiscal.workspace.configuration = fiscalConfiguration('58')
+  const mounted = mountWorkspaceSfc(fiscal.workspace, fiscal.identity, '#mdfe')
+  t.after(() => mounted.app.unmount())
+  for (let index = 0; index < 15; index++) await Vue.nextTick()
+  assert.deepEqual(fiscal.workspace.documents.map((row: { model: string }) => row.model), ['58'])
+  assert.equal(findNode(mounted.root, node => node.props['data-fiscal-component'] === 'ErpFiscalDocumentForm')?.props['data-source-models'], '55,57')
+  assert.equal(calls.filter(path => !new URL(path, 'http://test').searchParams.has('model')).length, 1)
+})
+
+it('clears Fiscal source candidates when their native read is refused and never reads them without the index grant', async (t) => {
+  const refused = loadWorkspaceComposable(async (path) => {
+    if (!new URL(path, 'http://test').searchParams.has('model')) throw { status: 403 }
+    return { data: [{ id: 58, model: '58' }] }
+  }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.documents.index'] })
+  t.after(refused.close)
+  refused.workspace.documentSources = [{ id: 55, model: '55' }]
+  refused.workspace.setDocumentModel('58')
+  await refused.workspace.load()
+  assert.deepEqual(refused.workspace.documentSources, [])
+  assert.deepEqual(refused.workspace.documents, [])
+  const calls: string[] = []
+  const narrow = loadWorkspaceComposable(async (path) => {
+    calls.push(path)
+    return { data: [] }
+  }, { actorId: 7, companyId: 22, grants: ['erp.fiscal.certificates.index'] })
+  t.after(narrow.close)
+  narrow.workspace.setDocumentModel('58')
+  await narrow.workspace.load()
+  assert.equal(calls.some(path => path.startsWith('/erp/fiscal/documents')), false)
+  assert.deepEqual(narrow.workspace.documentSources, [])
 })

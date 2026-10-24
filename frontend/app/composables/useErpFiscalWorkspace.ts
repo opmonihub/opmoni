@@ -18,6 +18,7 @@ import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 import { buildErpFiscalCertificateUpload, createErpFiscalRecoveryRecord, erpFiscalRecoveryStorageKey, fiscalApiFieldErrors, parseErpFiscalRecoveryRecord } from '#shared/utils/erpFiscal'
 
 type FiscalListKey = 'documents' | 'certificates' | 'events' | 'invalidations'
+type FiscalReadKey = FiscalListKey | 'establishments' | 'configuration' | 'documentSources'
 type FiscalListState = { confirmed: boolean, loading: boolean, error: string, permitted: boolean }
 
 type ApiEnvelope<T> = { data: T, meta?: Record<string, unknown> }
@@ -71,6 +72,8 @@ export function useErpFiscalWorkspace() {
   const establishments = ref<Array<{ id: number, name: string, cnpj: string | null, status: string }>>([])
   const configuration = ref<ErpFiscalConfiguration | null>(null)
   const documents = ref<ErpFiscalDocument[]>([])
+  const documentModel = ref<ErpFiscalModel | null>(null)
+  const documentSources = ref<ErpFiscalDocument[]>([])
   const sales = ref<ErpFiscalSale[]>([])
   const returns = ref<ErpFiscalSale[]>([])
   const certificates = ref<ErpFiscalCertificate[]>([])
@@ -210,6 +213,7 @@ export function useErpFiscalWorkspace() {
     configuration.value = null
     configurationForm.value = {}
     documents.value = []
+    documentSources.value = []
     sales.value = []
     returns.value = []
     certificates.value = []
@@ -425,10 +429,25 @@ export function useErpFiscalWorkspace() {
   }
 
   function updateDocumentRow(document: ErpFiscalDocument) {
+    documentSources.value = documentSources.value.some(row => row.id === document.id)
+      ? documentSources.value.map(row => row.id === document.id ? document : row)
+      : [document, ...documentSources.value]
+    if (documentModel.value && document.model !== documentModel.value) {
+      if (selectedDocument.value?.id === document.id) selectedDocument.value = document
+      return
+    }
     documents.value = documents.value.some(row => row.id === document.id)
       ? documents.value.map(row => row.id === document.id ? document : row)
       : [document, ...documents.value]
     if (selectedDocument.value?.id === document.id) selectedDocument.value = document
+  }
+
+  function setDocumentModel(model: ErpFiscalModel) {
+    if (documentModel.value === model) return
+    documentModel.value = model
+    listEpoch.value++
+    documents.value = []
+    listStates.documents = newListState()
   }
 
   async function load(establishmentId: number | null = selectedEstablishmentId.value) {
@@ -441,17 +460,20 @@ export function useErpFiscalWorkspace() {
     const token = authority.capture()
     const epoch = operationEpoch.value
     const requestId = ++listEpoch.value
+    const model = documentModel.value
     loading.value = true
     errorMessage.value = ''
     try {
-      const reads: Array<{ key: FiscalListKey | 'establishments' | 'configuration', request: Promise<unknown> }> = []
+      const reads: Array<{ key: FiscalReadKey, request: Promise<unknown> }> = []
       if (can('erp.establishments.index')) reads.push({ key: 'establishments', request: api('/erp/establishments?per_page=100') })
       const listGrants = { documents: actionGrants.documentRead, certificates: actionGrants.certificateRead, events: actionGrants.eventRead, invalidations: actionGrants.invalidationRead }
       for (const key of Object.keys(listGrants) as FiscalListKey[]) {
         const permitted = can(listGrants[key])
         listStates[key] = { ...listStates[key], permitted, loading: permitted, error: '' }
-        if (permitted) reads.push({ key, request: api(`/erp/fiscal/${key}?per_page=100`) })
+        if (permitted) reads.push({ key, request: api(`/erp/fiscal/${key}?per_page=100${key === 'documents' && model ? `&model=${model}` : ''}`) })
       }
+      // Preserve the existing bounded candidate read separately from the model list.
+      if (model && can(actionGrants.documentRead)) reads.push({ key: 'documentSources', request: api('/erp/fiscal/documents?per_page=100') })
       if (can(actionGrants.configurationRead) && id !== null) reads.push({ key: 'configuration', request: api(`/erp/fiscal/configuration/${id}`) })
       const settled = await Promise.allSettled(reads.map(read => read.request))
       if (!isCurrent(token, epoch) || requestId !== listEpoch.value) return
@@ -459,12 +481,14 @@ export function useErpFiscalWorkspace() {
         const key = reads[index]!.key
         if (result.status === 'rejected') {
           const message = apiErrorMessage(result.reason) ?? 'Não foi possível carregar os dados fiscais.'
-          if (key !== 'establishments' && key !== 'configuration') listStates[key] = { ...listStates[key], loading: false, error: message }
+          if (key !== 'establishments' && key !== 'configuration' && key !== 'documentSources') listStates[key] = { ...listStates[key], loading: false, error: message }
           if (!errorMessage.value) errorMessage.value = message
           return
         }
         if (key === 'establishments') {
           acceptRows(result.value as ApiEnvelope<Array<{ id: number, name: string, cnpj: string | null, status: string }>>, establishments)
+        } else if (key === 'documentSources') {
+          acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documentSources)
         } else if (key === 'configuration') {
           configuration.value = rowData(result.value as ApiEnvelope<ErpFiscalConfiguration>)
           releaseMessage.value = configuration.value.release_gates.provider === 'unavailable'
@@ -474,7 +498,10 @@ export function useErpFiscalWorkspace() {
               : `Transmissão de produção bloqueada: ${configuration.value.release_gates.production_blocker ?? 'gate desabilitado'}`
           configurationForm.value = JSON.parse(JSON.stringify(configuration.value.issuer ? configuration.value : emptyConfigurationForm(configuration.value))) as Record<string, unknown>
         } else {
-          if (key === 'documents') acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documents)
+          if (key === 'documents') {
+            acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documents)
+            if (!model) acceptRows(result.value as ApiEnvelope<ErpFiscalDocument[]>, documentSources)
+          }
           if (key === 'certificates') acceptRows(result.value as ApiEnvelope<ErpFiscalCertificate[]>, certificates)
           if (key === 'events') acceptRows(result.value as ApiEnvelope<ErpFiscalEvent[]>, events)
           if (key === 'invalidations') acceptRows(result.value as ApiEnvelope<ErpFiscalInvalidation[]>, invalidations)
@@ -1145,12 +1172,12 @@ export function useErpFiscalWorkspace() {
   }
 
   return {
-    establishments, selectedEstablishmentId, configuration, configurationForm, listStates, documents, sales, returns, certificates, events, invalidations, operationNatures,
+    establishments, selectedEstablishmentId, configuration, configurationForm, listStates, documents, documentSources, sales, returns, certificates, events, invalidations, operationNatures,
     selectedDocument, selectedSale, selectedReturn, documentForm, fieldErrors, loading, saving, errorMessage, releaseMessage,
     recoveryMessage, artifactError, pendingRecovery, pendingCertificateRecovery, certificateRecoveryReview, certificateMutationInFlight, recoverableEventDraft, noCompany, canRead, readOnly, canWriteConfiguration,
     authorityGeneration: operationEpoch, authorityNeedsRefresh,
     canUploadCertificates, canRotateCertificates,
-    canCreateDocuments, productionBlocked, actionGrants,
+    canCreateDocuments, productionBlocked, actionGrants, can, documentModel, setDocumentModel,
     canQueue: computed(() => can(actionGrants.queue)), canTransmit: computed(() => can(actionGrants.transmit)),
     canConsult: computed(() => can(actionGrants.consult)), canEnableContingency: computed(() => can(actionGrants.contingency)),
     canReconcileContingency: computed(() => can(actionGrants.contingencyReconcile)), canCreateEvents: computed(() => can(actionGrants.eventCreate) && can(actionGrants.eventSubmit)),

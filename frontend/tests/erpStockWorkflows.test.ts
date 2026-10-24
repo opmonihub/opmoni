@@ -23,6 +23,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const exports: Record<string, unknown> = {}
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
+    if (path === '~/utils/erpWorkspaceNav') return loadAppComposable('utils/erpWorkspaceNav.ts')
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
     if (!(path in imports)) throw new Error(`Unexpected test import ${path}`)
     return imports[path]
@@ -33,7 +34,8 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
 function createStockWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, permissions = ['*'], refreshWithStatus = async () => ({ identity: {}, committed: true })) {
   const user = Vue.ref({ id: 91 })
   const currentCompany = Vue.ref({ id: 7, permissions, role: 'owner' })
-  const key = Vue.computed(() => JSON.stringify([user.value.id, currentCompany.value.id, currentCompany.value.role, ...currentCompany.value.permissions]))
+  const authorityContext = Vue.ref('account-3:session-1')
+  const key = Vue.computed(() => JSON.stringify([authorityContext.value, user.value.id, currentCompany.value.id, currentCompany.value.role, ...currentCompany.value.permissions]))
   const context = { key, capture: () => ({ key: key.value }), isCurrent: (token: { key: string }) => token.key === key.value }
   const mounted: Array<() => void> = []
   const scope = Vue.effectScope()
@@ -53,7 +55,7 @@ function createStockWorkspace(api: (path: string, options?: Record<string, unkno
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- The runtime-only harness reads the composable's Vue refs.
   const state = scope.run(() => (exports.useErpStockWorkspace as () => Record<string, any>)())!
   for (const callback of mounted) callback()
-  return { state, user, currentCompany, stop: () => scope.stop() }
+  return { state, user, currentCompany, authorityContext, stop: () => scope.stop() }
 }
 
 function deferred<T>() {
@@ -944,6 +946,24 @@ describe('mounted stock operation forms', () => {
 })
 
 describe('mounted stock workspace recovery lifecycle', () => {
+  it('selects cost layers on root entry with only the lots grant and follows hash history', async (t) => {
+    const calls: string[] = []
+    const workspace = createStockWorkspace(async (path) => { calls.push(path); return emptyPage }, ['erp.stock.lots.index'])
+    const mounted = mountStockWorkspace(workspace.state)
+    t.after(() => { mounted.stop(); workspace.stop() })
+    for (let index = 0; index < 10; index++) await Vue.nextTick()
+    assert.ok(calls.some(path => path.startsWith('/erp/stock/lots?')))
+    assert.equal(calls.some(path => path.startsWith('/erp/stock/balances?')), false)
+    assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), true)
+    mounted.route.hash = '#balances'
+    await Vue.nextTick()
+    assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), false)
+    mounted.route.hash = '#lots'
+    await Vue.nextTick()
+    assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), true)
+    assert.deepEqual(mounted.renderErrors, [])
+  })
+
   it('labels known and unrecognized movement sources and lot cost states in Portuguese', async (t) => {
     const workspace = createStockWorkspace(async () => emptyPage, ['*'])
     const mounted = mountStockWorkspace(workspace.state, '#movements')
@@ -1005,7 +1025,7 @@ describe('mounted stock workspace recovery lifecycle', () => {
     }
   })
 
-  it('does not show an unauthorized area as an empty table and sanitizes its hash', async () => {
+  it('does not show an unauthorized area as an empty table and preserves its explicit hash', async () => {
     const mock = createMountedStockWorkspace([])
     const mounted = mountStockWorkspace(mock.workspace, '#balances')
     try {
@@ -1013,21 +1033,22 @@ describe('mounted stock workspace recovery lifecycle', () => {
       await Vue.nextTick()
       assert.equal(walkNodes(mounted.root).some(node => String(node.props?.['data-alert-title'] ?? '').match(/não permite consultar o estoque/i)), true)
       assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), false)
-      assert.equal(mounted.route.hash, '')
+      assert.equal(mounted.route.hash, '#balances')
       assert.deepEqual(mounted.renderErrors, [])
     } finally {
       mounted.stop()
     }
   })
 
-  it('routes an unauthorized balances hash to the first permitted stock area', async () => {
+  it('keeps an explicit denied balances destination denied instead of selecting movements', async () => {
     const mock = createMountedStockWorkspace(['erp.stock.movements.index'])
     const mounted = mountStockWorkspace(mock.workspace, '#balances')
     try {
       await Vue.nextTick()
       await Vue.nextTick()
-      assert.equal(mounted.route.hash, '#movements')
-      assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), true)
+      assert.equal(mounted.route.hash, '#balances')
+      assert.equal(walkNodes(mounted.root).some(node => node.props?.['data-stock-table'] === 'true'), false)
+      assert.match(renderedText(mounted.root as unknown as Record<string, unknown>), /não permite consultar o estoque/)
       assert.deepEqual(mounted.renderErrors, [])
     } finally {
       mounted.stop()
@@ -1148,5 +1169,31 @@ it('pages the real stock footer once for the selected area, preserving filters a
   const deniedBefore = calls.length
   await workspace.state.load('movements', 3)
   assert.equal(calls.length, deniedBefore)
+  assert.deepEqual(mounted.renderErrors, [])
+})
+
+for (const authorityChange of ['company', 'account', 'session']) it(`reloads the current stock destination after ${authorityChange} changes with identical grants and discards its late former list`, async (t) => {
+  const requests: Array<ReturnType<typeof deferred<typeof emptyPage>>> = []
+  const workspace = createStockWorkspace(async (path) => {
+    if (!path.startsWith('/erp/stock/balances?')) return emptyPage
+    const pending = deferred<typeof emptyPage>()
+    requests.push(pending)
+    return await pending.promise
+  }, ['erp.stock.balances.index'])
+  const mounted = mountStockWorkspace(workspace.state, '#balances')
+  t.after(() => { mounted.stop(); workspace.stop() })
+  for (let index = 0; index < 10; index++) await Vue.nextTick()
+  assert.equal(requests.length, 1)
+  if (authorityChange === 'company') workspace.currentCompany.value = { ...workspace.currentCompany.value, id: 8 }
+  else workspace.authorityContext.value = authorityChange === 'account' ? 'account-4:session-1' : 'account-3:session-2'
+  for (let index = 0; index < 10; index++) await Vue.nextTick()
+  assert.equal(requests.length, 2)
+  requests[1]!.resolve(emptyPage)
+  await requests[1]!.promise
+  await Vue.nextTick()
+  requests[0]!.resolve({ ...emptyPage, data: [{ erp_establishment_id: 99 }] })
+  await requests[0]!.promise
+  await Vue.nextTick()
+  assert.deepEqual(workspace.state.balances.value, [])
   assert.deepEqual(mounted.renderErrors, [])
 })

@@ -4,30 +4,15 @@ import type { TableColumn } from '@nuxt/ui'
 import type { ErpStockAdjustment, ErpStockBalance, ErpStockLot, ErpStockMovement, ErpStockTransfer } from '#shared/types/erpBusiness'
 import { stockCostDescription } from '#shared/utils/erpStock'
 import { useErpStockWorkspace } from '~/composables/useErpStockWorkspace'
+import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
 type StockArea = 'balances' | 'movements' | 'lots' | 'adjustments' | 'transfers'
 const workspace = useErpStockWorkspace()
 const route = useRoute()
-const router = useRouter()
-const areas: Array<{ id: StockArea, label: string }> = [
-  { id: 'balances', label: 'Saldos' },
-  { id: 'movements', label: 'Movimentações' },
-  { id: 'lots', label: 'Camadas de custo' },
-  { id: 'adjustments', label: 'Ajustes' },
-  { id: 'transfers', label: 'Transferências' }
-]
-const areaActions: Record<StockArea, string> = {
-  balances: 'erp.stock.balances.index', movements: 'erp.stock.movements.index', lots: 'erp.stock.lots.index',
-  adjustments: 'erp.stock.adjustments.index', transfers: 'erp.stock.transfers.index'
-}
-const permittedAreas = computed(() => areas.filter(item => workspace.allowed(areaActions[item.id])))
-function areaFromHash(hash: string): StockArea {
-  const value = hash.replace(/^#/, '')
-  const permitted = permittedAreas.value
-  if (permitted.some(item => item.id === value)) return value as StockArea
-  return permitted[0]?.id ?? 'balances'
-}
-const area = ref<StockArea>(areaFromHash(route.hash))
+const mounted = ref(false)
+const permittedAreas = computed(() => erpWorkspaceModuleDestinations('estoque', workspace.allowed))
+const selection = computed(() => erpWorkspaceModuleSelection('estoque', mounted.value ? route.hash : '', workspace.allowed))
+const area = computed(() => (selection.value.destination?.id ?? 'balances') as StockArea)
 const adjustmentOpen = ref(false)
 const transferOpen = ref(false)
 const adjustmentFormKey = ref(0)
@@ -81,17 +66,12 @@ const areaLinks = computed(() => [permittedAreas.value.map(item => ({
   active: area.value === item.id
 }))])
 
-watch(() => route.hash, (hash) => {
-  const next = areaFromHash(hash)
-  const requested = hash.replace(/^#/, '')
-  const validRequest = permittedAreas.value.some(item => item.id === requested)
-  if (hash && !validRequest) void router.replace({ path: route.path, query: route.query, hash: permittedAreas.value.length ? `#${next}` : '' })
-  if (next === area.value) return
-  area.value = next
-  workspace.beginManualIntent()
+watch(() => [mounted.value, area.value, selection.value.permitted, workspace.authorityGeneration.value] as const, (_next, previous) => {
+  if (!mounted.value) return
+  if (previous?.[0] && previous[3] === workspace.authorityGeneration.value) workspace.beginManualIntent()
   workspace.filters.page = 1
-  void workspace.load(next, 1)
-}, { immediate: true })
+  if (selection.value.permitted) void workspace.load(area.value, 1)
+})
 watch(() => workspace.resolvedOperation.value, (resolved) => {
   if (!resolved) return
   const owner = recoveryOwners.get(resolved.key)
@@ -155,17 +135,14 @@ watch(() => workspace.authorityGeneration.value, () => {
   transferOpen.value = false
   adjustmentFormKey.value++
   transferFormKey.value++
-  const next = areaFromHash(route.hash)
-  area.value = next
-  if (route.hash !== `#${next}`) void router.replace({ path: route.path, query: route.query, hash: permittedAreas.value.length ? `#${next}` : '' })
 })
 onMounted(() => {
-  void workspace.load(area.value, 1)
+  mounted.value = true
 })
 
 function applyFilters() {
   workspace.filters.page = 1
-  void workspace.load(area.value, 1)
+  if (selection.value.permitted) void workspace.load(area.value, 1)
 }
 function clearFilters() {
   workspace.filters.erp_establishment_id = ''
@@ -476,7 +453,7 @@ function mutationColor() {
     </UAlert>
 
     <UAlert
-      v-if="permittedAreas.length === 0"
+      v-if="!selection.permitted"
       color="error"
       title="Seu acesso não permite consultar o estoque desta empresa."
     />

@@ -1,4 +1,5 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
+import type { ErpFiscalModel } from '../../shared/types/erpFiscal'
 
 /**
  * Permissões granulares de empresa ERP expostas em `/me` (`current_company.permissions`).
@@ -43,6 +44,9 @@ export interface ErpModuleTab {
   label: string
   /** Caminho relativo `/api/v1` via `useAccessApi` (sem prefixo). */
   apiPath: string
+  readPermission: string
+  fiscalArea?: 'documents' | 'configuration' | 'certificates' | 'events' | 'invalidations'
+  fiscalModel?: ErpFiscalModel
   mode?: 'report' | 'xml-preview'
   emptyTitle: string
   emptyDescription: string
@@ -85,21 +89,21 @@ export const erpFinanceiroContract: ErpModulePageContract = {
   referenceNote: 'AccountController, Expense/Revenue, TransactionPayment (referência sistema).',
   tabs: [
     {
-      id: 'accounts',
+      id: 'accounts', readPermission: 'erp.financial-accounts.index',
       label: 'Contas',
       apiPath: '/erp/financial-accounts',
       emptyTitle: 'Nenhuma conta financeira',
       emptyDescription: 'Cadastre contas ERP separadas do escritório quando a API estiver ativa.'
     },
     {
-      id: 'obligations',
+      id: 'obligations', readPermission: 'erp.obligations.index',
       label: 'Obrigações',
       apiPath: '/erp/obligations',
       emptyTitle: 'Nenhuma obrigação',
       emptyDescription: 'Recebíveis e pagáveis aparecem aqui após lançamentos confirmados.'
     },
     {
-      id: 'payments',
+      id: 'payments', readPermission: 'erp.payments.index',
       label: 'Pagamentos',
       apiPath: '/erp/payments',
       emptyTitle: 'Nenhum pagamento',
@@ -119,14 +123,14 @@ export const erpCaixaContract: ErpModulePageContract = {
   referenceNote: 'CashRegisterController (referência sistema).',
   tabs: [
     {
-      id: 'registers',
+      id: 'registers', readPermission: 'erp.cash-registers.index',
       label: 'Caixas',
       apiPath: '/erp/cash-registers',
       emptyTitle: 'Nenhum caixa',
       emptyDescription: 'Configure caixas por estabelecimento quando o módulo for liberado.'
     },
     {
-      id: 'sessions',
+      id: 'sessions', readPermission: 'erp.cash-sessions.index',
       label: 'Sessões',
       apiPath: '/erp/cash-sessions',
       emptyTitle: 'Nenhuma sessão',
@@ -146,14 +150,14 @@ export const erpComprasContract: ErpModulePageContract = {
   referenceNote: 'PurchaseController, PurchaseReturnController, PurchaseXmlController.',
   tabs: [
     {
-      id: 'purchases',
+      id: 'purchases', readPermission: 'erp.purchases.index',
       label: 'Compras',
       apiPath: '/erp/purchases',
       emptyTitle: 'Nenhuma compra',
       emptyDescription: 'Rascunhos e documentos lançados ficam separados por status.'
     },
     {
-      id: 'xml-preview',
+      id: 'xml-preview', readPermission: 'erp.purchases.xml-preview',
       label: 'Prévia XML',
       apiPath: '/erp/purchases/xml-preview',
       mode: 'xml-preview',
@@ -161,7 +165,7 @@ export const erpComprasContract: ErpModulePageContract = {
       emptyDescription: 'Envie XML de entrada para validar duplicidade antes de confirmar.'
     },
     {
-      id: 'returns',
+      id: 'returns', readPermission: 'erp.purchase-returns.index',
       label: 'Devoluções',
       apiPath: '/erp/purchase-returns',
       emptyTitle: 'Nenhuma devolução',
@@ -181,28 +185,35 @@ export const erpEstoqueContract: ErpModulePageContract = {
   referenceNote: 'StockTransferController, StockAdjustmentController, OpeningStock.',
   tabs: [
     {
-      id: 'balances',
+      id: 'balances', readPermission: 'erp.stock.balances.index',
       label: 'Saldos',
       apiPath: '/erp/stock/balances',
       emptyTitle: 'Nenhum saldo',
       emptyDescription: 'Saldos por estabelecimento e variante aparecem após movimentações.'
     },
     {
-      id: 'movements',
+      id: 'movements', readPermission: 'erp.stock.movements.index',
       label: 'Movimentações',
       apiPath: '/erp/stock/movements',
       emptyTitle: 'Nenhuma movimentação',
       emptyDescription: 'Histórico imutável com origem e operação de estoque.'
     },
     {
-      id: 'adjustments',
+      id: 'lots', readPermission: 'erp.stock.lots.index',
+      label: 'Camadas de custo',
+      apiPath: '/erp/stock/lots',
+      emptyTitle: 'Nenhuma camada de custo',
+      emptyDescription: 'Custos e quantidades disponíveis por camada de estoque.'
+    },
+    {
+      id: 'adjustments', readPermission: 'erp.stock.adjustments.index',
       label: 'Ajustes',
       apiPath: '/erp/stock/adjustments',
       emptyTitle: 'Nenhum ajuste',
       emptyDescription: 'Ajustes exigem permissão, motivo e actor registrados.'
     },
     {
-      id: 'transfers',
+      id: 'transfers', readPermission: 'erp.stock.transfers.index',
       label: 'Transferências',
       apiPath: '/erp/stock/transfers',
       emptyTitle: 'Nenhuma transferência',
@@ -222,28 +233,28 @@ export const erpVendasContract: ErpModulePageContract = {
   referenceNote: 'SellController, SellPosController, SellReturnController.',
   tabs: [
     {
-      id: 'quotes',
+      id: 'quotes', readPermission: 'erp.quotes.index',
       label: 'Orçamentos',
       apiPath: '/erp/quotes',
       emptyTitle: 'Nenhum orçamento',
       emptyDescription: 'Orçamentos não alteram saldos até confirmação.'
     },
     {
-      id: 'orders',
+      id: 'orders', readPermission: 'erp.orders.index',
       label: 'Pedidos',
       apiPath: '/erp/orders',
       emptyTitle: 'Nenhum pedido',
       emptyDescription: 'Pedidos confirmados preservam quantidades solicitadas.'
     },
     {
-      id: 'sales',
+      id: 'sales', readPermission: 'erp.sales.index',
       label: 'Vendas / balcão',
       apiPath: '/erp/sales',
       emptyTitle: 'Nenhuma venda',
       emptyDescription: 'Vendas lançadas consomem estoque e financeiro no mesmo commit.'
     },
     {
-      id: 'returns',
+      id: 'returns', readPermission: 'erp.sale-returns.index',
       label: 'Devoluções',
       apiPath: '/erp/sale-returns',
       emptyTitle: 'Nenhuma devolução',
@@ -262,13 +273,14 @@ export const erpFiscalContract: ErpModulePageContract = {
   writePermission: erpPermissions.fiscalWrite,
   referenceNote: 'NfeController, NfceController, CteController, MdfeController, InutilController.',
   tabs: [
-    { id: 'nfe', label: 'NF-e', apiPath: '/erp/fiscal/documents?model=55', emptyTitle: 'Nenhuma NF-e', emptyDescription: 'Rascunhos e autorizadas ficam separadas por status de transmissão.' },
-    { id: 'nfce', label: 'NFC-e', apiPath: '/erp/fiscal/documents?model=65', emptyTitle: 'Nenhuma NFC-e', emptyDescription: 'Contingência exige reconciliação posterior; nunca simula autorização.' },
-    { id: 'cte', label: 'CT-e', apiPath: '/erp/fiscal/documents?model=57', emptyTitle: 'Nenhum CT-e', emptyDescription: 'Complemento e substituição permanecem ações explícitas.' },
-    { id: 'mdfe', label: 'MDF-e', apiPath: '/erp/fiscal/documents?model=58', emptyTitle: 'Nenhum MDF-e', emptyDescription: 'Encerramento e eventos seguem o modelo de transporte.' },
-    { id: 'certificates', label: 'Certificados', apiPath: '/erp/fiscal/certificates', emptyTitle: 'Nenhum certificado', emptyDescription: 'Metadados seguros; bytes e senhas nunca entram no navegador.' },
-    { id: 'events', label: 'Eventos', apiPath: '/erp/fiscal/events', emptyTitle: 'Nenhum evento', emptyDescription: 'Histórico append-only de tentativas e retornos.' },
-    { id: 'invalidations', label: 'Inutilização', apiPath: '/erp/fiscal/invalidations', emptyTitle: 'Nenhuma inutilização', emptyDescription: 'Faixas inutilizadas com justificativa e permissão.' }
+    { id: 'nfe', readPermission: 'erp.fiscal.documents.index', fiscalArea: 'documents', fiscalModel: '55', label: 'NF-e', apiPath: '/erp/fiscal/documents?model=55', emptyTitle: 'Nenhuma NF-e', emptyDescription: 'Rascunhos e autorizadas ficam separadas por status de transmissão.' },
+    { id: 'nfce', readPermission: 'erp.fiscal.documents.index', fiscalArea: 'documents', fiscalModel: '65', label: 'NFC-e', apiPath: '/erp/fiscal/documents?model=65', emptyTitle: 'Nenhuma NFC-e', emptyDescription: 'Contingência exige reconciliação posterior; nunca simula autorização.' },
+    { id: 'cte', readPermission: 'erp.fiscal.documents.index', fiscalArea: 'documents', fiscalModel: '57', label: 'CT-e', apiPath: '/erp/fiscal/documents?model=57', emptyTitle: 'Nenhum CT-e', emptyDescription: 'Complemento e substituição permanecem ações explícitas.' },
+    { id: 'mdfe', readPermission: 'erp.fiscal.documents.index', fiscalArea: 'documents', fiscalModel: '58', label: 'MDF-e', apiPath: '/erp/fiscal/documents?model=58', emptyTitle: 'Nenhum MDF-e', emptyDescription: 'Encerramento e eventos seguem o modelo de transporte.' },
+    { id: 'configuration', readPermission: 'erp.fiscal.configuration.show', fiscalArea: 'configuration', label: 'Configuração', apiPath: '/erp/fiscal/configuration', emptyTitle: 'Selecione o estabelecimento emissor', emptyDescription: 'Configuração fiscal por estabelecimento.' },
+    { id: 'certificates', readPermission: 'erp.fiscal.certificates.index', fiscalArea: 'certificates', label: 'Certificados', apiPath: '/erp/fiscal/certificates', emptyTitle: 'Nenhum certificado', emptyDescription: 'Metadados seguros; bytes e senhas nunca entram no navegador.' },
+    { id: 'events', readPermission: 'erp.fiscal.events.index', fiscalArea: 'events', label: 'Eventos', apiPath: '/erp/fiscal/events', emptyTitle: 'Nenhum evento', emptyDescription: 'Histórico append-only de tentativas e retornos.' },
+    { id: 'invalidations', readPermission: 'erp.fiscal.invalidations.index', fiscalArea: 'invalidations', label: 'Inutilização', apiPath: '/erp/fiscal/invalidations', emptyTitle: 'Nenhuma inutilização', emptyDescription: 'Faixas inutilizadas com justificativa e permissão.' }
   ]
 }
 
@@ -283,7 +295,7 @@ export const erpContabilidadeContract: ErpModulePageContract = {
   referenceNote: 'Entrega ERP → escritório (change 8); captura incoming permanece no Fiscal Opmoni.',
   tabs: [
     {
-      id: 'deliveries',
+      id: 'deliveries', readPermission: 'erp.accounting-deliveries.index',
       label: 'Entregas',
       apiPath: '/erp/accounting-deliveries',
       emptyTitle: 'Nenhuma entrega',
@@ -302,12 +314,12 @@ export const erpRelatoriosContract: ErpModulePageContract = {
   writePermission: erpPermissions.reportsExport,
   referenceNote: 'ReportController, AccountReportsController, HomeController (referência sistema).',
   tabs: [
-    { id: 'sales', label: 'Vendas', apiPath: '/erp/reports/sales', mode: 'report', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Agregados usam snapshots e lançamentos confirmados.' },
-    { id: 'purchases', label: 'Compras', apiPath: '/erp/reports/purchases', mode: 'report', emptyTitle: 'Sem dados de compras', emptyDescription: 'Compras lançadas e devoluções compensatórias entram nos filtros.' },
-    { id: 'stock', label: 'Estoque', apiPath: '/erp/reports/stock', mode: 'report', emptyTitle: 'Sem dados de estoque', emptyDescription: 'Quantidades e custos seguem movimentos registrados.' },
-    { id: 'finance', label: 'Financeiro', apiPath: '/erp/reports/financial', mode: 'report', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Recebíveis, pagáveis e aging derivam de obrigações postadas.' },
-    { id: 'fiscal', label: 'Fiscal', apiPath: '/erp/reports/fiscal', mode: 'report', emptyTitle: 'Sem dados fiscais', emptyDescription: 'Status de autorização separado de rascunhos e indeterminados.' },
-    { id: 'dashboard', label: 'Integrado', apiPath: '/erp/reports/overview', mode: 'report', emptyTitle: 'Painel indisponível', emptyDescription: 'Indicadores combinados respeitam os mesmos filtros de período.' }
+    { id: 'sales', readPermission: 'erp.reports.show', label: 'Vendas', apiPath: '/erp/reports/sales', mode: 'report', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Agregados usam snapshots e lançamentos confirmados.' },
+    { id: 'purchases', readPermission: 'erp.reports.show', label: 'Compras', apiPath: '/erp/reports/purchases', mode: 'report', emptyTitle: 'Sem dados de compras', emptyDescription: 'Compras lançadas e devoluções compensatórias entram nos filtros.' },
+    { id: 'stock', readPermission: 'erp.reports.show', label: 'Estoque', apiPath: '/erp/reports/stock', mode: 'report', emptyTitle: 'Sem dados de estoque', emptyDescription: 'Quantidades e custos seguem movimentos registrados.' },
+    { id: 'finance', readPermission: 'erp.reports.show', label: 'Financeiro', apiPath: '/erp/reports/financial', mode: 'report', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Recebíveis, pagáveis e aging derivam de obrigações postadas.' },
+    { id: 'fiscal', readPermission: 'erp.reports.show', label: 'Fiscal', apiPath: '/erp/reports/fiscal', mode: 'report', emptyTitle: 'Sem dados fiscais', emptyDescription: 'Status de autorização separado de rascunhos e indeterminados.' },
+    { id: 'dashboard', readPermission: 'erp.reports.show', label: 'Integrado', apiPath: '/erp/reports/overview', mode: 'report', emptyTitle: 'Painel indisponível', emptyDescription: 'Indicadores combinados respeitam os mesmos filtros de período.' }
   ]
 }
 

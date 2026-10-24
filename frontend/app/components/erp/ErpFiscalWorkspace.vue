@@ -1,9 +1,26 @@
 <script setup lang="ts">
+import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 import type { ErpFiscalCertificate, ErpFiscalDocument, ErpFiscalInvalidation, ErpFiscalModel } from '#shared/types/erpFiscal'
 
 const workspace = reactive(useErpFiscalWorkspace())
-const activeArea = ref('documents')
-const selectedModel = ref<ErpFiscalModel>('55')
+const route = useRoute()
+const router = useRouter()
+const mounted = ref(false)
+const uiAuthority = useErpAdministrationContext(() => workspace.selectedEstablishmentId)
+const allowedDestination = (permission: string) => workspace.can(permission)
+const destinations = computed(() => erpWorkspaceModuleDestinations('fiscal', allowedDestination))
+const selection = computed(() => erpWorkspaceModuleSelection('fiscal', mounted.value ? route.hash : '', allowedDestination))
+const activeArea = computed(() => selection.value.permitted ? selection.value.destination?.fiscalArea : null)
+const selectedModel = computed<ErpFiscalModel>(() => selection.value.destination?.fiscalModel ?? '55')
+const destinationLinks = computed(() => [destinations.value.map(destination => ({
+  label: destination.label,
+  to: { path: route.path, query: route.query, hash: `#${destination.id}` },
+  active: selection.value.permitted && selection.value.destination?.id === destination.id
+}))])
+function selectModel(model: ErpFiscalModel) {
+  const destination = destinations.value.find(item => item.fiscalModel === model)
+  if (destination) void router.push({ path: route.path, query: route.query, hash: `#${destination.id}` })
+}
 const certificateMode = ref<'upload' | 'rotate'>('upload')
 const selectedCertificate = ref<ErpFiscalCertificate | null>(null)
 const pendingAction = ref<{ kind: 'queue' | 'transmit' | 'consult' | 'contingency' | 'reconcile-contingency', document: ErpFiscalDocument } | null>(null)
@@ -18,12 +35,7 @@ const eventFormEpoch = ref(0)
 const invalidationFormEpoch = ref(0)
 const localBusy = ref(false)
 const requestError = ref('')
-const uiAuthority = useErpAdministrationContext(() => workspace.selectedEstablishmentId)
 let uiEpoch = 0
-const areas = [
-  { id: 'documents', label: 'Documentos' }, { id: 'configuration', label: 'Configuração' }, { id: 'certificates', label: 'Certificados' },
-  { id: 'events', label: 'Eventos' }, { id: 'invalidations', label: 'Inutilizações' }
-]
 const fiscalStatuses: Record<string, string> = {
   draft: 'Rascunho', queued: 'Na fila local', pending: 'Pendente', submitting: 'Em processamento', indeterminate: 'Resultado incerto',
   authorized: 'Autorizado', accepted: 'Aceito', rejected: 'Rejeitado', blocked_authority: 'Bloqueado pela autorização atual', attention_required: 'Requer atenção', artifact_pending: 'Artefato pendente',
@@ -67,8 +79,14 @@ watch(() => [uiAuthority.key.value, workspace.selectedEstablishmentId, workspace
   certificateMode.value = 'upload'
 }, { flush: 'sync' })
 
+watch(() => [mounted.value, selection.value.destination?.id, selection.value.permitted, uiAuthority.key.value, workspace.authorityGeneration] as const, () => {
+  if (!mounted.value) return
+  workspace.setDocumentModel(selectedModel.value)
+  if (selection.value.permitted) void workspace.load()
+}, { immediate: true, flush: 'sync' })
+
 onMounted(() => {
-  void workspace.load()
+  mounted.value = true
   void workspace.recoverPendingOperations()
 })
 
@@ -134,7 +152,7 @@ async function createDraft(body: Record<string, unknown>) {
     if (!isCurrentUi(action) || Number(body.erp_establishment_id) !== workspace.selectedEstablishmentId) return
     if (workspace.documents.some(document => document.idempotency_key === body.idempotency_key)) {
       draftFormEpoch.value++
-      activeArea.value = 'documents'
+      selectModel(selectedModel.value)
     }
   } catch (error) {
     if (!isCurrentUi(action)) return
@@ -296,18 +314,12 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
         title="Não foi possível concluir"
         :description="requestError || workspace.errorMessage"
       />
-      <nav class="flex flex-wrap gap-2" aria-label="Áreas do Fiscal">
-        <UButton
-          v-for="area in areas"
-          :key="area.id"
-          :variant="activeArea === area.id ? 'solid' : 'outline'"
-          :color="activeArea === area.id ? 'primary' : 'neutral'"
-          size="sm"
-          @click="activeArea = area.id"
-        >
-          {{ area.label }}
-        </UButton>
-      </nav>
+      <UNavigationMenu :items="destinationLinks" aria-label="Áreas do Fiscal" class="w-full min-w-0 overflow-x-auto" />
+      <UAlert
+        v-if="!selection.permitted"
+        color="error"
+        title="Seu acesso não permite consultar esta área fiscal."
+      />
 
       <UAlert
         v-if="visibleListState?.error"
@@ -368,11 +380,12 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                       A numeração e a chave ficam vinculadas aos dados confirmados neste envio.
                     </p>
                   </div><USelect
-                    v-model="selectedModel"
+                    :model-value="selectedModel"
                     :items="[{ label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }, { label: 'CT-e (57)', value: '57' }, { label: 'MDF-e (58)', value: '58' }]"
                     value-key="value"
                     label-key="label"
                     class="w-36"
+                    @update:model-value="selectModel($event as ErpFiscalModel)"
                   />
                 </div>
               </template>
@@ -385,10 +398,11 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
                 :selected-sale="workspace.selectedSale"
                 :returns="workspace.returns"
                 :selected-return="workspace.selectedReturn"
-                :original-documents="workspace.documents"
+                :original-documents="workspace.documentSources"
                 :can-create="workspace.canCreateDocuments"
                 :busy="workspace.saving"
                 :field-errors="workspace.fieldErrors"
+                @update:model="selectModel"
                 @select-sale="selectSale"
                 @select-return="selectReturn"
                 @create="createDraft"
@@ -562,7 +576,7 @@ async function handleArtifact(document: ErpFiscalDocument, format: 'xml' | 'pdf'
         </p>
       </template>
 
-      <template v-else>
+      <template v-else-if="activeArea === 'invalidations'">
         <UCard>
           <template #header>
             <h2 class="font-semibold">

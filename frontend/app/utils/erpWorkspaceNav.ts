@@ -183,41 +183,26 @@ export function erpWorkspaceSettingsGroups(
   return destinationItems(erpSettingsNavigationGroups, path, company, onDestinationSelect)
 }
 
-const moduleTabReadPermissions: Record<string, string> = {
-  'financeiro:accounts': 'erp.financial-accounts.index',
-  'financeiro:obligations': 'erp.obligations.index',
-  'financeiro:payments': 'erp.payments.index',
-  'caixa:registers': 'erp.cash-registers.index',
-  'caixa:sessions': 'erp.cash-sessions.index',
-  'compras:purchases': 'erp.purchases.index',
-  'compras:xml-preview': 'erp.purchases.xml-preview',
-  'compras:returns': 'erp.purchase-returns.index',
-  'estoque:balances': 'erp.stock.balances.index',
-  'estoque:movements': 'erp.stock.movements.index',
-  'estoque:adjustments': 'erp.stock.adjustments.index',
-  'estoque:transfers': 'erp.stock.transfers.index',
-  'vendas:quotes': 'erp.quotes.index',
-  'vendas:orders': 'erp.orders.index',
-  'vendas:sales': 'erp.sales.index',
-  'vendas:returns': 'erp.sale-returns.index',
-  'fiscal:nfe': 'erp.fiscal.documents.index',
-  'fiscal:nfce': 'erp.fiscal.documents.index',
-  'fiscal:cte': 'erp.fiscal.documents.index',
-  'fiscal:mdfe': 'erp.fiscal.documents.index',
-  'fiscal:certificates': 'erp.fiscal.certificates.index',
-  'fiscal:events': 'erp.fiscal.events.index',
-  'fiscal:invalidations': 'erp.fiscal.invalidations.index',
-  'contabilidade:deliveries': 'erp.accounting-deliveries.index',
-  'relatorios:sales': 'erp.reports.show',
-  'relatorios:purchases': 'erp.reports.show',
-  'relatorios:stock': 'erp.reports.show',
-  'relatorios:finance': 'erp.reports.show',
-  'relatorios:fiscal': 'erp.reports.show',
-  'relatorios:dashboard': 'erp.reports.show'
-}
-
 function moduleContract(contractId: string): ErpModulePageContract | undefined {
   return erpModulePageContracts.find(contract => contract.id === contractId)
+}
+
+export function erpWorkspaceModuleDestinations(moduleId: string, allowed: (permission: string) => boolean) {
+  const contract = moduleContract(moduleId)
+  return (contract?.tabs ?? []).filter(tab => allowed(tab.readPermission)).map(tab => ({
+    ...tab,
+    to: `${contract!.to}#${tab.id}`
+  }))
+}
+
+/** Known denied hashes keep their identity; only root/unknown entry falls back. */
+export function erpWorkspaceModuleSelection(moduleId: string, hash: string, allowed: (permission: string) => boolean) {
+  const contract = moduleContract(moduleId)
+  const requested = contract?.tabs.find(tab => tab.id === hash.replace(/^#/, ''))
+  const destinations = erpWorkspaceModuleDestinations(moduleId, allowed)
+  const defaultId = moduleId === 'financeiro' ? 'obligations' : contract?.tabs[0]?.id
+  const selected = requested ?? destinations.find(tab => tab.id === defaultId) ?? destinations[0] ?? contract?.tabs[0]
+  return { destination: selected, permitted: !!selected && allowed(selected.readPermission) }
 }
 
 function moduleChildren(
@@ -227,22 +212,14 @@ function moduleChildren(
   company: CompanyMembership | null,
   onDestinationSelect?: () => void
 ): NavigationMenuItem[] {
-  const requestedTab = hash.replace(/^#/, '')
-  const requestedTabExists = contract.tabs.some(tab => tab.id === requestedTab)
-  const defaultTab = contract.id === 'financeiro' ? 'obligations' : contract.tabs[0]?.id
-  const activeTab = requestedTabExists ? requestedTab : defaultTab
-
-  return contract.tabs
-    .filter((tab) => {
-      const permission = moduleTabReadPermissions[`${contract.id}:${tab.id}`]
-      return !!permission && !!company && erpCompanyHasPermission(company.permissions, permission)
-    })
-    .map(tab => ({
-      label: tab.label,
-      to: `${contract.to}#${tab.id}`,
-      active: path === contract.to && activeTab === tab.id,
-      onSelect: onDestinationSelect
-    }))
+  const allowed = (permission: string) => !!company && erpCompanyHasPermission(company.permissions, permission)
+  const selection = erpWorkspaceModuleSelection(contract.id, hash, allowed)
+  return erpWorkspaceModuleDestinations(contract.id, allowed).map(destination => ({
+    label: destination.label,
+    to: destination.to,
+    active: path === contract.to && selection.permitted && selection.destination?.id === destination.id,
+    onSelect: onDestinationSelect
+  }))
 }
 
 export function erpWorkspaceSidebarItems(

@@ -17,6 +17,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  'update:model': [model: ErpFiscalModel]
   'create': [body: Record<string, unknown>]
   'select-sale': [id: number]
   'select-return': [id: number]
@@ -89,6 +90,7 @@ const manifestDocuments = computed(() => props.originalDocuments.filter(row => [
 const selectedManifestDocument = computed(() => manifestDocuments.value.find(row => row.id === selectedManifestDocumentId.value) ?? null)
 
 watch(selectedModel, (model, previous) => {
+  if (model !== props.model) emit('update:model', model)
   kind.value = defaultKind(model)
   selectedOriginalId.value = undefined
   selectedManifestDocumentId.value = undefined

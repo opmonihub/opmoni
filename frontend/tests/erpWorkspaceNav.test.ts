@@ -47,6 +47,21 @@ function children(group: { children?: Array<{ label?: string, to?: string, activ
 }
 
 describe('ERP workspace navigation registry', () => {
+  it('exposes and selects cost layers for a lots-only reader in sidebar and search', () => {
+    const links = erpWorkspaceSidebarItems('/erp/estoque', company({ role: 'viewer', permissions: ['erp.stock.lots.index'] }))
+    const destinations = children(item(links, 'Estoque'))
+    assert.deepEqual(destinations.map(child => child.to), ['/erp/estoque#lots'])
+    assert.equal(destinations[0]?.active, true)
+    assert.deepEqual(erpWorkspaceSearchGroups(links).flatMap(group => group.items).map(child => child.to), ['/erp/estoque#lots'])
+  })
+
+  it('exposes Fiscal configuration from its exact grant and selects the first permitted root', () => {
+    const links = erpWorkspaceSidebarItems('/erp/fiscal', company({ role: 'viewer', permissions: ['erp.fiscal.configuration.show'] }))
+    assert.deepEqual(children(item(links, 'Fiscal')).map(child => child.to), ['/erp/fiscal#configuration'])
+    assert.equal(children(item(links, 'Fiscal'))[0]?.active, true)
+    assert.deepEqual(erpWorkspaceSearchGroups(links).flatMap(group => group.items).map(child => child.to), ['/erp/fiscal#configuration'])
+  })
+
   it('preserves primary and secondary menu positions after filtering exact permissions', () => {
     const links = erpWorkspaceSidebarItems('/erp/financeiro', company({
       role: 'viewer',

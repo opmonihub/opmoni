@@ -5,6 +5,7 @@ import {
   erpCompanyHasPermission,
   erpFinanceiroContract,
   erpFiscalContract,
+  erpEstoqueContract,
   erpModuleActive,
   erpModulePageContracts,
   erpModuleSidebarChildren,
@@ -16,6 +17,13 @@ import {
 } from '../app/utils/erpModulesNav.ts'
 
 describe('erpModulesNav', () => {
+  it('keeps route permissions and fiscal area/model on the existing contracts', () => {
+    assert.ok(erpModulePageContracts.every(contract => contract.tabs.every(tab => tab.readPermission)))
+    assert.equal(erpEstoqueContract.tabs.find(tab => tab.id === 'lots')?.readPermission, 'erp.stock.lots.index')
+    assert.equal(erpFiscalContract.tabs.find(tab => tab.id === 'configuration')?.readPermission, 'erp.fiscal.configuration.show')
+    assert.deepEqual(erpFiscalContract.tabs.filter(tab => tab.fiscalArea === 'documents').map(tab => tab.fiscalModel), ['55', '65', '57', '58'])
+  })
+
   it('shows modules for exact effective reads without broadening narrow delegated grants', () => {
     const visible = erpVisibleNavModules(['erp.payments.index', 'erp.contacts.show'])
     assert.ok(visible.some(module => module.to === '/erp/financeiro'))
