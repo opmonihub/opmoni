@@ -388,11 +388,59 @@ class ErpFiscalDurableAttemptTest extends TestCase
 
     private function postedSale(ErpCompany $company, ErpEstablishment $issuer, User $actor, array &$source): ErpSale
     {
-        $sale = ErpSale::query()->create(['erp_company_id' => $company->id, 'erp_establishment_id' => $issuer->id, 'invoice_no' => 'source-'.Str::uuid(), 'status' => 'posted', 'total_amount' => '100.00']);
+        $configuration = ErpFiscalConfiguration::query()->where('erp_establishment_id', $issuer->id)->firstOrFail()->currentRevision->configuration;
+        $nature = ErpOperationNature::query()->where('erp_company_id', $company->id)->findOrFail($configuration['models']['55']['operation_nature_id']);
+        $source['identity']['operation_nature'] = $nature->description;
+        $source['items'][0]['cfop'] = $nature->cfop;
+        $operationNature = $nature->only(['id', 'cfop', 'description', 'movement', 'erp_establishment_id']);
+        $invoiceNo = 'source-'.Str::uuid();
+        $sale = ErpSale::query()->create([
+            'erp_company_id' => $company->id,
+            'erp_establishment_id' => $issuer->id,
+            'erp_operation_nature_id' => $nature->id,
+            'invoice_no' => $invoiceNo,
+            'status' => 'posted',
+            'total_amount' => '100.00',
+        ]);
+        $product = [
+            'name' => $source['items'][0]['description'],
+            'sku' => $source['items'][0]['code'],
+            'ncm' => $source['items'][0]['ncm'],
+            'origin_code' => (string) $source['items'][0]['tax']['origin'],
+            'icms_cst' => $source['items'][0]['tax']['icms_cst'],
+            'pis_cst' => $source['items'][0]['tax']['pis_cst'],
+            'cofins_cst' => $source['items'][0]['tax']['cofins_cst'],
+            'icms_rate' => $source['items'][0]['tax']['icms_rate'],
+        ];
         $line = $sale->lines()->create(['erp_company_id' => $company->id, 'ordinal' => 1, 'quantity' => '1.0000', 'unit_price' => '100.0000', 'gross_amount' => '100.00', 'line_total' => '100.00',
-            'product_snapshot' => ['description' => $source['items'][0]['description'], 'product' => ['sku' => $source['items'][0]['code'], 'ncm' => $source['items'][0]['ncm'], 'origin_code' => '0', 'icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07'], 'unit' => ['short_name' => 'UN'], 'operation_nature' => ['cfop' => '5102']]]);
+            'erp_product_variant_id' => null,
+            'product_snapshot' => [
+                'version' => 'commercial-v1',
+                'description' => $source['items'][0]['description'],
+                'product' => $product,
+                'variant' => null,
+                'unit' => ['short_name' => $source['items'][0]['unit']],
+                'operation_nature' => $operationNature,
+            ]]);
         $source['items'][0]['source_line_id'] = $line->id;
-        $sale->update(['commercial_snapshot' => ['accepted' => ['actor_id' => $actor->id], 'party' => ['tax_id' => $source['recipient']['cnpj']], 'totals' => ['total_amount' => '100.00'], 'lines' => [$line->attributesToArray()]]]);
+        $sale->update(['commercial_snapshot' => [
+            'version' => 'commercial-v1',
+            'accepted' => ['actor_id' => $actor->id],
+            'party' => [
+                'tax_id' => $source['recipient']['cnpj'],
+                'name' => $source['recipient']['legal_name'],
+                'address' => $source['recipient']['address'],
+            ],
+            'document' => [
+                'id' => $sale->id,
+                'erp_company_id' => $company->id,
+                'erp_establishment_id' => $issuer->id,
+                'invoice_no' => $invoiceNo,
+            ],
+            'totals' => ['subtotal_amount' => '100.00', 'discount_amount' => '0.00', 'tax_amount' => '0.00', 'total_amount' => '100.00'],
+            'lines' => [$line->attributesToArray()],
+            'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null],
+        ]]);
 
         return $sale;
     }
