@@ -60,7 +60,7 @@ return new class extends Migration
                 DB::unprepared("CREATE TRIGGER {$name} BEFORE {$event} ON erp_product_tax_profile_revisions BEGIN SELECT RAISE(ABORT, 'Product tax revisions are immutable'); END");
             }
         } elseif (DB::getDriverName() === 'pgsql') {
-            DB::unprepared("CREATE FUNCTION erp_tax_revision_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Product tax revisions are immutable'; END; $$");
+            DB::unprepared("CREATE OR REPLACE FUNCTION erp_tax_revision_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Product tax revisions are immutable'; END; $$");
             DB::unprepared('CREATE TRIGGER erp_tax_revision_immutable BEFORE UPDATE OR DELETE ON erp_product_tax_profile_revisions FOR EACH ROW EXECUTE FUNCTION erp_tax_revision_immutable()');
         }
     }
