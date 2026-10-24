@@ -84,7 +84,7 @@ function realPurchaseChild(name: 'ErpPurchaseForm' | 'ErpPurchaseReturnForm') {
     '#shared/types/erpBusiness': {},
     '#shared/utils/erpPurchase': { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal, buildPurchaseReturnPayload },
     '~/utils/erpProductVariantReferences': productVariantReferences
-  }, { ref: Vue.ref, computed: Vue.computed })
+  }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed })
   return exports.default as Vue.Component
 }
 
@@ -185,7 +185,34 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
   components.ErpPurchaseOperationRecovery = realPurchaseRecovery()
   components.NuxtLink = { setup: (_props, context) => () => Vue.h('a', context.attrs, context.slots.default?.()) }
   components.ErpPurchaseForm = realPurchaseChild('ErpPurchaseForm')
-  components.ErpCatalogReferenceSelect = { setup: (_props, context) => () => Vue.h('div', {}, context.slots.default?.()) }
+  components.ErpCatalogReferenceSelect = Vue.defineComponent({
+    props: ['modelValue', 'path', 'query', 'name', 'label'],
+    emits: ['selection-record'],
+    setup: (props, context) => {
+      const recordFor = (id: number): Record<string, unknown> => {
+        const variants = (state.variants as Vue.Ref<Array<Record<string, unknown>>>).value
+        return variants.find(variant => variant.id === id) ?? {
+          id, name: 'Item selecionado', status: 'active',
+          product: { id: 7, name: 'Item selecionado', kind: 'goods', track_stock: true, erp_unit_id: 2, status: 'active' }
+        }
+      }
+      Vue.watch(() => props.modelValue, (id) => {
+        if (typeof id === 'number')
+          context.emit('selection-record', { id, record: recordFor(id), source: 'hydration' })
+      }, { immediate: true, flush: 'sync' })
+      return () => Vue.h('input', {
+        'aria-label': props.label,
+        'data-erp-field-name': props.name,
+        'data-erp-path': props.path,
+        'data-erp-usage': (props.query as { usage?: string } | undefined)?.usage,
+        'value': props.modelValue ?? '',
+        'onSelect': (value: unknown) => {
+          const id = Number(value)
+          context.emit('selection-record', { id, record: recordFor(id), source: 'selection' })
+        }
+      })
+    }
+  })
   components.ErpPurchaseReturnForm = realPurchaseChild('ErpPurchaseReturnForm')
   components.UFormField = { props: ['label', 'error', 'name'], setup: (props, context) => () => Vue.h('label', { 'data-field': props.name }, [Vue.h('span', {}, String(props.label ?? '')), context.slots.default?.(), props.error ? Vue.h('small', {}, String(props.error)) : null]) }
   for (const name of ['UInput', 'UInputMenu', 'USelect', 'UTextarea']) components[name] = {
@@ -239,6 +266,16 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
     return [...(predicate(record) ? [record] : []), ...(record.children ?? []).flatMap(child => findAll(child, predicate))]
   }
   return { app, route, replacements, modalLeaves, authorityGeneration, mutationError, draftSaveResults, loads, navItems, root, state, find, findAll, findInModal, textContent, renderErrors }
+}
+
+function selectPurchaseVariant(app: ReturnType<typeof mountPurchaseWorkspace>, modalTitle: string, id: number) {
+  const selector = app.findInModal(modalTitle, node => node.props?.['data-erp-field-name'] === 'lines.0.erp_product_variant_id')
+  assert.ok(selector)
+  assert.equal(selector.props?.['data-erp-path'], '/erp/product-variants')
+  assert.equal(selector.props?.['data-erp-usage'], 'purchase')
+  const select = selector.props?.['onSelect']
+  assert.equal(typeof select, 'function')
+  ;(select as (value: number) => void)(id)
 }
 
 function deferred<T>() {
@@ -1252,8 +1289,12 @@ describe('purchase decimal and source helpers', () => {
     assert.equal(input?.props?.value, 'PO-RETAIN')
     app.find(app.root, node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
     app.find(app.root, node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
-    app.find(app.root, node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+    selectPurchaseVariant(app, 'Nova compra', 71)
     await Vue.nextTick()
+    const descriptionField = app.find(app.root, node => node.props?.['data-field'] === 'lines.0.description')
+    assert.equal(app.find(descriptionField, node => node.tag === 'input')?.props?.value, 'Item retido', 'the actual user selection initializes the untouched description')
+    const unitField = app.find(app.root, node => node.props?.['aria-label'] === 'Unidade do item 1')
+    assert.equal(unitField?.props?.value, 2, 'the actual user selection initializes the base unit')
     app.find(app.root, node => node.tag === 'button' && node.props?.['aria-label'] === 'Salvar rascunho')?.props?.onClick?.()
     app.find(app.root, node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
     await Vue.nextTick()
@@ -1297,7 +1338,7 @@ describe('purchase decimal and source helpers', () => {
       ;(field()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'CREATE-RECOVERED' } })
       app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
       app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
-      app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+      selectPurchaseVariant(app, 'Nova compra', 71)
       await Vue.nextTick()
       app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
       await Vue.nextTick()
@@ -1354,7 +1395,7 @@ describe('purchase decimal and source helpers', () => {
     ;(doc()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'OLDER-A' } })
     app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
     app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
-    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+    selectPurchaseVariant(app, 'Nova compra', 71)
     await Vue.nextTick()
     app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
     await Vue.nextTick()
@@ -1399,7 +1440,7 @@ describe('purchase decimal and source helpers', () => {
     ;(doc()?.props?.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'NEW-AFTER-RELOAD' } })
     app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Estabelecimento da compra')?.props?.onSelect?.(3)
     app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Fornecedor da compra')?.props?.onSelect?.(8)
-    app.findInModal('Nova compra', node => node.tag === 'input' && node.props?.['aria-label'] === 'Produto do item 1')?.props?.onSelect?.(71)
+    selectPurchaseVariant(app, 'Nova compra', 71)
     await Vue.nextTick()
     app.findInModal('Nova compra', node => node.tag === 'form')?.props?.onSubmit?.({ preventDefault() {} })
     await Vue.nextTick()
