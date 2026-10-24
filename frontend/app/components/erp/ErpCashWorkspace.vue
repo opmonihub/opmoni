@@ -4,21 +4,25 @@ import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpCashMovement, ErpCashRegister, ErpCashSession } from '#shared/types/erpBusiness'
 import { formatErpMoney, type ErpFinanceAction } from '#shared/utils/erpFinance'
 import { useErpCashWorkspace } from '~/composables/useErpCashWorkspace'
+import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
 type CashView = 'registers' | 'sessions'
-const viewFromHash = (hash: string): CashView => hash === '#sessions' ? 'sessions' : 'registers'
+const viewSelection = (hash: string) => erpWorkspaceModuleSelection('caixa', hash, permission => cash.allowed(permission as ErpFinanceAction))
+const viewFromHash = (hash: string): CashView => (viewSelection(hash).destination?.id ?? 'registers') as CashView
+const isKnownViewHash = (hash: string) => hash === `#${viewSelection(hash).destination?.id}`
 const route = useRoute()
 const router = useRouter()
+const { key: workspaceContextKey } = useErpAdministrationContext()
 const cash = useErpCashWorkspace(() => viewFromHash(route.hash))
-const views: { id: CashView, label: string }[] = [{ id: 'registers', label: 'Caixas' }, { id: 'sessions', label: 'Sessões' }]
-const viewLinks = computed<NavigationMenuItem[][]>(() => [views.map(view => ({
+const permittedViews = computed(() => erpWorkspaceModuleDestinations('caixa', permission => cash.allowed(permission as ErpFinanceAction)))
+const viewLinks = computed<NavigationMenuItem[][]>(() => [permittedViews.value.map(view => ({
   label: view.label,
   to: { path: route.path, query: route.query, hash: `#${view.id}` },
   active: cash.selectedPage.value === view.id
 }))])
-watch(() => route.hash, (hash) => {
+watch([() => route.hash, workspaceContextKey], ([hash]) => {
   const view = viewFromHash(hash)
-  if (hash !== `#${view}`) {
+  if (hash && hash !== `#${view}` && permittedViews.value.length && !isKnownViewHash(hash)) {
     void router.replace({ path: route.path, query: route.query, hash: `#${view}` })
     return
   }
@@ -26,7 +30,9 @@ watch(() => route.hash, (hash) => {
 }, { flush: 'sync' })
 onMounted(() => {
   const hash = `#${cash.selectedPage.value}`
-  if (route.hash !== hash) void router.replace({ path: route.path, query: route.query, hash })
+  if (route.hash && permittedViews.value.length && route.hash !== hash && !isKnownViewHash(route.hash)) {
+    void router.replace({ path: route.path, query: route.query, hash })
+  }
 })
 
 // Presentation guard only; the composable retains session, query and authority ownership.
@@ -54,6 +60,7 @@ const movementErrors = computed(() => cash.fieldErrors.value)
 const paymentErrors = computed(() => cash.fieldErrors.value)
 const closeErrors = computed(() => cash.fieldErrors.value)
 const allowed = (action: ErpFinanceAction) => cash.allowed(action)
+const canReadCurrentPage = computed(() => viewSelection(`#${cash.selectedPage.value}`).permitted)
 const currentTitle = computed(() => cash.selectedPage.value === 'registers' ? 'Caixas' : 'Sessões de caixa')
 const mutationColor = computed(() => cash.mutationError.value === 'Operação confirmada.' || cash.mutationError.value.startsWith('Operação confirmada pelo registro do servidor.') ? 'success' : 'error')
 const registerColumns: TableColumn<ErpCashRegister>[] = [
@@ -241,7 +248,10 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
             {{ currentTitle }}
           </h2>
           <p class="text-sm text-muted">
-            <template v-if="cash.listMeta[cash.selectedPage.value]">
+            <template v-if="!canReadCurrentPage">
+              Acesso indisponível
+            </template>
+            <template v-else-if="cash.listMeta[cash.selectedPage.value]">
               {{ cash.listMeta[cash.selectedPage.value]?.total }} registros
             </template>
             <template v-else-if="cash.loading[cash.selectedPage.value]">
@@ -258,6 +268,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           icon="i-lucide-refresh-cw"
           label="Atualizar"
           :loading="cash.loading[cash.selectedPage.value]"
+          :disabled="!canReadCurrentPage"
           @click="cash.loadList(cash.selectedPage.value)"
         />
       </header>
@@ -295,7 +306,13 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
         </template>
       </UAlert>
 
-      <template v-if="cash.selectedPage.value === 'registers'">
+      <UAlert
+        v-if="!canReadCurrentPage"
+        color="error"
+        variant="subtle"
+        title="Seu acesso não permite consultar esta lista."
+      />
+      <template v-else-if="cash.selectedPage.value === 'registers'">
         <UAlert
           v-if="cash.pageErrors.registers"
           color="error"

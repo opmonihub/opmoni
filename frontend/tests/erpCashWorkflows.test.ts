@@ -31,6 +31,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
+    if (path === '~/utils/erpWorkspaceNav') return loadAppComposable('utils/erpWorkspaceNav.ts')
     const value = imports[path]
     if (!value) throw new Error(`Unexpected test import ${path}`)
     return value
@@ -108,7 +109,7 @@ function createCashWorkspace(api: Api, company = Vue.ref({ id: 7, permissions: [
   return { state, company, mount: () => mounted?.(), stop: () => scope.stop() }
 }
 
-function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown>, workspaceState?: Record<string, unknown>, initialHash?: string } = {}) {
+function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown>, workspaceState?: Record<string, unknown>, initialHash?: string, currentCompany?: Vue.Ref<Record<string, unknown>> } = {}) {
   const route = Vue.reactive({ path: '/erp/caixa', query: {}, hash: options.initialHash ?? '#sessions' })
   const replacements: Record<string, unknown>[] = []
   const selectedPage = options.workspaceState?.selectedPage as Vue.Ref<'registers' | 'sessions'> ?? Vue.ref<'registers' | 'sessions'>('registers')
@@ -150,6 +151,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
   }, {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted,
     useRoute: () => route,
+    useErpAdministrationContext: () => ({ key: Vue.computed(() => JSON.stringify(options.currentCompany?.value ?? null)) }),
     useRouter: () => ({
       replace(location: Record<string, unknown>) {
         replacements.push(location)
@@ -229,6 +231,33 @@ const openSession = {
 const closedSession = { ...openSession, status: 'closed', can_operate: false, expected_closing_amount: '121.0000', declared_closing_amount: '119.0000', closing_difference: '-2.0000', closed_at: '2026-10-20T12:00:00Z' }
 
 describe('cash workspace shell', () => {
+  it('opens a sessions-only root on Sessions and does not expose Registers', async (t) => {
+    const grants = Vue.ref(['erp.cash-sessions.index'])
+    const allowed = (action: financeUtils.ErpFinanceAction) => financeUtils.erpFinanceAllowed(grants.value, 'viewer', action)
+    const app = mountCashWorkspace({ initialHash: '', workspaceState: { allowed }, currentCompany: Vue.computed(() => ({ id: 7, permissions: grants.value })) })
+    t.after(() => app.app.unmount())
+    await Vue.nextTick()
+    assert.equal(app.selectedPage.value, 'sessions')
+    assert.deepEqual(app.replacements, [], 'a root remains a root across company remounts')
+    assert.match(textContent(app.root), /Sessões de caixa/)
+    assert.doesNotMatch(textContent(app.root), /Caixas\s+Sessões/)
+    grants.value.splice(0, 1, 'erp.cash-registers.index')
+    await Vue.nextTick()
+    assert.equal(app.selectedPage.value, 'registers')
+    assert.equal(app.route.hash, '')
+  })
+
+  it('retains a denied Registers deep link and shows denial for a sessions-only reader', async (t) => {
+    const allowed = (action: financeUtils.ErpFinanceAction) => financeUtils.erpFinanceAllowed(['erp.cash-sessions.index'], 'viewer', action)
+    const app = mountCashWorkspace({ initialHash: '#registers', workspaceState: { allowed } })
+    t.after(() => app.app.unmount())
+    await Vue.nextTick()
+    assert.equal(app.selectedPage.value, 'registers')
+    assert.deepEqual(app.replacements, [])
+    assert.match(textContent(app.root), /Seu acesso não permite consultar/)
+    assert.equal(app.tableRows.length, 0, 'a denied area does not render its cached register table')
+  })
+
   it('keeps #sessions on initial mount and remounts retained forms when session or authority changes', async (t) => {
     const app = mountCashWorkspace()
     t.after(() => app.app.unmount())

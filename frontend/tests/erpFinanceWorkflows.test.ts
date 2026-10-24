@@ -20,6 +20,7 @@ function compileModule(source: string, imports: Record<string, unknown>, binding
   const runtime = new Function('require', 'exports', ...Object.keys(bindings), output)
   runtime((path: string) => {
     if (path === '~/components/erp/erpPresentation') return loadAppComposable('components/erp/erpPresentation.ts')
+    if (path === '~/utils/erpWorkspaceNav') return loadAppComposable('utils/erpWorkspaceNav.ts')
     const value = imports[path]
     if (!value) throw new Error(`Unexpected test import ${path}`)
     return value
@@ -86,7 +87,7 @@ function createFinanceRoute(hash = '') {
   return { route, router, pushes, replaces, focusedSelectors, document }
 }
 
-function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute()) {
+function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute(), currentCompany = Vue.ref<Record<string, unknown> | null>(null)) {
   const components: Record<string, Vue.Component> = {}
   components.ErpListFooter = compileVueComponent('components/erp/ErpListFooter.vue')
 
@@ -107,6 +108,7 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
   components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: useFinance } }, {
     useRoute: () => navigation.route,
     useRouter: () => navigation.router,
+    useErpAdministrationContext: () => ({ key: Vue.computed(() => JSON.stringify(currentCompany.value)) }),
     onMounted: Vue.onMounted,
     document: navigation.document
   })
@@ -670,6 +672,69 @@ describe('finance workspace', { concurrency: 1 }, () => {
     assert.equal(navigation.route.hash, '#obligations')
     assert.equal(navigation.replaces.length, 1)
     assert.equal(calls.filter(path => path.startsWith('/erp/obligations?')).length, 1)
+  })
+
+  it('opens a payments-only Finance root on its permitted list and hides denied areas', async (t) => {
+    const calls: string[] = []
+    const company = Vue.ref({ id: 7, permissions: ['erp.payments.index'], role: 'viewer', access_kind: 'direct', status: 'active' })
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      return page([])
+    }, async () => {}, async () => null, { currentCompany: company, user: Vue.ref({ id: 42 }) }, true)
+    t.after(app.stop)
+    const navigation = createFinanceRoute('')
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation, company)
+    t.after(mounted.unmount)
+    await settle()
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'payments')
+    assert.deepEqual(mounted.navigationItems().map(item => item.label), ['Pagamentos'])
+    assert.equal(navigation.route.hash, '', 'a root remains a root across company remounts')
+    assert.equal(calls.some(path => path.startsWith('/erp/obligations?')), false)
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 1)
+    company.value.permissions.splice(0, 1, 'erp.financial-accounts.index')
+    await settle()
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'accounts')
+    assert.equal(navigation.route.hash, '')
+  })
+
+  it('keeps an explicitly denied Finance deep link denied instead of replacing it with a permitted list', async (t) => {
+    const calls: string[] = []
+    const company = Vue.ref({ id: 7, permissions: ['erp.payments.index'], role: 'viewer', access_kind: 'direct', status: 'active' })
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      return page([])
+    }, async () => {}, async () => null, { currentCompany: company, user: Vue.ref({ id: 42 }) }, true)
+    t.after(app.stop)
+    const navigation = createFinanceRoute('#obligations')
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation, company)
+    t.after(mounted.unmount)
+    await settle()
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'obligations')
+    assert.equal(navigation.route.hash, '#obligations')
+    assert.deepEqual(mounted.navigationItems().map(item => item.label), ['Pagamentos'])
+    assert.equal(calls.some(path => path.startsWith('/erp/obligations?')), false)
+    assert.equal((mounted.finance().canRead as Vue.Ref<boolean>).value, false)
+    assert.equal(mounted.componentProps('UAlert').some(props => props.title === 'Seu acesso não permite consultar o financeiro desta empresa.'), true)
+    assert.equal(mounted.componentProps('UTable').some(props => Array.isArray(props.data) && props.data.length > 0), false)
+  })
+
+  it('resolves a root again after a company remount without treating its fallback as an explicit denied link', async (t) => {
+    const navigation = createFinanceRoute('')
+    const firstCompany = Vue.ref({ id: 7, permissions: ['erp.payments.index'], role: 'viewer', access_kind: 'direct', status: 'active' })
+    const first = createWorkspace(async () => page([]), async () => {}, async () => null, { currentCompany: firstCompany, user: Vue.ref({ id: 42 }) }, true)
+    const firstMount = mountFinanceWorkspace(first.useFinance, navigation, firstCompany)
+    await settle()
+    firstMount.unmount()
+    first.stop()
+
+    const secondCompany = Vue.ref({ id: 8, permissions: ['erp.financial-accounts.index'], role: 'viewer', access_kind: 'direct', status: 'active' })
+    const second = createWorkspace(async () => page([]), async () => {}, async () => null, { currentCompany: secondCompany, user: Vue.ref({ id: 42 }) }, true)
+    t.after(second.stop)
+    const secondMount = mountFinanceWorkspace(second.useFinance, navigation, secondCompany)
+    t.after(secondMount.unmount)
+    await settle()
+    assert.equal((secondMount.finance().tab as Vue.Ref<string>).value, 'accounts')
+    assert.equal((secondMount.finance().canRead as Vue.Ref<boolean>).value, true)
   })
 
   it('hydrates a direct accounts hash from the stable obligations presentation with one accounts read', async (t) => {

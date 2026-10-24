@@ -1,5 +1,11 @@
 <script setup lang="ts">
-await navigateTo('/erp/configuracoes/empresa', { replace: true })
+import { erpWorkspaceSettingsGroups } from '~/utils/erpWorkspaceNav'
+
+const { currentCompany } = useAuth()
+const firstDestination = erpWorkspaceSettingsGroups('/erp/configuracoes', currentCompany.value)
+  .flatMap(group => group[0]?.children ?? [])
+  .find(child => typeof child.to === 'string')
+await navigateTo(typeof firstDestination?.to === 'string' ? firstDestination.to : '/erp', { replace: true })
 </script>
 
 <template>

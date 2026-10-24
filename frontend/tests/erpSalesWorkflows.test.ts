@@ -9,6 +9,7 @@ import { erpCommercialDocumentToDraft, erpReturnLineError, erpSalePostPayload, e
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
 import * as salesHelpers from '../shared/utils/erpSales.ts'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const salesPage = readFileSync(new URL('../app/pages/erp/vendas/index.vue', import.meta.url), 'utf8')
 
@@ -51,7 +52,7 @@ function createSalesWorkspace(api: (path: string, options?: Record<string, unkno
     useErpAdministrationContext: () => context
   })
   const state = scope.run(() => (exports.useErpSalesWorkspace as (initialArea?: string) => Record<string, unknown>)('quotes'))!
-  return { state, user, currentCompany, sessionGeneration, stop: () => scope.stop() }
+  return { state, user, currentCompany, contextKey, sessionGeneration, stop: () => scope.stop() }
 }
 
 describe('sales authoritative denial boundaries', () => {
@@ -178,7 +179,7 @@ describe('sales authoritative denial boundaries', () => {
 })
 
 function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes', permissions = ['*']) {
-  const { state, currentCompany, stop } = createSalesWorkspace(api, permissions)
+  const { state, currentCompany, contextKey, stop } = createSalesWorkspace(api, permissions)
   const route = Vue.reactive({ path: '/erp/vendas', hash, query: {} })
   const router = { replace: async (location: { hash?: string }) => { if (location.hash) route.hash = location.hash } }
   const workspaceSource = readFileSync(new URL('../app/components/erp/ErpSalesWorkspace.vue', import.meta.url), 'utf8')
@@ -187,7 +188,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   const workspaceScript = VueCompiler.compileScript(VueCompiler.parse(workspaceSource).descriptor, { id: 'sales-workspace', inlineTemplate: true })
   const formScript = VueCompiler.compileScript(VueCompiler.parse(formSource).descriptor, { id: 'sales-workspace-draft', inlineTemplate: true })
   const returnFormScript = VueCompiler.compileScript(VueCompiler.parse(returnFormSource).descriptor, { id: 'sales-workspace-return', inlineTemplate: true })
-  const globals = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted, useRoute: () => route, useRouter: () => router }
+  const globals = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted, useRoute: () => route, useRouter: () => router, useErpAdministrationContext: () => ({ key: contextKey }) }
   const formExports = compileModule(formScript.content, { vue: Vue }, globals)
   const form = formExports.default as Vue.Component
   const returnFormExports = compileModule(returnFormScript.content, { 'vue': Vue, '#shared/utils/erpSales': salesHelpers }, globals)
@@ -195,7 +196,8 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   const workspaceExports = compileModule(workspaceScript.content, {
     'vue': Vue,
     '~/composables/useErpSalesWorkspace': { useErpSalesWorkspace: () => state },
-    '#shared/utils/erpSales': salesHelpers
+    '#shared/utils/erpSales': salesHelpers,
+    '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts')
   }, globals)
   const workspace = workspaceExports.default as Vue.Component
   type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
@@ -304,8 +306,45 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     await Vue.nextTick()
   }
   function textContent(node: Node): string { return `${node.text ?? ''}${node.children.map(textContent).join('')}` }
-  return { root, state, currentCompany, stop, app, walk, findButton, click, textContent, submitDraft: () => submitDraft(), submitReturn: () => submitReturn(), dispose: () => { app.unmount(); stop() } }
+  return { root, state, currentCompany, route, stop, app, walk, findButton, click, textContent, submitDraft: () => submitDraft(), submitReturn: () => submitReturn(), dispose: () => { app.unmount(); stop() } }
 }
+
+describe('sales permitted area projection', () => {
+  const emptyPage = { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0 } }
+
+  it('selects Orders for an orders-only root without loading Quotes', async (t) => {
+    const calls: string[] = []
+    const mounted = mountSalesWorkspace(async (path) => { calls.push(path); return emptyPage }, '', ['erp.orders.index'])
+    t.after(mounted.dispose)
+    await Vue.nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal((mounted.state.area as Vue.Ref<string>).value, 'orders')
+    assert.equal(mounted.route.hash, '')
+    assert.ok(mounted.findButton('Pedidos'))
+    assert.equal(mounted.findButton('Orçamentos'), undefined)
+    assert.equal(calls.some(path => path.startsWith('/erp/quotes?')), false)
+    mounted.currentCompany.value.permissions.splice(0, 1, 'erp.quotes.index')
+    await Vue.nextTick()
+    assert.equal((mounted.state.area as Vue.Ref<string>).value, 'quotes')
+    assert.equal(mounted.route.hash, '')
+  })
+
+  it('shows denial for a known denied Orders hash instead of the previous permitted Quotes body', async (t) => {
+    const calls: string[] = []
+    const mounted = mountSalesWorkspace(async (path) => { calls.push(path); return emptyPage }, '#orders', ['erp.quotes.index'])
+    t.after(mounted.dispose)
+    await Vue.nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(mounted.route.hash, '#orders')
+    assert.equal((mounted.state.area as Vue.Ref<string>).value, 'orders')
+    assert.equal(mounted.findButton('Pedidos'), undefined)
+    assert.match(mounted.textContent(mounted.root), /Seu acesso não permite consultar esta lista/)
+    mounted.state.rows.orders = [{ id: 99, order_no: 'PRIVATE-ORDER-99' }]
+    await Vue.nextTick()
+    assert.doesNotMatch(mounted.textContent(mounted.root), /PRIVATE-ORDER-99/)
+    assert.equal(calls.some(path => path.startsWith('/erp/orders?')), false)
+  })
+})
 
 function mountSaleDetail(props: Record<string, unknown>) {
   const source = readFileSync(new URL('../app/components/erp/ErpSaleDetail.vue', import.meta.url), 'utf8')

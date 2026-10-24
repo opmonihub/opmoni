@@ -4,15 +4,11 @@ import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import type { ErpFinancialAccount, ErpObligation, ErpPayment, ErpPaymentAllocation } from '#shared/types/erpBusiness'
 import { formatErpMoney, decimalTextIsValid, type ErpFinanceAction } from '#shared/utils/erpFinance'
 import { useErpFinanceWorkspace } from '~/composables/useErpFinanceWorkspace'
+import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
 type FinanceRow = ErpFinancialAccount | ErpObligation | ErpPayment
 type FinanceTab = 'accounts' | 'obligations' | 'payments'
 type CreateEditor = FinanceTab
-const financeTabs: { id: FinanceTab, label: string }[] = [
-  { id: 'accounts', label: 'Contas' },
-  { id: 'obligations', label: 'Obrigações' },
-  { id: 'payments', label: 'Pagamentos' }
-]
 const createActions: Record<CreateEditor, ErpFinanceAction> = {
   accounts: 'erp.financial-accounts.store',
   obligations: 'erp.obligations.store',
@@ -26,11 +22,14 @@ const createPaths: Record<CreateEditor, string> = {
 const createAreas: Record<CreateEditor, FinanceTab> = { accounts: 'accounts', obligations: 'obligations', payments: 'payments' }
 const route = useRoute()
 const router = useRouter()
+const { key: workspaceContextKey } = useErpAdministrationContext()
+const areaSelection = (hash: string) => erpWorkspaceModuleSelection('financeiro', hash, permission => finance.allowed(permission as ErpFinanceAction))
 function areaFromHash(hash: string): FinanceTab {
-  const candidate = hash.replace(/^#/, '')
-  return financeTabs.some(tab => tab.id === candidate) ? candidate as FinanceTab : 'obligations'
+  return (areaSelection(hash).destination?.id ?? 'obligations') as FinanceTab
 }
+const isKnownAreaHash = (hash: string) => hash === `#${areaSelection(hash).destination?.id}`
 const finance = useErpFinanceWorkspace(() => areaFromHash(route.hash))
+const permittedAreas = computed(() => erpWorkspaceModuleDestinations('financeiro', permission => finance.allowed(permission as ErpFinanceAction)))
 const createEditor = ref<CreateEditor | null>(null)
 const createEditorOpener = ref<HTMLElement | null>(null)
 const dialogOpen = ref(false)
@@ -86,15 +85,15 @@ const newActionLabel = computed(() => createButtonLabels[finance.tab.value])
 function labelFor(value: string, labels: Record<string, string>) {
   return labels[value] ?? `Desconhecido (${value || 'não informado'})`
 }
-const areaLinks = computed<NavigationMenuItem[][]>(() => [financeTabs.map(item => ({
+const areaLinks = computed<NavigationMenuItem[][]>(() => [permittedAreas.value.map(item => ({
   label: item.label,
   to: { path: route.path, query: route.query, hash: `#${item.id}` },
   active: finance.tab.value === item.id
 }))])
-watch(() => route.hash, (hash) => {
+watch([() => route.hash, workspaceContextKey], ([hash]) => {
   const next = areaFromHash(hash)
   const canonicalHash = `#${next}`
-  if (hash !== canonicalHash) {
+  if (hash && hash !== canonicalHash && permittedAreas.value.length && !isKnownAreaHash(hash)) {
     void router.replace({ path: route.path, query: route.query, hash: canonicalHash })
     return
   }
@@ -103,8 +102,9 @@ watch(() => route.hash, (hash) => {
 }, { flush: 'sync' })
 onMounted(() => {
   const canonicalHash = `#${finance.tab.value}`
-  if (route.hash !== canonicalHash)
+  if (route.hash && permittedAreas.value.length && route.hash !== canonicalHash && !isKnownAreaHash(route.hash)) {
     void router.replace({ path: route.path, query: route.query, hash: canonicalHash })
+  }
 })
 function openCreateEditor(kind: CreateEditor, event?: MouseEvent) {
   if (!finance.allowed(createActions[kind])) return

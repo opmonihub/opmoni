@@ -3,6 +3,7 @@ import type { ErpCommercialDocument, ErpCommercialDraftPayload, ErpCommercialKin
 import type { ErpSalesArea } from '~/composables/useErpSalesWorkspace'
 import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
 import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
+import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
 type ModalKind = 'create' | 'edit' | 'detail' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
 type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
@@ -10,6 +11,7 @@ type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identit
 const sales = useErpSalesWorkspace()
 const route = useRoute()
 const router = useRouter()
+const { key: workspaceContextKey } = useErpAdministrationContext()
 const modalKind = ref<ModalKind>(null)
 const modalGeneration = ref(0)
 const detailArea = ref<ErpSalesArea>('quotes')
@@ -34,14 +36,8 @@ const modalOpen = computed({
   }
 })
 
-const areas: Array<{ id: ErpSalesArea, label: string }> = [
-  { id: 'quotes', label: 'Orçamentos' },
-  { id: 'orders', label: 'Pedidos' },
-  { id: 'sales', label: 'Vendas / balcão' },
-  { id: 'returns', label: 'Devoluções' }
-]
-const visibleAreas = computed(() => areas.filter(item => sales.allowed(({ quotes: 'erp.quotes.index', orders: 'erp.orders.index', sales: 'erp.sales.index', returns: 'erp.sale-returns.index' } as const)[item.id])))
-const areaLabel = computed(() => areas.find(item => item.id === sales.area.value)?.label ?? 'Vendas')
+const visibleAreas = computed(() => erpWorkspaceModuleDestinations('vendas', sales.allowed))
+const areaLabel = computed(() => erpWorkspaceModuleSelection('vendas', `#${sales.area.value}`, sales.allowed).destination?.label ?? 'Vendas')
 const modalTitle = computed(() => {
   if (modalKind.value === 'create') return createKind.value === 'quote' ? 'Novo orçamento' : createKind.value === 'order' ? 'Novo pedido' : 'Nova venda de balcão'
   if (modalKind.value === 'edit') return `Editar ${editKind.value === 'quote' ? 'orçamento' : editKind.value === 'order' ? 'pedido' : 'venda'}`
@@ -165,11 +161,10 @@ function totalForRow(row: Record<string, unknown>) {
   return `${currency} ${total}`
 }
 function areaFromHash(hash: string): ErpSalesArea | null {
-  const value = hash.replace(/^#/, '')
-  return areas.some(item => item.id === value) ? value as ErpSalesArea : null
+  return (erpWorkspaceModuleSelection('vendas', hash, sales.allowed).destination?.id ?? null) as ErpSalesArea | null
 }
+const isKnownAreaHash = (hash: string) => hash === `#${erpWorkspaceModuleSelection('vendas', hash, sales.allowed).destination?.id}`
 async function setArea(next: ErpSalesArea, updateHash = true) {
-  if (!visibleAreas.value.some(item => item.id === next)) return
   await sales.selectArea(next)
   if (updateHash && sales.area.value === next && route.hash !== `#${next}`) await router.replace({ path: route.path, query: route.query, hash: `#${next}` })
 }
@@ -477,7 +472,7 @@ async function openReceipt(paymentId: number) {
   await sales.loadReceipt(paymentId)
 }
 function listEmptyMessage() {
-  if (!sales.allowed(({ quotes: 'erp.quotes.index', orders: 'erp.orders.index', sales: 'erp.sales.index', returns: 'erp.sale-returns.index' } as const)[sales.area.value])) return 'Seu acesso não permite consultar esta lista.'
+  if (!sales.canRead.value) return 'Seu acesso não permite consultar esta lista.'
   if (sales.currentLoading.value) return 'Carregando registros…'
   return sales.currentMeta.value ? 'Nenhum registro encontrado com estes filtros.' : 'A lista ainda não foi carregada.'
 }
@@ -511,10 +506,14 @@ async function refreshCompletedDetail(areaName: ErpSalesArea, id: number) {
   await sales.refreshCompletedDetail(areaName, id)
 }
 
-watch(() => route.hash, (hash) => {
+watch([() => route.hash, workspaceContextKey], ([hash]) => {
   const next = areaFromHash(hash)
-  if (next && next !== sales.area.value) void setArea(next, false)
-})
+  if (!next) return
+  if (next !== sales.area.value) void setArea(next, false)
+  if (hash && visibleAreas.value.length && !isKnownAreaHash(hash) && hash !== `#${next}`) {
+    void router.replace({ path: route.path, query: route.query, hash: `#${next}` })
+  }
+}, { flush: 'sync' })
 watch(sales.authorityGeneration, () => {
   createDrafts.quote = emptyDraft()
   createDrafts.order = emptyDraft()
@@ -527,7 +526,10 @@ watch(sales.authorityGeneration, () => {
 })
 onMounted(() => {
   const hashArea = areaFromHash(route.hash)
-  if (hashArea && visibleAreas.value.some(item => item.id === hashArea)) void setArea(hashArea, false)
+  if (hashArea) void setArea(hashArea, false)
+  if (route.hash && hashArea && visibleAreas.value.length && !isKnownAreaHash(route.hash)) {
+    void router.replace({ path: route.path, query: route.query, hash: `#${hashArea}` })
+  }
 })
 </script>
 
@@ -574,7 +576,7 @@ onMounted(() => {
               :variant="sales.area.value === item.id ? 'solid' : 'outline'"
               :aria-pressed="sales.area.value === item.id"
               :label="item.label"
-              @click="setArea(item.id)"
+              @click="setArea(item.id as ErpSalesArea)"
             />
           </div>
         </nav>
@@ -607,7 +609,7 @@ onMounted(() => {
         <div>
           <h1 class="text-lg font-semibold text-highlighted">
             {{ areaLabel }}
-          </h1><p v-if="sales.currentMeta.value" class="text-sm text-muted">
+          </h1><p v-if="sales.canRead.value && sales.currentMeta.value" class="text-sm text-muted">
             {{ sales.currentMeta.value.total }} registros · página {{ sales.currentMeta.value.current_page }} de {{ sales.currentMeta.value.last_page }}
           </p>
         </div>
@@ -618,7 +620,10 @@ onMounted(() => {
         title="Não foi possível atualizar"
         :description="sales.currentError.value"
       />
-      <div v-if="sales.currentLoading.value && !sales.currentMeta.value" class="rounded-lg border border-muted p-5 text-sm text-muted" role="status">
+      <div v-if="!sales.canRead.value" class="rounded-lg border border-dashed border-muted p-8 text-center text-sm text-muted">
+        {{ listEmptyMessage() }}
+      </div>
+      <div v-else-if="sales.currentLoading.value && !sales.currentMeta.value" class="rounded-lg border border-muted p-5 text-sm text-muted" role="status">
         Carregando {{ areaLabel.toLocaleLowerCase('pt-BR') }}…
       </div>
       <div v-else-if="sales.currentRows.value.length === 0" class="rounded-lg border border-dashed border-muted p-8 text-center text-sm text-muted">
@@ -641,7 +646,7 @@ onMounted(() => {
           <UIcon name="i-lucide-chevron-right" class="size-4 text-muted" aria-hidden="true" />
         </button>
       </div>
-      <div v-if="sales.currentMeta.value && sales.currentMeta.value.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
+      <div v-if="sales.canRead.value && sales.currentMeta.value && sales.currentMeta.value.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
         <UButton
           type="button"
           color="neutral"
