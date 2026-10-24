@@ -10,7 +10,9 @@
     "before-erp-hover-light.json",
     "before-erp-light.json",
     "before-office-light.json",
-    "before-overlay-light.json"
+    "before-overlay-light.json",
+    "integrated-office-light.json",
+    "integrated-office-search-light.json"
   ],
   "sourceSha256": {
     "frontend/app/assets/css/main.css": "21cd1a85546b251deac3f5211f520e657e23dc9f938c404eb5f106610b6da832",
@@ -20,21 +22,29 @@
   "checks": {
     "nativeThemeTests": "2 passed, exit0",
     "changedFileESLint": "exit0",
-    "typecheck": "not run; controller capacity restriction",
+    "typecheck": "exit0; real package Nuxt and contracts TypeScript on integrated frontend",
     "taskRuntimeVerifier": "passed before browser access",
-    "browser": "partial; specific pending states in README"
+    "browser": "partial; two new hydrated desktop light Office states accepted; remaining states not collected",
+    "integratedTests": "172 passed, 15 suites, exit0; nine named files, concurrency1",
+    "integratedChangedESLint": "exit0; no diagnostics"
   },
   "ownershipReleased": {
     "namedSession": "opmoni-task10 closed",
     "frontendPid": 3864329,
     "verifiedCwd": "/home/obsidian/dev/opmoni/.worktrees/align-erp-template-and-product-setup/frontend",
-    "port3340Closed": true
+    "port3340Closed": true,
+    "latestFrontendPid": 136574,
+    "latestFrontendState": "retained warm after verified PID/cwd/command; controller instruction",
+    "latestNamedSession": "opmoni-task10 closed successfully, exit0; no other browser session touched"
   },
   "remaining": [
     "after light ERP and teleported overlay",
     "office to ERP to office both modes, including office return dark",
     "actual settled hover/active/focus/disabled computed pairs",
-    "final real typecheck when capacity permits"
+    "office mobile390 and visible Search overlay geometry",
+    "integrated typed settings groups and product basic/advanced real rendering; save/reload only if current server gates permit"
   ],
-  "noAcceptanceClaim": true
+  "noAcceptanceClaim": true,
+  "integratedSourceHead": "293f6237dc5e9180435f950c924e6509c9ada01b",
+  "integratedFrontendSource": "f1eb923 (unchanged through backend-only 293f623)"
 }
