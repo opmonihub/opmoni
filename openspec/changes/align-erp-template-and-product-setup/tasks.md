@@ -24,15 +24,15 @@
 
 - [x] 4.1 Add grouped settings metadata and string-code/exact-decimal semantics across frontend/API validation; verify save/reload of `00`, `01`, `101`, zero rates, invalid-code feedback and visible unresolved legacy numeric values using settings/catalog tests.
 - [x] 4.2 Refactor the product editor into a short basic section and optional Commercial details/Fiscal/Variants sections; verify name/unit-only save, service stock rules, unchanged advanced values, existing variant IDs/archive state and nullable price inheritance.
-- [ ] 4.3 Move catalog primary/cancel actions to the reachable shared footer with native form association and consistent dirty-close behavior; verify pending/duplicate prevention, error focus, close/backdrop/Escape, dirty-input preservation and return focus at desktop/mobile.
+- [x] 4.3 Move catalog primary/cancel actions to the reachable shared footer with native form association and consistent dirty-close behavior; verify pending/duplicate prevention, error focus, close/backdrop/Escape, dirty-input preservation and return focus at desktop/mobile.
 - [x] 4.4 Group company settings into meaningful tasks without losing the current save/error/authority contract; verify field-key preservation, read-only consultation, named 422 feedback and late responses after Company/Account/session changes.
 
 ## 5. Implement native initialization and default consumers
 
 - [x] 5.1 Add the setup-state/native-reference migration and `br-basic-v1` manifest with explicit missing-value semantics; verify additive upgrade preserves existing settings, same-company constraints reject foreign references and the manifest contains no identities, tax assumptions or secrets.
 - [x] 5.2 Implement the idempotent native initializer inside provisioning for locale/time/BRL preferences, whole-unit UN and default customer; verify successful basic setup, fault-injected atomic rollback and unchanged owner/Matriz/subscription/access behavior in backend feature tests.
-- [ ] 5.3 Expose typed `native_defaults` alongside preserved legacy settings and connect default unit/currency to their product/commercial consumers; verify first-product unit resolution, unavailable-reference recovery, BRL propagation and no same-number mapping of opaque legacy IDs.
-- [ ] 5.4 Connect the native default customer to eligible counter sales without inventing recipient facts; verify same-company selection, authorized override, existing explicit customer preservation and model-specific fiscal incompleteness feedback.
+- [x] 5.3 Expose typed `native_defaults` alongside preserved legacy settings and connect default unit/currency to their product/commercial consumers; verify first-product unit resolution, unavailable-reference recovery, BRL propagation and no same-number mapping of opaque legacy IDs.
+- [x] 5.4 Connect the native default customer to eligible counter sales without inventing recipient facts; verify same-company selection, authorized override, existing explicit customer preservation and model-specific fiscal incompleteness feedback.
 - [x] 5.5 Connect existing invoice schemes to the authoritative commercial allocator; verify new-company blank-prefix/four-digit sales, unchanged quote/order and existing-company numbering, collision skipping, immutable draft numbers and no sequence reset on rerun/default change.
 - [ ] 5.6 Connect native commercial layouts to an authorized sale representation/print action with frozen relevant labels/settings; verify localized output, retained historical layout, company access, retry/failure behavior and clear separation from payment receipts and fiscal DANFE artifacts.
 
@@ -40,7 +40,7 @@
 
 - [x] 6.1 Add direct-owner initialization preview with sanitized create/reuse/skip/conflict results and actor/company/revision binding; verify customized UN, unresolved currency namespace, nested settings and effective-fallback differences are explicit without mutation.
 - [x] 6.2 Add locked missing-only apply using existing operation-identity/recovery conventions; verify preservation of null/false/zero/empty/nested values, stale-preview 409, equal retry reuse and complete rollback on required failure.
-- [ ] 6.3 Add the settings preview/apply interface with current-authority fencing; verify direct-owner access, delegated/platform denial, changed-company conflict, lost-response recovery and no false completed-setup claim for unresolved conflicts.
+- [x] 6.3 Add the settings preview/apply interface with current-authority fencing; verify direct-owner access, delegated/platform denial, changed-company conflict, lost-response recovery and no false completed-setup claim for unresolved conflicts.
 
 ## 7. Add profile and operation-nature configuration
 
@@ -53,7 +53,7 @@
 - [x] 7.7 Extend native operation natures with a configuration revision and same-company allowed CFOP choices while retaining `cfop` as the default; verify old single-CFOP payloads/IDs, implicit legacy allowed sets, one explicit default independent of ordering, duplicate/invalid choice rollback and preservation of unverified historical values.
 - [x] 7.8 Add paginated nature/product exception APIs with native grants, attribution, uniqueness and archive behavior; verify same-company nature/product/choice constraints, inherited establishment scope, revoked/delegated authority, foreign read 404/relationship 422, stale-revision 409 and absence of stock/finance/provider effects from configuration writes.
 - [x] 7.9 Implement the focused server CFOP resolver and authorized operational preview alongside product-tax resolution; verify explicit choice → active applicable product exception → nature default → unresolved precedence, invalid-target errors without fallback, exact line omission/null semantics, required-context feedback and separate tax/CFOP provenance.
-- [ ] 7.10 Expose allowed/default CFOP configuration and product exceptions through existing catalog editors/reference selectors, retaining the current template; verify explicit reviewed revision submission, bounded product/CFOP selection, atomic error recovery and preserved company/authority fencing without copying MarketUP UI.
+- [x] 7.10 Expose allowed/default CFOP configuration and product exceptions through existing catalog editors/reference selectors, retaining the current template; verify explicit reviewed revision submission, bounded product/CFOP selection, atomic error recovery and preserved company/authority fencing without copying MarketUP UI.
 
 ## 8. Integrate reviewed snapshots and fiscal readiness
 
@@ -70,7 +70,7 @@
 - [ ] 9.2 Reconcile contact municipality/state/code editing with fiscal-readiness projection while preserving unrelated address keys; verify minimal contact save, city/UF changes with old hidden codes, explicit clearing and failed lookup recovery through catalog/fiscal contract tests.
 - [ ] 9.3 Align typed CT-e/MDF-e field descriptors, required conditions and backend/frontend error paths, and make Fiscal creation action-triggered; verify nested party/tax/vehicle/route errors focus the real control, edits persist, browsing stays primary and builders/gates remain strict.
 - [x] 9.4 Validate retained financial account/session choices against current currency/establishment/method before submit; verify incompatible visible selections, failed refresh, open-session requirements and unchanged backend rejections in finance/cash tests.
-- [ ] 9.5 Convert company administration to existing native form/editor patterns and disclose detailed grants on demand; verify protected owner behavior, direct-owner restrictions, identity lookup, establishment scope, stale mutation blocking and focus return.
+- [x] 9.5 Convert company administration to existing native form/editor patterns and disclose detailed grants on demand; verify protected owner behavior, direct-owner restrictions, identity lookup, establishment scope, stale mutation blocking and focus return.
 - [ ] 9.6 Reproduce the office-Fiscal populated scrolling risk using isolated representative data; verify and document either no defect or a focused correction with scroll/focus evidence, without reporting the original unconfirmed risk as already reproduced.
 
 ## 10. Verify concurrency and cross-layer compatibility
