@@ -9,6 +9,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpEstablishment;
+use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpPlanModule;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
@@ -27,12 +28,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use Tests\Support\BuildsErpFiscalHarness;
+use Tests\Support\BuildsReviewedFiscalHarnessSale;
 use Tests\TestCase;
 
 class ErpReviewRegressionTest extends TestCase
 {
-    use BuildsErpFiscalHarness;
+    use BuildsReviewedFiscalHarnessSale;
     use RefreshDatabase;
 
     private ?ErpContact $purchaseSupplier = null;
@@ -77,6 +78,12 @@ class ErpReviewRegressionTest extends TestCase
     {
         $purchase = $this->purchase();
         $this->commercialPost("/api/v1/erp/purchases/{$purchase}/post")->assertOk();
+        if (isset($extra['erp_contact_id'], $extra['erp_operation_nature_id'])) {
+            $this->prepareReviewedFiscalNature($this->establishment, ErpOperationNature::query()
+                ->where('erp_company_id', $this->company->id)->findOrFail($extra['erp_operation_nature_id']));
+            $extra += ['fiscal_model' => '55',
+                'tax_context' => ['origin_uf' => 'SP', 'destination_uf' => 'SP', 'model' => '55', 'purpose' => 'normal']];
+        }
         $sale = $this->commercialPost('/api/v1/erp/sales', $extra + ['erp_establishment_id' => $this->establishment->id, 'invoice_no' => 'S-1', 'lines' => [['erp_product_variant_id' => $this->variant->id, 'quantity' => '2', 'unit_price' => '10']]])->assertCreated()->json('data.id');
         $this->commercialPost("/api/v1/erp/sales/{$sale}/post")->assertOk();
 

@@ -12,12 +12,12 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Support\BuildsErpFiscalHarness;
+use Tests\Support\BuildsReviewedFiscalHarnessSale;
 use Tests\TestCase;
 
 class ErpLegacyPortTest extends TestCase
 {
-    use BuildsErpFiscalHarness;
+    use BuildsReviewedFiscalHarnessSale;
     use RefreshDatabase;
 
     private const DEST_CNPJ = '11222333000181';

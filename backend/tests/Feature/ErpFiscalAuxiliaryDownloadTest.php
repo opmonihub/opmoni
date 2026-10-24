@@ -13,12 +13,12 @@ use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
-use Tests\Support\BuildsErpFiscalHarness;
+use Tests\Support\BuildsReviewedFiscalHarnessSale;
 use Tests\TestCase;
 
 class ErpFiscalAuxiliaryDownloadTest extends TestCase
 {
-    use BuildsErpFiscalHarness;
+    use BuildsReviewedFiscalHarnessSale;
     use RefreshDatabase;
 
     public function test_protected_pdf_checks_authority_and_integrity_before_real_upstream_rendering(): void

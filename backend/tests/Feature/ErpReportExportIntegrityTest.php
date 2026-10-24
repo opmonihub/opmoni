@@ -38,6 +38,7 @@ class ErpReportExportIntegrityTest extends TestCase
             'access.ingress_key' => 'test-key',
             'erp.operating_writes_enabled' => true,
             'erp.release_enabled' => true,
+            'erp.release_mode' => 'production',
             'cache.default' => 'array',
             'session.driver' => 'array',
             'session.store' => null,

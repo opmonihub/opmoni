@@ -14,12 +14,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
-use Tests\Support\BuildsErpFiscalHarness;
+use Tests\Support\BuildsReviewedFiscalHarnessSale;
 use Tests\TestCase;
 
 class ErpReleaseLaunchAcceptanceTest extends TestCase
 {
-    use BuildsErpFiscalHarness;
+    use BuildsReviewedFiscalHarnessSale;
     use RefreshDatabase;
 
     private const VALID_CNPJ = '30288513000100';

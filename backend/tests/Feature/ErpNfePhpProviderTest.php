@@ -51,6 +51,12 @@ class ErpNfePhpProviderTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['erp.release_mode' => 'production']);
+    }
+
     public function test_event_id_padding_follows_each_models_schema_width(): void
     {
         foreach ([['57', '110111', '001', 'cancel'], ['58', '110112', '01', 'close'], ['58', '110112', '100', 'close']] as [$model, $eventCode, $expectedSequence, $eventType]) {

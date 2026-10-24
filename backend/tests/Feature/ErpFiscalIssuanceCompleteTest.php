@@ -74,6 +74,7 @@ class ErpFiscalIssuanceCompleteTest extends TestCase
             'access.ingress_key' => 'test-key',
             'erp.operating_writes_enabled' => true,
             'erp.release_enabled' => true,
+            'erp.release_mode' => 'production',
             'erp.fiscal_certificate_relaxed_validation' => false,
             'erp.fiscal_production_enabled' => false,
             'cache.default' => 'array',
