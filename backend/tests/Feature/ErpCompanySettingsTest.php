@@ -123,4 +123,74 @@ class ErpCompanySettingsTest extends TestCase
             ->patchJson('/api/v1/erp/company/settings', ['tax_number_1' => '123'])
             ->assertForbidden();
     }
+
+    public function test_fiscal_default_codes_and_zero_rates_round_trip_as_exact_strings(): void
+    {
+        ['user' => $user, 'company' => $company] = $this->ownerWithCompany();
+        $this->login($user);
+
+        $settings = [
+            'cst_csosn_padrao' => '101',
+            'cst_pis_padrao' => '01',
+            'cst_cofins_padrao' => '01',
+            'cst_ipi_padrao' => '00',
+            'perc_icms_padrao' => '0.0000',
+            'perc_pis_padrao' => '0',
+            'perc_cofins_padrao' => '0.0000',
+            'perc_ipi_padrao' => '0',
+            'pCredSN' => '0.0000',
+        ];
+
+        $this->withHeaders(['X-CSRF-Token' => $this->csrf(), 'X-Company-Id' => (string) $company->id])
+            ->patchJson('/api/v1/erp/company/settings', $settings)
+            ->assertOk()
+            ->assertJsonPath('data.cst_csosn_padrao', '101')
+            ->assertJsonPath('data.cst_pis_padrao', '01')
+            ->assertJsonPath('data.cst_ipi_padrao', '00')
+            ->assertJsonPath('data.perc_icms_padrao', '0.0000')
+            ->assertJsonPath('data.perc_pis_padrao', '0');
+
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/company/settings')
+            ->assertOk()
+            ->assertJsonPath('data.cst_csosn_padrao', '101')
+            ->assertJsonPath('data.cst_pis_padrao', '01')
+            ->assertJsonPath('data.cst_ipi_padrao', '00')
+            ->assertJsonPath('data.perc_icms_padrao', '0.0000')
+            ->assertJsonPath('data.pCredSN', '0.0000');
+    }
+
+    public function test_invalid_fiscal_default_code_returns_named_validation_feedback(): void
+    {
+        ['user' => $user, 'company' => $company] = $this->ownerWithCompany();
+        $this->login($user);
+
+        $this->withHeaders(['X-CSRF-Token' => $this->csrf(), 'X-Company-Id' => (string) $company->id])
+            ->patchJson('/api/v1/erp/company/settings', ['cst_pis_padrao' => '1'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['cst_pis_padrao']);
+    }
+
+    public function test_fiscal_default_rates_require_exact_decimal_strings(): void
+    {
+        ['user' => $user, 'company' => $company] = $this->ownerWithCompany();
+        $this->login($user);
+
+        $this->withHeaders(['X-CSRF-Token' => $this->csrf(), 'X-Company-Id' => (string) $company->id])
+            ->patchJson('/api/v1/erp/company/settings', ['perc_icms_padrao' => 0])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['perc_icms_padrao']);
+    }
+
+    public function test_unresolved_numeric_legacy_code_remains_visible_without_reclassification(): void
+    {
+        ['user' => $user, 'company' => $company] = $this->ownerWithCompany();
+        $company->forceFill(['operating_settings' => ['cst_pis_padrao' => 1]])->save();
+        $this->login($user);
+
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/company/settings')
+            ->assertOk()
+            ->assertJsonPath('data.cst_pis_padrao', 1);
+    }
 }

@@ -5,7 +5,7 @@ import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { apiFailure } from '../shared/utils/access.ts'
-import { erpSettingsBusinessFields } from '../app/utils/erpCompanySettingsFields.ts'
+import { erpSettingsBusinessFields, erpSettingsSystemFields } from '../app/utils/erpCompanySettingsFields.ts'
 import type { ErpSettingsField } from '../app/utils/erpCompanySettingsFields.ts'
 import { erpCompanyHasPermission } from '../app/utils/erpModulesNav.ts'
 import { readFile } from 'node:fs/promises'
@@ -59,17 +59,21 @@ function settingsHarness(api: (path: string, options?: Record<string, unknown>) 
     setText(node, text) { node.text = text }, setElementText(node, text) { node.children = []; node.text = text }, parentNode(node) { return node.parent }, nextSibling(node) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
   })
   const app = renderer.createApp({ render: () => Vue.h(component, { title: 'Sistema', fields }) })
-  for (const name of ['UPageCard', 'USeparator']) app.component(name, { setup: (_props, ctx) => () => Vue.h('div', ctx.slots.default?.()) })
+  // Mirrors PageCard's Primitive root: `as` is one element/component selector, while the title is supplied independently by the title slot.
+  app.component('UPageCard', { props: ['title', 'as'], setup: (props, ctx) => () => { const children = [props.title || ctx.slots.title ? Vue.h('div', [ctx.slots.title?.() ?? props.title]) : null, ...(ctx.slots.default?.() ?? [])]; const root = props.as ?? 'div'; return typeof root === 'string' ? Vue.h(root, children) : Vue.h(root, {}, { default: () => children }) } })
+  app.component('USeparator', { setup: (_props, ctx) => () => Vue.h('div', ctx.slots.default?.()) })
   app.component('UFormField', { props: ['name', 'label', 'description', 'hint', 'error'], setup: (props, ctx) => () => Vue.h('fieldset', { name: props.name }, [Vue.h('label', String(props.label ?? '')), props.description ? Vue.h('p', String(props.description)) : null, props.hint ? Vue.h('span', String(props.hint)) : null, ctx.slots.default?.(), props.error ? Vue.h('p', { role: 'alert' }, String(props.error)) : null]) })
   app.component('UForm', { setup: (_props, ctx) => () => Vue.h('form', { ...ctx.attrs }, ctx.slots.default?.()) })
   app.component('UButton', { props: ['label'], setup: (props, ctx) => () => Vue.h('button', ctx.attrs, String(props.label ?? '')) })
   for (const name of ['UInput', 'USelect', 'UCheckbox']) app.component(name, { props: ['modelValue'], emits: ['update:modelValue'], setup: (props, ctx) => () => Vue.h(name === 'USelect' ? 'select' : 'input', { ...ctx.attrs, value: props.modelValue, onInput: (value: string) => ctx.emit('update:modelValue', value) }) })
   const errors: unknown[] = []
+  const warnings: unknown[] = []
+  app.config.warnHandler = warning => warnings.push(warning)
   app.config.errorHandler = error => errors.push(error)
   app.mount(root)
   const walk = (node: Node): Node[] => [node, ...node.children.flatMap(walk)]
   const submit = () => (walk(root).find(node => node.tag === 'form')!.props.onSubmit as (event: unknown) => unknown)({ preventDefault() {} })
-  return { state, company, account, session, root, walk, submit, notices, errors, privateForm: () => privateForm, dispose: () => { app.unmount(); scope.stop() } }
+  return { state, company, account, session, root, walk, submit, notices, errors, warnings, privateForm: () => privateForm, dispose: () => { app.unmount(); scope.stop() } }
 }
 
 const settingsResponse = { data: { name: 'Empresa autorizada', cnpj: '30288513000100', razao_social: null, ie: null, status: 'active', regime: 'normal', enabled: 1 }, meta: {} }
@@ -181,6 +185,95 @@ describe('native acceptance settings writer roles and refusals', () => {
       assert.ok(failed.walk(failed.root).filter(node => ['input', 'select'].includes(node.tag ?? '')).every(node => node.props.disabled === true))
       assert.deepEqual(failed.errors, [])
     } finally { failed.dispose() }
+  })
+})
+
+describe('typed system settings', () => {
+  it('renders the system fields under their task groups', async () => {
+    const mounted = settingsHarness(async () => ({ data: settingsResponse.data, meta: legacySettingsMeta }), 'owner', ['*'], 'section', erpSettingsSystemFields)
+    try {
+      await flushSettings()
+      const headings = mounted.walk(mounted.root).filter(node => node.tag === 'h3').map(node => node.text)
+      assert.ok(headings.includes('Classificação fiscal'))
+      assert.ok(headings.includes('Alíquotas padrão'))
+      assert.ok(headings.includes('Preferências do sistema'))
+      assert.equal(mounted.walk(mounted.root).filter(node => node.tag === 'section').length, 3)
+      assert.equal(mounted.walk(mounted.root).filter(node => node.tag === 'fieldset').length, erpSettingsSystemFields.length)
+      assert.equal(mounted.warnings.some(warning => String(warning).includes('missing template or render function')), false)
+    } finally { mounted.dispose() }
+  })
+
+  it('saves and reloads leading-zero codes and zero decimal strings without coercion', async () => {
+    let stored: Record<string, unknown> = { ...settingsResponse.data }
+    const patches: Record<string, unknown>[] = []
+    const mounted = settingsHarness(async (_path, options) => {
+      if (options?.method === 'PATCH') {
+        const patch = options.body as Record<string, unknown>
+        patches.push(patch)
+        stored = { ...stored, ...patch }
+      }
+      return { data: { ...stored }, meta: legacySettingsMeta }
+    }, 'owner', ['*'], 'section', erpSettingsSystemFields)
+    try {
+      await flushSettings()
+      Object.assign(mounted.privateForm()!, {
+        cst_csosn_padrao: '101',
+        cst_pis_padrao: '01',
+        cst_cofins_padrao: '01',
+        cst_ipi_padrao: '01',
+        perc_icms_padrao: '0.0000',
+        perc_pis_padrao: '0',
+        perc_cofins_padrao: '0.0000',
+        perc_ipi_padrao: '0',
+        pCredSN: '0.0000'
+      })
+      await mounted.submit()
+      await flushSettings()
+      assert.equal(patches.length, 1)
+      assert.equal(patches[0]?.cst_csosn_padrao, '101')
+      assert.equal(patches[0]?.cst_pis_padrao, '01')
+      assert.equal(patches[0]?.perc_icms_padrao, '0.0000')
+      assert.equal(patches[0]?.perc_pis_padrao, '0')
+      assert.equal(mounted.state.state.value.cst_csosn_padrao, '101')
+      assert.equal(mounted.state.state.value.perc_icms_padrao, '0.0000')
+      assert.deepEqual(mounted.errors, [])
+    } finally { mounted.dispose() }
+  })
+
+  it('shows an unresolved numeric legacy code and omits it until the operator corrects it', async () => {
+    const writes: Record<string, unknown>[] = []
+    const mounted = settingsHarness(async (_path, options) => {
+      if (options?.method === 'PATCH') writes.push(options.body as Record<string, unknown>)
+      return { data: { ...settingsResponse.data, cst_pis_padrao: 1 }, meta: legacySettingsMeta }
+    }, 'owner', ['*'], 'section', erpSettingsSystemFields)
+    try {
+      await flushSettings()
+      const field = mounted.walk(mounted.root).find(node => node.tag === 'fieldset' && node.props.name === 'cst_pis_padrao')
+      assert.ok(field?.children.some(node => node.tag === 'span' && /legado numérico.*revisão/i.test(node.text ?? '')))
+      assert.equal(mounted.walk(field!).find(node => node.tag === 'input')?.props.value, '1')
+      mounted.privateForm()!.perc_pis_padrao = '0.0000'
+      await mounted.submit()
+      assert.equal(Object.hasOwn(writes[0]!, 'cst_pis_padrao'), false)
+      mounted.privateForm()!.cst_pis_padrao = '01'
+      await mounted.submit()
+      assert.equal(writes[1]?.cst_pis_padrao, '01')
+      assert.deepEqual(mounted.errors, [])
+    } finally { mounted.dispose() }
+  })
+
+  it('shows named API validation feedback beside an invalid fiscal code', async () => {
+    const mounted = settingsHarness(async (_path, options) => {
+      if (options?.method === 'PATCH') throw validationFailure({ cst_pis_padrao: ['Informe o CST do PIS com 2 dígitos.'] })
+      return { data: settingsResponse.data, meta: legacySettingsMeta }
+    }, 'owner', ['*'], 'section', erpSettingsSystemFields)
+    try {
+      await flushSettings()
+      mounted.privateForm()!.cst_pis_padrao = '1'
+      await mounted.submit()
+      const field = mounted.walk(mounted.root).find(node => node.tag === 'fieldset' && node.props.name === 'cst_pis_padrao')
+      assert.ok(field?.children.some(node => node.tag === 'p' && node.props.role === 'alert' && node.text === 'Informe o CST do PIS com 2 dígitos.'))
+      assert.equal(mounted.privateForm()!.cst_pis_padrao, '1')
+    } finally { mounted.dispose() }
   })
 })
 

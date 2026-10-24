@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Erp;
 
 use App\Erp\ErpCatalogWriteService;
+use App\Erp\ErpCatalogDecimal;
 use App\Erp\ErpCompanyOperatingSettings;
 use App\Erp\LegacyBusinessReference;
 use App\Http\Controllers\Controller;
@@ -44,8 +45,23 @@ class ErpCompanySettingsController extends Controller
             'cnpj' => ['sometimes', 'string', 'max:20'],
             'razao_social' => ['sometimes', 'nullable', 'string', 'min:10', 'max:120'],
             'ie' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'cst_csosn_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2,3}\z/'],
+            'cst_pis_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'cst_cofins_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'cst_ipi_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A\d{2}\z/'],
+            'ncm_padrao' => ['sometimes', 'nullable', 'string', 'regex:/\A(?:\d{8}|00)\z/'],
+            'perc_icms_padrao' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'perc_pis_padrao' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'perc_cofins_padrao' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'perc_ipi_padrao' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
+            'pCredSN' => ['sometimes', 'nullable', ...ErpCatalogDecimal::widthRule(3, 4)],
         ], [
             'razao_social.min' => 'digite no minimo 10 caractes.',
+            'cst_csosn_padrao.regex' => 'Informe o CST com 2 dígitos ou o CSOSN com 3 dígitos.',
+            'cst_pis_padrao.regex' => 'Informe o CST do PIS com 2 dígitos.',
+            'cst_cofins_padrao.regex' => 'Informe o CST da COFINS com 2 dígitos.',
+            'cst_ipi_padrao.regex' => 'Informe o CST do IPI com 2 dígitos.',
+            'ncm_padrao.regex' => 'Informe o NCM com 8 dígitos ou 00.',
         ]);
 
         $persist = $this->settings->extractPersistable($request->all());

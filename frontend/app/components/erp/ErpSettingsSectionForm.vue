@@ -14,6 +14,18 @@ const form = reactive<Record<string, unknown>>({})
 const loadError = ref('')
 const saveError = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
+const fieldGroups = computed(() => {
+  const groups: Array<{ label?: string, fields: ErpSettingsField[] }> = []
+  for (const field of props.fields) {
+    let group = groups.find(candidate => candidate.label === field.group)
+    if (!group) {
+      group = { ...(field.group ? { label: field.group } : {}), fields: [] }
+      groups.push(group)
+    }
+    group.fields.push(field)
+  }
+  return groups
+})
 
 onMounted(async () => {
   if (!state.value && canRead.value) await refreshSettings()
@@ -39,7 +51,10 @@ function syncForm() {
   }
   for (const field of props.fields) {
     const key = field.key as string
-    form[key] = state.value[key] ?? (field.type === 'checkbox' ? 0 : '')
+    const value = state.value[key]
+    form[key] = ['code', 'decimal'].includes(field.type ?? '') && typeof value === 'number'
+      ? String(value)
+      : value ?? (field.type === 'checkbox' ? 0 : '')
   }
 }
 
@@ -59,8 +74,12 @@ async function onSubmit() {
   const authority = authorityKey.value
   clearSaveFeedback()
   const patch: Record<string, unknown> = {}
-  for (const field of props.fields)
-    patch[field.key as string] = form[field.key as string]
+  for (const field of props.fields) {
+    const key = field.key as string
+    const current = state.value[key]
+    if (['code', 'decimal'].includes(field.type ?? '') && typeof current === 'number' && form[key] === String(current)) continue
+    patch[key] = form[key]
+  }
   try {
     const response = await save(patch)
     if (!response || !canWrite.value || authority !== authorityKey.value) return
@@ -77,6 +96,15 @@ function selectModelValue(key: string): string | number | undefined {
   const value = form[key]
   if (typeof value === 'string' || typeof value === 'number')
     return value
+  return undefined
+}
+
+function fieldHint(field: ErpSettingsField): string | undefined {
+  if (field.hint) return field.hint
+  const value = state.value?.[field.key as string]
+  if (field.type === 'code' && typeof value === 'number') {
+    return 'Valor legado numérico, pendente de revisão; revise o código antes de usar esta classificação.'
+  }
   return undefined
 }
 
@@ -145,15 +173,24 @@ function selectOptions(field: (typeof props.fields)[number]) {
     <p v-if="saveError" role="alert" class="mb-4 text-sm text-error">
       {{ saveError }}
     </p>
-    <UPageCard variant="subtle" class="space-y-0">
-      <template v-for="(field, index) in fields" :key="field.key">
+    <UPageCard
+      v-for="group in fieldGroups"
+      :key="group.label ?? title"
+      :as="group.label ? 'section' : undefined"
+      variant="subtle"
+      class="space-y-0"
+    >
+      <template v-if="group.label" #title>
+        <h3>{{ group.label }}</h3>
+      </template>
+      <template v-for="(field, index) in group.fields" :key="field.key">
         <USeparator v-if="index > 0" />
         <UFormField
           :name="String(field.key)"
           :label="field.label"
           :required="field.required"
           :description="field.description"
-          :hint="field.hint"
+          :hint="fieldHint(field)"
           :error="fieldErrors[String(field.key)]?.[0]"
           class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
@@ -178,6 +215,7 @@ function selectOptions(field: (typeof props.fields)[number]) {
             :disabled="!canWrite || pending || !state"
             :model-value="String(form[field.key as string] ?? '')"
             :type="field.type === 'number' ? 'number' : 'text'"
+            :inputmode="field.type === 'code' ? 'numeric' : undefined"
             class="w-full sm:max-w-md"
             @update:model-value="form[field.key as string] = field.type === 'number' ? Number($event) : $event"
           />
