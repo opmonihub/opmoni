@@ -183,8 +183,11 @@ final class ErpCommercialTaxReview
                 throw ValidationException::withMessages(['lines.'.$index.'.erp_product_variant_id' => 'Produto ativo inválido para esta empresa.']);
             }
             $previous = $line->product_snapshot;
+            $candidate = $model instanceof ErpSale && $model->fiscal_model !== null
+                ? $this->tax->reviewedFiscalProductFacts($variant?->product, $previous, 'lines.'.$index)
+                : $previous;
             $explicit = $this->tax->explicit($changes->get($line->id, []), $previous, 'lines.'.$index);
-            $snapshot = $this->tax->project($context, $variant?->product, $nature, $previous, $actual, $explicit, 'lines.'.$index);
+            $snapshot = $this->tax->project($context, $variant?->product, $nature, $candidate, $actual, $explicit, 'lines.'.$index);
             $rows[] = ['id' => $line->id, 'previous_product_snapshot' => $previous, 'product_snapshot' => $snapshot];
         }
 

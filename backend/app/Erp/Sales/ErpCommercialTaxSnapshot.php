@@ -132,6 +132,20 @@ final class ErpCommercialTaxSnapshot
             && (($previous['cfop_resolution']['context'] ?? $actual) === $actual);
     }
 
+    /** Explicit review may update fiscal source facts, never the saved physical product semantics. */
+    public function reviewedFiscalProductFacts(?ErpProduct $product, array $snapshot, string $path): array
+    {
+        if ($product === null) {
+            return $snapshot;
+        }
+        if (($snapshot['product']['kind'] ?? null) !== $product->kind) {
+            throw ValidationException::withMessages([$path.'.erp_product_variant_id' => 'O tipo do produto mudou. Substitua a linha e revise seus dados antes de declarar a fonte fiscal.']);
+        }
+        $snapshot['product'] = [...($snapshot['product'] ?? []), ...$product->only(['ncm', 'origin_code'])];
+
+        return $snapshot;
+    }
+
     /** Update classification only; pricing, stock identity, amounts and standalone taxes remain frozen. */
     public function project(CurrentCompany $context, ?ErpProduct $product, ?ErpOperationNature $nature, array $snapshot, array $actual, ?string $explicit, string $path): array
     {

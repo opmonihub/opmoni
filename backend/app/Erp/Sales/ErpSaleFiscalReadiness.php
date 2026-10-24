@@ -133,15 +133,16 @@ final class ErpSaleFiscalReadiness
             'errors' => $errors, 'classification_current' => $current, 'review' => $preconditions];
     }
 
-    /** Ordinary edits preserve the original issuer review; only explicit intent/review actions replace it. */
+    /** Ordinary edits preserve review; an existing draft changing intent needs an explicit reviewed proof. */
     public function capture(Request $request, ErpSale $sale, array $previous = [], bool $reviewed = false): array
     {
         $result = $this->inspect($request, $sale);
-        if (! $reviewed && $sale->fiscal_model !== null && ($previous['model'] ?? null) === $sale->fiscal_model && isset($previous['review'])) {
-            if ($previous['review'] !== $result['review']) {
+        if (! $reviewed && $sale->fiscal_model !== null && ! $sale->wasRecentlyCreated) {
+            $review = ($previous['model'] ?? null) === $sale->fiscal_model ? ($previous['review'] ?? null) : null;
+            if ($review !== $result['review']) {
                 $result['readiness'] = 'review_required';
             }
-            $result['review'] = $previous['review'];
+            $result['review'] = $review;
         }
 
         return $result;

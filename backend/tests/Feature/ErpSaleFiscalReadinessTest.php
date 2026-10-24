@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpContact;
+use App\Models\Erp\ErpUnit;
 use App\Models\Erp\Sales\ErpSale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -424,6 +425,190 @@ class ErpSaleFiscalReadinessTest extends ErpCommercialTestCase
             'draft_revision' => 1, 'tax_context' => $this->classificationContext(['model' => '65', 'final_consumer' => true, 'presence' => '1']),
         ])->assertUnprocessable()->assertJsonValidationErrors('tax_context.model');
         $this->assertSame($before, ErpSale::findOrFail($id)->getAttributes());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoPostEffects();
+    }
+
+    public static function intentSavePaths(): iterable
+    {
+        yield 'retained lines' => [false];
+        yield 'full owned lines' => [true];
+    }
+
+    #[DataProvider('intentSavePaths')]
+    public function test_clearing_and_reselecting_intent_cannot_bless_an_issuer_change_without_review(bool $fullLines): void
+    {
+        $body = $this->readyBody();
+        $id = $this->send('sales', $body)->assertCreated()->json('data.id');
+        $sale = ErpSale::findOrFail($id);
+        $this->assertSame('source_prerequisites_checked', $sale->commercial_snapshot['fiscal_context']['readiness']);
+        $owned = $fullLines ? ['lines' => [['id' => $sale->lines()->firstOrFail()->id, ...$body['lines'][0]]]] : [];
+        $this->issuerConfiguration['issuer']['state_registration'] = '110042490115';
+        $this->patchJson('/api/v1/erp/fiscal/configuration/'.$this->establishment->id, $this->issuerConfiguration)->assertOk();
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1, 'fiscal_model' => null, ...$owned], ['Idempotency-Key' => 'clear-stale-intent'])->assertOk();
+        $this->assertSame(['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null], $sale->fresh()->commercial_snapshot['fiscal_context']);
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 2, 'fiscal_model' => '55', ...$owned], ['Idempotency-Key' => 'reselect-stale-intent'])->assertOk();
+        $before = $sale->fresh()->getAttributes();
+        $lines = $sale->fresh()->lines()->get()->toArray();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $sequences = DB::table('erp_commercial_number_sequences')->get()->toArray();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 3])->assertConflict()->assertJsonPath('code', 'sale_fiscal_review_changed');
+        $this->assertSame($before, $sale->fresh()->getAttributes());
+        $this->assertSame($lines, $sale->fresh()->lines()->get()->toArray());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertEquals($sequences, DB::table('erp_commercial_number_sequences')->get()->toArray());
+        $this->assertNoPostEffects();
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 3, ...$owned], ['Idempotency-Key' => 'retain-review-required'])->assertOk();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 4])->assertConflict();
+        $preview = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 4])->assertOk()->json('data');
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 4,
+            'tax_refresh' => ['reviewed_fingerprint' => $preview['reviewed_fingerprint']]], ['Idempotency-Key' => 'review-reselected-intent'])->assertOk();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 5])->assertOk()->assertJsonPath('data.status', 'posted');
+        $this->assertDatabaseCount('erp_obligations', 1);
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+    }
+
+    public function test_existing_non_fiscal_draft_activation_requires_review_even_with_current_classifications(): void
+    {
+        $body = $this->readyBody();
+        $body['fiscal_model'] = null;
+        $id = $this->send('sales', $body)->assertCreated()->json('data.id');
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1, 'fiscal_model' => '55'], ['Idempotency-Key' => 'activate-intent'])->assertOk();
+        $before = ErpSale::findOrFail($id)->getAttributes();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 2])->assertConflict();
+        $this->assertSame($before, ErpSale::findOrFail($id)->getAttributes());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoPostEffects();
+        $preview = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 2])->assertOk()->json('data');
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 2,
+            'tax_refresh' => ['reviewed_fingerprint' => $preview['reviewed_fingerprint']]], ['Idempotency-Key' => 'review-activated-intent'])->assertOk();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 3])->assertOk();
+    }
+
+    public function test_cleared_intent_preserves_exact_public_context_and_genuine_non_fiscal_posting(): void
+    {
+        $id = $this->send('sales', $this->readyBody())->assertCreated()->json('data.id');
+        $this->issuerConfiguration['issuer']['state_registration'] = '110042490115';
+        $this->patchJson('/api/v1/erp/fiscal/configuration/'.$this->establishment->id, $this->issuerConfiguration)->assertOk();
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1, 'fiscal_model' => null], ['Idempotency-Key' => 'genuine-commercial-intent'])->assertOk();
+        $this->assertSame(['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null], $this->getJson('/api/v1/erp/sales/'.$id)->assertOk()->json('data.commercial_snapshot.fiscal_context'));
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 2])->assertOk()->assertJsonPath('data.fiscal_model', null);
+        $this->assertDatabaseCount('erp_obligations', 1);
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+    }
+
+    public static function correctedFiscalFacts(): iterable
+    {
+        yield 'changed NCM' => [false];
+        yield 'completed NCM and origin' => [true];
+    }
+
+    #[DataProvider('correctedFiscalFacts')]
+    public function test_explicit_review_recovers_corrected_ncm_and_origin_without_adopting_money_unit_or_stock_changes(bool $missing): void
+    {
+        $body = $this->readyBody();
+        if ($missing) {
+            $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, ['ncm' => null, 'origin_code' => null])->assertOk();
+        }
+        $id = $this->send('sales', $body)->assertCreated()->json('data.id');
+        $sale = ErpSale::findOrFail($id);
+        $beforeLine = $sale->lines()->firstOrFail()->attributesToArray();
+        if ($missing) {
+            $this->send('sales/'.$id.'/post', ['draft_revision' => 1])->assertUnprocessable()->assertJsonValidationErrors(['lines.0.typed_fields', 'lines.0.origin_code']);
+        }
+        $newUnit = ErpUnit::factory()->create(['erp_company_id' => $this->company->id, 'short_name' => 'CX']);
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, [
+            'ncm' => '87654321', 'origin_code' => '1', 'track_stock' => true, 'erp_unit_id' => $newUnit->id, 'sale_price' => '999.0000',
+        ])->assertOk();
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1], ['Idempotency-Key' => 'retain-before-fiscal-review'])->assertOk();
+        $this->assertSame($beforeLine, $sale->fresh()->lines()->firstOrFail()->attributesToArray());
+        $before = $sale->fresh()->getAttributes();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 2])->assertConflict();
+        $this->assertSame($before, $sale->fresh()->getAttributes());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoPostEffects();
+        $preview = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 2])->assertOk()->json('data');
+        $this->assertSame('87654321', $preview['lines'][0]['product_snapshot']['product']['ncm']);
+        $this->assertSame('1', $preview['lines'][0]['product_snapshot']['product']['origin_code']);
+        $this->assertSame($beforeLine['product_snapshot'], $preview['lines'][0]['previous_product_snapshot']);
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 2,
+            'tax_refresh' => ['reviewed_fingerprint' => $preview['reviewed_fingerprint']]], ['Idempotency-Key' => 'review-corrected-fiscal-facts'])->assertOk();
+        $afterLine = $sale->fresh()->lines()->firstOrFail()->attributesToArray();
+        foreach (['id', 'erp_product_variant_id', 'erp_unit_id', 'quantity', 'base_quantity', 'unit_conversion_factor', 'unit_price', 'gross_amount', 'discount_amount', 'tax_amount', 'line_total'] as $field) {
+            $this->assertSame($beforeLine[$field], $afterLine[$field], $field);
+        }
+        foreach (['pricing', 'unit', 'unit_chain', 'tax_rate', 'manual_discount', 'description'] as $field) {
+            $this->assertSame($beforeLine['product_snapshot'][$field], $afterLine['product_snapshot'][$field], $field);
+        }
+        foreach (['id', 'kind', 'track_stock', 'name', 'sku'] as $field) {
+            $this->assertSame($beforeLine['product_snapshot']['product'][$field], $afterLine['product_snapshot']['product'][$field], $field);
+        }
+        $this->assertFalse($afterLine['product_snapshot']['product']['track_stock']);
+        $this->assertNotSame($newUnit->id, $afterLine['erp_unit_id']);
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 3])->assertOk()->assertJsonPath('data.total_amount', '100.0000');
+        $this->assertSame($afterLine['product_snapshot'], $sale->fresh()->commercial_snapshot['lines'][0]['product_snapshot']);
+        $this->assertDatabaseCount('erp_stock_movements', 0);
+        $this->assertDatabaseCount('erp_obligations', 1);
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+    }
+
+    public function test_fiscal_product_fact_change_after_preview_invalidates_proof_before_writes(): void
+    {
+        $id = $this->send('sales', $this->readyBody())->assertCreated()->json('data.id');
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, ['ncm' => '87654321'])->assertOk();
+        $preview = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 1])->assertOk()->json('data');
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, ['ncm' => '11112222'])->assertOk();
+        $sale = ErpSale::findOrFail($id);
+        $before = $sale->getAttributes();
+        $lines = $sale->lines()->get()->toArray();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1,
+            'tax_refresh' => ['reviewed_fingerprint' => $preview['reviewed_fingerprint']]], ['Idempotency-Key' => 'stale-ncm-proof'])
+            ->assertConflict()->assertJsonPath('code', 'commercial_tax_review_changed');
+        $this->assertSame($before, $sale->fresh()->getAttributes());
+        $this->assertSame($lines, $sale->fresh()->lines()->get()->toArray());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoPostEffects();
+        $fresh = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 1])->assertOk()->json('data');
+        $this->assertSame('11112222', $fresh['lines'][0]['product_snapshot']['product']['ncm']);
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1,
+            'tax_refresh' => ['reviewed_fingerprint' => $fresh['reviewed_fingerprint']]], ['Idempotency-Key' => 'fresh-ncm-proof'])->assertOk();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 2])->assertOk();
+    }
+
+    public function test_fiscal_review_rejects_kind_change_with_actionable_line_target_without_mutating_stock_identity(): void
+    {
+        $id = $this->send('sales', $this->readyBody())->assertCreated()->json('data.id');
+        $sale = ErpSale::findOrFail($id);
+        $before = $sale->getAttributes();
+        $lines = $sale->lines()->get()->toArray();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, ['kind' => 'service'])->assertOk();
+        $response = $this->postJson('/api/v1/erp/sales/'.$id.'/tax-refresh-preview', ['draft_revision' => 1])
+            ->assertUnprocessable()->assertJsonValidationErrors('lines.0.erp_product_variant_id');
+        $this->assertStringContainsString('Substitua', $response->json('errors')['lines.0.erp_product_variant_id'][0]);
+        $this->assertSame($before, $sale->fresh()->getAttributes());
+        $this->assertSame($lines, $sale->fresh()->lines()->get()->toArray());
+        $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
+        $this->assertNoPostEffects();
+    }
+
+    public function test_existing_draft_without_review_metadata_is_never_treated_as_a_new_intended_sale(): void
+    {
+        $body = $this->readyBody();
+        $body['fiscal_model'] = null;
+        $id = $this->send('sales', $body)->assertCreated()->json('data.id');
+        $sale = ErpSale::findOrFail($id);
+        $snapshot = $sale->commercial_snapshot;
+        unset($snapshot['fiscal_context']);
+        $sale->update(['commercial_snapshot' => $snapshot]);
+        $this->patchJson('/api/v1/erp/sales/'.$id, ['draft_revision' => 1, 'fiscal_model' => '55'], ['Idempotency-Key' => 'activate-without-prior-metadata'])->assertOk();
+        $before = $sale->fresh()->getAttributes();
+        $receipts = DB::table('erp_operation_receipts')->count();
+        $this->send('sales/'.$id.'/post', ['draft_revision' => 2])->assertConflict();
+        $this->assertSame($before, $sale->fresh()->getAttributes());
         $this->assertSame($receipts, DB::table('erp_operation_receipts')->count());
         $this->assertNoPostEffects();
     }
