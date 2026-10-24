@@ -96,6 +96,8 @@ Route::get('/tax-settings/operation-natures/{operationNature}', [ErpOperationNat
 Route::patch('/tax-settings/operation-natures/{operationNature}', [ErpOperationNatureController::class, 'update'])->whereNumber('operationNature')->name('erp.operation-natures.update');
 Route::delete('/tax-settings/operation-natures/{operationNature}', [ErpOperationNatureController::class, 'archive'])->whereNumber('operationNature')->name('erp.operation-natures.archive');
 
+require __DIR__.'/erp-operation-nature-rules.php';
+
 Route::get('/carriers', [ErpCarrierController::class, 'index'])->name('erp.carriers.index');
 Route::post('/carriers', [ErpCarrierController::class, 'store'])->name('erp.carriers.store');
 Route::get('/carriers/{carrier}', [ErpCarrierController::class, 'show'])->whereNumber('carrier')->name('erp.carriers.show');

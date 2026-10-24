@@ -19,6 +19,8 @@ use App\Models\Erp\ErpDiscountRule;
 use App\Models\Erp\ErpDriver;
 use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationNature;
+use App\Models\Erp\ErpOperationNatureCfopChoice;
+use App\Models\Erp\ErpOperationNatureProductException;
 use App\Models\Erp\ErpPriceGroup;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductTaxProfile;
@@ -52,6 +54,8 @@ class ErpCatalogAttributionWriter
         ErpDiscountRule::class => 'discount_rule',
         ErpTaxRate::class => 'tax_rate',
         ErpOperationNature::class => 'operation_nature',
+        ErpOperationNatureCfopChoice::class => 'operation_nature_cfop_choice',
+        ErpOperationNatureProductException::class => 'operation_nature_exception',
         ErpCarrier::class => 'carrier',
         ErpVehicle::class => 'vehicle',
         ErpDriver::class => 'driver',

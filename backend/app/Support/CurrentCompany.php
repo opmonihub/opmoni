@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Erp\ErpCompanyPermissions;
+use App\Erp\ErpOperationNatureRules;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
 use App\Models\Erp\ErpOfficeDelegation;
@@ -42,6 +43,7 @@ class CurrentCompany
 
     public function assertPermission(string $permission, bool $write = false): void
     {
+        $permission = ErpOperationNatureRules::permission($permission, request());
         $permission = match ($permission) {
             'erp.products.tax-preview' => 'erp.products.update',
             'erp.product-tax-profiles.show' => 'erp.product-tax-profiles.index',
