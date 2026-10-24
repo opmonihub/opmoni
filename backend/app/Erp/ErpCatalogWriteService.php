@@ -64,6 +64,17 @@ final class ErpCatalogWriteService
         $this->attributions->record($request, $context, $resource, $action, $batch);
     }
 
+    public function assertProtected(Request $request, CurrentCompany $context): void
+    {
+        $boundary = $request->attributes->get(self::class);
+        if (! is_array($boundary) || ($boundary['context'] ?? null) !== $context
+            || CurrentCompany::fromRequest($request) !== $context
+            || ($boundary['connection'] ?? null) !== DB::connection()
+            || ($boundary['level'] ?? 0) < 1 || $boundary['level'] > DB::transactionLevel()) {
+            throw new \LogicException('Catalog writes require the protected catalog transaction.');
+        }
+    }
+
     /** @param array<string, mixed> $payload */
     public function createProduct(Request $request, CurrentCompany $context, array $payload, ?ErpCatalogImport $batch = null): ErpProduct
     {
@@ -230,7 +241,7 @@ final class ErpCatalogWriteService
             $this->scope->assertActiveReference(ErpCategory::class, $companyId, (int) $data['erp_category_id'], 'erp_category_id', $current?->erp_category_id !== null ? (int) $current->erp_category_id : null);
         }
 
-        return $data;
+        return [...$data, ...app(ErpProductTaxIntent::class)->prepare($payload, $companyId, $current)];
     }
 
     /** @param array<string, mixed> $payload

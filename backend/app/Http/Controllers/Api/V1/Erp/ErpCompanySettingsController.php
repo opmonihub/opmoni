@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Erp;
 use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpCatalogDecimal;
 use App\Erp\ErpCompanyOperatingSettings;
+use App\Erp\ErpCompanyProductTaxDefaults;
 use App\Erp\LegacyBusinessReference;
 use App\Http\Controllers\Controller;
 use App\Models\Erp\ErpCompany;
@@ -20,6 +21,7 @@ class ErpCompanySettingsController extends Controller
         private ErpCompanyOperatingSettings $settings,
         private BrazilianTaxId $taxId,
         private ErpCatalogWriteService $writes,
+        private ErpCompanyProductTaxDefaults $taxDefaults,
     ) {}
 
     public function show(Request $request): JsonResponse
@@ -28,7 +30,7 @@ class ErpCompanySettingsController extends Controller
         $company = $context->company;
 
         return response()->json([
-            'data' => $this->settings->toPayload($company),
+            'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company)],
             'meta' => $this->formMeta(),
         ]);
     }
@@ -80,6 +82,7 @@ class ErpCompanySettingsController extends Controller
         return $this->writes->run($request, function (CurrentCompany $context) use ($request, $persist): JsonResponse {
             /** @var ErpCompany $company */
             $company = ErpCompany::query()->lockForUpdate()->findOrFail($context->company->id);
+            $this->taxDefaults->update($request, $context, $request->all());
 
             if (isset($persist['cnpj']) && ErpCompany::query()->where('cnpj', $persist['cnpj'])->whereKeyNot($company->id)->exists()) {
                 throw ValidationException::withMessages(['cnpj' => 'CNPJ já cadastrado']);
@@ -100,7 +103,7 @@ class ErpCompanySettingsController extends Controller
             $company = $company->fresh();
 
             return response()->json([
-                'data' => $this->settings->toPayload($company),
+                'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company)],
                 'meta' => $this->formMeta(),
             ]);
         });

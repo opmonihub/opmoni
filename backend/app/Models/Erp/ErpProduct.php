@@ -21,6 +21,7 @@ class ErpProduct extends Model
         'icms_cst', 'icms_csosn', 'pis_cst', 'cofins_cst', 'ipi_cst',
         'icms_rate', 'pis_rate', 'cofins_rate', 'ipi_rate',
         'simple_national_credit_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code',
+        'erp_product_tax_profile_id', 'tax_field_intents',
         'status',
     ];
 
@@ -29,6 +30,8 @@ class ErpProduct extends Model
     {
         return [
             'track_stock' => 'boolean',
+            'erp_product_tax_profile_id' => 'integer',
+            'tax_field_intents' => 'array',
             'sale_price' => 'decimal:4',
             'icms_rate' => 'decimal:4',
             'pis_rate' => 'decimal:4',

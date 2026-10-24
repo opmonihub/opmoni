@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpDriverController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpOperationNatureController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpPriceGroupController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductController;
+use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpProductTaxProfileController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpTaxRateController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpUnitController;
 use App\Http\Controllers\Api\V1\Erp\Catalogs\ErpVehicleController;
@@ -37,6 +38,7 @@ Route::delete('/contacts/{contact}/notes/{note}/attachments/{attachment}', [ErpC
 
 Route::get('/products', [ErpProductController::class, 'index'])->name('erp.products.index');
 Route::post('/products', [ErpProductController::class, 'store'])->name('erp.products.store');
+Route::post('/products/tax-preview', [ErpProductController::class, 'taxPreview'])->name('erp.products.tax-preview');
 Route::get('/products/{product}', [ErpProductController::class, 'show'])->whereNumber('product')->name('erp.products.show');
 Route::patch('/products/{product}', [ErpProductController::class, 'update'])->whereNumber('product')->name('erp.products.update');
 Route::delete('/products/{product}', [ErpProductController::class, 'archive'])->whereNumber('product')->name('erp.products.archive');
@@ -78,6 +80,11 @@ Route::patch('/discount-rules/{discountRule}', [ErpDiscountRuleController::class
 Route::delete('/discount-rules/{discountRule}', [ErpDiscountRuleController::class, 'archive'])->whereNumber('discountRule')->name('erp.discount-rules.archive');
 
 Route::get('/tax-settings/tax-rates', [ErpTaxRateController::class, 'index'])->name('erp.tax-rates.index');
+Route::get('/tax-settings/product-tax-profiles', [ErpProductTaxProfileController::class, 'index'])->name('erp.product-tax-profiles.index');
+Route::post('/tax-settings/product-tax-profiles', [ErpProductTaxProfileController::class, 'store'])->name('erp.product-tax-profiles.store');
+Route::get('/tax-settings/product-tax-profiles/{id}', [ErpProductTaxProfileController::class, 'show'])->whereNumber('id')->name('erp.product-tax-profiles.show');
+Route::patch('/tax-settings/product-tax-profiles/{id}', [ErpProductTaxProfileController::class, 'update'])->whereNumber('id')->name('erp.product-tax-profiles.update');
+Route::delete('/tax-settings/product-tax-profiles/{id}', [ErpProductTaxProfileController::class, 'archive'])->whereNumber('id')->name('erp.product-tax-profiles.destroy');
 Route::post('/tax-settings/tax-rates', [ErpTaxRateController::class, 'store'])->name('erp.tax-rates.store');
 Route::get('/tax-settings/tax-rates/{taxRate}', [ErpTaxRateController::class, 'show'])->whereNumber('taxRate')->name('erp.tax-rates.show');
 Route::patch('/tax-settings/tax-rates/{taxRate}', [ErpTaxRateController::class, 'update'])->whereNumber('taxRate')->name('erp.tax-rates.update');

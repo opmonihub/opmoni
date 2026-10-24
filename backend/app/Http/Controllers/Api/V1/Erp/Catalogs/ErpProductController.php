@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 
 use App\Erp\ErpCatalogWriteService;
+use App\Erp\ErpProductTaxIntent;
+use App\Erp\ErpProductTaxResolver;
 use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductVariant;
 use App\Support\CurrentCompany;
@@ -62,6 +64,8 @@ class ErpProductController extends ErpCatalogController
             'simple_national_credit_rate' => $this->nullableDecimalString($model->simple_national_credit_rate),
             'ibs_cbs_cst' => $model->ibs_cbs_cst,
             'ibs_cbs_classification_code' => $model->ibs_cbs_classification_code,
+            'erp_product_tax_profile_id' => $model->erp_product_tax_profile_id,
+            'tax_field_intents' => $model->tax_field_intents,
             'status' => $model->status,
             'variants' => $model->relationLoaded('variants')
                 ? $model->variants->map(fn (ErpProductVariant $v): array => [
@@ -96,6 +100,35 @@ class ErpProductController extends ErpCatalogController
 
             return response()->json(['data' => $this->serialize($product)], 201);
         });
+    }
+
+    public function taxPreview(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['sometimes', 'integer', 'min:1'],
+            'kind' => ['sometimes', 'string', 'in:goods,service'],
+            'context' => ['sometimes', 'array:tax_regime,movement'],
+            'context.tax_regime' => ['sometimes', 'string', 'in:1,2,3,4'],
+            'context.movement' => ['sometimes', 'string', 'in:in,out'],
+        ]);
+        $context = CurrentCompany::fromRequest($request);
+        $current = isset($data['product_id']) ? ErpProduct::query()->where('erp_company_id', $context->company->id)->findOrFail($data['product_id']) : null;
+        $candidate = $current === null ? new ErpProduct(['erp_company_id' => $context->company->id, 'kind' => 'goods']) : clone $current;
+        $candidate->fill(app(ErpProductTaxIntent::class)->prepare($request->all(), $context->company->id, $current));
+        if (isset($data['kind'])) {
+            $candidate->kind = $data['kind'];
+        }
+        $resolver = app(ErpProductTaxResolver::class);
+        $resolution = $resolver->resolve($context, $candidate, $data['context'] ?? []);
+        if ($current !== null) {
+            try {
+                $resolution['previous'] = $resolver->resolve($context, $current, $data['context'] ?? []);
+            } catch (ValidationException $error) {
+                $resolution['previous'] = ['errors' => $error->errors()];
+            }
+        }
+
+        return response()->json(['data' => $resolution]);
     }
 
     public function update(Request $request, int $product): JsonResponse

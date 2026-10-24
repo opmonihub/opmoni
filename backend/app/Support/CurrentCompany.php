@@ -42,6 +42,11 @@ class CurrentCompany
 
     public function assertPermission(string $permission, bool $write = false): void
     {
+        $permission = match ($permission) {
+            'erp.products.tax-preview' => 'erp.products.update',
+            'erp.product-tax-profiles.show' => 'erp.product-tax-profiles.index',
+            default => $permission,
+        };
         if ($this->accessKind === 'delegated') {
             abort_unless(ErpCompanyPermissions::delegatedAllows($permission, $write, $this->delegation?->effectivePermissions() ?? [], $this->delegatedOfficeRole), 403, 'Permissão insuficiente');
 

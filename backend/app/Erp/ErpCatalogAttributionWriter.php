@@ -10,6 +10,7 @@ use App\Models\Erp\ErpCatalogPrinterProfile;
 use App\Models\Erp\ErpCatalogPrintLayout;
 use App\Models\Erp\ErpCategory;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyProductTaxDefault;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpContactAttachment;
 use App\Models\Erp\ErpContactNote;
@@ -20,6 +21,7 @@ use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpOperationNature;
 use App\Models\Erp\ErpPriceGroup;
 use App\Models\Erp\ErpProduct;
+use App\Models\Erp\ErpProductTaxProfile;
 use App\Models\Erp\ErpProductVariant;
 use App\Models\Erp\ErpTaxRate;
 use App\Models\Erp\ErpUnit;
@@ -39,6 +41,8 @@ class ErpCatalogAttributionWriter
         ErpContactNote::class => 'contact_note',
         ErpContactAttachment::class => 'contact_note_attachment',
         ErpProduct::class => 'product',
+        ErpProductTaxProfile::class => 'product_tax_profile',
+        ErpCompanyProductTaxDefault::class => 'company_product_tax_default',
         ErpProductVariant::class => 'product_variant',
         ErpUnit::class => 'unit',
         ErpCategory::class => 'category',
