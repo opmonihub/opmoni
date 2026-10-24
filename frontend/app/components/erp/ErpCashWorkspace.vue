@@ -12,8 +12,9 @@ const viewFromHash = (hash: string): CashView => (viewSelection(hash).destinatio
 const isKnownViewHash = (hash: string) => hash === `#${viewSelection(hash).destination?.id}`
 const route = useRoute()
 const router = useRouter()
-const { key: workspaceContextKey } = useErpAdministrationContext()
 const cash = useErpCashWorkspace(() => viewFromHash(route.hash))
+// Install the workspace's context reset before the root-selection watcher.
+const { key: workspaceContextKey } = useErpAdministrationContext()
 const permittedViews = computed(() => erpWorkspaceModuleDestinations('caixa', permission => cash.allowed(permission as ErpFinanceAction)))
 const viewLinks = computed<NavigationMenuItem[][]>(() => [permittedViews.value.map(view => ({
   label: view.label,

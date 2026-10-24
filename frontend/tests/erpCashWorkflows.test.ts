@@ -85,19 +85,26 @@ function sessionStorageFixture() {
   }
 }
 
-function createCashWorkspace(api: Api, company = Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' }), refreshWithStatus = async () => ({ identity: { id: 42 }, committed: true })) {
+function createCashWorkspace(api: Api, company = Vue.ref({ id: 7, permissions: ['*'], role: 'owner', access_kind: 'direct', status: 'active' }), refreshWithStatus = async () => ({ identity: { id: 42 }, committed: true }), realLifecycle = false) {
   const user = Vue.ref({ id: 42 })
   const currentCompany = company
   const key = Vue.computed(() => JSON.stringify([user.value.id, currentCompany.value.id, currentCompany.value.access_kind, ...currentCompany.value.permissions]))
   const context = { key, capture: () => ({ key: key.value }), isCurrent: (token: { key: string }) => token.key === key.value }
   const scope = Vue.effectScope()
   let mounted: (() => void) | undefined
+  let contextFactory: (() => Record<string, unknown>) | null = null
   const bindings = {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch,
-    onMounted(callback: () => void) { mounted = callback }, onScopeDispose: Vue.onScopeDispose,
+    onMounted(callback: () => void) {
+      if (realLifecycle) Vue.onMounted(callback)
+      else mounted = callback
+    }, onScopeDispose: Vue.onScopeDispose,
     useAccessApi: () => ({ api, refreshCsrf: async () => {} }),
     useAuth: () => ({ user, currentCompany, refreshWithStatus }),
-    useErpAdministrationContext: () => context
+    useErpAdministrationContext: () => {
+      if (contextFactory) return contextFactory()
+      return context
+    }
   }
   const moduleExports = compileModule(source('../app/composables/useErpCashWorkspace.ts'), {
     '#shared/types/erpBusiness': {},
@@ -105,11 +112,28 @@ function createCashWorkspace(api: Api, company = Vue.ref({ id: 7, permissions: [
     '#shared/utils/erpFinance': financeUtils,
     '#shared/utils/erpOperationRecovery': loadRecoveryUtils()
   }, bindings)
-  const state = scope.run(() => (moduleExports.useErpCashWorkspace as () => Record<string, unknown>)())!
-  return { state, company, mount: () => mounted?.(), stop: () => scope.stop() }
+  const useCash = (initialPage?: unknown) => scope.run(() => (moduleExports.useErpCashWorkspace as (initialPage?: unknown) => Record<string, unknown>)(initialPage))!
+  const state = realLifecycle ? {} : useCash()
+  return {
+    state, useCash, user, company, context,
+    setContextFactory(factory: () => Record<string, unknown>) { contextFactory = factory },
+    mount: () => mounted?.(),
+    stop: () => scope.stop()
+  }
 }
 
-function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown>, workspaceState?: Record<string, unknown>, initialHash?: string, currentCompany?: Vue.Ref<Record<string, unknown>> } = {}) {
+function realAdministrationContext(user: Vue.Ref<{ id: number }>, currentCompany: Vue.Ref<Record<string, unknown>>) {
+  const currentAccount = Vue.ref(null)
+  const sessionGeneration = Vue.ref(0)
+  const source = loadAppComposable('composables/useErpAdministrationContext.ts', {
+    useAuth: () => ({ user, currentCompany, currentAccount }),
+    useState: () => sessionGeneration,
+    computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose
+  })
+  return source.useErpAdministrationContext as () => { key: Vue.Ref<string> }
+}
+
+function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOperation, recoveryAllowed?: boolean, paymentResult?: () => Promise<unknown>, workspaceState?: Record<string, unknown>, initialHash?: string, currentCompany?: Vue.Ref<Record<string, unknown>>, contextKey?: Vue.Ref<string>, contextFactory?: () => { key: Vue.Ref<string> }, cashFactory?: (initialPage?: unknown) => Record<string, unknown> } = {}) {
   const route = Vue.reactive({ path: '/erp/caixa', query: {}, hash: options.initialHash ?? '#sessions' })
   const replacements: Record<string, unknown>[] = []
   const selectedPage = options.workspaceState?.selectedPage as Vue.Ref<'registers' | 'sessions'> ?? Vue.ref<'registers' | 'sessions'>('registers')
@@ -131,6 +155,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
     loadMovementPage: async () => {}, loadRegisterOptions: async () => {}, loadMoreRegisterOptions: async () => {}
   }
   Object.assign(state, options.workspaceState)
+  let mountedCash: Record<string, unknown> = state
   let initialPageArgument: unknown
   const modalIds = new Map<string, number>()
   const tableRows: unknown[][] = []
@@ -142,6 +167,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
     '~/composables/useErpCashWorkspace': {
       useErpCashWorkspace(initialPage: unknown) {
         initialPageArgument = initialPage
+        if (options.cashFactory) return mountedCash = options.cashFactory(initialPage)
         Vue.onMounted(() => {
           selectedPage.value = typeof initialPage === 'function' ? (initialPage as () => 'registers' | 'sessions')() : initialPage as 'registers' | 'sessions'
         })
@@ -151,7 +177,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
   }, {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted,
     useRoute: () => route,
-    useErpAdministrationContext: () => ({ key: Vue.computed(() => JSON.stringify(options.currentCompany?.value ?? null)) }),
+    useErpAdministrationContext: options.contextFactory ?? (() => ({ key: options.contextKey ?? Vue.computed(() => JSON.stringify(options.currentCompany?.value ?? null)) })),
     useRouter: () => ({
       replace(location: Record<string, unknown>) {
         replacements.push(location)
@@ -213,7 +239,7 @@ function mountCashWorkspace(options: { pending?: operationRecovery.ErpPendingOpe
   const app = renderer.createApp(compiled.default as Vue.Component)
   for (const [name, component] of Object.entries(components)) app.component(name, component)
   app.mount(root)
-  return { app, route, replacements, selectedPage, selectedSession, authorityGeneration, modalIds, tableRows, initialPageArgument, root }
+  return { app, route, replacements, selectedPage, selectedSession, authorityGeneration, modalIds, tableRows, initialPageArgument, root, workspace: () => mountedCash }
 }
 
 function textContent(node: { text?: string, children?: unknown[] }): string {
@@ -256,6 +282,38 @@ describe('cash workspace shell', () => {
     assert.deepEqual(app.replacements, [])
     assert.match(textContent(app.root), /Seu acesso não permite consultar/)
     assert.equal(app.tableRows.length, 0, 'a denied area does not render its cached register table')
+  })
+
+  it('restores a sessions-only root after a refused list and a real same-mount session transition', async (t) => {
+    const calls: string[] = []
+    let refuseSession = true
+    const company = Vue.ref({ id: 7, permissions: ['erp.cash-sessions.index'], role: 'viewer', access_kind: 'direct', status: 'active' })
+    const created = createCashWorkspace(async (path) => {
+      calls.push(path)
+      if (path.startsWith('/erp/cash-sessions?') && refuseSession) {
+        refuseSession = false
+        throw { statusCode: 403 }
+      }
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 15, total: 0, totals: [] } }
+    }, company, undefined, true)
+    t.after(created.stop)
+    const contextFactory = realAdministrationContext(created.user, company)
+    created.setContextFactory(contextFactory)
+    const mounted = mountCashWorkspace({ initialHash: '', currentCompany: company, contextFactory, cashFactory: created.useCash })
+    t.after(() => mounted.app.unmount())
+    const cash = mounted.workspace() as { selectedPage: Vue.Ref<string>, allowed: (action: financeUtils.ErpFinanceAction) => boolean }
+    for (let attempt = 0; attempt < 30 && cash.allowed('erp.cash-sessions.index'); attempt++) await Vue.nextTick()
+    assert.equal(cash.allowed('erp.cash-sessions.index'), false)
+    assert.equal(cash.selectedPage.value, 'sessions')
+    assert.equal(calls.filter(path => path.startsWith('/erp/cash-sessions?')).length, 1)
+    created.user.value.id = 43
+    await Vue.nextTick()
+    await new Promise(resolve => setImmediate(resolve))
+    await Vue.nextTick()
+    assert.equal(cash.selectedPage.value, 'sessions')
+    assert.equal(cash.allowed('erp.cash-sessions.index'), true)
+    assert.equal(calls.filter(path => path.startsWith('/erp/cash-sessions?')).length, 2)
+    assert.equal(calls.some(path => path.startsWith('/erp/cash-registers?')), false)
   })
 
   it('keeps #sessions on initial mount and remounts retained forms when session or authority changes', async (t) => {

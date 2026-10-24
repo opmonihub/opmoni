@@ -22,13 +22,14 @@ const createPaths: Record<CreateEditor, string> = {
 const createAreas: Record<CreateEditor, FinanceTab> = { accounts: 'accounts', obligations: 'obligations', payments: 'payments' }
 const route = useRoute()
 const router = useRouter()
-const { key: workspaceContextKey } = useErpAdministrationContext()
 const areaSelection = (hash: string) => erpWorkspaceModuleSelection('financeiro', hash, permission => finance.allowed(permission as ErpFinanceAction))
 function areaFromHash(hash: string): FinanceTab {
   return (areaSelection(hash).destination?.id ?? 'obligations') as FinanceTab
 }
 const isKnownAreaHash = (hash: string) => hash === `#${areaSelection(hash).destination?.id}`
 const finance = useErpFinanceWorkspace(() => areaFromHash(route.hash))
+// Install the workspace's context reset before the root-selection watcher.
+const { key: workspaceContextKey } = useErpAdministrationContext()
 const permittedAreas = computed(() => erpWorkspaceModuleDestinations('financeiro', permission => finance.allowed(permission as ErpFinanceAction)))
 const createEditor = ref<CreateEditor | null>(null)
 const createEditorOpener = ref<HTMLElement | null>(null)

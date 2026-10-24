@@ -87,7 +87,7 @@ function createFinanceRoute(hash = '') {
   return { route, router, pushes, replaces, focusedSelectors, document }
 }
 
-function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute(), currentCompany = Vue.ref<Record<string, unknown> | null>(null)) {
+function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((initialTab?: unknown) => Record<string, unknown>), navigation = createFinanceRoute(), currentCompany = Vue.ref<Record<string, unknown> | null>(null), contextKey: Vue.Ref<string> = Vue.computed(() => JSON.stringify(currentCompany.value)), contextFactory?: () => { key: Vue.Ref<string> }) {
   const components: Record<string, Vue.Component> = {}
   components.ErpListFooter = compileVueComponent('components/erp/ErpListFooter.vue')
 
@@ -108,7 +108,7 @@ function mountFinanceWorkspace(financeOrFactory: Record<string, unknown> | ((ini
   components.ErpFinanceWorkspace = compileSfc('ErpFinanceWorkspace', { '~/composables/useErpFinanceWorkspace': { useErpFinanceWorkspace: useFinance } }, {
     useRoute: () => navigation.route,
     useRouter: () => navigation.router,
-    useErpAdministrationContext: () => ({ key: Vue.computed(() => JSON.stringify(currentCompany.value)) }),
+    useErpAdministrationContext: contextFactory ?? (() => ({ key: contextKey })),
     onMounted: Vue.onMounted,
     document: navigation.document
   })
@@ -334,6 +334,7 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
     }
   }
   let mounted: () => void = () => {}
+  let contextFactory: (() => Record<string, unknown>) | null = null
   const bindings = {
     ref: Vue.ref,
     reactive: Vue.reactive,
@@ -344,7 +345,11 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
       else mounted = callback
     },
     onScopeDispose: Vue.onScopeDispose,
-    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => authBindings, useErpAdministrationContext: () => context
+    useAccessApi: () => ({ api, refreshCsrf }), useAuth: () => authBindings,
+    useErpAdministrationContext: () => {
+      if (contextFactory) return contextFactory()
+      return context
+    }
   }
   const moduleExports = compileModule(readFileSync(new URL('../app/composables/useErpFinanceWorkspace.ts', import.meta.url), 'utf8'), {
     '#shared/types/erpBusiness': {},
@@ -360,10 +365,23 @@ function createWorkspace(api: Api, refreshCsrf: () => Promise<void> = async () =
     useFinance,
     user,
     company,
+    context,
+    setContextFactory(factory: () => Record<string, unknown>) { contextFactory = factory },
     mount: () => mounted(),
     bump: () => { generation++ },
     stop: () => scope.stop()
   }
+}
+
+function realAdministrationContext(user: Vue.Ref<{ id: number }>, currentCompany: Vue.Ref<Record<string, unknown>>) {
+  const currentAccount = Vue.ref(null)
+  const sessionGeneration = Vue.ref(0)
+  const source = loadAppComposable('composables/useErpAdministrationContext.ts', {
+    useAuth: () => ({ user, currentCompany, currentAccount }),
+    useState: () => sessionGeneration,
+    computed: Vue.computed, ref: Vue.ref, watch: Vue.watch, onScopeDispose: Vue.onScopeDispose
+  })
+  return source.useErpAdministrationContext as () => { key: Vue.Ref<string> }
 }
 
 function createActualAuth(api: Api) {
@@ -735,6 +753,38 @@ describe('finance workspace', { concurrency: 1 }, () => {
     await settle()
     assert.equal((secondMount.finance().tab as Vue.Ref<string>).value, 'accounts')
     assert.equal((secondMount.finance().canRead as Vue.Ref<boolean>).value, true)
+  })
+
+  it('restores a payments-only root after a refused list and a real same-mount session transition', async (t) => {
+    const calls: string[] = []
+    let refusePayment = true
+    const app = createWorkspace(async (path) => {
+      calls.push(path)
+      if (path.startsWith('/erp/payments?') && refusePayment) {
+        refusePayment = false
+        throw { statusCode: 403 }
+      }
+      return page([])
+    }, async () => {}, async () => null, undefined, true)
+    t.after(app.stop)
+    app.company.value.permissions = ['erp.payments.index']
+    app.company.value.role = 'viewer'
+    const contextFactory = realAdministrationContext(app.user, app.company)
+    app.setContextFactory(contextFactory)
+    const navigation = createFinanceRoute('')
+    const mounted = mountFinanceWorkspace(app.useFinance, navigation, app.company, undefined, contextFactory)
+    t.after(mounted.unmount)
+    await settleUntil(() => !(mounted.finance().canRead as Vue.Ref<boolean>).value)
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'payments')
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 1)
+    app.user.value.id = 43
+    await settle()
+    await settle()
+    assert.equal((mounted.finance().tab as Vue.Ref<string>).value, 'payments')
+    assert.equal((mounted.finance().canRead as Vue.Ref<boolean>).value, true)
+    assert.deepEqual(mounted.navigationItems().map(item => item.label), ['Pagamentos'])
+    assert.equal(calls.filter(path => path.startsWith('/erp/payments?')).length, 2)
+    assert.equal(calls.some(path => path.startsWith('/erp/obligations?') || path.startsWith('/erp/financial-accounts?')), false)
   })
 
   it('hydrates a direct accounts hash from the stable obligations presentation with one accounts read', async (t) => {
