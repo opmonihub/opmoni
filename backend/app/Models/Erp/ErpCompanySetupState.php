@@ -14,13 +14,13 @@ class ErpCompanySetupState extends Model
 
     protected $fillable = [
         'erp_company_id', 'preset_version', 'revision', 'currency', 'default_unit_id',
-        'default_customer_id', 'default_invoice_scheme_id', 'default_invoice_layout_id', 'preset_owned_keys',
+        'default_customer_id', 'default_invoice_scheme_id', 'default_invoice_layout_id', 'preset_owned_keys', 'sale_numbering_adopted',
     ];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['revision' => 'integer', 'preset_owned_keys' => 'array'];
+        return ['revision' => 'integer', 'preset_owned_keys' => 'array', 'sale_numbering_adopted' => 'boolean'];
     }
 
     public function defaultUnit(): BelongsTo

@@ -17,6 +17,7 @@ class ErpInvoiceScheme extends Model
         'invoice_count',
         'total_digits',
         'is_default',
+        'status',
     ];
 
     /** @return array<string, string> */

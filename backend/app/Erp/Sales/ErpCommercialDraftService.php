@@ -291,7 +291,8 @@ final class ErpCommercialDraftService
         if ($model && $class::where('erp_company_id', $company)->where('erp_establishment_id', $establishment)->where($field, $model->$field)->whereKeyNot($model->id)->exists()) {
             $this->error($field, 'Número já utilizado no estabelecimento.');
         }
-        $number = $model?->$field ?? app(ErpCommercialNumbers::class)->allocate($kind, $company, $establishment, $input[$field] ?? ($input['sale_no'] ?? null));
+        $allocation = $model === null ? app(ErpCommercialNumbers::class)->allocateDocument($kind, $company, $establishment, $input[$field] ?? ($input['sale_no'] ?? null)) : null;
+        $number = $model?->$field ?? $allocation['number'];
         if ($model && isset($input[$field]) && $input[$field] !== $number) {
             $this->error($field, 'Número do rascunho é imutável.');
         }
@@ -299,6 +300,7 @@ final class ErpCommercialDraftService
         $model->fill($totals + ['erp_company_id' => $company, 'erp_establishment_id' => $establishment, 'erp_contact_id' => $contact?->id, 'erp_price_group_id' => $priceGroup?->id, 'erp_operation_nature_id' => $nature?->id, $field => $number, 'currency' => $input['currency'] ?? 'BRL', 'status' => $kind === 'order' ? 'confirmed' : 'draft', 'party_snapshot' => $party, 'draft_revision' => ($model->draft_revision ?? 0) + 1, 'draft_input' => $input]);
         if ($kind === 'sale' && ! $model->exists) {
             $model->fiscal_status = 'none';
+            $model->erp_invoice_scheme_id = $allocation['scheme_id'];
         }
         $model->save();
         $kept = [];
@@ -557,9 +559,11 @@ final class ErpCommercialDraftService
         $class = self::modelClass($targetKind);
         $numberField = self::numberField($targetKind);
         $attributes = $source->only(['erp_company_id', 'erp_establishment_id', 'erp_contact_id', 'erp_price_group_id', 'erp_operation_nature_id', 'currency', 'subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount', 'party_snapshot', 'draft_input']);
-        $attributes += [$numberField => app(ErpCommercialNumbers::class)->allocate($targetKind, $source->erp_company_id, $source->erp_establishment_id, $input[$numberField] ?? null), 'draft_revision' => 1, 'status' => $targetKind === 'order' ? 'confirmed' : 'draft', 'conversion_source_id' => $source->id, $kind === 'quote' ? 'erp_quote_id' : 'erp_order_id' => $source->id];
+        $allocation = app(ErpCommercialNumbers::class)->allocateDocument($targetKind, $source->erp_company_id, $source->erp_establishment_id, $input[$numberField] ?? null);
+        $attributes += [$numberField => $allocation['number'], 'draft_revision' => 1, 'status' => $targetKind === 'order' ? 'confirmed' : 'draft', 'conversion_source_id' => $source->id, $kind === 'quote' ? 'erp_quote_id' : 'erp_order_id' => $source->id];
         if ($targetKind === 'sale') {
             $attributes['fiscal_status'] = 'none';
+            $attributes['erp_invoice_scheme_id'] = $allocation['scheme_id'];
         }
         $child = $class::create($attributes);
         foreach ($source->lines as $line) {

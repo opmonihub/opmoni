@@ -36,12 +36,20 @@ final class ErpCompanySetupPreset
                         'name' => 'Consumidor final', 'is_customer' => true, 'is_supplier' => false, 'status' => 'active',
                     ],
                 ],
+                'sale_scheme' => [
+                    'key' => 'br-basic-v1.sale-scheme',
+                    'attributes' => [
+                        'name' => 'Vendas', 'prefix' => '', 'start_number' => 1, 'total_digits' => 4,
+                        'is_default' => false, 'status' => 'active',
+                    ],
+                ],
             ],
             'consumers' => [
                 'operating_settings' => 'ErpCompanyOperatingSettings',
                 'unit' => 'product.unit',
                 'customer' => 'counter-sale.customer',
                 'currency' => 'commercial.currency',
+                'sale_scheme' => 'ErpCommercialNumbers',
             ],
         ];
     }

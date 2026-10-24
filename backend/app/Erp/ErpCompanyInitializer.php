@@ -6,6 +6,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanySetupState;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpUnit;
+use App\Models\Erp\Sales\ErpInvoiceScheme;
 use App\Support\AccessTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,7 @@ class ErpCompanyInitializer
             $manifest = $this->preset->manifest();
             $unit = $this->unit($company, $manifest['records']['unit']);
             $customer = $this->customer($company, $manifest['records']['customer']);
+            $scheme = $this->saleScheme($company, $manifest['records']['sale_scheme']);
             $stored = is_array($company->operating_settings) ? $company->operating_settings : [];
             $attributes = $this->settings->extractPersistable($this->preset->missingOperatingSettings($stored));
             $this->settings->mergeOperating($company, $attributes['operating_settings']);
@@ -43,9 +45,12 @@ class ErpCompanyInitializer
                 'currency' => $manifest['currency'],
                 'default_unit_id' => $unit->id,
                 'default_customer_id' => $customer->id,
+                'default_invoice_scheme_id' => $scheme->id,
+                'sale_numbering_adopted' => true,
                 'preset_owned_keys' => [
                     'unit' => $manifest['records']['unit']['key'],
                     'customer' => $manifest['records']['customer']['key'],
+                    'sale_scheme' => $manifest['records']['sale_scheme']['key'],
                 ],
             ]);
         });
@@ -90,5 +95,22 @@ class ErpCompanyInitializer
         $customer->forceFill(['native_key' => $definition['key']])->save();
 
         return $customer;
+    }
+
+    /** @param array{key: string, attributes: array<string, mixed>} $definition */
+    private function saleScheme(ErpCompany $company, array $definition): ErpInvoiceScheme
+    {
+        $scheme = ErpInvoiceScheme::query()->where('erp_company_id', $company->id)->where('native_key', $definition['key'])->lockForUpdate()->first();
+        if ($scheme !== null) {
+            if ($scheme->status !== 'active') {
+                throw ValidationException::withMessages(['initialization.sale_scheme' => 'A numeração inicial está arquivada. Revise a configuração antes de continuar.']);
+            }
+
+            return $scheme;
+        }
+        $scheme = new ErpInvoiceScheme(['erp_company_id' => $company->id, ...$definition['attributes']]);
+        $scheme->forceFill(['native_key' => $definition['key']])->save();
+
+        return $scheme;
     }
 }
