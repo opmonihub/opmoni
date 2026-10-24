@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useId } from 'vue'
+import { nextTick, useId } from 'vue'
 import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 
 type AdministrationKind = 'establishments' | 'members'
@@ -33,6 +33,7 @@ const hasAllEstablishments = ref(false)
 const establishmentPage = ref(1)
 const establishmentLastPage = ref(1)
 const searchText = ref('')
+const searchState = computed(() => ({ search: searchText.value }))
 const submittedSearch = ref('')
 const establishmentSearchText = ref('')
 const submittedEstablishmentSearch = ref('')
@@ -44,7 +45,9 @@ const authorityBlocked = ref(false)
 const errorMessage = ref('')
 const fieldErrors = ref<Record<string, string>>({})
 const fieldErrorId = useId()
+const editorFormId = `${fieldErrorId}-form`
 const formOpen = ref(false)
+const editorReturnFocus = ref<{ focus: () => void } | null>(null)
 const confirmTarget = ref<Establishment | CompanyMember | null>(null)
 const identityMatch = ref<IdentityMatch | null>(null)
 const lookupEmail = ref('')
@@ -130,6 +133,7 @@ function handleAuthorityError(error: unknown) {
     clearProtectedRows()
     resetForm()
     formOpen.value = false
+    editorReturnFocus.value = null
     confirmTarget.value = null
     authorityBlocked.value = true
     listStale.value = false
@@ -203,14 +207,30 @@ function applyEstablishmentSearch() {
   else establishmentPage.value = 1
 }
 
-function beginCreate() {
+function rememberEditorTrigger(event?: MouseEvent) {
+  const target = event?.currentTarget as { focus?: () => void } | null
+  editorReturnFocus.value = target && typeof target.focus === 'function' ? target as { focus: () => void } : null
+}
+
+async function closeEditor() {
+  formOpen.value = false
+  resetForm()
+  const trigger = editorReturnFocus.value
+  editorReturnFocus.value = null
+  await nextTick()
+  trigger?.focus()
+}
+
+function beginCreate(event?: MouseEvent) {
   if (!canCreate.value || busyAction.value) return
+  rememberEditorTrigger(event)
   resetForm()
   formOpen.value = true
 }
 
-function beginEdit(row: Establishment | CompanyMember) {
+function beginEdit(row: Establishment | CompanyMember, event?: MouseEvent) {
   if (!canUpdate.value || busyAction.value || isProtectedOwner(row)) return
+  rememberEditorTrigger(event)
   resetForm()
   form.id = row.id
   if (isEstablishment(row)) {
@@ -230,8 +250,7 @@ function beginEdit(row: Establishment | CompanyMember) {
 
 function cancelForm() {
   if (busyAction.value) return
-  formOpen.value = false
-  resetForm()
+  void closeEditor()
 }
 
 function setFieldError(field: string, message: string) {
@@ -296,8 +315,7 @@ async function submitForm() {
   try {
     await api(path, { method, body })
     if (!isCurrent(token)) return
-    formOpen.value = false
-    resetForm()
+    await closeEditor()
     await load()
   } catch (error) {
     if (!isCurrent(token)) return
@@ -370,6 +388,7 @@ watch(contextKey, () => {
   listStale.value = false
   authorityBlocked.value = false
   formOpen.value = false
+  editorReturnFocus.value = null
   resetForm()
   if (canView.value) void load()
 }, { immediate: true, flush: 'sync' })
@@ -391,10 +410,10 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           {{ title }}
         </h2>
         <p class="text-muted mt-1 text-sm">
-          {{ isEstablishmentKind ? 'Cadastre as unidades da empresa e mantenha o estado de cada uma.' : 'Gerencie o acesso de identidades existentes à empresa e aos seus estabelecimentos.' }}
+          {{ isEstablishmentKind ? 'Cadastre as unidades da empresa e mantenha o estado de cada uma.' : 'Gerencie o acesso de usuários já cadastrados à empresa e aos estabelecimentos.' }}
         </p>
       </div>
-      <UButton v-if="canCreate" :disabled="!!busyAction" @click="beginCreate">
+      <UButton v-if="canCreate" :disabled="!!busyAction" @click="beginCreate($event)">
         {{ isEstablishmentKind ? 'Adicionar estabelecimento' : 'Adicionar membro' }}
       </UButton>
     </header>
@@ -423,193 +442,169 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
       A última leitura permanece visível. Atualize antes de alterar o cadastro.
     </UAlert>
 
-    <form v-if="formOpen && canView" class="space-y-4 rounded-xl border border-default p-4" @submit.prevent="submitForm">
-      <div class="flex items-center justify-between gap-3">
-        <h3 class="font-semibold">
-          {{ form.id ? 'Editar' : 'Novo' }} {{ isEstablishmentKind ? 'estabelecimento' : 'membro' }}
-        </h3>
-        <UButton
-          type="button"
-          color="neutral"
-          variant="ghost"
-          :disabled="!!busyAction"
-          @click="cancelForm"
-        >
-          Fechar
-        </UButton>
-      </div>
-
-      <template v-if="isEstablishmentKind">
-        <label class="block space-y-1 text-sm">
-          <span>Nome</span>
-          <input
-            v-model="form.name"
-            required
-            maxlength="255"
-            class="w-full rounded-lg border border-default bg-default px-3 py-2"
-            :aria-invalid="!!fieldErrors.name"
-            :aria-describedby="fieldErrors.name ? `${fieldErrorId}-name` : undefined"
-          >
-          <span v-if="fieldErrors.name" :id="`${fieldErrorId}-name`" class="text-error">{{ fieldErrors.name }}</span>
-        </label>
-        <label class="block space-y-1 text-sm">
-          <span>CNPJ (opcional)</span>
-          <input
-            v-model="form.cnpj"
-            inputmode="numeric"
-            maxlength="20"
-            class="w-full rounded-lg border border-default bg-default px-3 py-2"
-            :aria-invalid="!!fieldErrors.cnpj"
-            :aria-describedby="fieldErrors.cnpj ? `${fieldErrorId}-cnpj` : undefined"
-          >
-          <span v-if="fieldErrors.cnpj" :id="`${fieldErrorId}-cnpj`" class="text-error">{{ fieldErrors.cnpj }}</span>
-        </label>
-        <label v-if="form.id" class="block space-y-1 text-sm">
-          <span>Situação</span>
-          <select v-model="form.status" class="w-full rounded-lg border border-default bg-default px-3 py-2">
-            <option value="active">Ativo</option>
-            <option value="inactive">Inativo</option>
-          </select>
-        </label>
-      </template>
-
-      <template v-else>
-        <div v-if="!form.id" class="space-y-2">
-          <label class="block space-y-1 text-sm">
-            <span>E-mail de uma identidade existente</span>
-            <input
-              v-model="lookupEmail"
-              type="email"
-              autocomplete="off"
-              class="w-full rounded-lg border border-default bg-default px-3 py-2"
-              :aria-invalid="!!fieldErrors.email || !!fieldErrors.user_id"
-              :aria-describedby="[fieldErrors.email ? `${fieldErrorId}-email` : null, fieldErrors.user_id ? `${fieldErrorId}-user_id` : null].filter(Boolean).join(' ') || undefined"
+    <UModal
+      v-if="formOpen && canView"
+      :open="formOpen"
+      :dismissible="false"
+      :close="false"
+      :ui="{ content: 'w-full max-w-2xl' }"
+    >
+      <template #content>
+        <div class="space-y-4 p-5">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-semibold">
+              {{ form.id ? 'Editar' : 'Novo' }} {{ isEstablishmentKind ? 'estabelecimento' : 'membro' }}
+            </h3>
+            <UButton
+              type="button"
+              color="neutral"
+              variant="ghost"
+              :disabled="!!busyAction"
+              @click="cancelForm"
             >
-          </label>
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            :loading="busyAction === 'lookup'"
-            :disabled="!!busyAction"
-            @click="lookupIdentity"
-          >
-            Localizar identidade
-          </UButton>
-          <p v-if="identityMatch" class="text-sm" role="status">
-            {{ identityMatch.name }} · {{ identityMatch.email }}
-          </p>
-          <p v-if="fieldErrors.email" :id="`${fieldErrorId}-email`" class="text-error text-sm">
-            {{ fieldErrors.email }}
-          </p>
-          <p v-if="fieldErrors.user_id" :id="`${fieldErrorId}-user_id`" class="text-error text-sm">
-            {{ fieldErrors.user_id }}
-          </p>
-        </div>
-        <p v-else-if="identityMatch" class="text-muted text-sm">
-          {{ identityMatch.name }} · {{ identityMatch.email }}
-        </p>
-
-        <label class="block space-y-1 text-sm">
-          <span>Papel</span>
-          <select v-model="form.role" class="w-full rounded-lg border border-default bg-default px-3 py-2">
-            <option value="manager">Gerente</option>
-            <option value="operator">Operador</option>
-            <option value="viewer">Leitor</option>
-          </select>
-        </label>
-
-        <fieldset
-          class="space-y-2"
-          :aria-invalid="!!fieldErrors.action_permissions"
-          :aria-describedby="fieldErrors.action_permissions ? `${fieldErrorId}-action_permissions` : undefined"
-        >
-          <legend class="text-sm font-medium">
-            Permissões de ação
-          </legend>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="form.permissionsMode" type="radio" value="defaults">
-            Usar permissões padrão do papel
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input v-model="form.permissionsMode" type="radio" value="custom">
-            Escolher uma lista personalizada
-          </label>
-          <p v-if="form.permissionsMode === 'defaults'" class="text-muted text-xs">
-            Padrões: {{ (roleDefaults[form.role] ?? []).join(', ') || 'sem lista disponível' }}
-          </p>
-          <div v-if="form.permissionsMode === 'custom'" class="grid gap-2 sm:grid-cols-2">
-            <label v-for="choice in permissionChoices" :key="choice.permission" class="flex items-start gap-2 text-sm">
-              <input type="checkbox" :checked="form.actionPermissions.includes(choice.permission)" @change="setPermission(choice.permission, ($event.target as HTMLInputElement).checked)">
-              <span>{{ choice.label }} <span class="text-muted">{{ choice.write ? '· escrita' : '· leitura' }}</span></span>
-            </label>
+              Fechar
+            </UButton>
           </div>
-          <p v-if="fieldErrors.action_permissions" :id="`${fieldErrorId}-action_permissions`" class="text-error text-sm">
-            {{ fieldErrors.action_permissions }}
-          </p>
-        </fieldset>
 
-        <fieldset
-          class="space-y-2"
-          :aria-invalid="!!fieldErrors.establishment_ids"
-          :aria-describedby="fieldErrors.establishment_ids ? `${fieldErrorId}-establishment_ids` : undefined"
-        >
-          <legend class="text-sm font-medium">
-            Estabelecimentos permitidos
-          </legend>
-          <label class="flex items-center gap-2 text-sm"><input v-model="form.establishmentScope" type="radio" value="all"> Todos os estabelecimentos</label>
-          <label class="flex items-center gap-2 text-sm"><input v-model="form.establishmentScope" type="radio" value="selected"> Somente os selecionados</label>
-          <div v-if="form.establishmentScope === 'selected'" class="grid gap-2 sm:grid-cols-2">
-            <div class="col-span-full flex flex-wrap gap-2" @keydown.enter.prevent.stop="applyEstablishmentSearch">
-              <label class="sr-only" for="member-establishment-search">Pesquisar estabelecimentos permitidos</label>
-              <input
-                id="member-establishment-search"
-                v-model="establishmentSearchText"
-                class="min-w-0 flex-1 rounded-lg border border-default bg-default px-3 py-2"
-                placeholder="Pesquisar estabelecimentos"
+          <UForm
+            :id="editorFormId"
+            :state="form"
+            class="space-y-4"
+            @submit="submitForm"
+          >
+            <template v-if="isEstablishmentKind">
+              <UFormField
+                label="Nome"
+                name="name"
+                required
+                :error="fieldErrors.name"
               >
+                <UInput v-model="form.name" maxlength="255" />
+              </UFormField>
+              <UFormField label="CNPJ (opcional)" name="cnpj" :error="fieldErrors.cnpj">
+                <UInput v-model="form.cnpj" inputmode="numeric" maxlength="20" />
+              </UFormField>
+              <UFormField v-if="form.id" label="Situação" name="status">
+                <USelect v-model="form.status" :items="[{ label: 'Ativo', value: 'active' }, { label: 'Inativo', value: 'inactive' }]" />
+              </UFormField>
+            </template>
+
+            <template v-else>
+              <div v-if="!form.id" class="space-y-2">
+                <UFormField label="E-mail de um usuário já cadastrado" name="email" :error="fieldErrors.email || fieldErrors.user_id">
+                  <UInput v-model="lookupEmail" type="email" autocomplete="off" />
+                </UFormField>
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  :loading="busyAction === 'lookup'"
+                  :disabled="!!busyAction"
+                  @click="lookupIdentity"
+                >
+                  Localizar identidade
+                </UButton>
+                <p v-if="identityMatch" class="text-sm" role="status">
+                  {{ identityMatch.name }} · {{ identityMatch.email }}
+                </p>
+                <p v-if="fieldErrors.user_id && !fieldErrors.email" class="text-error text-sm">
+                  {{ fieldErrors.user_id }}
+                </p>
+              </div>
+              <p v-else-if="identityMatch" class="text-muted text-sm">
+                {{ identityMatch.name }} · {{ identityMatch.email }}
+              </p>
+
+              <UFormField label="Papel" name="role">
+                <USelect v-model="form.role" :items="[{ label: 'Gerente', value: 'manager' }, { label: 'Operador', value: 'operator' }, { label: 'Leitor', value: 'viewer' }]" />
+              </UFormField>
+
+              <UFormField label="Permissões de ação" name="action_permissions" :error="fieldErrors.action_permissions">
+                <URadioGroup
+                  v-model="form.permissionsMode"
+                  :items="[{ label: 'Usar permissões padrão do papel', value: 'defaults' }, { label: 'Escolher uma lista personalizada', value: 'custom' }]"
+                />
+                <UAccordion
+                  v-if="form.permissionsMode === 'defaults'"
+                  :items="[{ label: `Ver permissões padrão (${(roleDefaults[form.role] ?? []).length})`, value: 'defaults', slot: 'defaultPermissions' }]"
+                  type="single"
+                  class="mt-3"
+                >
+                  <template #defaultPermissions>
+                    <p class="text-muted text-xs">
+                      {{ (roleDefaults[form.role] ?? []).join(', ') || 'Sem permissões padrão disponíveis para este papel.' }}
+                    </p>
+                  </template>
+                </UAccordion>
+                <div v-if="form.permissionsMode === 'custom'" class="grid gap-2 pt-3 sm:grid-cols-2">
+                  <UCheckbox
+                    v-for="choice in permissionChoices"
+                    :key="choice.permission"
+                    :model-value="form.actionPermissions.includes(choice.permission)"
+                    :label="`${choice.label} · ${choice.write ? 'escrita' : 'leitura'}`"
+                    @update:model-value="setPermission(choice.permission, $event === true)"
+                  />
+                </div>
+              </UFormField>
+
+              <UFormField label="Estabelecimentos permitidos" name="establishment_ids" :error="fieldErrors.establishment_ids">
+                <URadioGroup
+                  v-model="form.establishmentScope"
+                  :items="[{ label: 'Todos os estabelecimentos', value: 'all' }, { label: 'Somente os selecionados', value: 'selected' }]"
+                />
+                <div v-if="form.establishmentScope === 'selected'" class="grid gap-2 pt-3 sm:grid-cols-2">
+                  <div class="col-span-full flex flex-wrap gap-2" @keydown.enter.prevent.stop="applyEstablishmentSearch">
+                    <UInput
+                      v-model="establishmentSearchText"
+                      class="min-w-0 flex-1"
+                      placeholder="Pesquisar estabelecimentos"
+                      aria-label="Pesquisar estabelecimentos permitidos"
+                    />
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="outline"
+                      :disabled="loading"
+                      @click="applyEstablishmentSearch"
+                    >
+                      Pesquisar
+                    </UButton>
+                  </div>
+                  <UCheckbox
+                    v-for="establishment in establishments"
+                    :key="establishment.id"
+                    :model-value="form.establishmentIds.includes(establishment.id)"
+                    :label="`${establishment.name}${establishment.status === 'inactive' ? ' (inativo)' : ''}`"
+                    @update:model-value="setEstablishment(establishment.id, $event === true)"
+                  />
+                  <p v-if="establishments.length === 0" class="text-muted text-sm">
+                    Nenhum estabelecimento cadastrado; a lista vazia não concede acesso.
+                  </p>
+                  <p v-if="form.establishmentIds.length" class="col-span-full text-muted text-xs">
+                    Seleção preservada: {{ form.establishmentIds.map(id => establishments.find(item => item.id === id)?.name ?? `#${id}`).join(', ') }}
+                  </p>
+                </div>
+              </UFormField>
+            </template>
+
+            <div class="flex flex-wrap justify-end gap-2 border-t border-default pt-4">
               <UButton
                 type="button"
                 color="neutral"
                 variant="outline"
-                :disabled="loading"
-                @click="applyEstablishmentSearch"
+                :disabled="!!busyAction"
+                @click="cancelForm"
               >
-                Pesquisar
+                Cancelar
+              </UButton>
+              <UButton type="submit" :loading="busyAction === 'save'" :disabled="!!busyAction">
+                Salvar
               </UButton>
             </div>
-            <label v-for="establishment in establishments" :key="establishment.id" class="flex items-center gap-2 text-sm">
-              <input type="checkbox" :checked="form.establishmentIds.includes(establishment.id)" @change="setEstablishment(establishment.id, ($event.target as HTMLInputElement).checked)">
-              {{ establishment.name }} <span v-if="establishment.status === 'inactive'" class="text-muted">(inativo)</span>
-            </label>
-            <p v-if="establishments.length === 0" class="text-muted text-sm">
-              Nenhum estabelecimento cadastrado; a lista vazia não concede acesso.
-            </p>
-            <p v-if="form.establishmentIds.length" class="col-span-full text-muted text-xs">
-              Seleção preservada: {{ form.establishmentIds.map(id => establishments.find(item => item.id === id)?.name ?? `#${id}`).join(', ') }}
-            </p>
-          </div>
-          <p v-if="fieldErrors.establishment_ids" :id="`${fieldErrorId}-establishment_ids`" class="text-error text-sm">
-            {{ fieldErrors.establishment_ids }}
-          </p>
-        </fieldset>
+          </UForm>
+        </div>
       </template>
-
-      <div class="flex flex-wrap gap-2">
-        <UButton type="submit" :loading="busyAction === 'save'" :disabled="!!busyAction">
-          Salvar
-        </UButton>
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          :disabled="!!busyAction"
-          @click="cancelForm"
-        >
-          Cancelar
-        </UButton>
-      </div>
-    </form>
+    </UModal>
 
     <div
       v-if="confirmTarget"
@@ -643,14 +638,18 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
       </div>
     </div>
 
-    <form v-if="canView" class="flex flex-wrap gap-2" @submit.prevent="applySearch">
-      <label class="sr-only" :for="`erp-${kind}-search`">Pesquisar {{ title.toLocaleLowerCase() }}</label>
-      <input
-        :id="`erp-${kind}-search`"
+    <UForm
+      v-if="canView"
+      :state="searchState"
+      class="flex flex-wrap gap-2"
+      @submit="applySearch"
+    >
+      <UInput
         v-model="searchText"
-        class="min-w-0 flex-1 rounded-lg border border-default bg-default px-3 py-2"
+        class="min-w-0 flex-1"
+        :aria-label="`Pesquisar ${title.toLocaleLowerCase()}`"
         :placeholder="isEstablishmentKind ? 'Pesquisar estabelecimentos' : 'Pesquisar por nome ou e-mail'"
-      >
+      />
       <UButton
         type="submit"
         color="neutral"
@@ -659,7 +658,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
       >
         Pesquisar
       </UButton>
-    </form>
+    </UForm>
 
     <div v-if="canView" class="space-y-3">
       <div v-if="loading && !pageHasRows" class="text-muted py-8 text-center">
@@ -695,16 +694,28 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
             <p class="text-muted text-xs">
               Escopo: {{ row.establishment_scope === 'all' ? 'todos os estabelecimentos' : row.establishment_ids.length ? row.establishment_ids.map(id => establishments.find(item => item.id === id)?.name ?? `#${id}`).join(', ') : 'nenhum estabelecimento' }}
             </p>
-            <div class="flex flex-wrap gap-1 pt-1">
-              <UBadge
-                v-for="permission in row.effective_permissions"
-                :key="permission"
-                color="neutral"
-                variant="subtle"
-              >
-                {{ permission }}
-              </UBadge>
-            </div>
+            <UAccordion
+              v-if="row.effective_permissions.length"
+              :items="[{ label: `${row.effective_permissions.length} permissões efetivas · ver detalhes`, value: 'effective', slot: 'effectivePermissions' }]"
+              type="single"
+              class="pt-1"
+            >
+              <template #effectivePermissions>
+                <div class="flex flex-wrap gap-1">
+                  <UBadge
+                    v-for="permission in row.effective_permissions"
+                    :key="permission"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    {{ permission }}
+                  </UBadge>
+                </div>
+              </template>
+            </UAccordion>
+            <p v-else class="text-muted text-xs">
+              Nenhuma permissão efetiva.
+            </p>
           </template>
         </div>
         <div v-if="canUpdate && !isProtectedOwner(row)" class="flex shrink-0 gap-2">
@@ -713,7 +724,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
             color="neutral"
             variant="outline"
             :disabled="!!busyAction"
-            @click="beginEdit(row)"
+            @click="beginEdit(row, $event)"
           >
             Editar
           </UButton>
