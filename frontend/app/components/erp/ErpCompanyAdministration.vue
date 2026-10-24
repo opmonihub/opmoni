@@ -491,7 +491,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
 
             <template v-else>
               <div v-if="!form.id" class="space-y-2">
-                <UFormField label="E-mail de um usuário já cadastrado" name="email" :error="fieldErrors.email || fieldErrors.user_id">
+                <UFormField label="E-mail de um usuário já cadastrado" name="email" :error="[fieldErrors.email, fieldErrors.user_id].filter(Boolean).join(' ')">
                   <UInput v-model="lookupEmail" type="email" autocomplete="off" />
                 </UFormField>
                 <UButton
@@ -506,9 +506,6 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
                 </UButton>
                 <p v-if="identityMatch" class="text-sm" role="status">
                   {{ identityMatch.name }} · {{ identityMatch.email }}
-                </p>
-                <p v-if="fieldErrors.user_id && !fieldErrors.email" class="text-error text-sm">
-                  {{ fieldErrors.user_id }}
                 </p>
               </div>
               <p v-else-if="identityMatch" class="text-muted text-sm">
@@ -555,6 +552,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
                 <div v-if="form.establishmentScope === 'selected'" class="grid gap-2 pt-3 sm:grid-cols-2">
                   <div class="col-span-full flex flex-wrap gap-2" @keydown.enter.prevent.stop="applyEstablishmentSearch">
                     <UInput
+                      id="member-establishment-search"
                       v-model="establishmentSearchText"
                       class="min-w-0 flex-1"
                       placeholder="Pesquisar estabelecimentos"

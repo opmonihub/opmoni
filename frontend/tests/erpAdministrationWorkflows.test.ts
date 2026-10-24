@@ -277,6 +277,120 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
       }, slots.default?.())
     }
   })
+  const form = Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['state'],
+    emits: ['submit'],
+    setup(_formProps, { attrs, slots, emit }) {
+      return () => Vue.h('form', {
+        ...attrs,
+        onSubmit: (event: unknown) => emit('submit', event)
+      }, slots.default?.())
+    }
+  })
+  const formField = Vue.defineComponent({
+    props: ['label', 'name', 'error'],
+    setup(fieldProps, { slots }) {
+      return () => {
+        const error = typeof fieldProps.error === 'string' ? fieldProps.error : ''
+        const errorId = `${String(fieldProps.name)}-error`
+        const controls = (slots.default?.() ?? []).map(child => Vue.cloneVNode(child, {
+          'aria-invalid': error ? true : undefined,
+          'aria-describedby': error ? errorId : undefined
+        }, true))
+        return Vue.h('div', [
+          Vue.h('label', { for: `${String(fieldProps.name)}-input` }, String(fieldProps.label ?? '')),
+          ...controls,
+          ...(error ? [Vue.h('p', { id: errorId, role: 'alert' }, error)] : [])
+        ])
+      }
+    }
+  })
+  const input = Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'type', 'disabled', 'id', 'name', 'maxlength', 'inputmode', 'autocomplete', 'placeholder', 'aria-label'],
+    emits: ['update:modelValue'],
+    setup(inputProps, { attrs, emit }) {
+      return () => Vue.h('input', {
+        ...attrs,
+        ...inputProps,
+        value: inputProps.modelValue ?? '',
+        onInput: (event: { target: HostNode }) => emit('update:modelValue', event.target.value)
+      })
+    }
+  })
+  const select = Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'items', 'disabled', 'id', 'name', 'aria-label'],
+    emits: ['update:modelValue'],
+    setup(selectProps, { attrs, emit }) {
+      return () => Vue.h('select', {
+        ...attrs,
+        ...selectProps,
+        value: selectProps.modelValue ?? '',
+        onChange: (event: { target: HostNode }) => emit('update:modelValue', event.target.value)
+      }, (selectProps.items as Array<{ label: string, value: string }> ?? []).map(item => Vue.h('option', { value: item.value }, item.label)))
+    }
+  })
+  const checkbox = Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'label', 'disabled'],
+    emits: ['update:modelValue'],
+    setup(checkboxProps, { attrs, emit }) {
+      return () => Vue.h('label', [
+        Vue.h('input', {
+          ...attrs,
+          type: 'checkbox',
+          checked: checkboxProps.modelValue === true,
+          disabled: checkboxProps.disabled,
+          onChange: (event: { target: HostNode }) => emit('update:modelValue', event.target.checked)
+        }),
+        String(checkboxProps.label ?? '')
+      ])
+    }
+  })
+  const radioGroup = Vue.defineComponent({
+    inheritAttrs: false,
+    props: ['modelValue', 'items', 'disabled'],
+    emits: ['update:modelValue'],
+    setup(radioProps, { attrs, emit }) {
+      return () => Vue.h('fieldset', {
+        ...attrs
+      }, (radioProps.items as Array<{ label: string, value: string }> ?? []).map(item => Vue.h('label', [
+        Vue.h('input', {
+          type: 'radio',
+          value: item.value,
+          checked: radioProps.modelValue === item.value,
+          disabled: radioProps.disabled,
+          onChange: () => emit('update:modelValue', item.value)
+        }),
+        item.label
+      ])))
+    }
+  })
+  const modal = Vue.defineComponent({
+    props: ['open', 'dismissible', 'close'],
+    setup(modalProps, { slots }) {
+      return () => modalProps.open ? Vue.h('div', { 'role': 'dialog', 'aria-modal': 'true' }, slots.content?.()) : null
+    }
+  })
+  const accordion = Vue.defineComponent({
+    props: ['items', 'type'],
+    setup(accordionProps, { attrs, slots }) {
+      const openValues = Vue.ref<string[]>([])
+      return () => Vue.h('div', attrs, (accordionProps.items as Array<{ label: string, value: string, slot?: string }> ?? []).map((item) => {
+        const open = openValues.value.includes(item.value)
+        return Vue.h('div', [
+          Vue.h('button', {
+            'type': 'button',
+            'aria-expanded': String(open),
+            'onClick': () => { openValues.value = open ? openValues.value.filter(value => value !== item.value) : [item.value] }
+          }, item.label),
+          ...(open ? [Vue.h('div', { role: 'region' }, slots[item.slot ?? item.value]?.())] : [])
+        ])
+      }))
+    }
+  })
   const surface = Vue.defineComponent({
     setup(_surfaceProps, { attrs, slots }) {
       return () => Vue.h('div', attrs, slots.default?.())
@@ -284,6 +398,14 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
   })
   const app = renderer.createApp(component as never, props)
   for (const name of ['UButton']) app.component(name, button)
+  for (const name of ['UForm']) app.component(name, form)
+  for (const name of ['UFormField']) app.component(name, formField)
+  for (const name of ['UInput']) app.component(name, input)
+  for (const name of ['USelect']) app.component(name, select)
+  for (const name of ['UCheckbox']) app.component(name, checkbox)
+  for (const name of ['URadioGroup']) app.component(name, radioGroup)
+  for (const name of ['UModal']) app.component(name, modal)
+  for (const name of ['UAccordion']) app.component(name, accordion)
   for (const name of ['UAlert', 'UCard', 'UBadge']) app.component(name, surface)
   const root = createNode('root')
   const instance = app.mount(root) as Record<string, unknown>
@@ -318,6 +440,8 @@ function changeInput(root: HostNode, selector: (node: HostNode) => boolean, valu
   assert.ok(input, 'the requested form input should be rendered')
   input.value = value
   for (const listener of input.listeners.input ?? []) listener({ target: input as never })
+  const onInput = input.props.onInput
+  if (typeof onInput === 'function') (onInput as (event: { target: HostNode }) => void)({ target: input })
 }
 
 function settingsLinks(company: {
