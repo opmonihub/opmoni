@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-23",
+  "matrixPairs": 32,
+  "captureVersion": 2,
+  "recoveredPairs": [
+    "template-catalog-dark-mobile",
+    "template-editor-dark-desktop",
+    "template-editor-dark-mobile",
+    "template-operations-dark-desktop",
+    "template-operations-dark-mobile",
+    "template-settings-dark-mobile"
+  ],
+  "preservedAcceptedPairs": 26,
+  "preservedFileCount": 52,
+  "acceptedFileHashesUnchanged": true,
+  "checks": [
+    "Exact 2 origins x 4 families x 2 modes x 2 viewports matrix",
+    "PNG dimensions match CSS viewport and scale 1",
+    "JSON mode, root font size 16px and loaded Public Sans Latin weights 400/500/600",
+    "All template consent states settled",
+    "Editor foreground dialog and input have positive bounds",
+    "Six recovered foreground controls visible and unobscured",
+    "Six recovered PNGs visually inspected"
+  ],
+  "browserDiagnosis": "Normal bounded New customer click succeeded on desktop and mobile. No covering overlay was found; intermittent post-navigation evaluation timeout recovered on a separate bounded DOM read. Previous hang was not reproduced; application root cause is not established.",
+  "deadlines": "Browser subprocess calls used explicit 10-30 second deadlines; no original 4 x 75 second retry loop.",
+  "scope": "Only six provisional reference PNG/JSON pairs and review documentation changed; no application, runtime, fixture, gate or task-checklist edits."
+}
