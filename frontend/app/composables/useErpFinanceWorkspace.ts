@@ -11,7 +11,7 @@ type FinanceFilter = { page: number, per_page: number, erp_establishment_id: str
 type PendingOperation = ErpPendingOperation
 type ReferenceKind = 'establishments' | 'accounts' | 'cashSessions'
 type ReferenceRow<K extends ReferenceKind> = K extends 'establishments'
-  ? { id: number, name: string }
+  ? { id: number, name: string, status?: string }
   : K extends 'accounts'
     ? ErpFinancialAccount
     : { id: number, currency: string, erp_establishment_id: number | null, status: string }
@@ -47,6 +47,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   const referenceLoading = reactive<Record<ReferenceKind, boolean>>({ establishments: false, accounts: false, cashSessions: false })
   const referenceErrors = reactive<Record<ReferenceKind, string>>({ establishments: '', accounts: '', cashSessions: '' })
   const referenceError = computed(() => Object.values(referenceErrors).filter(Boolean).join(' '))
+  const referencesCurrent = computed(() => (['establishments', 'accounts', 'cashSessions'] as const).every(kind => referenceMeta[kind] !== null && !referenceErrors[kind] && !referenceLoading[kind]))
   const allocations = ref<ErpPaymentAllocation[]>([])
   const allocationMeta = ref<ErpFinancePage<ErpPaymentAllocation>['meta'] | null>(null)
   const candidates = ref<ErpObligation[]>([])
@@ -669,7 +670,7 @@ export function useErpFinanceWorkspace(initialTab: Tab | (() => Tab) = 'obligati
   return {
     tab, rows, meta, filters, establishments, accountOptions, cashSessions, referenceMeta, referenceLoading, referenceErrors,
     allocations, allocationMeta, candidates, candidateMeta, receipt, selected, operationOutcome, authorityGeneration,
-    pageError, referenceError, mutationError, fieldErrors, loading, mutating, selectedOperation,
+    pageError, referenceError, referencesCurrent, mutationError, fieldErrors, loading, mutating, selectedOperation,
     canRead, canWrite, canRetryExact, needsReconciliation, allowed, paths,
     load, loadReferences, loadMoreReferences, selectTab, inspect, inspectPayment, inspectObligation, closeSelected,
     loadAllocations, loadCandidates, closeCandidates, loadReceipt, closeReceipt, post, reconcile, retryExact

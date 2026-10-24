@@ -34,6 +34,8 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   const registerOptions = ref<ErpCashRegister[]>([])
   const registerOptionsMeta = ref<ErpFinancePage<ErpCashRegister>['meta'] | null>(null)
   const registerOptionsLoading = ref(false)
+  const registerOptionsError = ref('')
+  const registerOptionsCurrent = computed(() => registerOptionsMeta.value !== null && !registerOptionsLoading.value && !registerOptionsError.value)
   const sessions = ref<ErpCashSession[]>([])
   const establishments = ref<Establishment[]>([])
   const listMeta = reactive<Record<CashListKind, ErpFinancePage<unknown>['meta'] | null>>({ registers: null, sessions: null, establishments: null })
@@ -143,6 +145,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     registerOptions.value = []
     registerOptionsMeta.value = null
     registerOptionsLoading.value = false
+    registerOptionsError.value = ''
     registerOptionsSequence++
     sessions.value = []
     establishments.value = []
@@ -269,6 +272,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     const generation = requestGeneration
     const sequence = ++registerOptionsSequence
     registerOptionsLoading.value = true
+    registerOptionsError.value = ''
     try {
       const result = await api<ErpFinancePage<ErpCashRegister>>(`/erp/cash-registers?per_page=100&page=${page}&status=active`)
       if (!current(token, generation) || registerOptionsSequence !== sequence) return
@@ -277,7 +281,10 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
       registerOptionsMeta.value = result.meta
     } catch (error) {
       if (!current(token, generation) || registerOptionsSequence !== sequence) return
-      if (!await handleDenial(action, error, token)) mutationError.value = apiErrorMessage(error) ?? 'Não foi possível carregar os caixas ativos.'
+      if (!await handleDenial(action, error, token)) {
+        registerOptionsError.value = apiErrorMessage(error) ?? 'Não foi possível carregar os caixas ativos.'
+        mutationError.value = registerOptionsError.value
+      }
     } finally {
       if (current(token, generation) && registerOptionsSequence === sequence) registerOptionsLoading.value = false
     }
@@ -450,13 +457,23 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
     return post('/erp/cash-registers', body, 'erp.cash-registers.store')
   }
   async function openCashSession(body: { erp_cash_register_id: number, opening_amount: string, currency: string }) {
-    const register = [...registerOptions.value, ...registers.value].find(item => item.id === body.erp_cash_register_id && item.status === 'active')
-    if (!register || !/^[A-Z]{3}$/.test(body.currency)) return null
+    if (!registerOptionsCurrent.value) {
+      mutationError.value = registerOptionsError.value || 'Atualize os caixas ativos antes de abrir uma sessão.'
+      return null
+    }
+    const register = registerOptions.value.find(item => item.id === body.erp_cash_register_id && item.status === 'active')
+    if (!register || !/^[A-Z]{3}$/.test(body.currency)) {
+      mutationError.value = 'O caixa selecionado não está mais ativo. Atualize a lista e selecione outro caixa.'
+      return null
+    }
     return post('/erp/cash-sessions', body, 'erp.cash-sessions.store')
   }
   async function postMovement(body: { direction: 'in' | 'out', kind: 'deposit' | 'withdrawal', amount: string, reason: string }) {
     const session = selectedSession.value
-    if (!session || !session.can_operate || session.status !== 'open' || (body.kind === 'deposit') !== (body.direction === 'in')) return null
+    if (!session || !activeCashSession(session.id) || (body.kind === 'deposit') !== (body.direction === 'in')) {
+      mutationError.value = 'Selecione uma sessão aberta, reconciliada e autorizada para registrar movimentos.'
+      return null
+    }
     return post(`/erp/cash-sessions/${session.id}/movements`, body, 'erp.cash-sessions.movements.store')
   }
   async function closeSession(body: { declared_closing_amount: string }) {
@@ -564,7 +581,7 @@ export function useErpCashWorkspace(initialPage: 'registers' | 'sessions' | (() 
   })
 
   return {
-    registers, registerOptions, registerOptionsMeta, registerOptionsLoading, sessions, establishments, listMeta, loading, pageErrors, selectedSession, movements, movementMeta, ledgerTotals, movementError,
+    registers, registerOptions, registerOptionsMeta, registerOptionsLoading, registerOptionsError, registerOptionsCurrent, sessions, establishments, listMeta, loading, pageErrors, selectedSession, movements, movementMeta, ledgerTotals, movementError,
     selectedPage, filters, mutationError, fieldErrors, mutating, selectedOperation, recoveryContentAllowed, needsReconciliation, canRetryExact,
     authorityGeneration, allowed, load, loadList, inspectSession, setPage, registerCashDrawer, openCashSession, postMovement,
     closeSession, payCashPayment, reconcile, retryExact, activeCashSession, loadMovementPage, loadRegisterOptions, loadMoreRegisterOptions

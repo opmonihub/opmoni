@@ -1,19 +1,36 @@
 <script setup lang="ts">
 import type { ErpCashSession } from '#shared/types/erpBusiness'
 import { decimalTextIsValid } from '#shared/utils/erpFinance'
+import { erpFinancialChoiceError, retainedChoiceItem } from '~/utils/erpFinancialChoiceCompatibility'
 
-const props = withDefaults(defineProps<{ session: ErpCashSession, accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null }[], busy?: boolean, errors?: Record<string, string> }>(), { accounts: () => [], busy: false, errors: () => ({}) })
+const props = withDefaults(defineProps<{ session: ErpCashSession, accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null, status?: string }[], referencesCurrent?: boolean, busy?: boolean, errors?: Record<string, string> }>(), { accounts: () => [], referencesCurrent: true, busy: false, errors: () => ({}) })
 const emit = defineEmits<{ submit: [payload: Record<string, unknown>] }>()
 const state = reactive({ direction: 'in', amount: '', erp_financial_account_id: 'none' })
 const localError = ref('')
+const compatibleAccounts = computed(() => props.accounts.filter(account => (account.status === undefined || account.status === 'active')
+  && account.currency === props.session.currency
+  && (account.erp_establishment_id === null || account.erp_establishment_id === props.session.erp_establishment_id)))
+const accountItems = computed(() => retainedChoiceItem(compatibleAccounts.value, state.erp_financial_account_id, account => account.name, id => `Conta #${id} (seleção incompatível)`))
 function submit() {
   localError.value = ''
   if (!decimalTextIsValid(state.amount)) {
     localError.value = 'Informe um valor positivo com até quatro casas decimais.'
     return
   }
-  if (!props.session.currency || props.session.needs_reconciliation || !props.session.can_operate || props.session.status !== 'open') {
-    localError.value = 'Esta sessão não pode receber pagamentos.'
+  const compatibilityError = erpFinancialChoiceError({
+    currency: props.session.currency ?? '',
+    establishmentSelected: false,
+    establishmentId: props.session.erp_establishment_id,
+    accountId: state.erp_financial_account_id !== 'none' ? Number(state.erp_financial_account_id) : null,
+    sessionId: props.session.id,
+    method: 'cash',
+    establishments: [],
+    accounts: props.accounts,
+    sessions: [props.session],
+    referencesCurrent: props.referencesCurrent
+  })
+  if (!props.session.currency || !props.session.can_operate || compatibilityError) {
+    localError.value = compatibilityError ?? 'Esta sessão não pode receber pagamentos.'
     return
   }
   const accountId = state.erp_financial_account_id === 'none' ? null : Number(state.erp_financial_account_id)
@@ -27,7 +44,7 @@ function submit() {
     erp_financial_account_id: accountId
   })
 }
-defineExpose({ state, submit })
+defineExpose({ state, submit, localError, accountItems })
 </script>
 
 <template>
@@ -64,7 +81,7 @@ defineExpose({ state, submit })
         />
       </UFormField>
       <UFormField label="Conta financeira" name="erp_financial_account_id" :error="errors?.erp_financial_account_id">
-        <USelect v-model="state.erp_financial_account_id" :items="[{ label: 'Sem vínculo de conta', value: 'none' }, ...props.accounts.filter(account => account.currency === props.session.currency && (account.erp_establishment_id === null || account.erp_establishment_id === props.session.erp_establishment_id)).map(account => ({ label: account.name, value: String(account.id) }))]" />
+        <USelect v-model="state.erp_financial_account_id" :items="[{ label: 'Sem vínculo de conta', value: 'none' }, ...accountItems]" />
       </UFormField>
       <div class="flex items-end">
         <UButton

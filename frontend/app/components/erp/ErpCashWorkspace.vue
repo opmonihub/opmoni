@@ -557,6 +557,8 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
         <ErpCashSessionForm
           mode="register"
           :establishments="cash.establishments.value"
+          :references-current="cash.listMeta.establishments !== null && !cash.loading.establishments && !cash.pageErrors.establishments"
+          :reference-error="cash.pageErrors.establishments"
           :errors="registerErrors"
           :busy="cash.mutating.value"
           @submit="submitRegister"
@@ -583,9 +585,18 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
         <ErpCashSessionForm
           mode="open"
           :registers="cash.registerOptions.value"
+          :references-current="cash.registerOptionsCurrent.value"
+          :reference-error="cash.registerOptionsError.value"
           :errors="sessionErrors"
           :busy="cash.mutating.value"
           @submit="submitOpenSession"
+        />
+        <UAlert
+          v-if="cash.registerOptionsError.value"
+          color="warning"
+          variant="subtle"
+          :title="cash.registerOptionsError.value"
+          :actions="[{ label: 'Atualizar caixas', onClick: cash.loadRegisterOptions }]"
         />
         <div v-if="cash.registerOptionsMeta.value && cash.registerOptionsMeta.value.current_page < cash.registerOptionsMeta.value.last_page" class="mt-3">
           <UButton
