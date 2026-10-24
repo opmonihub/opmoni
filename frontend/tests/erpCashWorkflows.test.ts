@@ -49,7 +49,10 @@ function setupForm(name: string, props: Props = {}) {
   const emitted: Record<string, unknown>[] = []
   let exposed: Record<string, unknown> = {}
   const scope = Vue.effectScope()
-  scope.run(() => (moduleExports.default as { setup: (props: unknown, context: unknown) => unknown }).setup(props, {
+  const setupProps = name === 'ErpCashSessionForm'
+    ? { busy: false, errors: {}, referencesCurrent: true, registers: [], establishments: [], ...props }
+    : props
+  scope.run(() => (moduleExports.default as { setup: (props: unknown, context: unknown) => unknown }).setup(setupProps, {
     expose(value: Record<string, unknown>) { exposed = value },
     emit(event: string, payload?: Record<string, unknown>) { if (event === 'submit' && payload) emitted.push(payload) }
   }))
@@ -471,6 +474,7 @@ describe('cash workspace API workflow', () => {
     t.after(app.stop)
     const registerOptions = app.state.registerOptions as Vue.Ref<typeof laterPageRegister[]>
     registerOptions.value = [laterPageRegister]
+    ;(app.state.registerOptionsMeta as Vue.Ref<Record<string, number> | null>).value = { current_page: 2, last_page: 2, per_page: 15, total: 16 }
     const result = await (app.state.openCashSession as (body: { erp_cash_register_id: number, opening_amount: string, currency: string }) => Promise<unknown>)({ erp_cash_register_id: 99, opening_amount: '0.0000', currency: 'BRL' })
     assert.deepEqual(result, { id: 31 })
     const request = calls.find(call => call.path === '/erp/cash-sessions' && call.options?.method === 'POST')
@@ -495,6 +499,7 @@ describe('cash workspace API workflow', () => {
     t.after(app.stop)
     await (app.state.inspectSession as (id: number) => Promise<void>)(21)
     ;(app.state.registerOptions as Vue.Ref<typeof activeRegister[]>).value = [activeRegister]
+    ;(app.state.registerOptionsMeta as Vue.Ref<Record<string, number> | null>).value = { current_page: 1, last_page: 1, per_page: 15, total: 1 }
     const result = await (app.state.openCashSession as (body: { erp_cash_register_id: number, opening_amount: string, currency: string }) => Promise<unknown>)({ erp_cash_register_id: 11, opening_amount: '0.0000', currency: 'BRL' })
     assert.deepEqual(result, { id: 31 })
     assert.equal(calls.includes('/erp/cash-sessions/31'), true)
