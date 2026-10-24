@@ -24,10 +24,10 @@ function form(initial: Record<string, unknown>, kind = 'sale', editing = false) 
   return { exposed, saved: () => saved!, dispose: () => scope.stop() }
 }
 
-type HostNode = { tag: string, props: Record<string, unknown>, children: HostNode[], parent: HostNode | null, text: string }
+type HostNode = { tag: string, style: Record<string, string>, props: Record<string, unknown>, children: HostNode[], parent: HostNode | null, text: string }
 
 function mountedForm(initial: Record<string, unknown> = {}, editing = false, errors: Record<string, string> = {}) {
-  const make = (tag: string, text = ''): HostNode => ({ tag, text, props: {}, children: [], parent: null })
+  const make = (tag: string, text = ''): HostNode => ({ tag, text, style: {}, props: {}, children: [], parent: null })
   const renderer = Vue.createRenderer<HostNode>({
     patchProp: (node, key, _old, value) => { node.props[key] = value },
     insert(node, parent, anchor) {
@@ -63,6 +63,12 @@ function mountedForm(initial: Record<string, unknown> = {}, editing = false, err
     onSave: (value: Draft) => { saved = value }
   }) })
   app.component('UFormField', { props: ['name', 'label', 'error'], setup: (props, ctx) => () => Vue.h('fieldset', { name: props.name }, [props.label, ctx.slots.default?.(), props.error]) })
+  // Product-variant lookup is outside these customer/currency controls.
+  app.component('ErpCatalogReferenceSelect', {
+    props: ['modelValue', 'name', 'label', 'path', 'query', 'disabled'],
+    emits: ['update:modelValue', 'selection-record', 'selection-validity'],
+    setup: props => () => Vue.h('div', { 'data-reference': props.name }, props.label)
+  })
   app.component('USelect', { props: ['modelValue', 'items'], setup: (props, ctx) => () => Vue.h('select', { ...ctx.attrs, modelValue: props.modelValue, items: props.items }) })
   for (const name of ['UForm', 'UInput', 'UAlert', 'UButton']) app.component(name, { setup: (_props, ctx) => () => Vue.h('div', ctx.attrs, ctx.slots.default?.()) })
   const root = make('root')

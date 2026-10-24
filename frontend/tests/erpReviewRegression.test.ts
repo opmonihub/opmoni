@@ -8,6 +8,7 @@ import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as purchase from '../shared/utils/erpPurchase.ts'
+import * as productVariantReferences from '../app/utils/erpProductVariantReferences.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 function evaluate(source: string, bindings: Record<string, unknown>, imports: Record<string, unknown> = {}) {
@@ -107,8 +108,8 @@ describe('ERP review regressions', () => {
       })
     })
     const component = evaluate(script.content, {
-      ref: Vue.ref, computed: Vue.computed
-    }, { 'vue': Vue, '#shared/utils/erpPurchase': purchase }).default as Vue.Component
+      ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed
+    }, { 'vue': Vue, '#shared/utils/erpPurchase': purchase, '~/utils/erpProductVariantReferences': productVariantReferences }).default as Vue.Component
     const scope = Vue.effectScope()
     try {
       const workspace = scope.run(useErpPurchaseWorkspace)!
@@ -132,6 +133,12 @@ describe('ERP review regressions', () => {
       })
       app.component('UFormField', {
         setup: (_props, context) => () => Vue.h('label', {}, context.slots.default?.())
+      })
+      // No product reference control is active while XML preview state is null.
+      app.component('ErpCatalogReferenceSelect', {
+        props: ['modelValue', 'name', 'label', 'path', 'query', 'disabled'],
+        emits: ['update:modelValue', 'selection-record', 'selection-validity'],
+        setup: props => () => Vue.h('div', { 'data-reference': props.name }, props.label)
       })
       app.component('UInputMenu', { render: () => Vue.h('input') })
       app.component('UInput', { render: () => Vue.h('input') })

@@ -12,6 +12,8 @@ type HostNode = {
   parent: HostNode | null
   textContent: string
   focusCalls: number
+  querySelector(selector: string): HostNode | null
+  getBoundingClientRect(): { left: number, right: number }
   focus(): void
 }
 
@@ -78,7 +80,12 @@ function createHostRenderer() {
     parent: null,
     textContent,
     focusCalls: 0,
-    focus() { this.focusCalls++ }
+    focus() { this.focusCalls++ },
+    querySelector(selector) {
+      assert.equal(selector, 'a[aria-current="page"]')
+      return findHostNodes(this, node => node.tag === 'a' && node.props['aria-current'] === 'page')[0] ?? null
+    },
+    getBoundingClientRect() { return { left: 0, right: 0 } }
   })
   const renderer = Vue.createRenderer<HostNode, HostNode>({
     patchProp(node, key, _old, value) { node.props[key] = value },
@@ -151,8 +158,15 @@ function slotBoundary(name: string, tag: string, slotNames: string[]) {
 
 function mountCatalogPage(path: string) {
   const runtime = catalogRuntime()
-  const page = compileVueComponent(path, {
+  const bindings = {
     ...runtime.bindings,
+    onMounted: Vue.onMounted,
+    useRoute: () => ({ path: path.replace(/^pages/, '').replace(/\.vue$/, '') }),
+    definePageMeta() {},
+    useHead() {}
+  }
+  const page = compileVueComponent(path, {
+    ...bindings,
     useErpCatalogList: runtime.createList,
     definePageMeta() {},
     useHead() {}
@@ -161,7 +175,17 @@ function mountCatalogPage(path: string) {
     '~/composables/useErpCatalogEditor': runtime.editorModule
   })
   const { renderer, createNode } = createHostRenderer()
-  const app = renderer.createApp(page)
+  const parent = compileVueComponent('pages/erp/cadastros.vue', bindings)
+  const app = renderer.createApp(parent)
+  app.component('NuxtPage', Vue.defineComponent({ setup: () => () => Vue.h(page) }))
+  app.component('ErpCatalogPageShell', compileVueComponent('components/erp/ErpCatalogPageShell.vue', bindings))
+  app.component('ErpWorkspaceDestinationToolbar', compileVueComponent('components/erp/ErpWorkspaceDestinationToolbar.vue', bindings))
+  app.component('UNavigationMenu', Vue.defineComponent({
+    props: ['items'],
+    setup: props => () => Vue.h('nav', (props.items as Array<{ label: string, to: string, active?: boolean }>).map(item =>
+      Vue.h('a', { 'href': item.to, 'aria-current': item.active ? 'page' : undefined }, item.label)
+    ))
+  }))
   app.component('UDashboardPanel', slotBoundary('UDashboardPanel', 'section', ['header', 'body']))
   app.component('UDashboardNavbar', Vue.defineComponent({
     name: 'UDashboardNavbar',
@@ -188,7 +212,7 @@ function mountCatalogPage(path: string) {
         'data-ui-root': props.ui?.root,
         'data-ui-left': props.ui?.left,
         'data-ui-right': props.ui?.right
-      }, [...(slots.left?.() ?? []), ...(slots.right?.() ?? [])])
+      }, [...(slots.default?.() ?? []), ...(slots.left?.() ?? []), ...(slots.right?.() ?? [])])
     }
   }))
   app.component('UDropdownMenu', Vue.defineComponent({
@@ -438,7 +462,7 @@ describe('ERP catalog list SFC states', () => {
     const editorRegion = findHostNodes(openEditor, node => node.tag === 'section' && node.props.tabindex === '-1')[0]
     assert.ok(editorRegion)
     assert.equal(editorRegion.focusCalls, 1, 'menu close autofocus hands off into the opened editor')
-    const closeEditor = findHostNodes(openEditor, node => node.tag === 'button' && hostText(node) === 'Fechar')[0]
+    const closeEditor = findHostNodes(openEditor, node => node.tag === 'button' && hostText(node) === 'Cancelar')[0]
     assert.ok(closeEditor)
     page.click(closeEditor)
     await settle()

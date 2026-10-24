@@ -120,10 +120,23 @@ type HostNode = {
   children: HostNode[]
   parent: HostNode | null
   textContent: string
+  style: Record<string, string>
+  querySelector(selector: string): HostNode | null
+  getBoundingClientRect(): { left: number, right: number }
 }
 function mountPage(permissions?: string[], role?: string) {
   const runtime = runtimeFactory(permissions, role)
-  const node = (tag: string, textContent = ''): HostNode => ({ tag, props: {}, children: [], parent: null, textContent, style: {} })
+  const node = (tag: string, textContent = ''): HostNode => ({
+    tag, props: {}, children: [], parent: null, textContent, style: {},
+    querySelector(selector) {
+      assert.equal(selector, 'a[aria-current="page"]')
+      const visit = (item: HostNode): HostNode | null => item.tag === 'a' && item.props['aria-current'] === 'page'
+        ? item
+        : item.children.map(visit).find(item => item !== null) ?? null
+      return visit(this)
+    },
+    getBoundingClientRect() { return { left: 0, right: 0 } }
+  })
   const renderer = Vue.createRenderer<HostNode, HostNode>({
     patchProp(node, key, _old, value) {
       node.props[key] = value
@@ -157,10 +170,24 @@ function mountPage(permissions?: string[], role?: string) {
       return [child, child]
     }
   })
+  const bindings = {
+    ...runtime.bindings, onMounted: Vue.onMounted, useRoute: () => ({ path: '/erp/cadastros/etiquetas' }),
+    useHead() {}, definePageMeta() {}
+  }
   const page = compileVueComponent('pages/erp/cadastros/etiquetas.vue', {
-    ...runtime.bindings, useHead() { }, definePageMeta() { }, useErpCatalogList: runtime.listModule.useErpCatalogList
+    ...bindings, useHead() { }, definePageMeta() { }, useErpCatalogList: runtime.listModule.useErpCatalogList
   }, { '~/composables/useErpCatalogLabels': { useErpCatalogLabels: () => runtime.labels } })
-  const app = renderer.createApp(page)
+  const parent = compileVueComponent('pages/erp/cadastros.vue', bindings)
+  const app = renderer.createApp(parent)
+  app.component('NuxtPage', Vue.defineComponent({ setup: () => () => Vue.h(page) }))
+  app.component('ErpCatalogPageShell', compileVueComponent('components/erp/ErpCatalogPageShell.vue', bindings))
+  app.component('ErpWorkspaceDestinationToolbar', compileVueComponent('components/erp/ErpWorkspaceDestinationToolbar.vue', bindings))
+  app.component('UNavigationMenu', Vue.defineComponent({
+    props: ['items'],
+    setup: props => () => Vue.h('nav', (props.items as Array<{ label: string, to: string, active?: boolean }>).map(item =>
+      Vue.h('a', { 'href': item.to, 'aria-current': item.active ? 'page' : undefined }, item.label)
+    ))
+  }))
   function boundary(name: string, tag: string, slotsToRender = ['default']) {
     app.component(name, Vue.defineComponent({ setup(_, { attrs, slots }) {
       return () => Vue.h(tag, { ...attrs, 'data-component': name }, slotsToRender.flatMap(slot => slots[slot]?.() ?? []))
@@ -239,7 +266,7 @@ describe('ERP labels mounted real SFC', () => {
     await settle()
     assert.equal(page.labels.selectedCopies.value, 4)
     assert.deepEqual(page.labels.selectedLines.value, [{ product_id: 8, variant_id: 81, quantity: 3 }, { product_id: 8, quantity: 1 }])
-    page.find(node => node.tag === 'nav')[0]!.props.onChange(2)
+    page.find(node => node.tag === 'nav' && 'data-page' in node.props)[0]!.props.onChange(2)
     await settle()
     assert.match(page.requests.at(-1)!.url, /page=2/)
     page.requests.at(-1)!.resolve({ data: [], meta: { current_page: 2, total: 20, per_page: 15, last_page: 2 } })

@@ -192,7 +192,7 @@ describe('Clients sidebar navigation', () => {
         const items = sidebarItems(surface, collapsed)
         const clients = items.find(item => item.label === 'Clientes')!
         assert.equal(clients.icon, 'i-lucide-users', path)
-        for (const label of ['Clientes', 'Fiscal', 'Monitoramento', 'Work', 'Equipe', 'Settings']) {
+        for (const label of ['Clientes', 'Fiscal', 'Monitoramento', 'Work', 'Equipe', 'Configurações']) {
           const item = items.find(entry => entry.label === label)!
           assert.ok(item.children?.length, label)
           for (const child of item.children!) {
@@ -251,7 +251,7 @@ describe('Clients sidebar navigation', () => {
   it('uses stable single group values and preserves Fiscal, Members and specialized obligation activity', (t) => {
     const surface = setupSurface('layouts/default.vue', '/fiscal/documentos/42')
     t.after(surface.close)
-    const expected = { Clientes: 'clientes', Fiscal: 'fiscal', Monitoramento: 'monitoramento', Work: 'work', Equipe: 'equipe', Settings: 'configuracoes' }
+    const expected = { Clientes: 'clientes', Fiscal: 'fiscal', Monitoramento: 'monitoramento', Work: 'work', Equipe: 'equipe', Configurações: 'configuracoes' }
     for (const [label, value] of Object.entries(expected)) {
       const node = groupMenu(surface, label)
       const item = (node.props!.items as NavigationMenuItem[]).find(item => item.label === label)!
@@ -260,8 +260,8 @@ describe('Clients sidebar navigation', () => {
     }
     for (const [path, label, active] of [
       ['/fiscal/documentos/42', 'Fiscal', 'Documentos'],
-      ['/settings/members', 'Settings', 'Members'],
-      ['/settings/members/42', 'Settings', 'Members'],
+      ['/settings/members', 'Configurações', 'Membros'],
+      ['/settings/members/42', 'Configurações', 'Membros'],
       ['/monitoring/declaracoes/defis/pendencias', 'Monitoramento', 'Declarações'],
       ['/monitoring/parcelamentos/especiais/atencao', 'Monitoramento', 'Parcelamentos'],
       ['/monitoring/situacao-fiscal/certidoes', 'Monitoramento', 'Situação Fiscal']
@@ -271,7 +271,7 @@ describe('Clients sidebar navigation', () => {
       assert.deepEqual(item.children?.filter(child => child.active).map(child => child.label), [active], path)
     }
     surface.route.path = '/settings/members-other'
-    assert.equal(sidebarItems(surface).find(item => item.label === 'Settings')!.children?.find(child => child.label === 'Members')?.active, false)
+    assert.equal(sidebarItems(surface).find(item => item.label === 'Configurações')!.children?.find(child => child.label === 'Membros')?.active, false)
   })
 
   it('highlights only the active child in expanded groups while retaining icon activity', async (t) => {
@@ -281,7 +281,7 @@ describe('Clients sidebar navigation', () => {
       ['/monitoring/declaracoes/defis/pendencias', 'Monitoramento', 'Declarações'],
       ['/work/processos/42', 'Work', 'Processos'],
       ['/equipe/departamentos', 'Equipe', 'Departamentos'],
-      ['/settings/members/42', 'Settings', 'Members'],
+      ['/settings/members/42', 'Configurações', 'Membros'],
       ['/admin/contas/42', 'Admin', 'Contas']
     ]) {
       const surface = setupSurface('layouts/default.vue', path!, { superAdmin: true })
@@ -311,7 +311,7 @@ describe('Clients sidebar navigation', () => {
     const surface = setupSurface('layouts/default.vue', '/customers/certificados', { superAdmin: true })
     t.after(surface.close)
     assert.deepEqual(fullyOpenGroups(surface), ['Clientes'])
-    for (const label of ['Fiscal', 'Monitoramento', 'Work', 'Equipe', 'Settings', 'Admin']) {
+    for (const label of ['Fiscal', 'Monitoramento', 'Work', 'Equipe', 'Configurações', 'Admin']) {
       const node = groupMenu(surface, label)
       const item = (node.props!.items as NavigationMenuItem[])[0]!
       node.props!['onUpdate:modelValue'](item.value)
@@ -358,13 +358,13 @@ describe('Clients sidebar navigation', () => {
     for (const manageMembers of [false, true]) {
       const surface = setupSurface('layouts/default.vue', '/settings/members/42', { manageMembers })
       t.after(surface.close)
-      const item = () => sidebarItems(surface).find(item => item.label === 'Settings')!
+      const item = () => sidebarItems(surface).find(item => item.label === 'Configurações')!
       assert.equal(item().children?.some(child => child.label === 'Certificado do escritório'), manageMembers)
       assert.equal(item().children?.some(child => child.label === 'Canal WhatsApp'), manageMembers)
-      assert.equal(item().children?.find(child => child.label === 'Members')?.active, true)
-      groupMenu(surface, 'Settings').props!['onUpdate:modelValue'](undefined)
-      assert.deepEqual(item().children?.filter(child => child.ui?.childItem !== 'hidden').map(child => child.label), ['Members'])
-      const collapsed = sidebarItems(surface, true).find(item => item.label === 'Settings')!
+      assert.equal(item().children?.find(child => child.label === 'Membros')?.active, true)
+      groupMenu(surface, 'Configurações').props!['onUpdate:modelValue'](undefined)
+      assert.deepEqual(item().children?.filter(child => child.ui?.childItem !== 'hidden').map(child => child.label), ['Membros'])
+      const collapsed = sidebarItems(surface, true).find(item => item.label === 'Configurações')!
       assert.ok(collapsed.children?.every(child => child.ui?.childItem !== 'hidden'))
       assert.equal(collapsed.children?.length, manageMembers ? 6 : 4)
     }

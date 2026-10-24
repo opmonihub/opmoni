@@ -7,6 +7,7 @@ import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import * as salesHelpers from '../shared/utils/erpSales.ts'
+import * as taxReviewHelpers from '../shared/utils/erpCommercialTaxReview.ts'
 
 type Workspace = ReturnType<typeof import('../app/composables/useErpSalesWorkspace.ts').useErpSalesWorkspace>
 type RequestApi = (path: string, options?: Record<string, unknown>) => Promise<unknown>
@@ -61,11 +62,13 @@ function mountWorkspace(api: RequestApi = defaultApi, permissions = grants) {
   const current = runtime(api, permissions)
   const route = Vue.reactive({ path: '/erp/vendas', hash: '#sales', query: {} })
   const globals = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted, useRoute: () => route, useRouter: () => ({ replace: async () => {} }), useErpAdministrationContext: () => current.context }
-  const detail = component('ErpSaleDetail', { vue: Vue }, globals)
+  const detail = component('ErpSaleDetail', { 'vue': Vue, '#shared/utils/erpCommercialTaxReview': taxReviewHelpers }, globals)
   const workspace = component('ErpSalesWorkspace', {
     'vue': Vue,
     '~/composables/useErpSalesWorkspace': { useErpSalesWorkspace: () => current.state },
     '#shared/utils/erpSales': salesHelpers,
+    '#shared/utils/erpCommercialTaxReview': taxReviewHelpers,
+    '~/components/erp/erpPresentation': loadAppComposable('components/erp/erpPresentation.ts'),
     '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts')
   }, globals)
   let prints = 0
@@ -88,8 +91,26 @@ function mountWorkspace(api: RequestApi = defaultApi, permissions = grants) {
   app.component('UButton', Vue.defineComponent({ props: { label: String, disabled: Boolean, loading: Boolean }, setup: (props, context) => () => Vue.h('button', { ...context.attrs, disabled: props.disabled || props.loading }, props.label ?? context.slots.default?.()) }))
   app.component('UAlert', Vue.defineComponent({ props: { title: String, description: String }, setup: props => () => Vue.h('p', `${props.title ?? ''} ${props.description ?? ''}`) }))
   app.component('UModal', Vue.defineComponent({ props: { open: Boolean }, emits: ['update:open'], setup: (props, context) => () => props.open ? Vue.h('section', [Vue.h('button', { onClick: () => context.emit('update:open', false) }, 'Fechar modal'), ...(context.slots.body?.() ?? [])]) : null }))
+  app.component('UNavigationMenu', Vue.defineComponent({
+    props: ['items'],
+    setup: props => () => Vue.h('nav', (props.items as Array<{ label: string }>).flat().map(item => Vue.h('span', item.label)))
+  }))
+  app.component('UTable', Vue.defineComponent({
+    props: ['data', 'columns'],
+    setup: props => () => Vue.h('table', (props.data as Record<string, unknown>[]).map(row => Vue.h('tr',
+      (props.columns as Array<{ accessorKey?: string, cell?: (context: { row: { original: Record<string, unknown> } }) => unknown }>).map((column) => {
+        const value = column.cell ? column.cell({ row: { original: row } }) : row[column.accessorKey ?? '']
+        return Vue.h('td', {}, Vue.isVNode(value) ? [value] : String(value ?? ''))
+      })
+    )))
+  }))
+  app.component('UPagination', Vue.defineComponent({
+    props: ['page', 'total', 'itemsPerPage', 'disabled'], emits: ['update:page'],
+    setup: (props, context) => () => Vue.h('nav', { ...context.attrs, 'data-page': props.page })
+  }))
+  app.component('ErpListFooter', component('ErpListFooter', { vue: Vue }, globals))
   app.component('ErpSaleDetail', detail)
-  for (const name of ['ErpCommercialDraftForm', 'ErpSaleReturnForm', 'ErpPendingOperationAlert']) app.component(name, shell)
+  for (const name of ['ErpCommercialDraftForm', 'ErpSaleReturnForm', 'ErpPendingOperationAlert', 'ErpCommercialTaxReview']) app.component(name, shell)
   app.mount(root)
   const text = (node: HostNode): string => `${node.text ?? ''}${node.children.map(text).join('')}`
   const find = (predicate: (node: HostNode) => boolean, node = root): HostNode[] => [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => find(predicate, child))]
