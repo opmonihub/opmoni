@@ -316,6 +316,51 @@ describe('ERP contact geography', () => {
     assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', integration_code: 'CLIENT-77' })
   })
 
+  it('preserves a UF-only address on an unrelated save without adding a state alias', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'SP')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' })
+  })
+
+  it('preserves an explicitly empty state and its UF alias when the visible geography is unchanged', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: '', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'SP')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: '', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' })
+  })
+
+  it('preserves a null state and its UF alias when the visible geography is unchanged', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: null, uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'SP')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: null, uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' })
+  })
+
+  it('clears an explicitly empty state fallback, its UF alias and associated code when the visible UF is cleared', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: '', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'SP')
+    form.inputNow('state', '')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', integration_code: 'CLIENT-77' })
+  })
+
   it('preserves conflicting stored state and UF aliases until the operator explicitly edits state', async (t) => {
     const form = mountContact({
       name: 'Comercial Silva', is_customer: true, is_supplier: false,

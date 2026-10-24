@@ -15,6 +15,7 @@ const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state', 'city_code'] as const
 const initialState = ref('')
 const municipalityCodeReview = ref<{ city: string, state: string } | null>(null)
+const effectiveState = (address: Record<string, string>) => address.state || address.uf || ''
 const form = reactive({
   name: '', trade_name: '', tax_id: '', email: '', phone: '', notes: '', is_customer: true, is_supplier: false,
   erp_customer_group_id: null as number | null,
@@ -45,14 +46,13 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.is_supplier = record?.is_supplier ?? false
   form.erp_customer_group_id = record?.erp_customer_group_id ?? null
   form.address = { ...address }
-  initialState.value = address.state ?? address.uf ?? ''
+  initialState.value = effectiveState(address)
   municipalityCodeReview.value = address.city_code
     ? { city: address.city ?? '', state: initialState.value }
     : null
   for (const key of addressKeys)
     form[key] = address[key] ?? ''
-  if (!address.state && address.uf)
-    form.state = address.uf
+  form.state = initialState.value
 }, { immediate: true })
 
 function submit() {
@@ -61,6 +61,11 @@ function submit() {
   const editableKeys = new Set<string>(addressKeys)
   const address = Object.fromEntries(Object.entries(form.address).filter(([key]) => !editableKeys.has(key))) as Record<string, string>
   for (const key of addressKeys) {
+    if (key === 'state' && form.state === initialState.value) {
+      if (Object.hasOwn(form.address, key))
+        address[key] = form.address[key]!
+      continue
+    }
     if (form[key] !== '')
       address[key] = form[key]
   }
