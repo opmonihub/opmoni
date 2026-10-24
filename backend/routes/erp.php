@@ -30,6 +30,7 @@ Route::prefix('erp')->group(function (): void {
         Route::get('/company/settings', [ErpCompanySettingsController::class, 'show'])->name('erp.company.settings.show');
         Route::patch('/company/settings', [ErpCompanySettingsController::class, 'update'])->name('erp.company.settings.update');
         require __DIR__.'/erp-catalogs.php';
+        require __DIR__.'/erp-cfop-reference.php';
         foreach (['erp-operations', 'erp-accounting-reports'] as $erpRouteFile) {
             $path = __DIR__."/{$erpRouteFile}.php";
             if (is_file($path)) {

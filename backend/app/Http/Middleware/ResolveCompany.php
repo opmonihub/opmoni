@@ -138,6 +138,7 @@ class ResolveCompany
     private function effectiveAction(Request $request): string
     {
         return match ((string) $request->route()?->getName()) {
+            'erp.cfops.index', 'erp.cfops.show' => 'erp.operation-natures.index',
             'erp.payments.allocation-candidates' => 'erp.payments.allocate',
             'erp.purchases.xml-preview.read' => 'erp.purchases.xml-confirm',
             'erp.catalog.import.products.read' => 'erp.catalog.import.products.confirm',
