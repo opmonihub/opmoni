@@ -47,7 +47,8 @@ const fieldErrors = ref<Record<string, string>>({})
 const fieldErrorId = useId()
 const editorFormId = `${fieldErrorId}-form`
 const formOpen = ref(false)
-const editorReturnFocus = ref<{ focus: () => void } | null>(null)
+const administrationRoot = ref<HTMLElement | null>(null)
+const editorReturnFocus = ref<{ focus: () => void, disabled?: boolean, isConnected?: boolean } | null>(null)
 const confirmTarget = ref<Establishment | CompanyMember | null>(null)
 const identityMatch = ref<IdentityMatch | null>(null)
 const lookupEmail = ref('')
@@ -64,7 +65,6 @@ const form = reactive({
 })
 
 const typedRows = computed(() => rows.value)
-const isMemberKind = computed(() => props.kind === 'members')
 const isEstablishmentKind = computed(() => props.kind === 'establishments')
 const pageHasRows = computed(() => rows.value.length > 0)
 const canReadEstablishments = computed(() => !authorityBlocked.value && currentCompany.value?.status === 'active'
@@ -208,17 +208,35 @@ function applyEstablishmentSearch() {
 }
 
 function rememberEditorTrigger(event?: MouseEvent) {
-  const target = event?.currentTarget as { focus?: () => void } | null
+  const target = event?.currentTarget as { focus?: () => void, disabled?: boolean, isConnected?: boolean } | null
   editorReturnFocus.value = target && typeof target.focus === 'function' ? target as { focus: () => void } : null
 }
 
-async function closeEditor() {
+function currentEditorTrigger() {
+  const root = administrationRoot.value
+  if (!root) return null
+  if (canCreate.value) return root.querySelector<HTMLButtonElement>('[data-editor-trigger="create"]')
+  if (canUpdate.value) return root.querySelector<HTMLButtonElement>('[data-editor-trigger="edit"]')
+  return null
+}
+
+async function restoreEditorFocus(target: typeof editorReturnFocus.value, token: ReturnType<typeof capture>) {
+  await nextTick()
+  if (!isCurrent(token) || !canView.value || formOpen.value) return
+  const targetIsUsable = target && !target.disabled && target.isConnected !== false
+  const currentTarget = targetIsUsable ? target : currentEditorTrigger()
+  if (currentTarget && !currentTarget.disabled && currentTarget.isConnected !== false) currentTarget.focus()
+  editorReturnFocus.value = null
+}
+
+async function closeEditor(restoreFocus = true, token = capture()) {
   formOpen.value = false
   resetForm()
   const trigger = editorReturnFocus.value
-  editorReturnFocus.value = null
-  await nextTick()
-  trigger?.focus()
+  if (restoreFocus) {
+    editorReturnFocus.value = null
+    await restoreEditorFocus(trigger, token)
+  }
 }
 
 function beginCreate(event?: MouseEvent) {
@@ -250,7 +268,7 @@ function beginEdit(row: Establishment | CompanyMember, event?: MouseEvent) {
 
 function cancelForm() {
   if (busyAction.value) return
-  void closeEditor()
+  void closeEditor(true, capture())
 }
 
 function setFieldError(field: string, message: string) {
@@ -315,7 +333,7 @@ async function submitForm() {
   try {
     await api(path, { method, body })
     if (!isCurrent(token)) return
-    await closeEditor()
+    await closeEditor(false, token)
     await load()
   } catch (error) {
     if (!isCurrent(token)) return
@@ -323,7 +341,10 @@ async function submitForm() {
     fieldErrors.value = apiFieldErrors(error)
     errorMessage.value = apiErrorMessage(error) ?? 'Não foi possível salvar os dados enviados.'
   } finally {
-    if (isCurrent(token)) busyAction.value = ''
+    if (isCurrent(token)) {
+      busyAction.value = ''
+      if (!formOpen.value) await restoreEditorFocus(editorReturnFocus.value, token)
+    }
   }
 }
 
@@ -403,7 +424,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
 </script>
 
 <template>
-  <section class="space-y-5" :data-kind="kind">
+  <section ref="administrationRoot" class="space-y-5" :data-kind="kind">
     <header class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 class="text-xl font-semibold">
@@ -413,7 +434,12 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           {{ isEstablishmentKind ? 'Cadastre as unidades da empresa e mantenha o estado de cada uma.' : 'Gerencie o acesso de usuários já cadastrados à empresa e aos estabelecimentos.' }}
         </p>
       </div>
-      <UButton v-if="canCreate" :disabled="!!busyAction" @click="beginCreate($event)">
+      <UButton
+        v-if="canCreate"
+        data-editor-trigger="create"
+        :disabled="!!busyAction"
+        @click="beginCreate($event)"
+      >
         {{ isEstablishmentKind ? 'Adicionar estabelecimento' : 'Adicionar membro' }}
       </UButton>
     </header>
@@ -422,10 +448,10 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
       {{ isEstablishmentKind ? 'Sua função não tem permissão para consultar estabelecimentos desta empresa.' : 'Somente o proprietário direto da empresa pode administrar os membros.' }}
     </UAlert>
 
-    <UAlert v-if="errorMessage" color="error" title="Não foi possível concluir a ação">
+    <UAlert v-if="errorMessage && !formOpen" color="error" title="Não foi possível concluir a ação">
       {{ errorMessage }}
     </UAlert>
-    <UAlert v-if="listError" color="error" title="Não foi possível atualizar a lista">
+    <UAlert v-if="listError && !formOpen" color="error" title="Não foi possível atualizar a lista">
       <template #description>
         <span>{{ listError }}</span>
         <UButton
@@ -438,23 +464,39 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
         </UButton>
       </template>
     </UAlert>
-    <UAlert v-if="listStale" color="warning" title="Lista desatualizada">
+    <UAlert v-if="listStale && !formOpen" color="warning" title="Lista desatualizada">
       A última leitura permanece visível. Atualize antes de alterar o cadastro.
     </UAlert>
 
     <UModal
       v-if="formOpen && canView"
       :open="formOpen"
+      :title="`${form.id ? 'Editar' : 'Novo'} ${isEstablishmentKind ? 'estabelecimento' : 'membro'}`"
       :dismissible="false"
       :close="false"
       :ui="{ content: 'w-full max-w-2xl' }"
     >
       <template #content>
         <div class="space-y-4 p-5">
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="font-semibold">
-              {{ form.id ? 'Editar' : 'Novo' }} {{ isEstablishmentKind ? 'estabelecimento' : 'membro' }}
-            </h3>
+          <UAlert v-if="errorMessage || listError || listStale" :color="listStale || listError ? 'warning' : 'error'" title="Não foi possível concluir a ação">
+            <template #description>
+              <div class="space-y-2">
+                <p>{{ errorMessage || listError || 'A lista precisa ser atualizada antes de continuar.' }}</p>
+                <UButton
+                  v-if="listStale || listError"
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  :disabled="loading || authorityBlocked"
+                  @click="load"
+                >
+                  Atualizar lista e manter rascunho
+                </UButton>
+              </div>
+            </template>
+          </UAlert>
+
+          <div class="flex justify-end">
             <UButton
               type="button"
               color="neutral"
@@ -581,6 +623,27 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
                   <p v-if="form.establishmentIds.length" class="col-span-full text-muted text-xs">
                     Seleção preservada: {{ form.establishmentIds.map(id => establishments.find(item => item.id === id)?.name ?? `#${id}`).join(', ') }}
                   </p>
+                  <div v-if="establishmentLastPage > 1" class="col-span-full flex items-center justify-between gap-3">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="outline"
+                      :disabled="establishmentPage <= 1 || loading"
+                      @click="establishmentPage--"
+                    >
+                      Estabelecimentos anteriores
+                    </UButton>
+                    <span class="text-muted text-sm">Página {{ establishmentPage }} de {{ establishmentLastPage }}</span>
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="outline"
+                      :disabled="establishmentPage >= establishmentLastPage || loading"
+                      @click="establishmentPage++"
+                    >
+                      Mais estabelecimentos
+                    </UButton>
+                  </div>
                 </div>
               </UFormField>
             </template>
@@ -595,7 +658,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
               >
                 Cancelar
               </UButton>
-              <UButton type="submit" :loading="busyAction === 'save'" :disabled="!!busyAction">
+              <UButton type="submit" :loading="busyAction === 'save'" :disabled="!!busyAction || (form.id ? !canUpdate : !canCreate)">
                 Salvar
               </UButton>
             </div>
@@ -721,6 +784,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
             size="sm"
             color="neutral"
             variant="outline"
+            data-editor-trigger="edit"
             :disabled="!!busyAction"
             @click="beginEdit(row, $event)"
           >
@@ -740,27 +804,6 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           O proprietário não pode ser rebaixado nem removido por esta tela.
         </p>
       </article>
-      <div v-if="isMemberKind && formOpen && form.establishmentScope === 'selected' && establishmentLastPage > 1" class="flex items-center justify-between gap-3">
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          :disabled="establishmentPage <= 1 || loading"
-          @click="establishmentPage--"
-        >
-          Estabelecimentos anteriores
-        </UButton>
-        <span class="text-muted text-sm">Página {{ establishmentPage }} de {{ establishmentLastPage }}</span>
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          :disabled="establishmentPage >= establishmentLastPage || loading"
-          @click="establishmentPage++"
-        >
-          Mais estabelecimentos
-        </UButton>
-      </div>
       <div v-if="lastPage > 1" class="flex items-center justify-between gap-3">
         <UButton
           color="neutral"

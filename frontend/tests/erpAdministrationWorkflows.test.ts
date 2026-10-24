@@ -93,8 +93,12 @@ type HostNode = {
   selectedIndex: number
   multiple: boolean
   selected: boolean
+  disabled?: boolean
+  isConnected: boolean
   _value?: unknown
   checked: boolean
+  focus: () => void
+  querySelector: (selector: string) => HostNode | null
   listeners: Record<string, Array<(event: { target: HostNode, preventDefault?: () => void }) => void>>
   addEventListener: (name: string, fn: (event: { target: HostNode, preventDefault?: () => void }) => void) => void
   removeEventListener: (name: string, fn: (event: { target: HostNode }) => void) => void
@@ -102,6 +106,11 @@ type HostNode = {
 
 function createHostRenderer() {
   type Node = HostNode
+  let focusedNode: Node | null = null
+  const setConnected = (node: Node, connected: boolean) => {
+    node.isConnected = connected
+    for (const child of node.children) setConnected(child, connected)
+  }
   const createNode = (tag: string): Node => ({
     tag,
     props: {},
@@ -113,7 +122,18 @@ function createHostRenderer() {
     selectedIndex: -1,
     multiple: false,
     selected: false,
+    disabled: false,
+    isConnected: tag === 'root',
     checked: false,
+    focus() {
+      const node = this as HostNode
+      if (!node.disabled && node.isConnected) focusedNode = node
+    },
+    querySelector(selector) {
+      const trigger = selector.match(/^\[data-editor-trigger="(create|edit)"\]$/)?.[1]
+      if (!trigger) return null
+      return findHostNodes(this, node => node.props['data-editor-trigger'] === trigger)[0] ?? null
+    },
     listeners: {},
     addEventListener(name, fn) { (this.listeners[name] ??= []).push(fn) },
     removeEventListener(name, fn) { this.listeners[name] = (this.listeners[name] ?? []).filter(listener => listener !== fn) }
@@ -128,6 +148,7 @@ function createHostRenderer() {
       if (key === 'checked' && typeof value === 'boolean') node.checked = value
       if (key === 'selected' && typeof value === 'boolean') node.selected = value
       if (key === 'multiple' && typeof value === 'boolean') node.multiple = value
+      if (key === 'disabled' && typeof value === 'boolean') node.disabled = value
     },
     insert(node, parent, anchor = null) {
       if (node.parent) {
@@ -136,6 +157,7 @@ function createHostRenderer() {
         if (node.parent.tag === 'select' && node.tag === 'option') node.parent.options = node.parent.options.filter(option => option !== node)
       }
       node.parent = parent
+      setConnected(node, parent.isConnected)
       const index = anchor ? parent.children.indexOf(anchor) : -1
       if (index < 0) parent.children.push(node)
       else parent.children.splice(index, 0, node)
@@ -147,6 +169,7 @@ function createHostRenderer() {
       if (index >= 0) node.parent.children.splice(index, 1)
       if (node.parent.tag === 'select' && node.tag === 'option') node.parent.options = node.parent.options.filter(option => option !== node)
       node.parent = null
+      setConnected(node, false)
     },
     createElement: createNode,
     createText(text) {
@@ -170,7 +193,13 @@ function createHostRenderer() {
       return node.parent.children[node.parent.children.indexOf(node) + 1] ?? null
     }
   })
-  return { renderer, createNode }
+  return {
+    renderer,
+    createNode,
+    get focusedNode() {
+      return focusedNode
+    }
+  }
 }
 
 function hostText(node: HostNode): string {
@@ -264,7 +293,8 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
   const component = exports.default as { render?: typeof render }
   component.render = render
 
-  const { renderer, createNode } = createHostRenderer()
+  const host = createHostRenderer()
+  const { renderer, createNode } = host
   const button = Vue.defineComponent({
     props: ['type', 'disabled', 'loading', 'color', 'variant', 'size'],
     emits: ['click'],
@@ -369,9 +399,14 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
     }
   })
   const modal = Vue.defineComponent({
-    props: ['open', 'dismissible', 'close'],
+    props: ['open', 'title', 'dismissible', 'close'],
     setup(modalProps, { slots }) {
-      return () => modalProps.open ? Vue.h('div', { 'role': 'dialog', 'aria-modal': 'true' }, slots.content?.()) : null
+      return () => modalProps.open
+        ? Vue.h('div', { 'role': 'dialog', 'aria-modal': 'true', 'aria-label': modalProps.title }, [
+            Vue.h('h2', modalProps.title),
+            ...(slots.content?.() ?? [])
+          ])
+        : null
     }
   })
   const accordion = Vue.defineComponent({
@@ -393,7 +428,10 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
   })
   const surface = Vue.defineComponent({
     setup(_surfaceProps, { attrs, slots }) {
-      return () => Vue.h('div', attrs, slots.default?.())
+      return () => Vue.h('div', attrs, [
+        ...(slots.default?.() ?? []),
+        ...(slots.description?.() ?? [])
+      ])
     }
   })
   const app = renderer.createApp(component as never, props)
@@ -409,15 +447,27 @@ function compileAndMount(file: URL, props: Record<string, unknown>, identityValu
   for (const name of ['UAlert', 'UCard', 'UBadge']) app.component(name, surface)
   const root = createNode('root')
   const instance = app.mount(root) as Record<string, unknown>
-  return { app, root, instance, calls, identity, session, unmount: () => app.unmount() }
+  return {
+    app,
+    root,
+    instance,
+    calls,
+    identity,
+    session,
+    get focusedNode() {
+      return host.focusedNode
+    },
+    unmount: () => app.unmount()
+  }
 }
 
-function clickButton(root: HostNode, label: string) {
-  const button = findHostNodes(root, node => node.tag === 'button' && hostText(node).includes(label))[0]
+function clickButton(root: HostNode, label: string, scope: HostNode = root): HostNode {
+  const button = findHostNodes(scope, node => node.tag === 'button' && hostText(node).includes(label))[0]
   assert.ok(button, `button “${label}” should be rendered`)
   let stopped = false
   const event = {
     target: button,
+    currentTarget: button,
     preventDefault() {},
     stopPropagation() { stopped = true }
   }
@@ -433,6 +483,7 @@ function clickButton(root: HostNode, label: string) {
       parent = parent.parent
     }
   }
+  return button
 }
 
 function changeInput(root: HostNode, selector: (node: HostNode) => boolean, value: string) {
@@ -741,6 +792,9 @@ describe('ERP administration rendered SFC interactions', () => {
     await flushVue()
     clickButton(mount.root, 'Adicionar membro')
     await Vue.nextTick()
+    const dialog = findHostNodes(mount.root, node => node.props.role === 'dialog')[0]
+    assert.ok(dialog, 'the controlled modal should contain the active member editor')
+    assert.equal(dialog.props['aria-label'], 'Novo membro')
     mount.instance.form.establishmentScope = 'selected'
     await Vue.nextTick()
     const checkbox = findHostNodes(mount.root as never, node => node.tag === 'input' && node.props.type === 'checkbox')[0]
@@ -751,12 +805,27 @@ describe('ERP administration rendered SFC interactions', () => {
     await Vue.nextTick()
     assert.deepEqual(mount.instance.form.establishmentIds, [7])
 
-    clickButton(mount.root, 'Mais estabelecimentos')
+    clickButton(mount.root, 'Mais estabelecimentos', dialog)
     await flushVue()
     assert.equal(mount.instance.establishmentPage, 2)
     assert.deepEqual(mount.instance.establishments.map((item: { id: number }) => item.id), [8])
     assert.deepEqual(mount.instance.form.establishmentIds, [7])
     assert.equal(hostText(mount.root as never).includes('Seleção preservada: #7'), true)
+
+    const pageTwoCheckbox = findHostNodes(dialog, node => node.tag === 'input' && node.props.type === 'checkbox')[0]
+    assert.ok(pageTwoCheckbox)
+    pageTwoCheckbox.checked = true
+    ;(pageTwoCheckbox.props.onChange as (event: { target: HostNode }) => void)({ target: pageTwoCheckbox })
+    await Vue.nextTick()
+    assert.deepEqual(mount.instance.form.establishmentIds, [7, 8])
+
+    clickButton(mount.root, 'Estabelecimentos anteriores', dialog)
+    await flushVue()
+    assert.equal(mount.instance.establishmentPage, 1)
+    assert.deepEqual(mount.instance.form.establishmentIds, [7, 8])
+    const pageOneCheckbox = findHostNodes(dialog, node => node.tag === 'input' && node.props.type === 'checkbox')[0]
+    assert.ok(pageOneCheckbox)
+    assert.equal(pageOneCheckbox.checked, true, 'the page-one selection remains checked after browsing back')
   })
 
   it('searches member establishments without saving edits on click or Enter', async (t) => {
@@ -809,6 +878,49 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.equal((writes[0]?.body as { role: string }).role, 'manager')
   })
 
+  it('keeps a member draft recoverable inside the modal after a transient save failure', async (t) => {
+    const member = { id: 2, user: { id: 2, name: 'Operador', email: 'operator@example.test' }, role: 'manager', action_permissions: [], effective_permissions: ['erp.read'], establishment_scope: 'all', establishment_ids: [] }
+    let saveAttempts = 0
+    const writes: Array<Record<string, unknown>> = []
+    const mount = compileAndMount(companyAdministrationFile, { kind: 'members' }, defaultOwnerIdentity(), async (path, options) => {
+      if (path.startsWith('/erp/members?')) return { data: [member], meta: { current_page: 1, last_page: 1 } }
+      if (path.startsWith('/erp/establishments?')) return { data: [{ id: 7, name: 'Matriz', cnpj: null, status: 'active' }], meta: { current_page: 1, last_page: 1 } }
+      if (path === '/erp/member-permissions') return { data: [] }
+      if (path === '/erp/members/2' && options?.method === 'PATCH') {
+        saveAttempts++
+        writes.push(options)
+        if (saveAttempts === 1) throw { statusCode: 503, data: { message: 'Falha temporária ao salvar.' } }
+        return { data: member }
+      }
+      throw new Error(`Unexpected ERP request: ${path}`)
+    })
+    t.after(mount.unmount)
+    await flushVue()
+
+    mount.instance.beginEdit(mount.instance.rows[0])
+    mount.instance.form.role = 'operator'
+    await Vue.nextTick()
+    clickButton(mount.root, 'Salvar')
+    await flushVue()
+
+    const dialog = findHostNodes(mount.root, node => node.props.role === 'dialog')[0]
+    assert.ok(dialog, 'the editor remains open after a recoverable write failure')
+    assert.equal(hostText(dialog).includes('Falha temporária ao salvar.'), true, 'the failure is announced inside the modal')
+    assert.equal(mount.instance.listStale, true)
+    assert.equal((mount.instance.form as { role: string }).role, 'operator')
+    clickButton(mount.root, 'Atualizar lista e manter rascunho', dialog)
+    await flushVue()
+    assert.equal(mount.instance.listStale, false)
+    assert.equal(mount.instance.formOpen, true)
+    assert.equal((mount.instance.form as { role: string }).role, 'operator')
+
+    clickButton(mount.root, 'Salvar', dialog)
+    await flushVue()
+    assert.equal(saveAttempts, 2)
+    assert.equal(mount.instance.formOpen, false)
+    assert.equal((writes[1]?.body as { role: string }).role, 'operator')
+  })
+
   it('ignores an older same-context list response after a newer request completes', async (t) => {
     const pending: Array<(value: unknown) => void> = []
     const mount = compileAndMount(companyAdministrationFile, { kind: 'establishments' }, defaultOwnerIdentity(), async (path) => {
@@ -836,8 +948,23 @@ describe('ERP administration rendered SFC interactions', () => {
 
   it('keeps the owner row immutable and submits selected empty scope for a newly looked-up member', async (t) => {
     const submissions: Array<{ body: Record<string, unknown> }> = []
+    let holdListReload = false
+    let releaseListReload: ((value: unknown) => void) | null = null
+    let signalListReloadStarted!: () => void
+    const listReloadStarted = new Promise<void>((resolve) => {
+      signalListReloadStarted = resolve
+    })
     const mount = compileAndMount(companyAdministrationFile, { kind: 'members' }, defaultOwnerIdentity(), async (path, options) => {
-      if (path.startsWith('/erp/members?')) return { data: [{ id: 1, user: { id: 1, name: 'Owner', email: 'owner@example.test' }, role: 'owner', action_permissions: null, effective_permissions: ['*'], establishment_scope: 'all', establishment_ids: [] }], meta: { current_page: 1, last_page: 1 } }
+      if (path.startsWith('/erp/members?')) {
+        if (holdListReload) {
+          holdListReload = false
+          signalListReloadStarted()
+          await new Promise((resolve) => {
+            releaseListReload = resolve
+          })
+        }
+        return { data: [{ id: 1, user: { id: 1, name: 'Owner', email: 'owner@example.test' }, role: 'owner', action_permissions: null, effective_permissions: ['*'], establishment_scope: 'all', establishment_ids: [] }], meta: { current_page: 1, last_page: 1 } }
+      }
       if (path.startsWith('/erp/establishments?')) return { data: [{ id: 4, name: 'Matriz', cnpj: null, status: 'active' }], meta: { current_page: 1, last_page: 1 } }
       if (path === '/erp/member-permissions') return { data: [{ permission: 'erp.read', label: 'erp.read', write: false }], meta: { roles: [{ role: 'manager', default_permissions: ['*'] }] } }
       if (path === '/erp/members/identity-lookup') return { data: { id: 6, name: 'New Member', email: 'new@example.test' } }
@@ -854,7 +981,7 @@ describe('ERP administration rendered SFC interactions', () => {
     assert.ok(ownerArticle)
     assert.equal(findHostNodes(ownerArticle as never, node => node.tag === 'button' && ['Editar', 'Remover'].includes(hostText(node as never).trim())).length, 0)
 
-    clickButton(mount.root, 'Adicionar membro')
+    const addButton = clickButton(mount.root, 'Adicionar membro')
     await Vue.nextTick()
     changeInput(mount.root, node => node.props.type === 'email', 'new@example.test')
     clickButton(mount.root, 'Localizar identidade')
@@ -863,9 +990,21 @@ describe('ERP administration rendered SFC interactions', () => {
 
     mount.instance.form.establishmentScope = 'selected'
     mount.instance.form.permissionsMode = 'defaults'
-    clickButton(mount.root, 'Salvar')
+    holdListReload = true
+    const saving = mount.instance.submitForm()
+    await listReloadStarted
     await flushVue()
     assert.equal(submissions.length, 1)
+    assert.equal(mount.instance.formOpen, false)
+    assert.equal(addButton.props.disabled, true, 'the trigger remains disabled while the refreshed list is pending')
+    assert.notEqual(mount.focusedNode, addButton, 'focus must not target a disabled button')
+    assert.ok(releaseListReload)
+    releaseListReload({ data: [] })
+    await saving
+    assert.ok(mount.focusedNode, 'focus returns to an available current-authority action after the reload')
+    assert.equal(mount.focusedNode?.tag, 'button')
+    assert.equal(hostText(mount.focusedNode!).trim(), 'Adicionar membro')
+    assert.equal(mount.focusedNode?.disabled, false)
     assert.deepEqual(submissions[0]?.body, {
       user_id: 6,
       role: 'manager',
