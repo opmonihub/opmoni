@@ -37,7 +37,7 @@ class ErpAccountingMappingTest extends TestCase
         parent::setUp();
         Storage::fake('local');
         Storage::fake('fiscal');
-        config(['access.ingress_key' => 'test-key', 'erp.release_enabled' => true, 'erp.operating_writes_enabled' => true]);
+        config(['access.ingress_key' => 'test-key', 'erp.release_enabled' => true, 'erp.release_mode' => 'production', 'erp.operating_writes_enabled' => true]);
         $this->withHeaders(['X-Opmoni-Ingress-Key' => 'test-key', 'X-Opmoni-Client-IP' => '127.0.0.1', 'X-Opmoni-Client-Proto' => 'http', 'Origin' => 'http://localhost:3000']);
     }
 

@@ -32,7 +32,7 @@ class ErpCanonicalIntegratedWorkflowTest extends ErpCommercialTestCase
 
     public function test_xml_purchase_transfer_paid_sale_full_return_and_synthetic_authorized_input_handoff_reconcile(): void
     {
-        config(['erp.release_enabled' => true]);
+        config(['erp.release_enabled' => true, 'erp.release_mode' => 'production']);
         Storage::fake('local');
         Storage::fake('fiscal');
         $this->freezeTime();
