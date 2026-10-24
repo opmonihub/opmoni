@@ -78,6 +78,7 @@ function mountWorkspace(api: RequestApi = defaultApi, grants = permissions, real
   const app = renderer.createApp(workspace)
   const shell = Vue.defineComponent({ setup: (_props, ctx) => () => Vue.h('div', [...(ctx.slots.actions?.() ?? []), ...(ctx.slots.toolbar?.() ?? []), ...(ctx.slots.default?.() ?? [])]) })
   for (const name of ['ErpCatalogPageShell', 'UDropdownMenu', 'UBadge', 'UIcon', 'NuxtLink', 'CompanyMenu', 'UserMenu', 'UCheckbox', 'ErpSaleReturnForm', 'ErpPendingOperationAlert', 'ErpCatalogReferenceSelect']) app.component(name, shell)
+  for (const name of ['UNavigationMenu', 'UTable', 'ErpListFooter']) app.component(name, shell)
   app.component('UForm', Vue.defineComponent({ emits: ['submit'], setup: (_props, ctx) => () => Vue.h('form', { onSubmit: () => ctx.emit('submit') }, ctx.slots.default?.()) }))
   app.component('UFormField', Vue.defineComponent({ props: { name: String, label: String, error: String }, setup: (props, ctx) => () => Vue.h('label', { 'data-field': props.name }, [props.label, ...(ctx.slots.default?.() ?? []), props.error]) }))
   app.component('UButton', Vue.defineComponent({ props: { label: String, disabled: Boolean, loading: Boolean }, setup: (props, ctx) => () => Vue.h('button', { ...ctx.attrs, disabled: props.disabled || props.loading }, props.label ?? ctx.slots.default?.()) }))

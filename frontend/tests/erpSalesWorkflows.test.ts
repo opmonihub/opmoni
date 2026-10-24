@@ -184,7 +184,11 @@ describe('sales authoritative denial boundaries', () => {
 function mountSalesWorkspace(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, hash = '#quotes', permissions = ['*']) {
   const { state, currentCompany, contextKey, stop } = createSalesWorkspace(api, permissions)
   const route = Vue.reactive({ path: '/erp/vendas', hash, query: {} })
-  const router = { replace: async (location: { hash?: string }) => { if (location.hash) route.hash = location.hash } }
+  const router = { replace: async (location: { path?: string, query?: Record<string, string>, hash?: string }) => {
+    if (location.path) route.path = location.path
+    if (location.query) route.query = location.query
+    if (location.hash) route.hash = location.hash
+  } }
   const workspaceSource = readFileSync(new URL('../app/components/erp/ErpSalesWorkspace.vue', import.meta.url), 'utf8')
   const formSource = readFileSync(new URL('../app/components/erp/ErpCommercialDraftForm.vue', import.meta.url), 'utf8')
   const returnFormSource = readFileSync(new URL('../app/components/erp/ErpSaleReturnForm.vue', import.meta.url), 'utf8')
@@ -299,8 +303,8 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   app.component('ErpCatalogPageShell', pageShell)
   app.component('UNavigationMenu', Vue.defineComponent({
     props: ['items'],
-    setup: (props, context) => () => Vue.h('nav', (props.items as Array<Array<{ label: string }>> ?? []).flat().map(item => Vue.h('button', {
-      onClick: () => context.emit('select', item)
+    setup: props => () => Vue.h('nav', (props.items as Array<Array<{ label: string, to?: { path?: string, query?: Record<string, string>, hash?: string } }>> ?? []).flat().map(item => Vue.h('button', {
+      onClick: () => item.to && router.replace(item.to)
     }, item.label)))
   }))
   app.component('ErpListFooter', passthrough)
