@@ -120,7 +120,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
+  <div class="min-h-0 flex-1 overflow-y-auto space-y-4 p-4">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <h1 class="text-xl font-semibold">
         Processamento fiscal
