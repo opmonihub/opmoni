@@ -46,10 +46,11 @@ const links = computed(() => [[{
   { label: 'Monitoramento', value: 'monitoramento', icon: 'i-lucide-radar', to: '/monitoring', children: monitoringSidebarChildren(route.path) },
   { label: 'Work', value: 'work', icon: 'i-lucide-list-checks', to: '/work', children: workSidebarChildren(route.path) },
   { label: 'Equipe', value: 'equipe', icon: 'i-lucide-users-round', to: '/equipe', children: equipeSidebarChildren(route.path) },
-  { label: 'Settings', value: 'configuracoes', icon: 'i-lucide-settings', to: '/settings', children: [
-    ...settingsSidebarChildren(route.path, canManageMembers.value, currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'),
-    { label: 'Members', to: '/settings/members', active: sidebarParentActive('/settings/members', route.path) }
-  ] }
+  { label: 'Configurações', value: 'configuracoes', icon: 'i-lucide-settings', to: '/settings', children: settingsSidebarChildren(
+    route.path,
+    canManageMembers.value,
+    currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'
+  ) }
 ].map(item => ({
   ...item,
   type: 'trigger' as const,

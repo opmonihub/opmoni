@@ -56,7 +56,12 @@ function compileSurface(filename: URL, imports: Record<string, unknown>, globals
   }
 }
 
-function setupLayout(path: string, superAdmin = true) {
+function setupLayout(
+  path: string,
+  superAdmin = true,
+  account = Vue.ref({ id: 1, name: 'Escritório teste', status: 'active', role: 'user' }),
+  canManageMembers = Vue.ref(false)
+) {
   const route = Vue.reactive({ path })
   const imports = {
     'vue': {
@@ -80,12 +85,12 @@ function setupLayout(path: string, superAdmin = true) {
     watch: Vue.watch,
     useRoute: () => route,
     useAuth: () => ({
-      currentAccount: Vue.ref({ id: 1, name: 'Escritório teste', status: 'active', role: 'user' }),
+      currentAccount: account,
       user: Vue.ref({ is_super_admin: superAdmin }),
-      canManageMembers: Vue.ref(false)
+      canManageMembers
     })
   })
-  return { ...surface, route }
+  return { ...surface, route, account, canManageMembers }
 }
 
 function nodes(vnode: Vue.VNode, collapsed: boolean): Vue.VNode[] {
@@ -216,7 +221,7 @@ describe('collapsed Clients disclosure', () => {
       ['/fiscal/documentos/42', 'Fiscal', 'Documentos'],
       ['/monitoring/declaracoes/defis/pendencias', 'Monitoramento', 'Declarações'],
       ['/monitoring/parcelamentos/especiais/atencao', 'Monitoramento', 'Parcelamentos'],
-      ['/settings/members/42', 'Settings', 'Members'],
+      ['/settings/members/42', 'Configurações', 'Membros'],
       ['/admin/contas/42', 'Admin', 'Contas']
     ]) {
       const surface = setupLayout(path!)
@@ -284,5 +289,48 @@ describe('collapsed Clients disclosure', () => {
     surface.route.path = '/customers/painel'
     await Vue.nextTick()
     assert.deepEqual(clients(surface, false).children?.map(child => child.ui?.childItem), [undefined, undefined])
+  })
+})
+
+describe('office Settings consumers', () => {
+  it('projects the same Portuguese destinations in the real toolbar, navbar, sidebar and search as account context changes', async (t) => {
+    const account = Vue.ref({ id: 1, name: 'Escritório teste', status: 'active', role: 'user' })
+    const canManageMembers = Vue.ref(false)
+    const page = compileSurface(new URL('../app/pages/settings.vue', import.meta.url), {
+      'vue': { ...Vue, resolveComponent: (name: string) => ({ name }) },
+      '~/utils/settingsNav': settingsNav
+    }, {
+      computed: Vue.computed,
+      useAuth: () => ({ currentAccount: account, canManageMembers })
+    })
+    t.after(page.close)
+
+    const toolbar = () => named(nodes(page.render(), false), 'UNavigationMenu')[0]!.props!.items[0] as NavigationMenuItem[]
+    const title = () => named(nodes(page.render(), false), 'UDashboardNavbar')[0]!.props!.title
+    const layout = setupLayout('/settings/members', true, account, canManageMembers)
+    t.after(layout.close)
+    const sidebar = () => (menu(layout, false, 'Configurações').props!.items as NavigationMenuItem[]).find(item => item.label === 'Configurações')!
+    const search = () => named(nodes(layout.render(), false), 'UDashboardSearch')[0]!.props!.groups[0].items as Array<{ label: string, to: string }>
+
+    assert.equal(title(), 'Configurações')
+    assert.deepEqual(toolbar().map(item => [item.label, item.to]), [
+      ['Geral', '/settings'], ['Membros', '/settings/members'],
+      ['Notificações', '/settings/notifications'], ['Segurança', '/settings/security']
+    ])
+    assert.deepEqual(sidebar().children?.map(item => [item.label, item.to]), toolbar().map(item => [item.label, item.to]))
+    assert.deepEqual(search().filter(item => String(item.to).startsWith('/settings')).map(item => [item.label, item.to]).slice(1), toolbar().map(item => [item.label, item.to]))
+
+    canManageMembers.value = true
+    account.value = { id: 2, name: 'Outro escritório', status: 'active', role: 'admin' }
+    await Vue.nextTick()
+    assert.deepEqual(toolbar().map(item => item.label).slice(-3), ['Certificado do escritório', 'Canal WhatsApp', 'Integração ERP'])
+    assert.deepEqual(sidebar().children?.map(item => item.label), toolbar().map(item => item.label))
+    assert.deepEqual(search().filter(item => String(item.to).startsWith('/settings')).slice(1).map(item => item.label), toolbar().map(item => item.label))
+    account.value = { id: 3, name: 'Escritório inativo', status: 'inactive', role: 'admin' }
+    canManageMembers.value = false
+    await Vue.nextTick()
+    assert.deepEqual(toolbar().map(item => item.label), ['Geral', 'Membros', 'Notificações', 'Segurança'])
+    assert.deepEqual(sidebar().children?.map(item => item.label), toolbar().map(item => item.label))
+    assert.deepEqual(search().filter(item => String(item.to).startsWith('/settings')).slice(1).map(item => item.label), toolbar().map(item => item.label))
   })
 })

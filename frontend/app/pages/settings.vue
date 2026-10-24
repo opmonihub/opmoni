@@ -1,30 +1,17 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import { settingsTabs } from '~/utils/settingsNav'
 
 const { canManageMembers, currentAccount } = useAuth()
-const links = computed(() => [[{
-  label: 'General', icon: 'i-lucide-user', to: '/settings', exact: true
-}, {
-  label: 'Members', icon: 'i-lucide-users', to: '/settings/members'
-}, {
-  label: 'Notifications', icon: 'i-lucide-bell', to: '/settings/notifications'
-}, {
-  label: 'Security', icon: 'i-lucide-shield', to: '/settings/security'
-}, ...(canManageMembers.value
-  ? [{
-      label: 'Certificado do escritório', icon: 'i-lucide-file-signature', to: '/settings/certificado'
-    }, {
-      label: 'Canal WhatsApp', icon: 'i-lucide-message-circle', to: '/settings/whatsapp'
-    }]
-  : []), ...(currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'
-  ? [{ label: 'Integração ERP', icon: 'i-lucide-landmark', to: '/settings/integracoes-erp' }]
-  : [])]] satisfies NavigationMenuItem[][])
+const links = computed(() => settingsTabs(
+  canManageMembers.value,
+  currentAccount.value?.status === 'active' && currentAccount.value.role === 'admin'
+))
 </script>
 
 <template>
   <UDashboardPanel id="settings" :ui="{ body: 'lg:py-12' }">
     <template #header>
-      <UDashboardNavbar title="Settings">
+      <UDashboardNavbar title="Configurações">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
