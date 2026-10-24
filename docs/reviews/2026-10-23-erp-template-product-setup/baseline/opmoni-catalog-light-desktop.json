@@ -1,0 +1,306 @@
+{
+  "bodyFont": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+  "geometry": {
+    "dialog": null,
+    "dialogInput": null,
+    "firstInput": {
+      "backgroundColor": "rgb(255, 255, 255)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "lineHeight": "20px",
+      "padding": "6px 10px 6px 36px",
+      "width": 448,
+      "x": 264,
+      "y": 152
+    },
+    "firstVisibleButton": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "14px",
+      "gap": "6px",
+      "height": 32,
+      "label": "Recolher menu ERP",
+      "lineHeight": "20px",
+      "padding": "6px",
+      "width": 32,
+      "x": 264,
+      "y": 16
+    },
+    "heading": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 24,
+      "lineHeight": "24px",
+      "padding": "0px",
+      "width": 68,
+      "x": 302,
+      "y": 20
+    },
+    "panel": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 900,
+      "lineHeight": "24px",
+      "padding": "0px",
+      "width": 1126,
+      "x": 240,
+      "y": 0
+    },
+    "panelBody": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "24px",
+      "height": 836,
+      "lineHeight": "24px",
+      "padding": "0px",
+      "width": 1126,
+      "x": 240,
+      "y": 64
+    },
+    "panelNavbar": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "6px",
+      "height": 64,
+      "lineHeight": "24px",
+      "padding": "0px 24px",
+      "width": 1126,
+      "x": 240,
+      "y": 0
+    },
+    "panelToolbar": null,
+    "sidebar": {
+      "backgroundColor": "oklab(0.967 0.000281923 -0.000959437 / 0.25)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 900,
+      "lineHeight": "24px",
+      "padding": "0px",
+      "width": 240,
+      "x": 0,
+      "y": 0
+    },
+    "table": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.37 0.013 285.805)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "16px",
+      "gap": "normal",
+      "height": 102,
+      "lineHeight": "24px",
+      "padding": "0px",
+      "width": 1078,
+      "x": 264,
+      "y": 200
+    },
+    "tableHeader": {
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "oklch(0.21 0.006 285.885)",
+      "fontFamily": "\"Public Sans\", \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+      "fontSize": "14px",
+      "gap": "normal",
+      "height": 38,
+      "lineHeight": "20px",
+      "padding": "8px 16px",
+      "width": 334,
+      "x": 264,
+      "y": 200
+    }
+  },
+  "mode": "light",
+  "publicSansFaces": [
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans Fallback: BlinkMacSystemFont",
+      "status": "unloaded",
+      "weight": "normal"
+    },
+    {
+      "family": "Public Sans Fallback: Segoe UI",
+      "status": "unloaded",
+      "weight": "normal"
+    },
+    {
+      "family": "Public Sans Fallback: Helvetica Neue",
+      "status": "unloaded",
+      "weight": "normal"
+    },
+    {
+      "family": "Public Sans Fallback: Arial",
+      "status": "unloaded",
+      "weight": "normal"
+    },
+    {
+      "family": "Public Sans Fallback: Noto Sans",
+      "status": "unloaded",
+      "weight": "normal"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "loaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "400"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "500"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "600"
+    },
+    {
+      "family": "Public Sans",
+      "status": "unloaded",
+      "weight": "700"
+    }
+  ],
+  "rootFontSize": "16px",
+  "state": {
+    "controlsDisabled": 0,
+    "dialogHeading": null,
+    "heading": "Produtos",
+    "tableRows": 1
+  },
+  "tokens": {
+    "--font-sans": "'Public Sans', \"Public Sans Fallback: BlinkMacSystemFont\", \"Public Sans Fallback: Segoe UI\", \"Public Sans Fallback: Helvetica Neue\", \"Public Sans Fallback: Arial\", \"Public Sans Fallback: Noto Sans\", sans-serif",
+    "--ui-bg": "#fff",
+    "--ui-bg-accented": "oklch(92% 0.004 286.32)",
+    "--ui-bg-elevated": "oklch(96.7% 0.001 286.375)",
+    "--ui-bg-muted": "oklch(98.5% 0 none)",
+    "--ui-border": "oklch(92% 0.004 286.32)",
+    "--ui-border-accented": "oklch(87.1% 0.006 286.286)",
+    "--ui-border-muted": "oklch(92% 0.004 286.32)",
+    "--ui-header-height": "4rem",
+    "--ui-primary": "#0A5331",
+    "--ui-radius": "0.25rem",
+    "--ui-text": "oklch(37% 0.013 285.805)",
+    "--ui-text-dimmed": "oklch(55.2% 0.016 285.938)",
+    "--ui-text-highlighted": "oklch(21% 0.006 285.885)",
+    "--ui-text-muted": "oklch(44.2% 0.017 285.786)"
+  },
+  "url": "/erp/cadastros/produtos",
+  "viewport": {
+    "height": 900,
+    "scale": 1,
+    "scrollWidth": 1366,
+    "width": 1366
+  },
+  "captureVersion": 2
+}
