@@ -3,6 +3,8 @@ import type {
   ErpCommercialDraftPayload,
   ErpCommercialDocument,
   ErpCommercialKind,
+  ErpCommercialTaxReviewOptions,
+  ErpCommercialTaxReviewPreview,
   ErpFinanceReceipt,
   ErpObligation,
   ErpPayment,
@@ -17,6 +19,7 @@ import { apiErrorMessage, apiFieldErrors, apiStatus } from '~/composables/useApi
 import type { FetchOptions, ResponseType } from 'ofetch'
 import { createPendingOperation, parsePendingOperation, pendingOperationLookup, writePendingOperation, type ErpPendingOperation } from '#shared/utils/erpOperationRecovery'
 import { erpSalePostPayload, erpSalesActionAllowed } from '#shared/utils/erpSales'
+import { erpTaxRecord, erpTaxReviewOptions } from '#shared/utils/erpCommercialTaxReview'
 
 export type ErpSalesArea = 'quotes' | 'orders' | 'sales' | 'returns'
 type SalesAction = string
@@ -79,6 +82,12 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   let representationSequence = 0
   let representationController: AbortController | null = null
   let representationOwner: { id: number, token: ReturnType<typeof context.capture>, generation: number, intent: number } | null = null
+  const taxReview = ref<ErpCommercialTaxReviewPreview | null>(null)
+  const taxReviewLoading = ref(false)
+  const taxReviewError = ref('')
+  let taxReviewSequence = 0
+  let taxReviewController: AbortController | null = null
+  let taxReviewOwner: { kind: ErpCommercialKind, id: number, revision: number, token: ReturnType<typeof context.capture>, generation: number, intent: number, options: string } | null = null
   const detailLoading = ref(false)
   const detailError = ref('')
   const mutationError = ref('')
@@ -150,6 +159,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     } catch { /* Invalid session data is not trusted. */ }
   }
   function clearPrivateState() {
+    closeTaxReview()
     closeRepresentation()
     requestGeneration++
     operationIntentSequence.value++
@@ -321,6 +331,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     if (authorityCurrent(token, generation) && sequence === referenceSequence) referenceLoading.value = false
   }
   function claimIntent() {
+    closeTaxReview()
     closeRepresentation()
     operationIntentSequence.value++
     for (const key of Object.keys(loading) as ErpSalesArea[]) {
@@ -545,7 +556,20 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     } catch (error) {
       if (!operationCurrent(token, generation, sequence)) return null
       const status = apiStatus(error)
-      if (status === 422) {
+      const failure = error as { data?: unknown, response?: { _data?: unknown } }
+      const code = erpTaxRecord(failure.data ?? failure.response?._data).code
+      const rejectedReview = status === 409 && (
+        (code === 'commercial_tax_review_changed' && action.endsWith('.update') && Object.hasOwn(body, 'tax_refresh'))
+        || (code === 'sale_fiscal_review_changed' && action === 'erp.sales.post')
+      )
+      if (rejectedReview) {
+        closeTaxReview()
+        const removed = storePending(null)
+        needsReconciliation.value = !removed
+        mutationError.value = removed
+          ? 'A revisão mudou e esta tentativa foi recusada sem lançamento. Preserve os dados, gere uma nova prévia e aplique a revisão antes de lançar.'
+          : 'A tentativa foi recusada, mas a identificação local não pôde ser limpa. Consulte a operação original.'
+      } else if (status === 422) {
         fieldErrors.value = apiFieldErrors(error)
         storePending(null)
         mutationError.value = message(error, 'Revise os campos destacados.')
@@ -618,6 +642,80 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     } finally {
       if (operationCurrent(token, generation, sequence)) mutating.value = false
     }
+  }
+  function closeTaxReview() {
+    taxReviewSequence++
+    taxReviewController?.abort()
+    taxReviewController = null
+    taxReview.value = null
+    taxReviewOwner = null
+    taxReviewLoading.value = false
+    taxReviewError.value = ''
+  }
+  function taxReviewable(kind: ErpCommercialKind, document: ErpCommercialDocument) {
+    const sourceArea = kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'
+    return allowed(`erp.${sourceArea}.update`) && selected.value?.id === document.id
+      && 'draft_revision' in selected.value && selected.value.draft_revision === document.draft_revision
+      && document.draft_revision !== null && document.status === (kind === 'order' ? 'confirmed' : 'draft')
+      && !requiresFreshDetail(sourceArea, document.id) && !mutating.value && !selectedOperation.value
+  }
+  async function previewTaxReview(kind: ErpCommercialKind, document: ErpCommercialDocument, input: ErpCommercialTaxReviewOptions = {}) {
+    closeTaxReview()
+    if (!taxReviewable(kind, document)) return null
+    fieldErrors.value = {}
+    const options = erpTaxReviewOptions(input)
+    const token = context.capture()
+    const generation = requestGeneration
+    const intent = operationIntentSequence.value
+    const sequence = taxReviewSequence
+    const controller = new AbortController()
+    taxReviewController = controller
+    const sourceArea = kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'
+    const isCurrent = () => sequence === taxReviewSequence && current(token, generation, intent)
+      && taxReviewable(kind, document) && !controller.signal.aborted
+    taxReviewLoading.value = true
+    try {
+      await refreshCsrf()
+      if (!isCurrent()) return null
+      const result = await api<{ data: ErpCommercialTaxReviewPreview }>(`${paths[sourceArea]}/${document.id}/tax-refresh-preview`, {
+        method: 'POST', body: { draft_revision: document.draft_revision, ...options }, signal: controller.signal
+      })
+      if (!isCurrent()) return null
+      if (result.data.draft_revision !== document.draft_revision || typeof result.data.reviewed_fingerprint !== 'string' || !Array.isArray(result.data.lines)) {
+        taxReviewError.value = 'A prévia não corresponde à revisão selecionada. Consulte o detalhe e gere outra prévia.'
+        return null
+      }
+      taxReview.value = result.data
+      taxReviewOwner = { kind, id: document.id, revision: document.draft_revision!, token, generation, intent, options: JSON.stringify(options) }
+      return result.data
+    } catch (error) {
+      if (!isCurrent()) return null
+      fieldErrors.value = apiFieldErrors(error)
+      taxReviewError.value = message(error, 'Não foi possível gerar a prévia. Revise os dados e tente novamente.')
+      await handleDenial(`erp.${sourceArea}.update`, error, token)
+      return null
+    } finally {
+      if (sequence === taxReviewSequence) {
+        taxReviewLoading.value = false
+        taxReviewController = null
+      }
+    }
+  }
+  async function applyTaxReview(kind: ErpCommercialKind, document: ErpCommercialDocument, input: ErpCommercialTaxReviewOptions = {}) {
+    const owner = taxReviewOwner
+    const reviewed = taxReview.value
+    const options = erpTaxReviewOptions(input)
+    if (!owner || !reviewed || !taxReviewable(kind, document) || owner.kind !== kind || owner.id !== document.id
+      || owner.revision !== document.draft_revision || !current(owner.token, owner.generation, owner.intent)
+      || owner.options !== JSON.stringify(options)) {
+      closeTaxReview()
+      taxReviewError.value = 'Gere uma nova prévia e revise os fatos antes de aplicar.'
+      return null
+    }
+    const sourceArea = kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'
+    const body = { draft_revision: owner.revision, tax_refresh: { reviewed_fingerprint: reviewed.reviewed_fingerprint, ...options } }
+    closeTaxReview()
+    return execute(`${paths[sourceArea]}/${owner.id}`, body, `erp.${sourceArea}.update`)
   }
   async function saveDraft(kind: ErpCommercialKind, payload: ErpCommercialDraftPayload, id?: number | null) {
     const action = writeActions[`${kind}.${id ? 'update' : 'store'}`]!
@@ -787,6 +885,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   return {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
     references, referenceLoading, referenceError, operationNatureState, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
+    taxReview, taxReviewLoading, taxReviewError, previewTaxReview, applyTaxReview, closeTaxReview,
     representationHtml, representationLoading, representationError, loadRepresentation, closeRepresentation, printRepresentation,
     mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, authorityNeedsRefresh, operationIntentSequence,
     completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,

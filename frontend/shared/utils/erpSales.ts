@@ -1,4 +1,5 @@
 import type { ErpCommercialDocument, ErpCommercialDraftPayload } from '#shared/types/erpBusiness'
+import { erpSavedTaxContext } from './erpCommercialTaxReview.ts'
 
 export function erpSalePostPayload(row: Pick<ErpCommercialDocument, 'draft_revision' | 'total_amount'>, payment?: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -95,6 +96,9 @@ export function erpCommercialDocumentToDraft(document: ErpCommercialDocument): E
       }
     })
   }
+  const context = erpSavedTaxContext(document)
+  if (context) draft.tax_context = context
+  if (Object.hasOwn(document, 'fiscal_model')) draft.fiscal_model = document.fiscal_model ?? null
   if (headerDiscount.mode === 'manual') {
     const kind = discountInput.discount_type === 'percentage' ? 'percentage' : 'fixed'
     const amount = discountInput.discount_amount

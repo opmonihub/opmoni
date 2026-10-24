@@ -109,6 +109,28 @@ export interface ErpFinanceReceipt {
 export type ErpCommercialKind = 'quote' | 'order' | 'sale'
 export type ErpCommercialStatus = 'draft' | 'confirmed' | 'converted' | 'posted'
 
+export interface ErpCommercialTaxContext {
+  origin_uf?: string | null
+  destination_uf?: string | null
+  model?: string | null
+  purpose?: string | null
+  final_consumer?: boolean | null
+  presence?: string | null
+}
+
+export interface ErpCommercialTaxReviewOptions {
+  line_ids?: number[]
+  tax_context?: ErpCommercialTaxContext
+  lines?: Array<{ id: number, cfop?: string | null }>
+}
+
+export interface ErpCommercialTaxReviewPreview {
+  reviewed_fingerprint: string
+  draft_revision: number
+  lines: Array<{ id: number, previous_product_snapshot: Record<string, unknown>, product_snapshot: Record<string, unknown> }>
+  fiscal_source_review?: { model: string, configuration_revision_id: number | null, operation_nature_id: number | null, [key: string]: unknown }
+}
+
 export interface ErpCommercialLine {
   id?: number
   erp_product_variant_id: number | null
@@ -122,11 +144,14 @@ export interface ErpCommercialLine {
   erp_tax_rate_id?: number | null
   erp_discount_rule_id?: number | null
   line_total?: ErpMoney
+  cfop?: string | null
   product_snapshot?: Record<string, unknown> | null
   [key: string]: unknown
 }
 
 export interface ErpCommercialDraftPayload {
+  fiscal_model?: '55' | '65' | null
+  tax_context?: ErpCommercialTaxContext
   erp_establishment_id: number | null
   erp_contact_id?: number | null
   erp_price_group_id?: number | null
@@ -161,6 +186,8 @@ export interface ErpSaleFinanceProjection {
 }
 
 export interface ErpCommercialDocument {
+  fiscal_model?: '55' | '65' | null
+  commercial_snapshot?: Record<string, unknown> | null
   id: number
   erp_operation_nature_id?: number | null
   erp_establishment_id: number

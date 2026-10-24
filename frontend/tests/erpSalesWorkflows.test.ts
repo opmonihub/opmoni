@@ -9,6 +9,7 @@ import { erpCommercialDocumentToDraft, erpReturnLineError, erpSalePostPayload, e
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
 import * as salesHelpers from '../shared/utils/erpSales.ts'
+import * as taxReviewHelpers from '../shared/utils/erpCommercialTaxReview.ts'
 import * as productVariantReferences from '../app/utils/erpProductVariantReferences.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
@@ -44,6 +45,7 @@ function createSalesWorkspace(api: (path: string, options?: Record<string, unkno
     '#shared/types/erpBusiness': {},
     '~/composables/useApiError': apiErrors,
     '#shared/utils/erpOperationRecovery': operationRecovery,
+    '#shared/utils/erpCommercialTaxReview': taxReviewHelpers,
     '#shared/utils/erpSales': { erpSalesActionAllowed, erpSalePostPayload }
   }, {
     ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: (_callback: () => void) => {}, onScopeDispose: Vue.onScopeDispose,
@@ -197,6 +199,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   const workspaceExports = compileModule(workspaceScript.content, {
     'vue': Vue,
     '~/composables/useErpSalesWorkspace': { useErpSalesWorkspace: () => state },
+    '#shared/utils/erpCommercialTaxReview': taxReviewHelpers,
     '#shared/utils/erpSales': salesHelpers,
     '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts')
   }, globals)
@@ -286,6 +289,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   app.component('UAlert', alert)
   app.component('UFormField', field)
   app.component('ErpCatalogReferenceSelect', passthrough)
+  app.component('ErpCommercialTaxReview', passthrough)
   app.component('UButton', button)
   app.component('UInput', input)
   app.component('UTextarea', input)
@@ -351,7 +355,7 @@ describe('sales permitted area projection', () => {
 function mountSaleDetail(props: Record<string, unknown>) {
   const source = readFileSync(new URL('../app/components/erp/ErpSaleDetail.vue', import.meta.url), 'utf8')
   const script = VueCompiler.compileScript(VueCompiler.parse(source).descriptor, { id: 'sale-detail', inlineTemplate: true })
-  const component = compileModule(script.content, { vue: Vue }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
+  const component = compileModule(script.content, { 'vue': Vue, '#shared/utils/erpCommercialTaxReview': taxReviewHelpers }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
   type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
   const root: Node = { tag: 'root', children: [], parent: null, props: {} }
   const renderer = Vue.createRenderer<Node>({

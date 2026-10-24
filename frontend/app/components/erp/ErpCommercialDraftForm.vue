@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
-import type { ErpCommercialDraftPayload, ErpCommercialKind, ErpSalesContact, ErpSalesEstablishment, ErpSalesUnit, ErpSalesVariant } from '#shared/types/erpBusiness'
+import type { ErpCommercialDraftPayload, ErpCommercialKind, ErpCommercialTaxContext, ErpSalesContact, ErpSalesEstablishment, ErpSalesUnit, ErpSalesVariant } from '#shared/types/erpBusiness'
 import { erpProductVariantQuery, formatErpProductVariantLabel } from '~/utils/erpProductVariantReferences'
 
 const props = defineProps<{
@@ -75,6 +75,15 @@ watch(() => draft.value.erp_establishment_id, (establishmentId) => {
   if (nature?.erp_establishment_id !== null && nature?.erp_establishment_id !== undefined && nature.erp_establishment_id !== establishmentId) draft.value.erp_operation_nature_id = null
 }, { flush: 'sync' })
 const formName = (field: string) => props.errors[field] ?? ''
+const fiscalIntentItems = [{ label: 'Sem intenção fiscal declarada', value: 'none' }, { label: 'NF-e (55)', value: '55' }, { label: 'NFC-e (65)', value: '65' }]
+const contextFields = [{ name: 'origin_uf', label: 'UF de origem' }, { name: 'destination_uf', label: 'UF do destinatário' }, { name: 'model', label: 'Modelo do contexto' }, { name: 'purpose', label: 'Finalidade' }, { name: 'presence', label: 'Presença' }] as const
+function selectFiscalIntent(value: unknown) {
+  if (value === '55' || value === '65') draft.value.fiscal_model = value
+  else draft.value.fiscal_model = null
+}
+function updateTaxContext(field: keyof ErpCommercialTaxContext, value: string | boolean | null) {
+  draft.value.tax_context = { ...draft.value.tax_context, [field]: value }
+}
 function clearLineTotals() {
   for (const line of draft.value.lines) line.line_total = undefined
 }
@@ -122,6 +131,7 @@ function useCurrentCatalog(line: ErpCommercialDraftPayload['lines'][number]) {
 }
 function submit() {
   const payload = JSON.parse(JSON.stringify(draft.value)) as ErpCommercialDraftPayload
+  if (props.kind !== 'sale') delete payload.fiscal_model
   if (!payload.discount?.discount_amount.trim()) delete payload.discount
   if (!payload.tax_rate_percent?.trim()) delete payload.tax_rate_percent
   payload.lines = payload.lines.map((line) => {
@@ -140,6 +150,61 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
 
 <template>
   <UForm :state="draft" class="min-w-0 space-y-5" @submit="submit">
+    <details :open="Boolean(draft.fiscal_model || draft.tax_context || errors.fiscal_model || Object.keys(errors).some(key => key.startsWith('tax_context.')))" class="space-y-3 rounded-lg border border-muted p-3">
+      <summary class="cursor-pointer text-sm font-medium text-highlighted">
+        Intenção e contexto fiscal (opcional)
+      </summary>
+      <p class="text-sm text-muted">
+        A classificação não representa autorização fiscal. Salve o rascunho e revise a prévia antes de aplicar atualizações. Alterar a intenção exige uma revisão explícita no documento salvo.
+      </p>
+      <UFormField
+        v-if="kind === 'sale'"
+        name="fiscal_model"
+        label="Intenção fiscal da venda"
+        :error="formName('fiscal_model')"
+      >
+        <USelect
+          :model-value="draft.fiscal_model ?? 'none'"
+          :items="fiscalIntentItems"
+          class="w-full"
+          :disabled="disabled || saving"
+          @update:model-value="selectFiscalIntent"
+        />
+      </UFormField>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <UFormField
+          v-for="field in contextFields"
+          :key="field.name"
+          :name="`tax_context.${field.name}`"
+          :label="field.label"
+          :error="formName(`tax_context.${field.name}`)"
+        >
+          <UInput
+            :model-value="draft.tax_context?.[field.name] ?? ''"
+            class="w-full"
+            :disabled="disabled || saving"
+            @update:model-value="updateTaxContext(field.name, String($event))"
+          />
+        </UFormField>
+        <UFormField name="tax_context.final_consumer" label="Consumidor final" :error="formName('tax_context.final_consumer')">
+          <USelect
+            :model-value="draft.tax_context?.final_consumer === true ? 'yes' : draft.tax_context?.final_consumer === false ? 'no' : 'unknown'"
+            :items="[{ label: 'Não informado', value: 'unknown' }, { label: 'Sim', value: 'yes' }, { label: 'Não', value: 'no' }]"
+            class="w-full"
+            :disabled="disabled || saving"
+            @update:model-value="updateTaxContext('final_consumer', $event === 'yes' ? true : $event === 'no' ? false : null)"
+          />
+        </UFormField>
+      </div>
+      <p
+        v-for="(message, field) in errors"
+        v-show="String(field).startsWith('party.') || field === 'tax_refresh' || String(field).startsWith('configuration')"
+        :key="field"
+        class="text-sm text-error"
+      >
+        {{ message }}
+      </p>
+    </details>
     <div class="grid min-w-0 gap-4 sm:grid-cols-2">
       <UFormField
         name="erp_establishment_id"

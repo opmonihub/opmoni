@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { erpTaxReadiness, erpTaxRecord, erpTaxSourceLabel } from '#shared/utils/erpCommercialTaxReview'
 import type { ErpCommercialDocument, ErpCommercialLine, ErpFinanceReceipt, ErpObligation, ErpPayment, ErpSaleReturn } from '#shared/types/erpBusiness'
 
 const props = defineProps<{
@@ -8,6 +9,8 @@ const props = defineProps<{
   paymentIds: number[]
   obligation: ErpObligation | null
   receipt: ErpFinanceReceipt | null
+  canTaxReview?: boolean
+  errors?: Record<string, string>
   canEdit: boolean
   canConvert: boolean
   canPostSale: boolean
@@ -21,7 +24,7 @@ const props = defineProps<{
   canFiscal: boolean
   busy: boolean
 }>()
-const emit = defineEmits<{ edit: [], convert: [], postSale: [], returnSale: [], postReturn: [], receipt: [paymentId: number], representation: [] }>()
+const emit = defineEmits<{ edit: [], convert: [], postSale: [], returnSale: [], postReturn: [], receipt: [paymentId: number], representation: [], taxReview: [] }>()
 const isReturn = computed(() => props.area === 'returns')
 const commercial = computed(() => props.document as ErpCommercialDocument)
 const returned = computed(() => props.document as ErpSaleReturn)
@@ -35,6 +38,7 @@ function lineDescription(line: ErpCommercialLine & { source_line_id?: number }) 
   if (names.length) return names.join(' / ')
   return `Linha de origem #${line.source_line_id ?? line.id ?? 'não disponível'}`
 }
+const sourceReadiness = computed(() => erpTaxReadiness(commercial.value))
 const numberLabel = computed(() => props.area === 'quotes' ? commercial.value.quote_no : props.area === 'orders' ? commercial.value.order_no : commercial.value.invoice_no)
 const paid = computed(() => props.area === 'sales' && props.obligation?.status === 'settled' && props.obligation.open_amount === '0.0000')
 function fiscalStatusLabel(value: string | null | undefined) {
@@ -166,6 +170,28 @@ const statusLabel = computed(() => isReturn.value
       </div>
     </dl>
 
+    <section v-if="!isReturn" class="space-y-3 rounded-lg border border-muted p-3" aria-label="Fonte tributária comercial">
+      <UAlert
+        color="info"
+        variant="subtle"
+        :title="sourceReadiness.title"
+        :description="sourceReadiness.description"
+      />
+      <p v-for="message in sourceReadiness.errors" :key="message" class="text-sm text-warning">
+        {{ message }}
+      </p>
+      <p v-for="(message, field) in errors" :key="field" class="text-sm text-error">
+        {{ field }}: {{ message }}
+      </p>
+      <div v-for="line in commercial.lines" :key="line.id" class="space-y-1 text-sm">
+        <p>Item #{{ line.id }} · CFOP efetivo {{ erpTaxRecord(erpTaxRecord(line.product_snapshot).operation_nature).cfop ?? 'Não informado' }} · padrão da natureza {{ erpTaxRecord(erpTaxRecord(line.product_snapshot).cfop_resolution).default_cfop ?? 'Origem histórica não informada' }}</p>
+        <p>{{ erpTaxSourceLabel(erpTaxRecord(erpTaxRecord(line.product_snapshot).cfop_resolution)) }} · revisão {{ erpTaxRecord(erpTaxRecord(line.product_snapshot).cfop_resolution).configuration_revision ?? 'Não informada' }}</p>
+        <p v-for="(source, field) in erpTaxRecord(erpTaxRecord(erpTaxRecord(line.product_snapshot).product_tax_resolution).sources)" :key="field">
+          {{ field }} · {{ erpTaxSourceLabel(source) }}
+        </p>
+      </div>
+    </section>
+
     <section class="min-w-0 space-y-2" aria-label="Itens do documento">
       <h3 class="text-sm font-semibold text-highlighted">
         Itens confirmados
@@ -286,6 +312,15 @@ const statusLabel = computed(() => isReturn.value
         label="Representação comercial"
         :disabled="busy"
         @click="emit('representation')"
+      />
+      <UButton
+        v-if="canTaxReview"
+        type="button"
+        color="neutral"
+        variant="outline"
+        label="Revisar classificação"
+        :disabled="busy"
+        @click="emit('taxReview')"
       />
       <UButton
         v-if="canEdit"

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { ErpCommercialDocument, ErpCommercialDraftPayload, ErpCommercialKind, ErpSaleReturn } from '#shared/types/erpBusiness'
+import type { ErpCommercialDocument, ErpCommercialDraftPayload, ErpCommercialKind, ErpCommercialTaxReviewOptions, ErpSaleReturn } from '#shared/types/erpBusiness'
 import type { ErpSalesArea } from '~/composables/useErpSalesWorkspace'
 import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
+import { erpTaxReviewOptions } from '#shared/utils/erpCommercialTaxReview'
 import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
 import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
-type ModalKind = 'create' | 'edit' | 'detail' | 'representation' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
+type ModalKind = 'create' | 'edit' | 'tax-review' | 'detail' | 'representation' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
 type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
 type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string, returnDraftKey?: string, returnDraftFingerprint?: string }
 const sales = useErpSalesWorkspace()
@@ -46,6 +47,7 @@ const modalTitle = computed(() => {
   if (modalKind.value === 'post-sale') return 'Confirmar lançamento da venda'
   if (modalKind.value === 'return') return 'Nova devolução'
   if (modalKind.value === 'post-return') return 'Confirmar lançamento da devolução'
+  if (modalKind.value === 'tax-review') return 'Revisar classificação tributária'
   if (modalKind.value === 'representation') return 'Representação comercial'
   return 'Detalhes do documento'
 })
@@ -169,6 +171,7 @@ async function setArea(next: ErpSalesArea, updateHash = true) {
   if (updateHash && sales.area.value === next && route.hash !== `#${next}`) await router.replace({ path: route.path, query: route.query, hash: `#${next}` })
 }
 function closeModal() {
+  sales.closeTaxReview()
   modalGeneration.value++
   const previous = modalKind.value
   modalKind.value = null
@@ -258,6 +261,7 @@ function completeRecoveredOperation(key: string | undefined) {
     clearReturnDraft(owner.returnDraftKey, owner.returnDraftFingerprint)
   }
   if (modalKind.value === owner.modal) {
+    if (owner.modal === 'tax-review' && selectedMatches) modalKind.value = 'detail'
     if (owner.modal === 'create' || owner.modal === 'edit' || resolved.operation.includes('.convert') || resolved.operation === 'erp.sale-returns.store') detailArea.value = targetArea
     if (selectedMatches) modalKind.value = 'detail'
     else closeModal()
@@ -348,6 +352,34 @@ async function openEdit() {
   editDraft.value = erpCommercialDocumentToDraft(accepted)
   modalGeneration.value++
   modalKind.value = 'edit'
+}
+function startTaxReview() {
+  if (!canEditDetail()) return
+  sales.closeTaxReview()
+  sales.fieldErrors.value = {}
+  modalGeneration.value++
+  modalKind.value = 'tax-review'
+}
+async function previewTaxReview(options: ErpCommercialTaxReviewOptions) {
+  const kind = documentKind(detailArea.value)
+  const document = sales.selected.value as ErpCommercialDocument | null
+  if (modalKind.value !== 'tax-review' || !kind || !document) return
+  return sales.previewTaxReview(kind, document, options)
+}
+async function applyTaxReview(options: ErpCommercialTaxReviewOptions) {
+  const kind = documentKind(detailArea.value)
+  const document = sales.selected.value as ErpCommercialDocument | null
+  const preview = sales.taxReview.value
+  if (modalKind.value !== 'tax-review' || !kind || !document || !preview) return
+  const generation = modalGeneration.value
+  const previousKey = pendingBefore()
+  const payload = { draft_revision: document.draft_revision, tax_refresh: { reviewed_fingerprint: preview.reviewed_fingerprint, ...erpTaxReviewOptions(options) } }
+  const action = `erp.${kind === 'quote' ? 'quotes' : kind === 'order' ? 'orders' : 'sales'}.update`
+  const request = sales.applyTaxReview(kind, document, options)
+  const owner = captureRecoveryOwner(previousKey, action, payload, 'tax-review', createIdentity, document.id, JSON.stringify(options))
+  const result = await request
+  if (owner && (result !== null || sales.currentOperationKey() !== owner)) recoveryOwners.delete(owner)
+  if (result !== null && generation === modalGeneration.value && modalKind.value === 'tax-review') modalKind.value = 'detail'
 }
 async function convertDocument() {
   if (!canConvertDetail()) return
@@ -851,6 +883,20 @@ onMounted(() => {
             @save="saveDraft"
             @cancel="closeModal"
           />
+          <ErpCommercialTaxReview
+            v-else-if="modalKind === 'tax-review' && sales.selected.value"
+            :document="sales.selected.value as ErpCommercialDocument"
+            :preview="sales.taxReview.value"
+            :loading="sales.taxReviewLoading.value"
+            :busy="sales.mutating.value"
+            :error="sales.taxReviewError.value"
+            :errors="sales.fieldErrors.value"
+            :disabled="!canEditDetail()"
+            @preview="previewTaxReview"
+            @apply="applyTaxReview"
+            @invalidate="sales.closeTaxReview()"
+            @cancel="sales.closeTaxReview(); modalKind = 'detail'"
+          />
           <div v-else-if="modalKind === 'detail' && sales.selected.value" class="min-w-0 space-y-4">
             <UAlert
               v-if="sales.detailError.value"
@@ -866,6 +912,8 @@ onMounted(() => {
               :obligation="sales.selectedObligation.value"
               :receipt="sales.receipt.value"
               :can-edit="Boolean(canEditDetail())"
+              :can-tax-review="Boolean(canEditDetail())"
+              :errors="sales.fieldErrors.value"
               :can-convert="canConvertDetail()"
               :can-post-sale="canPostSaleDetail()"
               :can-return="canReturnDetail()"
@@ -878,6 +926,7 @@ onMounted(() => {
               :can-fiscal="sales.allowed('erp.fiscal.documents.index')"
               :busy="sales.mutating.value || selectedNeedsRefresh"
               @edit="openEdit"
+              @tax-review="startTaxReview"
               @convert="startConvert"
               @post-sale="startPostSale"
               @return-sale="startReturn"
@@ -959,6 +1008,27 @@ onMounted(() => {
             <p class="text-sm text-muted">
               Venda #{{ (sales.selected.value as ErpCommercialDocument | null)?.id }} · total do detalhe autorizado {{ (sales.selected.value as ErpCommercialDocument | null)?.currency }} {{ (sales.selected.value as ErpCommercialDocument | null)?.total_amount }}
             </p>
+            <div v-if="Object.keys(sales.fieldErrors.value).length" class="space-y-2" role="alert">
+              <p v-for="(message, field) in sales.fieldErrors.value" :key="field" class="text-sm text-error">
+                {{ field }}: {{ message }}
+              </p>
+            </div>
+            <div v-if="canEditDetail()" class="flex flex-wrap gap-2">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="outline"
+                label="Corrigir rascunho"
+                @click="openEdit"
+              />
+              <UButton
+                type="button"
+                color="neutral"
+                variant="outline"
+                label="Revisar classificação"
+                @click="startTaxReview"
+              />
+            </div>
             <UCheckbox v-model="includeInlinePayment" label="Registrar um pagamento interno agora, junto com o lançamento" :disabled="sales.mutating.value || !financeAuthority()" />
             <UAlert v-if="!financeAuthority()" color="info" description="Pagamento imediato exige permissões independentes de criação e alocação. A venda pode ser lançada como recebível." />
             <UFormField
