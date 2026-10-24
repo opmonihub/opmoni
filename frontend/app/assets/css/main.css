@@ -21,6 +21,7 @@
 :root:not(.dark) {
   --ui-primary: var(--ui-color-primary-800);
   --ui-success: var(--ui-color-success-800);
+  --ui-warning: var(--ui-color-warning-800);
   --ui-text-dimmed: var(--ui-color-neutral-600);
   --ui-text-muted: var(--ui-color-neutral-600);
 }
