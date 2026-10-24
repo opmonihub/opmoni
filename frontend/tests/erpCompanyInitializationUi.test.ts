@@ -39,10 +39,10 @@ const completeResult: InitializationOutcome = {
   completed: true
 }
 
-function initializationHarness(api: (path: string, options?: ApiOptions) => Promise<unknown>, role = 'owner', accessKind = 'direct', permissions = ['erp.company.settings.update']) {
+function initializationHarness(api: (path: string, options?: ApiOptions) => Promise<unknown>, role = 'owner', accessKind = 'direct', permissions = ['erp.company.settings.update'], accountContext: { id: number, status: string, role: string } | null = { id: 3, status: 'active', role: 'admin' }) {
   const user = Vue.ref({ id: 91, is_super_admin: false })
   const company = Vue.ref({ id: 7, status: 'active', access_kind: accessKind, role, permissions, delegated_office_id: accessKind === 'delegated' ? 3 : null })
-  const account = Vue.ref({ id: 3, status: 'active', role: 'admin' })
+  const account = Vue.ref(accountContext)
   const sessionGeneration = Vue.ref(0)
   const stateCache = new Map<string, Vue.Ref>()
   stateCache.set('access-session-generation', sessionGeneration)
@@ -91,7 +91,78 @@ const flush = async () => {
   await Vue.nextTick()
 }
 
+type TestNode = { tag?: string, text?: string, children: TestNode[], parent: TestNode | null, props: Record<string, unknown> }
+
+function mountReconciliationComponent(t: { after: (callback: () => void) => void }, workspace: unknown) {
+  const component = compileVueComponent('components/erp/ErpCompanyInitializationReconciliation.vue', {
+    useErpCompanyInitialization: () => workspace
+  })
+  const root: TestNode = { tag: 'root', children: [], parent: null, props: {} }
+  const renderer = Vue.createRenderer<TestNode>({
+    patchProp(node, name, _previous, next) { node.props[name] = next },
+    insert(node, parent, anchor) {
+      if (node.parent) {
+        const index = node.parent.children.indexOf(node)
+        if (index >= 0) node.parent.children.splice(index, 1)
+      }
+      node.parent = parent
+      const index = anchor ? parent.children.indexOf(anchor) : -1
+      if (index < 0) parent.children.push(node)
+      else parent.children.splice(index, 0, node)
+    },
+    remove(node) {
+      if (node.parent) {
+        const index = node.parent.children.indexOf(node)
+        if (index >= 0) node.parent.children.splice(index, 1)
+      }
+    },
+    createElement(tag) { return { tag, children: [], parent: null, props: {} } },
+    createText(text) { return { text, children: [], parent: null, props: {} } },
+    createComment(text) { return { text, children: [], parent: null, props: {} } },
+    setText(node, text) { node.text = text },
+    setElementText(node, text) {
+      node.children = []
+      node.text = text
+    },
+    parentNode(node) { return node.parent },
+    nextSibling(node) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
+  })
+  const app = renderer.createApp(component)
+  app.component('UPageCard', { props: ['title', 'description', 'variant'], setup: (props, context) => () => Vue.h('section', [Vue.h('h2', String(props.title ?? '')), context.slots.default?.()]) })
+  app.component('UAlert', { props: ['title', 'description', 'color'], setup: props => () => Vue.h('div', { role: 'alert' }, [String(props.title ?? ''), String(props.description ?? '')]) })
+  app.component('UButton', { props: ['label', 'disabled', 'loading', 'type'], setup: (props, context) => () => Vue.h('button', { ...context.attrs, disabled: props.disabled }, String(props.label ?? '')) })
+  app.component('UTable', { props: ['data', 'columns'], setup: props => () => Vue.h('div', { role: 'table' }, props.data.flatMap((row: Record<string, unknown>) => [String(row.label), String(row.statusLabel), String(row.reasonLabel), String(row.beforeLabel), String(row.afterLabel)]).join(' ')) })
+  app.component('UBadge', { setup: (_props, context) => () => Vue.h('span', context.slots.default?.()) })
+  app.mount(root)
+  t.after(() => app.unmount())
+  const nodes = (node: TestNode): TestNode[] => [node, ...node.children.flatMap(nodes)]
+  const text = (node: TestNode) => [node.text ?? '', ...node.children.map(text)].join(' ')
+  const click = (label: RegExp) => {
+    const button = nodes(root).find(node => node.tag === 'button' && label.test(String(node.text)))
+    assert.ok(button, `Expected button matching ${label}`)
+    const handler = button.props.onClick as ((event: Event) => void) | undefined
+    assert.equal(typeof handler, 'function')
+    handler!(new Event('click'))
+  }
+  return { root, nodes: () => nodes(root), text: () => text(root), click }
+}
+
 describe('company initialization reconciliation authority and recovery', () => {
+  it('allows a direct Company owner without an Account while still fencing Account changes', async (t) => {
+    let finish!: (value: unknown) => void
+    const app = initializationHarness(async () => new Promise((resolve) => {
+      finish = resolve
+    }), 'owner', 'direct', ['erp.company.settings.update'], null)
+    t.after(app.dispose)
+    const state = app.workspace as { canPreview: Vue.Ref<boolean>, review: Vue.Ref<InitializationPreview | null>, preview: () => Promise<unknown> }
+    assert.equal(Vue.unref(state.canPreview), true)
+    const request = state.preview()
+    app.account.value = { id: 4, status: 'active', role: 'admin' }
+    finish({ data: previewResult })
+    await request
+    assert.equal(Vue.unref(state.review), null)
+  })
+
   it('previews and explicitly applies for a current direct owner with the server-bound preview proof', async (t) => {
     const calls: ApiCall[] = []
     const app = initializationHarness(async (path, options) => {
@@ -282,6 +353,67 @@ describe('company initialization reconciliation authority and recovery', () => {
 })
 
 describe('company initialization reconciliation interface', () => {
+  it('applies the real preview proof when the owner clicks the Apply button', async (t) => {
+    const calls: ApiCall[] = []
+    const app = initializationHarness(async (path, options) => {
+      calls.push({ path, options })
+      return path.endsWith('/preview') ? { data: previewResult } : { data: completeResult }
+    })
+    t.after(app.dispose)
+    const mounted = mountReconciliationComponent(t, app.workspace)
+    await flush()
+    mounted.click(/gerar prévia/i)
+    await flush()
+    mounted.click(/aplicar configuração/i)
+    await flush()
+    assert.equal(calls.filter(call => call.path.endsWith('/apply')).length, 1)
+    const request = calls.find(call => call.path.endsWith('/apply'))
+    assert.deepEqual(request?.options?.body, { preview_version: 'setup-v1', fingerprint: previewResult.fingerprint })
+    assert.match(request?.options?.headers?.['Idempotency-Key'] ?? '', /^[0-9a-f-]{36}$/i)
+    assert.match(mounted.text(), /Preparação inicial concluída/)
+  })
+
+  it('shows the full safe backend manifest and a customized UN conflict in the rendered review', async (t) => {
+    const manifestPreview: InitializationPreview = {
+      ...previewResult,
+      items: [
+        { key: 'operating_settings.time_zone', status: 'create', reason: 'missing_preference', before: 'UTC', after: 'America/Sao_Paulo', effective_changed: true },
+        { key: 'operating_settings.date_format', status: 'create', reason: 'missing_preference', before: 'Y-m-d', after: 'd/m/Y', effective_changed: true },
+        { key: 'operating_settings.time_format', status: 'create', reason: 'missing_preference', before: 12, after: 24, effective_changed: true },
+        { key: 'operating_settings.fy_start_month', status: 'create', reason: 'missing_preference', before: 7, after: 1, effective_changed: true },
+        { key: 'operating_settings.accounting_method', status: 'create', reason: 'missing_preference', before: 'average', after: 'fifo', effective_changed: true },
+        { key: 'operating_settings.stock_overselling_enabled', status: 'create', reason: 'missing_preference', before: true, after: false, effective_changed: true },
+        { key: 'currency', status: 'create', reason: 'missing_native_currency', before: null, after: 'BRL', effective_changed: true },
+        { key: 'unit', status: 'create', reason: 'missing_native_record', before: null, after: { native_key: 'br-basic-v1.unit.un', short_name: 'UN', actual_name: 'Unidade', allow_decimal: false, base_unit_id: null, conversion_factor: null, status: 'active' }, effective_changed: true },
+        { key: 'customer', status: 'create', reason: 'missing_native_record', before: null, after: { native_key: 'br-basic-v1.customer.counter-sale', name: 'Consumidor final', is_customer: true, is_supplier: false, status: 'active' }, effective_changed: true },
+        { key: 'sale_scheme', status: 'create', reason: 'missing_native_record', before: null, after: { native_key: 'br-basic-v1.sale-scheme', name: 'Vendas', prefix: '', start_number: 1, total_digits: 4, is_default: false, status: 'active' }, effective_changed: true },
+        { key: 'sale_layout', status: 'create', reason: 'missing_native_record', before: null, after: { native_key: 'br-basic-v1.sale-layout', name: 'Venda comercial', layout_settings: { private_configuration: 'must not be displayed' }, is_default: false, status: 'active' }, effective_changed: true }
+      ]
+    }
+    let previews = 0
+    const app = initializationHarness(async () => ({ data: { ...manifestPreview, items: previews++ === 0 ? manifestPreview.items : manifestPreview.items.map(item => item.key === 'unit' ? { ...item, status: 'conflict', reason: 'native_record_customized_or_archived', after: null } : item) } }))
+    t.after(app.dispose)
+    const mounted = mountReconciliationComponent(t, app.workspace)
+    const workspace = app.workspace as { preview: () => Promise<unknown> }
+    await workspace.preview()
+    await flush()
+    const proposed = mounted.text()
+    assert.match(proposed, /Início do ano fiscal/)
+    assert.match(proposed, /Venda sem excesso de estoque/)
+    assert.match(proposed, /UN · Unidade · unidade inteira/)
+    assert.match(proposed, /Consumidor final/)
+    assert.match(proposed, /Vendas · sem prefixo · inicia em 1 · 4 dígitos/)
+    assert.match(proposed, /Venda comercial/)
+    assert.doesNotMatch(proposed, /br-basic-v1\.|private_configuration|\[object Object\]/)
+
+    await workspace.preview()
+    await flush()
+    const conflict = mounted.text()
+    assert.match(conflict, /Unidade padrão/)
+    assert.match(conflict, /Unidade existente foi personalizada ou arquivada/)
+    assert.doesNotMatch(conflict, /br-basic-v1\.|private_configuration|\[object Object\]/)
+  })
+
   it('renders a partial apply as unresolved conflicts, never as completed setup', async (t) => {
     const state = {
       canPreview: Vue.ref(true),

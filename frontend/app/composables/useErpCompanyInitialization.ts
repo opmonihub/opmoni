@@ -12,7 +12,7 @@ type InitializationOperation = ErpPendingOperation
 
 export function useErpCompanyInitialization() {
   const { api, refreshCsrf } = useAccessApi()
-  const { user, currentCompany, currentAccount } = useAuth()
+  const { user, currentCompany } = useAuth()
   const context = useErpAdministrationContext()
   const review = ref<ErpCompanyInitializationPreview | null>(null)
   const outcome = ref<ErpCompanyInitializationOutcome | null>(null)
@@ -26,7 +26,6 @@ export function useErpCompanyInitialization() {
   let ownedAttempt = 0
 
   const canPreview = computed(() => !!user.value?.id && context.isCompanyOwner.value
-    && currentAccount.value?.status === 'active'
     && currentCompany.value?.status === 'active'
     && erpCompanyHasPermission(currentCompany.value?.permissions, 'erp.company.settings.update'))
   const canApply = computed(() => canPreview.value && !!review.value?.fingerprint && !busy.value && !needsReconciliation.value)

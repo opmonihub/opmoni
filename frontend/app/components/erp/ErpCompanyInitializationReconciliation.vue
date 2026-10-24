@@ -10,26 +10,58 @@ const itemLabels: Record<string, string> = {
   'sale_numbering': 'Numeração de vendas',
   'operating_settings.time_format': 'Formato de horário',
   'operating_settings.date_format': 'Formato de data',
-  'operating_settings.decimal_places': 'Casas decimais',
-  'operating_settings.currency_symbol_placement': 'Posição do símbolo da moeda',
   'operating_settings.time_zone': 'Fuso horário',
-  'operating_settings.accounting_method': 'Método contábil'
+  'operating_settings.fy_start_month': 'Início do ano fiscal',
+  'operating_settings.accounting_method': 'Método contábil',
+  'operating_settings.stock_overselling_enabled': 'Venda sem excesso de estoque'
 }
 
 const reasonLabels: Record<string, string> = {
   missing_preference: 'Preferência ainda não definida',
   explicit_value_preserved: 'Valor atual será preservado',
   compatible_native_identity: 'Cadastro compatível já existe',
+  missing_native_currency: 'Moeda padrão BRL será criada',
+  missing_native_record: 'Cadastro padrão será criado',
   unresolved_legacy_namespace: 'Cadastro existente precisa de conferência',
+  unresolved_reference_requires_review: 'Há um cadastro existente que precisa ser revisado',
+  unowned_unit_requires_review: 'A unidade existente com sigla UN precisa ser revisada',
+  existing_native_selection: 'Cadastro padrão atual será mantido',
   selected_record_missing: 'Cadastro selecionado não foi encontrado',
   selected_record_incompatible: 'Cadastro selecionado precisa de conferência',
   conflicting_native_identity: 'Há cadastros que precisam de conferência'
 }
 
-function formatValue(value: unknown) {
+function formatReason(key: string, reason: string) {
+  if (reason === 'native_record_customized_or_archived') {
+    const item = key === 'unit' ? 'Unidade' : key === 'customer' ? 'Cliente' : key === 'sale_scheme' ? 'Sequência de vendas' : 'Modelo de venda'
+    return `${item} existente foi personalizada ou arquivada`
+  }
+  if (reason === 'selected_reference_unavailable_or_customized') {
+    const item = key === 'unit' ? 'unidade' : key === 'customer' ? 'cliente' : key === 'sale_scheme' ? 'sequência de vendas' : 'modelo de venda'
+    return `O ${item} selecionado não está disponível ou foi personalizado`
+  }
+  return reasonLabels[reason] ?? 'Revise este item antes de continuar'
+}
+
+function formatValue(key: string, status: string, value: unknown, side: 'before' | 'after') {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
-  if (typeof value === 'object') return 'Valor configurado'
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (record.preserved === true) return 'Valor estruturado atual preservado'
+    if (side === 'after' && status === 'create') {
+      if (key === 'unit' && record.short_name === 'UN' && record.actual_name === 'Unidade' && record.allow_decimal === false)
+        return 'UN · Unidade · unidade inteira'
+      if (key === 'customer' && record.name === 'Consumidor final' && record.is_customer === true)
+        return 'Consumidor final'
+      if (key === 'sale_scheme' && record.name === 'Vendas' && record.start_number === 1 && record.total_digits === 4)
+        return `Vendas · ${record.prefix === '' ? 'sem prefixo' : 'prefixo definido'} · inicia em 1 · 4 dígitos`
+      if (key === 'sale_layout' && record.name === 'Venda comercial') return 'Venda comercial · modelo padrão'
+    }
+    if (['unit', 'customer', 'sale_scheme', 'sale_layout'].includes(key)) return 'Cadastro existente'
+    return 'Valor estruturado'
+  }
+  if (['unit', 'customer', 'sale_scheme', 'sale_layout'].includes(key)) return 'Cadastro existente'
   return String(value)
 }
 
@@ -37,9 +69,9 @@ const rows = computed(() => (workspace.review.value?.items ?? workspace.outcome.
   id: `${item.key}-${index}`,
   label: itemLabels[item.key] ?? 'Outro parâmetro da empresa',
   statusLabel: item.status === 'conflict' ? 'Conflito' : item.status === 'create' ? 'Será criado' : item.status === 'reuse' ? 'Será mantido' : item.status === 'skip' ? 'Sem alteração' : 'Em análise',
-  reasonLabel: reasonLabels[item.reason] ?? 'Revise este item antes de continuar',
-  beforeLabel: formatValue(item.before),
-  afterLabel: formatValue(item.after)
+  reasonLabel: formatReason(item.key, item.reason),
+  beforeLabel: formatValue(item.key, item.status, item.before, 'before'),
+  afterLabel: formatValue(item.key, item.status, item.after, 'after')
 })))
 
 const columns = [
@@ -102,7 +134,7 @@ const columns = [
           color="primary"
           :disabled="!workspace.canApply.value"
           :loading="workspace.busy.value"
-          @click="workspace.apply"
+          @click="workspace.apply()"
         />
         <UButton
           v-if="workspace.needsReconciliation.value"
