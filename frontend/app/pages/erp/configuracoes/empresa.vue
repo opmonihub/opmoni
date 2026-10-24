@@ -6,6 +6,7 @@ definePageMeta({ middleware: 'auth' })
 
 <template>
   <ErpCompanyInitializationReconciliation class="mb-6" />
+  <ErpCompanyProductTaxProfileDefault />
   <ErpSettingsSectionForm
     title="Dados da empresa"
     description="Mantenha os dados cadastrais, o endereço e os parâmetros fiscais da empresa."

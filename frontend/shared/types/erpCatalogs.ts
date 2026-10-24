@@ -3,6 +3,65 @@ export type ErpCatalogStatus = 'active' | 'archived'
 export type ErpCatalogEditorMode = 'create' | 'detail' | 'edit'
 export type ErpBarcodeType = 'C128' | 'C39' | 'EAN13' | 'EAN8' | 'UPCA' | 'UPCE'
 
+export const erpProductTaxProfileFields = [
+  'icms_cst',
+  'icms_csosn',
+  'icms_rate',
+  'simple_national_credit_rate',
+  'pis_cst',
+  'pis_rate',
+  'cofins_cst',
+  'cofins_rate',
+  'ipi_cst',
+  'ipi_rate',
+  'ibs_cbs_cst',
+  'ibs_cbs_classification_code'
+] as const
+
+export type ErpProductTaxProfileField = typeof erpProductTaxProfileFields[number]
+export type ErpProductTaxFieldIntent = 'value' | 'inherit' | 'unset'
+
+export type ErpProductTaxProfile = {
+  id: number
+  name: string
+  status: ErpCatalogStatus
+  current_revision: number
+  revision_id: number
+  fields: Partial<Record<ErpProductTaxProfileField, string | null>>
+  applicability: { tax_regime?: string, kind?: 'goods' | 'service', movement?: 'in' | 'out' }
+}
+
+export type ErpProductTaxFieldSource = {
+  source: 'product' | 'profile' | 'company_profile' | 'unresolved'
+  intent: ErpProductTaxFieldIntent
+  profile_id?: number
+  revision?: number
+  revision_id?: number
+}
+
+export type ErpProductTaxProfileResolution = {
+  version: 'product-tax-v1'
+  product_id: number | null
+  values: Partial<Record<ErpProductTaxProfileField, string | null>>
+  sources: Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldSource>>
+  unresolved_fields: ErpProductTaxProfileField[]
+  profile: { profile_id: number, revision: number, revision_id: number } | null
+  company_default: { revision: number, profile_id: number | null, profile_revision: number | null, profile_revision_id: number | null }
+  context: { tax_regime: string | null, kind: 'goods' | 'service', movement: 'in' | 'out' | null }
+  applicability: { profile: Record<string, string> | null, company_profile: Record<string, string> | null }
+  company_settings_fingerprint: string
+  fingerprint: string
+  previous?: ErpProductTaxProfileResolution | { errors: Record<string, string[]> }
+}
+
+export type ErpProductTaxPreviewCandidate = {
+  product_id?: number
+  kind?: 'goods' | 'service'
+  erp_product_tax_profile_id?: number | null
+  tax_field_intents?: Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
+  context?: { tax_regime?: string | null, movement?: 'in' | 'out' | null }
+} & Partial<Record<ErpProductTaxProfileField, string | null>>
+
 export type ErpContactRecord = {
   id: number
   erp_customer_group_id: number | null
@@ -54,6 +113,8 @@ export type ErpProductRecord = {
   simple_national_credit_rate: string | null
   ibs_cbs_cst: string | null
   ibs_cbs_classification_code: string | null
+  erp_product_tax_profile_id?: number | null
+  tax_field_intents?: Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>> | null
   status: ErpCatalogStatus
   variants: ErpProductVariantRecord[]
 }

@@ -19,6 +19,7 @@ const catalogReadPermissions: Record<string, string> = {
   [erpCatalogRoutes.carriers]: 'erp.carriers.index',
   [erpCatalogRoutes.vehicles]: 'erp.vehicles.index',
   [erpCatalogRoutes.drivers]: 'erp.drivers.index',
+  '/erp/tax-settings/product-tax-profiles': 'erp.product-tax-profiles.index',
   '/erp/establishments': 'erp.establishments.index'
 }
 
@@ -53,6 +54,9 @@ export function useErpCatalogList<T>(path: string) {
     } else if (company.access_kind !== 'direct') {
       return false
     }
+
+    if (path === '/erp/tax-settings/product-tax-profiles' && company.access_kind === 'delegated')
+      return company.permissions.includes(permission)
 
     return erpCompanyHasPermission(company.permissions, permission)
   })

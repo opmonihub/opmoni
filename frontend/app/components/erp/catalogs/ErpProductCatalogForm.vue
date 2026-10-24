@@ -2,10 +2,11 @@
 import { nextTick } from 'vue'
 import { useErpCatalogFormDirty } from '~/composables/useErpCatalogFormDirty'
 import { useErpNativeUnitDefault } from '~/composables/useErpNativeUnitDefault'
-import type { ErpBarcodeType, ErpCatalogEditorMode, ErpProductRecord } from '#shared/types/erpCatalogs'
+import { erpProductTaxProfileFields, type ErpBarcodeType, type ErpCatalogEditorMode, type ErpProductRecord, type ErpProductTaxFieldIntent, type ErpProductTaxPreviewCandidate, type ErpProductTaxProfileField } from '#shared/types/erpCatalogs'
 import { erpCatalogRoutes } from '#shared/utils/erpCatalogs'
 import ErpCatalogField from '~/components/erp/catalogs/ErpCatalogField.vue'
 import ErpCatalogReferenceSelect from '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue'
+import { useErpProductTaxProfilePreview } from '~/composables/useErpProductTaxProfilePreview'
 
 type FormVariant = {
   id?: number
@@ -40,6 +41,26 @@ const variantBarcodeTypeItems: Array<{ label: string, value: ErpBarcodeType | nu
   { label: 'Herdar formato do produto', value: null },
   ...barcodeTypeItems
 ]
+const taxFieldLabels: Record<ErpProductTaxProfileField, string> = {
+  icms_cst: 'CST do ICMS',
+  icms_csosn: 'CSOSN',
+  icms_rate: 'Alíquota de ICMS (%)',
+  simple_national_credit_rate: 'Crédito do Simples Nacional (%)',
+  pis_cst: 'CST do PIS',
+  pis_rate: 'Alíquota do PIS (%)',
+  cofins_cst: 'CST da COFINS',
+  cofins_rate: 'Alíquota da COFINS (%)',
+  ipi_cst: 'CST do IPI',
+  ipi_rate: 'Alíquota do IPI (%)',
+  ibs_cbs_cst: 'CST IBS/CBS',
+  ibs_cbs_classification_code: 'Classificação IBS/CBS'
+}
+const taxIntentItems: Array<{ label: string, value: ErpProductTaxFieldIntent }> = [
+  { label: 'Usar valor do produto', value: 'value' },
+  { label: 'Herdar configuração', value: 'inherit' },
+  { label: 'Sem valor definido', value: 'unset' }
+]
+const taxFields = erpProductTaxProfileFields.map(field => ({ name: field, label: taxFieldLabels[field] }))
 const productSectionItems = [
   { label: 'Detalhes comerciais', value: 'commercial', slot: 'commercial' },
   { label: 'Fiscal', value: 'fiscal', slot: 'fiscal' },
@@ -52,13 +73,20 @@ const form = reactive({
   sale_price: '0.0000', warranty_months: '', warranty_description: '', barcode: '', barcode_type: 'C128' as ErpBarcodeType,
   ncm: '', cest: '', origin_code: '', icms_cst: '', icms_csosn: '', icms_rate: '', simple_national_credit_rate: '',
   pis_cst: '', pis_rate: '', cofins_cst: '', cofins_rate: '', ipi_cst: '', ipi_rate: '',
-  ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[]
+  ibs_cbs_cst: '', ibs_cbs_classification_code: '', variants: [] as FormVariant[],
+  erp_product_tax_profile_id: null as number | null,
+  tax_field_intents: {} as Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
 })
 const disabled = computed(() => props.mode === 'detail' || !props.canSave || props.busy)
 const { markClean } = useErpCatalogFormDirty(form, () => props.mode !== 'detail', dirty => emit('dirty-change', dirty))
 let nativeBaseline = ''
 const openProductSections = ref<string[]>([])
 const pendingVariantArchive = ref<number | null>(null)
+const taxPreview = useErpProductTaxProfilePreview()
+const taxSetupMode = ref<'none' | 'company_default' | 'profile'>('none')
+const taxIntentTouched = ref(false)
+const profileChangedForExisting = ref(false)
+const profileIndexPath = '/erp/tax-settings/product-tax-profiles'
 const variantArchiveOpen = computed({
   get: () => pendingVariantArchive.value !== null,
   set: (open: boolean) => {
@@ -101,6 +129,12 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.ipi_rate = record?.ipi_rate ?? ''
   form.ibs_cbs_cst = record?.ibs_cbs_cst ?? ''
   form.ibs_cbs_classification_code = record?.ibs_cbs_classification_code ?? ''
+  form.erp_product_tax_profile_id = record?.erp_product_tax_profile_id ?? null
+  form.tax_field_intents = { ...(record?.tax_field_intents ?? {}) }
+  taxIntentTouched.value = record?.tax_field_intents != null
+  taxSetupMode.value = record?.erp_product_tax_profile_id ? 'profile' : 'none'
+  profileChangedForExisting.value = false
+  taxPreview.clear()
   form.variants = record?.variants.length
     ? record.variants.map(variant => ({
         id: variant.id,
@@ -136,6 +170,10 @@ watch(() => form.kind, (kind) => {
     form.track_stock = false
 })
 
+watch(() => [form.erp_product_tax_profile_id, form.kind, ...erpProductTaxProfileFields.map(field => form[field]), ...erpProductTaxProfileFields.map(field => form.tax_field_intents[field])], () => {
+  taxPreview.markStale()
+}, { flush: 'sync' })
+
 watch(() => props.fieldErrors, (errors) => {
   const sectionsWithErrors = new Set<string>()
   for (const [field, messages] of Object.entries(errors ?? {})) {
@@ -144,6 +182,8 @@ watch(() => props.fieldErrors, (errors) => {
     if (['erp_brand_id', 'erp_category_id', 'track_stock', 'warranty_months', 'warranty_description', 'barcode', 'barcode_type'].includes(field))
       sectionsWithErrors.add('commercial')
     else if (['ncm', 'cest', 'origin_code', 'icms_cst', 'icms_csosn', 'icms_rate', 'simple_national_credit_rate', 'pis_cst', 'pis_rate', 'cofins_cst', 'cofins_rate', 'ipi_cst', 'ipi_rate', 'ibs_cbs_cst', 'ibs_cbs_classification_code'].includes(field))
+      sectionsWithErrors.add('fiscal')
+    else if (field === 'erp_product_tax_profile_id' || field.startsWith('tax_field_intents.'))
       sectionsWithErrors.add('fiscal')
     else if (field === 'variants' || field.startsWith('variants.'))
       sectionsWithErrors.add('variants')
@@ -180,6 +220,107 @@ function nullableFiscalValue(value: string): string | null {
   return value === '' ? null : value
 }
 
+function clearTaxSetup() {
+  taxSetupMode.value = 'none'
+  form.erp_product_tax_profile_id = null
+  form.tax_field_intents = {}
+  taxIntentTouched.value = false
+  profileChangedForExisting.value = false
+  taxPreview.clear()
+}
+
+function setAllTaxFieldsToInherit() {
+  form.tax_field_intents = Object.fromEntries(erpProductTaxProfileFields.map(field => [field, 'inherit'])) as Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
+  taxIntentTouched.value = true
+}
+
+function useCompanyDefaultProfile() {
+  if (props.mode !== 'create' || disabled.value)
+    return
+  taxSetupMode.value = 'company_default'
+  form.erp_product_tax_profile_id = null
+  setAllTaxFieldsToInherit()
+  profileChangedForExisting.value = false
+  taxPreview.clear()
+}
+
+function onTaxProfileSelected(id: number | null) {
+  form.erp_product_tax_profile_id = id
+  taxSetupMode.value = id === null ? 'none' : 'profile'
+  if (props.mode === 'create') {
+    if (id !== null)
+      setAllTaxFieldsToInherit()
+    else {
+      form.tax_field_intents = {}
+      taxIntentTouched.value = false
+    }
+  } else {
+    profileChangedForExisting.value = id !== (props.record?.erp_product_tax_profile_id ?? null)
+  }
+  taxPreview.clear()
+}
+
+function fieldIntent(field: ErpProductTaxProfileField): ErpProductTaxFieldIntent {
+  const intent = form.tax_field_intents[field]
+  if (intent)
+    return intent
+  return form[field] === '' ? 'unset' : 'value'
+}
+
+function setFieldIntent(field: ErpProductTaxProfileField, value: unknown) {
+  if (value !== 'value' && value !== 'inherit' && value !== 'unset')
+    return
+  form.tax_field_intents = { ...form.tax_field_intents, [field]: value }
+  taxIntentTouched.value = true
+  taxPreview.markStale()
+}
+
+function taxCandidateForPreview(): ErpProductTaxPreviewCandidate {
+  const previewAllInherited = taxSetupMode.value !== 'none'
+    && (props.mode === 'create' || profileChangedForExisting.value)
+  const intents = Object.fromEntries(erpProductTaxProfileFields.map(field => [
+    field,
+    previewAllInherited ? 'inherit' : fieldIntent(field)
+  ])) as Partial<Record<ErpProductTaxProfileField, ErpProductTaxFieldIntent>>
+  const candidate: ErpProductTaxPreviewCandidate = {
+    ...(props.record?.id ? { product_id: props.record.id } : {}),
+    kind: form.kind,
+    erp_product_tax_profile_id: form.erp_product_tax_profile_id,
+    tax_field_intents: intents
+  }
+  for (const field of erpProductTaxProfileFields) {
+    if (intents[field] === 'inherit')
+      continue
+    candidate[field] = nullableFiscalValue(form[field])
+  }
+  return candidate
+}
+
+async function previewTax() {
+  await taxPreview.preview(taxCandidateForPreview())
+}
+
+const canAdoptTaxPreview = computed(() => props.mode !== 'create'
+  && taxPreview.result.value !== null
+  && !taxPreview.pending.value
+  && !taxPreview.stale.value
+  && taxPreview.error.value === '')
+
+function adoptReviewedTaxProfile() {
+  if (!canAdoptTaxPreview.value)
+    return
+  const intents = { ...form.tax_field_intents }
+  for (const field of erpProductTaxProfileFields) {
+    if (fieldIntent(field) !== 'value')
+      intents[field] = 'inherit'
+  }
+  form.tax_field_intents = intents
+  taxIntentTouched.value = true
+  profileChangedForExisting.value = false
+  taxSetupMode.value = form.erp_product_tax_profile_id === null ? 'company_default' : 'profile'
+  taxPreview.markFresh()
+}
+
 function submit() {
   if (disabled.value)
     return
@@ -196,7 +337,7 @@ function submit() {
       row.status = 'archived'
     return row
   })
-  emit('save', {
+  const payload: Record<string, unknown> = {
     name: form.name,
     sku: form.sku || null,
     kind: form.kind,
@@ -225,7 +366,31 @@ function submit() {
     ibs_cbs_cst: nullableFiscalValue(form.ibs_cbs_cst),
     ibs_cbs_classification_code: nullableFiscalValue(form.ibs_cbs_classification_code),
     variants
-  })
+  }
+  const hasProfileMetadata = form.erp_product_tax_profile_id !== null
+    || props.record?.erp_product_tax_profile_id !== undefined
+    || taxIntentTouched.value
+    || props.record?.tax_field_intents != null
+  if (hasProfileMetadata) {
+    payload.erp_product_tax_profile_id = form.erp_product_tax_profile_id
+    if (taxIntentTouched.value || props.record?.tax_field_intents != null) {
+      payload.tax_field_intents = { ...form.tax_field_intents }
+      const inheritedFields = new Set<ErpProductTaxProfileField>()
+      for (const field of erpProductTaxProfileFields) {
+        const intent = form.tax_field_intents[field]
+        if (intent === 'inherit')
+          inheritedFields.add(field)
+        else if (intent === 'unset')
+          payload[field] = null
+      }
+      if (inheritedFields.size) {
+        const serialized = Object.fromEntries(Object.entries(payload).filter(([key]) => !inheritedFields.has(key as ErpProductTaxProfileField)))
+        emit('save', serialized)
+        return
+      }
+    }
+  }
+  emit('save', payload)
 }
 </script>
 
@@ -426,6 +591,128 @@ function submit() {
               O cadastro pode ficar incompleto. Informe os códigos e percentuais já definidos para este produto.
             </p>
           </div>
+
+          <section aria-labelledby="product-tax-profile-title" class="border-default space-y-4 rounded-lg border p-4">
+            <div>
+              <h4 id="product-tax-profile-title" class="text-highlighted font-medium">
+                Configuração tributária compartilhada
+              </h4>
+              <p class="text-muted text-sm">
+                A prévia não salva o produto. Confira os valores efetivos e suas origens antes de adotar uma configuração.
+              </p>
+            </div>
+            <div v-if="mode === 'create'" class="flex flex-wrap gap-2">
+              <UButton
+                label="Padrão da empresa"
+                color="neutral"
+                variant="outline"
+                :disabled="disabled"
+                :aria-pressed="taxSetupMode === 'company_default'"
+                @click="useCompanyDefaultProfile"
+              />
+              <UButton
+                label="Sem configuração tributária"
+                color="neutral"
+                variant="outline"
+                :disabled="disabled"
+                :aria-pressed="taxSetupMode === 'none'"
+                @click="clearTaxSetup"
+              />
+            </div>
+            <ErpCatalogReferenceSelect
+              v-model="form.erp_product_tax_profile_id"
+              :path="profileIndexPath"
+              label="Perfil tributário"
+              label-key="name"
+              name="erp_product_tax_profile_id"
+              optional
+              :disabled="disabled"
+              :error="fieldErrors?.erp_product_tax_profile_id?.[0]"
+              @update:model-value="onTaxProfileSelected"
+            />
+            <div class="grid gap-3 sm:grid-cols-2">
+              <UFormField
+                v-for="field in taxFields"
+                :key="field.name"
+                :name="`tax_field_intents.${field.name}`"
+                :label="`Origem · ${field.label}`"
+                :error="fieldErrors?.[`tax_field_intents.${field.name}`]?.[0]"
+              >
+                <USelect
+                  :name="`tax_field_intents.${field.name}`"
+                  :model-value="fieldIntent(field.name)"
+                  :items="taxIntentItems"
+                  value-key="value"
+                  label-key="label"
+                  :disabled="disabled"
+                  class="w-full"
+                  @update:model-value="setFieldIntent(field.name, $event)"
+                />
+              </UFormField>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                label="Pré-visualizar tributos"
+                color="primary"
+                variant="outline"
+                :disabled="disabled || !taxPreview.canPreview.value || taxPreview.pending.value"
+                :loading="taxPreview.pending.value"
+                @click="previewTax"
+              />
+              <UButton
+                v-if="canAdoptTaxPreview"
+                label="Adotar configuração revisada"
+                color="primary"
+                :disabled="disabled"
+                @click="adoptReviewedTaxProfile"
+              />
+            </div>
+            <p v-if="!taxPreview.canPreview.value" class="text-muted text-sm" role="status">
+              Seu acesso não permite pré-visualizar tributos deste produto nesta empresa.
+            </p>
+            <p v-if="taxPreview.error.value" role="alert" class="text-error text-sm">
+              {{ taxPreview.error.value }}
+            </p>
+            <p v-if="taxPreview.stale.value" role="status" class="text-warning text-sm">
+              Prévia desatualizada. Revise novamente antes de adotar. {{ taxPreview.result.value?.fingerprint }}
+            </p>
+            <section v-if="taxPreview.result.value" aria-labelledby="product-tax-preview-title" class="space-y-3">
+              <div>
+                <h5 id="product-tax-preview-title" class="text-highlighted font-medium">
+                  Prévia tributária
+                </h5>
+                <p v-if="taxPreview.result.value.profile" class="text-muted text-sm">
+                  Perfil #{{ taxPreview.result.value.profile.profile_id }} · revisão {{ taxPreview.result.value.profile.revision }}
+                </p>
+                <p v-else-if="taxPreview.result.value.company_default.profile_id" class="text-muted text-sm">
+                  Padrão da empresa · perfil #{{ taxPreview.result.value.company_default.profile_id }} · revisão {{ taxPreview.result.value.company_default.profile_revision }}
+                </p>
+              </div>
+              <dl class="grid gap-2 sm:grid-cols-2">
+                <div v-for="field in taxFields" :key="field.name" class="border-default rounded border p-2">
+                  <dt class="text-muted text-xs">
+                    {{ field.label }}
+                  </dt>
+                  <dd class="text-sm">
+                    {{ taxPreview.result.value.values[field.name] ?? 'Sem valor resolvido' }}
+                  </dd>
+                  <dd class="text-muted text-xs">
+                    {{ taxPreview.result.value.sources[field.name]?.source ?? 'Origem não informada' }}
+                    <span v-if="taxPreview.result.value.sources[field.name]?.revision">
+                      · revisão {{ taxPreview.result.value.sources[field.name]?.revision }}
+                    </span>
+                    <span v-if="taxPreview.result.value.unresolved_fields.includes(field.name)"> · pendente</span>
+                  </dd>
+                </div>
+              </dl>
+              <p v-if="taxPreview.result.value.unresolved_fields.length" class="text-warning text-sm">
+                Campos pendentes: {{ taxPreview.result.value.unresolved_fields.join(', ') }}
+              </p>
+              <p v-if="taxPreview.result.value.previous && 'errors' in taxPreview.result.value.previous" class="text-warning text-sm">
+                A configuração anterior tem campos que precisam de revisão.
+              </p>
+            </section>
+          </section>
 
           <fieldset :disabled="disabled" class="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <legend class="text-highlighted font-medium sm:col-span-2 xl:col-span-3">

@@ -1,0 +1,149 @@
+<script setup lang="ts">
+import { apiFailure } from '#shared/utils/access'
+
+const settings = useErpCompanySettings()
+const selectedProfileId = ref<number | null>(null)
+const selectedProfileValid = ref(false)
+const loadError = ref('')
+const saveError = ref('')
+const profileError = ref('')
+const savePending = ref(false)
+const fieldErrors = ref<Record<string, string[]>>({})
+
+const currentProfileId = computed(() => settings.state.value?.default_product_tax_profile_id ?? null)
+const hasSelectionChanges = computed(() => selectedProfileId.value !== currentProfileId.value)
+const canSave = computed(() => settings.canWrite.value
+  && !settings.pending.value
+  && !savePending.value
+  && !!settings.state.value
+  && (!hasSelectionChanges.value || selectedProfileId.value === null || selectedProfileValid.value))
+
+watch([settings.authorityKey, settings.state], () => {
+  selectedProfileId.value = currentProfileId.value
+  selectedProfileValid.value = false
+  loadError.value = ''
+  saveError.value = ''
+  profileError.value = ''
+  savePending.value = false
+  fieldErrors.value = {}
+}, { flush: 'sync', immediate: true })
+
+watch(selectedProfileId, (id, previous) => {
+  if (id !== previous) {
+    selectedProfileValid.value = id === null || id === currentProfileId.value
+    profileError.value = ''
+    fieldErrors.value = {}
+    saveError.value = ''
+  }
+}, { flush: 'sync' })
+
+onMounted(async () => {
+  if (!settings.state.value && settings.canRead.value && !settings.pending.value) {
+    try {
+      await settings.refresh()
+    } catch {
+      loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
+    }
+  }
+})
+
+function updateSelectionValidity(event: { id: number | null, valid: boolean }) {
+  if (event.id === selectedProfileId.value)
+    selectedProfileValid.value = event.valid
+}
+
+async function saveDefault() {
+  const current = settings.state.value
+  if (!current || !canSave.value || !hasSelectionChanges.value)
+    return
+
+  const authority = settings.authorityKey.value
+  saveError.value = ''
+  fieldErrors.value = {}
+  savePending.value = true
+  try {
+    const response = await settings.save({
+      default_product_tax_profile_id: selectedProfileId.value,
+      expected_tax_default_revision: current.tax_default_revision ?? 0
+    })
+    if (!response || authority !== settings.authorityKey.value || !settings.canWrite.value)
+      return
+  } catch (failure) {
+    if (authority !== settings.authorityKey.value || !settings.canWrite.value)
+      return
+    const details = apiFailure(failure)
+    saveError.value = details.message
+    fieldErrors.value = details.errors ?? {}
+  } finally {
+    if (authority === settings.authorityKey.value)
+      savePending.value = false
+  }
+}
+
+async function refreshSettings() {
+  if (!settings.canRead.value || settings.pending.value)
+    return
+  loadError.value = ''
+  try {
+    await settings.refresh()
+  } catch {
+    loadError.value = 'Não foi possível carregar o perfil padrão da empresa.'
+  }
+}
+</script>
+
+<template>
+  <section class="mb-6 space-y-4">
+    <UPageCard
+      title="Perfil tributário padrão"
+      description="Escolha o perfil sugerido para novos produtos desta empresa. A escolha não altera produtos já cadastrados."
+      variant="subtle"
+    >
+      <div v-if="!settings.canRead.value" class="space-y-2 text-sm text-muted">
+        <p>Seu acesso não permite consultar o perfil tributário padrão da empresa.</p>
+      </div>
+      <div v-else-if="!settings.state.value" class="space-y-3">
+        <p class="text-sm text-muted" role="status">
+          {{ loadError || (settings.pending.value ? 'Carregando perfil padrão…' : 'As configurações ainda não foram confirmadas.') }}
+        </p>
+        <UButton
+          v-if="!settings.pending.value"
+          label="Atualizar configurações"
+          color="neutral"
+          variant="outline"
+          @click="refreshSettings"
+        />
+      </div>
+      <div v-else class="space-y-4">
+        <p v-if="!settings.canWrite.value" class="text-sm text-muted">
+          Seu acesso permite apenas consultar esta configuração.
+        </p>
+        <ErpCatalogReferenceSelect
+          v-model="selectedProfileId"
+          path="/erp/tax-settings/product-tax-profiles"
+          label="Perfil sugerido para novos produtos"
+          label-key="name"
+          name="default_product_tax_profile_id"
+          :error="fieldErrors.default_product_tax_profile_id?.[0] || profileError"
+          :disabled="!settings.canWrite.value || settings.pending.value || savePending"
+          optional
+          @selection-validity="updateSelectionValidity"
+        />
+        <p class="text-xs text-muted">
+          O produto ainda exige a confirmação do perfil ou a escolha de uma configuração diferente antes de salvar.
+        </p>
+        <p v-if="saveError" role="alert" class="text-sm text-error">
+          {{ saveError }}
+        </p>
+        <div class="flex justify-end">
+          <UButton
+            label="Salvar perfil padrão"
+            :disabled="!canSave || !hasSelectionChanges"
+            :loading="savePending"
+            @click="saveDefault"
+          />
+        </div>
+      </div>
+    </UPageCard>
+  </section>
+</template>

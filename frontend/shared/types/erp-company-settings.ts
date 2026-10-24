@@ -9,6 +9,8 @@ export type ErpCompanySettingsPayload = {
   time_zone?: string
   accounting_method?: string
   transaction_edit_days?: number
+  default_product_tax_profile_id?: number | null
+  tax_default_revision?: number
   native_defaults?: ErpNativeDefaults
   [key: string]: unknown
 }
