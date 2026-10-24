@@ -52,7 +52,7 @@ final class ErpCommercialOperation
             $isReturn => [$kind === 'sale_return' ? 'erp_sale_id' : 'erp_purchase_id', 'reason', 'lines', 'expected_total', 'total_amount'],
             str_ends_with($operation, '.post') => ['draft_revision', 'expected_total', 'payment'],
             str_ends_with($operation, '.convert') => ['draft_revision', $kind === 'quote' ? 'order_no' : 'invoice_no'],
-            default => ['erp_establishment_id', 'erp_contact_id', 'erp_price_group_id', 'erp_operation_nature_id', 'currency', ErpCommercialDraftService::numberField($kind), ...($kind === 'sale' ? ['sale_no'] : []), 'lines', 'expected_total', 'total_amount', 'subtotal_amount', 'discount_amount', 'tax_amount', 'discount', 'tax_rate_percent', 'erp_discount_rule_id', 'draft_revision'],
+            default => ['erp_establishment_id', 'erp_contact_id', 'erp_price_group_id', 'erp_operation_nature_id', 'currency', ErpCommercialDraftService::numberField($kind), ...($kind === 'sale' ? ['sale_no', 'fiscal_model'] : []), 'lines', 'expected_total', 'total_amount', 'subtotal_amount', 'discount_amount', 'tax_amount', 'discount', 'tax_rate_percent', 'erp_discount_rule_id', 'draft_revision'],
         };
         if (! $isReturn && ! str_ends_with($operation, '.post') && ! str_ends_with($operation, '.convert')) {
             $allowed = [...$allowed, 'tax_context', ...(str_ends_with($operation, '.update') ? ['tax_refresh'] : [])];
@@ -199,6 +199,7 @@ final class ErpCommercialOperation
         if (isset($body['expected_total']) && ErpCommercialDraftService::decimal($body['expected_total'], 'expected_total') !== $sale->total_amount) {
             throw ValidationException::withMessages(['expected_total' => 'Total alterado.']);
         }
+        $fiscalContext = app(ErpSaleFiscalReadiness::class)->assertForPost($request, $sale);
         $drafts->validateNewReferences($request, $sale);
         $paymentPayload = null;
         if (isset($body['payment'])) {
@@ -222,6 +223,11 @@ final class ErpCommercialOperation
             $paymentPayload = app(ErpFinanceOperation::class)->canonical($paymentRequest, ErpFinanceOperation::PAYMENT, null);
         }
         app(ErpStockParticipant::class)->issueForSale($sale->erp_company_id, $sale->erp_establishment_id, $sale->id, $key, $sale->lines->map(fn (Model $line): array => $line->only(['erp_product_variant_id', 'quantity', 'unit_conversion_factor', 'product_snapshot']) + ['line_id' => $line->id])->all(), $request->user()->id, $sale->currency);
+        if ($sale->fiscal_model !== null) {
+            $snapshot = $sale->commercial_snapshot;
+            $snapshot['fiscal_context'] = $fiscalContext;
+            $sale->commercial_snapshot = $snapshot;
+        }
         $sale->commercial_snapshot = $drafts->acceptedSnapshot($sale, $request->user()->id);
         $sale->status = 'posted';
         $sale->posted_by_user_id = $request->user()->id;

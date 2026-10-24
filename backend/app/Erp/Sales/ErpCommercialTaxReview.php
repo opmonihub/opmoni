@@ -5,6 +5,7 @@ namespace App\Erp\Sales;
 use App\Erp\ErpCompanyAuthorization;
 use App\Erp\ErpOperationNatureRules;
 use App\Models\Erp\ErpProductVariant;
+use App\Models\Erp\Sales\ErpSale;
 use App\Support\AccessSession;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
@@ -51,7 +52,12 @@ final class ErpCommercialTaxReview
             $encoded = base64_encode($this->json($proof));
             $this->assertAuthority($request);
 
-            return ['reviewed_fingerprint' => $encoded.'.'.$this->sign($encoded), 'draft_revision' => $model->draft_revision, 'lines' => $rows];
+            $result = ['reviewed_fingerprint' => $encoded.'.'.$this->sign($encoded), 'draft_revision' => $model->draft_revision, 'lines' => $rows];
+            if (isset($proof['binding']['fiscal_source_review'])) {
+                $result['fiscal_source_review'] = $proof['binding']['fiscal_source_review'];
+            }
+
+            return $result;
         });
     }
 
@@ -102,6 +108,10 @@ final class ErpCommercialTaxReview
         $snapshot['document']['draft_revision'] = $model->draft_revision;
         $snapshot['lines'] = $model->fresh('lines')->lines->map(fn (Model $line): array => $line->attributesToArray())->all();
         $snapshot['version'] = ErpCommercialSnapshotVersions::documentVersion($snapshot['lines']);
+        if ($model instanceof ErpSale && $model->fiscal_model !== null) {
+            $model->setRelation('lines', $model->fresh('lines')->lines);
+            $snapshot['fiscal_context'] = app(ErpSaleFiscalReadiness::class)->capture($request, $model, reviewed: true);
+        }
         $model->commercial_snapshot = $snapshot;
         $model->save();
         $this->assertAuthority($request);
@@ -158,6 +168,9 @@ final class ErpCommercialTaxReview
     private function candidates(Request $request, Model $model, array $options): array
     {
         $context = CurrentCompany::fromRequest($request);
+        if ($model instanceof ErpSale && $model->fiscal_model !== null) {
+            app(ErpSaleFiscalReadiness::class)->modelInput($options, $model->fiscal_model);
+        }
         $selected = $model->lines->whereIn('id', $options['line_ids']);
         $this->tax->lock($context, $selected->pluck('erp_product_variant_id')->filter()->all(), array_filter([$model->erp_operation_nature_id]));
         $nature = $model->erp_operation_nature_id === null ? null : app(ErpOperationNatureRules::class)->nature($context, $model->erp_operation_nature_id, related: true, lock: true);
@@ -182,10 +195,16 @@ final class ErpCommercialTaxReview
     {
         $context = CurrentCompany::fromRequest($request);
 
-        return ['company' => $context->company->id, 'actor' => $request->user()->id,
+        $binding = ['company' => $context->company->id, 'actor' => $request->user()->id,
             'access' => $context->accessKind, 'office' => $context->delegatedOfficeId, 'delegation' => $context->delegation?->id,
             'session' => hash('sha256', $request->session()->getId()), 'kind' => $kind, 'source' => $model->id,
             'draft_revision' => $model->draft_revision, 'source_hash' => $this->digest([$model->commercial_snapshot, $model->draft_input, $model->lines->map(fn (Model $line): array => $line->attributesToArray())->all()])];
+        if ($model instanceof ErpSale && $model->fiscal_model !== null) {
+            $this->tax->lock($context, $model->lines->pluck('erp_product_variant_id')->filter()->all(), array_filter([$model->erp_operation_nature_id]));
+            $binding['fiscal_source_review'] = app(ErpSaleFiscalReadiness::class)->configurationPreconditions($context, $model);
+        }
+
+        return $binding;
     }
 
     private function sign(string $encoded): string

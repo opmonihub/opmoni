@@ -12,11 +12,67 @@ use App\Models\Erp\ErpProduct;
 use App\Models\Erp\ErpProductTaxProfile;
 use App\Models\Erp\ErpProductVariant;
 use App\Support\CurrentCompany;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 final class ErpCommercialTaxSnapshot
 {
+    /** Compare reviewed identities and facts under the existing Company-first configuration locks; never resolve new values. */
+    public function currentPreconditionsMatch(CurrentCompany $context, Model $document): bool
+    {
+        $document->loadMissing('lines');
+        $this->lock($context, $document->lines->pluck('erp_product_variant_id')->filter()->all(), array_filter([$document->erp_operation_nature_id]));
+        $company = $context->company->fresh();
+        $settings = app(ErpProductTaxResolver::class)->configurationFingerprint($company);
+        $default = ErpCompanyProductTaxDefault::query()->where('erp_company_id', $company->id)->first();
+        foreach ($document->lines as $line) {
+            $facts = $line->product_snapshot ?? [];
+            if ($line->erp_product_variant_id === null) {
+                continue;
+            }
+            $product = ErpProductVariant::query()->whereKey($line->erp_product_variant_id)->whereHas('product', fn ($query) => $query->where('erp_company_id', $company->id))->first()?->product;
+            $tax = $facts['product_tax_resolution'] ?? [];
+            $configuration = $facts['product_tax_configuration'] ?? [];
+            if ($product === null || $product->status !== 'active' || ($facts['version'] ?? null) !== ErpCommercialSnapshotVersions::RESOLVED
+                || ($tax['company_settings_fingerprint'] ?? null) !== $settings
+                || $configuration !== ['profile_id' => $product->erp_product_tax_profile_id, 'intents' => $product->tax_field_intents, 'values' => $product->only(ErpProductTaxFields::names())]) {
+                return false;
+            }
+            foreach (['ncm', 'origin_code', 'kind'] as $field) {
+                if (($facts['product'][$field] ?? null) !== $product->$field) {
+                    return false;
+                }
+            }
+            foreach (['profile', 'company_profile'] as $source) {
+                foreach ($tax['sources'] ?? [] as $used) {
+                    if (($used['source'] ?? null) !== $source) {
+                        continue;
+                    }
+                    $profile = ErpProductTaxProfile::query()->where('erp_company_id', $company->id)->whereKey($used['profile_id'])->first();
+                    if ($profile === null || $profile->status !== 'active' || $profile->current_revision !== $used['revision']) {
+                        return false;
+                    }
+                }
+            }
+            $sources = array_column($tax['sources'] ?? [], 'source');
+            if (array_intersect($sources, ['company_profile', 'company_setting', 'unresolved']) !== []
+                && (($tax['company_default']['revision'] ?? 0) !== ($default?->revision ?? 0)
+                    || ($tax['company_default']['profile_id'] ?? null) !== $default?->erp_product_tax_profile_id)) {
+                return false;
+            }
+            $cfop = $facts['cfop_resolution'] ?? [];
+            if (($cfop['nature_id'] ?? null) !== null) {
+                $nature = ErpOperationNature::query()->where('erp_company_id', $company->id)->whereKey($cfop['nature_id'])->first();
+                if ($nature === null || $nature->status !== 'active' || $nature->configuration_revision !== ($cfop['configuration_revision'] ?? null)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public function context(array $input, int $establishment): array
     {
         $data = Validator::make($input, [

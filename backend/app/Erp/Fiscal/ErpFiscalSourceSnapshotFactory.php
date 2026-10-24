@@ -66,23 +66,12 @@ final class ErpFiscalSourceSnapshotFactory
         if (strtotime((string) ($identity['issued_at'] ?? '')) === false || (int) ($identity['series'] ?? -1) < 0 || (int) ($identity['number'] ?? 0) <= 0) {
             $errors[] = 'identity.numbering';
         }
-        $rawCnpj = (string) ($issuer['cnpj'] ?? '');
-        $cnpj = $rawCnpj;
-        if (! preg_match('/^\d{14}$/', $rawCnpj) || ! $this->validCnpj($cnpj)) {
-            $errors[] = 'issuer.cnpj';
-        }
-        foreach (['legal_name', 'state_registration', 'tax_regime'] as $field) {
-            if (! isset($issuer[$field]) || $issuer[$field] === '') {
-                $errors[] = 'issuer.'.$field;
-            }
-        }
+        $cnpj = (string) ($issuer['cnpj'] ?? '');
+        $this->issuerIdentityPrerequisiteErrors($issuer, $errors);
         if ((int) ($identity['series'] ?? -1) > 999 || (int) ($identity['number'] ?? 0) > 999999999) {
             $errors[] = 'identity.numbering_bounds';
         }
-        $this->requireAddress($issuer['address'] ?? null, 'issuer.address', $errors);
-        $this->requireText($issuer, 'legal_name', 2, 60, 'issuer', $errors);
-        $this->requirePattern($issuer, 'state_registration', '/^[0-9]{2,14}$/', 'issuer', $errors);
-        $this->requireEnum($issuer, 'tax_regime', [1, 2, 3, 4], 'issuer', $errors);
+        $this->issuerDetailsPrerequisiteErrors($issuer, $errors);
         $key = (string) ($identity['access_key'] ?? '');
         if (! app(ErpFiscalPayloadBuilder::class)->validatesAccessKey($key)
             || substr($key, 6, 14) !== $cnpj || substr($key, 20, 2) !== $model
@@ -99,18 +88,7 @@ final class ErpFiscalSourceSnapshotFactory
             if (empty($source['items']) || ! is_array($source['items'])) {
                 $errors[] = 'items';
             }
-            foreach (['cnpj', 'legal_name', 'state_registration_indicator'] as $field) {
-                if (! array_key_exists($field, $recipient) || $recipient[$field] === '') {
-                    $errors[] = 'recipient.'.$field;
-                }
-            }
-            $recipientCnpj = (string) ($recipient['cnpj'] ?? '');
-            if (! preg_match('/^\d{14}$/', $recipientCnpj) && ! preg_match('/^\d{11}$/', $recipientCnpj)) {
-                $errors[] = 'recipient.cnpj';
-            }
-            $this->requireAddress($recipient['address'] ?? null, 'recipient.address', $errors);
-            $this->requireText($recipient, 'legal_name', 2, 60, 'recipient', $errors);
-            $this->requireEnum($recipient, 'state_registration_indicator', [1, 2, 9], 'recipient', $errors);
+            $this->recipientPrerequisiteErrors($recipient, $errors);
             $this->requireText($identity, 'operation_nature', 1, 60, 'identity', $errors);
             foreach (['operation_type' => [0, 1], 'destination_type' => [1, 2, 3], 'purpose' => [1, 2, 4], 'final_consumer' => [0, 1], 'presence_indicator' => [0, 1, 2, 3, 4, 5, 9], 'print_type' => [0, 1, 2, 3, 4, 5]] as $field => $allowed) {
                 $this->requireEnum($identity, $field, $allowed, 'identity', $errors);
@@ -119,30 +97,7 @@ final class ErpFiscalSourceSnapshotFactory
             foreach ($source['items'] ?? [] as $index => $item) {
                 $this->assertScalars($item, array_diff(array_keys($item), ['tax']), ['erp_product_variant_id']);
                 $this->assertScalars($item['tax'] ?? [], array_keys($item['tax'] ?? []));
-                foreach (['code' => 60, 'description' => 120, 'unit' => 6] as $field => $maximum) {
-                    $this->requireText($item, $field, 1, $maximum, 'items.'.$index, $errors);
-                }
-                $this->requireEnum($item['tax'] ?? [], 'origin', [0, 1, 2, 3, 4, 5, 6, 7, 8, '0', '1', '2', '3', '4', '5', '6', '7', '8'], 'items.'.$index.'.tax', $errors);
-                foreach (['icms_base', 'icms_value', 'pis_value', 'cofins_value'] as $field) {
-                    $this->requireDecimal($item['tax'] ?? [], $field, 13, 2, 'items.'.$index.'.tax', $errors);
-                }
-                $this->requireDecimal($item['tax'] ?? [], 'icms_rate', 3, 4, 'items.'.$index.'.tax', $errors);
-                if (! preg_match('/^(?:\d{2}|\d{8})$/', (string) ($item['ncm'] ?? '')) || ! preg_match('/^[123567]\d{3}$/', (string) ($item['cfop'] ?? ''))
-                    || ! preg_match('/^\d{1,11}(?:\.\d{1,4})?$/', (string) ($item['quantity'] ?? '')) || bccomp((string) ($item['quantity'] ?? '0'), '0', 4) <= 0
-                    || ! preg_match('/^\d{1,11}(?:\.\d{1,10})?$/', (string) ($item['unit_price'] ?? '')) || ! in_array($item['ind_total'] ?? null, [0, 1], true)
-                    || $this->cents((string) ($item['gross_total'] ?? '')) < 0) {
-                    $errors[] = 'items.'.$index.'.typed_fields';
-                }
-                foreach (['code', 'description', 'ncm', 'cfop', 'unit', 'quantity', 'unit_price', 'gross_total', 'ind_total'] as $field) {
-                    if (! array_key_exists($field, $item) || $item[$field] === '') {
-                        $errors[] = 'items.'.$index.'.'.$field;
-                    }
-                }
-                foreach (['origin', 'icms_cst', 'icms_base', 'icms_rate', 'icms_value', 'pis_cst', 'pis_value', 'cofins_cst', 'cofins_value'] as $field) {
-                    if (! array_key_exists($field, $item['tax'] ?? [])) {
-                        $errors[] = 'items.'.$index.'.tax.'.$field;
-                    }
-                }
+                $this->itemPrerequisiteErrors($item, $index, $errors);
             }
             foreach (['products', 'invoice', 'icms_base', 'icms', 'icms_desonerated', 'fcp', 'st_base', 'st', 'fcp_st', 'fcp_st_retained', 'freight', 'insurance', 'discount', 'ii', 'ipi', 'ipi_returned', 'pis', 'cofins', 'other', 'taxes_total'] as $field) {
                 if (! array_key_exists($field, $source['totals'] ?? [])) {
@@ -164,8 +119,7 @@ final class ErpFiscalSourceSnapshotFactory
             $productsCents = 0;
             foreach ($source['items'] ?? [] as $item) {
                 $productsCents += $this->cents((string) ($item['gross_total'] ?? ''));
-                if (($item['tax']['icms_cst'] ?? null) !== '00' || ! in_array((string) ($item['tax']['pis_cst'] ?? ''), ['04', '05', '06', '07', '08', '09'], true)
-                    || ! in_array((string) ($item['tax']['cofins_cst'] ?? ''), ['04', '05', '06', '07', '08', '09'], true)) {
+                if ($this->unsupportedItemTaxGroup($item)) {
                     $errors[] = 'items.tax.unsupported_group';
                 }
             }
@@ -444,6 +398,119 @@ final class ErpFiscalSourceSnapshotFactory
         if ($errors !== []) {
             throw new InvalidArgumentException('Dados fiscais obrigatórios ausentes ou inválidos: '.implode(', ', array_values(array_unique($errors))).'.');
         }
+    }
+
+    /** Validate only represented sale-source facts; issuance identity, amounts and indicator remain strict in validateSource. */
+    public function saleSourcePrerequisiteErrors(string $model, array $facts): array
+    {
+        if (! in_array($model, ['55', '65'], true)) {
+            return ['fiscal_model'];
+        }
+        $errors = [];
+        if (! is_array($facts['issuer'] ?? null)) {
+            $errors[] = 'issuer';
+        } else {
+            $this->issuerIdentityPrerequisiteErrors($facts['issuer'], $errors);
+            $this->issuerDetailsPrerequisiteErrors($facts['issuer'], $errors);
+        }
+        if (! is_array($facts['recipient'] ?? null)) {
+            $errors[] = 'recipient';
+        } else {
+            $this->recipientPrerequisiteErrors($facts['recipient'], $errors, false);
+        }
+        if (! is_array($facts['items'] ?? null) || $facts['items'] === []) {
+            $errors[] = 'items';
+        } else {
+            foreach ($facts['items'] as $index => $item) {
+                if (! is_array($item) || isset($item['tax']) && ! is_array($item['tax'])) {
+                    $errors[] = 'items.'.$index;
+
+                    continue;
+                }
+                $this->itemPrerequisiteErrors($item, $index, $errors, false);
+                if ($this->unsupportedItemTaxGroup($item)) {
+                    $errors[] = 'items.tax.unsupported_group';
+                }
+            }
+        }
+
+        return array_values(array_unique($errors));
+    }
+
+    private function issuerIdentityPrerequisiteErrors(array $issuer, array &$errors): void
+    {
+        $rawCnpj = (string) ($issuer['cnpj'] ?? '');
+        $cnpj = $rawCnpj;
+        if (! preg_match('/^\d{14}$/', $rawCnpj) || ! $this->validCnpj($cnpj)) {
+            $errors[] = 'issuer.cnpj';
+        }
+        foreach (['legal_name', 'state_registration', 'tax_regime'] as $field) {
+            if (! isset($issuer[$field]) || $issuer[$field] === '') {
+                $errors[] = 'issuer.'.$field;
+            }
+        }
+    }
+
+    private function issuerDetailsPrerequisiteErrors(array $issuer, array &$errors): void
+    {
+        $this->requireAddress($issuer['address'] ?? null, 'issuer.address', $errors);
+        $this->requireText($issuer, 'legal_name', 2, 60, 'issuer', $errors);
+        $this->requirePattern($issuer, 'state_registration', '/^[0-9]{2,14}$/', 'issuer', $errors);
+        $this->requireEnum($issuer, 'tax_regime', [1, 2, 3, 4], 'issuer', $errors);
+    }
+
+    private function recipientPrerequisiteErrors(array $recipient, array &$errors, bool $registrationIndicator = true): void
+    {
+        foreach (['cnpj', 'legal_name', ...($registrationIndicator ? ['state_registration_indicator'] : [])] as $field) {
+            if (! array_key_exists($field, $recipient) || $recipient[$field] === '') {
+                $errors[] = 'recipient.'.$field;
+            }
+        }
+        $recipientCnpj = (string) ($recipient['cnpj'] ?? '');
+        if (! preg_match('/^\d{14}$/', $recipientCnpj) && ! preg_match('/^\d{11}$/', $recipientCnpj)) {
+            $errors[] = 'recipient.cnpj';
+        }
+        $this->requireAddress($recipient['address'] ?? null, 'recipient.address', $errors);
+        $this->requireText($recipient, 'legal_name', 2, 60, 'recipient', $errors);
+        if ($registrationIndicator) {
+            $this->requireEnum($recipient, 'state_registration_indicator', [1, 2, 9], 'recipient', $errors);
+        }
+    }
+
+    private function itemPrerequisiteErrors(array $item, int $index, array &$errors, bool $fullSource = true): void
+    {
+        foreach (['code' => 60, 'description' => 120, 'unit' => 6] as $field => $maximum) {
+            $this->requireText($item, $field, 1, $maximum, 'items.'.$index, $errors);
+        }
+        $this->requireEnum($item['tax'] ?? [], 'origin', [0, 1, 2, 3, 4, 5, 6, 7, 8, '0', '1', '2', '3', '4', '5', '6', '7', '8'], 'items.'.$index.'.tax', $errors);
+        if ($fullSource) {
+            foreach (['icms_base', 'icms_value', 'pis_value', 'cofins_value'] as $field) {
+                $this->requireDecimal($item['tax'] ?? [], $field, 13, 2, 'items.'.$index.'.tax', $errors);
+            }
+            $this->requireDecimal($item['tax'] ?? [], 'icms_rate', 3, 4, 'items.'.$index.'.tax', $errors);
+        }
+        if (! preg_match('/^(?:\d{2}|\d{8})$/', (string) ($item['ncm'] ?? '')) || ! preg_match('/^[123567]\d{3}$/', (string) ($item['cfop'] ?? ''))
+            || ($fullSource && (! preg_match('/^\d{1,11}(?:\.\d{1,4})?$/', (string) ($item['quantity'] ?? '')) || bccomp((string) ($item['quantity'] ?? '0'), '0', 4) <= 0
+            || ! preg_match('/^\d{1,11}(?:\.\d{1,10})?$/', (string) ($item['unit_price'] ?? '')) || ! in_array($item['ind_total'] ?? null, [0, 1], true)
+            || $this->cents((string) ($item['gross_total'] ?? '')) < 0))) {
+            $errors[] = 'items.'.$index.'.typed_fields';
+        }
+        foreach (['code', 'description', 'ncm', 'cfop', 'unit', ...($fullSource ? ['quantity', 'unit_price', 'gross_total', 'ind_total'] : [])] as $field) {
+            if (! array_key_exists($field, $item) || $item[$field] === '') {
+                $errors[] = 'items.'.$index.'.'.$field;
+            }
+        }
+        foreach ($fullSource ? ['origin', 'icms_cst', 'icms_base', 'icms_rate', 'icms_value', 'pis_cst', 'pis_value', 'cofins_cst', 'cofins_value'] : ['origin', 'icms_cst', 'pis_cst', 'cofins_cst'] as $field) {
+            if (! array_key_exists($field, $item['tax'] ?? [])) {
+                $errors[] = 'items.'.$index.'.tax.'.$field;
+            }
+        }
+    }
+
+    private function unsupportedItemTaxGroup(array $item): bool
+    {
+        return ($item['tax']['icms_cst'] ?? null) !== '00' || ! in_array((string) ($item['tax']['pis_cst'] ?? ''), ['04', '05', '06', '07', '08', '09'], true)
+            || ! in_array((string) ($item['tax']['cofins_cst'] ?? ''), ['04', '05', '06', '07', '08', '09'], true);
     }
 
     /** Match the full timestamp and whole-hour offsets supported by the pinned NFC-e TDateTimeUTC schema. */

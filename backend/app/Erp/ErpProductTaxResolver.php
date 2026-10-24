@@ -78,8 +78,6 @@ final class ErpProductTaxResolver
                     $unresolved[] = $field;
                 }
             }
-            $relevantSettings = array_intersect_key($settings, array_flip(['regime', 'cst_csosn_padrao', ...array_values(self::COMPANY_FIELDS)]));
-            ksort($relevantSettings);
             $result = [
                 'version' => 'product-tax-v1', 'product_id' => $product->id,
                 'values' => $values, 'sources' => $sources, 'unresolved_fields' => $unresolved,
@@ -87,13 +85,22 @@ final class ErpProductTaxResolver
                 'company_default' => ['revision' => $default?->revision ?? 0, 'profile_id' => $default?->erp_product_tax_profile_id, 'profile_revision' => $defaultRevision?->revision, 'profile_revision_id' => $defaultRevision?->id],
                 'context' => $actual,
                 'applicability' => ['profile' => $selected?->applicability, 'company_profile' => $defaultRevision?->applicability],
-                'company_settings_fingerprint' => hash('sha256', json_encode($relevantSettings, JSON_THROW_ON_ERROR)),
+                'company_settings_fingerprint' => $this->configurationFingerprint($company),
                 'errors' => [],
             ];
             $result['fingerprint'] = hash('sha256', json_encode($result, JSON_THROW_ON_ERROR));
 
             return $result;
         });
+    }
+
+    public function configurationFingerprint(ErpCompany $company): string
+    {
+        $settings = $company->operating_settings ?? [];
+        $relevantSettings = array_intersect_key($settings, array_flip(['regime', 'cst_csosn_padrao', ...array_values(self::COMPANY_FIELDS)]));
+        ksort($relevantSettings);
+
+        return hash('sha256', json_encode($relevantSettings, JSON_THROW_ON_ERROR));
     }
 
     private function revision(?ErpProductTaxProfile $profile, array $actual, string $field): ErpProductTaxProfileRevision

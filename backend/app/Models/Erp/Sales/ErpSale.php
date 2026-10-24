@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ErpSale extends Model
 {
     protected $fillable = [
+        'fiscal_model',
         'conversion_source_id', 'draft_revision', 'commercial_snapshot', 'commercial_layout_snapshot', 'draft_input', 'erp_price_group_id', 'erp_operation_nature_id', 'reason', 'currency', 'subtotal_amount', 'discount_amount', 'tax_amount',
         'erp_company_id',
         'erp_establishment_id',

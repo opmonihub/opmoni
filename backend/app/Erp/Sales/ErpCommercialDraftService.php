@@ -146,6 +146,8 @@ final class ErpCommercialDraftService
         if ($model === null) {
             $input = app(ErpCompanyNativeDefaults::class)->applyToNewCommercialDraft($request, $kind, $input);
         }
+        $fiscalModel = $kind === 'sale' ? app(ErpSaleFiscalReadiness::class)->modelInput($input, $model?->fiscal_model) : null;
+        $previousFiscal = $model?->commercial_snapshot['fiscal_context'] ?? [];
         $field = self::numberField($kind);
         if ($kind === 'sale' && array_key_exists('sale_no', $input)) {
             if (array_key_exists('invoice_no', $input) && $input['invoice_no'] !== $input['sale_no']) {
@@ -321,6 +323,9 @@ final class ErpCommercialDraftService
         }
         $model ??= new $class;
         $model->fill($totals + ['erp_company_id' => $company, 'erp_establishment_id' => $establishment, 'erp_contact_id' => $contact?->id, 'erp_price_group_id' => $priceGroup?->id, 'erp_operation_nature_id' => $nature?->id, $field => $number, 'currency' => $input['currency'] ?? 'BRL', 'status' => $kind === 'order' ? 'confirmed' : 'draft', 'party_snapshot' => $party, 'draft_revision' => ($model->draft_revision ?? 0) + 1, 'draft_input' => $input]);
+        if ($kind === 'sale') {
+            $model->fiscal_model = $fiscalModel;
+        }
         if ($kind === 'sale' && ! $model->exists) {
             $model->fiscal_status = 'none';
             $model->erp_invoice_scheme_id = $allocation['scheme_id'];
@@ -337,7 +342,12 @@ final class ErpCommercialDraftService
             $kept[] = $saved->id;
         }
         $model->lines()->whereNotIn('id', $kept)->delete();
-        $model->commercial_snapshot = $this->snapshot($model->fresh('lines'));
+        $model->setRelation('lines', $model->fresh('lines')->lines);
+        $snapshot = $this->snapshot($model);
+        if ($model instanceof ErpSale) {
+            $snapshot['fiscal_context'] = app(ErpSaleFiscalReadiness::class)->capture($request, $model, $previousFiscal);
+        }
+        $model->commercial_snapshot = $snapshot;
         $model->commercial_snapshot = $model->commercial_snapshot + ['manual_header_discount' => isset($input['discount']) && ! isset($input['erp_discount_rule_id']) && bccomp($totals['discount_amount'], '0', 4) > 0, 'header_discount_rule_id' => $input['erp_discount_rule_id'] ?? null, 'price_group_resolution' => array_key_exists('erp_price_group_id', $input) ? ($input['erp_price_group_id'] === null ? 'explicit_null' : 'explicit') : 'default'];
         $model->save();
 
@@ -351,6 +361,10 @@ final class ErpCommercialDraftService
     {
         abort_unless($model->draft_revision !== null && $model->lines()->exists(), response()->json(['code' => 'legacy_operation_requires_reconciliation'], 409));
         $model->load('lines');
+        $previousFiscal = $model->commercial_snapshot['fiscal_context'] ?? [];
+        if ($model instanceof ErpSale) {
+            $model->fiscal_model = app(ErpSaleFiscalReadiness::class)->modelInput(array_replace($model->draft_input ?? [], $input), $model->fiscal_model);
+        }
         $this->validateNewReferences($request, $model);
         $company = $model->erp_company_id;
         $context = CurrentCompany::fromRequest($request);
@@ -456,7 +470,7 @@ final class ErpCommercialDraftService
         $model->save();
         $snapshot = $model->commercial_snapshot;
         $snapshot['party'] = $model->party_snapshot;
-        $snapshot['document'] = $model->only(['id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']);
+        $snapshot['document'] = $model->only([...($model instanceof ErpSale ? ['fiscal_model'] : []), 'id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']);
         $snapshot['totals'] = $totals;
         $snapshot['establishment'] = $model->establishment()->first()?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']);
         if ($adjustsDiscount || $adjustsTax || $reclassifies) {
@@ -468,6 +482,10 @@ final class ErpCommercialDraftService
                 $snapshot['manual_header_discount'] = isset($input['discount']) && bccomp($totals['discount_amount'], '0', 4) > 0;
                 $snapshot['header_discount_rule_id'] = $input['erp_discount_rule_id'] ?? null;
             }
+        }
+        if ($model instanceof ErpSale) {
+            $model->setRelation('lines', $model->fresh('lines')->lines);
+            $snapshot['fiscal_context'] = app(ErpSaleFiscalReadiness::class)->capture($request, $model, $previousFiscal);
         }
         $model->commercial_snapshot = $snapshot;
         app(ErpCommercialTaxReview::class)->assertAuthority($request);
@@ -574,7 +592,7 @@ final class ErpCommercialDraftService
         $context = CurrentCompany::fromRequest();
         $establishment = $model->establishment()->first();
 
-        return ['version' => ErpCommercialSnapshotVersions::documentVersion($model->lines->map(fn (Model $line): array => $line->attributesToArray())->all()), 'company' => $context->company->only(['id', 'name', 'cnpj', 'razao_social', 'ie']), 'establishment' => $establishment?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']), 'party' => $model->party_snapshot, 'currency' => $model->currency, 'document' => $model->only(['id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']), 'totals' => $model->only(['subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount']), 'lines' => $model->lines->map(fn (Model $line): array => $line->attributesToArray())->all(), 'header_adjustments' => ['discount' => $model->lines->first()?->product_snapshot['header_discount'] ?? null, 'tax' => $model->lines->first()?->product_snapshot['header_tax'] ?? null], 'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null]];
+        return ['version' => ErpCommercialSnapshotVersions::documentVersion($model->lines->map(fn (Model $line): array => $line->attributesToArray())->all()), 'company' => $context->company->only(['id', 'name', 'cnpj', 'razao_social', 'ie']), 'establishment' => $establishment?->only(['id', 'name', 'cnpj', 'address', 'ie', 'tax_regime']), 'party' => $model->party_snapshot, 'currency' => $model->currency, 'document' => $model->only([...($model instanceof ErpSale ? ['fiscal_model'] : []), 'id', 'erp_company_id', 'erp_establishment_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'draft_revision']), 'totals' => $model->only(['subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount']), 'lines' => $model->lines->map(fn (Model $line): array => $line->attributesToArray())->all(), 'header_adjustments' => ['discount' => $model->lines->first()?->product_snapshot['header_discount'] ?? null, 'tax' => $model->lines->first()?->product_snapshot['header_tax'] ?? null], 'fiscal_context' => ['model' => null, 'schema_version' => null, 'readiness' => 'unverified', 'issuer_resolution' => null]];
     }
 
     public function postedSnapshot(ErpSale $sale): array
@@ -704,6 +722,9 @@ final class ErpCommercialDraftService
     public function serialize(Model $model, bool $full = true): array
     {
         $data = $model->only(['id', 'erp_establishment_id', 'erp_contact_id', 'erp_price_group_id', 'erp_quote_id', 'erp_order_id', 'quote_no', 'order_no', 'invoice_no', 'status', 'fiscal_status', 'currency', 'draft_revision', 'subtotal_amount', 'discount_amount', 'tax_amount', 'total_amount']);
+        if ($model instanceof ErpSale) {
+            $data['fiscal_model'] = $model->fiscal_model;
+        }
         if ($full) {
             $data += ['party_snapshot' => $model->party_snapshot, 'commercial_snapshot' => $model->commercial_snapshot, 'lines' => $model->lines()->orderBy('ordinal')->get()->map(fn (Model $line): array => $line->attributesToArray())->all()];
         }
