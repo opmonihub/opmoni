@@ -5,6 +5,7 @@ import * as Vue from 'vue'
 import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as nav from '../app/utils/erpModulesNav.ts'
+import * as sidebarNav from '../app/utils/sidebarNav.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const erpPresentation = loadAppComposable('components/erp/erpPresentation.ts')
@@ -17,6 +18,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
   new Function('require', 'exports', ...Object.keys(globals), output)((name: string) => {
     if (name === 'vue') return { ...Vue, resolveComponent: globals.resolveComponent ?? ((name: string) => ({ name })), renderSlot: (slots: Record<string, () => Vue.VNode[]>, name: string, props: { key?: string }) => Vue.h(Vue.Fragment, { key: props?.key }, slots[name]?.()) }
     if (name === '~/utils/erpModulesNav') return nav
+    if (name === '~/utils/sidebarNav') return sidebarNav
     if (name === '#shared/utils/access') return access
     if (name === '~/components/erp/erpPresentation') return erpPresentation
     assert.equal(name, '~/utils/erpWorkspaceNav')
@@ -37,26 +39,31 @@ function surface(path: string, bindings: Record<string, unknown> = {}, props = {
     onMounted: (fn: () => Promise<void>) => mounted.push(fn),
     definePageMeta: (meta: Record<string, unknown>) => metadata.push(meta), useHead() {},
     useErpSidebarNavigation: () => ({ closeForNavigation() {} }),
+    useErpAdministrationContext: () => ({ key: Vue.computed(() => 'test-context') }),
     ...bindings
   }).default
   const state = scope.run(() => component.setup(props, { expose() {} }))
   const render = evaluate(template.code, { resolveComponent: bindings.resolveComponent }).render
   return { state, metadata, mounted, render: (slots = {}) => render({ $slots: slots }, [], props, Vue.proxyRefs(state), {}, {}), close: () => scope.stop() }
 }
-function nodes(node: Vue.VNode): Vue.VNode[] {
+function nodes(node: Vue.VNode, collapsed = false): Vue.VNode[] {
   const children = Array.isArray(node.children)
     ? node.children
     : node.children && typeof node.children === 'object'
       ? Object.entries(node.children).filter(([, value]) => typeof value === 'function').flatMap(([name, slot]) => {
           if (name === 'item-trailing' && Array.isArray(node.props?.items))
             return node.props.items.flat().filter(item => item.type !== 'label').flatMap(item => slot({ item, active: item.active }))
-          return slot({ collapsed: false, collapse() {} })
+          return slot({ collapsed, collapse() {} })
         })
       : []
-  return [node, ...children.filter(Vue.isVNode).flatMap(nodes)]
+  return [node, ...children.filter(Vue.isVNode).flatMap(child => nodes(child, collapsed))]
 }
-function named(root: Vue.VNode, name: string) {
-  return nodes(root).filter(node => typeof node.type === 'object' && (node.type as { name?: string }).name === name)
+function named(root: Vue.VNode, name: string, collapsed = false) {
+  return nodes(root, collapsed).filter(node => typeof node.type === 'object' && (node.type as { name?: string }).name === name).map((node) => {
+    // Vue camelizes explicit kebab-case props while mounting; VNode inspection must match it.
+    if (node.props && 'model-value' in node.props) node.props.modelValue = node.props['model-value']
+    return node
+  })
 }
 interface Host {
   children: Host[]
@@ -122,7 +129,7 @@ describe('ERP mobile shell and contract', () => {
     assert.equal(toggles[0]!.props?.['aria-label'], 'Abrir menu ERP')
     currentCompany.value = { ...company(), name: 'Empresa B' }
     assert.equal(named(view.render(), 'UDashboardNavbar')[0]!.props!.title, 'Empresa B')
-    const links = named(view.render(), 'UNavigationMenu')[0]!.props!.items
+    const links = named(view.render(), 'UNavigationMenu').flatMap(menu => menu.props!.items)
     assert.ok(links.flat().some((link: { label: string, children?: Array<{ to?: string }> }) => link.label === 'Relatórios' && link.children?.some(child => child.to === '/erp/relatorios#sales')))
   })
   it('lets every catalog route provide its own single native panel', (t) => {
@@ -136,52 +143,102 @@ describe('ERP mobile shell and contract', () => {
       assert.ok(nodes(layout).some(node => node.type === 'main'), `The ${path} page content remains in the layout slot`)
     }
   })
-  it('controls active sidebar expansion after mounted route and history changes while preserving manual collapse', async (t) => {
-    const route = Vue.reactive({ path: '/erp', hash: '' })
-    let menuProps: { modelValue: string[] } | undefined
-    let updateMenu: ((value: string[]) => void) | undefined
-    const menu = Vue.defineComponent({
-      name: 'UNavigationMenu',
-      props: { modelValue: { type: Array as Vue.PropType<string[]>, default: () => [] } },
-      emits: ['update:modelValue'],
-      setup(props, { emit }) {
-        menuProps = props
-        updateMenu = value => emit('update:modelValue', value)
-        return () => Vue.h('nav', { 'data-open': props.modelValue.join(',') })
-      }
-    })
+  it('keeps one full disclosure across regions, pins the active child, and respects manual fold across hashes', async (t) => {
+    const route = Vue.reactive({ path: '/erp/financeiro', hash: '#payments' })
+    const currentCompany = Vue.ref(company())
+    const currentAccount = Vue.ref<{ id: number } | null>(null)
+    const session = Vue.ref(1)
+    let selected = 0
     const view = surface('layouts/erp.vue', {
       useRoute: () => route,
-      useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) }),
-      resolveComponent: (name: string) => name === 'UNavigationMenu' ? menu : ({ name })
+      useAuth: () => ({ currentCompany, currentAccount }),
+      useErpAdministrationContext: () => ({ key: Vue.computed(() => JSON.stringify([
+        session.value, currentAccount.value?.id, currentCompany.value.id,
+        currentCompany.value.role, currentCompany.value.permissions
+      ])) }),
+      useErpSidebarNavigation: () => ({ closeForNavigation() { selected++ } })
     })
     t.after(view.close)
-    const unmount = mount(() => Vue.h({ render: () => named(view.render(), 'UNavigationMenu')[0]! }))
-    t.after(unmount)
+    const menus = () => named(view.render(), 'UNavigationMenu')
+    const menu = (label: string) => {
+      const found = menus().find(node => node.props?.items?.[0]?.label === label)
+      assert.ok(found, `menu entry ${label} is rendered`)
+      return found
+    }
+    const toggle = (label: string, value: string) => {
+      const handler = menu(label).props?.['onUpdate:modelValue'] as ((value: string) => void) | undefined
+      assert.ok(handler, `${label} has a controlled update handler`)
+      handler(value)
+    }
+    const model = (label: string) => menu(label).props?.modelValue
+
     await view.mounted[0]!()
     await Vue.nextTick()
+    assert.equal(model('Financeiro'), 'erp-financeiro')
+    assert.equal(menu('Financeiro').props?.type, 'single')
+    assert.equal(model('Configurações'), '', 'the lower region uses the same single open group')
 
-    assert.deepEqual(menuProps?.modelValue, [])
-    route.path = '/erp/financeiro'
-    route.hash = '#payments'
+    toggle('Financeiro', '')
     await Vue.nextTick()
-    assert.ok(menuProps?.modelValue.includes('erp-financeiro'), 'SPA route navigation expands the active module')
+    toggle('Configurações', 'erp-configuracoes')
+    await Vue.nextTick()
+    assert.equal(model('Configurações'), 'erp-configuracoes')
+    const finance = menu('Financeiro')
+    assert.equal(finance.props?.modelValue, 'erp-financeiro', 'the active child remains disclosed while its parent is folded')
+    const pinned = finance.props?.items?.[0]?.children as Array<{ active?: boolean, ui?: { childItem?: string }, onSelect?: () => void }>
+    assert.equal(pinned.filter(child => child.active).length, 1)
+    assert.ok(pinned.filter(child => !child.active).every(child => child.ui?.childItem === 'hidden'))
+    const search = named(view.render(), 'UDashboardSearch')[0]!.props!.groups as Array<{ items: Array<{ to: string }> }>
+    assert.ok(search.flatMap(group => group.items).some(item => item.to === '/erp/financeiro#obligations'), 'search keeps the raw permitted destination while siblings are visually folded')
+    const collapsed = named(view.render(), 'UNavigationMenu', true)
+    const collapsedFinance = collapsed.flatMap(node => node.props!.items).find(item => item.label === 'Financeiro')
+    assert.equal(collapsed.length, 2, 'collapsed popovers still use the complete two-region navigation')
+    assert.ok(collapsedFinance.children.some((child: { to?: string }) => child.to === '/erp/financeiro#obligations'))
+    assert.equal(pinned.find(child => child.active), collapsedFinance.children.find((child: { active?: boolean }) => child.active), 'the pinned destination retains its original node')
+    assert.equal(collapsed[0]!.props!.popover, '')
+    assert.equal(selected, 0, 'disclosing a parent does not navigate or close the mobile sidebar')
+    pinned.find(child => child.active)?.onSelect?.()
+    assert.equal(selected, 1, 'selecting a child preserves the mobile navigation/focus path')
 
-    updateMenu!([])
-    await Vue.nextTick()
-    assert.deepEqual(menuProps?.modelValue, [], 'manual collapse is reflected by the controlled native menu')
+    assert.equal(model('Financeiro'), 'erp-financeiro', 'the current child remains pinned after a parent click')
     route.hash = '#obligations'
     await Vue.nextTick()
-    assert.ok(menuProps?.modelValue.includes('erp-financeiro'), 'history/hash navigation reopens the now-active module')
-
-    updateMenu!([])
-    await Vue.nextTick()
-    assert.deepEqual(menuProps?.modelValue, [], 'a user can collapse the active module without an immediate watcher reopening it')
+    assert.equal(model('Financeiro'), 'erp-financeiro')
+    assert.equal(model('Configurações'), 'erp-configuracoes', 'same-module hash does not reopen the active parent')
 
     route.path = '/erp/configuracoes/empresa'
     route.hash = ''
     await Vue.nextTick()
-    assert.ok(menuProps?.modelValue.includes('erp-configuracoes'), 'the active module also opens in the template secondary menu')
+    assert.equal(model('Configurações'), 'erp-configuracoes', 'entering the new owner opens the lower region')
+    assert.equal(model('Financeiro'), '', 'previous owner closes when route owner changes')
+
+    route.path = '/erp'
+    await Vue.nextTick()
+    assert.equal(model('Configurações'), '', 'leaf route clears expansion')
+    route.path = '/erp/financeiro'
+    await Vue.nextTick()
+    assert.equal(model('Financeiro'), 'erp-financeiro')
+    toggle('Financeiro', '')
+    await Vue.nextTick()
+    session.value++
+    await Vue.nextTick()
+    assert.equal(menu('Financeiro').props?.items?.[0]?.children?.filter((child: { ui?: { childItem?: string } }) => child.ui?.childItem === 'hidden').length, 0, 'a new session clears the stale fold')
+
+    toggle('Financeiro', '')
+    await Vue.nextTick()
+    currentAccount.value = { id: 9 }
+    await Vue.nextTick()
+    assert.equal(menu('Financeiro').props?.items?.[0]?.children?.filter((child: { ui?: { childItem?: string } }) => child.ui?.childItem === 'hidden').length, 0, 'Account context clears the stale fold')
+
+    toggle('Financeiro', '')
+    await Vue.nextTick()
+    currentCompany.value = { ...company(), id: 2 }
+    await Vue.nextTick()
+    assert.equal(menu('Financeiro').props?.items?.[0]?.children?.filter((child: { ui?: { childItem?: string } }) => child.ui?.childItem === 'hidden').length, 0, 'Company context clears the stale fold')
+
+    currentCompany.value.permissions.splice(0, 1)
+    await Vue.nextTick()
+    assert.equal(menus().some(node => node.props?.items?.[0]?.label === 'Financeiro'), false, 'permission removal removes the unavailable owner')
   })
   it('keeps the Finance sidebar hash default identical for SSR and initial client render, then applies the URL hash on mount', async (t) => {
     const route = Vue.reactive({ path: '/erp/financeiro', hash: '#payments' })
@@ -192,7 +249,7 @@ describe('ERP mobile shell and contract', () => {
       useAuth: () => ({ currentCompany: Vue.ref(company()), currentAccount: Vue.ref(null) })
     })
     t.after(serverView.close)
-    const serverItems = named(serverView.render(), 'UNavigationMenu')[0]!.props!.items as Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>
+    const serverItems = named(serverView.render(), 'UNavigationMenu').flatMap(menu => menu.props!.items) as Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }>
     assert.equal(activeFinanceTarget(serverItems), '/erp/financeiro#obligations', 'SSR uses the contract default despite the browser URL fragment')
 
     let clientMenuProps: { items: Array<{ label: string, children?: Array<{ to?: string, active?: boolean }> }> } | undefined
@@ -210,7 +267,7 @@ describe('ERP mobile shell and contract', () => {
       resolveComponent: (name: string) => name === 'UNavigationMenu' ? menu : ({ name })
     })
     t.after(clientView.close)
-    const unmount = mount(() => Vue.h({ render: () => named(clientView.render(), 'UNavigationMenu')[0]! }))
+    const unmount = mount(() => Vue.h({ render: () => named(clientView.render(), 'UNavigationMenu').find(menu => menu.props?.items?.[0]?.label === 'Financeiro')! }))
     t.after(unmount)
     assert.equal(activeFinanceTarget(clientMenuProps!.items), activeFinanceTarget(serverItems), 'the initial client render matches SSR')
 
@@ -223,7 +280,7 @@ describe('ERP mobile shell and contract', () => {
     const currentAccount = Vue.ref<{ id: number } | null>(null)
     const view = surface('layouts/erp.vue', { useRoute: () => ({ path: '/erp/cadastros/contatos' }), useAuth: () => ({ currentCompany, currentAccount }) })
     t.after(view.close)
-    const slotKey = () => nodes(view.render({ default: () => [Vue.h('main')] })).find(node => node.type === Vue.Fragment)?.key
+    const slotKey = () => nodes(view.render({ default: () => [Vue.h('main')] })).find(node => node.type === Vue.Fragment && typeof node.key === 'string' && node.key.includes(':'))?.key
     const initial = slotKey()
     currentCompany.value = { ...company(), id: 2 }
     assert.notEqual(slotKey(), initial)
@@ -245,7 +302,7 @@ describe('ERP mobile shell and contract', () => {
         return () => Vue.h('p', `Company ${id}`)
       }
     })
-    const unmount = mount(() => nodes(view.render({ default: () => [Vue.h(child)] })).find(node => node.type === Vue.Fragment)!)
+    const unmount = mount(() => nodes(view.render({ default: () => [Vue.h(child)] })).find(node => node.type === Vue.Fragment && typeof node.key === 'string' && node.key.includes(':'))!)
     t.after(unmount)
     assert.deepEqual(mounted, [1])
     currentCompany.value = { ...company(), id: 2 }
