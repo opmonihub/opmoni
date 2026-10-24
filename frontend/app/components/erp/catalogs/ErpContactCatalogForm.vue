@@ -13,7 +13,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ save: [payload: Record<string, unknown>] }>()
 const addressKeys = ['street_type', 'street', 'number', 'complement', 'district', 'postal_code', 'city', 'state', 'city_code'] as const
-const initialCity = ref('')
 const initialState = ref('')
 const municipalityCodeReview = ref<{ city: string, state: string } | null>(null)
 const form = reactive({
@@ -26,8 +25,9 @@ const disabled = computed(() => props.mode === 'detail' || !props.canSave || pro
 
 watch(() => [form.city, form.state] as const, ([city, state]) => {
   const reviewedGeography = municipalityCodeReview.value
-  const geographyChanged = city !== initialCity.value || state !== initialState.value
-  if (geographyChanged && (!reviewedGeography || reviewedGeography.city !== city || reviewedGeography.state !== state)) {
+  const geographyChanged = Boolean(form.city_code)
+    && (!reviewedGeography || reviewedGeography.city !== city || reviewedGeography.state !== state)
+  if (geographyChanged) {
     form.city_code = ''
     municipalityCodeReview.value = null
   }
@@ -45,11 +45,14 @@ watch(() => [props.record, props.mode] as const, ([record]) => {
   form.is_supplier = record?.is_supplier ?? false
   form.erp_customer_group_id = record?.erp_customer_group_id ?? null
   form.address = { ...address }
-  initialCity.value = address.city ?? ''
-  initialState.value = address.state ?? ''
-  municipalityCodeReview.value = null
+  initialState.value = address.state ?? address.uf ?? ''
+  municipalityCodeReview.value = address.city_code
+    ? { city: address.city ?? '', state: initialState.value }
+    : null
   for (const key of addressKeys)
     form[key] = address[key] ?? ''
+  if (!address.state && address.uf)
+    form.state = address.uf
 }, { immediate: true })
 
 function submit() {
@@ -68,8 +71,7 @@ function submit() {
       delete address.uf
   }
   const reviewedGeography = municipalityCodeReview.value
-  const geographyChanged = form.city !== initialCity.value || form.state !== initialState.value
-  if (geographyChanged && (!reviewedGeography || reviewedGeography.city !== form.city || reviewedGeography.state !== form.state))
+  if (form.city_code && (!reviewedGeography || reviewedGeography.city !== form.city || reviewedGeography.state !== form.state))
     delete address.city_code
   emit('save', {
     name: form.name,
@@ -86,7 +88,9 @@ function submit() {
 }
 
 function reviewMunicipalityCode() {
-  municipalityCodeReview.value = { city: form.city, state: form.state }
+  municipalityCodeReview.value = form.city_code
+    ? { city: form.city, state: form.state }
+    : null
 }
 </script>
 

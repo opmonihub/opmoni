@@ -189,6 +189,7 @@ function mountContact(record: Record<string, unknown> | null = null, realCustome
     assert.ok(element, `Expected input ${name}`)
     ;(element.props.onInput as (event: Event) => void)({ target: { value } } as unknown as Event)
   }
+  const inputValue = (name: string) => descendants(root).find(node => node.tag === 'input' && node.props.name === name)?.props.value
   const settle = async () => {
     await Vue.nextTick()
     await Promise.resolve()
@@ -205,6 +206,7 @@ function mountContact(record: Record<string, unknown> | null = null, realCustome
     emitted,
     input,
     inputNow,
+    inputValue,
     lookupRequests,
     menuOptions,
     props,
@@ -274,6 +276,55 @@ describe('ERP contact geography', () => {
     t.after(form.unmount)
     await form.submit()
     assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' })
+  })
+
+  it('invalidates a reviewed code when the city returns to its initially loaded value', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: 'SP', city_code: '3550308' }
+    })
+    t.after(form.unmount)
+    await form.input('city', 'Campinas')
+    await form.input('city_code', '3509502')
+    await form.input('city', 'São Paulo')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: 'SP' })
+  })
+
+  it('invalidates a reviewed code when the UF returns to its initially loaded value', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: 'SP', city_code: '3550308' }
+    })
+    t.after(form.unmount)
+    await form.input('state', 'RJ')
+    await form.input('city_code', '3304557')
+    await form.input('state', 'SP')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: 'SP' })
+  })
+
+  it('loads a UF-only address into the visible control and clears its fiscal code with that UF', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', uf: 'SP', city_code: '3550308', integration_code: 'CLIENT-77' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'SP')
+    await form.input('state', '')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', integration_code: 'CLIENT-77' })
+  })
+
+  it('preserves conflicting stored state and UF aliases until the operator explicitly edits state', async (t) => {
+    const form = mountContact({
+      name: 'Comercial Silva', is_customer: true, is_supplier: false,
+      address: { city: 'São Paulo', state: 'RJ', uf: 'SP', city_code: '3550308' }
+    })
+    t.after(form.unmount)
+    assert.equal(form.inputValue('state'), 'RJ')
+    await form.submit()
+    assert.deepEqual(form.emitted[0]?.address, { city: 'São Paulo', state: 'RJ', uf: 'SP', city_code: '3550308' })
   })
 
   it('allows explicitly clearing city, state, and municipality code', async (t) => {
