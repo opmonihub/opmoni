@@ -116,7 +116,7 @@ final class ErpOperationJournal
 
     public static function operations(): array
     {
-        return [ErpReportExportOperation::NAME, ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ErpAccountingRetryOperation::NAME, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
+        return [ErpCompanyInitializationReconciliation::OPERATION, ErpReportExportOperation::NAME, ErpPaymentAllocationOperation::NAME, ErpCatalogImportOperation::PRODUCTS, ErpCatalogImportOperation::CONTACTS, ErpAccountingRetryOperation::NAME, ...ErpStockOperation::names(), ...ErpFinanceOperation::names(), ...ErpCommercialOperation::names(), ...ErpPurchaseOperation::names()];
     }
 
     /** @param Closure():JsonResponse $publish */
@@ -406,12 +406,18 @@ final class ErpOperationJournal
         $key = $this->key($request, true);
         $operation = $request->input('operation');
         abort_unless(in_array($operation, self::operations(), true), 422);
+        if ($operation === ErpCompanyInitializationReconciliation::OPERATION) {
+            app(ErpCompanyInitializationReconciliation::class)->assertAuthorized($request);
+        }
         $receipt = $this->receipts($request, $key, $operation)->first();
         if ($operation === ErpReportExportOperation::NAME) {
             app(ErpReportExportOperation::class)->assertAuthorized($request, $receipt?->resource_refs ?? []);
         }
         if ($receipt) {
-            if ($operation === ErpReportExportOperation::NAME) {
+            if ($operation === ErpCompanyInitializationReconciliation::OPERATION) {
+                app(ErpCompanyInitializationReconciliation::class)->assertAuthorized($request);
+                abort_unless($receipt->canonical_version === ErpCompanyInitializationReconciliation::VERSION, 409);
+            } elseif ($operation === ErpReportExportOperation::NAME) {
                 abort_unless($receipt->canonical_version === 'report-v1', 409);
             } elseif (in_array($operation, ErpPurchaseOperation::names(), true) && $receipt->canonical_version === 'purchase-v1') {
                 app(ErpPurchaseOperation::class)->authorize($request, $operation, $receipt->resource_refs);

@@ -45,6 +45,7 @@ class CurrentCompany
     {
         $permission = ErpOperationNatureRules::permission($permission, request());
         $permission = match ($permission) {
+            'erp.company.initialization.preview', 'erp.company.initialization.apply' => 'erp.company.settings.update',
             'erp.products.tax-preview' => 'erp.products.update',
             'erp.product-tax-profiles.show' => 'erp.product-tax-profiles.index',
             default => $permission,
