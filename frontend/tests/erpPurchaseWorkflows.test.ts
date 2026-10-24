@@ -9,6 +9,7 @@ import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
+import * as productVariantReferences from '../app/utils/erpProductVariantReferences.ts'
 import {
   buildPurchaseReturnPayload,
   buildXmlConfirmationItems,
@@ -81,7 +82,8 @@ function realPurchaseChild(name: 'ErpPurchaseForm' | 'ErpPurchaseReturnForm') {
   const exports = compileModule(script.content, {
     'vue': Vue,
     '#shared/types/erpBusiness': {},
-    '#shared/utils/erpPurchase': { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal, buildPurchaseReturnPayload }
+    '#shared/utils/erpPurchase': { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal, buildPurchaseReturnPayload },
+    '~/utils/erpProductVariantReferences': productVariantReferences
   }, { ref: Vue.ref, computed: Vue.computed })
   return exports.default as Vue.Component
 }
@@ -96,8 +98,9 @@ function mountXmlPreview(total: Record<string, string>) {
   const source = readFileSync(new URL('../app/components/erp/ErpPurchaseXmlPreview.vue', import.meta.url), 'utf8')
   const script = compileScript(parse(source).descriptor, { id: 'ErpPurchaseXmlPreview', inlineTemplate: true })
   const component = compileModule(script.content, {
-    'vue': Vue, '#shared/types/erpBusiness': {}, '#shared/utils/erpPurchase': { formatPurchaseDecimal, purchaseUnitFactor }
-  }, { ref: Vue.ref, computed: Vue.computed }).default as Vue.Component
+    'vue': Vue, '#shared/types/erpBusiness': {}, '#shared/utils/erpPurchase': { formatPurchaseDecimal, purchaseUnitFactor },
+    '~/utils/erpProductVariantReferences': productVariantReferences
+  }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed }).default as Vue.Component
   type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
   const root: Node = { tag: 'root', children: [], parent: null, props: {} }
   const renderer = Vue.createRenderer<Node>({
@@ -113,7 +116,7 @@ function mountXmlPreview(total: Record<string, string>) {
     'modelValue': previewState, 'onUpdate:modelValue': () => {}, 'establishmentId': 3, 'onUpdate:establishmentId': () => {},
     'establishments': [], 'suppliers': [], 'variants': [], 'units': []
   }) })
-  for (const name of ['UFormField', 'UInputMenu', 'UInput', 'UAlert', 'UButton']) app.component(name, { props: ['label', 'title'], setup: (props, context) => () => Vue.h('div', {}, [props.label ?? props.title ?? '', ...(context.slots.default?.() ?? [])]) })
+  for (const name of ['UFormField', 'UInputMenu', 'UInput', 'UAlert', 'UButton', 'ErpCatalogReferenceSelect']) app.component(name, { props: ['label', 'title'], setup: (props, context) => () => Vue.h('div', {}, [props.label ?? props.title ?? '', ...(context.slots.default?.() ?? [])]) })
   app.mount(root)
   const textContent = (node: Node): string => `${node.text ?? ''}${node.children.map(textContent).join('')}`
   return { text: textContent(root), dispose: () => app.unmount() }
@@ -182,6 +185,7 @@ function mountPurchaseWorkspace(initialHash = '#purchases', workspaceState?: Rec
   components.ErpPurchaseOperationRecovery = realPurchaseRecovery()
   components.NuxtLink = { setup: (_props, context) => () => Vue.h('a', context.attrs, context.slots.default?.()) }
   components.ErpPurchaseForm = realPurchaseChild('ErpPurchaseForm')
+  components.ErpCatalogReferenceSelect = { setup: (_props, context) => () => Vue.h('div', {}, context.slots.default?.()) }
   components.ErpPurchaseReturnForm = realPurchaseChild('ErpPurchaseReturnForm')
   components.UFormField = { props: ['label', 'error', 'name'], setup: (props, context) => () => Vue.h('label', { 'data-field': props.name }, [Vue.h('span', {}, String(props.label ?? '')), context.slots.default?.(), props.error ? Vue.h('small', {}, String(props.error)) : null]) }
   for (const name of ['UInput', 'UInputMenu', 'USelect', 'UTextarea']) components[name] = {
@@ -1737,7 +1741,8 @@ describe('purchase decimal and source helpers', () => {
     const component = compileModule(script.content, {
       'vue': Vue,
       '#shared/types/erpBusiness': {},
-      '#shared/utils/erpPurchase': { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal }
+      '#shared/utils/erpPurchase': { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal },
+      '~/utils/erpProductVariantReferences': productVariantReferences
     }, { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed }).default as Vue.Component & { render?: () => null }
     component.render = () => null
     const draft = Vue.ref({

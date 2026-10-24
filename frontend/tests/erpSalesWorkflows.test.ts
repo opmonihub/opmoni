@@ -9,6 +9,7 @@ import { erpCommercialDocumentToDraft, erpReturnLineError, erpSalePostPayload, e
 import * as apiErrors from '../app/composables/useApiError.ts'
 import * as operationRecovery from '../shared/utils/erpOperationRecovery.ts'
 import * as salesHelpers from '../shared/utils/erpSales.ts'
+import * as productVariantReferences from '../app/utils/erpProductVariantReferences.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 
 const salesPage = readFileSync(new URL('../app/pages/erp/vendas/index.vue', import.meta.url), 'utf8')
@@ -189,7 +190,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   const formScript = VueCompiler.compileScript(VueCompiler.parse(formSource).descriptor, { id: 'sales-workspace-draft', inlineTemplate: true })
   const returnFormScript = VueCompiler.compileScript(VueCompiler.parse(returnFormSource).descriptor, { id: 'sales-workspace-return', inlineTemplate: true })
   const globals = { ref: Vue.ref, reactive: Vue.reactive, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted, useRoute: () => route, useRouter: () => router, useErpAdministrationContext: () => ({ key: contextKey }) }
-  const formExports = compileModule(formScript.content, { vue: Vue }, globals)
+  const formExports = compileModule(formScript.content, { 'vue': Vue, '~/utils/erpProductVariantReferences': productVariantReferences }, globals)
   const form = formExports.default as Vue.Component
   const returnFormExports = compileModule(returnFormScript.content, { 'vue': Vue, '#shared/utils/erpSales': salesHelpers }, globals)
   const returnForm = returnFormExports.default as Vue.Component
@@ -284,6 +285,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
   app.component('USelect', select)
   app.component('UAlert', alert)
   app.component('UFormField', field)
+  app.component('ErpCatalogReferenceSelect', passthrough)
   app.component('UButton', button)
   app.component('UInput', input)
   app.component('UTextarea', input)

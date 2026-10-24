@@ -2,6 +2,7 @@
 import type { ErpPurchaseEstablishment, ErpPurchaseSupplier, ErpPurchaseUnit, ErpPurchaseVariant } from '#shared/types/erpBusiness'
 import type { ErpPurchasePreviewState } from '~/composables/useErpPurchaseWorkspace'
 import { formatPurchaseDecimal, purchaseUnitFactor } from '#shared/utils/erpPurchase'
+import { erpProductVariantQuery, formatErpProductVariantLabel } from '~/utils/erpProductVariantReferences'
 
 const props = defineProps<{
   establishments: ErpPurchaseEstablishment[]
@@ -23,10 +24,20 @@ const emit = defineEmits<{
 }>()
 const fileInput = ref<HTMLInputElement | null>(null)
 const localError = ref('')
+type VariantMetadata = { name: string, baseUnitId: number }
+type VariantSelection = { id: number | null, record: { id: number, name?: string, product?: { name?: string, erp_unit_id?: number } } | null, source: 'selection' | 'hydration' }
+const variantQuery = erpProductVariantQuery('purchase')
+const selectedVariants = reactive(new Map<number, VariantMetadata>())
 const establishmentOptions = computed(() => props.establishments.map(row => ({ id: row.id, label: row.name })))
 const supplierOptions = computed(() => props.suppliers.map(row => ({ id: row.id, label: row.trade_name || row.name, description: row.tax_id || '' })))
-const variantOptions = computed(() => props.variants.map(row => ({ id: row.id, label: row.name, description: row.sku || row.product.name })))
 const confirmable = computed(() => Boolean(state.value && state.value.preview.state === 'pending' && !state.value.preview.duplicate && state.value.preview.errors.length === 0))
+
+function variantFor(variantId: number) {
+  const cached = selectedVariants.get(variantId)
+  if (cached) return cached
+  const variant = props.variants.find(row => row.id === variantId)
+  return variant ? { name: variant.product.name, baseUnitId: variant.product.erp_unit_id } : undefined
+}
 
 function upload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -40,24 +51,33 @@ function upload(event: Event) {
   emit('upload', file, establishmentId.value)
   if (fileInput.value) fileInput.value.value = ''
 }
-function setMapping(index: number, key: 'erp_product_variant_id' | 'erp_unit_id' | 'unit_conversion_factor', value: number | string | null | undefined) {
+function setVariantSelection(index: number, selection: VariantSelection) {
+  const { id, record } = selection
+  const baseUnitId = record?.product?.erp_unit_id
+  if (record?.product && typeof baseUnitId === 'number' && Number.isSafeInteger(baseUnitId))
+    selectedVariants.set(record.id, { name: record.product.name || record.name || '', baseUnitId })
+  if (selection.source === 'hydration' || !state.value) return
+  const mappings = state.value.mappings.map((mapping, currentIndex) => {
+    if (currentIndex !== index) return { ...mapping }
+    const variantId = id ?? 0
+    const next = { ...mapping, erp_product_variant_id: variantId }
+    const variant = variantFor(variantId)
+    if (variant) {
+      next.erp_unit_id = variant.baseUnitId
+      next.unit_conversion_factor = '1.00000000'
+    }
+    return next
+  })
+  state.value = { ...state.value, mappings }
+}
+function setMapping(index: number, key: 'erp_unit_id' | 'unit_conversion_factor', value: number | string | null | undefined) {
   if (!state.value) return
   const mappings = state.value.mappings.map((mapping, currentIndex) => {
     if (currentIndex !== index) return { ...mapping }
-    if (key === 'erp_product_variant_id') {
-      const variantId = typeof value === 'number' ? value : 0
-      const variant = props.variants.find(row => row.id === variantId)
-      const next = { ...mapping, erp_product_variant_id: variantId }
-      if (variant) {
-        next.erp_unit_id = variant.product.erp_unit_id
-        next.unit_conversion_factor = '1.00000000'
-      }
-      return next
-    }
     if (key === 'erp_unit_id') {
       const unitId = typeof value === 'number' ? value : undefined
-      const variant = props.variants.find(row => row.id === mapping.erp_product_variant_id)
-      const factor = unitId && variant ? purchaseUnitFactor(unitId, variant.product.erp_unit_id, props.units) : null
+      const variant = variantFor(mapping.erp_product_variant_id)
+      const factor = unitId && variant ? purchaseUnitFactor(unitId, variant.baseUnitId, props.units) : null
       return { ...mapping, erp_unit_id: unitId, unit_conversion_factor: factor ?? '' }
     }
     return { ...mapping, unit_conversion_factor: String(value ?? '') }
@@ -65,8 +85,8 @@ function setMapping(index: number, key: 'erp_product_variant_id' | 'erp_unit_id'
   state.value = { ...state.value, mappings }
 }
 function compatibleUnits(variantId: number) {
-  const variant = props.variants.find(row => row.id === variantId)
-  return props.units.filter(unit => variant && purchaseUnitFactor(unit.id, variant.product.erp_unit_id, props.units) !== null)
+  const variant = variantFor(variantId)
+  return props.units.filter(unit => variant && purchaseUnitFactor(unit.id, variant.baseUnitId, props.units) !== null)
 }
 function amount(value: string | null | undefined, currency: string) {
   if (value === null || value === undefined) return '—'
@@ -213,17 +233,19 @@ function totalLabel(value: string) {
             <span v-if="line.amounts" class="tabular-nums">Total {{ amount(line.amounts.line_total, state.preview.total.currency ?? 'BRL') }}</span>
           </div>
           <div class="grid gap-3 sm:grid-cols-3">
-            <UFormField label="Produto/variante" :name="`xml.items.${index}.erp_product_variant_id`" :error="fieldErrors?.[`xml.items.${index}.erp_product_variant_id`]">
-              <UInputMenu
-                :model-value="state.mappings[index]?.erp_product_variant_id"
-                :items="variantOptions"
-                value-key="id"
-                placeholder="Buscar item"
-                class="w-full"
-                :aria-label="`Produto do XML item ${line.line}`"
-                @update:model-value="setMapping(index, 'erp_product_variant_id', $event)"
-              />
-            </UFormField>
+            <ErpCatalogReferenceSelect
+              :model-value="state.mappings[index]?.erp_product_variant_id"
+              path="/erp/product-variants"
+              :query="variantQuery"
+              label="Produto/variante"
+              label-key="name"
+              :label-formatter="formatErpProductVariantLabel"
+              :name="`xml.items.${index}.erp_product_variant_id`"
+              :optional="true"
+              class="w-full"
+              :error="fieldErrors?.[`xml.items.${index}.erp_product_variant_id`]"
+              @selection-record="setVariantSelection(index, $event)"
+            />
             <UFormField label="Unidade do estoque" :name="`xml.items.${index}.erp_unit_id`" :error="fieldErrors?.[`xml.items.${index}.erp_unit_id`]">
               <UInputMenu
                 :model-value="state.mappings[index]?.erp_unit_id ?? undefined"

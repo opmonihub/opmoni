@@ -366,30 +366,18 @@ export function useErpPurchaseWorkspace() {
     const generation = requestGeneration
     referencesLoading.value = true
     referenceError.value = ''
+    variants.value = []
     const settled = await Promise.allSettled([
       allowed('erp.contacts.index') ? loadAllPages<Record<string, unknown>>('/erp/contacts', token, generation) : Promise.resolve([]),
       allowed('erp.establishments.index') ? loadAllPages<ErpPurchaseEstablishment>('/erp/establishments', token, generation) : Promise.resolve([]),
-      allowed('erp.products.index') ? loadAllPages<Record<string, unknown>>('/erp/products', token, generation) : Promise.resolve([]),
       allowed('erp.units.index') ? loadAllPages<ErpPurchaseUnit>('/erp/units', token, generation) : Promise.resolve([])
     ])
     if (!current(token, generation)) return
-    const readActions = ['erp.contacts.index', 'erp.establishments.index', 'erp.products.index', 'erp.units.index'] as const
+    const readActions = ['erp.contacts.index', 'erp.establishments.index', 'erp.units.index'] as const
     const failures = settled.flatMap((result, index) => result.status === 'rejected' ? [{ error: result.reason, action: readActions[index] ?? readActions[0] }] : [])
     if (settled[0].status === 'fulfilled') suppliers.value = (settled[0].value as Record<string, unknown>[]).filter(row => row.is_supplier === true && row.status === 'active') as unknown as ErpPurchaseSupplier[]
     if (settled[1].status === 'fulfilled') establishments.value = settled[1].value as ErpPurchaseEstablishment[]
-    if (settled[2].status === 'fulfilled') variants.value = (settled[2].value as Record<string, unknown>[]).flatMap((product) => {
-      if (product.status !== 'active' || product.kind !== 'goods' || product.track_stock !== true || !Array.isArray(product.variants)) return []
-      const productId = Number(product.id)
-      if (!Number.isSafeInteger(productId) || productId < 1) return []
-      return product.variants.filter((variant: Record<string, unknown>) => variant.status === 'active' && Number.isSafeInteger(Number(variant.id)) && Number(variant.id) > 0).map((variant: Record<string, unknown>) => ({
-        id: Number(variant.id),
-        name: String(variant.name ?? product.name),
-        sku: typeof variant.sku === 'string' ? variant.sku : null,
-        status: 'active' as const,
-        product: { id: productId, name: String(product.name ?? ''), kind: String(product.kind), track_stock: true, erp_unit_id: Number(product.erp_unit_id) }
-      }))
-    })
-    if (settled[3].status === 'fulfilled') units.value = settled[3].value as ErpPurchaseUnit[]
+    if (settled[2].status === 'fulfilled') units.value = settled[2].value as ErpPurchaseUnit[]
     referencesLoading.value = false
     if (failures.length > 0) {
       const denied = failures.find(failure => isAuthorityDenial(failure.error))

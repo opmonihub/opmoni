@@ -8,6 +8,7 @@ import { erpCompanyHasPermission } from '~/utils/erpModulesNav'
 const catalogReadPermissions: Record<string, string> = {
   [erpCatalogRoutes.contacts]: 'erp.contacts.index',
   [erpCatalogRoutes.products]: 'erp.products.index',
+  '/erp/product-variants': 'erp.products.index',
   [erpCatalogRoutes.units]: 'erp.units.index',
   [erpCatalogRoutes.categories]: 'erp.categories.index',
   [erpCatalogRoutes.brands]: 'erp.brands.index',
@@ -24,12 +25,19 @@ const catalogReadPermissions: Record<string, string> = {
 }
 
 const searchDebounceMs = 250
+const reservedQueryKeys = new Set(['page', 'per_page', 'search', 'company', 'company_id', 'x-company-id', 'account', 'account_id', 'session', 'session_id'])
 
-export function useErpCatalogList<T>(path: string) {
+export function useErpCatalogList<T>(path: string, fixedQuery: () => Record<string, string> = () => ({})) {
   const { api } = useAccessApi()
   const auth = useAuth()
   const { user, currentCompany, currentAccount } = auth
-  const { key: contextKey, capture, isCurrent } = useErpAdministrationContext()
+  const normalizedFixedQuery = computed(() => Object.fromEntries(
+    Object.entries(fixedQuery())
+      .filter(([key, value]) => !reservedQueryKeys.has(key.toLowerCase()) && typeof value === 'string')
+      .sort(([left], [right]) => left.localeCompare(right))
+  ))
+  const fixedQueryKey = computed(() => JSON.stringify(normalizedFixedQuery.value))
+  const { key: contextKey, capture, isCurrent } = useErpAdministrationContext(() => fixedQueryKey.value)
   const search = ref('')
   const page = ref(1)
   const pending = ref(false)
@@ -135,7 +143,8 @@ export function useErpCatalogList<T>(path: string) {
     error.value = ''
 
     try {
-      const query = erpCatalogListQuery(search.value, page.value)
+      const query = new URLSearchParams(normalizedFixedQuery.value)
+      new URLSearchParams(erpCatalogListQuery(search.value, page.value)).forEach((value, key) => query.set(key, value))
       const result = await api<ErpPaginated<T>>(`${path}?${query}`, { signal: controller.signal })
       if (requestIsCurrent(sequence, token))
         state.value = result

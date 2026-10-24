@@ -4,45 +4,63 @@ import { apiFailure } from '#shared/utils/access'
 import { useErpAdministrationContext } from '~/composables/useErpAdministrationContext'
 import { useErpCatalogList } from '~/composables/useErpCatalogList'
 
-type ReferenceRecord = { id: number, status?: string } & Record<string, unknown>
+type ReferenceRecord = { id: number, status?: string, name?: string, sku?: string | null, product?: { name?: string, sku?: string | null, erp_unit_id?: number, [key: string]: unknown } } & Record<string, unknown>
+type SelectionRecordUpdate = { id: number | null, record: ReferenceRecord | null, source: 'selection' | 'hydration' }
 type ReferenceSearchInputProps = Omit<InputProps, 'modelValue' | 'defaultValue'> & { 'aria-label': string }
+const reservedQueryKeys = new Set(['page', 'per_page', 'search', 'company', 'company_id', 'x-company-id', 'account', 'account_id', 'session', 'session_id'])
 
 const props = defineProps<{
   path: string
   label: string
   labelKey: string
   name: string
+  query?: Record<string, string>
+  labelFormatter?: (record: ReferenceRecord) => string
   error?: string
   disabled?: boolean
   optional?: boolean
 }>()
-const emit = defineEmits<{ 'selection-validity': [state: { id: number | null, valid: boolean }] }>()
+const emit = defineEmits<{
+  'selection-validity': [state: { id: number | null, valid: boolean }]
+  'selection-record': [state: SelectionRecordUpdate]
+}>()
 const model = defineModel<number | null>({ default: null })
-const list = useErpCatalogList<ReferenceRecord>(props.path)
+const normalizedQuery = computed(() => Object.fromEntries(
+  Object.entries(props.query ?? {})
+    .filter(([key, value]) => !reservedQueryKeys.has(key.toLowerCase()) && typeof value === 'string')
+    .sort(([left], [right]) => left.localeCompare(right))
+))
+const fixedQueryKey = computed(() => JSON.stringify(normalizedQuery.value))
+const list = useErpCatalogList<ReferenceRecord>(props.path, () => normalizedQuery.value)
 const { api } = useAccessApi()
-const context = useErpAdministrationContext()
+const authorityContext = useErpAdministrationContext()
+const context = useErpAdministrationContext(() => fixedQueryKey.value)
 const selectedRecord = ref<ReferenceRecord | null>(null)
+const selectedRecordContextKey = ref('')
 const selectedError = ref('')
 const detailPending = ref(false)
 let detailSequence = 0
 let detailController: AbortController | null = null
 let disposed = false
 let lastContextKey = context.key.value
+let lastAuthorityKey = authorityContext.key.value
+let detailOwnerId: number | null = null
+let detailOwnerContextKey = ''
 let blockedSelectionId: number | null = null
 
 const currentPage = computed(() => list.state.value?.meta.current_page ?? list.page.value)
 const lastPage = computed(() => list.state.value?.meta.last_page ?? 1)
 const activeRows = computed(() => (list.state.value?.data ?? []).filter(row => row.status === undefined || row.status === 'active'))
 const selectedFromPage = computed(() => activeRows.value.find(row => row.id === model.value) ?? null)
-const displayedRecord = computed(() => selectedFromPage.value ?? selectedRecord.value)
+const displayedRecord = computed(() => selectedFromPage.value ?? (selectedRecordContextKey.value === context.key.value ? selectedRecord.value : null))
 const selectedLabel = computed(() => {
   return displayedRecord.value ? optionLabel(displayedRecord.value) : model.value ? `Referência atual #${model.value}` : ''
 })
 const options = computed(() => {
-  const rows: Array<ReferenceRecord & { label: string, disabled?: boolean }> = activeRows.value.map(row => ({ ...row, label: String(row[props.labelKey] ?? `Registro #${row.id}`) }))
+  const rows: Array<ReferenceRecord & { label: string, disabled?: boolean }> = activeRows.value.map(row => ({ ...row, label: optionLabel(row) }))
   const selected = displayedRecord.value
   if (selected && !rows.some(row => row.id === selected.id))
-    rows.unshift({ ...selected, label: String(selected[props.labelKey] ?? `Registro #${selected.id}`), disabled: true })
+    rows.unshift({ ...selected, label: optionLabel(selected), disabled: true })
   return rows
 })
 const selectionValid = computed(() => model.value !== null
@@ -52,6 +70,11 @@ const selectionValid = computed(() => model.value !== null
   && !list.pending.value && !list.error.value && !selectedError.value && !detailPending.value)
 watch([model, selectionValid], () => {
   emit('selection-validity', { id: model.value, valid: selectionValid.value })
+}, { immediate: true, flush: 'sync' })
+watch([model, displayedRecord, context.key, list.pending, list.error, list.authorityBlocked, list.canRead], () => {
+  const record = displayedRecord.value?.id === model.value ? displayedRecord.value : null
+  if (model.value !== null && record && list.canRead.value && !list.authorityBlocked.value && !list.pending.value && !list.error.value)
+    emit('selection-record', { id: model.value, record, source: 'hydration' })
 }, { immediate: true, flush: 'sync' })
 const selectedStatusLabel = computed(() => displayedRecord.value?.status === 'archived'
   ? 'Arquivado'
@@ -65,56 +88,45 @@ const searchInput = computed<ReferenceSearchInputProps>(() => ({
 }))
 
 function optionLabel(row: ReferenceRecord): string {
-  const label = String(row[props.labelKey] ?? `Registro #${row.id}`)
+  const label = props.labelFormatter?.(row) ?? String(row[props.labelKey] ?? `Registro #${row.id}`)
   if (row.status === 'archived')
     return `${label} · Arquivado`
   return row.status && row.status !== 'active' ? `${label} · Inativo` : label
 }
 
 function updateModel(value: unknown) {
-  if (value === null || value === undefined || value === '') {
-    model.value = null
+  const id = value === null || value === undefined || value === '' ? null : typeof value === 'number' ? value : Number(value)
+  const validId = id !== null && Number.isSafeInteger(id) && id > 0 ? id : null
+  const record = validId === null ? null : activeRows.value.find(row => row.id === validId) ?? null
+  if (validId !== null && (!record || !list.canRead.value || list.authorityBlocked.value || list.pending.value || list.error.value))
     return
-  }
-  const id = typeof value === 'number' ? value : Number(value)
-  model.value = Number.isSafeInteger(id) && id > 0 ? id : null
+  emit('selection-record', { id: validId, record, source: 'selection' })
+  model.value = validId
 }
 
-watch([model, context.key, () => list.state.value, list.authorityBlocked, list.canRead], async () => {
-  const nextContextKey = context.key.value
-  if (nextContextKey !== lastContextKey) {
-    lastContextKey = nextContextKey
-    detailPending.value = false
-    blockedSelectionId = model.value
-    detailSequence++
-    detailController?.abort()
-    detailController = null
-    selectedError.value = ''
-    selectedRecord.value = null
-    return
-  }
-
-  const id = model.value
-  if (id !== blockedSelectionId)
-    blockedSelectionId = null
+function abortDetail() {
   detailSequence++
   detailController?.abort()
   detailController = null
-  selectedError.value = ''
-  selectedRecord.value = null
+  detailOwnerId = null
+  detailOwnerContextKey = ''
   detailPending.value = false
-  if (!id || selectedFromPage.value || id === blockedSelectionId || list.authorityBlocked.value || !list.canRead.value)
-    return
+}
 
-  const requestId = detailSequence
+async function hydrateSelected(id: number) {
+  const requestId = ++detailSequence
   const token = context.capture()
   const controller = new AbortController()
   detailController = controller
+  detailOwnerId = id
+  detailOwnerContextKey = token.key
   detailPending.value = true
   try {
     const response = await api<{ data: ReferenceRecord }>(`${props.path}/${id}`, { signal: controller.signal })
-    if (!disposed && detailSequence === requestId && context.isCurrent(token) && model.value === id && !list.authorityBlocked.value && list.canRead.value)
+    if (!disposed && detailSequence === requestId && context.isCurrent(token) && model.value === id && !list.authorityBlocked.value && list.canRead.value) {
       selectedRecord.value = response.data
+      selectedRecordContextKey.value = token.key
+    }
   } catch (failure) {
     if (!disposed && detailSequence === requestId && context.isCurrent(token) && model.value === id) {
       const details = apiFailure(failure)
@@ -127,16 +139,48 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
   } finally {
     if (detailSequence === requestId && detailController === controller) {
       detailController = null
+      detailOwnerId = null
+      detailOwnerContextKey = ''
       detailPending.value = false
     }
   }
+}
+
+watch([model, context.key, () => list.state.value, list.authorityBlocked, list.canRead], () => {
+  const nextContextKey = context.key.value
+  if (nextContextKey !== lastContextKey) {
+    const authorityChanged = authorityContext.key.value !== lastAuthorityKey
+    lastContextKey = nextContextKey
+    lastAuthorityKey = authorityContext.key.value
+    if (authorityChanged)
+      blockedSelectionId = model.value
+    abortDetail()
+    selectedError.value = ''
+    selectedRecord.value = null
+    selectedRecordContextKey.value = ''
+    const id = model.value
+    if (!authorityChanged && id && id !== blockedSelectionId && !list.authorityBlocked.value && list.canRead.value && !selectedFromPage.value)
+      void hydrateSelected(id)
+    return
+  }
+
+  const id = model.value
+  if (id !== blockedSelectionId)
+    blockedSelectionId = null
+  if (id && detailOwnerId === id && detailOwnerContextKey === context.key.value && detailPending.value)
+    return
+  abortDetail()
+  selectedError.value = ''
+  selectedRecord.value = null
+  selectedRecordContextKey.value = ''
+  if (!id || selectedFromPage.value || id === blockedSelectionId || list.authorityBlocked.value || !list.canRead.value)
+    return
+  void hydrateSelected(id)
 }, { immediate: true, flush: 'sync' })
 
 onScopeDispose(() => {
   disposed = true
-  detailSequence++
-  detailController?.abort()
-  detailController = null
+  abortDetail()
 })
 </script>
 

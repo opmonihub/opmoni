@@ -290,7 +290,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     operationNatureState.loading = operationNatureState.permitted
     operationNatureState.error = ''
     const configs = [
-      ['/erp/establishments', 'erp.establishments.index'], ['/erp/contacts', 'erp.contacts.index'], ['/erp/units', 'erp.units.index'], ['/erp/products', 'erp.products.index'],
+      ['/erp/establishments', 'erp.establishments.index'], ['/erp/contacts', 'erp.contacts.index'], ['/erp/units', 'erp.units.index'],
       ['/erp/tax-settings/operation-natures', 'erp.operation-natures.index']
     ] as const
     const results = await Promise.allSettled(configs.map(([path, action]) => loadAllPages<Record<string, unknown>>(path, action, token, generation)))
@@ -305,14 +305,8 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     if (results[0]?.status === 'fulfilled') references.establishments = results[0].value.map(row => ({ id: Number(row.id), name: String(row.name ?? ''), status: String(row.status ?? '') })).filter(row => row.status === 'active')
     if (results[1]?.status === 'fulfilled') references.contacts = results[1].value.map(row => ({ id: Number(row.id), name: String(row.name ?? ''), trade_name: typeof row.trade_name === 'string' ? row.trade_name : null, is_customer: row.is_customer === true, status: String(row.status ?? '') })).filter(row => row.status === 'active' && row.is_customer === true)
     if (results[2]?.status === 'fulfilled') references.units = results[2].value.map(row => ({ id: Number(row.id), name: String(row.actual_name ?? ''), symbol: typeof row.short_name === 'string' ? row.short_name : null, status: String(row.status ?? '') })).filter(row => row.status === 'active')
-    if (results[3]?.status === 'fulfilled') references.variants = results[3].value.flatMap((product) => {
-      if (product.status !== 'active' || !Array.isArray(product.variants)) return []
-      return product.variants.filter((variant: Record<string, unknown>) => variant.status === 'active' && Number.isSafeInteger(Number(variant.id))).map((variant: Record<string, unknown>) => ({
-        id: Number(variant.id), name: String(variant.name ?? product.name ?? ''), sku: typeof variant.sku === 'string' ? variant.sku : null, status: 'active',
-        product: { id: Number(product.id), name: String(product.name ?? ''), kind: typeof product.kind === 'string' ? product.kind : undefined, track_stock: product.track_stock === true }
-      }))
-    })
-    const natureResult = results[4]
+    references.variants = []
+    const natureResult = results[3]
     if (operationNatureState.permitted && natureResult?.status === 'fulfilled') {
       references.operationNatures = natureResult.value.filter(row => row.status === 'active' && Number.isSafeInteger(Number(row.id)) && Number(row.id) > 0 && ['in', 'out'].includes(String(row.movement))).map(row => ({
         id: Number(row.id), erp_establishment_id: row.erp_establishment_id === null ? null : Number(row.erp_establishment_id), cfop: String(row.cfop ?? ''), description: String(row.description ?? ''), movement: row.movement as 'in' | 'out',

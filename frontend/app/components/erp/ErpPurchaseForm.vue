@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ErpPurchaseDraftLine, ErpPurchaseDraftPayload, ErpPurchaseEstablishment, ErpPurchaseSupplier, ErpPurchaseUnit, ErpPurchaseVariant } from '#shared/types/erpBusiness'
 import { addPurchaseMoney, calculatePurchaseLineTotal, convertPurchaseQuantity, formatPurchaseDecimal, purchaseUnitFactor, replacePurchaseTax, samePurchaseDecimal } from '#shared/utils/erpPurchase'
+import { erpProductVariantQuery, formatErpProductVariantLabel } from '~/utils/erpProductVariantReferences'
 
 const props = defineProps<{
   suppliers: ErpPurchaseSupplier[]
@@ -16,23 +17,31 @@ const props = defineProps<{
 const draft = defineModel<ErpPurchaseDraftPayload>({ required: true })
 const emit = defineEmits<{ submit: [payload: ErpPurchaseDraftPayload], cancel: [] }>()
 const localError = ref('')
+type VariantMetadata = { name: string, baseUnitId: number }
+type VariantSelection = { id: number | null, record: { id: number, name?: string, product?: { name?: string, erp_unit_id?: number } } | null, source: 'selection' | 'hydration' }
+const variantQuery = erpProductVariantQuery('purchase')
+const selectedVariants = reactive(new Map<number, VariantMetadata>())
 const supplierOptions = computed(() => props.suppliers.map(row => ({ id: row.id, label: row.trade_name || row.name, description: row.tax_id || '' })))
 const establishmentOptions = computed(() => props.establishments.map(row => ({ id: row.id, label: row.name })))
-const variantOptions = computed(() => props.variants.map(row => ({ id: row.id, label: row.name, description: row.sku || row.product.name })))
 
-function variantFor(line: ErpPurchaseDraftLine) {
-  return props.variants.find(variant => variant.id === line.erp_product_variant_id)
+function variantFor(line: ErpPurchaseDraftLine): VariantMetadata | undefined {
+  const id = line.erp_product_variant_id
+  if (!id) return undefined
+  const cached = selectedVariants.get(id)
+  if (cached) return cached
+  const variant = props.variants.find(row => row.id === id)
+  return variant ? { name: variant.product.name, baseUnitId: variant.product.erp_unit_id } : undefined
 }
 function compatibleUnits(line: ErpPurchaseDraftLine) {
   const variant = variantFor(line)
   if (!variant) return props.units
-  return props.units.filter(unit => purchaseUnitFactor(unit.id, variant.product.erp_unit_id, props.units) !== null)
+  return props.units.filter(unit => purchaseUnitFactor(unit.id, variant.baseUnitId, props.units) !== null)
 }
 function factorFor(line: ErpPurchaseDraftLine): string | null {
   const variant = variantFor(line)
   if (!variant) return line.erp_unit_id === null ? '1.00000000' : null
   if (line.erp_unit_id === null) return '1.00000000'
-  return purchaseUnitFactor(line.erp_unit_id, variant.product.erp_unit_id, props.units)
+  return purchaseUnitFactor(line.erp_unit_id, variant.baseUnitId, props.units)
 }
 function displayedBaseQuantity(line: ErpPurchaseDraftLine): string {
   try {
@@ -71,17 +80,22 @@ const totalAmount = computed(() => {
     return amount === '—' ? sum : addPurchaseMoney(sum, amount)
   }, '0.0000')
 })
-function selectVariant(line: ErpPurchaseDraftLine, variantId: number | null | undefined) {
-  line.erp_product_variant_id = typeof variantId === 'number' ? variantId : null
+function selectVariant(line: ErpPurchaseDraftLine, selection: VariantSelection) {
+  const record = selection.record
+  const baseUnitId = record?.product?.erp_unit_id
+  if (record?.product && typeof baseUnitId === 'number' && Number.isSafeInteger(baseUnitId))
+    selectedVariants.set(record.id, { name: record.product.name || record.name || '', baseUnitId })
+  if (selection.source === 'hydration') return
+  line.erp_product_variant_id = selection.id
   const variant = variantFor(line)
   if (!variant) {
     line.erp_unit_id = null
     line.unit_conversion_factor = '1.00000000'
     return
   }
-  line.erp_unit_id = variant.product.erp_unit_id
+  line.erp_unit_id = variant.baseUnitId
   line.unit_conversion_factor = '1.00000000'
-  if (!line.description.trim()) line.description = variant.product.name
+  if (!line.description.trim()) line.description = variant.name
 }
 function selectUnit(line: ErpPurchaseDraftLine, unitId: number | null | undefined) {
   line.erp_unit_id = typeof unitId === 'number' ? unitId : null
@@ -257,18 +271,20 @@ defineExpose({ submit, totalAmount, displayedBaseQuantity, localError })
           />
         </div>
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <UFormField label="Produto ou variante" :name="`lines.${index}.erp_product_variant_id`" :error="fieldErrors?.[`lines.${index}.erp_product_variant_id`]">
-            <UInputMenu
-              :model-value="line.erp_product_variant_id ?? undefined"
-              :items="variantOptions"
-              value-key="id"
-              placeholder="Buscar item de estoque"
-              :disabled="loading || status === 'posted'"
-              class="w-full"
-              :aria-label="`Produto do item ${index + 1}`"
-              @update:model-value="selectVariant(line, $event)"
-            />
-          </UFormField>
+          <ErpCatalogReferenceSelect
+            :model-value="line.erp_product_variant_id"
+            path="/erp/product-variants"
+            :query="variantQuery"
+            label="Produto ou variante"
+            label-key="name"
+            :label-formatter="formatErpProductVariantLabel"
+            :name="`lines.${index}.erp_product_variant_id`"
+            :optional="true"
+            :disabled="loading || status === 'posted'"
+            class="w-full"
+            :error="fieldErrors?.[`lines.${index}.erp_product_variant_id`]"
+            @selection-record="selectVariant(line, $event)"
+          />
           <UFormField label="Unidade" :name="`lines.${index}.erp_unit_id`" :error="fieldErrors?.[`lines.${index}.erp_unit_id`]">
             <UInputMenu
               :model-value="line.erp_unit_id ?? undefined"

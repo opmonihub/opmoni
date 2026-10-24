@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ErpOperationNatureRecord } from '#shared/types/erpCatalogs'
 import type { ErpCommercialDraftPayload, ErpCommercialKind, ErpSalesContact, ErpSalesEstablishment, ErpSalesUnit, ErpSalesVariant } from '#shared/types/erpBusiness'
+import { erpProductVariantQuery, formatErpProductVariantLabel } from '~/utils/erpProductVariantReferences'
 
 const props = defineProps<{
   kind: ErpCommercialKind
@@ -62,7 +63,7 @@ function selectCurrency(value: unknown) {
   else if (value === 'default' && !props.editing) delete draft.value.currency
 }
 const unitItems = computed(() => [{ label: 'Unidade do catálogo', value: 0 }, ...props.references.units.map(row => ({ label: row.symbol ? `${row.name} (${row.symbol})` : row.name, value: row.id }))])
-const variantItems = computed(() => [{ label: 'Item sem produto', value: 0 }, ...props.references.variants.map(row => ({ label: `${row.name}${row.sku ? ` · ${row.sku}` : ''}`, value: row.id }))])
+const variantQuery = erpProductVariantQuery('sales')
 const operationNatureItems = computed(() => {
   const choices = (props.references.operationNatures ?? []).filter(row => row.status === 'active' && (row.erp_establishment_id === null || row.erp_establishment_id === draft.value.erp_establishment_id)).map(row => ({ label: `${row.cfop} · ${row.description}`, value: row.id, disabled: false }))
   const currentId = draft.value.erp_operation_nature_id
@@ -93,8 +94,9 @@ function addLine() {
 function removeLine(index: number) {
   if (draft.value.lines.length > 1) draft.value.lines.splice(index, 1)
 }
-function selectVariant(line: ErpCommercialDraftPayload['lines'][number], value: unknown) {
-  const next = selectValue(value)
+function selectVariant(line: ErpCommercialDraftPayload['lines'][number], selection: { id: number | null, source: 'selection' | 'hydration' }) {
+  if (selection.source !== 'selection') return
+  const next = selection.id
   if (line.erp_product_variant_id !== next) {
     line.erp_product_variant_id = next
     line.erp_unit_id = null
@@ -304,15 +306,19 @@ defineExpose({ submit, draft, selectVariant, selectUnit, useCurrentCatalog })
           />
         </div>
         <div class="grid min-w-0 gap-3 sm:grid-cols-2">
-          <UFormField :name="`lines.${index}.erp_product_variant_id`" label="Produto ou serviço" :error="formName(`lines.${index}.erp_product_variant_id`)">
-            <USelect
-              :model-value="line.erp_product_variant_id ?? 0"
-              :items="variantItems"
-              class="w-full"
-              :disabled="disabled || saving"
-              @update:model-value="selectVariant(line, $event)"
-            />
-          </UFormField>
+          <ErpCatalogReferenceSelect
+            :model-value="line.erp_product_variant_id"
+            path="/erp/product-variants"
+            :query="variantQuery"
+            label="Produto ou serviço"
+            label-key="name"
+            :label-formatter="formatErpProductVariantLabel"
+            :name="`lines.${index}.erp_product_variant_id`"
+            :optional="true"
+            :disabled="disabled || saving"
+            :error="formName(`lines.${index}.erp_product_variant_id`)"
+            @selection-record="selectVariant(line, $event)"
+          />
           <UFormField :name="`lines.${index}.description`" label="Descrição" :error="formName(`lines.${index}.description`)">
             <UInput v-model="line.description" class="w-full" :disabled="disabled || saving" />
           </UFormField>
