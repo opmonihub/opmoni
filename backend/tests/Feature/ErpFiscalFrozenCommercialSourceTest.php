@@ -6,6 +6,7 @@ use App\Erp\Fiscal\ErpFiscalAttemptAuthorization;
 use App\Erp\Fiscal\ErpFiscalNumberAllocator;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpOperationNature;
+use App\Models\Erp\ErpTaxRate;
 use App\Models\Erp\Fiscal\ErpFiscalConfiguration;
 use App\Models\Erp\Fiscal\ErpFiscalDocument;
 use App\Models\Erp\Sales\ErpSale;
@@ -40,6 +41,8 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
     {
         yield 'missing product tax configuration' => ['product-tax-configuration', 'missing', 'source.items.0.provenance.product_tax_configuration'];
         yield 'malformed product tax configuration identity' => ['product-tax-configuration', 'malformed', 'source.items.0.provenance.product_tax_configuration'];
+        yield 'missing product tax intent map' => ['product-tax-intents', 'missing', 'source.items.0.provenance.product_tax_configuration'];
+        yield 'malformed product tax intent map' => ['product-tax-intents', 'malformed', 'source.items.0.provenance.product_tax_configuration'];
         yield 'missing product tax configuration value' => ['product-tax-configuration-values', 'missing', 'source.items.0.provenance.product_tax_configuration'];
         yield 'selected profile identity mismatch' => ['product-tax-profile-identity', 'malformed', 'source.items.0.provenance.product_tax_resolution.profile'];
         yield 'missing product tax source map' => ['product-tax-sources', 'missing', 'source.items.0.provenance.product_tax_resolution.sources'];
@@ -195,6 +198,13 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
             case 'product-tax-configuration-values':
                 unset($facts['product_tax_configuration']['values']['icms_cst']);
                 break;
+            case 'product-tax-intents':
+                if ($mutation === 'missing') {
+                    unset($facts['product_tax_configuration']['intents']);
+                } else {
+                    $facts['product_tax_configuration']['intents'] = 'inherit';
+                }
+                break;
             case 'product-tax-profile-identity':
                 $facts['product_tax_configuration']['profile_id'] = (int) $facts['product_tax_configuration']['profile_id'] + 1;
                 break;
@@ -236,6 +246,64 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
             'idempotency_key' => 'incomplete-v2-'.$group.'-'.$mutation,
             'source' => $source,
         ])->assertUnprocessable()->assertJsonValidationErrors($errorPath);
+
+        $this->assertDatabaseCount('erp_fiscal_documents', 0);
+        $this->assertDatabaseCount('erp_fiscal_attempts', 0);
+        $this->assertSame(17, app(ErpFiscalNumberAllocator::class)->nextNumber($this->company->id, '55', 'homologation', 1));
+        $this->assertSame($snapshot, $sale->fresh()->commercial_snapshot);
+    }
+
+    public function test_native_raw_tax_product_without_intent_map_can_be_prepared_without_adoption(): void
+    {
+        $sale = $this->createReadyPostedSale('55', 'raw-tax-null-intents', rawTaxProduct: true);
+        $snapshot = $sale->commercial_snapshot;
+        $facts = $snapshot['lines'][0]['product_snapshot'];
+        $product = $this->variant->product()->firstOrFail()->fresh();
+
+        $this->assertNull($product->erp_product_tax_profile_id);
+        $this->assertNull($product->tax_field_intents);
+        $this->assertNull($facts['product_tax_configuration']['profile_id']);
+        $this->assertNull($facts['product_tax_configuration']['intents']);
+        $this->assertSame('00', $facts['product_tax_configuration']['values']['icms_cst']);
+        $this->assertSame('product', $facts['product_tax_resolution']['sources']['icms_cst']['source']);
+        $this->assertSame('value', $facts['product_tax_resolution']['sources']['icms_cst']['intent']);
+        $this->assertNull($facts['product_tax_configuration']['values']['pis_rate']);
+        $this->assertSame(['source' => 'unset', 'intent' => 'unset'], $facts['product_tax_resolution']['sources']['pis_rate']);
+
+        $source = $this->sourceFromFrozenSale($sale, '55');
+        $documentId = $this->send('fiscal/documents', [
+            'erp_sale_id' => $sale->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'model' => '55',
+            'number' => 17,
+            'idempotency_key' => 'raw-tax-null-intents',
+            'source' => $source,
+        ])->assertCreated()->json('data.id');
+
+        $document = ErpFiscalDocument::query()->findOrFail($documentId);
+        $this->assertSame($snapshot, $sale->fresh()->commercial_snapshot);
+        $this->assertSame($snapshot, $document->commercial_snapshot);
+        $this->assertNull($document->commercial_snapshot['lines'][0]['product_snapshot']['product_tax_configuration']['intents']);
+        $this->assertNull($this->variant->product()->firstOrFail()->fresh()->tax_field_intents);
+        $this->assertDatabaseMissing('erp_fiscal_attempts', ['action' => 'document:transmit']);
+    }
+
+    public function test_malformed_enclosing_v2_tax_resolution_is_rejected_before_fiscal_artifacts(): void
+    {
+        $sale = $this->createReadyPostedSale('55', 'malformed-tax-resolution');
+        $source = $this->sourceFromFrozenSale($sale, '55');
+        $snapshot = $sale->commercial_snapshot;
+        $snapshot['lines'][0]['product_snapshot']['product_tax_resolution'] = 'malformed';
+        $sale->update(['commercial_snapshot' => $snapshot]);
+
+        $this->send('fiscal/documents', [
+            'erp_sale_id' => $sale->id,
+            'erp_establishment_id' => $this->establishment->id,
+            'model' => '55',
+            'number' => 17,
+            'idempotency_key' => 'malformed-tax-resolution',
+            'source' => $source,
+        ])->assertUnprocessable()->assertJsonValidationErrors('source.items.0.provenance.product_tax_resolution');
 
         $this->assertDatabaseCount('erp_fiscal_documents', 0);
         $this->assertDatabaseCount('erp_fiscal_attempts', 0);
@@ -400,16 +468,25 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $this->assertDatabaseMissing('erp_fiscal_attempts', ['action' => 'document:transmit']);
     }
 
-    private function createReadyPostedSale(string $model, string $key): ErpSale
+    private function createReadyPostedSale(string $model, string $key, bool $rawTaxProduct = false): ErpSale
     {
-        $this->configureReviewedCommercialTax();
-        $this->patchJson('/api/v1/erp/tax-settings/product-tax-profiles/'.$this->taxProfileId, [
-            'fields' => ['icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07', 'icms_rate' => '18.0000'],
-            'expected_revision' => 1,
-        ])->assertOk();
-        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, [
+        if ($rawTaxProduct) {
+            $this->configureRawTaxCommercialProduct();
+        } else {
+            $this->configureReviewedCommercialTax();
+            $this->patchJson('/api/v1/erp/tax-settings/product-tax-profiles/'.$this->taxProfileId, [
+                'fields' => ['icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07', 'icms_rate' => '18.0000'],
+                'expected_revision' => 1,
+            ])->assertOk();
+        }
+        $productUpdate = [
             'ncm' => '12345678', 'origin_code' => '0', 'sku' => 'READY-SKU', 'track_stock' => false,
-            'tax_field_intents' => ['icms_cst' => 'inherit', 'pis_cst' => 'inherit', 'cofins_cst' => 'inherit', 'icms_rate' => 'inherit'],
+        ];
+        if (! $rawTaxProduct) {
+            $productUpdate['tax_field_intents'] = ['icms_cst' => 'inherit', 'pis_cst' => 'inherit', 'cofins_cst' => 'inherit', 'icms_rate' => 'inherit'];
+        }
+        $this->patchJson('/api/v1/erp/products/'.$this->variant->erp_product_id, [
+            ...$productUpdate,
         ])->assertOk();
         $this->variant->product->unit->update(['short_name' => 'UN']);
 
@@ -451,6 +528,29 @@ class ErpFiscalFrozenCommercialSourceTest extends ErpCommercialTestCase
         $this->assertSame('source_prerequisites_checked', $sale->commercial_snapshot['fiscal_context']['readiness']);
 
         return $sale->fresh();
+    }
+
+    private function configureRawTaxCommercialProduct(): void
+    {
+        $this->company->update(['operating_settings' => ['regime' => '3']]);
+        $this->variant->update(['sale_price' => '10.0000']);
+        $this->variant->product()->firstOrFail()->forceFill([
+            'icms_cst' => '00', 'pis_cst' => '07', 'cofins_cst' => '07', 'icms_rate' => '18.0000',
+        ])->save();
+        $this->assertNull($this->variant->product()->firstOrFail()->fresh()->tax_field_intents);
+
+        $this->natureId = $this->postJson('/api/v1/erp/tax-settings/operation-natures', [
+            'cfop' => '5102', 'description' => 'Venda de mercadorias', 'movement' => 'out',
+        ])->assertCreated()->json('data.id');
+        $choice = $this->postJson('/api/v1/erp/tax-settings/operation-natures/'.$this->natureId.'/choices', [
+            'cfop' => '5101', 'expected_revision' => 1,
+        ])->assertCreated()->json('data.id');
+        $this->exceptionId = $this->postJson('/api/v1/erp/tax-settings/operation-natures/'.$this->natureId.'/product-exceptions', [
+            'erp_product_id' => $this->variant->erp_product_id, 'erp_operation_nature_cfop_choice_id' => $choice, 'expected_revision' => 2,
+        ])->assertCreated()->json('data.id');
+        $this->commercialTaxRate = ErpTaxRate::factory()->create([
+            'erp_company_id' => $this->company->id, 'erp_establishment_id' => $this->establishment->id, 'rate' => '10.0000',
+        ]);
     }
 
     private function configureFiscalNature(int $natureId, string $model): void

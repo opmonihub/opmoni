@@ -81,6 +81,10 @@ final class ErpFiscalFrozenSaleSourceProjection
                 $this->invalidSource('source.items.'.$index, 'Linha sem classificação fiscal efetiva e proveniência revisada.');
             }
 
+            if ($resolved && ! is_array($facts['product_tax_resolution'] ?? null)) {
+                $this->invalidSource('source.items.'.$index.'.provenance.product_tax_resolution', 'Resolução tributária congelada inválida.');
+            }
+
             if ($resolved) {
                 $this->assertResolvedEvidence($facts, $product, $facts['product_tax_resolution'] ?? [], $operationNature, $cfop, $snapshot, $sale, $index);
             }
@@ -153,17 +157,19 @@ final class ErpFiscalFrozenSaleSourceProjection
         $configuration = $facts['product_tax_configuration'] ?? null;
         if (! is_array($configuration)
             || ! array_key_exists('profile_id', $configuration)
-            || ! is_array($configuration['intents'] ?? null)
+            || ! array_key_exists('intents', $configuration)
+            || ($configuration['intents'] !== null && ! is_array($configuration['intents']))
             || ! is_array($configuration['values'] ?? null)) {
             $this->invalidSource($path.'.product_tax_configuration', 'Configuração tributária congelada incompleta.');
         }
 
         $fields = ErpProductTaxFields::names();
+        $intents = $configuration['intents'] ?? [];
         $profileId = $configuration['profile_id'];
         if ($profileId !== null && ! self::positiveId($profileId)) {
             $this->invalidSource($path.'.product_tax_configuration', 'Identidade da configuração tributária congelada inválida.');
         }
-        foreach ($configuration['intents'] as $field => $intent) {
+        foreach ($intents as $field => $intent) {
             if (! in_array($field, $fields, true) || ! in_array($intent, ['value', 'inherit', 'unset'], true)) {
                 $this->invalidSource($path.'.product_tax_configuration', 'Intenção tributária congelada inválida.');
             }
@@ -203,7 +209,7 @@ final class ErpFiscalFrozenSaleSourceProjection
                 default => 'inherit',
             };
             if ($source['intent'] !== $expectedIntent
-                || array_key_exists($field, $configuration['intents']) && $configuration['intents'][$field] !== $source['intent']) {
+                || array_key_exists($field, $intents) && $intents[$field] !== $source['intent']) {
                 $this->invalidSource($taxPath.'.sources', 'Intenção da fonte tributária congelada inconsistente.');
             }
             if ($source['source'] === 'product' && ($configuration['values'][$field] ?? null) !== $tax['values'][$field]
