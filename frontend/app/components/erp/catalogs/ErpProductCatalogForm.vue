@@ -665,6 +665,7 @@ function submit() {
               >
                 <USelect
                   :name="`tax_field_intents.${field.name}`"
+                  :data-erp-field-name="`tax_field_intents.${field.name}`"
                   :model-value="fieldIntent(field.name)"
                   :items="taxIntentItems"
                   value-key="value"
@@ -699,7 +700,7 @@ function submit() {
               {{ taxPreview.error.value }}
             </p>
             <p v-if="taxPreview.stale.value" role="status" class="text-warning text-sm">
-              Prévia desatualizada. Revise novamente antes de adotar. {{ taxPreview.result.value?.fingerprint }}
+              Prévia desatualizada. Revise novamente antes de adotar.
             </p>
             <section v-if="taxPreview.result.value" aria-labelledby="product-tax-preview-title" class="space-y-3">
               <div>

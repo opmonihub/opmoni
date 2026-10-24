@@ -120,9 +120,9 @@ function mountProduct(record: Record<string, unknown> | null = null, permissions
     props: ['items', 'modelValue', 'unmountOnHide'],
     emits: ['update:modelValue'],
     setup(props, { emit: _emit, slots }) {
-      return () => Vue.h('div', {}, (props.items as Array<{ label: string, value: string, slot: string }>).flatMap(item => [
+      return () => Vue.h('div', { 'data-open-sections': (props.modelValue as string[]).join(',') }, (props.items as Array<{ label: string, value: string, slot: string }>).flatMap(item => [
         Vue.h('button', { 'type': 'button', 'data-accordion-value': item.value }, item.label),
-        Vue.h('section', { 'data-accordion-panel': item.value }, slots[item.slot]?.({ item }))
+        Vue.h('section', { 'data-accordion-panel': item.value, 'data-open': (props.modelValue as string[]).includes(item.value) }, slots[item.slot]?.({ item }))
       ]))
     }
   }))
@@ -156,6 +156,9 @@ function mountProduct(record: Record<string, unknown> | null = null, permissions
     text,
     find,
     state: () => formState,
+    setFieldErrors(errors: Record<string, string[]>) {
+      componentProps.fieldErrors = errors
+    },
     unmount: () => app.unmount(),
     async submit() {
       const form = find(node => node.tag === 'form')
@@ -204,6 +207,22 @@ describe('ERP product tax profile form', () => {
     assert.match(form.text(), /Padrão da empresa/)
     assert.match(form.text(), /Sem configuração tributária/)
     assert.match(form.text(), /Pré-visualizar tributos/)
+  })
+
+  it('reveals Fiscal on a dynamic tax-intent error and marks its visible Select trigger', async (t) => {
+    const form = mountProduct(existingRecord)
+    t.after(form.unmount)
+    const fiscalPanel = () => form.find(node => node.tag === 'section' && node.props['data-accordion-panel'] === 'fiscal')
+    const intentSelect = () => form.find(node => node.tag === 'select' && node.props.name === 'tax_field_intents.icms_rate')
+
+    assert.equal(fiscalPanel()?.props['data-open'], false)
+    assert.equal(intentSelect()?.props['data-erp-field-name'], 'tax_field_intents.icms_rate')
+
+    form.setFieldErrors({ 'tax_field_intents.icms_rate': ['Informe uma intenção válida.'] })
+    await Vue.nextTick()
+
+    assert.equal(fiscalPanel()?.props['data-open'], true)
+    assert.equal(form.find(node => node.tag === 'span' && node.props.role === 'alert')?.text, 'Informe uma intenção válida.')
   })
 
   it('round-trips existing profile identity, per-field intent and exact fiscal strings without implicit adoption', async (t) => {
@@ -407,7 +426,7 @@ describe('ERP product tax profile form', () => {
     await new Promise(resolve => setImmediate(resolve))
     await Vue.nextTick()
     assert.match(form.text(), /Prévia desatualizada/)
-    assert.match(form.text(), /preview-good/)
+    assert.doesNotMatch(form.text(), /preview-good/)
     assert.deepEqual(form.state()?.tax_field_intents, existingRecord.tax_field_intents)
     assert.equal(form.emitted.length, 0)
   })
