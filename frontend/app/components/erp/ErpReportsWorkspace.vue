@@ -210,7 +210,7 @@ onScopeDispose(() => {
           <UEmpty
             v-if="isEmpty"
             title="Sem lançamentos neste recorte"
-            description="Os totais abaixo foram confirmados pelo servidor."
+            description="Altere o período ou os filtros para consultar outros lançamentos."
             icon="i-lucide-chart-column"
           />
           <p v-if="category === 'stock' || category === 'overview'" class="text-muted text-sm">

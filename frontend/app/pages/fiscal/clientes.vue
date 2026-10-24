@@ -474,7 +474,7 @@ function clientActions(summary: FiscalClientSummary): DropdownMenuItem[] {
     <ErrorRetryAlert
       v-if="showError"
       :title="endpointMissing ? 'Resumo por cliente ainda não disponível' : 'Não foi possível carregar os clientes'"
-      :description="endpointMissing ? 'O agregado de documentos por cliente ainda não foi publicado. A tabela de documentos continua funcionando normalmente.' : undefined"
+      :description="endpointMissing ? 'O resumo por cliente está indisponível. Tente atualizar novamente ou consulte os documentos fiscais na aba Documentos.' : undefined"
       @retry="retry"
     />
 

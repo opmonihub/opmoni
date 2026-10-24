@@ -677,7 +677,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
         {{ isEstablishmentKind ? 'Inativar este estabelecimento?' : 'Remover este membro da empresa?' }}
       </p>
       <p class="text-muted mt-1 text-sm">
-        {{ isEstablishment(confirmTarget) ? confirmTarget.name : confirmTarget.user.name }}. Esta ação exige confirmação.
+        {{ isEstablishment(confirmTarget) ? confirmTarget.name : confirmTarget.user.name }}
       </p>
       <div class="mt-3 flex gap-2">
         <UButton
@@ -686,7 +686,7 @@ defineExpose({ rows, establishments, permissionChoices, roleDefaults, form, form
           :disabled="!!busyAction"
           @click="confirmRemove"
         >
-          Confirmar
+          {{ isEstablishmentKind ? 'Inativar estabelecimento' : 'Remover membro' }}
         </UButton>
         <UButton
           color="neutral"

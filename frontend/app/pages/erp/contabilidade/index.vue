@@ -5,7 +5,7 @@ definePageMeta({ layout: 'erp', middleware: 'auth' })
 <template>
   <ErpCatalogPageShell
     title="Contabilidade"
-    description="Acompanhe documentos fiscais autorizados que foram projetados no histórico do escritório delegado."
+    description="Acompanhe os documentos fiscais autorizados disponíveis no histórico do escritório com acesso delegado."
   >
     <ErpAccountingDeliveries />
   </ErpCatalogPageShell>

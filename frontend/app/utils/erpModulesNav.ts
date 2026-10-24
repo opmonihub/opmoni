@@ -93,7 +93,7 @@ export const erpFinanceiroContract: ErpModulePageContract = {
       label: 'Contas',
       apiPath: '/erp/financial-accounts',
       emptyTitle: 'Nenhuma conta financeira',
-      emptyDescription: 'Cadastre contas ERP separadas do escritório quando a API estiver ativa.'
+      emptyDescription: 'Cadastre as contas financeiras da empresa. As contas do escritório são administradas separadamente.'
     },
     {
       id: 'obligations', readPermission: 'erp.obligations.index',
@@ -127,7 +127,7 @@ export const erpCaixaContract: ErpModulePageContract = {
       label: 'Caixas',
       apiPath: '/erp/cash-registers',
       emptyTitle: 'Nenhum caixa',
-      emptyDescription: 'Configure caixas por estabelecimento quando o módulo for liberado.'
+      emptyDescription: 'Cadastre os caixas usados em cada estabelecimento.'
     },
     {
       id: 'sessions', readPermission: 'erp.cash-sessions.index',
@@ -299,7 +299,7 @@ export const erpContabilidadeContract: ErpModulePageContract = {
       label: 'Entregas',
       apiPath: '/erp/accounting-deliveries',
       emptyTitle: 'Nenhuma entrega',
-      emptyDescription: 'Projeções aparecem após commit fiscal autorizado e delegação válida.'
+      emptyDescription: 'Os documentos aparecem após a autorização fiscal e a confirmação do acesso delegado ao escritório.'
     }
   ]
 }
@@ -307,17 +307,17 @@ export const erpContabilidadeContract: ErpModulePageContract = {
 export const erpRelatoriosContract: ErpModulePageContract = {
   id: 'relatorios',
   title: 'Relatórios',
-  description: 'Relatórios reconciliados aos ledgers lançados; rascunhos e tentativas fiscais indeterminadas não inflam totais.',
+  description: 'Consulte os lançamentos confirmados. Rascunhos e situações fiscais pendentes são apresentados separadamente.',
   icon: 'i-lucide-chart-column',
   to: '/erp/relatorios',
   readPermission: erpPermissions.reportsRead,
   writePermission: erpPermissions.reportsExport,
   referenceNote: 'ReportController, AccountReportsController, HomeController (referência sistema).',
   tabs: [
-    { id: 'sales', readPermission: 'erp.reports.show', label: 'Vendas', apiPath: '/erp/reports/sales', mode: 'report', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Agregados usam snapshots e lançamentos confirmados.' },
+    { id: 'sales', readPermission: 'erp.reports.show', label: 'Vendas', apiPath: '/erp/reports/sales', mode: 'report', emptyTitle: 'Sem dados de vendas', emptyDescription: 'Os valores refletem os dados salvos em cada venda e os lançamentos confirmados.' },
     { id: 'purchases', readPermission: 'erp.reports.show', label: 'Compras', apiPath: '/erp/reports/purchases', mode: 'report', emptyTitle: 'Sem dados de compras', emptyDescription: 'Compras lançadas e devoluções compensatórias entram nos filtros.' },
     { id: 'stock', readPermission: 'erp.reports.show', label: 'Estoque', apiPath: '/erp/reports/stock', mode: 'report', emptyTitle: 'Sem dados de estoque', emptyDescription: 'Quantidades e custos seguem movimentos registrados.' },
-    { id: 'finance', readPermission: 'erp.reports.show', label: 'Financeiro', apiPath: '/erp/reports/financial', mode: 'report', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Recebíveis, pagáveis e aging derivam de obrigações postadas.' },
+    { id: 'finance', readPermission: 'erp.reports.show', label: 'Financeiro', apiPath: '/erp/reports/financial', mode: 'report', emptyTitle: 'Sem dados financeiros', emptyDescription: 'Consulte valores a receber, a pagar e vencimentos das obrigações lançadas.' },
     { id: 'fiscal', readPermission: 'erp.reports.show', label: 'Fiscal', apiPath: '/erp/reports/fiscal', mode: 'report', emptyTitle: 'Sem dados fiscais', emptyDescription: 'Status de autorização separado de rascunhos e indeterminados.' },
     { id: 'dashboard', readPermission: 'erp.reports.show', label: 'Integrado', apiPath: '/erp/reports/overview', mode: 'report', emptyTitle: 'Painel indisponível', emptyDescription: 'Indicadores combinados respeitam os mesmos filtros de período.' }
   ]
