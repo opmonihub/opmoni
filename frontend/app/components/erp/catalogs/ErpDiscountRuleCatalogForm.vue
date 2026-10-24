@@ -66,6 +66,7 @@ function submit() {
         <USelect
           v-model="form.kind"
           name="kind"
+          data-erp-field-name="kind"
           :items="[{ label: 'Percentual', value: 'percentage' }, { label: 'Valor fixo', value: 'fixed' }]"
           required
           class="w-full"

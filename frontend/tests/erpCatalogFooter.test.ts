@@ -6,12 +6,17 @@ import { compileVueComponent } from './helpers/compileVueComponent.ts'
 
 type HostNode = {
   tag: string
+  tagName: string
   props: Record<string, unknown>
   children: HostNode[]
   parent: HostNode | null
   text: string
   focusCalls: number
   focus(): void
+  getAttribute(name: string): string | null
+  hasAttribute(name: string): boolean
+  closest(selector: string): HostNode | null
+  getClientRects(): Array<object>
 }
 
 function descendants(root: HostNode): HostNode[] {
@@ -19,15 +24,35 @@ function descendants(root: HostNode): HostNode[] {
 }
 
 function mountCatalogResource() {
-  const makeNode = (tag: string, text = ''): HostNode => ({
-    tag,
-    props: {},
-    children: [],
-    parent: null,
-    text,
-    focusCalls: 0,
-    focus() { this.focusCalls++ }
-  })
+  const makeNode = (tag: string, text = ''): HostNode => {
+    const node: HostNode = {
+      tag,
+      tagName: tag.toUpperCase(),
+      props: {},
+      children: [],
+      parent: null,
+      text,
+      focusCalls: 0,
+      focus() { this.focusCalls++ },
+      getAttribute: (name) => {
+        const value = node.props[name]
+        return value === undefined || value === null ? null : String(value)
+      },
+      hasAttribute: name => node.props[name] !== undefined && node.props[name] !== false && node.props[name] !== null,
+      closest: (selector) => {
+        let current: HostNode | null = node
+        while (current) {
+          if (selector.includes('[hidden]') && current.hasAttribute('hidden')) return current
+          if (selector.includes('[inert]') && current.hasAttribute('inert')) return current
+          if (selector.includes('[aria-hidden="true"]') && current.getAttribute('aria-hidden') === 'true') return current
+          current = current.parent
+        }
+        return null
+      },
+      getClientRects: () => node.closest('[hidden], [inert], [aria-hidden="true"]') ? [] : [{}]
+    }
+    return node
+  }
   const renderer = Vue.createRenderer<HostNode, HostNode>({
     patchProp(node, key, _previous, next) { node.props[key] = next },
     insert(node, parent, anchor = null) {
@@ -71,6 +96,7 @@ function mountCatalogResource() {
   const context = Vue.ref('company-1')
   const record = Vue.ref<{ id: number } | null>(null)
   const mode = Vue.ref<'create' | 'detail' | 'edit'>('create')
+  const advancedProductSectionOpen = Vue.ref(false)
   let saveCalls = 0
   let attemptDrawerClose = () => {}
   const editor = {
@@ -156,6 +182,10 @@ function mountCatalogResource() {
     emits: ['save', 'dirty-change'],
     setup(props, { emit }) {
       const input = Vue.ref('')
+      Vue.watch(() => props.fieldErrors, (errors) => {
+        if (Object.keys(errors ?? {}).some(name => name.startsWith('variants.')))
+          advancedProductSectionOpen.value = true
+      }, { deep: true })
       return () => Vue.h('form', {
         id: props.formId,
         onSubmit(event: Event) {
@@ -170,12 +200,22 @@ function mountCatalogResource() {
             input.value = (event.target as HTMLInputElement).value
             emit('dirty-change', true)
           }
-        })
+        }),
+        Vue.h('input', { 'type': 'hidden', 'name': 'erp_unit_id', 'aria-hidden': 'true', 'tabindex': -1 }),
+        Vue.h('button', { 'data-erp-field-name': 'erp_unit_id', 'data-control': 'ErpCatalogReferenceSelect' }, 'Unit selector'),
+        Vue.h('select', { 'name': 'kind', 'aria-hidden': 'true', 'tabindex': -1 }),
+        Vue.h('button', { 'data-erp-field-name': 'kind', 'data-control': 'USelect' }, 'Kind selector'),
+        ...(advancedProductSectionOpen.value
+          ? [Vue.h('section', { 'data-section': 'product-variants' }, [
+              Vue.h('select', { 'name': 'variants.0.barcode_type', 'aria-hidden': 'true', 'tabindex': -1 }),
+              Vue.h('button', { 'data-erp-field-name': 'variants.0.barcode_type', 'data-control': 'USelect' }, 'Variant barcode selector')
+            ])]
+          : [])
       ])
     }
   })
   const app = renderer.createApp(resource, {
-    path: '/erp/units',
+    path: '/erp/products',
     title: 'Unidades',
     form,
     columns: [],
@@ -238,6 +278,7 @@ function mountCatalogResource() {
     setContext: (value: string) => { context.value = value },
     saveCalls: () => saveCalls,
     attemptDrawerClose: () => attemptDrawerClose(),
+    advancedProductSectionOpen,
     settle: async () => {
       await Vue.nextTick()
       await Promise.resolve()
@@ -298,7 +339,7 @@ describe('ERP catalog shared editor footer', () => {
     const input = resource.nodes().find(node => node.tag === 'input')!
     ;(input.props.onInput as (event: Event) => void)({ target: { value: 'Rascunho' } } as unknown as Event)
     await resource.settle()
-    assert.equal(resource.nodes().find(node => node.tag === 'input')?.props.value, 'Rascunho', 'the real child UForm receives the edited value')
+    assert.equal(resource.nodes().find(node => node.tag === 'input')?.props.value, 'Rascunho', 'the mocked child form retains the edited value')
     const cancel = resource.nodes().find(node => node.tag === 'button' && node.text === 'Cancelar')
     assert.ok(cancel, 'the shared footer exposes cancel')
     ;(cancel.props.onClick as () => void)()
@@ -364,20 +405,27 @@ describe('ERP catalog shared editor footer', () => {
     assert.match(String(footer.props.class), /sm:flex-row/)
   })
 
-  it('moves focus to the first server-invalid field after the drawer renders field errors', async (t) => {
+  it('focuses visible reference and product select triggers instead of hidden native fields', async (t) => {
     const resource = mountCatalogResource()
     t.after(resource.stop)
     resource.instance.createAction.trigger()
 
-    let focused = 0
-    const invalidField = {
-      getAttribute: (name: string) => name === 'name' ? 'name' : null,
-      focus: () => { focused++ }
-    }
     const previousDocument = globalThis.document
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
-      value: { getElementById: () => ({ querySelectorAll: () => [invalidField] }) }
+      value: {
+        getElementById: (id: string) => {
+          const form = resource.nodes().find(node => node.tag === 'form' && node.props.id === id)
+          if (!form) return null
+          return {
+            querySelectorAll: (selector: string) => descendants(form).filter((node) => {
+              if (selector === '[name]')
+                return node.hasAttribute('name')
+              return node.hasAttribute('name') || node.hasAttribute('data-erp-field-name')
+            })
+          }
+        }
+      }
     })
     t.after(() => {
       if (previousDocument)
@@ -387,9 +435,32 @@ describe('ERP catalog shared editor footer', () => {
     })
 
     await resource.settle()
-    resource.setFieldErrors({ name: ['Nome já utilizado.'] })
+    const focusError = async (name: string) => {
+      const nodes = resource.nodes()
+      const hiddenNativeControl = nodes.find(node => node.props.name === name)
+      const visibleTrigger = nodes.find(node => node.props['data-erp-field-name'] === name)
+      assert.ok(hiddenNativeControl, `${name} has a hidden native form control`)
+      assert.ok(visibleTrigger, `${name} has an explicitly mapped visible trigger`)
+      const priorFocusCalls = visibleTrigger.focusCalls
+      resource.setFieldErrors({ [name]: ['Valor inválido.'] })
+      await resource.settle()
+      assert.equal(visibleTrigger.focusCalls, priorFocusCalls + 1, `${name} focuses its visible trigger`)
+      assert.equal(hiddenNativeControl.focusCalls, 0, `${name} leaves the hidden native control unfocused`)
+    }
+
+    await focusError('erp_unit_id')
+    await focusError('kind')
+    assert.equal(resource.advancedProductSectionOpen.value, false)
+    assert.equal(resource.nodes().some(node => node.props['data-section'] === 'product-variants'), false)
+    resource.setFieldErrors({ 'variants.0.barcode_type': ['Simbologia inválida.'] })
     await resource.settle()
-    assert.equal(focused, 1)
+    assert.equal(resource.advancedProductSectionOpen.value, true, 'the product error opens its advanced section before focus')
+    const hiddenVariantControl = resource.nodes().find(node => node.props.name === 'variants.0.barcode_type')
+    const visibleVariantTrigger = resource.nodes().find(node => node.props['data-erp-field-name'] === 'variants.0.barcode_type')
+    assert.ok(hiddenVariantControl)
+    assert.ok(visibleVariantTrigger)
+    assert.equal(visibleVariantTrigger.focusCalls, 1, 'the revealed advanced USelect trigger receives focus')
+    assert.equal(hiddenVariantControl.focusCalls, 0)
   })
 
   it('clears a pending discard prompt when the company context changes', async (t) => {

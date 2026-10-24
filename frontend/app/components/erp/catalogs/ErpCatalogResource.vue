@@ -323,11 +323,27 @@ watch(fieldErrors, async (errors) => {
     return
 
   const formElement = document.getElementById(editorFormId.value)
-  const fields = formElement?.querySelectorAll<HTMLElement>('[name]')
-  const target = [...(fields ?? [])].find(field => field.getAttribute('name') === firstError)
-    ?? fields?.[0]
+  const fields = [...(formElement?.querySelectorAll<HTMLElement>('[data-erp-field-name], [name]') ?? [])]
+  const target = fields.find(field => field.getAttribute('data-erp-field-name') === firstError && isVisibleFocusableField(field))
+    ?? fields.find(field => field.getAttribute('name') === firstError && isVisibleFocusableField(field))
+    ?? fields.find(isVisibleFocusableField)
   target?.focus()
 }, { deep: true, flush: 'post' })
+
+function isVisibleFocusableField(field: HTMLElement): boolean {
+  const tagName = field.tagName.toLocaleLowerCase()
+  const nativeFocusable = ['button', 'input', 'select', 'textarea'].includes(tagName)
+  const customFocusable = field.hasAttribute('tabindex') && field.tabIndex >= 0
+  if (!nativeFocusable && !customFocusable)
+    return false
+  if (field.getAttribute('type')?.toLocaleLowerCase() === 'hidden'
+    || field.hasAttribute('disabled')
+    || field.getAttribute('aria-hidden') === 'true'
+    || field.getAttribute('tabindex') === '-1'
+    || field.closest('[hidden], [inert], [aria-hidden="true"]'))
+    return false
+  return field.getClientRects().length > 0
+}
 
 watch(editor.mutationPending, (pending) => {
   if (!pending && !open.value)

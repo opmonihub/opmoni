@@ -93,6 +93,7 @@ function submit() {
         <USelect
           v-model="form.movement"
           name="movement"
+          data-erp-field-name="movement"
           :items="[{ label: 'Entrada', value: 'in' }, { label: 'Saída', value: 'out' }]"
           required
           class="w-full"

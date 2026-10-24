@@ -181,7 +181,8 @@ function setupSelector(options: { optional?: boolean } = {}) {
       return () => {
         menuOptions.push({ ...props })
         return Vue.h('div', { ...attrs, 'data-nuxt-ui-component': 'USelectMenu', 'data-disabled': String(props.disabled) }, [
-          Vue.h('button', { 'type': 'button', 'data-selector-trigger': 'true' }, slots.default?.()),
+          Vue.h('input', { 'type': 'hidden', 'name': props.name, 'aria-hidden': 'true', 'tabindex': -1 }),
+          Vue.h('button', { ...attrs, 'type': 'button', 'data-selector-trigger': 'true' }, slots.default?.()),
           ...(slots['content-bottom']?.() ?? [])
         ])
       }
@@ -228,6 +229,18 @@ function setupSelector(options: { optional?: boolean } = {}) {
 }
 
 describe('ERP catalog reference selector', () => {
+  it('maps its visible trigger separately from the hidden native form field', (t) => {
+    const app = setupSelector()
+    t.after(app.unmount)
+
+    const hiddenField = descendants(app.root).find(node => node.tag === 'input' && node.props.name === 'base_unit_id')
+    const visibleTrigger = app.buttons().find(node => node.props['data-selector-trigger'] === 'true')
+    assert.ok(hiddenField)
+    assert.equal(hiddenField.props['aria-hidden'], 'true')
+    assert.ok(visibleTrigger)
+    assert.equal(visibleTrigger.props['data-erp-field-name'], 'base_unit_id')
+  })
+
   it('aborts and discards an off-page detail response after the real catalog read loses authority', async (t) => {
     const app = setupSelector()
     t.after(app.unmount)

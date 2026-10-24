@@ -266,6 +266,7 @@ function submit() {
           <USelect
             v-model="form.kind"
             name="kind"
+            data-erp-field-name="kind"
             :items="[{ label: 'Mercadoria', value: 'goods' }, { label: 'Serviço', value: 'service' }]"
             required
             class="w-full"
@@ -376,6 +377,7 @@ function submit() {
               <USelect
                 v-model="form.barcode_type"
                 name="barcode_type"
+                data-erp-field-name="barcode_type"
                 :items="barcodeTypeItems"
                 value-key="value"
                 :disabled="disabled"
@@ -667,6 +669,7 @@ function submit() {
               <USelect
                 v-model="variant.barcode_type"
                 :name="`variants.${index}.barcode_type`"
+                :data-erp-field-name="`variants.${index}.barcode_type`"
                 :items="variantBarcodeTypeItems"
                 value-key="value"
                 :disabled="disabled"

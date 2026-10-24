@@ -162,6 +162,7 @@ onScopeDispose(() => {
       :clear="optional"
       :required="!optional"
       :name="name"
+      :data-erp-field-name="name"
       :placeholder="optional ? 'Sem vínculo' : 'Selecione uma opção'"
       :aria-label="label"
       class="w-full"

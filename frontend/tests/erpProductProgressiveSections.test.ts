@@ -179,11 +179,20 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
     props: ['modelValue', 'items'],
     emits: ['update:modelValue'],
     setup(props, { attrs, emit }) {
-      return () => Vue.h('select', {
-        ...attrs,
-        value: props.modelValue,
-        onChange: (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value)
-      }, (props.items as Array<{ label: string, value: string }> | undefined)?.map(item => Vue.h('option', { value: item.value }, item.label)))
+      return () => Vue.h('div', [
+        Vue.h('select', {
+          'name': attrs.name,
+          'aria-hidden': 'true',
+          'tabindex': -1,
+          'value': props.modelValue,
+          'onChange': (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value)
+        }, (props.items as Array<{ label: string, value: string }> | undefined)?.map(item => Vue.h('option', { value: item.value }, item.label))),
+        Vue.h('button', {
+          'data-erp-field-name': attrs['data-erp-field-name'],
+          'data-select-trigger': attrs.name,
+          'type': 'button'
+        }, String((props.items as Array<{ label: string, value: string }> | undefined)?.find(item => item.value === props.modelValue)?.label ?? 'Selecionar'))
+      ])
     }
   }))
   app.component('UCheckbox', Vue.defineComponent({
@@ -363,6 +372,7 @@ describe('ERP product progressive sections', () => {
       'erp_brand_id': ['Selecione uma marca válida.'],
       'icms_rate': ['Revise a alíquota.'],
       'variants.0.sku': ['Este SKU já está em uso.'],
+      'variants.0.barcode_type': ['Simbologia inválida.'],
       'variants': ['Há uma variante inválida.']
     })
 
@@ -370,6 +380,11 @@ describe('ERP product progressive sections', () => {
       assert.equal(form.sectionOpen(section), true, `Expected ${section} to open for its server error`)
       assert.equal(form.find(node => node.props['data-accordion-panel'] === section)?.props.hidden, false)
     }
+    const variantBarcodeNativeField = form.find(node => node.tag === 'select' && node.props.name === 'variants.0.barcode_type')
+    const variantBarcodeTrigger = form.find(node => node.tag === 'button' && node.props['data-erp-field-name'] === 'variants.0.barcode_type')
+    assert.equal(variantBarcodeNativeField?.props['aria-hidden'], 'true')
+    assert.ok(variantBarcodeTrigger, 'the advanced product USelect exposes its visible trigger mapping')
+    assert.equal(form.find(node => node.props['data-accordion-panel'] === 'variants')?.props.hidden, false, 'the server error reveals the section containing the visible trigger')
     for (const message of ['Selecione uma marca válida.', 'Revise a alíquota.', 'Este SKU já está em uso.', 'Há uma variante inválida.'])
       assert.ok(descendants(form.root).some(node => node.text.includes(message)), `Expected visible server error: ${message}`)
     assert.equal(form.inputValue('ncm'), '12345678')
