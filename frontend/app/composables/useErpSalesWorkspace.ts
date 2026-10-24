@@ -73,6 +73,12 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   const paymentDetails = ref<ErpPayment[]>([])
   const selectedObligation = ref<ErpObligation | null>(null)
   const receipt = ref<ErpFinanceReceipt | null>(null)
+  const representationHtml = ref<string | null>(null)
+  const representationLoading = ref(false)
+  const representationError = ref('')
+  let representationSequence = 0
+  let representationController: AbortController | null = null
+  let representationOwner: { id: number, token: ReturnType<typeof context.capture>, generation: number, intent: number } | null = null
   const detailLoading = ref(false)
   const detailError = ref('')
   const mutationError = ref('')
@@ -144,6 +150,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     } catch { /* Invalid session data is not trusted. */ }
   }
   function clearPrivateState() {
+    closeRepresentation()
     requestGeneration++
     operationIntentSequence.value++
     operationSequence++
@@ -320,6 +327,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
     if (authorityCurrent(token, generation) && sequence === referenceSequence) referenceLoading.value = false
   }
   function claimIntent() {
+    closeRepresentation()
     operationIntentSequence.value++
     for (const key of Object.keys(loading) as ErpSalesArea[]) {
       listSequence[key]++
@@ -706,6 +714,62 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
       return null
     }
   }
+  function closeRepresentation() {
+    representationSequence++
+    representationController?.abort()
+    representationController = null
+    representationOwner = null
+    representationHtml.value = null
+    representationError.value = ''
+    representationLoading.value = false
+  }
+  async function loadRepresentation(id: number) {
+    closeRepresentation()
+    if (!allowed('erp.sales.representation') || selected.value?.id !== id || !('invoice_no' in selected.value)) return null
+    const token = context.capture()
+    const generation = requestGeneration
+    const intent = operationIntentSequence.value
+    const sequence = representationSequence
+    const controller = new AbortController()
+    representationController = controller
+    representationLoading.value = true
+    const isCurrent = () => sequence === representationSequence && !controller.signal.aborted && current(token, generation, intent)
+      && allowed('erp.sales.representation') && selected.value?.id === id && 'invoice_no' in selected.value
+    try {
+      const result = await api<string, 'text'>(`/erp/sales/${id}/representation`, { responseType: 'text', signal: controller.signal })
+      if (!isCurrent()) return null
+      if (typeof result !== 'string' || !/^\s*<!doctype html>/i.test(result) || result.length > 2_000_000) throw new Error('A representação comercial recebida é inválida.')
+      representationOwner = { id, token, generation, intent }
+      representationHtml.value = result
+      return result
+    } catch (error) {
+      if (!isCurrent()) return null
+      let failure = error
+      const response = error as { data?: unknown, response?: { _data?: unknown } } | null
+      const body = response?.data ?? response?.response?._data
+      if (typeof body === 'string') {
+        try {
+          const data: unknown = JSON.parse(body)
+          if (typeof data === 'object' && data !== null && !Array.isArray(data)) failure = { statusCode: apiStatus(error), data }
+        } catch { /* A non-JSON failure keeps the existing safe fallback. */ }
+      }
+      representationError.value = message(failure, 'Não foi possível abrir a representação comercial. Tente novamente.')
+      await handleDenial('erp.sales.representation', failure, token)
+      return null
+    } finally {
+      if (sequence === representationSequence) {
+        representationLoading.value = false
+        representationController = null
+      }
+    }
+  }
+  function printRepresentation(frame: HTMLIFrameElement | null) {
+    const owner = representationOwner
+    if (!owner || !representationHtml.value || !allowed('erp.sales.representation') || selected.value?.id !== owner.id
+      || !current(owner.token, owner.generation, owner.intent) || frame?.getAttribute('srcdoc') !== representationHtml.value) return
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+  }
   watch([context.key, sessionGeneration], (next, previous) => {
     const authenticatedSessionChanged = next[1] !== previous[1] && Number(user.value?.id ?? 0) > 0
     if (authorityNeedsRefresh.value && !authenticatedSessionChanged) {
@@ -729,6 +793,7 @@ export function useErpSalesWorkspace(initialArea: ErpSalesArea = 'quotes') {
   return {
     area, rows, metas, filters, loading, stale, listErrors, currentRows, currentMeta, currentLoading, currentStale, currentError,
     references, referenceLoading, referenceError, operationNatureState, selected, paymentDetails, selectedObligation, receipt, detailLoading, detailError, mutationError, fieldErrors,
+    representationHtml, representationLoading, representationError, loadRepresentation, closeRepresentation, printRepresentation,
     mutating, selectedOperation, currentOperationKey, needsReconciliation, revisionConflict, consumedOperationConflict, canRetryExact, resolvedOperation, authorityGeneration, authorityNeedsRefresh, operationIntentSequence,
     completedDetailRefresh, requiresFreshDetail, refreshCompletedDetail,
     allowed, canRead, load, loadReferences, selectArea, setPage, setStatus, refreshArea, inspect, closeSelected, saveDraft, convertQuote,

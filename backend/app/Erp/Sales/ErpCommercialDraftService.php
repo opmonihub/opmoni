@@ -301,6 +301,7 @@ final class ErpCommercialDraftService
         if ($kind === 'sale' && ! $model->exists) {
             $model->fiscal_status = 'none';
             $model->erp_invoice_scheme_id = $allocation['scheme_id'];
+            $model->fill(app(ErpSaleRepresentation::class)->capture($company));
         }
         $model->save();
         $kept = [];
@@ -564,6 +565,7 @@ final class ErpCommercialDraftService
         if ($targetKind === 'sale') {
             $attributes['fiscal_status'] = 'none';
             $attributes['erp_invoice_scheme_id'] = $allocation['scheme_id'];
+            $attributes += app(ErpSaleRepresentation::class)->capture($source->erp_company_id);
         }
         $child = $class::create($attributes);
         foreach ($source->lines as $line) {

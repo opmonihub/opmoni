@@ -6,6 +6,7 @@ use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanySetupState;
 use App\Models\Erp\ErpContact;
 use App\Models\Erp\ErpUnit;
+use App\Models\Erp\Sales\ErpInvoiceLayout;
 use App\Models\Erp\Sales\ErpInvoiceScheme;
 use App\Support\AccessTransaction;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ class ErpCompanyInitializer
             $unit = $this->unit($company, $manifest['records']['unit']);
             $customer = $this->customer($company, $manifest['records']['customer']);
             $scheme = $this->saleScheme($company, $manifest['records']['sale_scheme']);
+            $layout = $this->saleLayout($company, $manifest['records']['sale_layout']);
             $stored = is_array($company->operating_settings) ? $company->operating_settings : [];
             $attributes = $this->settings->extractPersistable($this->preset->missingOperatingSettings($stored));
             $this->settings->mergeOperating($company, $attributes['operating_settings']);
@@ -46,11 +48,13 @@ class ErpCompanyInitializer
                 'default_unit_id' => $unit->id,
                 'default_customer_id' => $customer->id,
                 'default_invoice_scheme_id' => $scheme->id,
+                'default_invoice_layout_id' => $layout->id,
                 'sale_numbering_adopted' => true,
                 'preset_owned_keys' => [
                     'unit' => $manifest['records']['unit']['key'],
                     'customer' => $manifest['records']['customer']['key'],
                     'sale_scheme' => $manifest['records']['sale_scheme']['key'],
+                    'sale_layout' => $manifest['records']['sale_layout']['key'],
                 ],
             ]);
         });
@@ -112,5 +116,22 @@ class ErpCompanyInitializer
         $scheme->forceFill(['native_key' => $definition['key']])->save();
 
         return $scheme;
+    }
+
+    /** @param array{key: string, attributes: array<string, mixed>} $definition */
+    private function saleLayout(ErpCompany $company, array $definition): ErpInvoiceLayout
+    {
+        $layout = ErpInvoiceLayout::query()->where('erp_company_id', $company->id)->where('native_key', $definition['key'])->lockForUpdate()->first();
+        if ($layout !== null) {
+            if ($layout->status !== 'active') {
+                throw ValidationException::withMessages(['initialization.sale_layout' => 'O modelo comercial inicial está arquivado. Revise a configuração antes de continuar.']);
+            }
+
+            return $layout;
+        }
+        $layout = new ErpInvoiceLayout(['erp_company_id' => $company->id, ...$definition['attributes']]);
+        $layout->forceFill(['native_key' => $definition['key']])->save();
+
+        return $layout;
     }
 }

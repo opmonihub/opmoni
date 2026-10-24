@@ -14,13 +14,14 @@ const props = defineProps<{
   canReturn: boolean
   canPostReturn: boolean
   canReceipt: boolean
+  canRepresentation?: boolean
   canReadPayments: boolean
   canPaymentsIndex: boolean
   canObligationsIndex: boolean
   canFiscal: boolean
   busy: boolean
 }>()
-const emit = defineEmits<{ edit: [], convert: [], postSale: [], returnSale: [], postReturn: [], receipt: [paymentId: number] }>()
+const emit = defineEmits<{ edit: [], convert: [], postSale: [], returnSale: [], postReturn: [], receipt: [paymentId: number], representation: [] }>()
 const isReturn = computed(() => props.area === 'returns')
 const commercial = computed(() => props.document as ErpCommercialDocument)
 const returned = computed(() => props.document as ErpSaleReturn)
@@ -276,6 +277,16 @@ const statusLabel = computed(() => isReturn.value
     </section>
 
     <div class="flex flex-wrap justify-end gap-2 border-t border-muted pt-4">
+      <UButton
+        v-if="area === 'sales' && canRepresentation"
+        type="button"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-printer"
+        label="Representação comercial"
+        :disabled="busy"
+        @click="emit('representation')"
+      />
       <UButton
         v-if="canEdit"
         type="button"

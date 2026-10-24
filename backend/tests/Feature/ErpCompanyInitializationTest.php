@@ -60,7 +60,7 @@ class ErpCompanyInitializationTest extends TestCase
             $this->assertNull($customer->{$field}, $field);
         }
 
-        $this->assertSame(['unit' => 'br-basic-v1.unit.un', 'customer' => 'br-basic-v1.customer.counter-sale', 'sale_scheme' => 'br-basic-v1.sale-scheme'], $state->preset_owned_keys);
+        $this->assertSame(['unit' => 'br-basic-v1.unit.un', 'customer' => 'br-basic-v1.customer.counter-sale', 'sale_scheme' => 'br-basic-v1.sale-scheme', 'sale_layout' => 'br-basic-v1.sale-layout'], $state->preset_owned_keys);
         $this->assertSame('br-basic-v1.unit.un', $unit->native_key);
         $this->assertSame('br-basic-v1.customer.counter-sale', $customer->native_key);
         $this->assertSame(1, User::query()->count());

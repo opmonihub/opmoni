@@ -14,6 +14,7 @@ class ErpInvoiceLayout extends Model
         'name',
         'layout_settings',
         'is_default',
+        'status',
     ];
 
     /** @return array<string, string> */

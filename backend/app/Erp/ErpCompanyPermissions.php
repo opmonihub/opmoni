@@ -174,6 +174,7 @@ final class ErpCompanyPermissions
         'erp.sales.index' => false,
         'erp.sales.store' => true,
         'erp.sales.show' => false,
+        'erp.sales.representation' => false,
         'erp.sales.post' => true,
         'erp.sale-returns.index' => false,
         'erp.sale-returns.store' => true,

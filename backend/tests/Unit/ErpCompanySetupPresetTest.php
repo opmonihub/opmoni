@@ -16,7 +16,7 @@ class ErpCompanySetupPresetTest extends TestCase
             'time_zone', 'date_format', 'time_format', 'fy_start_month', 'accounting_method', 'stock_overselling_enabled',
         ], array_keys($manifest['operating_settings']));
         $this->assertSame('BRL', $manifest['currency']);
-        $this->assertSame(['unit', 'customer', 'sale_scheme'], array_keys($manifest['records']));
+        $this->assertSame(['unit', 'customer', 'sale_scheme', 'sale_layout'], array_keys($manifest['records']));
         $this->assertSame([
             'short_name' => 'UN', 'actual_name' => 'Unidade', 'allow_decimal' => false,
             'base_unit_id' => null, 'conversion_factor' => null, 'status' => 'active',
@@ -33,6 +33,10 @@ class ErpCompanySetupPresetTest extends TestCase
             'name' => 'Vendas', 'prefix' => '', 'start_number' => 1, 'total_digits' => 4,
             'is_default' => false, 'status' => 'active',
         ], $manifest['records']['sale_scheme']['attributes']);
+        $this->assertSame('ErpSaleRepresentation', $manifest['consumers']['sale_layout']);
+        $this->assertSame(['name', 'layout_settings', 'is_default', 'status'], array_keys($manifest['records']['sale_layout']['attributes']));
+        $this->assertSame('commercial-layout-v1', $manifest['records']['sale_layout']['attributes']['layout_settings']['version']);
+        $this->assertSame(['version', 'labels', 'show_customer', 'footer_text'], array_keys($manifest['records']['sale_layout']['attributes']['layout_settings']));
     }
 
     public function test_only_absent_owned_settings_are_missing_including_explicit_null_false_zero_and_empty(): void

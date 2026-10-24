@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\Erp\Fiscal\ErpFiscalOperatorCanaryController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpOrderController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpQuoteController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpSaleController;
+use App\Http\Controllers\Api\V1\Erp\Sales\ErpSaleRepresentationController;
 use App\Http\Controllers\Api\V1\Erp\Sales\ErpSaleReturnController;
 use App\Http\Controllers\Api\V1\Erp\Stock\ErpPurchaseController;
 use App\Http\Controllers\Api\V1\Erp\Stock\ErpPurchaseReturnController;
@@ -95,6 +96,7 @@ Route::get('/orders/{order}', [ErpOrderController::class, 'show'])->whereNumber(
 Route::get('/sales', [ErpSaleController::class, 'index'])->name('erp.sales.index');
 Route::post('/sales', [ErpSaleController::class, 'store'])->name('erp.sales.store');
 Route::get('/sales/{sale}', [ErpSaleController::class, 'show'])->whereNumber('sale')->name('erp.sales.show');
+Route::get('/sales/{sale}/representation', ErpSaleRepresentationController::class)->whereNumber('sale')->name('erp.sales.representation');
 Route::post('/sales/{sale}/post', [ErpSaleController::class, 'post'])->whereNumber('sale')->name('erp.sales.post');
 
 Route::get('/sale-returns', [ErpSaleReturnController::class, 'index'])->name('erp.sale-returns.index');

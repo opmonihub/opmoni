@@ -2,6 +2,8 @@
 
 namespace App\Erp;
 
+use App\Erp\Sales\ErpSaleRepresentation;
+
 final class ErpCompanySetupPreset
 {
     /**
@@ -43,6 +45,13 @@ final class ErpCompanySetupPreset
                         'is_default' => false, 'status' => 'active',
                     ],
                 ],
+                'sale_layout' => [
+                    'key' => 'br-basic-v1.sale-layout',
+                    'attributes' => [
+                        'name' => 'Venda comercial', 'layout_settings' => ErpSaleRepresentation::DEFAULT_SETTINGS,
+                        'is_default' => false, 'status' => 'active',
+                    ],
+                ],
             ],
             'consumers' => [
                 'operating_settings' => 'ErpCompanyOperatingSettings',
@@ -50,6 +59,7 @@ final class ErpCompanySetupPreset
                 'customer' => 'counter-sale.customer',
                 'currency' => 'commercial.currency',
                 'sale_scheme' => 'ErpCommercialNumbers',
+                'sale_layout' => 'ErpSaleRepresentation',
             ],
         ];
     }

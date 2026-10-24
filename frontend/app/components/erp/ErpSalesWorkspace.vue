@@ -5,7 +5,7 @@ import { useErpSalesWorkspace } from '~/composables/useErpSalesWorkspace'
 import { erpCommercialDocumentToDraft, erpSalePostPayload } from '#shared/utils/erpSales'
 import { erpWorkspaceModuleDestinations, erpWorkspaceModuleSelection } from '~/utils/erpWorkspaceNav'
 
-type ModalKind = 'create' | 'edit' | 'detail' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
+type ModalKind = 'create' | 'edit' | 'detail' | 'representation' | 'convert' | 'post-sale' | 'return' | 'post-return' | null
 type ErpSaleReturnDraft = { reason: string, quantities: Record<number, string> }
 type RecoveryOwner = { key: string, authority: number, modal: ModalKind, identity: number, kind: ErpCommercialKind | null, sourceId: number | null, fingerprint: string, returnDraftKey?: string, returnDraftFingerprint?: string }
 const sales = useErpSalesWorkspace()
@@ -29,6 +29,7 @@ const includeInlinePayment = ref(false)
 const inlinePaymentAmount = ref('')
 const paymentConfirmationError = ref('')
 const convertNumber = ref('')
+const representationFrame = ref<HTMLIFrameElement | null>(null)
 const modalOpen = computed({
   get: () => modalKind.value !== null,
   set: (open: boolean) => {
@@ -45,6 +46,7 @@ const modalTitle = computed(() => {
   if (modalKind.value === 'post-sale') return 'Confirmar lançamento da venda'
   if (modalKind.value === 'return') return 'Nova devolução'
   if (modalKind.value === 'post-return') return 'Confirmar lançamento da devolução'
+  if (modalKind.value === 'representation') return 'Representação comercial'
   return 'Detalhes do documento'
 })
 const statusItems = computed(() => {
@@ -172,7 +174,7 @@ function closeModal() {
   modalGeneration.value++
   const previous = modalKind.value
   modalKind.value = null
-  if (previous === 'detail') sales.closeSelected()
+  if (previous === 'detail' || previous === 'representation') sales.closeSelected()
   paymentConfirmationError.value = ''
 }
 function beginCreate(kind: ErpCommercialKind) {
@@ -470,6 +472,16 @@ function startPostReturn() {
 }
 async function openReceipt(paymentId: number) {
   await sales.loadReceipt(paymentId)
+}
+async function openRepresentation() {
+  const document = sales.selected.value
+  if (detailArea.value !== 'sales' || !document || selectedNeedsRefresh.value || !sales.allowed('erp.sales.representation')) return
+  modalKind.value = 'representation'
+  await sales.loadRepresentation(document.id)
+}
+function closeRepresentation() {
+  sales.closeRepresentation()
+  modalKind.value = 'detail'
 }
 function listEmptyMessage() {
   if (!sales.canRead.value) return 'Seu acesso não permite consultar esta lista.'
@@ -861,6 +873,7 @@ onMounted(() => {
               :can-return="canReturnDetail()"
               :can-post-return="canPostReturnDetail()"
               :can-receipt="sales.allowed('erp.payments.receipt')"
+              :can-representation="sales.allowed('erp.sales.representation')"
               :can-read-payments="sales.allowed('erp.payments.show')"
               :can-payments-index="sales.allowed('erp.payments.index')"
               :can-obligations-index="sales.allowed('erp.obligations.index')"
@@ -872,7 +885,53 @@ onMounted(() => {
               @return-sale="startReturn"
               @post-return="startPostReturn"
               @receipt="openReceipt"
+              @representation="openRepresentation"
             />
+          </div>
+          <div v-else-if="modalKind === 'representation'" class="space-y-4">
+            <p class="text-sm text-muted">
+              Documento comercial sem validade fiscal. Não comprova pagamento.
+            </p>
+            <p v-if="sales.representationLoading.value" role="status" class="text-sm text-muted">
+              Carregando representação comercial…
+            </p>
+            <UAlert
+              v-if="sales.representationError.value"
+              color="warning"
+              title="Representação indisponível"
+              :description="sales.representationError.value"
+            />
+            <iframe
+              v-if="sales.representationHtml.value"
+              ref="representationFrame"
+              :srcdoc="sales.representationHtml.value"
+              sandbox="allow-same-origin allow-modals"
+              title="Representação comercial da venda"
+              class="h-[60vh] w-full rounded-md border border-muted bg-default"
+            />
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                label="Voltar ao detalhe"
+                color="neutral"
+                variant="ghost"
+                @click="closeRepresentation"
+              />
+              <UButton
+                v-if="sales.representationError.value"
+                label="Tentar novamente"
+                color="neutral"
+                variant="outline"
+                :loading="sales.representationLoading.value"
+                @click="openRepresentation"
+              />
+              <UButton
+                v-if="sales.representationHtml.value"
+                label="Imprimir"
+                icon="i-lucide-printer"
+                :disabled="sales.representationLoading.value || !sales.allowed('erp.sales.representation')"
+                @click="sales.printRepresentation(representationFrame)"
+              />
+            </div>
           </div>
           <div v-else-if="modalKind === 'convert'" class="space-y-4">
             <UAlert color="info" title="Conversão comercial" :description="detailArea === 'quotes' ? 'O orçamento será convertido em um pedido confirmado. Nenhum estoque será reservado.' : 'O pedido será convertido em uma venda em rascunho. Estoque e financeiro só mudam no lançamento da venda.'" />

@@ -28,7 +28,7 @@ const writeActions = new Set([
 const exactOverrideActions = new Set(['erp.sales.price.override', 'erp.sales.discount.override'])
 const readActions = new Set([
   'erp.quotes.index', 'erp.quotes.show', 'erp.orders.index', 'erp.orders.show',
-  'erp.sales.index', 'erp.sales.show', 'erp.sale-returns.index', 'erp.sale-returns.show',
+  'erp.sales.index', 'erp.sales.show', 'erp.sales.representation', 'erp.sale-returns.index', 'erp.sale-returns.show',
   'erp.establishments.index', 'erp.contacts.index', 'erp.units.index', 'erp.products.index', 'erp.operation-natures.index',
   'erp.payments.index', 'erp.payments.show', 'erp.payments.receipt',
   'erp.obligations.index', 'erp.obligations.show', 'erp.fiscal.documents.index'
