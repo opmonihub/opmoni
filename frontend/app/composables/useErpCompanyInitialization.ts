@@ -66,11 +66,11 @@ export function useErpCompanyInitialization() {
     }
   }
 
-  function clearContext() {
+  function clearContext(message = '') {
     sequence++
     review.value = null
     outcome.value = null
-    error.value = ''
+    error.value = message
     busy.value = false
     needsReconciliation.value = false
     canRetryExact.value = false
@@ -117,10 +117,11 @@ export function useErpCompanyInitialization() {
     } catch (failure) {
       if (!current(token, attempt)) return null
       const details = apiFailure(failure)
-      error.value = details.code === 'company_context_changed'
+      const message = details.code === 'company_context_changed'
         ? 'A empresa selecionada mudou. Atualize a página antes de continuar.'
         : details.message
-      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) clearContext()
+      error.value = message
+      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) clearContext(message)
       return null
     } finally {
       if (current(token, attempt)) busy.value = false
@@ -174,7 +175,12 @@ export function useErpCompanyInitialization() {
         needsReconciliation.value = true
         error.value = 'Não foi possível confirmar o resultado. Consulte a operação antes de repetir.'
       }
-      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) clearContext()
+      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) {
+        const message = details.code === 'company_context_changed'
+          ? 'A empresa selecionada mudou. Atualize a página antes de continuar.'
+          : details.message
+        clearContext(message)
+      }
       return null
     } finally {
       if (current(token, attempt)) busy.value = false
@@ -215,7 +221,12 @@ export function useErpCompanyInitialization() {
         needsReconciliation.value = true
         error.value = details.message
       }
-      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) clearContext()
+      if ([401, 403].includes(details.status) || (details.status === 409 && details.code === 'company_context_changed')) {
+        const message = details.code === 'company_context_changed'
+          ? 'A empresa selecionada mudou. Atualize a página antes de continuar.'
+          : details.message
+        clearContext(message)
+      }
       return null
     } finally {
       if (current(token, attempt)) busy.value = false

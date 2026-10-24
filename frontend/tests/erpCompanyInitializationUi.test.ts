@@ -148,6 +148,58 @@ function mountReconciliationComponent(t: { after: (callback: () => void) => void
 }
 
 describe('company initialization reconciliation authority and recovery', () => {
+  it('retains an actionable forbidden preview error after clearing private review state', async (t) => {
+    const app = initializationHarness(async () => {
+      throw { statusCode: 403, data: { code: 'erp_operating_disabled', message: 'A empresa ainda não está habilitada para operações comerciais.' } }
+    })
+    t.after(app.dispose)
+    const mounted = mountReconciliationComponent(t, app.workspace)
+    await flush()
+    mounted.click(/gerar prévia/i)
+    await flush()
+    assert.match(mounted.text(), /A empresa ainda não está habilitada para operações comerciais/)
+    const state = app.workspace as { review: Vue.Ref<InitializationPreview | null>, error: Vue.Ref<string>, busy: Vue.Ref<boolean> }
+    assert.equal(Vue.unref(state.review), null)
+    assert.equal(Vue.unref(state.error), 'A empresa ainda não está habilitada para operações comerciais.')
+    assert.equal(Vue.unref(state.busy), false)
+  })
+
+  it('retains an actionable forbidden apply error after clearing the preview and operation state', async (t) => {
+    const calls: ApiCall[] = []
+    const app = initializationHarness(async (path, options) => {
+      calls.push({ path, options })
+      if (path.endsWith('/preview')) return { data: previewResult }
+      throw { statusCode: 403, data: { code: 'erp_operating_disabled', message: 'A empresa ainda não está habilitada para operações comerciais.' } }
+    })
+    t.after(app.dispose)
+    const state = app.workspace as { review: Vue.Ref<InitializationPreview | null>, error: Vue.Ref<string>, needsReconciliation: Vue.Ref<boolean>, preview: () => Promise<unknown>, apply: () => Promise<unknown> }
+    await state.preview()
+    await state.apply()
+    assert.equal(calls.filter(call => call.path.endsWith('/apply')).length, 1)
+    assert.equal(Vue.unref(state.review), null)
+    assert.equal(Vue.unref(state.needsReconciliation), false)
+    assert.equal(Vue.unref(state.error), 'A empresa ainda não está habilitada para operações comerciais.')
+  })
+
+  it('retains an actionable forbidden operation lookup error after clearing private recovery state', async (t) => {
+    const storage = sessionStorageFixture()
+    t.after(storage.restore)
+    const app = initializationHarness(async (path) => {
+      if (path.endsWith('/preview')) return { data: previewResult }
+      if (path.endsWith('/apply')) throw new Error('response connection lost after commit')
+      throw { statusCode: 403, data: { code: 'erp_operating_disabled', message: 'A empresa ainda não está habilitada para operações comerciais.' } }
+    })
+    t.after(app.dispose)
+    const state = app.workspace as { error: Vue.Ref<string>, needsReconciliation: Vue.Ref<boolean>, preview: () => Promise<unknown>, apply: () => Promise<unknown>, reconcile: () => Promise<unknown> }
+    await state.preview()
+    await state.apply()
+    assert.ok(storage.values.size > 0)
+    await state.reconcile()
+    assert.equal(Vue.unref(state.error), 'A empresa ainda não está habilitada para operações comerciais.')
+    assert.equal(Vue.unref(state.needsReconciliation), false)
+    assert.ok(storage.values.size > 0, 'the journal identity must remain available for a later authorized lookup')
+  })
+
   it('allows a direct Company owner without an Account while still fencing Account changes', async (t) => {
     let finish!: (value: unknown) => void
     const app = initializationHarness(async () => new Promise((resolve) => {
