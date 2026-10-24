@@ -649,7 +649,7 @@ describe('sales authority and mounted draft form', () => {
     assert.ok(instance.value)
     instance.value.draft.lines[0]!.quantity = '0.5000'
     assert.equal(parentDraft.value.lines[0]!.quantity, '0.5000')
-    instance.value.selectVariant(instance.value.draft.lines[0]!, 18)
+    instance.value.selectVariant(instance.value.draft.lines[0]!, { id: 18, source: 'selection' })
     instance.value.selectUnit(instance.value.draft.lines[0]!, 4)
     assert.equal(instance.value.draft.lines[0]!.unit_price, '12.3400')
     assert.equal(instance.value.draft.lines[0]!.unit_conversion_factor, '1.25000000')
