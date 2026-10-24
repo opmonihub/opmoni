@@ -1,7 +1,7 @@
 ## 1. Establish the implementation baseline
 
 - [x] 1.1 Reuse or prepare an isolated `codex/` worktree under the repository's ignored `.worktrees/` directory and bind a task-specific runtime; verify source mounts, `opmoni_test`, isolated Redis stores and preserved dirty/untracked work in a delivered execution manifest.
-- [ ] 1.2 Recheck installed Nuxt UI APIs/examples through the required skill/MCP and record the matching `.dashboard`/Opmoni page-family references, resolved tokens, actual font and geometry; verify matched light/dark baseline samples for settings, catalog, operational list and editor before restyling.
+- [x] 1.2 Recheck installed Nuxt UI APIs/examples through the required skill/MCP and record the matching `.dashboard`/Opmoni page-family references, resolved tokens, actual font and geometry; verify matched light/dark baseline samples for settings, catalog, operational list and editor before restyling.
 - [ ] 1.3 Map each A01–A13, F1–F9, V01–V09 and adopted MarketUP B01–B04/B06–B08 functional item to its native consumers and planned acceptance evidence; verify research hypotheses are not reported as delivered guarantees and no finding is represented only by an unused component or unimplemented lookup dependency.
 - [ ] 1.4 Record authoritative CFOP reference provenance/version, supported goods Sales/NF-e/NFC-e applicability checks and legacy default/snapshot shapes; verify canonical code examples against those sources and explicitly retain unsupported/unresolved cases without importing the inspected tenant's mappings, fiscal-nature presets or client flags.
 
