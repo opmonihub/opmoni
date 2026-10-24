@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Erp;
 
-use App\Erp\ErpCatalogWriteService;
 use App\Erp\ErpCatalogDecimal;
+use App\Erp\ErpCatalogWriteService;
+use App\Erp\ErpCompanyNativeDefaults;
 use App\Erp\ErpCompanyOperatingSettings;
 use App\Erp\ErpCompanyProductTaxDefaults;
 use App\Erp\LegacyBusinessReference;
@@ -22,6 +23,7 @@ class ErpCompanySettingsController extends Controller
         private BrazilianTaxId $taxId,
         private ErpCatalogWriteService $writes,
         private ErpCompanyProductTaxDefaults $taxDefaults,
+        private ErpCompanyNativeDefaults $nativeDefaults,
     ) {}
 
     public function show(Request $request): JsonResponse
@@ -30,7 +32,7 @@ class ErpCompanySettingsController extends Controller
         $company = $context->company;
 
         return response()->json([
-            'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company)],
+            'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company), ...$this->nativeDefaults->toPayload($company)],
             'meta' => $this->formMeta(),
         ]);
     }
@@ -103,7 +105,7 @@ class ErpCompanySettingsController extends Controller
             $company = $company->fresh();
 
             return response()->json([
-                'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company)],
+                'data' => [...$this->settings->toPayload($company), ...$this->taxDefaults->toPayload($company), ...$this->nativeDefaults->toPayload($company)],
                 'meta' => $this->formMeta(),
             ]);
         });

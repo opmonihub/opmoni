@@ -47,10 +47,10 @@ class ErpCommercialNumberingTest extends ErpCommercialTestCase
             'erp_company_id' => $this->company->id, 'preset_version' => 'br-basic-v1', 'revision' => 1,
             'default_invoice_scheme_id' => $scheme->id,
         ]);
-        $sale = $this->send('sales', $this->body())->assertCreated()->assertJsonPath('data.invoice_no', 'S-000001')->json('data.id');
+        $sale = $this->send('sales', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.invoice_no', 'S-000001')->json('data.id');
         $this->assertNull(ErpSale::findOrFail($sale)->erp_invoice_scheme_id);
-        $this->send('quotes', $this->body())->assertCreated()->assertJsonPath('data.quote_no', 'Q-000001');
-        $this->send('orders', $this->body())->assertCreated()->assertJsonPath('data.order_no', 'O-000001');
+        $this->send('quotes', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.quote_no', 'Q-000001');
+        $this->send('orders', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.order_no', 'O-000001');
     }
 
     public function test_manual_numbers_keep_their_contract_and_automatic_allocation_skips_collisions_without_using_invoice_count(): void
@@ -210,7 +210,7 @@ class ErpCommercialNumberingTest extends ErpCommercialTestCase
         $this->assertFalse($state->fresh()->sale_numbering_adopted);
         $this->assertNull($scheme->fresh()->native_key);
         $this->assertEquals($before, DB::table('erp_commercial_number_sequences')->first());
-        $this->send('sales', $this->body())->assertCreated()->assertJsonPath('data.invoice_no', 'S-000042');
+        $this->send('sales', $this->body(['currency' => 'BRL']))->assertCreated()->assertJsonPath('data.invoice_no', 'S-000042');
     }
 
     private function provisionNewCompany(): ErpCompanySetupState

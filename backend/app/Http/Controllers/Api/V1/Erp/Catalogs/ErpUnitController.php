@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Erp\Catalogs;
 use App\Erp\ErpCatalogDecimal;
 use App\Erp\ErpCatalogScope;
 use App\Erp\ErpCatalogWriteService;
+use App\Erp\ErpCompanyNativeDefaults;
 use App\Models\Erp\ErpUnit;
 use App\Support\CurrentCompany;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,16 @@ use Illuminate\Validation\ValidationException;
 class ErpUnitController extends ErpCatalogController
 {
     public function __construct(private ErpCatalogScope $scope, private ErpCatalogWriteService $writes) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $response = parent::index($request);
+        $data = $response->getData(true);
+        $data['meta']['native_default_unit'] = app(ErpCompanyNativeDefaults::class)->unitDefault(CurrentCompany::fromRequest($request)->company);
+        $response->setData($data);
+
+        return $response;
+    }
 
     protected function modelClass(): string
     {

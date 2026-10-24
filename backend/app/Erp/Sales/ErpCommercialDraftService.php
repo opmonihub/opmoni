@@ -4,6 +4,7 @@ namespace App\Erp\Sales;
 
 use App\Erp\ErpCatalogScope;
 use App\Erp\ErpCommercialReturnService;
+use App\Erp\ErpCompanyNativeDefaults;
 use App\Erp\ErpEstablishmentAccess;
 use App\Erp\Stock\ErpStockDecimal;
 use App\Models\Erp\ErpContact;
@@ -133,6 +134,9 @@ final class ErpCommercialDraftService
                 unset($savedInput[$assertion]);
             }
             $input = array_replace($savedInput, $input);
+        }
+        if ($model === null) {
+            $input = app(ErpCompanyNativeDefaults::class)->applyToNewCommercialDraft($request, $kind, $input);
         }
         $field = self::numberField($kind);
         if ($kind === 'sale' && array_key_exists('sale_no', $input)) {
