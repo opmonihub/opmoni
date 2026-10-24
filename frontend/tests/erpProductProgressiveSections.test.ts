@@ -102,6 +102,30 @@ const referenceSelect = Vue.defineComponent({
 })
 let productFormComponent: Vue.Component | undefined
 
+function mockErpProductTaxProfilePreview() {
+  const result = Vue.ref(null)
+  const pending = Vue.ref(false)
+  const error = Vue.ref('')
+  const stale = Vue.ref(false)
+
+  return {
+    result,
+    pending,
+    error,
+    stale,
+    canPreview: Vue.ref(false),
+    authorityBlocked: Vue.ref(false),
+    preview: async () => null,
+    clear() {
+      result.value = null
+      error.value = ''
+      stale.value = false
+    },
+    markStale() {},
+    markFresh() {}
+  }
+}
+
 function mountProductForm(record: Record<string, unknown> | null = null) {
   const emitted: Array<Record<string, unknown>> = []
   const componentProps = Vue.reactive({
@@ -114,6 +138,7 @@ function mountProductForm(record: Record<string, unknown> | null = null) {
   })
   productFormComponent ??= compileVueComponent('components/erp/catalogs/ErpProductCatalogForm.vue', {}, {
     '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
+    '~/composables/useErpProductTaxProfilePreview': { useErpProductTaxProfilePreview: mockErpProductTaxProfilePreview },
     '~/components/erp/catalogs/ErpCatalogField.vue': field,
     '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect
   })

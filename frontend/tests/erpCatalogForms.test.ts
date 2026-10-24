@@ -115,6 +115,30 @@ function mockNatureRules() {
   return { rules, choice, oldChoice, exception, updates }
 }
 
+function mockErpProductTaxProfilePreview() {
+  const result = Vue.ref(null)
+  const pending = Vue.ref(false)
+  const error = Vue.ref('')
+  const stale = Vue.ref(false)
+
+  return {
+    result,
+    pending,
+    error,
+    stale,
+    canPreview: Vue.ref(false),
+    authorityBlocked: Vue.ref(false),
+    preview: async () => null,
+    clear() {
+      result.value = null
+      error.value = ''
+      stale.value = false
+    },
+    markStale() {},
+    markFresh() {}
+  }
+}
+
 function mountForm(
   path: string,
   record: Record<string, unknown> | null = null,
@@ -166,6 +190,7 @@ function mountForm(
     }
   })
   const modules: Record<string, unknown> = {
+    '~/composables/useErpProductTaxProfilePreview': { useErpProductTaxProfilePreview: mockErpProductTaxProfilePreview },
     '~/composables/useErpNativeUnitDefault': { useErpNativeUnitDefault: () => ({ pending: Vue.ref(false), error: Vue.ref(''), status: Vue.ref('unset'), retry: async () => undefined, markExplicit: () => undefined }) },
     '~/components/erp/catalogs/ErpCatalogReferenceSelect.vue': referenceSelect,
     '~/components/erp/catalogs/ErpOperationNatureCfopRules.vue': operationNatureRules,
@@ -749,7 +774,7 @@ describe('ERP catalog family forms', () => {
 
     await product.openSection('commercial')
 
-    for (const [form, expectedSelectCount] of [[product, 3], [discount, 1], [operation, 1]] as const) {
+    for (const [form, expectedSelectCount] of [[product, 15], [discount, 1], [operation, 1]] as const) {
       assert.equal(descendants(form.root).filter(node => node.props['data-nuxt-ui-component'] === 'USelect').length, expectedSelectCount)
       assert.equal(descendants(form.root).filter(node => node.tag === 'select' && !node.props['data-nuxt-ui-component']).length, 0)
     }
