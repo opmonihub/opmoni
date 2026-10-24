@@ -167,7 +167,7 @@ watch([model, context.key, () => list.state.value, list.authorityBlocked, list.c
   const id = model.value
   if (id !== blockedSelectionId)
     blockedSelectionId = null
-  if (id && detailOwnerId === id && detailOwnerContextKey === context.key.value && detailPending.value)
+  if (id && detailOwnerId === id && detailOwnerContextKey === context.key.value && detailPending.value && !list.authorityBlocked.value && list.canRead.value)
     return
   abortDetail()
   selectedError.value = ''

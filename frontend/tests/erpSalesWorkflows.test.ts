@@ -595,7 +595,7 @@ describe('sales authority and mounted draft form', () => {
     const { descriptor } = VueCompiler.parse(source)
     const script = VueCompiler.compileScript(descriptor, { id: 'sales-draft', inlineTemplate: true })
     const bindings = { computed: Vue.computed, ref: Vue.ref, watch: Vue.watch }
-    const exports = compileModule(script.content, { vue: Vue }, bindings)
+    const exports = compileModule(script.content, { 'vue': Vue, '~/utils/erpProductVariantReferences': productVariantReferences }, bindings)
     const component = exports.default as { setup: (props: unknown, context: { emit: (event: string, value: unknown) => void, expose: (value: unknown) => void }) => unknown }
     const draft = Vue.reactive({
       erp_establishment_id: 7,

@@ -288,6 +288,17 @@ describe('ERP catalog reference selector', () => {
     assert.equal(optionalMenu?.clear, true)
     assert.equal(optionalMenu?.required, false)
 
+    const requiredList = required.requests.find(request => request.url === '/erp/units?page=1')
+    const optionalList = optional.requests.find(request => request.url === '/erp/units?page=1')
+    assert.ok(requiredList)
+    assert.ok(optionalList)
+    const activeReference = { id: 88, short_name: 'Unidade validada', status: 'active' }
+    const page = { data: [activeReference], meta: { current_page: 1, last_page: 1, per_page: 50, total: 1 } }
+    requiredList.resolve(page)
+    optionalList.resolve(page)
+    await required.settle()
+    await optional.settle()
+
     required.updateModel('88')
     optional.updateModel(null)
     await required.settle()
