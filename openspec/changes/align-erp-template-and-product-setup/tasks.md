@@ -11,7 +11,7 @@
 - [x] 2.2 Derive Finance/Cash/Sales visible areas and section-root fallbacks from the permitted registry; verify payments-only, sessions-only, establishments-only and explicitly denied deep-link cases without weakening backend authorization.
 - [x] 2.3 Give settings/catalog child pages one persistent shell and direct-link toolbar without nested panels; verify reload/history, active-link reachability and native horizontal navigation at 390px and desktop.
 - [x] 2.4 Replace accumulated ERP expansion with one controlled group shared by both menu regions and reuse the office folding pattern where appropriate; verify sequential opens, manual fold/same-module hash, pinned child, leaf route, permission/context changes and collapsed/mobile keyboard/focus behavior in the existing sidebar suites.
-- [ ] 2.5 Reuse the office Settings registry for consistent Portuguese labels/order while preserving demonstration state; verify `settingsNav` behavior and office/company context navigation in desktop/mobile browser samples.
+- [x] 2.5 Reuse the office Settings registry for consistent Portuguese labels/order while preserving demonstration state; verify `settingsNav` behavior and office/company context navigation in desktop/mobile browser samples.
 
 ## 3. Align shared visual roles and copy
 
@@ -66,7 +66,7 @@
 
 ## 9. Correct remaining operational forms
 
-- [ ] 9.1 Replace whole-catalog commercial/purchase reference loading with bounded search and selected-record hydration using the existing picker plus a focused variant adapter; verify multi-page SKU/name search, identical variant labels, unavailable historical selection, lookup failures and rapid context switches.
+- [x] 9.1 Replace whole-catalog commercial/purchase reference loading with bounded search and selected-record hydration using the existing picker plus a focused variant adapter; verify multi-page SKU/name search, identical variant labels, unavailable historical selection, lookup failures and rapid context switches.
 - [ ] 9.2 Reconcile contact municipality/state/code editing with fiscal-readiness projection while preserving unrelated address keys; verify minimal contact save, city/UF changes with old hidden codes, explicit clearing and failed lookup recovery through catalog/fiscal contract tests.
 - [ ] 9.3 Align typed CT-e/MDF-e field descriptors, required conditions and backend/frontend error paths, and make Fiscal creation action-triggered; verify nested party/tax/vehicle/route errors focus the real control, edits persist, browsing stays primary and builders/gates remain strict.
 - [x] 9.4 Validate retained financial account/session choices against current currency/establishment/method before submit; verify incompatible visible selections, failed refresh, open-session requirements and unchanged backend rejections in finance/cash tests.
@@ -75,7 +75,7 @@
 
 ## 10. Verify concurrency and cross-layer compatibility
 
-- [ ] 10.1 Add independent-process PostgreSQL/Redis initialization races and stale-preview/owner-revocation races; verify one baseline/default set, no overwritten choice, rollback and preserved development stores using the task's isolated integration runtime.
+- [x] 10.1 Add independent-process PostgreSQL/Redis initialization races and stale-preview/owner-revocation races; verify one baseline/default set, no overwritten choice, rollback and preserved development stores using the task's isolated integration runtime.
 - [ ] 10.2 Add independent-process profile/default revision races against draft save, explicit refresh and fiscal-intended posting; verify one coherent revision set or recoverable pre-effect conflict, no mixed facts and no duplicate stock/finance effects.
 - [ ] 10.3 Add cross-layer regressions for historical snapshot readers, single-CFOP payloads, profile/rule archive/adoption, tenant assertions, delegated grants and idempotent recovery; verify old/new consumers preserve effective classification and posted/fiscal/financial meaning without widened access or current-default repair.
 - [ ] 10.4 Add independent-process nature/default/choice/exception and legacy-writer races against configuration updates, draft refresh and posting; verify aggregate revision advancement, one active exception per product/nature, valid default membership, shared lock order, coherent joint profile/CFOP fingerprints, stale 409 and no partial or duplicate business effects.
