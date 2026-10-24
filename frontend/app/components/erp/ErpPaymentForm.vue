@@ -2,7 +2,7 @@
 import { decimalTextIsValid } from '#shared/utils/erpFinance'
 import { erpFinancialChoiceError, retainedChoiceItem } from '~/utils/erpFinancialChoiceCompatibility'
 
-const props = withDefaults(defineProps<{ busy?: boolean, errors?: Record<string, string>, referencesCurrent?: boolean, establishments?: { id: number, name: string, status?: string }[], accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null, status?: string }[], sessions?: { id: number, currency: string | null, erp_establishment_id: number | null, status?: string, can_operate?: boolean, needs_reconciliation?: boolean }[] }>(), { referencesCurrent: true, establishments: () => [], accounts: () => [], sessions: () => [] })
+const props = withDefaults(defineProps<{ busy?: boolean, errors?: Record<string, string>, referencesCurrent?: boolean, establishments?: { id: number, name: string, status?: string }[], accounts?: { id: number, name: string, currency: string, erp_establishment_id: number | null, status?: string }[], sessions?: { id: number, currency: string | null, erp_establishment_id: number | null, status: string, can_operate?: boolean, needs_reconciliation?: boolean }[] }>(), { referencesCurrent: true, establishments: () => [], accounts: () => [], sessions: () => [] })
 const emit = defineEmits<{ submit: [payload: Record<string, unknown>] }>()
 const state = reactive({ direction: 'in', amount: '', method: 'bank_transfer', currency: 'BRL', erp_establishment_id: 'all', erp_financial_account_id: 'none', erp_cash_session_id: 'none' })
 const localError = ref('')

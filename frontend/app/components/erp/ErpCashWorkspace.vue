@@ -596,7 +596,7 @@ watch(() => cash.selectedSession.value?.id, (id, previousId) => {
           color="warning"
           variant="subtle"
           :title="cash.registerOptionsError.value"
-          :actions="[{ label: 'Atualizar caixas', onClick: cash.loadRegisterOptions }]"
+          :actions="[{ label: 'Atualizar caixas', onClick: () => cash.loadRegisterOptions() }]"
         />
         <div v-if="cash.registerOptionsMeta.value && cash.registerOptionsMeta.value.current_page < cash.registerOptionsMeta.value.last_page" class="mt-3">
           <UButton
