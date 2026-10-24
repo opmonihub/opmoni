@@ -204,7 +204,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
     '~/utils/erpWorkspaceNav': loadAppComposable('utils/erpWorkspaceNav.ts')
   }, globals)
   const workspace = workspaceExports.default as Vue.Component
-  type Node = { tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
+  type Node = { style?: Record<string, string>, tag?: string, text?: string, children: Node[], parent: Node | null, props: Record<string, unknown> }
   const root: Node = { tag: 'root', children: [], parent: null, props: {} }
   const renderer = Vue.createRenderer<Node>({
     patchProp(node, key, _previous, next) { node.props[key] = next },
@@ -216,7 +216,7 @@ function mountSalesWorkspace(api: (path: string, options?: Record<string, unknow
       else parent.children.splice(index, 0, node)
     },
     remove(node) { if (!node.parent) return; const index = node.parent.children.indexOf(node); if (index >= 0) node.parent.children.splice(index, 1); node.parent = null },
-    createElement(tag) { return { tag, children: [], parent: null, props: {} } },
+    createElement(tag) { return { tag, style: {}, children: [], parent: null, props: {} } },
     createText(text) { return { text, children: [], parent: null, props: {} } },
     createComment(text) { return { text, children: [], parent: null, props: {} } },
     setText(node, text) { node.text = text },

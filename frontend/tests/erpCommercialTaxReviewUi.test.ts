@@ -97,8 +97,9 @@ function mountWorkspace(api: RequestApi = defaultApi, grants = permissions, real
   return { ...current, text: () => text(root), find, click, async submit() { const form = find(node => node.tag === 'form')[0]; assert.ok(form); (form.props.onSubmit as () => void)(); await settle() }, dispose() { app.unmount(); current.stop() } }
 }
 
-describe('commercial tax review actual Sales consumer', { concurrency: 1, timeout: 30_000 }, () => {
-  it('opens a reviewable preview from detail, shows frozen/current facts and applies separately from posting', async (t) => {
+// Eleven serial SFC cases need an aggregate budget separate from each bounded case.
+describe('commercial tax review actual Sales consumer', { concurrency: 1, timeout: 120_000 }, () => {
+  it('opens a reviewable preview from detail, shows frozen/current facts and applies separately from posting', { timeout: 30_000 }, async (t) => {
     const calls: Array<[string, RequestOptions | undefined]> = []
     const page = mountWorkspace(async (path, options) => { calls.push([path, options]); return defaultApi(path, options) })
     t.after(() => page.dispose())
@@ -116,7 +117,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.equal(calls.filter(([path]) => path.endsWith('/post')).length, 0)
   })
 
-  it('shows source prerequisite feedback without claiming authorization or complete fiscal readiness', async (t) => {
+  it('shows source prerequisite feedback without claiming authorization or complete fiscal readiness', { timeout: 30_000 }, async (t) => {
     const page = mountWorkspace(); t.after(() => page.dispose())
     await settle(); await page.click('0005')
     assert.ok(page.text().includes('NF-e') && page.text().includes('endereço do destinatário'))
@@ -124,7 +125,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.ok(!/fiscal[^.]*autorizad[ao]/i.test(page.text()))
   })
 
-  it('does not offer refresh for accepted history and explains the frozen-source limitation without current lookup', async (t) => {
+  it('does not offer refresh for accepted history and explains the frozen-source limitation without current lookup', { timeout: 30_000 }, async (t) => {
     const historical = { ...sale, status: 'posted', commercial_snapshot: { version: 'commercial-v1', accepted: { draft_revision: 1 }, lines: [] } }
     let previews = 0
     const page = mountWorkspace(async (path, options) => { if (path.endsWith('/tax-refresh-preview')) previews++; return /^\/erp\/sales\/5$/.test(path) ? envelope(historical) : defaultApi(path, options) })
@@ -134,7 +135,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.equal(previews, 0)
   })
 
-  it('keeps an invalid context editable and previews the explicitly corrected value before apply', async (t) => {
+  it('keeps an invalid context editable and previews the explicitly corrected value before apply', { timeout: 30_000 }, async (t) => {
     const bodies: Array<Record<string, unknown> | undefined> = []
     const page = mountWorkspace(async (path, options) => {
       if (path.endsWith('/tax-refresh-preview')) {
@@ -155,7 +156,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.ok(page.text().includes('87654321'))
   })
 
-  it('attaches malformed third-line CFOP feedback to its actual control and preserves reviewed options through correction and apply', async (t) => {
+  it('attaches malformed third-line CFOP feedback to its actual control and preserves reviewed options through correction and apply', { timeout: 30_000 }, async (t) => {
     const calls: Array<[string, RequestOptions | undefined]> = []
     const document = { ...sale, lines: [20, 41, 33].map(id => ({ ...sale.lines[0]!, id })) }
     const previews: Array<Record<string, unknown>> = []
@@ -204,7 +205,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.equal(calls.some(([path]) => path.endsWith('/post')), false)
   })
 
-  it('invalidates the visible proof when context changes and requires another preview', async (t) => {
+  it('invalidates the visible proof when context changes and requires another preview', { timeout: 30_000 }, async (t) => {
     const calls: Array<[string, RequestOptions | undefined]> = []
     const page = mountWorkspace(async (path, options) => { calls.push([path, options]); return defaultApi(path, options) })
     t.after(() => page.dispose()); await settle(); await page.click('0005'); await page.click('Revisar classificação'); await page.click('Gerar prévia')
@@ -220,7 +221,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
   })
 
   for (const intent of ['55', null] as const) {
-    it(`roundtrips explicit fiscal intent ${intent ?? 'null'} through the real editor without changing line or money authority`, async (t) => {
+    it(`roundtrips explicit fiscal intent ${intent ?? 'null'} through the real editor without changing line or money authority`, { timeout: 30_000 }, async (t) => {
       const calls: Array<[string, RequestOptions | undefined]> = []
       const page = mountWorkspace(async (path, options) => { calls.push([path, options]); return defaultApi(path, options) }, permissions, true)
       t.after(() => page.dispose()); await settle(); await page.click('0005'); await page.click('Editar rascunho')
@@ -239,7 +240,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     })
   }
 
-  it('exposes post422 context feedback and a real edit correction without silently reposting', async (t) => {
+  it('exposes post422 context feedback and a real edit correction without silently reposting', { timeout: 30_000 }, async (t) => {
     const calls: Array<[string, RequestOptions | undefined]> = []
     const page = mountWorkspace(async (path, options) => {
       calls.push([path, options])
@@ -261,7 +262,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     assert.equal(calls.filter(([path]) => path.endsWith('/post')).length, 1)
   })
 
-  it('previews and explicitly applies quotes and orders under each exact source update grant', async () => {
+  it('previews and explicitly applies quotes and orders under each exact source update grant', { timeout: 30_000 }, async () => {
     for (const area of ['quotes', 'orders'] as const) {
       const calls: Array<[string, RequestOptions | undefined]> = []
       const document = { ...sale, fiscal_model: undefined, status: area === 'quotes' ? 'draft' : 'confirmed', invoice_no: undefined, ...(area === 'quotes' ? { quote_no: 'Q-0005' } : { order_no: 'O-0005' }) }
@@ -283,7 +284,7 @@ describe('commercial tax review actual Sales consumer', { concurrency: 1, timeou
     }
   })
 
-  it('requires the actual source update grant and cannot borrow a show or post grant', async (t) => {
+  it('requires the actual source update grant and cannot borrow a show or post grant', { timeout: 30_000 }, async (t) => {
     const page = mountWorkspace(defaultApi, ['erp.sales.index', 'erp.sales.show', 'erp.sales.post'])
     t.after(() => page.dispose()); await settle(); await page.click('0005')
     assert.equal(page.find(node => node.tag === 'button' && String(node.props.label ?? '').includes('Revisar classificação')).length, 0)
