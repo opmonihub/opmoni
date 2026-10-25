@@ -70,6 +70,51 @@ test('business requests use current membership, same-origin proxy and csrf for m
   assert.equal(new Headers(calls.at(-1)!.options.headers as HeadersInit).get('X-Account-Id'), null)
 })
 
+test('owner invitation transport is available without tenant membership and never asserts a supplied account id', async () => {
+  const states = new Map<string, ReturnType<typeof ref>>([
+    ['access-user', ref(null)],
+    ['access-csrf', ref<string | null>(null)]
+  ])
+  const calls: { path: string, options: Record<string, unknown> }[] = []
+  Object.assign(globalThis, {
+    useNuxtApp: () => (globalThis as { __ownerTransportNuxtApp?: object }).__ownerTransportNuxtApp ??= {},
+    useState: (key: string, initial: () => unknown) => {
+      if (!states.has(key)) states.set(key, ref(initial()))
+      return states.get(key)
+    },
+    useRequestEvent: () => undefined,
+    useRequestFetch: () => async (path: string, options: Record<string, unknown>) => {
+      calls.push({ path, options })
+      return path.endsWith('/csrf') ? { csrf_token: 'owner-csrf' } : { ok: true }
+    }
+  })
+  const { useAccessApi } = await import('../app/composables/useAccessApi.ts')
+  const { api } = useAccessApi()
+
+  await api('/erp-invitations/resolve', { method: 'POST', body: { token: 'opaque' }, headers: { 'X-Account-Id': '999' } })
+  await api('/erp-invitations/current')
+  await api('/erp-invitations/accept', { method: 'POST', body: { password: 'secret' }, headers: { 'X-Account-Id': '999' } })
+
+  const requests = calls.filter(call => call.path !== '/api/v1/csrf')
+  assert.deepEqual(requests.map(call => call.path), [
+    '/api/v1/erp-invitations/resolve',
+    '/api/v1/erp-invitations/current',
+    '/api/v1/erp-invitations/accept'
+  ])
+  for (const call of requests) {
+    const headers = new Headers(call.options.headers as HeadersInit)
+    assert.equal(headers.get('X-Account-Id'), null)
+    assert.equal(call.options.retry, 0)
+  }
+  assert.equal(new Headers(requests[0]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'owner-csrf')
+  assert.equal(new Headers(requests[2]!.options.headers as HeadersInit).get('X-CSRF-Token'), 'owner-csrf')
+  assert.equal(calls.filter(call => call.path === '/api/v1/csrf').length, 1)
+  await assert.rejects(api('/clients'), /account|escritório/i)
+  await assert.rejects(api('/erp-commercial/plans'), /account|escritório/i)
+  await assert.rejects(api('/erp-invitations-foreign/current'), /account|escritório/i)
+  assert.equal(calls.filter(call => call.path === '/api/v1/clients' || call.path === '/api/v1/erp-commercial/plans' || call.path === '/api/v1/erp-invitations-foreign/current').length, 0)
+})
+
 test('tenant permissions require a matching active membership even for platform administrators', async () => {
   const { tenantPermissions } = await import('../shared/utils/business.ts')
   assert.equal(tenantPermissions(identity).canManageClients, true)
