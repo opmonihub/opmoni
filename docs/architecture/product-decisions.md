@@ -72,6 +72,12 @@ Accepted by the user on 2026-10-13: copy and activate the legacy business logic 
 
 The local Compose scheduler activates the imported schedules in the fiscal homologation environment. Queue workers use per-job deadlines and restore account context between jobs. External provider calls retain their existing configuration and contract guards; test verification uses provider fakes except for explicit opt-in live probes.
 
+#### Commercial maintenance boundary — 2026-10-25 implementation clarification
+
+The Office ERP commercial module treats maintenance of an already accepted office-client contract and its financial history separately from making a new sale. If the office subscription or resale allowance later becomes inactive, an active office with a real admin member may still read and perform the action-classified maintenance operations for existing contracts: lifecycle maintenance, invoice issue/correction, receipt recording/reversal, policy maintenance, reporting, and revoking an existing invitation. This narrow exception preserves servicing and accounting history; it does not restore the right to create/send contracts, issue invitations, adopt a Company subscription, add licences, expand modules, or create/publish offers. Those new-sale actions require current subscription/resale rights and capacity.
+
+This boundary does not alter D009: a Super Admin still needs real Account membership for tenant operations, and a selected office context must match that membership. Office status, admin role, current contract/allocation state and action-specific authorization remain required. No general write bypass is granted for an inactive office subscription. This clarification records implemented authorization behavior and its acceptance evidence; it does not authorize production rollout or change launch gates.
+
 ## Specification reconciliation — 2026-10-13
 
 The user requested a complete system map with delta specs and synchronization of decisions and canonical contracts. [reconcile-system-specs](../../openspec/changes/archive/2026-10-13-reconcile-system-specs/proposal.md), archived on 2026-10-13 with all ten tasks complete and its seventeen capability deltas synchronized, documents the system contracts and preserves the access baseline. The [system reconciliation report](system-spec-reconciliation.md) links every registered application route and frontend page family to implementation evidence and records remaining differences.
