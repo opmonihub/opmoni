@@ -1,10 +1,13 @@
 <?php
 
+use App\Jobs\CleanExpiredOfficeErpProofs;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('erp:fiscal-scan-new-attempts')->everyMinute()->withoutOverlapping();
 
 Schedule::command('work:generate-recurrences')->daily();
+
+Schedule::job(new CleanExpiredOfficeErpProofs)->daily()->withoutOverlapping();
 
 // `withoutOverlapping` protege a entrada; a trava por cliente e fonte no
 // serviço de captura é quem serializa o mesmo CNPJ entre workers.
