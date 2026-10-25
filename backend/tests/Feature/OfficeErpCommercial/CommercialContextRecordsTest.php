@@ -5,11 +5,13 @@ namespace Tests\Feature\OfficeErpCommercial;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
+use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\User;
+use App\Support\CurrentAccount;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -20,14 +22,125 @@ use Tests\OfficeErpCommercialTestCase;
 
 class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
 {
+    public function test_office_admin_context_requires_selected_account_for_factory_and_constructor(): void
+    {
+        $ctx = $this->officeContext();
+
+        $this->assertOfficeAdminCreationForbidden(fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+            $ctx->account,
+            $ctx->actor,
+            'commercial.plan.create',
+        ));
+        $this->assertOfficeAdminCreationForbidden(fn (): OfficeErpExecutionContext => new OfficeErpExecutionContext(
+            $ctx->account,
+            $ctx->actor,
+            'office_admin',
+            'commercial.plan.create',
+        ));
+    }
+
+    public function test_office_context_fixture_restores_previous_current_account_attribute(): void
+    {
+        $ctx = $this->officeContext();
+        $membership = AccountMembership::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('user_id', $ctx->actor?->getKey())
+            ->firstOrFail();
+        $previous = new CurrentAccount($ctx->account, $membership);
+        $request = request();
+        $request->attributes->set(CurrentAccount::class, $previous);
+
+        try {
+            $created = $this->officeContextFor($ctx->account);
+
+            $this->assertSame('office_admin', $created->actorKind);
+            $this->assertSame($previous, CurrentAccount::fromRequest());
+        } finally {
+            $request->attributes->remove(CurrentAccount::class);
+        }
+    }
+
+    public function test_office_admin_context_rejects_a_different_selected_account(): void
+    {
+        $ctx = $this->officeContext();
+        $selected = $this->officeContext();
+
+        $this->withOfficeAccount($selected, function () use ($ctx): void {
+            $this->assertOfficeAdminCreationForbidden(fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+                $ctx->account,
+                $ctx->actor,
+                'commercial.plan.create',
+            ));
+            $this->assertOfficeAdminCreationForbidden(fn (): OfficeErpExecutionContext => new OfficeErpExecutionContext(
+                $ctx->account,
+                $ctx->actor,
+                'office_admin',
+                'commercial.plan.create',
+            ));
+        });
+    }
+
+    public function test_office_admin_context_rejects_selected_membership_for_a_different_actor(): void
+    {
+        $ctx = $this->officeContext();
+        $otherActor = User::factory()->create();
+        $membership = AccountMembership::factory()->create([
+            'account_id' => $ctx->accountId,
+            'user_id' => $otherActor->id,
+            'role' => 'admin',
+        ]);
+        $selected = new CurrentAccount($ctx->account, $membership);
+        $request = request();
+        $hadPrevious = $request->attributes->has(CurrentAccount::class);
+        $previous = $request->attributes->get(CurrentAccount::class);
+        $request->attributes->set(CurrentAccount::class, $selected);
+
+        try {
+            $this->assertOfficeAdminCreationForbidden(fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+                $ctx->account,
+                $ctx->actor,
+                'commercial.plan.create',
+            ));
+        } finally {
+            if ($hadPrevious) {
+                $request->attributes->set(CurrentAccount::class, $previous);
+            } else {
+                $request->attributes->remove(CurrentAccount::class);
+            }
+        }
+    }
+
     public function test_office_admin_context_requires_real_admin_membership(): void
     {
         $account = Account::factory()->create(['status' => 'active']);
         $actor = User::factory()->create();
+        $membership = AccountMembership::factory()->create([
+            'account_id' => $account->id,
+            'user_id' => $actor->id,
+            'role' => 'operador',
+        ]);
 
         $this->expectException(HttpException::class);
 
-        OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial.plan.create');
+        $this->withSelectedOffice($account, $membership, fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+            $account,
+            $actor,
+            'commercial.plan.create',
+        ));
+    }
+
+    public function test_office_admin_context_requires_database_account_to_remain_active(): void
+    {
+        $ctx = $this->officeContext();
+        DB::table('accounts')->where('id', $ctx->accountId)->update(['status' => 'suspended']);
+
+        $this->withOfficeAccount($ctx, fn () => $this->assertOfficeAdminCreationForbidden(
+            fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+                $ctx->account,
+                $ctx->actor,
+                'commercial.plan.create',
+            ),
+        ));
     }
 
     public function test_owner_identity_is_stable_across_identity_creation_and_system_context_binds_resource(): void
@@ -276,5 +389,15 @@ class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
         $manualHold = $this->withOfficeAccount($ctx, fn (): bool => (bool) $contract->refresh()->manual_hold);
 
         $this->assertTrue($manualHold);
+    }
+
+    private function assertOfficeAdminCreationForbidden(callable $create): void
+    {
+        try {
+            $create();
+            $this->fail('A human office context must match the selected persisted admin membership.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
     }
 }

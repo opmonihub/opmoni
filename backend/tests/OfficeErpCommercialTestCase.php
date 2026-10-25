@@ -76,10 +76,18 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
             'role' => 'admin',
         ]);
 
-        return OfficeErpExecutionContext::officeAdmin(
+        return $this->withSelectedOffice(
             $account,
-            $actor,
-            $purpose ?? 'commercial-test:'.$account->id.':'.$actor->id,
+            AccountMembership::query()
+                ->where('account_id', $account->id)
+                ->where('user_id', $actor->id)
+                ->where('role', 'admin')
+                ->firstOrFail(),
+            fn (): OfficeErpExecutionContext => OfficeErpExecutionContext::officeAdmin(
+                $account,
+                $actor,
+                $purpose ?? 'commercial-test:'.$account->id.':'.$actor->id,
+            ),
         );
     }
 
@@ -104,10 +112,16 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
             ->where('user_id', $ctx->actor->getKey())
             ->where('role', 'admin')
             ->firstOrFail();
+
+        return $this->withSelectedOffice($ctx->account, $membership, $callback);
+    }
+
+    protected function withSelectedOffice(Account $account, AccountMembership $membership, Closure $callback): mixed
+    {
         $request = request();
         $hadPrevious = $request->attributes->has(CurrentAccount::class);
         $previous = $request->attributes->get(CurrentAccount::class);
-        $request->attributes->set(CurrentAccount::class, new CurrentAccount($ctx->account, $membership));
+        $request->attributes->set(CurrentAccount::class, new CurrentAccount($account, $membership));
 
         try {
             return $callback();

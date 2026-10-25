@@ -5,6 +5,7 @@ namespace App\Erp\Commercial;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\User;
+use App\Support\CurrentAccount;
 use App\Tenant\CurrentTenant;
 use Closure;
 
@@ -30,7 +31,8 @@ final class OfficeErpExecutionContext
         $this->accountId = (int) $account->getKey();
 
         if ($actorKind === 'office_admin') {
-            abort_unless($actor instanceof User && $actor->exists && $this->hasAdminMembership($actor), 403);
+            abort_unless($actor instanceof User && $actor->exists, 403);
+            $this->assertSelectedOfficeAdmin($actor);
             $this->verifiedActorIdentity = 'office-admin:user:'.(int) $actor->getKey();
             $this->verified = true;
         }
@@ -77,17 +79,30 @@ final class OfficeErpExecutionContext
         return app(CurrentTenant::class)->run($this->accountId, $callback);
     }
 
-    private function hasAdminMembership(User $actor): bool
+    private function assertSelectedOfficeAdmin(User $actor): void
     {
-        if ($this->account->status !== 'active') {
-            return false;
-        }
+        $selected = CurrentAccount::fromRequest();
+        $membership = $selected->membership;
+        $actorId = (int) $actor->getKey();
 
-        return AccountMembership::query()
-            ->where('account_id', $this->accountId)
-            ->where('user_id', $actor->getKey())
-            ->where('role', 'admin')
-            ->exists();
+        abort_unless(
+            $selected->account->exists
+                && (int) $selected->account->getKey() === $this->accountId
+                && $membership->exists
+                && (int) $membership->getKey() > 0
+                && (int) $membership->account_id === $this->accountId
+                && (int) $membership->user_id === $actorId
+                && $membership->role === 'admin'
+                && Account::query()->whereKey($this->accountId)->where('status', 'active')->exists()
+                && User::query()->whereKey($actorId)->exists()
+                && AccountMembership::query()
+                    ->whereKey($membership->getKey())
+                    ->where('account_id', $this->accountId)
+                    ->where('user_id', $actorId)
+                    ->where('role', 'admin')
+                    ->exists(),
+            403,
+        );
     }
 
     public function __get(string $name): mixed
