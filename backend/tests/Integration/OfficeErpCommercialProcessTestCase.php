@@ -6,6 +6,7 @@ use App\Erp\Commercial\OfficeErpBalances;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpMoney;
+use App\Erp\Commercial\OfficeErpOwnerInvitations;
 use App\Erp\Commercial\OfficeErpReceiptProofs;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
@@ -15,6 +16,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
+use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Erp\ErpCompany;
@@ -39,9 +41,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 {
     private const PRESERVED_TABLES = [
         'accounts', 'account_memberships', 'users', 'subscriptions', 'plans', 'departments', 'clients',
-        'erp_companies', 'erp_company_memberships', 'erp_plans', 'erp_subscriptions',
+        'erp_companies', 'erp_company_memberships', 'erp_establishments', 'erp_company_setup_states',
+        'erp_units', 'erp_contacts', 'erp_invoice_schemes', 'erp_invoice_layouts', 'erp_plans', 'erp_subscriptions',
         'office_erp_sales_plans', 'office_erp_sales_plan_revisions', 'office_erp_contracts',
-        'office_erp_contract_revisions', 'office_erp_licence_allocations', 'office_erp_invoices',
+        'office_erp_contract_revisions', 'office_erp_owner_invitations', 'office_erp_licence_allocations', 'office_erp_invoices',
         'office_erp_invoice_counters', 'office_erp_commercial_operations', 'office_erp_audit_events',
         'office_erp_receipts', 'office_erp_receipt_allocations', 'office_erp_receipt_reversals', 'office_erp_receipt_proofs',
     ];
@@ -58,6 +61,9 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpReceipts.php',
         'app/Erp/Commercial/OfficeErpReceiptProofs.php',
         'app/Erp/Commercial/OfficeErpOperations.php',
+        'app/Erp/Commercial/OfficeErpOwnerAcceptance.php',
+        'app/Erp/Commercial/OfficeErpOwnerInvitations.php',
+        'app/Erp/Commercial/OfficeErpInvitationContinuation.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
         'app/Models/Erp/Commercial/OfficeErpContract.php',
         'app/Models/Erp/Commercial/OfficeErpLicenceAllocation.php',
@@ -66,6 +72,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/Commercial/OfficeErpCommercialOperation.php',
         'app/Models/Erp/Commercial/OfficeErpCommercialSetting.php',
         'app/Models/Erp/Commercial/OfficeErpAuditEvent.php',
+        'app/Models/Erp/Commercial/OfficeErpOwnerInvitation.php',
         'app/Models/Erp/Commercial/OfficeErpInvoiceAdjustment.php',
         'app/Models/Erp/Commercial/OfficeErpReceipt.php',
         'app/Models/Erp/Commercial/OfficeErpReceiptAllocation.php',
@@ -73,9 +80,23 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Models/Erp/Commercial/OfficeErpReceiptReversal.php',
         'app/Jobs/CleanExpiredOfficeErpProofs.php',
         'app/Models/Erp/ErpCompany.php',
+        'app/Models/Erp/ErpEstablishment.php',
         'app/Models/Erp/ErpCompanyMembership.php',
         'app/Models/Erp/ErpPlan.php',
         'app/Models/Erp/ErpSubscription.php',
+        'app/Models/Account.php',
+        'app/Models/AccountMembership.php',
+        'app/Models/Client.php',
+        'app/Models/User.php',
+        'app/Erp/ErpCompanyProvisioning.php',
+        'app/Erp/ErpCompanyInitializer.php',
+        'app/Erp/ErpCommercialCatalog.php',
+        'app/Services/BrazilianTaxId.php',
+        'app/Support/AccessSession.php',
+        'app/Support/ErpSession.php',
+        'app/Http/Middleware/SerializedAccessSession.php',
+        'app/Http/Controllers/Api/V1/Admin/PlanController.php',
+        'app/Http/Requests/Admin/UpdatePlanRequest.php',
         'database/factories/Erp/ErpCompanyFactory.php',
         'database/factories/Erp/ErpCompanyMembershipFactory.php',
         'database/factories/Erp/ErpPlanFactory.php',
@@ -239,6 +260,52 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         });
     }
 
+    /** @return array<string, mixed> */
+    protected function ownerInvitationFixture(array $office, User $owner, ?string $cnpj = null): array
+    {
+        $context = $office['context'];
+        $tag = bin2hex(random_bytes(8));
+        $client = Client::factory()->company()->create([
+            'account_id' => $office['account_id'],
+            'tax_id' => $cnpj ?? $this->uniqueCnpj(),
+            'name' => 'Owner acceptance race '.$tag,
+        ]);
+        $salesPlan = OfficeErpSalesPlan::factory()->create([
+            'account_id' => $office['account_id'],
+            'name' => 'Owner race plan '.$tag,
+        ]);
+        $revision = OfficeErpSalesPlanRevision::factory()->create([
+            'account_id' => $office['account_id'],
+            'sales_plan_id' => $salesPlan->id,
+            'name' => 'Owner race plan '.$tag,
+            'module_keys' => ['purchases'],
+            'published_at' => now(),
+        ]);
+        $salesPlan->forceFill(['current_revision_id' => $revision->id])->save();
+        $invitation = $this->officeAdmin($office, fn (): array => $context->run(
+            fn (): array => app(OfficeErpOwnerInvitations::class)->issue(
+                $context,
+                (int) $client->id,
+                (int) $revision->id,
+                ['full_name' => $owner->name, 'email' => $owner->email],
+                'owner-invitation-'.bin2hex(random_bytes(12)),
+            ),
+        ));
+        $token = substr((string) $invitation['url'], strpos((string) $invitation['url'], '#token=') + 7);
+
+        return [
+            'account_id' => $office['account_id'],
+            'owner_id' => (int) $owner->id,
+            'client_id' => (int) $client->id,
+            'cnpj' => (string) $client->tax_id,
+            'invitation_id' => (int) $invitation['invitation_id'],
+            'contract_id' => (int) OfficeErpOwnerInvitation::query()->findOrFail($invitation['invitation_id'])->contract_id,
+            'token' => $token,
+            'plan_id' => (int) $office['account']->subscription()->firstOrFail()->plan_id,
+            'office' => $office,
+        ];
+    }
+
     /** @param array<string, mixed> $fixture */
     protected function officeAdmin(array $fixture, callable $callback): mixed
     {
@@ -384,6 +451,37 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL Account row lock wait observed.');
             usleep(10000);
         } while (true);
+    }
+
+    protected function assertWaitingOnRowLock(Process $process, string $table): void
+    {
+        $identity = $this->workers[spl_object_id($process)]['identity'];
+        $deadline = microtime(true) + 10;
+        do {
+            DB::select('select pg_stat_clear_snapshot()');
+            $activity = DB::selectOne('select wait_event_type, query from pg_stat_activity where pid = ?', [$identity['database_pid']]);
+            if ($activity?->wait_event_type === 'Lock') {
+                self::assertStringContainsString('from "'.$table.'"', strtolower($activity->query));
+                self::assertStringContainsString('for update', strtolower($activity->query));
+
+                return;
+            }
+            self::assertTrue($process->isRunning(), 'Worker exited before waiting for the '.$table.' row lock.');
+            self::assertLessThan($deadline, microtime(true), 'No real PostgreSQL '.$table.' row lock wait observed.');
+            usleep(10000);
+        } while (true);
+    }
+
+    /** @param array<string, mixed> $invitation @return array<string, mixed> */
+    protected function ownerAcceptancePayload(array $invitation, bool $holdAccountLock = false, bool $holdOwnerLock = false): array
+    {
+        return [
+            'owner_id' => $invitation['owner_id'],
+            'token' => $invitation['token'],
+            'contract_id' => $invitation['contract_id'],
+            'hold_account_lock' => $holdAccountLock,
+            'hold_owner_lock' => $holdOwnerLock,
+        ];
     }
 
     protected function assertWorkerHeldLock(Process $process, string $table): void
@@ -558,7 +656,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         }
     }
 
-    private function uniqueCnpj(): string
+    protected function uniqueCnpj(): string
     {
         for ($attempt = 0; $attempt < 20; $attempt++) {
             $digits = array_map('intval', str_split((string) random_int(100000000000, 999999999999)));

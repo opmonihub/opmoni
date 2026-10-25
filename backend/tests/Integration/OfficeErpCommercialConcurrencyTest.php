@@ -12,16 +12,111 @@ use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\Commercial\OfficeErpInvoiceAdjustment;
 use App\Models\Erp\Commercial\OfficeErpInvoiceCounter;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
+use App\Models\Erp\Commercial\OfficeErpOwnerInvitation;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptProof;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpSubscription;
+use App\Models\User;
+use App\Services\BrazilianTaxId;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestCase
 {
+    public function test_two_authenticated_acceptances_replay_one_invitation_result(): void
+    {
+        $office = $this->commercialFixture(2);
+        $owner = User::factory()->create(['email' => 'race-owner-'.bin2hex(random_bytes(6)).'@example.test']);
+        $invitation = $this->ownerInvitationFixture($office, $owner);
+        $first = $this->worker('owner_accept', $this->ownerAcceptancePayload($invitation, true));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'accounts');
+        $second = $this->worker('owner_accept', $this->ownerAcceptancePayload($invitation));
+        $this->assertWaitingOnRowLock($second, 'accounts');
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+
+        self::assertSame([201, 201], array_column($results, 'status'));
+        self::assertSame($results[0]['contract_id'], $results[1]['contract_id']);
+        self::assertSame($results[0]['company_id'], $results[1]['company_id']);
+        self::assertSame('accepted', $results[0]['agreement_status']);
+        self::assertSame('accepted', $results[1]['agreement_status']);
+        self::assertSame(1, ErpCompany::query()->where('cnpj', $invitation['cnpj'])->count());
+        self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $results[0]['company_id'])->where('user_id', $owner->id)->where('role', 'owner')->count());
+        self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($invitation['invitation_id'])->status);
+        self::assertSame('accepted', DB::table('office_erp_contracts')->where('id', $invitation['contract_id'])->value('agreement_status'));
+        self::assertSame('occupied', DB::table('office_erp_licence_allocations')->where('contract_id', $invitation['contract_id'])->value('state'));
+        self::assertSame('pending', ErpSubscription::query()->where('erp_company_id', $results[0]['company_id'])->where('office_erp_contract_id', $invitation['contract_id'])->value('status'));
+        self::assertSame(1, DB::table('office_erp_commercial_operations')->where('action', 'owner.accept')->where('account_id', $invitation['account_id'])->count());
+        self::assertSame(1, DB::table('office_erp_audit_events as audit')->join('office_erp_commercial_operations as operation', 'operation.id', '=', 'audit.operation_id')->where('operation.action', 'owner.accept')->where('operation.account_id', $invitation['account_id'])->count());
+    }
+
+    public function test_same_cnpj_acceptance_contenders_leave_one_unaccepted_loser(): void
+    {
+        $owner = User::factory()->create(['email' => 'cnpj-race-owner-'.bin2hex(random_bytes(6)).'@example.test']);
+        $cnpj = $this->uniqueCnpj();
+        self::assertTrue(app(BrazilianTaxId::class)->isValidCnpj($cnpj));
+        $firstInvitation = $this->ownerInvitationFixture($this->commercialFixture(2), $owner, $cnpj);
+        $secondInvitation = $this->ownerInvitationFixture($this->commercialFixture(2), $owner, $cnpj);
+        $first = $this->worker('owner_accept', $this->ownerAcceptancePayload($firstInvitation, false, true));
+        $this->waitFor($first, 'held');
+        $this->assertWorkerHeldLock($first, 'users');
+        $second = $this->worker('owner_accept', $this->ownerAcceptancePayload($secondInvitation));
+        $this->assertWaitingOnRowLock($second, 'users');
+        $this->release($first);
+        $results = [$this->workerResult($first), $this->workerResult($second)];
+
+        self::assertSame(201, $results[0]['status']);
+        self::assertSame(409, $results[1]['status']);
+        self::assertSame('cnpj_company_conflict', $results[1]['code']);
+        self::assertSame(1, ErpCompany::query()->where('cnpj', $cnpj)->count());
+        self::assertSame(1, ErpCompanyMembership::query()->where('erp_company_id', $results[0]['company_id'])->where('user_id', $owner->id)->where('role', 'owner')->count());
+        self::assertSame(1, ErpSubscription::query()->where('erp_company_id', $results[0]['company_id'])->count());
+        self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($firstInvitation['invitation_id'])->status);
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($secondInvitation['invitation_id'])->status);
+        self::assertSame('accepted', DB::table('office_erp_contracts')->where('id', $firstInvitation['contract_id'])->value('agreement_status'));
+        self::assertSame('awaiting_owner', DB::table('office_erp_contracts')->where('id', $secondInvitation['contract_id'])->value('agreement_status'));
+        self::assertSame('occupied', DB::table('office_erp_licence_allocations')->where('contract_id', $firstInvitation['contract_id'])->value('state'));
+        self::assertSame('reserved', DB::table('office_erp_licence_allocations')->where('contract_id', $secondInvitation['contract_id'])->value('state'));
+        self::assertSame(0, DB::table('office_erp_commercial_operations')->where('action', 'owner.accept')->where('account_id', $secondInvitation['account_id'])->count());
+    }
+
+    public function test_allowance_removal_wins_plan_lock_before_owner_acceptance(): void
+    {
+        $office = $this->commercialFixture(2);
+        $owner = User::factory()->create(['email' => 'plan-race-owner-'.bin2hex(random_bytes(6)).'@example.test']);
+        $invitation = $this->ownerInvitationFixture($office, $owner);
+        $plan = $office['account']->subscription()->firstOrFail()->plan()->firstOrFail();
+        $otherContractsBefore = DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->where('id', '!=', $invitation['contract_id'])->orderBy('id')->get()->toJson();
+        $allocationsBefore = DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->where('contract_id', '!=', $invitation['contract_id'])->orderBy('id')->get()->toJson();
+        $admin = User::factory()->create(['is_super_admin' => true]);
+        $removal = $this->worker('remove_allowance', ['plan_id' => (int) $plan->id, 'admin_id' => (int) $admin->id, 'hold_plan_lock' => true]);
+        $this->waitFor($removal, 'held');
+        $this->assertWorkerHeldLock($removal, 'plans');
+        $acceptance = $this->worker('owner_accept', $this->ownerAcceptancePayload($invitation));
+        $this->assertWaitingOnRowLock($acceptance, 'plans');
+        $this->release($removal);
+        $removalResult = $this->workerResult($removal);
+        $acceptanceResult = $this->workerResult($acceptance);
+
+        self::assertSame(200, $removalResult['status']);
+        self::assertSame(403, $acceptanceResult['status']);
+        self::assertSame('resale_disabled', $acceptanceResult['code']);
+        self::assertSame(0, ErpCompany::query()->where('cnpj', $invitation['cnpj'])->count());
+        self::assertSame(0, ErpCompanyMembership::query()->where('user_id', $owner->id)->count());
+        self::assertNull(DB::table('office_erp_contracts')->where('id', $invitation['contract_id'])->value('erp_company_id'));
+        self::assertSame('awaiting_owner', DB::table('office_erp_contracts')->where('id', $invitation['contract_id'])->value('agreement_status'));
+        self::assertSame('reserved', DB::table('office_erp_licence_allocations')->where('contract_id', $invitation['contract_id'])->value('state'));
+        self::assertSame('pending', OfficeErpOwnerInvitation::query()->findOrFail($invitation['invitation_id'])->status);
+        self::assertSame($otherContractsBefore, DB::table('office_erp_contracts')->where('account_id', $office['account_id'])->where('id', '!=', $invitation['contract_id'])->orderBy('id')->get()->toJson());
+        self::assertSame($allocationsBefore, DB::table('office_erp_licence_allocations')->where('account_id', $office['account_id'])->where('contract_id', '!=', $invitation['contract_id'])->orderBy('id')->get()->toJson());
+    }
+
     public function test_last_slot_reservation_is_won_by_exactly_one_independent_worker(): void
     {
         $fixture = $this->commercialFixture(1);
