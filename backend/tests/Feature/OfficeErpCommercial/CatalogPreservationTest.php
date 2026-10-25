@@ -13,7 +13,7 @@ use Tests\OfficeErpCommercialTestCase;
 
 class CatalogPreservationTest extends OfficeErpCommercialTestCase
 {
-    public function test_platform_initializer_preserves_existing_office_retail_and_linked_company_records(): void
+    public function test_erp_company_catalog_initializer_preserves_existing_office_retail_and_linked_company_records(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
         $company = ErpCompany::factory()->create();
@@ -44,6 +44,8 @@ class CatalogPreservationTest extends OfficeErpCommercialTestCase
             'office_erp_contract_revisions',
             'office_erp_invoices',
             'erp_subscriptions',
+            'erp_plans',
+            'erp_plan_modules',
         ];
         $before = [];
         foreach ($tables as $table) {
@@ -51,8 +53,9 @@ class CatalogPreservationTest extends OfficeErpCommercialTestCase
         }
         $countsBefore = array_map('count', $before);
 
-        $this->artisan('platform:initialize')->expectsOutput('Subscriptions created: 0')->assertSuccessful();
-        $this->artisan('platform:initialize')->expectsOutput('Subscriptions created: 0')->assertSuccessful();
+        $catalog = app(ErpCommercialCatalog::class);
+        $catalog->ensureBasicPlan();
+        $catalog->ensureBasicPlan();
 
         $after = [];
         foreach ($tables as $table) {
@@ -61,7 +64,6 @@ class CatalogPreservationTest extends OfficeErpCommercialTestCase
 
         $this->assertSame($countsBefore, array_map('count', $after));
         $this->assertSame($before, $after);
-        $this->assertSame($before['office_erp_sales_plans'], $this->tableSnapshot('office_erp_sales_plans'));
         $this->assertSame('137.50', (string) $contract->fresh()->currentRevision()->firstOrFail()->price);
         $this->assertSame('issued', OfficeErpInvoice::query()->findOrFail($invoice->id)->document_status);
         $this->assertSame((int) $contract->id, (int) $subscription->fresh()->office_erp_contract_id);
