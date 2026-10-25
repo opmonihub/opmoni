@@ -2,12 +2,16 @@
 
 namespace Tests;
 
+use App\Erp\Commercial\OfficeErpCalendar;
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
 use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
+use App\Models\Erp\Commercial\OfficeErpInvoiceCounter;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Plan;
@@ -168,5 +172,51 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
         $contract->forceFill(['current_revision_id' => $revision->id])->save();
 
         return $contract->refresh();
+    }
+
+    protected function issuedInvoice(
+        OfficeErpExecutionContext $ctx,
+        OfficeErpContract $contract,
+        string $amount = '100.00',
+    ): OfficeErpInvoice {
+        $ctx->assertVerified();
+        abort_unless((int) $contract->account_id === $ctx->accountId, 404);
+        $revision = OfficeErpContractRevision::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('contract_id', $contract->id)
+            ->whereKey($contract->current_revision_id)
+            ->firstOrFail();
+        $anchor = now($contract->billing_timezone)->toDateString();
+        $period = (new OfficeErpCalendar)->period(
+            $anchor,
+            (int) $revision->interval_months,
+            0,
+            $contract->billing_timezone,
+            (int) $revision->due_in_days,
+        );
+        $number = OfficeErpInvoiceCounter::reserveNumber($ctx->accountId, (int) now($contract->billing_timezone)->format('Y'));
+
+        $invoice = new OfficeErpInvoice([
+            'account_id' => $ctx->accountId,
+            'contract_id' => $contract->id,
+            'contract_revision_id' => $revision->id,
+            'kind' => 'manual',
+            'document_status' => 'issued',
+            'number' => $number,
+            'issued_at' => now(),
+            'period_start' => $period['start'],
+            'period_end' => $period['end'],
+            'due_on' => $period['due_on'],
+            'currency' => 'BRL',
+            'seller_snapshot' => ['account_id' => $ctx->accountId],
+            'bill_to_snapshot' => ['client_id' => $contract->client_id],
+            'items_snapshot' => [['description' => 'Serviço contratado', 'amount' => $amount]],
+            'original_total' => $amount,
+        ]);
+
+        /** @var OfficeErpInvoice $persisted */
+        $persisted = OfficeErpRecords::persist($ctx, $invoice);
+
+        return $persisted;
     }
 }
