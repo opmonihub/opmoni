@@ -4,6 +4,7 @@ namespace App\Erp\Commercial;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 final class OfficeErpRecords
@@ -22,17 +23,36 @@ final class OfficeErpRecords
     public static function persist(OfficeErpExecutionContext $ctx, Model $record): Model
     {
         $ctx->assertVerified();
-        abort_unless($record->exists === false, 409);
         self::assertAccountOwnedModel($record);
 
         $recordAccountId = $record->getAttribute('account_id');
-        abort_if($recordAccountId !== null && (int) $recordAccountId !== $ctx->accountId, 404);
+        if ($record->exists) {
+            abort_unless(
+                (int) $record->getRawOriginal('account_id') === $ctx->accountId
+                    && (int) $recordAccountId === $ctx->accountId,
+                404,
+            );
+        } else {
+            abort_if($recordAccountId !== null && (int) $recordAccountId !== $ctx->accountId, 404);
+        }
 
-        return $ctx->run(function () use ($ctx, $record): Model {
-            $record->setAttribute('account_id', $ctx->accountId);
-            $record->save();
+        return DB::connection($record->getConnectionName())->transaction(function () use ($ctx, $record): Model {
+            return $ctx->run(function () use ($ctx, $record): Model {
+                if ($record->exists) {
+                    $storedAccountId = DB::connection($record->getConnectionName())
+                        ->table($record->getTable())
+                        ->where($record->getKeyName(), $record->getKey())
+                        ->lockForUpdate()
+                        ->value('account_id');
+                    abort_unless((int) $storedAccountId === $ctx->accountId, 404);
+                } else {
+                    $record->setAttribute('account_id', $ctx->accountId);
+                }
 
-            return $record;
+                $record->save();
+
+                return $record;
+            });
         });
     }
 
@@ -46,6 +66,10 @@ final class OfficeErpRecords
 
     private static function assertAccountOwnedModel(Model $model): void
     {
+        $namespace = 'App\\Models\\Erp\\Commercial\\';
+        $class = $model::class;
+        abort_unless(str_starts_with($class, $namespace)
+            && str_starts_with(substr($class, strlen($namespace)), 'OfficeErp'), 422);
         abort_unless(Schema::hasColumn($model->getTable(), 'account_id'), 422);
     }
 }

@@ -13,6 +13,8 @@ use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Support\CurrentAccount;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 abstract class OfficeErpCommercialTestCase extends BusinessTestCase
@@ -21,11 +23,36 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
 
     protected function setUp(): void
     {
-        if (getenv('APP_ENV') !== 'testing' || getenv('DB_CONNECTION') !== 'sqlite' || getenv('DB_DATABASE') !== ':memory:') {
-            throw new \RuntimeException('Office ERP commercial tests require SQLite memory before RefreshDatabase.');
-        }
+        $this->assertIsolatedTestStores();
 
         parent::setUp();
+    }
+
+    private function assertIsolatedTestStores(): void
+    {
+        $testing = getenv('APP_ENV') === 'testing';
+        $databaseUrl = getenv('DB_URL');
+        $sqliteMemory = $testing
+            && getenv('DB_CONNECTION') === 'sqlite'
+            && getenv('DB_DATABASE') === ':memory:'
+            && ($databaseUrl === false || $databaseUrl === '');
+        $isolatedPostgres = $testing
+            && getenv('DB_CONNECTION') === 'pgsql'
+            && getenv('DB_DATABASE') === 'opmoni_test'
+            && getenv('DB_HOST') === 'postgres'
+            && getenv('DB_USERNAME') === 'opmoni'
+            && ($databaseUrl === false || $databaseUrl === '')
+            && getenv('CACHE_STORE') === 'redis'
+            && getenv('SESSION_DRIVER') === 'redis'
+            && getenv('REDIS_HOST') === 'redis'
+            && getenv('REDIS_DB') === '13'
+            && getenv('REDIS_CACHE_DB') === '14'
+            && getenv('REDIS_SESSION_DB') === '15'
+            && in_array(getenv('REDIS_PREFIX'), ['opmoni-access-test-', 'opmoni-office-erp-commercial-'], true);
+
+        if (! $sqliteMemory && ! $isolatedPostgres) {
+            throw new \RuntimeException('Office ERP commercial tests require SQLite memory or the isolated opmoni_test and Redis 13-15 stores before RefreshDatabase.');
+        }
     }
 
     /** @param array<string, mixed> $allowance */
@@ -61,6 +88,38 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
         return OfficeErpExecutionContext::system($account, $purpose);
     }
 
+    protected function clientFor(OfficeErpExecutionContext $ctx): Client
+    {
+        return $this->withOfficeAccount($ctx, fn (): Client => Client::factory()->company()->create([
+            'account_id' => $ctx->accountId,
+        ]));
+    }
+
+    protected function withOfficeAccount(OfficeErpExecutionContext $ctx, Closure $callback): mixed
+    {
+        $ctx->assertVerified();
+        abort_unless($ctx->actorKind === 'office_admin' && $ctx->actor instanceof User, 403);
+        $membership = AccountMembership::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('user_id', $ctx->actor->getKey())
+            ->where('role', 'admin')
+            ->firstOrFail();
+        $request = request();
+        $hadPrevious = $request->attributes->has(CurrentAccount::class);
+        $previous = $request->attributes->get(CurrentAccount::class);
+        $request->attributes->set(CurrentAccount::class, new CurrentAccount($ctx->account, $membership));
+
+        try {
+            return $callback();
+        } finally {
+            if ($hadPrevious) {
+                $request->attributes->set(CurrentAccount::class, $previous);
+            } else {
+                $request->attributes->remove(CurrentAccount::class);
+            }
+        }
+    }
+
     /** @param array<string, mixed> $terms */
     protected function acceptedContract(OfficeErpExecutionContext $ctx, array $terms = []): OfficeErpContract
     {
@@ -71,26 +130,26 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
             'price' => $terms['price'] ?? '100.00',
             'interval_months' => $terms['interval_months'] ?? 1,
             'due_in_days' => $terms['due_in_days'] ?? 10,
-            'module_keys' => $terms['module_keys'] ?? ['erp.sales'],
+            'module_keys' => $terms['module_keys'] ?? ['purchases'],
         ]);
         $plan->forceFill(['current_revision_id' => $planRevision->id])->save();
 
-        $client = Client::factory()->company()->create(['account_id' => $ctx->accountId]);
+        $client = $this->clientFor($ctx);
         $contract = OfficeErpContract::factory()->create([
             'account_id' => $ctx->accountId,
             'client_id' => $client->id,
+            'sales_plan_id' => $plan->id,
             'agreement_status' => 'accepted',
             'billing_timezone' => 'America/Sao_Paulo',
         ]);
         $revision = OfficeErpContractRevision::factory()->create([
             'account_id' => $ctx->accountId,
             'contract_id' => $contract->id,
-            'sales_plan_revision_id' => $planRevision->id,
             'price' => $terms['price'] ?? '100.00',
             'currency' => 'BRL',
             'interval_months' => $terms['interval_months'] ?? 1,
             'due_in_days' => $terms['due_in_days'] ?? 10,
-            'module_keys' => $terms['module_keys'] ?? ['erp.sales'],
+            'module_keys' => $terms['module_keys'] ?? ['purchases'],
         ]);
         $contract->forceFill(['current_revision_id' => $revision->id])->save();
 

@@ -5,29 +5,21 @@ namespace Tests\Feature\OfficeErpCommercial;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
+use App\Models\Client;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
+use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\User;
 use App\Tenant\CurrentTenant;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use LogicException;
+use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\OfficeErpCommercialTestCase;
 
 class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        Schema::create('office_erp_context_record_fixtures', function (Blueprint $table): void {
-            $table->id();
-            $table->unsignedBigInteger('account_id');
-            $table->unsignedBigInteger('related_id')->nullable();
-            $table->string('label');
-            $table->timestamps();
-        });
-    }
-
     public function test_office_admin_context_requires_real_admin_membership(): void
     {
         $account = Account::factory()->create(['status' => 'active']);
@@ -85,10 +77,10 @@ class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
             try {
                 $context->run(function () use ($context, $tenant): void {
                     $this->assertSame($context->accountId, $tenant->accountId);
-                    throw new \RuntimeException('fixture failure');
+                    throw new RuntimeException('fixture failure');
                 });
                 $this->fail('The fixture exception should escape the context runner.');
-            } catch (\RuntimeException $exception) {
+            } catch (RuntimeException $exception) {
                 $this->assertSame('fixture failure', $exception->getMessage());
             }
 
@@ -122,63 +114,167 @@ class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
             'contract:73:renewal',
         );
 
-        $this->expectException(\LogicException::class);
+        $this->expectException(LogicException::class);
 
         $context->actorIdentity = 'system:another-resource';
     }
 
-    public function test_scoped_repository_denies_cross_account_relationship_resolution(): void
+    public function test_scoped_repository_reads_and_writes_real_commercial_models_only(): void
     {
-        $context = $this->officeContext();
-        $foreignAccount = Account::factory()->create(['status' => 'active']);
-        $foreign = OfficeErpContextRecordFixture::query()->create([
-            'account_id' => $foreignAccount->id,
-            'label' => 'foreign',
-        ]);
-        $relatedRecord = OfficeErpContextRecordFixture::query()->create([
-            'account_id' => $context->accountId,
-            'related_id' => $foreign->getKey(),
-            'label' => 'owned reference',
-        ]);
+        $ctx = $this->officeContext();
+        $foreign = $this->officeContext();
+        $records = app(OfficeErpRecords::class);
+        $plan = $records->persist($ctx, new OfficeErpSalesPlan([
+            'name' => 'Owned plan',
+            'status' => 'active',
+        ]));
 
-        $created = OfficeErpRecords::persist($context, new OfficeErpContextRecordFixture(['label' => 'owned']));
-        $ownedReference = OfficeErpRecords::query($context, OfficeErpContextRecordFixture::class)
-            ->whereKey($relatedRecord->getKey())
-            ->firstOrFail();
-        $resolvedForeignReference = OfficeErpRecords::query($context, OfficeErpContextRecordFixture::class)
-            ->whereKey($ownedReference->related_id)
-            ->first();
-
-        $this->assertSame($context->accountId, (int) $created->account_id);
-        $this->assertNull($resolvedForeignReference);
-        $this->assertSame(1, OfficeErpRecords::query($context, OfficeErpContextRecordFixture::class)
-            ->where('label', 'owned')
-            ->count());
-    }
-
-    public function test_scoped_repository_rejects_cross_account_persistence(): void
-    {
-        $context = $this->officeContext();
-        $foreignAccount = Account::factory()->create(['status' => 'active']);
-        $record = new OfficeErpContextRecordFixture([
-            'account_id' => $foreignAccount->id,
-            'label' => 'mismatch',
-        ]);
+        $this->assertSame($ctx->accountId, (int) $plan->account_id);
+        $this->assertTrue($records->query($ctx, OfficeErpSalesPlan::class)->whereKey($plan->id)->exists());
+        $this->assertFalse($records->query($foreign, OfficeErpSalesPlan::class)->whereKey($plan->id)->exists());
 
         try {
-            OfficeErpRecords::persist($context, $record);
-            $this->fail('A record from another Account must be rejected.');
+            $this->withOfficeAccount($ctx, fn (): int => $records->query($ctx, Client::class)->count());
+            $this->fail('Legacy account-owned models must not enter the commercial repository.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+    }
+
+    public function test_scoped_repository_accepts_owned_updates_and_rejects_foreign_original_or_current_account(): void
+    {
+        $ctx = $this->officeContext();
+        $foreign = $this->officeContext();
+        $records = app(OfficeErpRecords::class);
+        $ownedPlan = $records->persist($ctx, new OfficeErpSalesPlan([
+            'name' => 'Before update',
+            'status' => 'active',
+        ]));
+        $ownedPlan->name = 'After update';
+        $records->persist($ctx, $ownedPlan);
+        $this->assertSame('After update', $ownedPlan->refresh()->name);
+
+        $ownedPlan->forceFill(['account_id' => $foreign->accountId]);
+        try {
+            $records->persist($ctx, $ownedPlan);
+            $this->fail('A changed current Account must be rejected.');
         } catch (HttpException $exception) {
             $this->assertSame(404, $exception->getStatusCode());
         }
 
-        $this->assertDatabaseMissing('office_erp_context_record_fixtures', ['label' => 'mismatch']);
+        $foreignPlan = $records->persist($foreign, new OfficeErpSalesPlan([
+            'name' => 'Foreign plan',
+            'status' => 'active',
+        ]));
+        $foreignPlan->forceFill(['account_id' => $ctx->accountId]);
+        try {
+            $records->persist($ctx, $foreignPlan);
+            $this->fail('A foreign original Account must be rejected after current Account reassignment.');
+        } catch (HttpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
+        }
+
+        $stalePlan = $records->persist($ctx, new OfficeErpSalesPlan([
+            'name' => 'Stale ownership snapshot',
+            'status' => 'active',
+        ]));
+        DB::table('office_erp_sales_plans')->where('id', $stalePlan->id)->update(['account_id' => $foreign->accountId]);
+        try {
+            $records->persist($ctx, $stalePlan);
+            $this->fail('A database row moved to another Account must not be updated from a stale model.');
+        } catch (HttpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
+        }
     }
-}
 
-class OfficeErpContextRecordFixture extends Model
-{
-    protected $table = 'office_erp_context_record_fixtures';
+    public function test_scoped_repository_updates_existing_commercial_operation_outcome(): void
+    {
+        $ctx = $this->officeContext();
+        $records = app(OfficeErpRecords::class);
+        $operation = OfficeErpCommercialOperation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'outcome' => ['accepted' => false],
+        ]);
 
-    protected $guarded = [];
+        $this->assertTrue($records->query($ctx, OfficeErpCommercialOperation::class)
+            ->whereKey($operation->id)
+            ->exists());
+
+        $operation->outcome = ['accepted' => true, 'contract_id' => 73];
+        $records->persist($ctx, $operation);
+
+        $this->assertSame(['accepted' => true, 'contract_id' => 73], $operation->fresh()->outcome);
+    }
+
+    public function test_scoped_repository_rejects_cross_account_contract_client_relationship(): void
+    {
+        $ctx = $this->officeContext();
+        $foreign = $this->officeContext();
+        $foreignClient = $this->clientFor($foreign);
+
+        $this->expectException(QueryException::class);
+
+        app(OfficeErpRecords::class)->persist($ctx, new OfficeErpContract([
+            'client_id' => $foreignClient->id,
+            'agreement_status' => 'draft',
+            'billing_timezone' => 'America/Sao_Paulo',
+        ]));
+    }
+
+    public function test_owner_and_system_record_persistence_restore_tenant_context_after_exception(): void
+    {
+        $ctx = $this->officeContext();
+        $owner = OfficeErpExecutionContext::owner(
+            $ctx->account,
+            null,
+            'commercial.owner.accept',
+            'invitation:'.str_repeat('d', 40),
+        );
+        $system = $this->systemContext($ctx->account, 'contract:987:renewal');
+        $tenant = app(CurrentTenant::class);
+        $previousTenantId = $tenant->accountId;
+        $records = app(OfficeErpRecords::class);
+
+        foreach ([$owner, $system] as $context) {
+            $seenTenant = null;
+            OfficeErpSalesPlan::creating(function () use (&$seenTenant): void {
+                $seenTenant = app(CurrentTenant::class)->accountId;
+                throw new RuntimeException('Fixture failure during commercial record creation.');
+            });
+
+            try {
+                $records->persist($context, new OfficeErpSalesPlan([
+                    'name' => 'Interrupted plan',
+                    'status' => 'active',
+                ]));
+                $this->fail('The model listener should abort persistence.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Fixture failure during commercial record creation.', $exception->getMessage());
+                $this->assertSame($ctx->accountId, $seenTenant);
+                $this->assertSame($previousTenantId, $tenant->accountId);
+            } finally {
+                OfficeErpSalesPlan::flushEventListeners();
+            }
+        }
+    }
+
+    public function test_accepted_contract_fixture_uses_current_account_and_known_commercial_module_key(): void
+    {
+        $ctx = $this->officeContext();
+        $contract = $this->acceptedContract($ctx);
+        $records = app(OfficeErpRecords::class);
+
+        $clientAccountId = $this->withOfficeAccount($ctx, fn (): int => (int) $contract->client->account_id);
+
+        $this->assertSame($ctx->accountId, $clientAccountId);
+        $this->assertSame(['purchases'], $contract->currentRevision->module_keys);
+        $this->assertTrue($records->query($ctx, OfficeErpContract::class)->whereKey($contract->id)->exists());
+
+        $contract->manual_hold = true;
+        $records->persist($ctx, $contract);
+
+        $manualHold = $this->withOfficeAccount($ctx, fn (): bool => (bool) $contract->refresh()->manual_hold);
+
+        $this->assertTrue($manualHold);
+    }
 }
