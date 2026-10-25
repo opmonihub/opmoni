@@ -8,6 +8,7 @@ use App\Models\Account;
 use App\Models\Erp\ErpCommercialAuditLog;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpEstablishment;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
 use App\Models\Plan;
@@ -87,6 +88,24 @@ class ErpCommercialAccessTest extends TestCase
         $this->assertFalse(app(ErpCommercialGate::class)->allowsOperatingWrites($company));
     }
 
+    public function test_canceled_subscription_blocks_a_real_company_write_without_business_effects(): void
+    {
+        ['user' => $user, 'company' => $company] = $this->ownerWithCompany('canceled');
+        $this->login($user);
+
+        $response = $this->withHeaders([
+            'X-CSRF-Token' => $this->csrf(),
+            'X-Company-Id' => (string) $company->id,
+        ])
+            ->postJson('/api/v1/erp/establishments', ['name' => 'Unidade bloqueada', 'status' => 'active'])
+            ->assertForbidden();
+        $this->assertSame('erp_subscription_inactive', $response->json('code'), $response->getContent());
+
+        $this->assertSame(0, ErpEstablishment::query()
+            ->where('erp_company_id', $company->id)->count());
+        $this->assertSame('canceled', $company->subscription()->firstOrFail()->fresh()->status);
+    }
+
     public function test_active_subscription_allows_operating_writes_when_flag_enabled(): void
     {
         ['user' => $user, 'company' => $company] = $this->ownerWithCompany('active');
@@ -123,10 +142,17 @@ class ErpCommercialAccessTest extends TestCase
     public function test_owner_cannot_activate_subscription_via_platform_api(): void
     {
         ['user' => $user, 'company' => $company] = $this->ownerWithCompany('pending');
+        $subscription = $company->subscription()->firstOrFail();
         $this->login($user);
         $this->withHeader('X-CSRF-Token', $this->csrf())
-            ->patchJson('/api/v1/admin/erp/subscriptions/'.$company->subscription->id, ['status' => 'active'])
+            ->patchJson('/api/v1/admin/erp/subscriptions/'.$subscription->id, ['status' => 'active'])
             ->assertForbidden();
+
+        $this->assertSame('pending', $subscription->fresh()->status);
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/subscription')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'pending');
     }
 
     public function test_office_plans_table_unaffected_by_erp_catalog(): void

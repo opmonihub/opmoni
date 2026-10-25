@@ -4,20 +4,37 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpRecords;
+use App\Erp\ErpCommercialCatalog;
+use App\Models\AccountMembership;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
+use App\Models\Erp\Commercial\OfficeErpCommercialSetting;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
+use App\Models\Erp\Commercial\OfficeErpInvoiceAdjustment;
 use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
 use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpSubscription;
+use App\Models\User;
+use Carbon\CarbonImmutable;
 use Tests\OfficeErpCommercialTestCase;
 
 class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
 {
     public function test_credit_settles_partial_receipt_without_changing_original_total(): void
     {
-        [$ctx, $contract] = $this->effectiveContract();
+        [$ctx, $contract, $company] = $this->effectiveContract();
+        $contract->forceFill(['manual_hold' => true])->save();
+        $subscription = $this->linkCompanySubscription($contract, $company, 'suspended');
+        OfficeErpCommercialSetting::query()->create([
+            'account_id' => $ctx->accountId,
+            'delinquency_policy' => 'automatic',
+            'grace_days' => 0,
+            'billing_timezone' => 'America/Sao_Paulo',
+        ]);
         $invoice = $this->issuedInvoiceOverHttp($contract, '100.00', 'credit-balance');
         $this->recordReceipt($ctx, $invoice, '40.00');
 
@@ -30,33 +47,132 @@ class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
         self::assertSame('40.00', $balance['adjusted_charge']);
         self::assertSame('40.00', $balance['effective_received']);
         self::assertSame('0.00', $balance['outstanding']);
+        self::assertTrue($contract->fresh()->manual_hold);
+        self::assertSame('suspended', $subscription->fresh()->status);
     }
 
     public function test_credit_that_exceeds_received_amount_is_rejected_without_history(): void
     {
-        [$ctx, $contract] = $this->effectiveContract();
+        [$ctx, $contract, $company] = $this->effectiveContract();
+        $subscription = $this->linkCompanySubscription($contract, $company);
+        $allocation = OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->firstOrFail();
         $invoice = $this->issuedInvoiceOverHttp($contract, '100.00', 'credit-limit');
         $this->recordReceipt($ctx, $invoice, '40.00');
 
-        $before = $invoice->adjustments()->count();
+        $invoiceBefore = $invoice->fresh()->getAttributes();
+        $adjustmentsBefore = OfficeErpInvoiceAdjustment::query()->where('invoice_id', $invoice->id)
+            ->orderBy('id')->get()->map(fn (OfficeErpInvoiceAdjustment $adjustment): array => $adjustment->getAttributes())->all();
+        $receiptsBefore = OfficeErpReceipt::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpReceipt $receipt): array => $receipt->getAttributes())->all();
+        $receiptAllocationsBefore = OfficeErpReceiptAllocation::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpReceiptAllocation $receiptAllocation): array => $receiptAllocation->getAttributes())->all();
+        $licenceBefore = $allocation->fresh()->getAttributes();
+        $subscriptionBefore = $subscription->fresh()->getAttributes();
+        $operationsBefore = OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpCommercialOperation $operation): array => $operation->getAttributes())->all();
         $this->postJson('/api/v1/erp-commercial/invoices/'.$invoice->id.'/adjustments', [
             'direction' => 'credit', 'amount' => '61.00', 'reason' => 'Crédito acima do recebido',
         ], ['Idempotency-Key' => 'credit-61'])->assertUnprocessable();
 
-        self::assertSame($before, $invoice->fresh()->adjustments()->count());
+        self::assertSame($invoiceBefore, $invoice->fresh()->getAttributes());
+        self::assertSame($adjustmentsBefore, OfficeErpInvoiceAdjustment::query()->where('invoice_id', $invoice->id)
+            ->orderBy('id')->get()->map(fn (OfficeErpInvoiceAdjustment $adjustment): array => $adjustment->getAttributes())->all());
+        self::assertSame($receiptsBefore, OfficeErpReceipt::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpReceipt $receipt): array => $receipt->getAttributes())->all());
+        self::assertSame($receiptAllocationsBefore, OfficeErpReceiptAllocation::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpReceiptAllocation $receiptAllocation): array => $receiptAllocation->getAttributes())->all());
+        self::assertSame($licenceBefore, $allocation->fresh()->getAttributes());
+        self::assertSame($subscriptionBefore, $subscription->fresh()->getAttributes());
+        self::assertSame($operationsBefore, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()->map(fn (OfficeErpCommercialOperation $operation): array => $operation->getAttributes())->all());
     }
 
     public function test_debit_on_settled_invoice_creates_new_outstanding_balance(): void
     {
-        [$ctx, $contract] = $this->effectiveContract();
+        CarbonImmutable::setTestNow('2026-10-27T13:00:00-03:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            CarbonImmutable::setTestNow();
+        });
+        [$ctx, $contract, $company] = $this->effectiveContract();
+        $subscription = $this->linkCompanySubscription($contract, $company);
+        OfficeErpCommercialSetting::query()->create([
+            'account_id' => $ctx->accountId,
+            'delinquency_policy' => 'automatic',
+            'grace_days' => 0,
+            'billing_timezone' => 'America/Sao_Paulo',
+        ]);
         $invoice = $this->issuedInvoiceOverHttp($contract, '100.00', 'debit-settled');
         $this->recordReceipt($ctx, $invoice, '100.00');
 
         $this->postJson('/api/v1/erp-commercial/invoices/'.$invoice->id.'/adjustments', [
             'direction' => 'debit', 'amount' => '20.00', 'reason' => 'Serviço adicional',
-        ], ['Idempotency-Key' => 'debit-20'])->assertCreated();
+        ], ['Idempotency-Key' => 'debit-20'])->assertCreated()
+            ->assertJsonPath('data.direction', 'debit')
+            ->assertJsonPath('data.amount', '20.00');
 
-        self::assertSame('20.00', $this->getJson('/api/v1/erp-commercial/invoices/'.$invoice->id)->assertOk()->json('data.balance.outstanding'));
+        $detail = $this->getJson('/api/v1/erp-commercial/invoices/'.$invoice->id)->assertOk();
+        self::assertSame('100.00', $detail->json('data.balance.original_total'));
+        self::assertSame('120.00', $detail->json('data.balance.adjusted_charge'));
+        self::assertSame('100.00', $detail->json('data.balance.effective_received'));
+        self::assertSame('20.00', $detail->json('data.balance.outstanding'));
+        self::assertSame('2026-10-11', $detail->json('data.due_on'));
+        self::assertSame([['direction' => 'debit', 'amount' => '20.00']], array_map(
+            static fn (array $adjustment): array => ['direction' => $adjustment['direction'], 'amount' => $adjustment['amount']],
+            $detail->json('data.adjustments'),
+        ));
+        self::assertSame('past_due', $subscription->fresh()->status);
+    }
+
+    public function test_office_subscription_cancellation_preserves_company_terms_invoice_and_direct_access(): void
+    {
+        [$ctx, $contract, $company] = $this->effectiveContract();
+        $owner = User::factory()->create();
+        $companyMembership = ErpCompanyMembership::factory()->create([
+            'erp_company_id' => $company->id,
+            'user_id' => $owner->id,
+            'role' => 'owner',
+        ]);
+        $subscription = $this->linkCompanySubscription($contract, $company);
+        $invoice = $this->issuedInvoiceOverHttp($contract, '100.00', 'office-cancel-company-view');
+
+        $accountBefore = $ctx->account->fresh()->getAttributes();
+        $officeMembershipBefore = AccountMembership::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('user_id', $ctx->actor->id)
+            ->firstOrFail()->getAttributes();
+        $contractBefore = $contract->fresh()->getAttributes();
+        $revisionBefore = $contract->currentRevision()->firstOrFail()->getAttributes();
+        $invoiceBefore = $invoice->fresh()->getAttributes();
+        $subscriptionBefore = $subscription->fresh()->getAttributes();
+        $companyMembershipBefore = $companyMembership->fresh()->getAttributes();
+
+        $ctx->account->subscription()->firstOrFail()->forceFill(['status' => 'canceled'])->save();
+
+        self::assertSame($accountBefore, $ctx->account->fresh()->getAttributes());
+        self::assertSame($officeMembershipBefore, AccountMembership::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('user_id', $ctx->actor->id)
+            ->firstOrFail()->getAttributes());
+        self::assertSame($contractBefore, $contract->fresh()->getAttributes());
+        self::assertSame($revisionBefore, $contract->currentRevision()->firstOrFail()->getAttributes());
+        self::assertSame($invoiceBefore, $invoice->fresh()->getAttributes());
+        self::assertSame('canceled', $ctx->account->subscription()->firstOrFail()->status);
+        self::assertSame($subscriptionBefore, $subscription->fresh()->getAttributes());
+        self::assertSame($companyMembershipBefore, $companyMembership->fresh()->getAttributes());
+
+        $this->loginAndSelectCompany($owner, $company);
+        self::assertSame(0, AccountMembership::query()->where('user_id', $owner->id)->count());
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/subscription')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.retail_contract.terms.price', '100.00');
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/commercial-invoices/'.$invoice->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $invoice->id)
+            ->assertJsonPath('data.balance.original_total', '100.00')
+            ->assertJsonPath('data.balance.outstanding', '100.00');
     }
 
     public function test_adjustment_replay_returns_original_id_and_changed_payload_conflicts(): void
@@ -208,5 +324,28 @@ class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
 
             return (int) $receipt->id;
         });
+    }
+
+    private function linkCompanySubscription(
+        OfficeErpContract $contract,
+        ErpCompany $company,
+        string $status = 'active',
+    ): ErpSubscription {
+        return ErpSubscription::factory()->create([
+            'erp_company_id' => $company->id,
+            'erp_plan_id' => app(ErpCommercialCatalog::class)->ensureBasicPlan()->id,
+            'status' => $status,
+            'office_erp_contract_id' => $contract->id,
+        ]);
+    }
+
+    private function loginAndSelectCompany(User $user, ErpCompany $company): void
+    {
+        $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
+            ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertOk();
+        $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
+            ->postJson('/api/v1/erp/company/switch', ['company_id' => $company->id])
+            ->assertOk();
     }
 }
