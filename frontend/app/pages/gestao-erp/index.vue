@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { OfficeErpCommercialSummary, OfficeErpCommercialSummaryResponse } from '#shared/types/officeErpCommercial'
-import { apiErrorMessage } from '~/composables/useApiError'
+import { apiErrorMessage, apiStatus } from '~/composables/useApiError'
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
 definePageMeta({ middleware: 'auth' })
@@ -69,6 +69,16 @@ function isSummary(value: unknown): value is OfficeErpCommercialSummary {
     && (candidate.due_to === null || typeof candidate.due_to === 'string')
 }
 
+function isAuthorityFailure(error: unknown): boolean {
+  const status = apiStatus(error)
+  if (status === 401 || status === 403) return true
+  if (status !== 409 || !error || typeof error !== 'object') return false
+  const data = 'data' in error && error.data && typeof error.data === 'object'
+    ? error.data as Record<string, unknown>
+    : null
+  return data?.code === 'account_context_changed'
+}
+
 async function loadSummary(): Promise<void> {
   const request = ++requestGeneration
   const identity = identityStamp.value
@@ -100,7 +110,12 @@ async function loadSummary(): Promise<void> {
   } catch (error) {
     if (request === requestGeneration && identity === identityStamp.value) {
       loadError.value = apiErrorMessage(error) ?? 'Não foi possível carregar o resumo comercial agora.'
-      stale.value = summary.value !== null
+      if (isAuthorityFailure(error)) {
+        summary.value = null
+        stale.value = false
+      } else {
+        stale.value = summary.value !== null
+      }
     }
   } finally {
     if (request === requestGeneration && identity === identityStamp.value) {

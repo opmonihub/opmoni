@@ -180,7 +180,7 @@ test('refresh failure keeps prior report values explicitly marked stale', async 
   let requests = 0
   const page = mountOverview(async () => {
     requests++
-    if (requests > 1) throw new Error('offline')
+    if (requests > 1) throw { statusCode: 503, data: { message: 'Serviço temporariamente indisponível.' } }
     return { data: report }
   })
   t.after(() => page.app.unmount())
@@ -192,6 +192,35 @@ test('refresh failure keeps prior report values explicitly marked stale', async 
   await settle()
   assert.match(page.text(), /Dados desatualizados/)
   assert.match(page.text(), /R\$\s*9\.007\.199\.254\.740\.993,01/)
+})
+
+test('authorization and account-context failures remove the previously loaded report', async (t) => {
+  for (const statusCode of [401, 403, 409]) {
+    let requests = 0
+    const page = mountOverview(async () => {
+      requests++
+      if (requests > 1) throw {
+        statusCode,
+        data: {
+          code: statusCode === 409 ? 'account_context_changed' : 'authorization_denied',
+          message: 'A autorização do contexto mudou.'
+        }
+      }
+      return { data: report }
+    })
+    t.after(() => page.app.unmount())
+    await settle()
+
+    const refresh = page.nodes(page.root, node => node.tag === 'button' && page.text().includes('Atualizar'))[0]
+    assert.ok(refresh)
+    ;(refresh.props.onClick as () => void)()
+    await settle()
+
+    assert.match(page.text(), /Não foi possível carregar o resumo/, `status ${statusCode}`)
+    assert.match(page.text(), /A autorização do contexto mudou\./, `status ${statusCode}`)
+    assert.doesNotMatch(page.text(), /R\$\s*9\.007\.199\.254\.740\.993,01/, `status ${statusCode}`)
+    assert.doesNotMatch(page.text(), /Dados desatualizados/, `status ${statusCode}`)
+  }
 })
 
 test('empty overview uses a theme-aware neutral alert without clipping its root', async (t) => {
