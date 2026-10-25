@@ -235,19 +235,22 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
             'reason' => 'Original reversal reason',
         ]);
 
-        foreach ([
+        $this->assertAppendOnlyModelMutationRejected(
             fn () => $adjustment->forceFill(['reason' => 'Changed'])->save(),
+            'Invoice adjustments are append-only.',
+        );
+        $this->assertAppendOnlyModelMutationRejected(
             fn () => $adjustment->delete(),
+            'Invoice adjustments are append-only.',
+        );
+        $this->assertAppendOnlyModelMutationRejected(
             fn () => $reversal->forceFill(['reason' => 'Changed'])->save(),
+            'Receipt reversals are append-only.',
+        );
+        $this->assertAppendOnlyModelMutationRejected(
             fn () => $reversal->delete(),
-        ] as $mutation) {
-            try {
-                $mutation();
-                self::fail('Append-only billing evidence must reject Eloquent update and delete.');
-            } catch (\LogicException) {
-                self::assertTrue(true);
-            }
-        }
+            'Receipt reversals are append-only.',
+        );
 
         self::assertSame('Original', $adjustment->fresh()->reason);
         self::assertSame('Original reversal reason', $reversal->fresh()->reason);
@@ -276,12 +279,7 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
             fn () => DB::table('office_erp_receipt_reversals')->where('id', $reversal->id)->update(['reason' => 'Changed']),
             fn () => DB::table('office_erp_receipt_reversals')->where('id', $reversal->id)->delete(),
         ] as $mutation) {
-            try {
-                $mutation();
-                self::fail('Database constraints must reject direct mutation of append-only billing evidence.');
-            } catch (QueryException) {
-                self::assertTrue(true);
-            }
+            $this->assertAppendOnlyDatabaseMutationRejected($mutation);
         }
 
         self::assertSame('Ajuste de teste', DB::table('office_erp_invoice_adjustments')->where('id', $adjustment->id)->value('reason'));
@@ -320,5 +318,31 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
         $invoice = $this->issuedInvoice($ctx, $this->acceptedContract($ctx), '9007199254740993.01');
 
         self::assertSame('9007199254740993.01', $invoice->fresh()->original_total);
+    }
+
+    private function assertAppendOnlyModelMutationRejected(callable $mutation, string $expectedMessage): void
+    {
+        try {
+            $mutation();
+        } catch (\LogicException $exception) {
+            self::assertSame($expectedMessage, $exception->getMessage());
+
+            return;
+        }
+
+        self::fail('Expected Eloquent mutation to be rejected with '.$expectedMessage);
+    }
+
+    private function assertAppendOnlyDatabaseMutationRejected(callable $mutation): void
+    {
+        try {
+            DB::transaction(static fn (): mixed => $mutation());
+        } catch (QueryException $exception) {
+            self::assertStringContainsString('append-only', strtolower($exception->getMessage()));
+
+            return;
+        }
+
+        self::fail('Expected direct database mutation to be rejected by the append-only trigger.');
     }
 }
