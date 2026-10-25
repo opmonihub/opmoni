@@ -8,6 +8,7 @@ use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
+use App\Models\Erp\Commercial\OfficeErpLicenceAllocation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Erp\ErpCompany;
@@ -181,11 +182,6 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                         'user_id' => $owner->id,
                         'role' => 'owner',
                     ]);
-                    ErpSubscription::factory()->active()->create([
-                        'erp_company_id' => $company->id,
-                        'erp_plan_id' => ErpPlan::factory()->create()->id,
-                        'office_erp_contract_id' => $contract->id,
-                    ]);
                     $contract->forceFill([
                         'erp_company_id' => $company->id,
                         'agreement_status' => 'effective',
@@ -193,6 +189,11 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                         'effective_at' => now(),
                         'service_anchor_on' => $anchor->toDateString(),
                     ])->save();
+                    ErpSubscription::factory()->active()->create([
+                        'erp_company_id' => $company->id,
+                        'erp_plan_id' => ErpPlan::factory()->create()->id,
+                        'office_erp_contract_id' => $contract->id,
+                    ]);
                     OfficeErpLicenceAllocation::factory()->create([
                         'account_id' => $fixture['account_id'],
                         'contract_id' => $contract->id,
