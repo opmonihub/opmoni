@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpOperationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSalesPlanController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSettingsController;
@@ -10,6 +11,13 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->group(function (): void {
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
+    Route::get('/invoices', [OfficeErpInvoiceController::class, 'index'])->name('office-erp-commercial.invoices.index');
+    Route::post('/invoices', [OfficeErpInvoiceController::class, 'store'])->name('office-erp-commercial.invoices.store');
+    Route::get('/invoices/{invoice}', [OfficeErpInvoiceController::class, 'show'])->whereNumber('invoice')->name('office-erp-commercial.invoices.show');
+    Route::patch('/invoices/{invoice}', [OfficeErpInvoiceController::class, 'update'])->whereNumber('invoice')->name('office-erp-commercial.invoices.update');
+    Route::post('/invoices/{invoice}/issue', [OfficeErpInvoiceController::class, 'issue'])->whereNumber('invoice')->name('office-erp-commercial.invoices.issue');
+    Route::post('/invoices/{invoice}/adjustments', [OfficeErpInvoiceController::class, 'adjust'])->whereNumber('invoice')->name('office-erp-commercial.invoices.adjust');
+    Route::post('/invoices/{invoice}/cancel', [OfficeErpInvoiceController::class, 'cancel'])->whereNumber('invoice')->name('office-erp-commercial.invoices.cancel');
     Route::get('/settings', [OfficeErpSettingsController::class, 'show'])->name('office-erp-commercial.settings.show');
     Route::patch('/settings', [OfficeErpSettingsController::class, 'update'])->name('office-erp-commercial.settings.update');
     Route::post('/settings/preview', [OfficeErpSettingsController::class, 'preview'])->name('office-erp-commercial.settings.preview');
