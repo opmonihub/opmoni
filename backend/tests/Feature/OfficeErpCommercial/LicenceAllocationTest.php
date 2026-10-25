@@ -89,6 +89,36 @@ class LicenceAllocationTest extends OfficeErpCommercialTestCase
         self::assertSame('released', $allocation->fresh()->state);
     }
 
+    public function test_expired_reservation_releases_last_slot_at_and_after_exact_expiry(): void
+    {
+        foreach ([0, 1] as $secondsAfterExpiry) {
+            $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
+            $expiredContract = $this->acceptedContract($ctx);
+            $newContract = $this->acceptedContract($ctx);
+            $expiresAt = CarbonImmutable::now()->addMinute()->startOfSecond();
+            $allocation = OfficeErpLicenceAllocation::factory()->create([
+                'account_id' => $ctx->accountId,
+                'contract_id' => $expiredContract->id,
+                'state' => 'reserved',
+                'expires_at' => $expiresAt,
+            ]);
+            $system = $this->systemContext($ctx->account, 'allocation-boundary:'.$secondsAfterExpiry.':'.$expiredContract->id);
+            $allocator = app(OfficeErpLicenceAllocator::class);
+            $this->travelTo($expiresAt->addSeconds($secondsAfterExpiry));
+
+            $system->run(fn () => $allocator->release($system, $expiredContract, 'invitation_expired'));
+
+            self::assertSame('released', $allocation->fresh()->state);
+            self::assertSame($expiresAt->addSeconds($secondsAfterExpiry)->toDateTimeString(), $allocation->fresh()->released_at->toDateTimeString());
+            $reservation = $this->withOfficeAccount($ctx, fn (): OfficeErpLicenceAllocation => $ctx->run(
+                fn (): OfficeErpLicenceAllocation => $allocator->reserve($ctx, $newContract, CarbonImmutable::now()->addDay()),
+            ));
+            self::assertSame($newContract->id, $reservation->contract_id);
+            self::assertSame('reserved', $reservation->state);
+            $this->travelBack();
+        }
+    }
+
     public function test_expired_reservation_releases_the_last_slot_for_another_contract(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);

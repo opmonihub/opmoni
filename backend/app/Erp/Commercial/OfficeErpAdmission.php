@@ -127,7 +127,7 @@ final class OfficeErpAdmission
                     abort_unless(
                         $allocation?->state === 'reserved'
                             && $allocation->expires_at !== null
-                            && $allocation->expires_at->isPast(),
+                            && ! $allocation->expires_at->isFuture(),
                         409,
                         'allocation_not_expired',
                     );
@@ -341,7 +341,7 @@ final class OfficeErpAdmission
                 if ($expired->contains('id', $allocation->id)) {
                     abort_unless($contracts->has($allocation->contract_id), 404);
                 }
-                if ($allocation->state === 'reserved' && $allocation->expires_at?->isPast()) {
+                if ($allocation->state === 'reserved' && $allocation->expires_at !== null && ! $allocation->expires_at->isFuture()) {
                     if ($expired->contains('id', $allocation->id)) {
                         $allocation->forceFill(['state' => 'released', 'released_at' => now()]);
                         OfficeErpRecords::persist($ctx, $allocation);
@@ -486,7 +486,7 @@ final class OfficeErpAdmission
         }
         abort_unless(
             $ctx->actorKind === 'system'
-                && (($reason === 'invitation_expired' && $allocation?->state === 'reserved' && $allocation->expires_at?->isPast())
+                && (($reason === 'invitation_expired' && $allocation?->state === 'reserved' && $allocation->expires_at !== null && ! $allocation->expires_at->isFuture())
                     || ($reason === 'effective_cancellation' && $contract->agreement_status === 'canceled')),
             403,
         );
