@@ -23,6 +23,7 @@ NETWORK = PROJECT + '-net'
 VOLUMES = [PROJECT + '-postgres', PROJECT + '-redis']
 STATE_DIR = CENTRAL / '.superpowers/sdd/2026-10-24-office-erp-commercial-management/parallel-wave1/rehearsal'
 STATE_FILE = STATE_DIR / 'orchestration.json'
+PROBE_STATE_FILE = STATE_DIR / 'state.json'
 BACKEND_ENV = STATE_DIR / 'backend.env'
 COMPOSE_ENV = STATE_DIR / 'compose.env'
 WORKTREES = {
@@ -304,6 +305,27 @@ def load_state() -> dict[str, object]:
     return state
 
 
+def load_probe_markers() -> list[str]:
+    if STATE_DIR.is_symlink() or not STATE_DIR.resolve(strict=False).is_relative_to(CENTRAL.resolve()):
+        raise RuntimeError('Private rehearsal state directory is unsafe')
+    if PROBE_STATE_FILE.is_symlink():
+        raise RuntimeError('Private probe state must not be a symlink')
+    if not PROBE_STATE_FILE.exists():
+        return []
+    if not PROBE_STATE_FILE.is_file() or PROBE_STATE_FILE.stat().st_mode & 0o777 != 0o600:
+        raise RuntimeError('Private probe state must be a regular file with mode 0600')
+    probe_state = json.loads(PROBE_STATE_FILE.read_text(encoding='utf-8'))
+    markers = probe_state.get('probe_markers') if isinstance(probe_state, dict) else None
+    allowed_markers = {
+        'preflight', 'seed-baseline', 'verify-forward', 'commercial-fixture',
+        'compatible-readonly', 'current-readonly',
+    }
+    if (not isinstance(markers, list) or any(not isinstance(marker, str) for marker in markers)
+            or len(markers) != len(set(markers)) or not set(markers).issubset(allowed_markers)):
+        raise RuntimeError('Private probe state has an unexpected marker shape')
+    return markers
+
+
 def ensure_revision(revision: str) -> None:
     if git_value(ROOT, 'cat-file', '-t', revision) != 'commit':
         raise RuntimeError(f'Required source commit is unavailable: {revision}')
@@ -412,7 +434,7 @@ def main() -> int:
     if args.phase != expected:
         raise RuntimeError(f'Next resumable phase is {expected!r}; no later phase may run')
 
-    markers = state.get('probe_markers', [])
+    markers = load_probe_markers()
     marker_for_phase = {
         'baseline': 'seed-baseline', 'migrate': 'verify-forward', 'fixture': 'commercial-fixture',
         'old-probe': 'compatible-readonly', 'current-probe': 'current-readonly',
