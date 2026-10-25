@@ -194,6 +194,7 @@ async function accept(password?: string) {
   busy.value = true
   error.value = ''
   passwordError.value = ''
+  let acceptancePostCompleted = false
   try {
     const body: Record<string, unknown> = {}
     if (!user.value && password)
@@ -207,13 +208,14 @@ async function accept(password?: string) {
       headers: { 'Idempotency-Key': operationKey.value },
       body
     })
+    acceptancePostCompleted = true
     if (isNewOwner)
       await refresh()
     await loadCurrent()
   } catch (caught) {
     const failure = apiFailure(caught)
     error.value = failure.message
-    if (isNewOwner && failure.status > 0 && failure.status < 500) {
+    if (isNewOwner && !acceptancePostCompleted && failure.status > 0 && failure.status < 500) {
       clearPendingAcceptance()
       if (failure.status === 409 && failure.code === 'login_required') {
         state.value = 'identity_login_required'

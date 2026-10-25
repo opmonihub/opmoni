@@ -281,6 +281,51 @@ test('new-owner lost response reconciles the authenticated session and accepted 
   } finally { page.restore() }
 })
 
+test('post-acceptance refresh rejections keep recovery read-only until current confirms the result', async () => {
+  for (const status of [403, 429]) {
+    let accepted = false
+    let currentCalls = 0
+    const page = harness({
+      api: async (path, config) => {
+        if (path === '/erp-invitations/current') {
+          currentCalls++
+          if (currentCalls === 1) return valid
+          if (currentCalls === 2) throw Object.assign(new Error('Status indisponível.'), { status: 503 })
+          return { state: 'accepted', operation_key: 'stable-key', data: { ...valid.data, accepted_company: { id: 83, name: 'Loja Um' } } }
+        }
+        if (path === '/erp-invitations/accept') {
+          accepted = true
+          assert.deepEqual(config?.body, { password: 'safe-password-123' })
+          return {}
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      },
+      refresh: async () => { throw Object.assign(new Error('Falha ao atualizar a sessão.'), { status }) }
+    })
+    try {
+      await flushPage()
+      setRenderedPassword(page.root, 'safe-password-123')
+      submitNewOwnerForm(page.root)
+      await flushPage()
+
+      assert.equal(accepted, true)
+      assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+      assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+      assert.match(text(page.root), /Confirme o resultado antes de continuar/)
+      const pending = JSON.parse(page.storage.get('office-erp.owner-acceptance.pending') ?? '{}') as Record<string, unknown>
+      assert.deepEqual(Object.keys(pending).sort(), ['expires_at', 'invitation_id', 'owner_email'])
+
+      const verify = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Verificar novamente'))[0]
+      assert.ok(verify)
+      verify.props.onClick?.()
+      await flushPage()
+      assert.match(text(page.root), /Convite aceito/)
+      assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), false)
+      assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    } finally { page.restore() }
+  }
+})
+
 test('unresolved new-owner acceptance persists bounded nonsecret identity and recovery never repeats the password POST', async () => {
   let currentCalls = 0
   const page = harness({
