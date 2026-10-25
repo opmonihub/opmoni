@@ -15,9 +15,10 @@ const route = useRoute()
 const toast = useToast()
 
 const clients = ref<OfficeErpPortfolioClient[]>([])
-const clientQuery = ref('')
+const requestedClientPage = Number(route.query.pagina)
+const clientQuery = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const clientSearch = refDebounced(clientQuery, 300)
-const clientPage = ref(1)
+const clientPage = ref(Number.isSafeInteger(requestedClientPage) && requestedClientPage > 0 ? requestedClientPage : 1)
 const clientTotal = ref(0)
 const clientLastPage = ref(1)
 const clientsLoading = ref(false)
@@ -103,8 +104,11 @@ async function loadClients() {
     clientPage.value = response.meta.current_page
     const requestedId = Number(route.query.cliente)
     if (!preselectedClientHandled && Number.isSafeInteger(requestedId) && requestedId > 0) {
-      selectedClient.value = clientOptions.value.find(item => item.id === requestedId) ?? null
-      preselectedClientHandled = true
+      const requestedClient = clientOptions.value.find(item => item.id === requestedId)
+      if (requestedClient) {
+        selectedClient.value = requestedClient
+        preselectedClientHandled = true
+      }
     }
   } catch (error) {
     if (request === clientRequest && identity === identityStamp.value) clientsError.value = apiErrorMessage(error) ?? 'Não foi possível consultar a carteira agora.'
@@ -134,7 +138,6 @@ async function loadOffers() {
     offerTotal.value = response.meta.total
     offerLastPage.value = Math.max(1, response.meta.last_page)
     offerPage.value = response.meta.current_page
-    if (selectedRevisionId.value && !publishedRevisions.value.some(item => item.revisionId === selectedRevisionId.value)) selectedRevision.value = null
   } catch (error) {
     if (request === offerRequest && identity === identityStamp.value) offersError.value = apiErrorMessage(error) ?? 'Não foi possível consultar as ofertas agora.'
   } finally {
@@ -181,6 +184,24 @@ function validOutcome(value: unknown): OfficeErpInvitationOutcome | null {
   return candidate as OfficeErpInvitationOutcome
 }
 
+function safeInvitationUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || typeof window === 'undefined') return null
+  try {
+    const expectedOrigin = new URL(window.location.origin)
+    const candidate = new URL(value)
+    const secureOrigin = expectedOrigin.protocol === 'https:' && candidate.protocol === 'https:'
+    const localHttpOrigin = expectedOrigin.protocol === 'http:' && candidate.protocol === 'http:'
+      && ['localhost', '127.0.0.1', '[::1]'].includes(expectedOrigin.hostname)
+    if (candidate.origin !== expectedOrigin.origin || (!secureOrigin && !localHttpOrigin)
+      || candidate.pathname !== '/erp/ativar' || candidate.search !== ''
+      || candidate.username !== '' || candidate.password !== ''
+      || !/^#token=[a-f\d]{64}$/i.test(candidate.hash)) return null
+    return candidate.href
+  } catch {
+    return null
+  }
+}
+
 function acceptOutcome(value: unknown, recovered = false): boolean {
   const payload = value && typeof value === 'object' && 'data' in value ? (value as { data: unknown }).data : value
   const outcome = validOutcome(payload)
@@ -188,8 +209,9 @@ function acceptOutcome(value: unknown, recovered = false): boolean {
     mutationError.value = recovered ? 'O resultado não corresponde a um convite. A operação foi consultada sem repetir a solicitação.' : 'A confirmação não trouxe um resultado de convite válido.'
     return false
   }
-  invitation.value = outcome
-  transientUrl.value = typeof outcome.url === 'string' && outcome.url.startsWith('https://') ? outcome.url : null
+  const { url, ...durableOutcome } = outcome
+  invitation.value = durableOutcome
+  transientUrl.value = safeInvitationUrl(url)
   mutationError.value = ''
   preview.value = null
   return true

@@ -76,7 +76,7 @@ function uiComponents(): Record<string, Vue.Component> {
     UButton: {
       props: ['disabled', 'loading', 'to', 'label'],
       setup(props, context) {
-        return () => Vue.h('button', { ...context.attrs, 'disabled': props.disabled, 'data-loading': String(props.loading ?? false) }, context.slots.default?.() ?? props.label)
+        return () => Vue.h('button', { ...context.attrs, 'to': props.to, 'disabled': props.disabled, 'data-loading': String(props.loading ?? false) }, context.slots.default?.() ?? props.label)
       }
     },
     UInput: {
@@ -137,10 +137,19 @@ function uiComponents(): Record<string, Vue.Component> {
       props: ['page', 'total', 'itemsPerPage', 'disabled'],
       emits: ['update:page'],
       setup(props, context) {
-        return () => Vue.h('nav', {}, [Vue.h('span', {}, `Página ${props.page}`), Vue.h('button', {
-          type: 'button', disabled: props.disabled || Number(props.page) * Number(props.itemsPerPage) >= Number(props.total),
-          onClick: () => context.emit('update:page', Number(props.page) + 1)
-        }, 'Próxima')])
+        return () => Vue.h('nav', {}, [
+          Vue.h('span', {}, `Página ${props.page}`),
+          Vue.h('button', {
+            type: 'button',
+            disabled: props.disabled || Number(props.page) <= 1,
+            onClick: () => context.emit('update:page', Number(props.page) - 1)
+          }, 'Anterior'),
+          Vue.h('button', {
+            type: 'button',
+            disabled: props.disabled || Number(props.page) * Number(props.itemsPerPage) >= Number(props.total),
+            onClick: () => context.emit('update:page', Number(props.page) + 1)
+          }, 'Próxima')
+        ])
       }
     },
     DataTablePanelList: { setup(_props, context) { return () => Vue.h('main', {}, [context.slots.action?.(), context.slots.toolbar?.(), context.slots.default?.()]) } }
@@ -224,6 +233,8 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
   api?: (path: string, init?: Record<string, unknown>) => Promise<unknown>
   command?: InvitationCommand
   initialRecovery?: unknown
+  routeQuery?: Record<string, string | number>
+  origin?: string
 } = {}) {
   const user = Vue.ref(identity(office(8)))
   const currentAccount = Vue.computed(() => user.value.current_account)
@@ -251,7 +262,8 @@ function harness(path: 'pages/gestao-erp/clientes/index.vue' | 'pages/gestao-erp
     },
     useOfficeErpContext: () => context,
     useOfficeErpCommand: () => command,
-    useRoute: () => ({ query: {} }),
+    useRoute: () => ({ query: options.routeQuery ?? {} }),
+    window: { location: { origin: options.origin ?? 'http://localhost:3346' } },
     useToast: () => ({ add() {} }),
     onBeforeUnmount: Vue.onBeforeUnmount,
     definePageMeta() {}
@@ -306,11 +318,82 @@ describe('Office ERP seller onboarding SFC', () => {
     page.app.unmount()
   })
 
+  it('keeps previous-page navigation enabled on the final portfolio page', async () => {
+    const page = harness('pages/gestao-erp/clientes/index.vue', { api: async () => ({
+      data: [{ id: 77, name: 'Cliente da última página', trade_name: null, tax_id: null }],
+      meta: { current_page: 2, last_page: 2, per_page: 25, total: 27 }
+    }) })
+    await flush()
+    const previous = findButton(page.root, 'Anterior')
+    assert.ok(previous)
+    assert.equal(previous.props.disabled, false)
+    page.app.unmount()
+  })
+
+  it('carries the searched portfolio page to the form and preselects its client', async () => {
+    const page = harness('pages/gestao-erp/clientes/index.vue', { api: async (_path, init) => {
+      const params = init?.params as Record<string, unknown>
+      const pageNumber = Number(params.page)
+      return {
+        data: pageNumber === 2 ? [{ id: 77, name: 'Cliente da página dois', trade_name: null, tax_id: null }] : [],
+        meta: { current_page: pageNumber, last_page: 2, per_page: 25, total: 27 }
+      }
+    } })
+    await flush()
+    updateInput(page.root, 'client-search', 'Caribe')
+    await flush()
+    ;(findButton(page.root, 'Próxima')?.props.onClick as () => void)()
+    await flush()
+    const invitationLink = findButton(page.root, 'Convidar responsável')
+    assert.ok(invitationLink)
+    const destination = invitationLink.props.to as { query: Record<string, unknown> }
+    assert.deepEqual(destination.query, { cliente: 77, pagina: 2, q: 'Caribe' })
+
+    const form = harness('pages/gestao-erp/clientes/novo.vue', {
+      routeQuery: destination.query as Record<string, string | number>,
+      api: async (path, init) => {
+        if (path === '/erp-commercial/plans') return testOffers()
+        if (path !== '/erp-commercial/clients') return testPreview()
+        const params = init?.params as Record<string, unknown>
+        return {
+          data: Number(params.page) === 2 ? [{ id: 77, name: 'Cliente da página dois', trade_name: null, tax_id: null }] : [],
+          meta: { current_page: Number(params.page), last_page: 2, per_page: 25, total: 27 }
+        }
+      }
+    })
+    await flush()
+    assert.deepEqual(form.apiCalls.find(call => call.path === '/erp-commercial/clients')?.options?.params, { page: 2, per_page: 25, q: 'Caribe' })
+    assert.equal(controlFor(form.root, 'client_id')?.props.value, 77)
+    page.app.unmount()
+    form.app.unmount()
+  })
+
+  it('retains the selected immutable offer revision while searching another offer page', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path, init) => {
+      if (path === '/erp-commercial/plans' && (init?.params as Record<string, unknown> | undefined)?.q === 'Serviços') {
+        return {
+          data: [{ id: 9, name: 'ERP Serviços', description: null, status: 'active', archived_at: null, current_revision: { id: 99, revision_number: 2, name: 'ERP Serviços', description: null, price: '99.00', currency: 'BRL', interval_months: 1, due_in_days: 7, module_keys: [], published_at: '2026-10-24T10:00:00Z', published: true } }],
+          meta: { current_page: 1, last_page: 2, per_page: 25, total: 27 }
+        }
+      }
+      return path === '/erp-commercial/plans' ? testOffers() : testClients()
+    } })
+    await flush()
+    selectOption(page.root, 'revision_id', '34')
+    updateInput(page.root, 'offer-search', 'Serviços')
+    await flush()
+    assert.equal(controlFor(page.root, 'revision_id')?.props.value, 34)
+    const latestOfferRequest = page.apiCalls.filter(call => call.path === '/erp-commercial/plans').at(-1)
+    assert.equal((latestOfferRequest?.options?.params as Record<string, unknown>)?.q, 'Serviços')
+    page.app.unmount()
+  })
+
   it('reviews the selected published revision, preserves owner fields through unknown recovery, and requires explicit reissue for a new link', async () => {
     const command = createCommand()
     command.executeResults.push(
       { status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' },
-      { status: 'confirmed', data: { invitation_id: 92, expires_at: '2026-11-01 12:00:00', status: 'pending', url: 'https://frontend.test/erp/ativar#token=one-time-secret' } }
+      { status: 'confirmed', data: { invitation_id: 92, expires_at: '2026-11-01 12:00:00', status: 'pending', url: `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}` } },
+      { status: 'confirmed', data: { invitation_id: 93, expires_at: '2026-11-01 12:00:00', status: 'pending', url: `https://attacker.test/erp/ativar#token=${'b'.repeat(64)}` } }
     )
     command.recoveryResult = { status: 'confirmed', data: { data: { invitation_id: 91, expires_at: '2026-11-01 12:00:00', status: 'pending' } } }
     const page = harness('pages/gestao-erp/clientes/novo.vue', { command })
@@ -357,8 +440,12 @@ describe('Office ERP seller onboarding SFC', () => {
     assert.equal(command.executeCalls.length, 2)
     assert.equal(command.executeCalls[1]?.[0], 'invitation.issue')
     assert.equal(command.executeCalls[1]?.[1], '/erp-commercial/invitations/91/reissue')
-    assert.match(textOf(page.root), /one-time-secret/)
+    const activationLink = findAll(page.root, node => node.tag === 'a')[0]
+    assert.equal(activationLink?.props.href, `http://localhost:3346/erp/ativar#token=${'a'.repeat(64)}`)
     assert.equal(page.stateKeys.includes('office-erp-invitation-token'), false)
+    ;(findButton(page.root, 'Gerar novo link')?.props.onClick as () => void)()
+    await flush()
+    assert.doesNotMatch(textOf(page.root), /attacker\.test|token=b{64}/)
     page.app.unmount()
     assert.doesNotMatch(textOf(page.root), /one-time-secret/)
   })

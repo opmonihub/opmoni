@@ -152,7 +152,14 @@ watch(identityStamp, () => {
           </template>
           <template #actions-cell="{ row }">
             <UButton
-              :to="{ path: '/gestao-erp/clientes/novo', query: { cliente: row.original.id } }"
+              :to="{
+                path: '/gestao-erp/clientes/novo',
+                query: {
+                  cliente: row.original.id,
+                  pagina: page,
+                  ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {})
+                }
+              }"
               color="neutral"
               variant="ghost"
               size="sm"
@@ -172,7 +179,7 @@ watch(identityStamp, () => {
             v-model:page="page"
             :total="total"
             :items-per-page="perPage"
-            :disabled="loading || page >= lastPage"
+            :disabled="loading"
             :class="panelPaginationClass"
           />
         </div>
