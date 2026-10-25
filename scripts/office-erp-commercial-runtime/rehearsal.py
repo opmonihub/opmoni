@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -81,6 +82,34 @@ def git_value(path: Path, *args: str) -> str:
     return run(['git', *args], cwd=path)
 
 
+def rehearsal_identity() -> tuple[int, int]:
+    uid, gid = os.getuid(), os.getgid()
+    if uid == 0:
+        raise RuntimeError('Rehearsal must run as a non-root host user')
+    return uid, gid
+
+
+def ensure_private_state_dir() -> tuple[int, int]:
+    uid, gid = rehearsal_identity()
+    if STATE_DIR.is_symlink() or not STATE_DIR.resolve(strict=False).is_relative_to(CENTRAL.resolve()):
+        raise RuntimeError('Private rehearsal state directory is unsafe')
+    STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    info = STATE_DIR.stat()
+    if (info.st_uid, info.st_gid) != (uid, gid):
+        raise RuntimeError('Private rehearsal state directory owner differs from the host user')
+    STATE_DIR.chmod(0o700)
+    return uid, gid
+
+
+def ensure_private_file_owner(path: Path, uid: int, gid: int) -> None:
+    if path.is_symlink():
+        raise RuntimeError(f'Private file must not be a symlink: {path.name}')
+    if path.exists():
+        info = path.stat()
+        if (info.st_uid, info.st_gid) != (uid, gid):
+            raise RuntimeError(f'Private file owner differs from the host user: {path.name}')
+
+
 def exact_worktree(role: str, revision: str, create: bool) -> Path:
     path = WORKTREES[role]
     if path.is_symlink() or not path.resolve(strict=False).is_relative_to((ROOT / '.worktrees').resolve()):
@@ -98,10 +127,7 @@ def exact_worktree(role: str, revision: str, create: bool) -> Path:
 
 
 def set_env_file(source_sha: str, source: Path) -> None:
-    if STATE_DIR.is_symlink() or not STATE_DIR.resolve(strict=False).is_relative_to(CENTRAL.resolve()):
-        raise RuntimeError('Private rehearsal state directory is unsafe')
-    STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    STATE_DIR.chmod(0o700)
+    uid, gid = ensure_private_state_dir()
     source_env = CENTRAL / 'backend/.env'
     if not source_env.is_file() or source_env.is_symlink():
         raise RuntimeError('Central backend private environment file is missing or unsafe')
@@ -115,8 +141,7 @@ def set_env_file(source_sha: str, source: Path) -> None:
         raise RuntimeError('Private APP_KEY is missing; source remains unchanged')
     key_digest = hashlib.sha256(app_key_lines[0].encode()).hexdigest()
     source_file = STATE_DIR / 'source.json'
-    if source_file.is_symlink():
-        raise RuntimeError('Private source record must not be a symlink')
+    ensure_private_file_owner(source_file, uid, gid)
     if source_file.exists():
         old_source = json.loads(source_file.read_text(encoding='utf-8'))
         if old_source.get('app_key_digest') not in (None, key_digest):
@@ -140,11 +165,10 @@ def set_env_file(source_sha: str, source: Path) -> None:
     }
     override_keys = set(overrides)
     preserved = [line for key, line in zip(keys, original, strict=True) if key not in override_keys]
-    if BACKEND_ENV.is_symlink() or COMPOSE_ENV.is_symlink():
-        raise RuntimeError('Private environment paths must not be symlinks')
+    ensure_private_file_owner(BACKEND_ENV, uid, gid)
+    ensure_private_file_owner(COMPOSE_ENV, uid, gid)
     tmp = BACKEND_ENV.with_suffix('.env.tmp')
-    if tmp.is_symlink():
-        raise RuntimeError('Private temporary environment path must not be a symlink')
+    ensure_private_file_owner(tmp, uid, gid)
     tmp.write_text('\n'.join([*preserved, *(f'{key}={value}' for key, value in overrides.items())]) + '\n', encoding='utf-8')
     tmp.chmod(0o600)
     tmp.replace(BACKEND_ENV)
@@ -156,6 +180,8 @@ def set_env_file(source_sha: str, source: Path) -> None:
         'REHEARSAL_VENDOR': str(CENTRAL / 'backend/vendor'),
         'REHEARSAL_STATE': str(STATE_DIR),
         'REHEARSAL_HARNESS': str(SCRIPT.parent),
+        'REHEARSAL_UID': str(uid),
+        'REHEARSAL_GID': str(gid),
     }
     COMPOSE_ENV.write_text('\n'.join(f'{key}={value}' for key, value in compose_values.items()) + '\n', encoding='utf-8')
     COMPOSE_ENV.chmod(0o600)
@@ -235,6 +261,11 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
             image = run(['docker', 'inspect', '--format', '{{.Config.Image}}', container])
             if image != 'opmoni-backend:dev':
                 raise RuntimeError('Rehearsal backend image changed; preserve it and stop')
+            uid, gid = rehearsal_identity()
+            expected_user = f'{uid}:{gid}'
+            actual_user = run(['docker', 'inspect', '--format', '{{.Config.User}}', container])
+            if actual_user != expected_user:
+                raise RuntimeError('Rehearsal backend container user differs from the host identity')
             mounts = json.loads(run(['docker', 'inspect', '--format', '{{json .Mounts}}', container]))
             tmpfs_config = json.loads(run(['docker', 'inspect', '--format', '{{json .HostConfig.Tmpfs}}', container]))
             expected_binds = {
@@ -259,14 +290,19 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
                     raise RuntimeError('Rehearsal backend has an unexpected volume or mount type')
             if binds != expected_binds or set(tmpfs_config) != expected_tmpfs:
                 raise RuntimeError('Rehearsal backend mounts differ from the reviewed bind/tmpfs contract')
-            required_tmpfs_options = {'rw', 'nosuid', 'nodev', 'uid=1000', 'gid=1000'}
-            for options in tmpfs_config.values():
+            expected_tmpfs_options = {
+                '/workspace/backend/storage': {
+                    'rw', 'nosuid', 'nodev', 'size=64m', f'uid={uid}', f'gid={gid}', 'mode=0770',
+                },
+                '/workspace/backend/bootstrap/cache': {
+                    'rw', 'nosuid', 'nodev', 'size=16m', f'uid={uid}', f'gid={gid}', 'mode=0770',
+                },
+            }
+            for destination, options in tmpfs_config.items():
                 if not isinstance(options, str):
                     raise RuntimeError('Rehearsal backend tmpfs options have an unexpected shape')
                 option_tokens = set(options.split(','))
-                modes = [token.removeprefix('mode=') for token in option_tokens if token.startswith('mode=')]
-                if (not required_tmpfs_options.issubset(option_tokens) or 'ro' in option_tokens
-                        or len(modes) != 1 or not modes[0].isdigit() or int(modes[0], 8) != 0o770):
+                if option_tokens != expected_tmpfs_options.get(destination):
                     raise RuntimeError('Rehearsal backend tmpfs ownership, mode, or writability differs from the reviewed contract')
             if inspected_tmpfs and (set(inspected_tmpfs) != expected_tmpfs or not all(inspected_tmpfs.values())):
                 raise RuntimeError('Rehearsal backend tmpfs mount type or writability differs from the reviewed contract')
@@ -284,23 +320,18 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
 
 
 def write_state(state: dict[str, object]) -> None:
-    if STATE_DIR.is_symlink() or not STATE_DIR.resolve(strict=False).is_relative_to(CENTRAL.resolve()):
-        raise RuntimeError('Private rehearsal state directory is unsafe')
-    STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    STATE_DIR.chmod(0o700)
-    if STATE_FILE.is_symlink():
-        raise RuntimeError('Orchestration state must not be a symlink')
+    uid, gid = ensure_private_state_dir()
+    ensure_private_file_owner(STATE_FILE, uid, gid)
     tmp = STATE_FILE.with_suffix('.json.tmp')
-    if tmp.is_symlink():
-        raise RuntimeError('Temporary orchestration state must not be a symlink')
+    ensure_private_file_owner(tmp, uid, gid)
     tmp.write_text(json.dumps(state, sort_keys=True, indent=2) + '\n', encoding='utf-8')
     tmp.chmod(0o600)
     tmp.replace(STATE_FILE)
 
 
 def load_state() -> dict[str, object]:
-    if STATE_DIR.is_symlink() or STATE_FILE.is_symlink():
-        raise RuntimeError('Orchestration state must not be a symlink')
+    uid, gid = ensure_private_state_dir()
+    ensure_private_file_owner(STATE_FILE, uid, gid)
     if not STATE_FILE.exists():
         return {'project': PROJECT, 'phases': [], 'source_sha': None}
     if STATE_FILE.stat().st_mode & 0o077:
@@ -312,10 +343,8 @@ def load_state() -> dict[str, object]:
 
 
 def load_probe_markers() -> list[str]:
-    if STATE_DIR.is_symlink() or not STATE_DIR.resolve(strict=False).is_relative_to(CENTRAL.resolve()):
-        raise RuntimeError('Private rehearsal state directory is unsafe')
-    if PROBE_STATE_FILE.is_symlink():
-        raise RuntimeError('Private probe state must not be a symlink')
+    uid, gid = ensure_private_state_dir()
+    ensure_private_file_owner(PROBE_STATE_FILE, uid, gid)
     if not PROBE_STATE_FILE.exists():
         return []
     if not PROBE_STATE_FILE.is_file() or PROBE_STATE_FILE.stat().st_mode & 0o777 != 0o600:

@@ -3,6 +3,7 @@ name: opmoni-office-erp-commercial-rehearsal
 x-backend: &backend
   image: opmoni-backend:dev
   pull_policy: never
+  user: "${REHEARSAL_UID:?runner must use the host UID}:${REHEARSAL_GID:?runner must use the host GID}"
   init: true
   entrypoint: []
   command: [php, -r, 'while (true) { sleep(3600); }']
@@ -49,8 +50,8 @@ x-backend: &backend
     - ${REHEARSAL_STATE:?runner must select private state}:/rehearsal-state:rw
     - ${REHEARSAL_HARNESS:?runner must select the reviewed probe}:/rehearsal-harness:ro
   tmpfs:
-    - /workspace/backend/storage:rw,nosuid,nodev,size=64m,uid=1000,gid=1000,mode=0770
-    - /workspace/backend/bootstrap/cache:rw,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0770
+    - /workspace/backend/storage:rw,nosuid,nodev,size=64m,uid=${REHEARSAL_UID:?runner must use the host UID},gid=${REHEARSAL_GID:?runner must use the host GID},mode=0770
+    - /workspace/backend/bootstrap/cache:rw,nosuid,nodev,size=16m,uid=${REHEARSAL_UID:?runner must use the host UID},gid=${REHEARSAL_GID:?runner must use the host GID},mode=0770
   networks: [rehearsal]
   depends_on:
     postgres: {condition: service_healthy}
