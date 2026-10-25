@@ -148,6 +148,7 @@ async function load() {
   const version = ++generation
   detailGeneration++
   const authority = captureAuthority()
+  subscription.value = null
   loading.value = true
   error.value = null
   invoices.value = []

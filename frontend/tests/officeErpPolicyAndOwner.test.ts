@@ -152,6 +152,50 @@ function ownerContractFixture(api: (path: string) => Promise<unknown>) {
 }
 
 describe('Company ERP contract page', () => {
+  it('clears previously loaded retail terms after refresh denial and restores them on retry', async () => {
+    let subscriptionRequests = 0
+    const view = ownerContractFixture(async (path) => {
+      if (path === '/erp/subscription') {
+        subscriptionRequests++
+        if (subscriptionRequests === 2)
+          throw new Error('Acesso negado')
+
+        const recovered = subscriptionRequests > 2
+        return { data: {
+          status: recovered ? 'active' : 'pending',
+          plan: { name: 'Plano ERP', modules: [] },
+          company: { name: recovered ? 'Empresa recuperada' : 'Empresa anterior', status: 'active' },
+          retail_contract: {
+            agreement_status: recovered ? 'effective' : 'accepted',
+            terms: { price: recovered ? '200.00' : '125.00', currency: 'BRL', interval_months: 1, due_in_days: 10, module_keys: [] },
+            service_anchor_on: null,
+            billing_timezone: 'America/Sao_Paulo'
+          }
+        } }
+      }
+
+      return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
+    })
+    await flush()
+
+    assert.match(renderText(view.root), /Empresa anterior/)
+    assert.match(renderText(view.root), /125,00/)
+    const refreshButton = find(view.root, node => node.tag === 'button' && renderText(node).includes('Atualizar'))[0]!
+    ;(refreshButton.props.onClick as () => void)()
+    await flush()
+
+    assert.match(renderText(view.root), /Não foi possível carregar o contrato/)
+    assert.doesNotMatch(renderText(view.root), /Empresa anterior|125,00|Contrato de revenda/)
+    const retryButton = find(view.root, node => node.tag === 'button' && renderText(node).includes('Tentar novamente'))[0]!
+    ;(retryButton.props.onClick as () => void)()
+    await flush()
+
+    assert.match(renderText(view.root), /Empresa recuperada/)
+    assert.match(renderText(view.root), /200,00/)
+    assert.doesNotMatch(renderText(view.root), /Não foi possível carregar o contrato/)
+    view.app.unmount()
+  })
+
   it('renders persistent pending status, accepted retail terms and only the current Company invoices without activation', async () => {
     const view = ownerContractFixture(async (path) => {
       if (path === '/erp/subscription') {

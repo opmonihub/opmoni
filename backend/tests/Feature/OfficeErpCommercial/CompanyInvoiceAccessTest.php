@@ -9,6 +9,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpOfficeDelegation;
 use App\Models\Erp\ErpSubscription;
 use App\Models\User;
 use Tests\OfficeErpCommercialTestCase;
@@ -86,6 +87,44 @@ class CompanyInvoiceAccessTest extends OfficeErpCommercialTestCase
         $this->withHeader('X-Company-Id', (string) $company->id)
             ->getJson('/api/v1/erp/commercial-invoices/'.$foreignInvoice->id)
             ->assertNotFound();
+    }
+
+    public function test_another_company_invoice_under_the_same_seller_account_is_not_found(): void
+    {
+        $ctx = $this->officeContext();
+        $owner = User::factory()->create();
+        [, $company] = $this->linkedCompanyInvoice($ctx, $owner, 'active');
+        [, , $otherCompanyInvoice] = $this->linkedCompanyInvoice($ctx, User::factory()->create(), 'active');
+        $this->loginAndSelectCompany($owner, $company);
+
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/commercial-invoices/'.$otherCompanyInvoice->id)
+            ->assertNotFound();
+    }
+
+    public function test_delegated_office_admin_cannot_read_owner_terms_or_invoice_data(): void
+    {
+        $ctx = $this->officeContext();
+        $officeAdmin = $ctx->actor;
+        self::assertInstanceOf(User::class, $officeAdmin);
+        [, $company, $invoice] = $this->linkedCompanyInvoice($ctx, User::factory()->create(), 'active');
+        ErpOfficeDelegation::factory()->create([
+            'erp_company_id' => $company->id,
+            'account_id' => $ctx->accountId,
+            'authorized_by_user_id' => $officeAdmin->id,
+            'permission_allowlist' => ['erp.read'],
+        ]);
+
+        $this->loginAndSelectDelegatedCompany($officeAdmin, $ctx->accountId, $company);
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/subscription')
+            ->assertForbidden();
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/commercial-invoices')
+            ->assertForbidden();
+        $this->withHeader('X-Company-Id', (string) $company->id)
+            ->getJson('/api/v1/erp/commercial-invoices/'.$invoice->id)
+            ->assertForbidden();
     }
 
     public function test_non_owner_cannot_read_linked_contract_terms_or_invoices(): void
@@ -173,5 +212,19 @@ class CompanyInvoiceAccessTest extends OfficeErpCommercialTestCase
         $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
             ->postJson('/api/v1/erp/company/switch', ['company_id' => $company->id])
             ->assertOk();
+    }
+
+    private function loginAndSelectDelegatedCompany(User $user, int $accountId, ErpCompany $company): void
+    {
+        $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
+            ->postJson('/api/v1/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertOk();
+        $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
+            ->postJson('/api/v1/account/switch', ['account_id' => $accountId])
+            ->assertOk();
+        $this->withHeader('X-CSRF-Token', $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token'))
+            ->postJson('/api/v1/erp/company/switch', ['company_id' => $company->id])
+            ->assertOk()
+            ->assertJsonPath('current_company.access_kind', 'delegated');
     }
 }
