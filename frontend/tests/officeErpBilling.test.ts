@@ -530,17 +530,6 @@ describe('office ERP billing form components', () => {
   })
 
   it('clears an earlier staged proof when the replacement file is rejected locally', async (t) => {
-    const originalWindow = (globalThis as { window?: unknown }).window
-    const listeners: Array<(event: Event) => void> = []
-    ;(globalThis as { window?: unknown }).window = {
-      addEventListener: (type: string, listener: (event: Event) => void) => {
-        if (type === 'change') listeners.push(listener)
-      },
-      removeEventListener: (type: string, listener: (event: Event) => void) => {
-        const index = listeners.indexOf(listener)
-        if (type === 'change' && index >= 0) listeners.splice(index, 1)
-      }
-    }
     const invoice = { id: 7, number: 'F-7', document_status: 'issued', balance: { outstanding: '100.00' }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null } }
     const receipts: unknown[][] = []
     const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
@@ -554,11 +543,7 @@ describe('office ERP billing form components', () => {
         return { status: 'confirmed', data: { id: 12 } }
       }
     })
-    t.after(() => {
-      mounted.app.unmount()
-      if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window
-      else (globalThis as { window?: unknown }).window = originalWindow
-    })
+    t.after(() => mounted.app.unmount())
     await settlePage()
     const open = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
     assert.ok(open)
@@ -576,7 +561,6 @@ describe('office ERP billing form components', () => {
     const first = new File(['one'], 'first.pdf', { type: 'application/pdf' })
     ;(fileInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [first] } })
     await settlePage()
-    for (const listener of listeners) listener({ target: { type: 'file', getAttribute: (name: string) => name === 'aria-label' ? 'Selecionar comprovante' : null } } as unknown as Event)
     const invalid = new File(['invalid'], 'replacement.txt', { type: 'text/plain' })
     ;(fileInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [invalid] } })
     await settlePage()
@@ -653,6 +637,72 @@ describe('office ERP billing form components', () => {
     assert.equal(mounted.route.params.id, '77')
     assert.ok(mounted.calls.some(call => call.path === '/erp-commercial/invoices/77'))
     assert.equal(createCalls.length, 0)
+    const issue = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Emitir fatura'))
+    assert.ok(issue)
+    ;(issue.props.onClick as () => void)()
+    await settlePage()
+    assert.deepEqual(createCalls[0]?.slice(0, 2), ['invoice.issue', '/erp-commercial/invoices/77/issue'])
+  })
+
+  it('clears the used proof after recovering a confirmed receipt before the next receipt', async (t) => {
+    const invoice = { id: 7, number: 'F-7', document_status: 'issued', balance: { outstanding: '100.00' }, bill_to_snapshot: { client: { name: 'Cliente' }, company: null } }
+    const commands: unknown[][] = []
+    const mounted = mountPage('pages/gestao-erp/recebimentos.vue', {
+      api: async (path) => {
+        if (path === '/erp-commercial/invoices') return { data: [invoice], meta: { current_page: 1, last_page: 1, per_page: 100, total: 1 } }
+        if (path === '/erp-commercial/receipt-proofs') return { data: { id: 'proof-used-by-confirmed-receipt' } }
+        return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
+      },
+      execute: async (...args) => {
+        commands.push(args)
+        return commands.length === 1
+          ? { status: 'unknown', key: '11111111-2222-4333-8444-555555555555' }
+          : { status: 'confirmed', data: { id: 18 } }
+      },
+      recover: async () => ({ status: 'confirmed', data: { id: 18, proof_id: 'proof-used-by-confirmed-receipt' } })
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+    const open = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
+    assert.ok(open)
+    ;(open.props.onClick as () => void)()
+    await settlePage()
+    const choice = mounted.find(node => node.props['data-choice'] === '7')
+    assert.ok(choice)
+    ;(choice.props.onClick as () => void)()
+    await settlePage()
+    const allocation = mounted.find(node => node.tag === 'input' && node.props['aria-label'] === 'Alocação para fatura 7')
+    assert.ok(allocation)
+    setNodeInput(allocation, '25,00')
+    const fileInput = mounted.find(node => node.tag === 'input' && node.props.type === 'file')
+    assert.ok(fileInput)
+    const proof = new File(['proof'], 'recibo-confirmado.pdf', { type: 'application/pdf' })
+    ;(fileInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [proof] } })
+    await settlePage()
+    const firstForm = mounted.find(node => node.tag === 'form')
+    assert.ok(firstForm)
+    ;(firstForm.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.equal((commands[0]?.[2] as { proof_id?: string }).proof_id, 'proof-used-by-confirmed-receipt')
+    const lookup = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Consultar operação'))
+    assert.ok(lookup)
+    ;(lookup.props.onClick as () => void)()
+    await settlePage()
+    const reopen = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Registrar recebimento'))
+    assert.ok(reopen)
+    ;(reopen.props.onClick as () => void)()
+    await settlePage()
+    assert.doesNotMatch(mounted.text(mounted.root), /recibo-confirmado\.pdf|proof-used-by-confirmed-receipt/)
+    const nextForm = mounted.find(node => node.tag === 'form')
+    assert.ok(nextForm)
+    ;(nextForm.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await settlePage()
+    assert.equal(commands.length, 2)
+    const nextPayload = commands[1]?.[2] as { amount: string, received_on: string, allocations: unknown[], proof_id?: string }
+    assert.equal(nextPayload.amount, '25.00')
+    assert.match(nextPayload.received_on, /^\d{4}-\d{2}-\d{2}$/)
+    assert.deepEqual(nextPayload.allocations, [{ invoice_id: 7, amount: '25.00' }])
+    assert.equal(nextPayload.proof_id, undefined)
   })
 
   it('fences a late invoice command completion after the selected account changes', async (t) => {
@@ -982,7 +1032,8 @@ describe('office ERP billing form components', () => {
 
   it('validates private proof MIME and 5 MiB size before emitting a separate upload intent', async (t) => {
     const uploads: File[] = []
-    const mounted = mountComponent('OfficeErpReceiptModal', { open: true, invoices: [], onUploadProof: (file: File) => uploads.push(file) })
+    const selections: File[] = []
+    const mounted = mountComponent('OfficeErpReceiptModal', { open: true, invoices: [], onProofSelection: (file: File) => selections.push(file), onUploadProof: (file: File) => uploads.push(file) })
     t.after(() => mounted.app.unmount())
     const fileInput = mounted.find(node => node.tag === 'input' && node.props.type === 'file')
     assert.ok(fileInput)
@@ -1006,6 +1057,7 @@ describe('office ERP billing form components', () => {
     ;(refreshedInput.props.onChange as (event: { target: { files: File[] } }) => void)({ target: { files: [valid] } })
     await Vue.nextTick()
     assert.deepEqual(uploads, [atLimit, valid])
+    assert.deepEqual(selections, [tooLarge, unsupported, atLimit, valid], 'every selection attempt is reported before local validation')
   })
 
   it('requires a reversal reason and keeps modal dismissal parent-controlled', async (t) => {

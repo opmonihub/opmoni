@@ -47,6 +47,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:open': [open: boolean]
   'submit': [payload: ReceiptPayload]
+  'proofSelection': [file: File]
   'uploadProof': [file: File]
   'recover': [key: string]
   'cancel': []
@@ -92,6 +93,7 @@ function selectProof(event: Event) {
   const file = input.files?.[0]
   fileError.value = ''
   if (!file) return
+  emit('proofSelection', file)
   const supportedMimeTypes = ['application/pdf', 'image/png', 'image/jpeg']
   if (!supportedMimeTypes.includes(file.type)) {
     fileError.value = 'Envie um arquivo PDF, PNG ou JPEG.'

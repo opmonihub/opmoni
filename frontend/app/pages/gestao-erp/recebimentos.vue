@@ -77,20 +77,12 @@ async function uploadProof(file: File) {
     if (context.isCurrent(token) && request === proofUploadGeneration) proofUploadPending.value = false
   }
 }
-function clearSelectedProof(event: Event) {
-  const input = event.target as HTMLInputElement | null
-  if (input?.type !== 'file' || input.getAttribute('aria-label') !== 'Selecionar comprovante') return
+function selectProof() {
   proofId.value = null
   proofName.value = ''
   proofRequired.value = true
   proofError.value = ''
 }
-onMounted(() => {
-  if (typeof window !== 'undefined') window.addEventListener('change', clearSelectedProof, true)
-})
-onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') window.removeEventListener('change', clearSelectedProof, true)
-})
 async function create(payload: { amount: string, received_on: string, reference?: string, proof_id?: string, allocations: Array<{ invoice_id: number, amount: string }> }) {
   if (busy.value || pending.value || unknown.value || recoverable.value || proofUploadPending.value) {
     if (proofUploadPending.value) proofError.value = 'Aguarde o envio do comprovante privado antes de registrar o recebimento.'
@@ -154,6 +146,7 @@ async function reverse(p: { reason: string }) {
 async function recover() {
   if (!key.value || recovering.value) return
   const token = context.capture()
+  const recoveringReceipt = open.value && unknown.value && !reversing.value
   recovering.value = true
   try {
     const r = await command.recover<unknown>(key.value)
@@ -163,6 +156,12 @@ async function recover() {
       pending.value = false
       open.value = false
       reversing.value = null
+      if (recoveringReceipt) {
+        proofId.value = null
+        proofName.value = ''
+        proofRequired.value = false
+        proofError.value = ''
+      }
       await load()
     } else if (r.status === 'failed')error.value = r.failure.message
   } finally { if (context.isCurrent(token)) recovering.value = false }
@@ -281,6 +280,7 @@ watch(identity, () => {
       :unknown="recoverable||unknown"
       :recovery-key="key"
       @submit="create"
+      @proof-selection="selectProof"
       @upload-proof="uploadProof"
       @recover="recover"
     />

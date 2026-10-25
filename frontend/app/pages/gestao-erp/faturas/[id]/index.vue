@@ -115,7 +115,7 @@ async function recover() {
       await load()
     } else if (r.status === 'failed')error.value = r.failure.message
   } finally {
-    if (context.isCurrent(token) && pageId === id.value) recovering.value = false
+    if (context.isCurrent(token)) recovering.value = false
   }
 }
 watch(() => route.params.id, () => void load(), { immediate: true })
