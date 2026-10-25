@@ -41,6 +41,9 @@ const error = ref('')
 let pendingToken: string | null = null
 let initialized = false
 let continuationRequestId = 0
+let invitationGeneration = 0
+let acceptanceOutcomeUnknown = false
+let latestTokenContinuation: { generation: number, response: ContinuationResponse } | null = null
 
 const passwordSchema = z.object({
   password: z.string('Informe uma senha.')
@@ -67,7 +70,13 @@ function applyContinuation(response: ContinuationResponse) {
     const identityMatches = responseInvitation
       ? responseInvitation.id === pending.invitation_id && responseInvitation.owner_email.toLowerCase() === pending.owner_email
       : ['missing', 'login_required'].includes(response.state)
-    if (!identityMatches || ['accepted', 'expired', 'invalid'].includes(response.state)) {
+    if (acceptanceOutcomeUnknown && identityMatches && response.state === 'accepted') {
+      clearPendingAcceptance()
+    } else if (acceptanceOutcomeUnknown) {
+      operationKey.value = ''
+      state.value = 'recovery_required'
+      error.value ||= 'A aceitação anterior ainda não foi confirmada. Verifique o status antes de continuar.'
+    } else if (!identityMatches || ['accepted', 'expired', 'invalid'].includes(response.state)) {
       clearPendingAcceptance()
     } else if (['valid', 'ready', 'missing'].includes(response.state)) {
       state.value = 'recovery_required'
@@ -77,8 +86,14 @@ function applyContinuation(response: ContinuationResponse) {
     selectedCompanyId.value = null
 }
 
+function restoreLatestTokenContinuation() {
+  if (latestTokenContinuation?.generation === invitationGeneration)
+    applyContinuation(latestTokenContinuation.response)
+}
+
 function clearPendingAcceptance() {
   pendingAcceptance.value = null
+  acceptanceOutcomeUnknown = false
   try {
     window.sessionStorage.removeItem(pendingAcceptanceStorageKey)
   } catch { /* Session storage can be unavailable in restricted browsers. */ }
@@ -96,6 +111,7 @@ function restorePendingAcceptance() {
       && pending.expires_at > Date.now()
       && pending.expires_at <= Date.now() + pendingAcceptanceTtl) {
       pendingAcceptance.value = pending
+      acceptanceOutcomeUnknown = true
       return
     }
   } catch { /* Invalid or unavailable storage is ignored. */ }
@@ -112,6 +128,7 @@ function rememberPendingAcceptance() {
     expires_at: Date.now() + pendingAcceptanceTtl
   }
   pendingAcceptance.value = identity
+  acceptanceOutcomeUnknown = true
   try {
     window.sessionStorage.setItem(pendingAcceptanceStorageKey, JSON.stringify(identity))
   } catch { /* In-memory recovery still prevents another password submission this page visit. */ }
@@ -141,6 +158,7 @@ async function exchangeToken(token: string) {
     if (requestId !== continuationRequestId)
       return
     pendingToken = null
+    latestTokenContinuation = { generation: invitationGeneration, response }
     applyContinuation(response)
   } catch (caught) {
     if (requestId !== continuationRequestId)
@@ -183,6 +201,19 @@ async function start() {
   }
 }
 
+function resetForIncomingToken() {
+  invitationGeneration++
+  continuationRequestId++
+  latestTokenContinuation = null
+  state.value = 'loading'
+  invitation.value = null
+  operationKey.value = ''
+  selectedCompanyId.value = null
+  passwordForm.value.password = ''
+  passwordError.value = ''
+  error.value = ''
+}
+
 watch(() => route.hash, (fragment) => {
   if (!initialized)
     return
@@ -191,6 +222,7 @@ watch(() => route.hash, (fragment) => {
   if (!token)
     return
 
+  resetForIncomingToken()
   stripSecretFromAddress()
   pendingToken = token
   void exchangeToken(token)
@@ -213,6 +245,7 @@ async function retry() {
 async function accept(password?: string) {
   if (busy.value || !operationKey.value)
     return
+  const acceptanceGeneration = invitationGeneration
   const isNewOwner = !user.value
   if (isNewOwner) {
     rememberPendingAcceptance()
@@ -236,13 +269,34 @@ async function accept(password?: string) {
       body
     })
     acceptancePostCompleted = true
+    acceptanceOutcomeUnknown = false
     if (isNewOwner)
       await refresh()
+    if (acceptanceGeneration !== invitationGeneration) {
+      state.value = 'recovery_required'
+      operationKey.value = ''
+      error.value = 'A aceitação anterior foi enviada. Verifique o status antes de continuar.'
+      return
+    }
     await loadCurrent()
   } catch (caught) {
     const failure = apiFailure(caught)
+    if (acceptanceGeneration !== invitationGeneration) {
+      const knownNoEffects = !acceptancePostCompleted && failure.status > 0 && failure.status < 500
+      if (isNewOwner && knownNoEffects) {
+        clearPendingAcceptance()
+        restoreLatestTokenContinuation()
+      } else if (isNewOwner) {
+        acceptanceOutcomeUnknown = true
+        state.value = 'recovery_required'
+        operationKey.value = ''
+        error.value = 'A aceitação anterior ainda não foi confirmada. Não envie a senha novamente; verifique o status antes de continuar.'
+      }
+      return
+    }
     error.value = failure.message
     if (isNewOwner && !acceptancePostCompleted && failure.status > 0 && failure.status < 500) {
+      acceptanceOutcomeUnknown = false
       clearPendingAcceptance()
       if (failure.status === 409 && failure.code === 'login_required') {
         state.value = 'identity_login_required'
@@ -280,6 +334,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   continuationRequestId++
+  invitationGeneration++
   pendingToken = null
 })
 </script>

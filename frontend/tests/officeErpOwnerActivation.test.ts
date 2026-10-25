@@ -235,6 +235,135 @@ test('same-page token hash arrival resolves once, ignores stale results, and can
   } finally { page.restore() }
 })
 
+test('new token clears the previous invitation and blocks acceptance until its summary resolves', async () => {
+  let resolveNewInvitation!: (value: unknown) => void
+  const heldResolve = new Promise<unknown>((resolve) => {
+    resolveNewInvitation = resolve
+  })
+  let acceptCount = 0
+  const newInvitation = {
+    ...valid,
+    operation_key: 'new-stable-key',
+    data: {
+      ...valid.data,
+      invitation: { ...valid.data.invitation, id: 32 },
+      client: { ...valid.data.client, name: 'Nova Loja' }
+    }
+  }
+  const page = harness({ api: async (path) => {
+    if (path === '/erp-invitations/current') return valid
+    if (path === '/erp-invitations/resolve') return heldResolve
+    if (path === '/erp-invitations/accept') {
+      acceptCount++
+      return {}
+    }
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0)
+    assert.match(text(page.root), /Loja Um/)
+
+    page.navigateHash(`#token=${'d'.repeat(64)}`)
+    assert.equal(page.url.hash, '')
+    submitNewOwnerForm(page.root)
+    assert.equal(acceptCount, 0, 'the cleared operation key blocks a submit before Vue flushes the new loading state')
+    await Vue.nextTick()
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    assert.doesNotMatch(text(page.root), /Loja Um/)
+
+    resolveNewInvitation(newInvitation)
+    await flushPage()
+    assert.match(text(page.root), /Nova Loja/)
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0)
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    const accept = page.calls.find(call => call.path === '/erp-invitations/accept')
+    assert.equal(acceptCount, 1)
+    assert.equal(new Headers(accept?.config?.headers as HeadersInit).get('Idempotency-Key'), 'new-stable-key')
+  } finally { page.restore() }
+})
+
+test('stale ambiguous acceptance cannot reopen a password form for a new token', async () => {
+  let rejectAcceptance!: (reason: unknown) => void
+  let resolveNewInvitation!: (value: unknown) => void
+  const heldAcceptance = new Promise<unknown>((_resolve, reject) => {
+    rejectAcceptance = reject
+  })
+  const heldResolve = new Promise<unknown>((resolve) => {
+    resolveNewInvitation = resolve
+  })
+  const page = harness({ api: async (path) => {
+    if (path === '/erp-invitations/current') return valid
+    if (path === '/erp-invitations/accept') return heldAcceptance
+    if (path === '/erp-invitations/resolve') return heldResolve
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), true)
+
+    page.navigateHash(`#token=${'e'.repeat(64)}`)
+    submitNewOwnerForm(page.root)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    await Vue.nextTick()
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    rejectAcceptance(new Error('Connection closed after dispatch'))
+    await flushPage()
+    assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), true, 'unknown old acceptance stays pending')
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/current').length, 1, 'stale acceptance cannot replace the new route with a current read')
+
+    resolveNewInvitation({ ...valid, data: { ...valid.data, invitation: { ...valid.data.invitation, id: 32 } } })
+    await flushPage()
+    assert.match(text(page.root), /Confirme o resultado antes de continuar/)
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0)
+    assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), true)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+  } finally { page.restore() }
+})
+
+test('stale definitive rejection unlocks only the already validated new invitation', async () => {
+  let rejectAcceptance!: (reason: unknown) => void
+  const heldAcceptance = new Promise<unknown>((_resolve, reject) => {
+    rejectAcceptance = reject
+  })
+  const newInvitation = {
+    ...valid,
+    operation_key: 'new-stable-key',
+    data: {
+      ...valid.data,
+      invitation: { ...valid.data.invitation, id: 32 },
+      client: { ...valid.data.client, name: 'Nova Loja' }
+    }
+  }
+  const page = harness({ api: async (path) => {
+    if (path === '/erp-invitations/current') return valid
+    if (path === '/erp-invitations/accept') return heldAcceptance
+    if (path === '/erp-invitations/resolve') return newInvitation
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    page.navigateHash(`#token=${'f'.repeat(64)}`)
+    await flushPage()
+    assert.doesNotMatch(text(page.root), /Nova Loja/)
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 0, 'unknown old acceptance blocks the new form')
+
+    rejectAcceptance(Object.assign(new Error('Senha recusada.'), { status: 422 }))
+    await flushPage()
+    assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), false)
+    assert.match(text(page.root), /Nova Loja/)
+    assert.equal(nodes(page.root, node => node.tag === 'form').length, 1, 'the verified new invitation becomes actionable after the old request is definitively rejected')
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+  } finally { page.restore() }
+})
+
 test('fragment exchange strips the bearer secret before waiting and renders the invitation summary', async () => {
   let resolve!: (value: unknown) => void
   const held = new Promise<unknown>((done) => {
