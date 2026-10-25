@@ -1,0 +1,199 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import * as Vue from 'vue'
+import { loadAppComposable } from './helpers/loadAppComposable.ts'
+
+type Account = { id: number, status: 'active' | 'suspended', role: 'admin' | 'operador' | 'user' }
+type Identity = { id: number, current_account: Account | null }
+type Capabilities = {
+  can_read: boolean
+  can_maintain: boolean
+  can_configure: boolean
+  can_sell_new: boolean
+  capability_key: string
+  reasons: Record<string, string[]>
+  allowance: { enabled: boolean, licence_limit: number | null, module_keys: string[] }
+  usage: { reserved: number, occupied: number }
+}
+type Result<T>
+  = | { status: 'confirmed', data: T }
+    | { status: 'unknown', key: string }
+    | { status: 'failed', failure: { code: string, message: string, errors?: Record<string, string[]>, http_status?: number } }
+    | { status: 'stale' }
+type Command = {
+  pending: Vue.Ref<boolean>
+  execute<T>(action: string, path: string, body: Record<string, unknown>, method?: 'POST' | 'PATCH'): Promise<Result<T>>
+  recover<T>(key: string): Promise<Result<T>>
+}
+
+const caps: Capabilities = { can_read: true, can_maintain: true, can_configure: true, can_sell_new: true, capability_key: 'cap-1', reasons: {}, allowance: { enabled: true, licence_limit: 8, module_keys: ['purchases'] }, usage: { reserved: 0, occupied: 2 } }
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+function fixture(options: { api?: (path: string, init?: Record<string, unknown>) => Promise<unknown>, csrf?: () => Promise<void> } = {}) {
+  const identity = Vue.ref<Identity>({ id: 41, current_account: { id: 8, status: 'active', role: 'admin' } })
+  const session = Vue.ref(3)
+  const states = new Map<string, Vue.Ref<unknown>>()
+  const storage = new Map<string, string>()
+  const calls: Array<{ path: string, init?: Record<string, unknown> }> = []
+  const api = options.api ?? (async (path, init) => {
+    calls.push({ path, init })
+    if (path === '/erp-commercial/context') return { data: caps }
+    if (path.startsWith('/erp-commercial/operations/')) return { data: { outcome: 'created', id: 72 } }
+    return { data: { id: 72 } }
+  })
+  const bindings = {
+    ref: Vue.ref,
+    computed: Vue.computed,
+    watch: Vue.watch,
+    readonly: Vue.readonly,
+    onScopeDispose: Vue.onScopeDispose,
+    useNuxtApp: () => ({}),
+    useState: <T>(key: string, init: () => T) => {
+      if (key === 'access-session-generation') return session as Vue.Ref<T>
+      if (!states.has(key)) states.set(key, Vue.ref(init()))
+      return states.get(key) as Vue.Ref<T>
+    },
+    useAuth: () => ({ user: identity, currentAccount: Vue.computed(() => identity.value.current_account) }),
+    useAccessApi: () => ({
+      api: async (path: string, init?: Record<string, unknown>) => {
+        calls.push({ path, init })
+        return api(path, init)
+      },
+      refreshCsrf: async () => { await options.csrf?.() }
+    }),
+    crypto: { randomUUID: () => '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' },
+    sessionStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) }
+    }
+  }
+  const contextModule = loadAppComposable<Record<string, unknown>>('composables/useOfficeErpContext.ts', bindings)
+  const loaded = loadAppComposable<Record<string, unknown>>('composables/useOfficeErpCommand.ts', {
+    ...bindings,
+    useOfficeErpContext: contextModule.useOfficeErpContext
+  })
+  const scope = Vue.effectScope()
+  const command = scope.run(() => (loaded.useOfficeErpCommand as () => Command)())!
+  return { command, identity, session, calls, storage, stop: () => scope.stop() }
+}
+
+describe('useOfficeErpCommand', () => {
+  it('admits one frozen payload and idempotency key while CSRF is pending', async (t) => {
+    const csrf = deferred<undefined>()
+    const harness = fixture({ csrf: () => csrf.promise })
+    t.after(harness.stop)
+    const body = { name: 'Plano inicial', nested: { price: '100.00' } }
+    const first = harness.command.execute('plan.create', '/erp-commercial/plans', body)
+    body.nested.price = '999.00'
+    const duplicate = await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'different' })
+    assert.equal(duplicate.status, 'unknown')
+    assert.equal(harness.command.pending.value, true)
+    csrf.resolve(undefined)
+    assert.deepEqual(await first, { status: 'confirmed', data: { id: 72 } })
+    const write = harness.calls.find(call => call.path === '/erp-commercial/plans')!
+    assert.deepEqual(write.init?.body, { name: 'Plano inicial', nested: { price: '100.00' } })
+    assert.equal((write.init?.headers as Record<string, string>)['Idempotency-Key'], '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.equal(harness.command.pending.value, false)
+  })
+
+  it('keeps a lost response unknown, persists no body secrets and recovers the same operation key', async (t) => {
+    let failWrite = true
+    const harness = fixture({ api: async (path, init) => {
+      harness.calls.push({ path, init })
+      if (path === '/erp-commercial/context') return { data: caps }
+      if (path === '/erp-commercial/plans' && failWrite) {
+        failWrite = false
+        throw new Error('connection dropped')
+      }
+      if (path === '/erp-commercial/operations/7cbbdbb6-7f88-4479-a78a-471e4cb16c78') return { data: { id: 72, status: 'created' } }
+      return { data: { id: 72 } }
+    } })
+    t.after(harness.stop)
+
+    const result = await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'Offer', invitation_token: 'do-not-store' })
+    assert.deepEqual(result, { status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' })
+    assert.equal(harness.command.pending.value, true)
+    const saved = [...harness.storage.values()].join('\n')
+    assert.match(saved, /7cbbdbb6-7f88-4479-a78a-471e4cb16c78/)
+    assert.doesNotMatch(saved, /invitation_token|do-not-store|Offer/)
+    assert.deepEqual(await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'second' }), result)
+
+    const recovered = await harness.command.recover<{ id: number, status: string }>('7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.deepEqual(recovered, { status: 'confirmed', data: { id: 72, status: 'created' } })
+    assert.equal(harness.calls.at(-1)?.path, '/erp-commercial/operations/7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.equal(harness.command.pending.value, false)
+  })
+
+  it('preserves validation, authority, foreign-resource and conflict HTTP distinctions', async (t) => {
+    const statusByAction: Record<string, number> = { validation: 422, authority: 403, foreign: 404, conflict: 409 }
+    const harness = fixture({ api: async (path, init) => {
+      harness.calls.push({ path, init })
+      if (path === '/erp-commercial/context') return { data: caps }
+      const action = String((init?.body as Record<string, unknown>)?.case)
+      const statusCode = statusByAction[action]!
+      throw { statusCode, data: { code: `${action}_code`, message: `${action} message`, errors: action === 'validation' ? { name: ['invalid'] } : undefined } }
+    } })
+    t.after(harness.stop)
+
+    for (const [action, httpStatus] of Object.entries(statusByAction)) {
+      const result = await harness.command.execute(action, '/erp-commercial/plans', { case: action })
+      assert.equal(result.status, 'failed')
+      if (result.status === 'failed') {
+        assert.equal(result.failure.http_status, httpStatus)
+        assert.equal(result.failure.code, `${action}_code`)
+      }
+    }
+  })
+
+  it('does not send after the Account changes during CSRF refresh and returns stale', async (t) => {
+    const csrf = deferred<undefined>()
+    const harness = fixture({ csrf: () => csrf.promise })
+    t.after(harness.stop)
+    const command = harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'A' })
+    harness.identity.value.current_account = { id: 9, status: 'active', role: 'admin' }
+    await Vue.nextTick()
+    csrf.resolve(undefined)
+
+    assert.deepEqual(await command, { status: 'stale' })
+    assert.equal(harness.calls.some(call => call.path === '/erp-commercial/plans'), false)
+  })
+
+  it('discards a delayed success after the Account changes during transport', async (t) => {
+    const response = deferred<unknown>()
+    const harness = fixture({ api: async (path, init) => {
+      harness.calls.push({ path, init })
+      if (path === '/erp-commercial/context') return { data: caps }
+      return response.promise
+    } })
+    t.after(harness.stop)
+    const command = harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'A' })
+    await Vue.nextTick()
+    harness.identity.value.current_account = { id: 9, status: 'active', role: 'admin' }
+    await Vue.nextTick()
+    response.resolve({ data: { id: 99 } })
+
+    assert.deepEqual(await command, { status: 'stale' })
+    assert.equal(harness.command.pending.value, false)
+  })
+
+  it('returns unknown for malformed successful mutation envelopes and keeps the key recoverable', async (t) => {
+    const harness = fixture({ api: async (path, init) => {
+      harness.calls.push({ path, init })
+      if (path === '/erp-commercial/context') return { data: caps }
+      return { success: true }
+    } })
+    t.after(harness.stop)
+    assert.deepEqual(await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'A' }), {
+      status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78'
+    })
+    assert.equal(harness.command.pending.value, true)
+  })
+})
