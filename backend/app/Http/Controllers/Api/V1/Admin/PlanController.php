@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\UpdatePlanRequest;
 use App\Models\Plan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PlanController extends Controller
 {
@@ -21,7 +22,9 @@ class PlanController extends Controller
             'slug' => ['required', 'string', 'max:255', 'unique:plans,slug'],
             'name' => ['required', 'string', 'max:255'],
             'limits' => ['nullable', 'array'],
+            ...UpdatePlanRequest::erpCommercialRules(),
         ]);
+        $data['erp_commercial'] ??= Plan::DEFAULT_ERP_COMMERCIAL;
 
         $plan = Plan::create($data);
 
@@ -35,8 +38,13 @@ class PlanController extends Controller
 
     public function update(UpdatePlanRequest $request, Plan $plan): JsonResponse
     {
-        $plan->update($request->planAttributes());
+        $plan = DB::transaction(function () use ($request, $plan): Plan {
+            $lockedPlan = Plan::query()->whereKey($plan->getKey())->lockForUpdate()->firstOrFail();
+            $lockedPlan->update($request->planAttributes());
 
-        return response()->json($plan->refresh());
+            return $lockedPlan;
+        });
+
+        return response()->json($plan);
     }
 }

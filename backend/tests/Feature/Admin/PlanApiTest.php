@@ -19,7 +19,12 @@ class PlanApiTest extends BusinessTestCase
             ->patchJson('/api/v1/admin/plans/'.$plan->id, ['name' => 'Updated'])
             ->assertOk()->assertJsonPath('id', $plan->id)->assertJsonPath('slug', $plan->slug)
             ->assertJsonPath('limits', ['users' => 5, 'clients' => 50])->assertJsonMissingPath('data');
-        $this->getJson('/api/v1/admin/plans')->assertOk()->assertJsonPath('0.id', 1)->assertJsonMissingPath('data');
+        $list = $this->getJson('/api/v1/admin/plans')->assertOk()->assertJsonMissingPath('data');
+        $ids = array_column($list->json(), 'id');
+        $sortedIds = $ids;
+        sort($sortedIds, SORT_NUMERIC);
+        $this->assertSame($sortedIds, $ids);
+        $this->assertSame($plan->id, end($ids));
         $this->getJson('/api/v1/admin/plans/'.$plan->id)->assertOk()->assertJsonPath('id', $plan->id)->assertJsonPath('name', 'Updated')->assertJsonMissingPath('data');
     }
 
