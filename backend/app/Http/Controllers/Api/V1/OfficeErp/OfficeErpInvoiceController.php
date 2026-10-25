@@ -3,33 +3,67 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpBalances;
 use App\Erp\Commercial\OfficeErpInvoices;
+use App\Erp\Commercial\OfficeErpMoney;
+use App\Erp\Commercial\OfficeErpQueries;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\OfficeErp\AdjustInvoiceRequest;
+use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Http\Requests\OfficeErp\SaveInvoiceRequest;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 final class OfficeErpInvoiceController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpInvoices $invoices): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpQueries $queries): JsonResponse
     {
-        $filters = $request->validate([
-            'q' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'document_status' => ['sometimes', Rule::in(['draft', 'issued', 'canceled'])],
-            'contract_id' => ['sometimes', 'integer', 'min:1'],
-            'page' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
-            'per_page' => ['sometimes', 'integer', Rule::in([25, 50, 100])],
-        ]);
+        $filters = ListCommercialRequest::validateFilters('invoices', $request->query());
         $ctx = $admission->context($request);
+        $page = $queries->invoices($ctx, $filters);
 
-        return response()->json($invoices->index($ctx, $filters))->header('Cache-Control', 'no-store');
+        return response()->json([
+            'data' => array_map(static function (OfficeErpInvoice $invoice): array {
+                return [
+                    'id' => (int) $invoice->id,
+                    'contract_id' => (int) $invoice->contract_id,
+                    'contract_revision_id' => (int) $invoice->contract_revision_id,
+                    'kind' => (string) $invoice->kind,
+                    'document_status' => (string) $invoice->document_status,
+                    'number' => $invoice->number,
+                    'issued_at' => $invoice->issued_at?->toISOString(),
+                    'period_start' => $invoice->period_start->toDateString(),
+                    'period_end' => $invoice->period_end->toDateString(),
+                    'due_on' => $invoice->due_on->toDateString(),
+                    'currency' => (string) $invoice->currency,
+                    'seller_snapshot' => $invoice->seller_snapshot,
+                    'bill_to_snapshot' => $invoice->bill_to_snapshot,
+                    'items_snapshot' => $invoice->items_snapshot,
+                    'original_total' => OfficeErpMoney::canonical((string) $invoice->getRawOriginal('original_total'), 'original_total'),
+                    'adjustments' => $invoice->adjustments->map(static fn ($adjustment): array => [
+                        'id' => (int) $adjustment->id,
+                        'invoice_id' => (int) $adjustment->invoice_id,
+                        'direction' => (string) $adjustment->direction,
+                        'amount' => OfficeErpMoney::canonical((string) $adjustment->getRawOriginal('amount'), 'amount'),
+                        'reason' => (string) $adjustment->reason,
+                        'corrects_adjustment_id' => $adjustment->correction_of_id === null ? null : (int) $adjustment->correction_of_id,
+                        'posted_at' => $adjustment->posted_at?->toISOString(),
+                    ])->values()->all(),
+                    'balance' => OfficeErpBalances::forInvoice($invoice),
+                ];
+            }, $page->items()),
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+            ],
+        ])->header('Cache-Control', 'no-store');
     }
 
     public function store(SaveInvoiceRequest $request, OfficeErpAdmission $admission, OfficeErpInvoices $invoices, ErpOperationJournal $journal): JsonResponse

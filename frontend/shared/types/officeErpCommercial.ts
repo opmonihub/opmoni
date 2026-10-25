@@ -95,6 +95,23 @@ export interface OfficeErpPortfolioClientListResponse {
   meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
 }
 
+export interface OfficeErpCommercialSummary {
+  contracted_licences: number
+  reserved_licences: number
+  invoiced_movement: string
+  effective_received: string
+  outstanding: string
+  overdue: string
+  from_on: string
+  to_on: string
+  due_from: string | null
+  due_to: string | null
+}
+
+export interface OfficeErpCommercialSummaryResponse {
+  data: OfficeErpCommercialSummary
+}
+
 export interface OfficeErpOnboardingPreview {
   client: OfficeErpPortfolioClient
   seller: { account_id: number, name: string }

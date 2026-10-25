@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpQueries;
 use App\Erp\Commercial\OfficeErpReceipts;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Http\Requests\OfficeErp\StoreReceiptRequest;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use Illuminate\Http\JsonResponse;
@@ -15,16 +17,22 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpReceiptController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpReceipts $receipts): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpReceipts $receipts, OfficeErpQueries $queries): JsonResponse
     {
-        $filters = $request->validate([
-            'received_from' => ['sometimes', 'date_format:Y-m-d'],
-            'received_to' => ['sometimes', 'date_format:Y-m-d'],
-            'page' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
-            'per_page' => ['sometimes', 'integer', 'in:25,50,100'],
-        ]);
+        $filters = ListCommercialRequest::validateFilters('receipts', $request->query());
+        $ctx = $admission->context($request);
+        $page = $queries->receipts($ctx, $filters);
+        $data = array_map(static fn (OfficeErpReceipt $receipt): array => $receipts->show($ctx, (int) $receipt->id)['data'], $page->items());
 
-        return response()->json($receipts->index($admission->context($request), $filters))
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+            ],
+        ])
             ->header('Cache-Control', 'no-store');
     }
 

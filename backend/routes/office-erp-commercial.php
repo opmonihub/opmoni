@@ -10,11 +10,13 @@ use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpReceiptProofController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSalesPlanController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSettingsController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSummaryController;
 use App\Http\Middleware\ResolveOfficeErpCommercial;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->group(function (): void {
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
+    Route::get('/summary', OfficeErpSummaryController::class)->name('office-erp-commercial.summary');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
     Route::get('/receipts', [OfficeErpReceiptController::class, 'index'])->name('office-erp-commercial.receipts.index');
     Route::post('/receipts', [OfficeErpReceiptController::class, 'store'])->name('office-erp-commercial.receipts.store');

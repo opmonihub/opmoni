@@ -4,28 +4,35 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
+use App\Erp\Commercial\OfficeErpQueries;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\OfficeErp\ListCommercialRequest;
+use App\Models\Client;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 final class OfficeErpClientController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpOwnerInvitations $invitations): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpQueries $queries): JsonResponse
     {
-        $filters = $request->validate([
-            'q' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', Rule::in([25, 50, 100])],
-        ]);
+        $filters = ListCommercialRequest::validateFilters('clients', $request->query());
         $ctx = $admission->context($request);
+        $page = $queries->clients($ctx, $filters);
 
-        return response()->json($invitations->clients(
-            $ctx,
-            $filters['q'] ?? null,
-            (int) ($filters['page'] ?? 1),
-            (int) ($filters['per_page'] ?? 25),
-        ))->header('Cache-Control', 'no-store');
+        return response()->json([
+            'data' => array_map(static fn (Client $client): array => [
+                'id' => (int) $client->id,
+                'name' => (string) $client->name,
+                'trade_name' => $client->trade_name,
+                'tax_id' => (string) $client->tax_id,
+            ], $page->items()),
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+            ],
+        ])->header('Cache-Control', 'no-store');
     }
 
     public function preview(Request $request, int $client, OfficeErpAdmission $admission, OfficeErpOwnerInvitations $invitations): JsonResponse

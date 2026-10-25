@@ -3,6 +3,7 @@
 namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpBalances;
+use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpQueries;
 use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Models\Client;
@@ -10,11 +11,66 @@ use App\Models\Erp\Commercial\OfficeErpInvoiceAdjustment;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
+use App\Models\Erp\Commercial\OfficeErpSalesPlan;
+use App\Models\Erp\ErpCompany;
 use Illuminate\Validation\ValidationException;
 use Tests\OfficeErpCommercialTestCase;
 
 final class BillingReportTest extends OfficeErpCommercialTestCase
 {
+    public function test_production_routes_expose_summary_and_serialized_paginated_lists(): void
+    {
+        $ctx = $this->officeContext();
+        $contract = $this->acceptedContract($ctx);
+        $otherOffice = $this->officeContext();
+        $otherContract = $this->acceptedContract($otherOffice);
+        $companyName = 'Empresa ERP distinta 83592';
+        $company = ErpCompany::factory()->create(['name' => $companyName]);
+        $this->withOfficeAccount($ctx, function () use ($ctx, $contract, $company): void {
+            Client::query()->where('account_id', $ctx->accountId)->whereKey($contract->client_id)->update(['name' => 'Cliente de teste']);
+            OfficeErpSalesPlan::query()->where('account_id', $ctx->accountId)->whereKey($contract->sales_plan_id)->update(['name' => 'Plano de teste']);
+            $contract->forceFill(['erp_company_id' => $company->id])->save();
+        });
+        $invoice = $this->issuedInvoice($ctx, $contract, '100.00');
+        $receipt = OfficeErpReceipt::factory()->create([
+            'account_id' => $ctx->accountId,
+            'reference' => 'Comprovante mensal',
+            'amount' => '20.00',
+        ]);
+        OfficeErpReceiptAllocation::factory()->forInvoice($invoice)->forReceipt($receipt)->create([
+            'account_id' => $ctx->accountId,
+            'amount' => '20.00',
+        ]);
+
+        $summary = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/summary')
+            ->assertOk()
+            ->assertJsonPath('data.outstanding', '80.00');
+        self::assertStringContainsString('no-store', (string) $summary->headers->get('Cache-Control'));
+
+        foreach ([
+            ['/clients?q='.urlencode('Cliente'), 'data.0.tax_id'],
+            ['/plans?q='.urlencode('Plano'), 'data.0.current_revision.price'],
+            ['/contracts?agreement_status=accepted', 'data.0.current_revision.price'],
+            ['/invoices?document_status=issued&contract_id='.$contract->id, 'data.0.balance.outstanding'],
+            ['/invoices?q='.urlencode($companyName).'&contract_id='.$contract->id, 'data.0.id'],
+            ['/receipts?received_from='.now()->toDateString(), 'data.0.amount'],
+        ] as [$path, $shape]) {
+            $response = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial'.$path)
+                ->assertOk()
+                ->assertJsonPath('meta.current_page', 1)
+                ->assertJsonPath('meta.per_page', 25);
+            self::assertSame(1, data_get($response->json(), 'meta.total'), $path.' must be scoped and filtered.');
+            self::assertNotNull(data_get($response->json(), $shape), $path.' must retain its existing consumer shape.');
+            self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        }
+
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/invoices?contract_id='.$otherContract->id)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+
+        self::assertNotNull($invoice->id);
+    }
+
     public function test_later_credit_is_reported_in_posting_month_and_current_balance(): void
     {
         $this->travelTo(now()->setDate(2026, 10, 15)->startOfDay());
@@ -187,5 +243,13 @@ final class BillingReportTest extends OfficeErpCommercialTestCase
         } catch (ValidationException) {
             self::assertTrue(true);
         }
+    }
+
+    private function asOffice(OfficeErpExecutionContext $ctx): self
+    {
+        $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
+        $this->actingAs($ctx->actor);
+
+        return $this->withHeader('X-Account-Id', (string) $ctx->accountId);
     }
 }

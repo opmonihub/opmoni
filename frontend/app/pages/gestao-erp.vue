@@ -6,6 +6,11 @@ definePageMeta({ middleware: 'auth' })
 const route = useRoute()
 const { currentAccount } = useAuth()
 const pageTabs: NavigationMenuItem[][] = [[{
+  label: 'Visão geral',
+  icon: 'i-lucide-layout-dashboard',
+  to: '/gestao-erp',
+  active: route.path === '/gestao-erp'
+}, {
   label: 'Ofertas',
   icon: 'i-lucide-tags',
   to: '/gestao-erp/planos',
@@ -21,9 +26,6 @@ const pageTabs: NavigationMenuItem[][] = [[{
   to: '/gestao-erp/assinaturas',
   active: route.path.startsWith('/gestao-erp/assinaturas')
 }]]
-
-if (route.path === '/gestao-erp')
-  void navigateTo('/gestao-erp/planos', { replace: true })
 </script>
 
 <template>

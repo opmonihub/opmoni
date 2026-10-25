@@ -14,7 +14,7 @@ final class ListCommercialRequest extends FormRequest
         'clients' => ['search', 'page', 'per_page'],
         'plans' => ['search', 'status', 'page', 'per_page'],
         'contracts' => ['search', 'status', 'page', 'per_page'],
-        'invoices' => ['search', 'status', 'from_on', 'to_on', 'due_from', 'due_to', 'page', 'per_page'],
+        'invoices' => ['search', 'status', 'contract_id', 'from_on', 'to_on', 'due_from', 'due_to', 'page', 'per_page'],
         'receipts' => ['search', 'status', 'from_on', 'to_on', 'page', 'per_page'],
     ];
 
@@ -43,6 +43,7 @@ final class ListCommercialRequest extends FormRequest
             $rules[$filter] = match ($filter) {
                 'search' => ['sometimes', 'nullable', 'string', 'max:255'],
                 'status' => ['sometimes', 'nullable', 'string', 'max:32', ...self::statusValues($resource)],
+                'contract_id' => ['sometimes', 'integer', 'min:1', 'max:9007199254740991'],
                 'page' => ['sometimes', 'integer', 'min:1'],
                 'per_page' => ['sometimes', 'integer', Rule::in([25, 50, 100])],
                 default => ['sometimes', 'date_format:Y-m-d'],
@@ -56,8 +57,8 @@ final class ListCommercialRequest extends FormRequest
     private static function statusValues(string $resource): array
     {
         $values = match ($resource) {
-            'plans' => ['draft', 'active', 'archived'],
-            'contracts' => ['draft', 'awaiting_owner', 'accepted', 'effective', 'canceled'],
+            'plans' => ['active', 'archived'],
+            'contracts' => ['accepted', 'effective', 'canceled'],
             'invoices' => ['draft', 'issued', 'canceled'],
             'receipts' => ['effective', 'reversed'],
             default => [],
@@ -72,6 +73,7 @@ final class ListCommercialRequest extends FormRequest
     public static function validateFilters(string $resource, array $input): array
     {
         abort_unless(isset(self::FILTERS[$resource]), 404);
+        $input = self::normalizeAliases($resource, $input);
         $unknown = array_diff(array_keys($input), self::FILTERS[$resource]);
         if ($unknown !== []) {
             throw ValidationException::withMessages(array_fill_keys($unknown, 'Este filtro não se aplica a esta lista.'));
@@ -87,5 +89,35 @@ final class ListCommercialRequest extends FormRequest
         });
 
         return $validator->validate();
+    }
+
+    /** @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public static function normalizeAliases(string $resource, array $input): array
+    {
+        $aliases = match ($resource) {
+            'clients', 'plans' => ['q' => 'search'],
+            'contracts' => ['q' => 'search', 'agreement_status' => 'status'],
+            'invoices' => ['q' => 'search', 'document_status' => 'status'],
+            'receipts' => ['received_from' => 'from_on', 'received_to' => 'to_on'],
+            default => [],
+        };
+        if ($resource === 'summary') {
+            $aliases = [];
+        }
+
+        foreach ($aliases as $alias => $canonical) {
+            if (! array_key_exists($alias, $input)) {
+                continue;
+            }
+            if (array_key_exists($canonical, $input) && $input[$canonical] !== $input[$alias]) {
+                throw ValidationException::withMessages([$alias => ['O filtro legado conflita com o filtro canônico.']]);
+            }
+            $input[$canonical] = $input[$canonical] ?? $input[$alias];
+            unset($input[$alias]);
+        }
+
+        return $input;
     }
 }

@@ -3,28 +3,73 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpBalances;
 use App\Erp\Commercial\OfficeErpContracts;
+use App\Erp\Commercial\OfficeErpMoney;
+use App\Erp\Commercial\OfficeErpQueries;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpInvoice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 final class OfficeErpContractController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpContracts $contracts): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpContracts $contracts, OfficeErpQueries $queries): JsonResponse
     {
-        $filters = $request->validate([
-            'q' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'agreement_status' => ['sometimes', Rule::in(['accepted', 'effective', 'canceled'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-        ]);
+        $filters = ListCommercialRequest::validateFilters('contracts', $request->query());
+        $ctx = $admission->context($request);
+        $page = $queries->contracts($ctx, $filters);
+        $contractIds = array_map(static fn (OfficeErpContract $contract): int => (int) $contract->id, $page->items());
+        $invoicesByContract = $contractIds === []
+            ? collect()
+            : OfficeErpRecords::query($ctx, OfficeErpInvoice::class)
+                ->whereIn('contract_id', $contractIds)
+                ->with(['adjustments', 'allocations.receipt.reversal'])
+                ->orderBy('id')
+                ->get()
+                ->groupBy('contract_id');
 
-        return response()->json($contracts->index($admission->context($request), $filters))->header('Cache-Control', 'no-store');
+        return response()->json([
+            'data' => array_map(function (OfficeErpContract $contract) use ($contracts, $invoicesByContract): array {
+                $invoices = $invoicesByContract->get($contract->id, collect());
+                $outstanding = '0.00';
+                foreach ($invoices as $invoice) {
+                    $outstanding = OfficeErpMoney::add($outstanding, OfficeErpBalances::forInvoice($invoice)['outstanding']);
+                }
+                $subscription = $contract->company?->subscription;
+
+                return [
+                    'id' => (int) $contract->id,
+                    'client' => ['id' => (int) $contract->client_id, 'name' => (string) $contract->client?->name],
+                    'company' => $contract->company === null ? null : ['id' => (int) $contract->company->id, 'name' => (string) $contract->company->name],
+                    'agreement_status' => (string) $contract->agreement_status,
+                    'licence_status' => $subscription !== null && (int) $subscription->office_erp_contract_id === (int) $contract->id
+                        ? $subscription->status
+                        : null,
+                    'current_revision' => $contract->currentRevision === null ? null : $contracts->revisionData($contract->currentRevision),
+                    'pending_revision' => $contract->pendingRevision === null ? null : $contracts->revisionData($contract->pendingRevision),
+                    'service_anchor_on' => $contract->service_anchor_on?->toDateString(),
+                    'billing_timezone' => (string) $contract->billing_timezone,
+                    'next_period_index' => $contract->next_period_index,
+                    'next_period_month_offset' => $contract->next_period_month_offset,
+                    'cancel_effective_on' => $contract->cancel_effective_on?->toDateString(),
+                    'cancellation_reason' => $contract->cancellation_reason,
+                    'manual_hold' => (bool) $contract->manual_hold,
+                    'balance' => ['outstanding' => $outstanding, 'invoice_count' => $invoices->count()],
+                ];
+            }, $page->items()),
+            'meta' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+            ],
+        ])->header('Cache-Control', 'no-store');
     }
 
     public function show(Request $request, int $contract, OfficeErpAdmission $admission, OfficeErpContracts $contracts): JsonResponse

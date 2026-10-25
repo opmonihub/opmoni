@@ -5,38 +5,24 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpOperations;
+use App\Erp\Commercial\OfficeErpQueries;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\Commercial\OfficeErpSalesPlans;
 use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\OfficeErp\ListCommercialRequest;
 use App\Http\Requests\OfficeErp\SaveSalesPlanRequest;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 final class OfficeErpSalesPlanController extends Controller
 {
-    public function index(Request $request, OfficeErpAdmission $admission): JsonResponse
+    public function index(Request $request, OfficeErpAdmission $admission, OfficeErpQueries $queries): JsonResponse
     {
-        $filters = $request->validate([
-            'q' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'status' => ['sometimes', Rule::in(['active', 'archived'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', Rule::in([25, 50, 100])],
-        ]);
+        $filters = ListCommercialRequest::validateFilters('plans', $request->query());
         $ctx = $admission->context($request);
-        $query = OfficeErpRecords::query($ctx, OfficeErpSalesPlan::class)
-            ->with('currentRevision')
-            ->where('status', $filters['status'] ?? 'active')
-            ->orderBy('name')
-            ->orderBy('id');
-
-        if (isset($filters['q']) && $filters['q'] !== '') {
-            $query->where('name', 'like', '%'.$filters['q'].'%');
-        }
-
-        $page = $query->paginate($filters['per_page'] ?? 25, ['*'], 'page', $filters['page'] ?? 1);
+        $page = $queries->plans($ctx, $filters);
 
         return response()->json([
             'data' => array_map(fn (OfficeErpSalesPlan $plan): array => $this->planData($plan), $page->items()),

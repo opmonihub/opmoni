@@ -107,7 +107,10 @@ final class OfficeErpQueries
     public function clients(OfficeErpExecutionContext $ctx, array $filters): LengthAwarePaginator
     {
         $filters = $this->filters($ctx, 'clients', $filters);
-        $query = Client::query()->where('account_id', $ctx->accountId)->withTrashed(false);
+        $query = Client::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('status', 'active')
+            ->withTrashed(false);
         if (($search = trim((string) ($filters['search'] ?? ''))) !== '') {
             $query->where(function (Builder $builder) use ($search): void {
                 $builder->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'name', $search))
@@ -124,11 +127,9 @@ final class OfficeErpQueries
     {
         $filters = $this->filters($ctx, 'plans', $filters);
         $query = OfficeErpRecords::query($ctx, OfficeErpSalesPlan::class)->with('currentRevision');
+        $query->where('status', $filters['status'] ?? 'active');
         if (isset($filters['search']) && $filters['search'] !== '') {
             LiteralSearch::whereContains($query, 'name', $filters['search']);
-        }
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
         }
 
         return $ctx->run(fn (): LengthAwarePaginator => $this->paginate($query->orderBy('name'), $filters));
@@ -138,7 +139,8 @@ final class OfficeErpQueries
     public function contracts(OfficeErpExecutionContext $ctx, array $filters): LengthAwarePaginator
     {
         $filters = $this->filters($ctx, 'contracts', $filters);
-        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)->with(['client', 'currentRevision', 'licenceAllocation']);
+        $query = OfficeErpRecords::query($ctx, OfficeErpContract::class)
+            ->with(['client', 'company.subscription', 'currentRevision', 'pendingRevision', 'licenceAllocation']);
         if (isset($filters['status'])) {
             $query->where('agreement_status', $filters['status']);
         }
@@ -157,9 +159,12 @@ final class OfficeErpQueries
     {
         $filters = $this->filters($ctx, 'invoices', $filters);
         $query = OfficeErpRecords::query($ctx, OfficeErpInvoice::class)
-            ->with(['contract.client', 'contract.currentRevision', 'adjustments', 'allocations.receipt.reversal']);
+            ->with(['contract.client', 'contract.company', 'contract.currentRevision', 'adjustments', 'allocations.receipt.reversal']);
         if (isset($filters['status'])) {
             $query->where('document_status', $filters['status']);
+        }
+        if (isset($filters['contract_id'])) {
+            $query->where('contract_id', $filters['contract_id']);
         }
         if (isset($filters['search']) && $filters['search'] !== '') {
             $search = $filters['search'];
@@ -167,7 +172,8 @@ final class OfficeErpQueries
                 $builder->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'number', $search))
                     ->orWhereHas('contract.client', fn (Builder $client) => $client
                         ->where(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'name', $search))
-                        ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search)));
+                        ->orWhere(fn (Builder $matches) => LiteralSearch::whereContains($matches, 'trade_name', $search)))
+                    ->orWhereHas('contract.company', fn (Builder $company) => LiteralSearch::whereContains($company, 'name', $search));
             });
         }
         $this->applyDateFilters($query, $filters, 'issued_at', $this->timezone($ctx));
