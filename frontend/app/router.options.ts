@@ -1,7 +1,6 @@
 import type { RouterConfig } from 'nuxt/schema'
 
 // Nuxt does not export this runtime module, but it is the installed default used by the generated router.
-// @ts-expect-error Nuxt ships this internal runtime file without a declaration.
 import installedNuxtRouterOptions from '../node_modules/nuxt/dist/pages/runtime/router.options.js'
 
 const ownerActivationPath = '/erp/ativar'
