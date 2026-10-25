@@ -53,6 +53,23 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
         $this->getJson('/api/v1/erp-commercial/context')->assertForbidden();
     }
 
+    public function test_eligible_context_serializes_empty_reasons_as_a_json_object(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
+        $this->actingAs($ctx->actor);
+
+        $response = $this->getJson('/api/v1/erp-commercial/context')->assertOk();
+        $payload = json_decode($response->getContent(), false, 512, JSON_THROW_ON_ERROR);
+
+        self::assertTrue($payload->data->can_configure);
+        self::assertTrue($payload->data->can_sell_new);
+        self::assertInstanceOf(\stdClass::class, $payload->data->reasons);
+        self::assertSame([], get_object_vars($payload->data->reasons));
+        self::assertSame(['reserved' => 0, 'occupied' => 0], get_object_vars($payload->data->usage));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
     public function test_right_loss_preserves_only_accepted_maintenance(): void
     {
         $allowance = ['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']];

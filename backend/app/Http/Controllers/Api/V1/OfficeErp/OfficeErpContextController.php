@@ -10,6 +10,9 @@ final class OfficeErpContextController
 {
     public function __invoke(Request $request, OfficeErpAdmission $admission): JsonResponse
     {
-        return response()->json(['data' => $admission->capabilities($admission->context($request))]);
+        $capabilities = $admission->capabilities($admission->context($request));
+        $capabilities['reasons'] = (object) $capabilities['reasons'];
+
+        return response()->json(['data' => $capabilities]);
     }
 }
