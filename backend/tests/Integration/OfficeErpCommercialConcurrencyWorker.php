@@ -22,6 +22,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
@@ -69,7 +70,8 @@ final class OfficeErpCommercialConcurrencyWorker
                         : (($input['hold_invoice_lock'] ?? false)
                             ? str_contains($sql, 'from "office_erp_invoices"')
                             : str_contains($sql, 'from "accounts"')));
-                if ($paused || ! $target || ! str_contains($sql, 'for update')) {
+                $requiresForUpdate = ! ($input['hold_after_proof_claim'] ?? false);
+                if ($paused || ! $target || ($requiresForUpdate && ! str_contains($sql, 'for update'))) {
                     return;
                 }
                 if (DB::transactionLevel() < 1) {
@@ -86,6 +88,11 @@ final class OfficeErpCommercialConcurrencyWorker
         }
 
         try {
+            if (isset($input['frozen_now'])) {
+                $frozenNow = CarbonImmutable::parse($input['frozen_now']);
+                CarbonImmutable::setTestNow($frozenNow);
+                Carbon::setTestNow($frozenNow);
+            }
             $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                 ->whereKey($input['contract_id'])
                 ->firstOrFail();

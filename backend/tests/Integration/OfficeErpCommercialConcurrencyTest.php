@@ -340,11 +340,13 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         $fixture = $this->effectiveInvoiceFixture();
         $invoice = $this->issueRaceInvoice($fixture, $fixture['contracts'][0]);
         $proof = $this->stageRaceProof($fixture);
-        $expiresAt = CarbonImmutable::now()->addSeconds(5);
+        $frozenNow = CarbonImmutable::parse('2030-06-15T12:00:00Z');
+        $expiresAt = $frozenNow->addSecond();
         DB::table('office_erp_receipt_proofs')->where('id', $proof['id'])->update(['expires_at' => $expiresAt]);
         $first = $this->worker('receipt', $this->financialPayload($fixture, [
             'receipt' => [...$this->receiptInput($invoice, '25.00'), 'proof_id' => $proof['id']],
             'idempotency_key' => 'race-proof-cleanup-claim',
+            'frozen_now' => $frozenNow->toIso8601String(),
             'hold_after_proof_claim' => true,
         ]));
         $this->waitFor($first, 'held');
@@ -352,11 +354,8 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame($this->signalData($first, 'ready')['database_pid'], $held['database_pid']);
         self::assertGreaterThan(0, $held['transaction_level']);
         self::assertStringContainsString('insert into "office_erp_receipt_allocations"', strtolower($held['lock_query']));
-        while (CarbonImmutable::now()->lessThanOrEqualTo($expiresAt)) {
-            usleep(20000);
-        }
         $second = $this->worker('proof_cleanup', $this->financialPayload($fixture, [
-            'now' => CarbonImmutable::now()->toIso8601String(),
+            'now' => $expiresAt->addSecond()->toIso8601String(),
             'contract_id' => (int) $fixture['contracts'][0]->id,
         ]));
         $this->assertWaitingOnProofLock($second);
