@@ -38,15 +38,18 @@ final class CommercialApiContractsTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.id', $firstOutcome['id']);
         self::assertStringContainsString('no-store', (string) $lookup->headers->get('Cache-Control'));
 
-        $operator = User::factory()->create();
+        $otherAdmin = User::factory()->create();
         AccountMembership::factory()->create([
             'account_id' => $ctx->accountId,
-            'user_id' => $operator->id,
-            'role' => 'operador',
+            'user_id' => $otherAdmin->id,
+            'role' => 'admin',
         ]);
-        $this->selectBusinessAccount($operator, $ctx->accountId);
-        $this->actingAs($operator);
-        $otherActorLookup = $this->getJson('/api/v1/erp-commercial/operations/'.$key)->assertForbidden();
+        $this->selectBusinessAccount($otherAdmin, $ctx->accountId);
+        $this->actingAs($otherAdmin);
+        $this->getJson('/api/v1/erp-commercial/context')
+            ->assertOk()
+            ->assertJsonPath('data.can_read', true);
+        $otherActorLookup = $this->getJson('/api/v1/erp-commercial/operations/'.$key)->assertNotFound();
         self::assertArrayNotHasKey('data', $otherActorLookup->json());
         self::assertStringNotContainsString('Plano do contrato', $otherActorLookup->getContent());
         self::assertSame(1, OfficeErpSalesPlan::query()->where('account_id', $ctx->accountId)->count());

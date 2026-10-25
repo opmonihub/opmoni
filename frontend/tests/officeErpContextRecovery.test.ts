@@ -368,9 +368,9 @@ describe('Office ERP recovery context boundaries', () => {
   })
 
   it('renders the real plans recovery key and fences an old success from a new Account editor', async (t) => {
-    const shared = newShared()
-    const seed = mountComposables(shared, async (path, init) => {
-      if (path === '/erp-commercial/context') return { data: shared.capabilities.value }
+    const seedShared = newShared()
+    const seed = mountComposables(seedShared, async (path, init) => {
+      if (path === '/erp-commercial/context') return { data: seedShared.capabilities.value }
       if (path === '/erp-commercial/plans' && init?.method === 'POST') throw new Error('connection dropped')
       return { data: { id: 72 } }
     })
@@ -378,12 +378,29 @@ describe('Office ERP recovery context boundaries', () => {
     const oldKey = await createUnknownCommand(seed, 'initial offer')
     seed.stop()
 
+    const reloadedShared = newShared()
+    reloadedShared.identity.value = {
+      id: seedShared.identity.value.id,
+      current_account: { ...seedShared.identity.value.current_account! }
+    }
+    reloadedShared.session.value = seedShared.session.value + 1
+    reloadedShared.storage = new Map(seedShared.storage)
+    assert.equal(reloadedShared.states.size, 0, 'a full reload starts with fresh Nuxt state')
+
     const oldLookup = deferred<unknown>()
-    const pageHarness = mountComposables(shared, async (path, init) => {
-      if (path === '/erp-commercial/context') return { data: shared.capabilities.value }
+    let lookupCount = 0
+    let postCount = 0
+    const pageHarness = mountComposables(reloadedShared, async (path, init) => {
+      if (path === '/erp-commercial/context') return { data: reloadedShared.capabilities.value }
+      if (path === '/erp-commercial/plans' && init?.method === 'POST') {
+        postCount++
+        throw new Error('unexpected mutation resend')
+      }
+      if (path === `/erp-commercial/operations/${oldKey}`) {
+        lookupCount++
+        return oldLookup.promise
+      }
       if (path === '/erp-commercial/plans') return { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } }
-      if (path === `/erp-commercial/operations/${oldKey}`) return oldLookup.promise
-      if (path === '/erp-commercial/plans' && init?.method === 'POST') throw new Error('unexpected duplicate post')
       return { data: {} }
     })
     t.after(pageHarness.stop)
@@ -401,11 +418,14 @@ describe('Office ERP recovery context boundaries', () => {
 
     assert.equal(pageHarness.command.recoveryKey.value, oldKey)
     assert.equal(pageHarness.command.pending.value, true)
+    assert.equal(lookupCount, 0, 'the real caller restores the persisted key without probing until requested')
+    assert.equal(postCount, 0, 'reload never blindly resends the mutation')
     let verifyButton = findRendered(root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado'))[0]
     assert.ok(verifyButton, 'the real SFC renders recovery for the restored key')
     assert.equal(verifyButton.props.disabled, false)
     ;(verifyButton.props.onClick as () => void)()
     await flushVue()
+    assert.equal(lookupCount, 1, 'the explicit caller action performs one operation lookup')
     verifyButton = findRendered(root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado'))[0]!
     assert.equal(verifyButton.props.disabled, true)
     assert.equal(verifyButton.props['data-loading'], 'true')
