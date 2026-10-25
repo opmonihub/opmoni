@@ -71,6 +71,9 @@ final class OfficeErpOwnerInvitations
             $client = $this->activeClient($ctx, $clientId, true);
             [$plan, $revision] = $this->publishedRevision($ctx, $revisionId, true);
             $capabilities = $this->admission->capabilities($ctx);
+            $modulesAllowed = array_diff($revision->module_keys, $capabilities['allowance']['module_keys']) === [];
+            $canIssue = $capabilities['can_sell_new'] && $modulesAllowed;
+            $reason = $modulesAllowed ? array_key_first($capabilities['reasons']) : 'commercial_module_not_allowed';
 
             return [
                 'client' => $this->clientData($client),
@@ -84,7 +87,8 @@ final class OfficeErpOwnerInvitations
                 ],
                 'capacity' => $capabilities['usage'] + [
                     'available' => $capabilities['available'],
-                    'can_issue' => $capabilities['can_sell_new'],
+                    'can_issue' => $canIssue,
+                    'reason' => $reason,
                 ],
             ];
         }, 3));
@@ -120,11 +124,13 @@ final class OfficeErpOwnerInvitations
                 $this->allocator->reserve($ctx, $contract->fresh(), $expiresAt);
                 $initialUrl = $this->fragmentUrl($secret);
 
-                return $this->outcome($invitation);
+                return ['data' => $this->outcome($invitation)];
             },
         );
 
-        return $initialUrl === null ? $outcome : $outcome + ['url' => $initialUrl];
+        $data = $outcome['data'] ?? [];
+
+        return $initialUrl === null ? $data : $data + ['url' => $initialUrl];
     }
 
     public function revoke(OfficeErpExecutionContext $ctx, int $id, string $reason, string $key): void
@@ -154,7 +160,7 @@ final class OfficeErpOwnerInvitations
                     OfficeErpRecords::persist($ctx, $invitation);
                 }
 
-                return $this->outcome($invitation->refresh());
+                return ['data' => $this->outcome($invitation->refresh())];
             },
         );
     }
@@ -187,7 +193,7 @@ final class OfficeErpOwnerInvitations
                     ->lockForUpdate()
                     ->get();
                 foreach ($activeInvitations as $activeInvitation) {
-                    if ($activeInvitation->expires_at->isPast()) {
+                    if ($activeInvitation->expires_at->lessThanOrEqualTo($now)) {
                         $activeInvitation->forceFill(['status' => 'expired']);
                     } else {
                         $this->allocator->release($ctx, $contract, 'invitation_revoked');
@@ -215,11 +221,13 @@ final class OfficeErpOwnerInvitations
                 $this->allocator->reserve($ctx, $contract->fresh(), $expiresAt);
                 $initialUrl = $this->fragmentUrl($secret);
 
-                return $this->outcome($newInvitation);
+                return ['data' => $this->outcome($newInvitation)];
             },
         );
 
-        return $initialUrl === null ? $outcome : $outcome + ['url' => $initialUrl];
+        $data = $outcome['data'] ?? [];
+
+        return $initialUrl === null ? $data : $data + ['url' => $initialUrl];
     }
 
     /** @param array<string, mixed> $payload */
@@ -273,7 +281,7 @@ final class OfficeErpOwnerInvitations
         }
         $targetId = $intent === 'reissue'
             ? ($payload['invitation_id'] ?? null)
-            : ($operation?->outcome['invitation_id'] ?? null);
+            : ($operation?->outcome['data']['invitation_id'] ?? null);
         abort_unless($targetId === null || (is_int($targetId) && $targetId > 0), 409);
         $target = $targetId === null ? null : $this->invitation($ctx, $targetId, false);
         $contract = $target === null ? null : $this->contract($ctx, (int) $target->contract_id, false);
@@ -504,7 +512,7 @@ final class OfficeErpOwnerInvitations
                         function () use ($systemContext, $invitation): void {
                             $current = $this->invitation($systemContext, (int) $invitation->id, true);
                             abort_unless($current->status === 'expired'
-                                || $current->status === 'pending' && $current->expires_at->isPast(), 409, 'invitation_not_expired');
+                                || $current->status === 'pending' && $current->expires_at->lessThanOrEqualTo(now()), 409, 'invitation_not_expired');
                             $contract = $this->contract($systemContext, (int) $current->contract_id, false);
                             $allocation = $this->allocation($systemContext, $contract, false);
                             abort_unless($allocation === null || $allocation->state === 'released', 409, 'expired_reservation_not_released');

@@ -4,6 +4,7 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
@@ -72,6 +73,21 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)->count());
     }
 
+    public function test_preview_remains_reviewable_but_disables_issue_when_offer_modules_exceed_grant(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 3, 'module_keys' => ['purchases']]);
+        $client = $this->clientFor($ctx);
+        $revision = $this->publishedRevision($ctx, ['module_keys' => ['purchases', 'sales']]);
+
+        $preview = $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->preview($ctx, $client->id, $revision->id, $this->owner()));
+
+        self::assertSame($revision->id, $preview['offer']['revision_id']);
+        self::assertFalse($preview['capacity']['can_issue']);
+        self::assertSame('commercial_module_not_allowed', $preview['capacity']['reason']);
+        self::assertSame(0, OfficeErpContract::query()->where('account_id', $ctx->accountId)->count());
+        self::assertSame(0, OfficeErpLicenceAllocation::query()->where('account_id', $ctx->accountId)->count());
+    }
+
     public function test_client_list_searches_and_paginates_only_active_clients_in_selected_office(): void
     {
         $ctx = $this->officeContext();
@@ -121,13 +137,17 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         $invitationId = $issued->json('data.invitation_id');
         self::assertStringContainsString('#token=', $issued->json('data.url'));
         self::assertStringContainsString('no-store', (string) $issued->headers->get('Cache-Control'));
+        $issuedOperation = OfficeErpCommercialOperation::query()->where('idempotency_key', 'controller-issue')->firstOrFail();
+        self::assertSame($issuedOperation->outcome['data'], array_intersect_key($issued->json('data'), array_flip(['invitation_id', 'expires_at', 'status'])));
 
         $reissued = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-reissue')
             ->postJson('/api/v1/erp-commercial/invitations/'.$invitationId.'/reissue')
             ->assertOk()->assertJsonPath('data.status', 'pending');
-        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-revoke')
+        $revoked = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-revoke')
             ->postJson('/api/v1/erp-commercial/invitations/'.$reissued->json('data.invitation_id').'/revoke', ['reason' => 'Requested by the invited owner.'])
-            ->assertNoContent();
+            ->assertOk()->assertJsonPath('data.status', 'revoked');
+        $revokedOperation = OfficeErpCommercialOperation::query()->where('idempotency_key', 'controller-revoke')->firstOrFail();
+        self::assertSame($revokedOperation->outcome, $revoked->json());
     }
 
     public function test_issue_creates_seven_day_secret_hash_snapshot_and_one_reservation(): void
@@ -141,7 +161,7 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
 
         $result = $this->asContext($ctx, fn (OfficeErpOwnerInvitations $service): array => $service->issue($ctx, $client->id, $revision->id, $this->owner(), 'invite-first'));
 
-        self::assertSame(1, $result['invitation_id']);
+        self::assertGreaterThan(0, $result['invitation_id']);
         self::assertSame(now()->addDays(7)->toDateTimeString(), $result['expires_at']);
         self::assertSame('pending', $result['status']);
         self::assertStringStartsWith('http://localhost:3000/erp/ativar#token=', $result['url']);
@@ -149,9 +169,11 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         $invitation = OfficeErpOwnerInvitation::query()->findOrFail($result['invitation_id']);
         self::assertNotSame($rawToken, $invitation->token_hash);
         self::assertSame(hash('sha256', $rawToken), $invitation->token_hash);
+        self::assertSame($invitation->id, $result['invitation_id']);
         self::assertSame('owner@example.test', $invitation->owner_email);
         self::assertSame('Maria da Silva', $invitation->owner_name);
         self::assertSame(['account_id' => $ctx->accountId, 'name' => $ctx->account->name], $invitation->seller_snapshot);
+        self::assertSame($ctx->accountId, $invitation->account_id);
 
         $contract = OfficeErpContract::query()->findOrFail($invitation->contract_id);
         self::assertSame('awaiting_owner', $contract->agreement_status);
@@ -173,6 +195,9 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
             OfficeErpAuditEvent::query()->firstOrFail()->toArray(),
         ], JSON_THROW_ON_ERROR);
         self::assertStringNotContainsString($rawToken, $stored);
+        self::assertSame([
+            'data' => ['invitation_id' => $invitation->id, 'expires_at' => $result['expires_at'], 'status' => 'pending'],
+        ], OfficeErpCommercialOperation::query()->firstOrFail()->outcome);
         Log::shouldNotHaveReceived('info');
         Log::shouldNotHaveReceived('warning');
         Log::shouldNotHaveReceived('error');
@@ -195,6 +220,15 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         self::assertSame(1, OfficeErpContract::query()->count());
         self::assertSame(1, OfficeErpOwnerInvitation::query()->count());
         self::assertSame(1, $this->asContext($ctx, fn (): array => app(OfficeErpAdmission::class)->capabilities($ctx))['usage']['reserved']);
+
+        $lookedUp = $this->asContext($ctx, fn (): array => app(OfficeErpOperations::class)->lookup(
+            $ctx,
+            'invite-replay',
+            fn (string $action, array $payload): mixed => $service->authorizeOperation($ctx, app(OfficeErpAdmission::class), $action, $payload, 'invite-replay'),
+        ));
+        self::assertSame([
+            'data' => ['invitation_id' => $first['invitation_id'], 'expires_at' => $first['expires_at'], 'status' => 'pending'],
+        ], $lookedUp);
 
         try {
             $this->asContext($ctx, fn (): array => $service->issue($ctx, $client->id, $revision->id, $this->owner(['email' => 'different@example.test']), 'invite-replay'));
@@ -316,7 +350,7 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         $client = $this->clientFor($ctx);
         $revision = $this->publishedRevision($ctx);
         $issued = $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->issue($ctx, $client->id, $revision->id, $this->owner(), 'invite-expiry-attribution'));
-        CarbonImmutable::setTestNow(now()->addDays(8));
+        CarbonImmutable::setTestNow(CarbonImmutable::parse($issued['expires_at'])->addSecond());
 
         $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->clients($ctx));
         $invitation = OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id']);
@@ -328,6 +362,22 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->clients($ctx));
         self::assertSame(1, OfficeErpCommercialOperation::query()->where('action', 'invitation.expire')->count());
         self::assertSame(0, $this->asContext($ctx, fn (): array => app(OfficeErpAdmission::class)->capabilities($ctx))['usage']['reserved']);
+    }
+
+    public function test_invitation_expiration_is_inclusive_at_the_exact_expiry_instant(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-25 12:00:00');
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
+        $client = $this->clientFor($ctx);
+        $revision = $this->publishedRevision($ctx);
+        $issued = $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->issue($ctx, $client->id, $revision->id, $this->owner(), 'invite-expiry-equality'));
+        CarbonImmutable::setTestNow(CarbonImmutable::parse($issued['expires_at']));
+
+        $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->clients($ctx));
+
+        self::assertSame('expired', OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id'])->status);
+        self::assertSame('released', OfficeErpLicenceAllocation::query()->firstOrFail()->state);
+        self::assertSame(1, OfficeErpCommercialOperation::query()->where('action', 'invitation.expire')->count());
     }
 
     public function test_reissue_rechecks_new_sale_authority(): void
