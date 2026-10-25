@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatOfficeErpMoney } from '#shared/utils/officeErpCommercial'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({ middleware: 'auth', layout: 'office-erp-print' })
 interface PrintInvoice { id: number, number: string | null, document_status: string, issued_at: string | null, period_start: string, period_end: string, due_on: string, items_snapshot: Array<{ description: string, amount: string, discount: string }>, seller_snapshot: { account?: { name?: string } }, bill_to_snapshot: { client?: { name?: string, tax_id?: string }, company?: { name?: string, cnpj?: string } | null }, balance: { original_total: string, adjusted_charge: string, effective_received: string, outstanding: string }, adjustments: Array<{ direction: string, amount: string, reason: string }> }
 const route = useRoute(), { api } = useAccessApi(), context = useOfficeErpContext()
 const { user, currentAccount } = useAuth(), sessionGeneration = useState('access-session-generation', () => 0)
@@ -105,3 +105,22 @@ watch(identity, () => {
     </article>
   </main>
 </template>
+
+<style scoped>
+@media print {
+  main {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  article {
+    break-inside: auto;
+  }
+
+  article > section {
+    break-inside: avoid;
+  }
+}
+</style>

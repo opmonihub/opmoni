@@ -82,6 +82,7 @@ function input(mounted: ReturnType<typeof mountComponent>, label: string, value:
 
 function mountPage(path: string, options: {
   params?: Record<string, string>
+  routePath?: string
   api?: (path: string, options?: Record<string, unknown>) => Promise<unknown>
   execute?: (...args: unknown[]) => Promise<unknown>
   recover?: (...args: unknown[]) => Promise<unknown>
@@ -112,7 +113,7 @@ function mountPage(path: string, options: {
     parentNode: node => node.parent,
     nextSibling: node => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null
   })
-  const route = Vue.reactive({ params: { id: 'nova', ...(options.params ?? {}) } })
+  const route = Vue.reactive({ path: options.routePath ?? '', params: { id: 'nova', ...(options.params ?? {}) } })
   const account = Vue.ref({ id: 1, status: 'active', role: 'admin' })
   const user = Vue.ref({ id: 9 })
   const sessionGeneration = Vue.ref(0)
@@ -170,6 +171,11 @@ function mountPage(path: string, options: {
   const app = renderer.createApp(component)
   const basic = (props: string[] = []) => ({ props, setup: (_p: unknown, ctx: { slots: Record<string, () => HostNode[]> }) => () => Vue.h('div', {}, Object.values(ctx.slots).flatMap(slot => slot?.() ?? [])) })
   app.component('UApp', basic())
+  for (const [name, marker] of [['UDashboardPanel', 'dashboard-panel'], ['UDashboardNavbar', 'dashboard-navbar'], ['UDashboardToolbar', 'dashboard-toolbar'], ['UDashboardSidebarCollapse', 'dashboard-sidebar-collapse']] as const) {
+    app.component(name, { setup: (_props, context) => () => Vue.h('div', { 'data-shell': marker }, Object.values(context.slots).flatMap(slot => slot?.() ?? [])) })
+  }
+  app.component('UNavigationMenu', { props: ['items'], setup: (props, context) => () => Vue.h('nav', { 'data-shell': 'navigation-menu', 'data-items': JSON.stringify(props.items) }, Object.values(context.slots).flatMap(slot => slot?.() ?? [])) })
+  app.component('NuxtPage', { setup: () => () => Vue.h('section', { 'data-route-page': 'true' }, 'Conteúdo da rota filha') })
   app.component('UCard', basic())
   app.component('UFormField', {
     props: ['label', 'error', 'name'],
@@ -847,6 +853,63 @@ describe('office ERP billing form components', () => {
       'pages/gestao-erp/faturas/[id]/imprimir.vue',
       'pages/gestao-erp/recebimentos.vue'
     ]) assert.ok(compileVueComponent(path, {}, mocks), path)
+  })
+
+  it('queries invoices by issue and due dates and renders the print route in a shell-free layout', async (t) => {
+    const mounted = mountPage('pages/gestao-erp/faturas/index.vue', {
+      api: async (_path, request) => ({ data: [], meta: { current_page: Number((request?.params as Record<string, unknown>).page), last_page: 2, per_page: 25, total: 50 } })
+    })
+    t.after(() => mounted.app.unmount())
+    await settlePage()
+
+    const nextPage = mounted.find(node => node.tag === 'button' && node.props['aria-label'] === 'Próxima página')
+    assert.ok(nextPage)
+    ;(nextPage.props.onClick as () => void)()
+    await settlePage()
+    const pageTwoRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
+    assert.equal((pageTwoRequest?.options?.params as Record<string, unknown> | undefined)?.page, 2)
+
+    input(mounted, 'Emissão de', '2026-10-01')
+    input(mounted, 'Emissão até', '2026-10-31')
+    input(mounted, 'Vencimento de', '2026-11-01')
+    input(mounted, 'Vencimento até', '2026-11-30')
+    await settlePage()
+
+    const request = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
+    assert.deepEqual(request?.options?.params, {
+      page: 1,
+      per_page: 25,
+      from_on: '2026-10-01',
+      to_on: '2026-10-31',
+      due_from: '2026-11-01',
+      due_to: '2026-11-30'
+    })
+    assert.equal(mounted.metadata.at(-1)?.layout, undefined)
+
+    const print = mountPage('pages/gestao-erp/faturas/[id]/imprimir.vue', { params: { id: '42' } })
+    t.after(() => print.app.unmount())
+    await settlePage()
+    assert.equal(print.metadata.at(-1)?.layout, 'office-erp-print')
+    assert.ok(compileVueComponent('layouts/office-erp-print.vue'))
+
+    const printShell = mountPage('pages/gestao-erp.vue', { routePath: '/gestao-erp/faturas/42/imprimir' })
+    t.after(() => printShell.app.unmount())
+    assert.ok(printShell.find(node => node.props['data-route-page'] === 'true'))
+    assert.equal(printShell.find(node => node.props['data-shell'] === 'dashboard-panel'), undefined)
+    assert.equal(printShell.find(node => node.props['data-shell'] === 'dashboard-navbar'), undefined)
+    assert.equal(printShell.find(node => node.props['data-shell'] === 'dashboard-toolbar'), undefined)
+    assert.equal(printShell.find(node => node.props['data-shell'] === 'navigation-menu'), undefined)
+
+    const officeShell = mountPage('pages/gestao-erp.vue', { routePath: '/gestao-erp/faturas' })
+    t.after(() => officeShell.app.unmount())
+    assert.ok(officeShell.find(node => node.props['data-shell'] === 'dashboard-panel'))
+    assert.ok(officeShell.find(node => node.props['data-shell'] === 'dashboard-navbar'))
+    assert.ok(officeShell.find(node => node.props['data-shell'] === 'dashboard-toolbar'))
+    const navigation = officeShell.find(node => node.props['data-shell'] === 'navigation-menu')
+    assert.ok(navigation)
+    assert.match(String(navigation.props['data-items']), /"label":"Faturas"/)
+    assert.match(String(navigation.props['data-items']), /"label":"Recebimentos"/)
+    assert.match(String(navigation.props['data-items']), /"label":"Configurações"/)
   })
 
   it('emits a positive credit amount and preserves it with a server validation error', async (t) => {

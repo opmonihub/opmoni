@@ -5,6 +5,7 @@ definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const { currentAccount } = useAuth()
+const isInvoicePrintRoute = computed(() => /^\/gestao-erp\/faturas\/[1-9]\d*\/imprimir$/.test(route.path))
 const pageTabs: NavigationMenuItem[][] = [[{
   label: 'Visão geral',
   icon: 'i-lucide-layout-dashboard',
@@ -44,7 +45,8 @@ const pageTabs: NavigationMenuItem[][] = [[{
 </script>
 
 <template>
-  <UDashboardPanel id="gestao-erp" :ui="{ body: 'min-h-0 flex-1 gap-0 overflow-y-auto p-3 sm:p-4 lg:p-5' }">
+  <NuxtPage v-if="isInvoicePrintRoute" />
+  <UDashboardPanel v-else id="gestao-erp" :ui="{ body: 'min-h-0 flex-1 gap-0 overflow-y-auto p-3 sm:p-4 lg:p-5' }">
     <template #header>
       <UDashboardNavbar title="Gestão ERP">
         <template #leading>

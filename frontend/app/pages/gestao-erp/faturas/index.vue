@@ -26,6 +26,8 @@ const query = ref('')
 const status = ref('')
 const from = ref('')
 const to = ref('')
+const dueFrom = ref('')
+const dueTo = ref('')
 const page = ref(1)
 const perPage = ref<25 | 50 | 100>(25)
 const rows = ref<InvoiceRow[]>([])
@@ -54,6 +56,8 @@ async function loadInvoices() {
     if (status.value) params.document_status = status.value
     if (from.value) params.from_on = from.value
     if (to.value) params.to_on = to.value
+    if (dueFrom.value) params.due_from = dueFrom.value
+    if (dueTo.value) params.due_to = dueTo.value
     const response = await api<PageResponse>('/erp-commercial/invoices', { params })
     if (request !== generation || stamp !== identity.value || !context.isCurrent(token)) return
     if (!Array.isArray(response?.data) || !response.meta || !Number.isSafeInteger(response.meta.total)) throw new Error('A resposta de faturas está incompleta.')
@@ -68,10 +72,10 @@ async function loadInvoices() {
     if (request === generation && stamp === identity.value) loading.value = false
   }
 }
-watch([query, status, from, to, page, perPage], () => {
+watch([query, status, from, to, dueFrom, dueTo, page, perPage], () => {
   void loadInvoices()
 }, { immediate: true })
-watch([query, status, from, to, perPage], () => {
+watch([query, status, from, to, dueFrom, dueTo, perPage], () => {
   page.value = 1
 })
 watch(identity, () => {
@@ -99,11 +103,17 @@ watch(identity, () => {
         <UFormField label="Situação">
           <USelect v-model="status" aria-label="Filtrar situação" :items="[{ label: 'Todas', value: '' }, { label: 'Rascunho', value: 'draft' }, { label: 'Emitida', value: 'issued' }, { label: 'Cancelada', value: 'canceled' }]" />
         </UFormField>
-        <UFormField label="De">
-          <UInput v-model="from" type="date" aria-label="Data inicial da fatura" />
+        <UFormField label="Emissão de">
+          <UInput v-model="from" type="date" aria-label="Emissão de" />
         </UFormField>
-        <UFormField label="Até">
-          <UInput v-model="to" type="date" aria-label="Data final da fatura" />
+        <UFormField label="Emissão até">
+          <UInput v-model="to" type="date" aria-label="Emissão até" />
+        </UFormField>
+        <UFormField label="Vencimento de">
+          <UInput v-model="dueFrom" type="date" aria-label="Vencimento de" />
+        </UFormField>
+        <UFormField label="Vencimento até">
+          <UInput v-model="dueTo" type="date" aria-label="Vencimento até" />
         </UFormField>
       </template>
       <div :class="panelBodyClass">
