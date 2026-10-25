@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\ErpOperationJournal;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 final class OfficeErpSettingsController extends Controller
 {
@@ -39,7 +39,7 @@ final class OfficeErpSettingsController extends Controller
         ))->header('Cache-Control', 'no-store');
     }
 
-    public function update(Request $request, OfficeErpDelinquency $delinquency): JsonResponse
+    public function update(Request $request, OfficeErpDelinquency $delinquency, ErpOperationJournal $journal): JsonResponse
     {
         $validated = $request->validate([
             'mode' => ['required', 'string', 'in:manual,automatic'],
@@ -47,10 +47,7 @@ final class OfficeErpSettingsController extends Controller
             'billing_timezone' => ['required', 'string', 'timezone'],
             'confirm_automatic' => ['required', 'boolean:strict'],
         ]);
-        $key = Validator::make(
-            ['idempotency_key' => $request->header('Idempotency-Key')],
-            ['idempotency_key' => ['required', 'string', 'max:191']],
-        )->validate()['idempotency_key'];
+        $key = $journal->key($request, true);
         $settings = [
             'mode' => $validated['mode'],
             'grace_days' => $validated['grace_days'],

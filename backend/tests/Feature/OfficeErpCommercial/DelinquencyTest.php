@@ -82,9 +82,9 @@ class DelinquencyTest extends OfficeErpCommercialTestCase
         self::assertNull($subscription->fresh()->office_erp_contract_id);
         self::assertSame('active', $subscription->fresh()->status);
 
-        $subscription->forceFill(['office_erp_contract_id' => $contract->id, 'status' => 'historical_unknown'])->save();
-        self::assertSame('historical_unknown', $this->reconcileAt($ctx, $service, $contract->fresh(), $now));
-        self::assertSame('historical_unknown', $subscription->fresh()->status);
+        $subscription->forceFill(['office_erp_contract_id' => $contract->id, 'status' => 'legacy_unknown'])->save();
+        self::assertSame('legacy_unknown', $this->reconcileAt($ctx, $service, $contract->fresh(), $now));
+        self::assertSame('legacy_unknown', $subscription->fresh()->status);
     }
 
     public function test_automatic_policy_requires_explicit_confirmation_without_effects(): void
@@ -101,6 +101,30 @@ class DelinquencyTest extends OfficeErpCommercialTestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('confirm_automatic');
 
         self::assertSame(422, $response->status());
+        self::assertSame($beforeSettings?->getAttributes(), OfficeErpCommercialSetting::query()->where('account_id', $ctx->accountId)->first()?->getAttributes());
+        self::assertDatabaseCount('office_erp_commercial_operations', 0);
+        self::assertDatabaseCount('office_erp_audit_events', 0);
+    }
+
+    public function test_invalid_idempotency_keys_are_rejected_without_settings_operation_or_audit_effects(): void
+    {
+        $ctx = $this->officeContext();
+        $this->authenticateOffice($ctx);
+        $beforeSettings = OfficeErpCommercialSetting::query()->where('account_id', $ctx->accountId)->first();
+        $payload = [
+            'mode' => 'manual',
+            'grace_days' => 3,
+            'billing_timezone' => 'America/Sao_Paulo',
+            'confirm_automatic' => false,
+        ];
+
+        foreach ([str_repeat('k', 129), 'policy,invalid-key'] as $key) {
+            $this->withHeader('Idempotency-Key', $key)
+                ->patchJson('/api/v1/erp-commercial/settings', $payload)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('source_operation_key');
+        }
+
         self::assertSame($beforeSettings?->getAttributes(), OfficeErpCommercialSetting::query()->where('account_id', $ctx->accountId)->first()?->getAttributes());
         self::assertDatabaseCount('office_erp_commercial_operations', 0);
         self::assertDatabaseCount('office_erp_audit_events', 0);
