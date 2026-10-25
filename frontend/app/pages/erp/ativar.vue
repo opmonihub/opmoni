@@ -28,6 +28,7 @@ useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
 
 const { api } = useAccessApi()
 const { user, refresh, logout } = useAuth()
+const route = useRoute()
 const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required' | 'identity_login_required' | 'forbidden'>('loading')
 const invitation = ref<InvitationData | null>(null)
 const pendingAcceptance = ref<PendingAcceptance | null>(null)
@@ -38,6 +39,8 @@ const passwordError = ref('')
 const busy = ref(false)
 const error = ref('')
 let pendingToken: string | null = null
+let initialized = false
+let continuationRequestId = 0
 
 const passwordSchema = z.object({
   password: z.string('Informe uma senha.')
@@ -128,15 +131,20 @@ function setRequestError(caught: unknown) {
 }
 
 async function exchangeToken(token: string) {
+  const requestId = ++continuationRequestId
   error.value = ''
   try {
     const response = await api<ContinuationResponse>('/erp-invitations/resolve', {
       method: 'POST',
       body: { token }
     })
+    if (requestId !== continuationRequestId)
+      return
     pendingToken = null
     applyContinuation(response)
   } catch (caught) {
+    if (requestId !== continuationRequestId)
+      return
     setRequestError(caught)
     if (state.value === 'invalid' || state.value === 'expired')
       pendingToken = null
@@ -144,11 +152,16 @@ async function exchangeToken(token: string) {
 }
 
 async function loadCurrent() {
+  const requestId = ++continuationRequestId
   error.value = ''
   try {
     const response = await api<ContinuationResponse>('/erp-invitations/current')
+    if (requestId !== continuationRequestId)
+      return
     applyContinuation(response)
   } catch (caught) {
+    if (requestId !== continuationRequestId)
+      return
     setRequestError(caught)
     if (pendingAcceptance.value)
       state.value = 'recovery_required'
@@ -161,6 +174,7 @@ async function start() {
   const token = new URLSearchParams(fragment.slice(1)).get('token')
   if (fragment)
     stripSecretFromAddress()
+  initialized = true
   if (token) {
     pendingToken = token
     await exchangeToken(token)
@@ -168,6 +182,19 @@ async function start() {
     await loadCurrent()
   }
 }
+
+watch(() => route.hash, (fragment) => {
+  if (!initialized)
+    return
+
+  const token = new URLSearchParams(fragment.slice(1)).get('token')
+  if (!token)
+    return
+
+  stripSecretFromAddress()
+  pendingToken = token
+  void exchangeToken(token)
+}, { flush: 'sync' })
 
 async function retry() {
   if (busy.value)
@@ -252,6 +279,7 @@ onMounted(() => {
   void start()
 })
 onBeforeUnmount(() => {
+  continuationRequestId++
   pendingToken = null
 })
 </script>

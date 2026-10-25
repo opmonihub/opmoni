@@ -90,6 +90,7 @@ function harness(options: { hash?: string, user?: unknown, storage?: Map<string,
   const originalWindow = globalThis.window
   const originalSessionStorage = globalThis.sessionStorage
   const url = new URL(`http://localhost:3000/erp/ativar${options.hash ?? ''}`)
+  const route = Vue.reactive({ hash: options.hash ?? '' })
   const browserStorage = {
     setItem(key: string, value: string) { storage.set(key, value) },
     getItem: (key: string) => storage.get(key) ?? null,
@@ -130,7 +131,8 @@ function harness(options: { hash?: string, user?: unknown, storage?: Map<string,
     defineNuxtLink: undefined
   })
   const component = compileVueComponent('pages/erp/ativar.vue', {
-    ref: Vue.ref, computed: Vue.computed, onMounted: Vue.onMounted, onBeforeUnmount: Vue.onBeforeUnmount
+    ref: Vue.ref, computed: Vue.computed, watch: Vue.watch, onMounted: Vue.onMounted, onBeforeUnmount: Vue.onBeforeUnmount,
+    useRoute: () => route
   }, {
     '#shared/utils/access': { apiFailure: (error: unknown) => ({ status: Number((error as { status?: number })?.status ?? 0), code: String((error as { data?: { code?: string } })?.data?.code ?? ''), errors: (error as { data?: { errors?: Record<string, string[]> } })?.data?.errors ?? {}, message: String((error as { data?: { message?: string } })?.data?.message ?? (error as Error)?.message ?? 'Falha') }), passwordLength: (value: string) => [...value].length }
   })
@@ -161,6 +163,10 @@ function harness(options: { hash?: string, user?: unknown, storage?: Map<string,
     storage,
     url,
     user: authUser,
+    navigateHash(hash: string) {
+      url.hash = hash
+      route.hash = hash
+    },
     restore() {
       if (restored)
         return
@@ -171,6 +177,63 @@ function harness(options: { hash?: string, user?: unknown, storage?: Map<string,
     }
   }
 }
+
+test('same-page token hash arrival resolves once, ignores stale results, and cannot duplicate acceptance', async () => {
+  let releaseStaleResolve!: (value: unknown) => void
+  const staleResolve = new Promise<unknown>((resolve) => {
+    releaseStaleResolve = resolve
+  })
+  let resolveCount = 0
+  let accepted = false
+  const staleToken = 'c'.repeat(64)
+  const freshToken = 'b'.repeat(64)
+  const page = harness({ api: async (path, config) => {
+    if (path === '/erp-invitations/current') {
+      return accepted ? { ...valid, state: 'accepted' } : { state: 'missing' }
+    }
+    if (path === '/erp-invitations/resolve') {
+      resolveCount++
+      const token = (config?.body as { token: string }).token
+      if (token === staleToken)
+        return staleResolve
+      assert.equal(token, freshToken)
+      return valid
+    }
+    if (path === '/erp-invitations/accept') {
+      accepted = true
+      return {}
+    }
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    assert.match(text(page.root), /Este convite não é válido/)
+
+    page.navigateHash(`#token=${staleToken}`)
+    await flushPage()
+    assert.equal(resolveCount, 1)
+    page.navigateHash(`#token=${freshToken}`)
+    await flushPage()
+    assert.equal(resolveCount, 2)
+    assert.equal(page.url.hash, '')
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0)
+
+    releaseStaleResolve({ state: 'missing' })
+    await flushPage()
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0, 'the stale token response cannot replace the new invitation')
+
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    assert.equal(accepted, true)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    assert.equal(page.calls.filter(call => call.path === '/erp-invitations/resolve').length, 2)
+    assert.doesNotMatch(text(page.root), new RegExp(`${staleToken}|${freshToken}`))
+    assert.equal(JSON.stringify([...page.storage]).includes(staleToken), false)
+    assert.equal(JSON.stringify([...page.storage]).includes(freshToken), false)
+  } finally { page.restore() }
+})
 
 test('fragment exchange strips the bearer secret before waiting and renders the invitation summary', async () => {
   let resolve!: (value: unknown) => void
