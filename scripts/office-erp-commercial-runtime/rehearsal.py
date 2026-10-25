@@ -259,9 +259,15 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
                     raise RuntimeError('Rehearsal backend has an unexpected volume or mount type')
             if binds != expected_binds or set(tmpfs_config) != expected_tmpfs:
                 raise RuntimeError('Rehearsal backend mounts differ from the reviewed bind/tmpfs contract')
-            if any(not isinstance(options, str) or 'rw' not in options.split(',') or 'ro' in options.split(',')
-                   for options in tmpfs_config.values()):
-                raise RuntimeError('Rehearsal backend tmpfs is not read/write as reviewed')
+            required_tmpfs_options = {'rw', 'nosuid', 'nodev', 'uid=1000', 'gid=1000'}
+            for options in tmpfs_config.values():
+                if not isinstance(options, str):
+                    raise RuntimeError('Rehearsal backend tmpfs options have an unexpected shape')
+                option_tokens = set(options.split(','))
+                modes = [token.removeprefix('mode=') for token in option_tokens if token.startswith('mode=')]
+                if (not required_tmpfs_options.issubset(option_tokens) or 'ro' in option_tokens
+                        or len(modes) != 1 or not modes[0].isdigit() or int(modes[0], 8) != 0o770):
+                    raise RuntimeError('Rehearsal backend tmpfs ownership, mode, or writability differs from the reviewed contract')
             if inspected_tmpfs and (set(inspected_tmpfs) != expected_tmpfs or not all(inspected_tmpfs.values())):
                 raise RuntimeError('Rehearsal backend tmpfs mount type or writability differs from the reviewed contract')
         elif role in {'postgres', 'redis'}:
