@@ -118,12 +118,15 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'user_id' => $actor->id,
             'role' => 'admin',
         ]);
-        $this->selectOffice($account, $membership);
-        $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race:'.$tag);
-        $contracts = [
-            $this->acceptedContract($context, $tag.'-first'),
-            $this->acceptedContract($context, $tag.'-second'),
-        ];
+        [$context, $contracts] = $this->selectOffice($account, $membership, function () use ($account, $actor, $tag): array {
+            $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race:'.$tag);
+            $contracts = [
+                $this->acceptedContract($context, $tag.'-first'),
+                $this->acceptedContract($context, $tag.'-second'),
+            ];
+
+            return [$context, $contracts];
+        });
 
         return [
             'account_id' => (int) $account->id,
