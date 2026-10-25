@@ -101,6 +101,16 @@ class OfficeErpCalendarTest extends TestCase
         (new OfficeErpCalendar)->periodAtMonthOffset('2027-01-31', 1, -1, 'UTC', 0);
     }
 
+    public function test_period_validates_the_cycle_before_multiplying_extreme_indices(): void
+    {
+        try {
+            (new OfficeErpCalendar)->period('2027-01-31', -2, PHP_INT_MAX, 'UTC', 0);
+            $this->fail('An unsupported billing cycle must be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('interval_months', $exception->errors());
+        }
+    }
+
     public function test_period_rejects_invalid_anchor_dates(): void
     {
         $this->expectException(ValidationException::class);

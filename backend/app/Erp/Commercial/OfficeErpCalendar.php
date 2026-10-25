@@ -13,6 +13,8 @@ class OfficeErpCalendar
      */
     public function period(string $anchor, int $intervalMonths, int $index, string $timezone, int $dueInDays): array
     {
+        $this->assertSupportedInterval($intervalMonths);
+
         if ($index < 0 || $index > intdiv(PHP_INT_MAX, max(1, $intervalMonths))) {
             throw ValidationException::withMessages(['index' => 'The period index must be a nonnegative calendar index.']);
         }
@@ -25,9 +27,7 @@ class OfficeErpCalendar
      */
     public function periodAtMonthOffset(string $anchor, int $intervalMonths, int $monthOffset, string $timezone, int $dueInDays): array
     {
-        if (! in_array($intervalMonths, [1, 3, 6, 12], true)) {
-            throw ValidationException::withMessages(['interval_months' => 'The billing interval must be 1, 3, 6, or 12 months.']);
-        }
+        $this->assertSupportedInterval($intervalMonths);
 
         if ($monthOffset < 0 || $monthOffset > PHP_INT_MAX - $intervalMonths) {
             throw ValidationException::withMessages(['month_offset' => 'The month offset must be nonnegative.']);
@@ -66,6 +66,13 @@ class OfficeErpCalendar
             'end' => $end->format('Y-m-d'),
             'due_on' => $dueOn->format('Y-m-d'),
         ];
+    }
+
+    private function assertSupportedInterval(int $intervalMonths): void
+    {
+        if (! in_array($intervalMonths, [1, 3, 6, 12], true)) {
+            throw ValidationException::withMessages(['interval_months' => 'The billing interval must be 1, 3, 6, or 12 months.']);
+        }
     }
 
     private function dateAtMonthOffset(DateTimeImmutable $anchor, int $monthOffset): DateTimeImmutable
