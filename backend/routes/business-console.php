@@ -7,6 +7,10 @@ Schedule::command('erp:fiscal-scan-new-attempts')->everyMinute()->withoutOverlap
 
 Schedule::command('work:generate-recurrences')->daily();
 
+Schedule::command('office-erp:generate-invoices --batch=50')
+    ->hourly()
+    ->withoutOverlapping();
+
 Schedule::job(new CleanExpiredOfficeErpProofs)->daily()->withoutOverlapping();
 
 // `withoutOverlapping` protege a entrada; a trava por cliente e fonte no
