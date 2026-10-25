@@ -33,8 +33,8 @@ class LicenceAllocationTest extends OfficeErpCommercialTestCase
         self::assertSame('occupied', $occupied->fresh()->state);
         $this->withOfficeAccount($ctx, function () use ($ctx, $admission): void {
             $capabilities = $ctx->run(fn (): array => $admission->capabilities($ctx));
-            self::assertSame(0, $capabilities['reserved']);
-            self::assertSame(1, $capabilities['occupied']);
+            self::assertSame(0, $capabilities['usage']['reserved']);
+            self::assertSame(1, $capabilities['usage']['occupied']);
         });
     }
 
@@ -85,7 +85,7 @@ class LicenceAllocationTest extends OfficeErpCommercialTestCase
             fn (): array => app(OfficeErpAdmission::class)->capabilities($ctx),
         ));
 
-        self::assertSame(0, $capabilities['reserved']);
+        self::assertSame(0, $capabilities['usage']['reserved']);
         self::assertSame('released', $allocation->fresh()->state);
     }
 
@@ -136,6 +136,38 @@ class LicenceAllocationTest extends OfficeErpCommercialTestCase
         self::assertSame('released', $allocation->fresh()->state);
     }
 
+    public function test_suspended_occupied_capacity_survives_downgrade_and_blocks_new_sales(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $admission = app(OfficeErpAdmission::class);
+        $allocator = app(OfficeErpLicenceAllocator::class);
+        foreach ([1, 2] as $index) {
+            $contract = $this->acceptedContract($ctx);
+            $company = ErpCompany::factory()->create($index === 1 ? ['status' => 'suspended'] : []);
+            $this->withOfficeAccount($ctx, fn () => $ctx->run(function () use ($ctx, $allocator, $contract, $company): void {
+                $allocator->reserve($ctx, $contract, CarbonImmutable::now()->addDay());
+                $allocator->occupy($ctx, $contract, $company);
+            }));
+        }
+
+        $this->withOfficeAccount($ctx, function () use ($ctx, $admission): void {
+            $ctx->account->subscription->plan->forceFill([
+                'erp_commercial' => ['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']],
+            ])->save();
+            $capabilities = $ctx->run(fn (): array => $admission->capabilities($ctx));
+            self::assertSame(['reserved' => 0, 'occupied' => 2], $capabilities['usage']);
+            self::assertSame(0, $capabilities['available']);
+            self::assertFalse($capabilities['can_sell_new']);
+            self::assertSame(['licence_capacity_reached' => ['licence_capacity_reached']], $capabilities['reasons']);
+            try {
+                $admission->assertCommand($ctx, 'contract.create');
+                self::fail('A lowered capacity must block new sales while occupied grants remain.');
+            } catch (HttpException $exception) {
+                self::assertSame(409, $exception->getStatusCode());
+            }
+        });
+    }
+
     public function test_draft_contract_does_not_consume_a_licence(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']]);
@@ -150,7 +182,7 @@ class LicenceAllocationTest extends OfficeErpCommercialTestCase
             fn (): array => app(OfficeErpAdmission::class)->capabilities($ctx),
         ));
 
-        self::assertSame(0, $capabilities['reserved']);
-        self::assertSame(0, $capabilities['occupied']);
+        self::assertSame(0, $capabilities['usage']['reserved']);
+        self::assertSame(0, $capabilities['usage']['occupied']);
     }
 }

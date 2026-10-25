@@ -50,12 +50,9 @@ final class OfficeErpAdmission
 
                 $counts = $this->usage($ctx);
                 $canRead = $account->status === 'active';
-                $hasMaintenanceTarget = OfficeErpRecords::query($ctx, OfficeErpContract::class)
-                    ->whereIn('agreement_status', ['accepted', 'effective', 'canceled'])
-                    ->exists();
                 $commercialEnabled = (bool) $allowance['enabled'];
                 $subscriptionActive = $subscription?->status === 'active';
-                $canMaintain = $canRead && $hasMaintenanceTarget;
+                $canMaintain = $canRead;
                 $canConfigure = $canRead && $subscriptionActive && $commercialEnabled;
                 $limit = $allowance['licence_limit'];
                 $used = $counts['reserved'] + $counts['occupied'];
@@ -71,9 +68,6 @@ final class OfficeErpAdmission
                 }
                 if (! $hasCapacity) {
                     $reasons[] = 'licence_capacity_reached';
-                }
-                if (! $hasMaintenanceTarget) {
-                    $reasons[] = 'no_accepted_contracts';
                 }
 
                 $identityAllowance = $allowance;
@@ -98,10 +92,12 @@ final class OfficeErpAdmission
                     'can_maintain' => $canMaintain,
                     'can_configure' => $canConfigure,
                     'can_sell_new' => $canSellNew,
-                    'reason_codes' => array_values(array_unique($reasons)),
+                    'reasons' => array_combine(
+                        array_values(array_unique($reasons)),
+                        array_map(static fn (string $reason): array => [$reason], array_values(array_unique($reasons))),
+                    ),
                     'allowance' => $allowance,
-                    'reserved' => $counts['reserved'],
-                    'occupied' => $counts['occupied'],
+                    'usage' => ['reserved' => $counts['reserved'], 'occupied' => $counts['occupied']],
                     'available' => $limit === null ? null : max(0, $limit - $used),
                     'capability_key' => hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR)),
                     'action_classification' => self::ACTION_CLASSIFICATION,
@@ -395,9 +391,7 @@ final class OfficeErpAdmission
     private function isAcceptedMaintenance(string $action, ?OfficeErpContract $contract, ?OfficeErpLicenceAllocation $allocation, OfficeErpExecutionContext $ctx): bool
     {
         if (in_array($action, ['policy.read', 'policy.configure', 'offer.archive', 'report.read'], true)) {
-            return OfficeErpRecords::query($ctx, OfficeErpContract::class)
-                ->whereIn('agreement_status', ['accepted', 'effective', 'canceled'])
-                ->exists();
+            return true;
         }
 
         if ($contract === null) {

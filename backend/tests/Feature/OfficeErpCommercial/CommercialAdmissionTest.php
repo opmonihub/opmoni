@@ -26,8 +26,12 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.can_read', true)
             ->assertJsonPath('data.can_configure', false)
             ->assertJsonPath('data.allowance.enabled', false)
-            ->assertJsonPath('data.reserved', 0)
-            ->assertJsonPath('data.occupied', 0);
+            ->assertJsonPath('data.usage.reserved', 0)
+            ->assertJsonPath('data.usage.occupied', 0)
+            ->assertJsonPath('data.reasons', [
+                'commercial_resale_disabled' => ['commercial_resale_disabled'],
+                'licence_capacity_reached' => ['licence_capacity_reached'],
+            ]);
         self::assertStringContainsString('no-store', (string) $contextResponse->headers->get('Cache-Control'));
         self::assertSame(64, strlen((string) $contextResponse->json('data.capability_key')));
         self::assertContains('owner.accept', $contextResponse->json('data.action_classification.owner_only'));
@@ -71,9 +75,18 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
                 self::assertTrue($capabilitiesAfterLoss['can_maintain']);
                 self::assertFalse($capabilitiesAfterLoss['can_sell_new']);
                 self::assertNotSame($capabilities['capability_key'], $capabilitiesAfterLoss['capability_key']);
-                self::assertContains('commercial_resale_disabled', $capabilitiesAfterLoss['reason_codes']);
+                self::assertSame([
+                    'commercial_resale_disabled' => ['commercial_resale_disabled'],
+                    'licence_capacity_reached' => ['licence_capacity_reached'],
+                ], $capabilitiesAfterLoss['reasons']);
+                Subscription::query()->where('account_id', $ctx->accountId)->update(['status' => 'canceled']);
+                $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
+                $this->actingAs($ctx->actor);
                 $before = $contract->fresh()->getAttributes();
                 $admission->assertCommand($ctx, 'contract.renew', $contract->fresh());
+                $this->postJson('/api/v1/clients', ['name' => 'Cliente bloqueado'])
+                    ->assertForbidden()
+                    ->assertJsonPath('code', 'subscription_inactive');
                 self::assertSame($before, $contract->fresh()->getAttributes());
                 try {
                     $admission->assertCommand($ctx, 'contract.create');
@@ -95,6 +108,25 @@ class CommercialAdmissionTest extends OfficeErpCommercialTestCase
         $this->postJson('/api/v1/clients', ['name' => 'Cliente bloqueado'])
             ->assertForbidden()
             ->assertJsonPath('code', 'subscription_inactive');
+    }
+
+    public function test_account_admin_can_archive_offer_without_any_contract(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $admission = app(OfficeErpAdmission::class);
+
+        $capabilities = $this->withOfficeAccount($ctx, fn (): array => $ctx->run(fn (): array => $admission->capabilities($ctx)));
+        self::assertTrue($capabilities['can_maintain']);
+        $this->withOfficeAccount($ctx, fn () => $admission->assertCommand($ctx, 'offer.archive'));
+
+        $foreign = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $foreignContract = $this->acceptedContract($foreign);
+        try {
+            $this->withOfficeAccount($ctx, fn () => $admission->assertCommand($ctx, 'contract.renew', $foreignContract));
+            self::fail('An office administrator cannot maintain a foreign office contract.');
+        } catch (HttpException $exception) {
+            self::assertSame(404, $exception->getStatusCode());
+        }
     }
 
     public function test_context_restoration_after_admission_exception(): void
