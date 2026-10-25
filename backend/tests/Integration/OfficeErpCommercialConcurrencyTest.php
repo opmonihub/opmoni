@@ -51,7 +51,10 @@ class OfficeErpCommercialConcurrencyTest extends OfficeErpCommercialProcessTestC
         self::assertSame('consumed', OfficeErpOwnerInvitation::query()->findOrFail($invitation['invitation_id'])->status);
         self::assertSame('accepted', DB::table('office_erp_contracts')->where('id', $invitation['contract_id'])->value('agreement_status'));
         self::assertSame('occupied', DB::table('office_erp_licence_allocations')->where('contract_id', $invitation['contract_id'])->value('state'));
-        self::assertSame('pending', ErpSubscription::query()->where('erp_company_id', $results[0]['company_id'])->where('office_erp_contract_id', $invitation['contract_id'])->value('status'));
+        $subscriptions = ErpSubscription::query()->where('erp_company_id', $results[0]['company_id'])->get();
+        self::assertCount(1, $subscriptions);
+        self::assertSame('pending', $subscriptions->sole()->status);
+        self::assertNull($subscriptions->sole()->office_erp_contract_id);
         self::assertSame(1, DB::table('office_erp_commercial_operations')->where('action', 'owner.accept')->where('account_id', $invitation['account_id'])->count());
         self::assertSame(1, DB::table('office_erp_audit_events as audit')->join('office_erp_commercial_operations as operation', 'operation.id', '=', 'audit.operation_id')->where('operation.action', 'owner.accept')->where('operation.account_id', $invitation['account_id'])->count());
     }
