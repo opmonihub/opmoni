@@ -358,7 +358,7 @@ describe('rendered invoice list controls and read states', () => {
     const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
       initialRead: async () => {
         reads++
-        if (reads === 2) throw new Error('Invoice refresh unavailable')
+        if (reads === 2) throw Object.assign(new Error('Invoice refresh unavailable'), { statusCode: 503 })
         return {
           data: [invoice(reads === 1 ? 'Last Confirmed Invoice' : 'Recovered Invoice')],
           meta: { current_page: 1, last_page: 2, per_page: 25, total: 26 }
@@ -436,6 +436,34 @@ describe('rendered invoice list controls and read states', () => {
       assert.doesNotMatch(text(page.root), /Protected Invoice|última consulta confirmada/i)
     })
   }
+
+  it('discards confirmed invoice content when the server rejects the account context', async (t) => {
+    let reads = 0
+    const page = mountCaller('pages/gestao-erp/faturas/index.vue', {
+      initialRead: async () => {
+        reads++
+        if (reads > 1) {
+          throw Object.assign(new Error('The selected account changed'), {
+            statusCode: 409,
+            data: { code: 'account_context_changed' }
+          })
+        }
+        return { data: [invoice('Protected Invoice')], meta: { current_page: 1, last_page: 2, per_page: 25, total: 26 } }
+      },
+      currentRead: async () => ({ data: [invoice('Other Authority Invoice')], meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 } })
+    })
+    t.after(page.stop)
+    await settle()
+    assert.match(text(page.root), /Protected Invoice/)
+
+    const refresh = find(page.root, node => node.tag === 'button' && text(node).includes('Atualizar'))
+    assert.ok(refresh)
+    ;(refresh.props.onClick as () => void)()
+    await settle()
+
+    assert.match(text(page.root), /The selected account changed/)
+    assert.doesNotMatch(text(page.root), /Protected Invoice|26 faturas|última consulta confirmada/i)
+  })
 
   it('sends the actual search, status, date and pagination controls as server filters', async (t) => {
     const page = mountCaller('pages/gestao-erp/faturas/index.vue', {

@@ -51,6 +51,20 @@ function clearConfirmedResults() {
   confirmedEmpty.value = false
 }
 
+function isAccountContextChanged(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const record = error as { data?: unknown, response?: unknown }
+  const response = typeof record.response === 'object' && record.response !== null
+    ? record.response as { _data?: unknown, data?: unknown }
+    : null
+  const responseData = record.data ?? response?._data ?? response?.data
+  const data = typeof responseData === 'object' && responseData !== null && '_data' in responseData
+    ? (responseData as { _data?: unknown })._data
+    : responseData
+  if (typeof data !== 'object' || data === null) return false
+  return (data as { code?: unknown }).code === 'account_context_changed'
+}
+
 async function loadInvoices() {
   const request = ++generation
   const stamp = identity.value
@@ -84,7 +98,8 @@ async function loadInvoices() {
     confirmedQueryKey.value = requestedQueryKey
   } catch (error) {
     if (request === generation && stamp === identity.value) {
-      if ([401, 403].includes(apiStatus(error) ?? 0)) clearConfirmedResults()
+      const statusCode = apiStatus(error)
+      if ([401, 403].includes(statusCode ?? 0) || (statusCode === 409 && isAccountContextChanged(error))) clearConfirmedResults()
       loadError.value = apiErrorMessage(error) ?? (error instanceof Error ? error.message : 'Não foi possível consultar faturas.')
     }
   } finally {
