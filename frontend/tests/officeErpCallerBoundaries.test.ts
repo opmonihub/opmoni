@@ -365,9 +365,13 @@ describe('rendered invoice list controls and read states', () => {
     const update = (node: HostNode, value: string) => (node.props.onInput as (event: { target: { value: string } }) => void)({ target: { value } })
     update(input('Buscar fatura'), 'NF 41')
     await settle()
-    update(input('Data inicial da fatura'), '2026-10-01')
+    update(input('Emissão de'), '2026-10-01')
     await settle()
-    update(input('Data final da fatura'), '2026-10-31')
+    update(input('Emissão até'), '2026-10-31')
+    await settle()
+    update(input('Vencimento de'), '2026-11-01')
+    await settle()
+    update(input('Vencimento até'), '2026-11-30')
     await settle()
     const status = find(page.root, node => node.tag === 'select' && node.props['aria-label'] === 'Filtrar situação')
     assert.ok(status)
@@ -385,7 +389,9 @@ describe('rendered invoice list controls and read states', () => {
       q: 'NF 41',
       document_status: 'issued',
       from_on: '2026-10-01',
-      to_on: '2026-10-31'
+      to_on: '2026-10-31',
+      due_from: '2026-11-01',
+      due_to: '2026-11-30'
     })
     assert.match(text(page.root), /Current Invoice/)
   })
@@ -413,7 +419,9 @@ describe('rendered invoice list controls and read states', () => {
     assert.match(text(page.root), /Nenhuma fatura encontrada/)
     assert.doesNotMatch(text(page.root), /Invoice service unavailable/)
 
-    ;(retry.props.onClick as () => void)()
+    const search = find(page.root, node => node.tag === 'input' && node.props['aria-label'] === 'Buscar fatura')
+    assert.ok(search)
+    ;(search.props.onInput as (event: { target: { value: string } }) => void)({ target: { value: 'FAT-41' } })
     await settle()
     assert.match(text(page.root), /Current Invoice/)
     assert.doesNotMatch(text(page.root), /Nenhuma fatura encontrada|Invoice service unavailable/)
