@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpOperationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpSalesPlanController;
@@ -11,6 +13,11 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->group(function (): void {
     Route::get('/context', OfficeErpContextController::class)->name('office-erp-commercial.context');
     Route::get('/operations/{key}', OfficeErpOperationController::class)->name('office-erp-commercial.operations.lookup');
+    Route::get('/clients', [OfficeErpClientController::class, 'index'])->name('office-erp-commercial.clients.index');
+    Route::post('/clients/{client}/onboarding-preview', [OfficeErpClientController::class, 'preview'])->whereNumber('client')->name('office-erp-commercial.clients.preview');
+    Route::post('/clients/{client}/invitations', [OfficeErpInvitationController::class, 'store'])->whereNumber('client')->name('office-erp-commercial.invitations.store');
+    Route::post('/invitations/{invitation}/revoke', [OfficeErpInvitationController::class, 'revoke'])->whereNumber('invitation')->name('office-erp-commercial.invitations.revoke');
+    Route::post('/invitations/{invitation}/reissue', [OfficeErpInvitationController::class, 'reissue'])->whereNumber('invitation')->name('office-erp-commercial.invitations.reissue');
     Route::get('/invoices', [OfficeErpInvoiceController::class, 'index'])->name('office-erp-commercial.invoices.index');
     Route::post('/invoices', [OfficeErpInvoiceController::class, 'store'])->name('office-erp-commercial.invoices.store');
     Route::get('/invoices/{invoice}', [OfficeErpInvoiceController::class, 'show'])->whereNumber('invoice')->name('office-erp-commercial.invoices.show');

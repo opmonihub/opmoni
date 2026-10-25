@@ -6,9 +6,7 @@ use App\Erp\Commercial\OfficeErpAdmission;
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpOperations;
 use App\Erp\Commercial\OfficeErpOwnerInvitations;
-use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
-use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
-use App\Http\Middleware\ResolveOfficeErpCommercial;
+use App\Models\AccountMembership;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpAuditEvent;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
@@ -21,27 +19,11 @@ use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\OfficeErpCommercialTestCase;
 
 class OwnerInvitationTest extends OfficeErpCommercialTestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        Route::middleware(['web', 'auth', ResolveOfficeErpCommercial::class])
-            ->prefix('api/v1/erp-commercial')
-            ->group(function (): void {
-                Route::get('/clients', [OfficeErpClientController::class, 'index']);
-                Route::post('/clients/{client}/onboarding-preview', [OfficeErpClientController::class, 'preview'])->whereNumber('client');
-                Route::post('/clients/{client}/invitations', [OfficeErpInvitationController::class, 'store'])->whereNumber('client');
-                Route::post('/invitations/{invitation}/revoke', [OfficeErpInvitationController::class, 'revoke'])->whereNumber('invitation');
-                Route::post('/invitations/{invitation}/reissue', [OfficeErpInvitationController::class, 'reissue'])->whereNumber('invitation');
-            });
-    }
-
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();
@@ -114,20 +96,22 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         self::assertStringNotContainsString('inativa', json_encode([$firstPage, $secondPage], JSON_THROW_ON_ERROR));
     }
 
-    public function test_temporary_http_routes_exercise_client_preview_issue_reissue_and_revoke_controllers(): void
+    public function test_production_http_routes_exercise_client_preview_issue_reissue_revoke_and_operation_lookup(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
         $client = $this->clientFor($ctx);
         $revision = $this->publishedRevision($ctx);
 
-        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/clients?q='.$client->name)
+        $clients = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/clients?q='.$client->name)
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $client->id);
-        $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/clients/'.$client->id.'/onboarding-preview', [
+        self::assertStringContainsString('no-store', (string) $clients->headers->get('Cache-Control'));
+        $preview = $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/clients/'.$client->id.'/onboarding-preview', [
             'revision_id' => $revision->id,
             'owner' => $this->owner(),
         ])->assertOk()->assertJsonPath('data.offer.revision_id', $revision->id);
+        self::assertStringContainsString('no-store', (string) $preview->headers->get('Cache-Control'));
 
         $issued = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-issue')
             ->postJson('/api/v1/erp-commercial/clients/'.$client->id.'/invitations', [
@@ -139,15 +123,58 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         self::assertStringContainsString('no-store', (string) $issued->headers->get('Cache-Control'));
         $issuedOperation = OfficeErpCommercialOperation::query()->where('idempotency_key', 'controller-issue')->firstOrFail();
         self::assertSame($issuedOperation->outcome['data'], array_intersect_key($issued->json('data'), array_flip(['invitation_id', 'expires_at', 'status'])));
+        $issueLookup = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/controller-issue', ['Idempotency-Key' => 'controller-issue'])
+            ->assertOk()->assertExactJson($issuedOperation->outcome);
+        self::assertStringContainsString('no-store', (string) $issueLookup->headers->get('Cache-Control'));
+        self::assertArrayNotHasKey('url', $issueLookup->json('data'));
 
         $reissued = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-reissue')
             ->postJson('/api/v1/erp-commercial/invitations/'.$invitationId.'/reissue')
             ->assertOk()->assertJsonPath('data.status', 'pending');
+        self::assertStringContainsString('no-store', (string) $reissued->headers->get('Cache-Control'));
+        $reissueOperation = OfficeErpCommercialOperation::query()->where('idempotency_key', 'controller-reissue')->firstOrFail();
+        $reissueLookup = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/controller-reissue', ['Idempotency-Key' => 'controller-reissue'])
+            ->assertOk()->assertExactJson($reissueOperation->outcome);
+        self::assertStringContainsString('no-store', (string) $reissueLookup->headers->get('Cache-Control'));
         $revoked = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'controller-revoke')
             ->postJson('/api/v1/erp-commercial/invitations/'.$reissued->json('data.invitation_id').'/revoke', ['reason' => 'Requested by the invited owner.'])
             ->assertOk()->assertJsonPath('data.status', 'revoked');
         $revokedOperation = OfficeErpCommercialOperation::query()->where('idempotency_key', 'controller-revoke')->firstOrFail();
         self::assertSame($revokedOperation->outcome, $revoked->json());
+        $revokeLookup = $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/controller-revoke', ['Idempotency-Key' => 'controller-revoke'])
+            ->assertOk()->assertExactJson($revoked->json());
+        self::assertStringContainsString('no-store', (string) $revokeLookup->headers->get('Cache-Control'));
+    }
+
+    public function test_production_invitation_routes_hide_foreign_clients_and_deny_non_admin_actors(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $foreignCtx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $foreignClient = $this->clientFor($foreignCtx);
+        $revision = $this->publishedRevision($ctx);
+        $foreignRevision = $this->publishedRevision($foreignCtx);
+        $foreignInvitation = $this->asContext($foreignCtx, fn (OfficeErpOwnerInvitations $service): array => $service->issue(
+            $foreignCtx,
+            $foreignClient->id,
+            $foreignRevision->id,
+            $this->owner(),
+            'foreign-route-operation',
+        ));
+
+        $this->asOffice($ctx)->postJson('/api/v1/erp-commercial/clients/'.$foreignClient->id.'/onboarding-preview', [
+            'revision_id' => $revision->id,
+            'owner' => $this->owner(),
+        ])->assertNotFound();
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/foreign-route-operation', [
+            'Idempotency-Key' => 'foreign-route-operation',
+        ])->assertNotFound();
+        self::assertGreaterThan(0, $foreignInvitation['invitation_id']);
+        self::assertSame(0, OfficeErpContract::query()->where('account_id', $ctx->accountId)->count());
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)->count());
+
+        $membership = AccountMembership::query()->where('account_id', $ctx->accountId)->where('user_id', $ctx->actor->id)->firstOrFail();
+        $membership->update(['role' => 'operador']);
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/clients')->assertForbidden();
     }
 
     public function test_issue_creates_seven_day_secret_hash_snapshot_and_one_reservation(): void
@@ -352,16 +379,19 @@ class OwnerInvitationTest extends OfficeErpCommercialTestCase
         $issued = $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->issue($ctx, $client->id, $revision->id, $this->owner(), 'invite-expiry-attribution'));
         CarbonImmutable::setTestNow(CarbonImmutable::parse($issued['expires_at'])->addSecond());
 
-        $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->clients($ctx));
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/clients')->assertOk();
         $invitation = OfficeErpOwnerInvitation::query()->findOrFail($issued['invitation_id']);
         self::assertSame('expired', $invitation->status);
         self::assertSame('released', OfficeErpLicenceAllocation::query()->firstOrFail()->state);
         self::assertSame(1, OfficeErpCommercialOperation::query()->where('action', 'invitation.expire')->count());
         self::assertSame(1, OfficeErpAuditEvent::query()->where('action', 'invitation.expire')->count());
+        $expirationKey = OfficeErpCommercialOperation::query()->where('action', 'invitation.expire')->firstOrFail()->idempotency_key;
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/operations/'.$expirationKey, ['Idempotency-Key' => $expirationKey])
+            ->assertNotFound();
 
-        $this->asContext($ctx, fn (): array => app(OfficeErpOwnerInvitations::class)->clients($ctx));
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/clients')->assertOk();
         self::assertSame(1, OfficeErpCommercialOperation::query()->where('action', 'invitation.expire')->count());
-        self::assertSame(0, $this->asContext($ctx, fn (): array => app(OfficeErpAdmission::class)->capabilities($ctx))['usage']['reserved']);
+        self::assertSame('released', OfficeErpLicenceAllocation::query()->firstOrFail()->state);
     }
 
     public function test_invitation_expiration_is_inclusive_at_the_exact_expiry_instant(): void
