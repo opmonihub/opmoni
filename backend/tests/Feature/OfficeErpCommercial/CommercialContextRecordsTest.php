@@ -10,6 +10,7 @@ use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Support\CurrentAccount;
 use App\Tenant\CurrentTenant;
@@ -22,6 +23,27 @@ use Tests\OfficeErpCommercialTestCase;
 
 class CommercialContextRecordsTest extends OfficeErpCommercialTestCase
 {
+    public function test_office_context_configures_existing_observer_subscription_for_allowance(): void
+    {
+        $allowance = ['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases']];
+        $request = request();
+        $hadPrevious = $request->attributes->has(CurrentAccount::class);
+        $previous = $request->attributes->get(CurrentAccount::class);
+
+        $ctx = $this->officeContext($allowance);
+        $subscriptions = Subscription::query()->where('account_id', $ctx->accountId)->get();
+
+        $this->assertSame($hadPrevious, $request->attributes->has(CurrentAccount::class));
+        if ($hadPrevious) {
+            $this->assertSame($previous, $request->attributes->get(CurrentAccount::class));
+        }
+        $ctx->assertVerified();
+        $this->assertSame('office_admin', $ctx->actorKind);
+        $this->assertCount(1, $subscriptions);
+        $this->assertSame('active', $subscriptions->sole()->status);
+        $this->assertSame($allowance, $subscriptions->sole()->plan->erp_commercial);
+    }
+
     public function test_office_admin_context_requires_selected_account_for_factory_and_constructor(): void
     {
         $ctx = $this->officeContext();

@@ -11,7 +11,6 @@ use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Plan;
-use App\Models\Subscription;
 use App\Models\User;
 use App\Support\CurrentAccount;
 use Closure;
@@ -61,7 +60,8 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
         $account = Account::factory()->create(['status' => 'active']);
         if ($allowance !== []) {
             $plan = Plan::factory()->create(['erp_commercial' => $allowance]);
-            Subscription::factory()->create(['account_id' => $account->id, 'plan_id' => $plan->id, 'status' => 'active']);
+            $subscription = $account->subscription()->firstOrFail();
+            $subscription->forceFill(['plan_id' => $plan->id, 'status' => 'active'])->save();
         }
 
         return $this->officeContextFor($account);
