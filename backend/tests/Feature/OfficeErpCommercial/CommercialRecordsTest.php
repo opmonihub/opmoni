@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\OfficeErpCommercial;
 
+use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
@@ -12,13 +13,14 @@ use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use App\Models\Erp\ErpCompany;
 use App\Models\Erp\ErpPlan;
 use App\Models\Erp\ErpSubscription;
+use App\Models\User;
 use App\Tenant\CurrentTenant;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Tests\OfficeErpCommercialTestCase;
-use Throwable;
 
 class CommercialRecordsTest extends OfficeErpCommercialTestCase
 {
@@ -50,36 +52,32 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
         self::assertTrue($rejectedDeclaredAccount);
 
         $foreignClient = Client::factory()->company()->create(['account_id' => $foreign->accountId]);
-        $crossAccountRelationshipCount = OfficeErpContract::query()
+        $this->assertDatabaseConstraintRejected(function () use ($ctx, $foreignClient): void {
+            OfficeErpContract::factory()->create([
+                'account_id' => $ctx->accountId,
+                'client_id' => $foreignClient->id,
+            ]);
+        });
+        self::assertSame(0, OfficeErpContract::query()
             ->where('account_id', $ctx->accountId)
             ->where('client_id', $foreignClient->id)
-            ->count();
-        if ($crossAccountRelationshipCount === 0) {
-            try {
-                OfficeErpContract::factory()->create([
-                    'account_id' => $ctx->accountId,
-                    'client_id' => $foreignClient->id,
-                ]);
-                $crossAccountRelationshipCount = 1;
-            } catch (QueryException) {
-                $crossAccountRelationshipCount = OfficeErpContract::query()
-                    ->where('account_id', $ctx->accountId)
-                    ->where('client_id', $foreignClient->id)
-                    ->count();
-            }
-        }
-
-        self::assertSame(0, $crossAccountRelationshipCount);
+            ->count());
     }
 
-    public function test_owner_and_system_records_restore_tenant_context_after_an_exception(): void
+    public function test_office_admin_owner_and_system_records_restore_tenant_context_after_an_exception(): void
     {
         $previousTenantId = app(CurrentTenant::class)->accountId;
         $ctx = $this->officeContext();
+        $owner = OfficeErpExecutionContext::owner(
+            $ctx->account,
+            User::factory()->create(),
+            'commercial-test-owner:'.$ctx->accountId,
+            'verified-invitation:'.$ctx->accountId,
+        );
         $system = $this->systemContext($ctx->account, 'contract:987');
         $records = app(OfficeErpRecords::class);
 
-        foreach ([$ctx, $system] as $context) {
+        foreach ([$ctx, $owner, $system] as $context) {
             $seenTenant = null;
             OfficeErpSalesPlan::creating(function () use (&$seenTenant): void {
                 $seenTenant = app(CurrentTenant::class)->accountId;
@@ -144,16 +142,16 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
         ]);
         self::assertNull($first->expires_at);
 
-        self::assertTrue($this->databaseRejected(function () use ($ctx, $firstContract, $otherCompany): void {
+        $this->assertDatabaseConstraintRejected(function () use ($ctx, $firstContract, $otherCompany): void {
             OfficeErpLicenceAllocation::factory()->create([
                 'account_id' => $ctx->accountId,
                 'contract_id' => $firstContract->id,
                 'erp_company_id' => $otherCompany->id,
                 'state' => 'reserved',
             ]);
-        }));
+        });
 
-        self::assertTrue($this->databaseRejected(function () use ($ctx, $secondContract, $company): void {
+        $this->assertDatabaseConstraintRejected(function () use ($ctx, $secondContract, $company): void {
             OfficeErpLicenceAllocation::factory()->create([
                 'account_id' => $ctx->accountId,
                 'contract_id' => $secondContract->id,
@@ -161,17 +159,17 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
                 'state' => 'reserved',
                 'expires_at' => now()->addDays(7),
             ]);
-        }));
+        });
 
         $first->forceFill(['state' => 'released', 'released_at' => now()])->save();
-        self::assertTrue($this->databaseRejected(function () use ($ctx, $firstContract, $otherCompany): void {
+        $this->assertDatabaseConstraintRejected(function () use ($ctx, $firstContract, $otherCompany): void {
             OfficeErpLicenceAllocation::factory()->create([
                 'account_id' => $ctx->accountId,
                 'contract_id' => $firstContract->id,
                 'erp_company_id' => $otherCompany->id,
                 'state' => 'reserved',
             ]);
-        }));
+        });
 
         $replacement = OfficeErpLicenceAllocation::factory()->create([
             'account_id' => $ctx->accountId,
@@ -206,9 +204,9 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
             'erp_plan_id' => $plan->id,
         ]);
 
-        self::assertTrue($this->databaseRejected(function () use ($otherSubscription, $contract): void {
+        $this->assertDatabaseConstraintRejected(function () use ($otherSubscription, $contract): void {
             $otherSubscription->forceFill(['office_erp_contract_id' => $contract->id])->save();
-        }));
+        });
         self::assertNull($otherSubscription->refresh()->office_erp_contract_id);
         self::assertSame(1, ErpSubscription::query()->whereKey($otherSubscription->id)->count());
     }
@@ -223,10 +221,18 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
             'sales_plan_id' => $otherPlan->id,
         ]);
 
-        self::assertTrue($this->databaseRejected(function () use ($plan, $foreignRevision): void {
+        $this->assertDatabaseConstraintRejected(function () use ($plan, $foreignRevision): void {
             $plan->forceFill(['current_revision_id' => $foreignRevision->id])->save();
-        }));
+        });
         self::assertNull($plan->refresh()->current_revision_id);
+    }
+
+    public function test_database_constraint_assertion_does_not_swallow_programming_errors(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->assertDatabaseConstraintRejected(static function (): never {
+            throw new RuntimeException('Unexpected programming failure.');
+        });
     }
 
     public function test_commercial_operation_keeps_the_canonical_payload_for_recovery(): void
@@ -243,14 +249,21 @@ class CommercialRecordsTest extends OfficeErpCommercialTestCase
         self::assertSame($payload, OfficeErpCommercialOperation::query()->findOrFail($operation->id)->payload);
     }
 
-    private function databaseRejected(callable $callback): bool
+    private function assertDatabaseConstraintRejected(callable $callback): void
     {
         try {
-            $callback();
-        } catch (QueryException|Throwable) {
-            return true;
+            DB::transaction(static fn (): mixed => $callback());
+        } catch (QueryException $exception) {
+            $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            $isConstraintViolation = str_starts_with($sqlState, '23')
+                || (DB::connection()->getDriverName() === 'sqlite' && in_array($driverCode, [19, 787, 1555, 2067], true));
+
+            self::assertTrue($isConstraintViolation, 'Expected a database integrity-constraint violation, got SQLSTATE '.$sqlState.'.');
+
+            return;
         }
 
-        return false;
+        self::fail('Expected a database integrity-constraint violation.');
     }
 }
