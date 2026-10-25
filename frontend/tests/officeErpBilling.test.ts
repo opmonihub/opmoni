@@ -862,6 +862,19 @@ describe('office ERP billing form components', () => {
     t.after(() => mounted.app.unmount())
     await settlePage()
 
+    const statusFilter = mounted.find(node => node.tag === 'select' && node.children.some(option => mounted.text(option).trim() === 'Todas'))
+    assert.ok(statusFilter, 'the invoice status filter is rendered')
+    assert.deepEqual(statusFilter.children.map(option => option.props.value), ['all', 'draft', 'issued', 'canceled'])
+    const initialRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
+    assert.equal((initialRequest?.options?.params as Record<string, unknown> | undefined)?.status, undefined)
+
+    ;(statusFilter.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'issued' } })
+    await settlePage()
+    const issuedRequest = mounted.calls.filter(call => call.path === '/erp-commercial/invoices').at(-1)
+    assert.equal((issuedRequest?.options?.params as Record<string, unknown> | undefined)?.status, 'issued')
+    ;(statusFilter.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'all' } })
+    await settlePage()
+
     const nextPage = mounted.find(node => node.tag === 'button' && node.props['aria-label'] === 'Próxima página')
     assert.ok(nextPage)
     ;(nextPage.props.onClick as () => void)()

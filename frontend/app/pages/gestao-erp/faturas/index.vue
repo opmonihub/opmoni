@@ -23,7 +23,7 @@ const { user, currentAccount } = useAuth()
 const sessionGeneration = useState('access-session-generation', () => 0)
 const context = useOfficeErpContext()
 const query = ref('')
-const status = ref('')
+const status = ref<'all' | 'draft' | 'issued' | 'canceled'>('all')
 const from = ref('')
 const to = ref('')
 const dueFrom = ref('')
@@ -53,7 +53,7 @@ async function loadInvoices() {
     const token = context.capture()
     const params: Record<string, string | number> = { page: page.value, per_page: perPage.value }
     if (query.value.trim()) params.q = query.value.trim()
-    if (status.value) params.document_status = status.value
+    if (status.value !== 'all') params.status = status.value
     if (from.value) params.from_on = from.value
     if (to.value) params.to_on = to.value
     if (dueFrom.value) params.due_from = dueFrom.value
@@ -101,7 +101,7 @@ watch(identity, () => {
           <UInput v-model="query" aria-label="Buscar fatura" placeholder="Número, cliente ou empresa" />
         </UFormField>
         <UFormField label="Situação">
-          <USelect v-model="status" aria-label="Filtrar situação" :items="[{ label: 'Todas', value: '' }, { label: 'Rascunho', value: 'draft' }, { label: 'Emitida', value: 'issued' }, { label: 'Cancelada', value: 'canceled' }]" />
+          <USelect v-model="status" aria-label="Filtrar situação" :items="[{ label: 'Todas', value: 'all' }, { label: 'Rascunho', value: 'draft' }, { label: 'Emitida', value: 'issued' }, { label: 'Cancelada', value: 'canceled' }]" />
         </UFormField>
         <UFormField label="Emissão de">
           <UInput v-model="from" type="date" aria-label="Emissão de" />
