@@ -188,13 +188,23 @@ class RecurringInvoiceTest extends OfficeErpCommercialTestCase
         ));
         $this->selectBusinessAccount($ctx->actor, $ctx->accountId);
         $this->actingAs($ctx->actor);
+        CarbonImmutable::setTestNow('2026-02-28 13:00:00');
+        app(OfficeErpRecurringBilling::class)->generate((int) $contract->id, CarbonImmutable::now('America/Sao_Paulo'));
+
         $this->getJson('/api/v1/erp-commercial/invoices/'.$invoice->id)
             ->assertOk()
             ->assertJsonPath('data.id', (int) $invoice->id)
-            ->assertJsonPath('data.document_status', 'issued');
+            ->assertJsonPath('data.document_status', 'issued')
+            ->assertJsonPath('data.balance.outstanding', '100.00')
+            ->assertJsonPath('data.balance.settlement_status', 'unpaid');
 
-        CarbonImmutable::setTestNow('2026-02-28 13:00:00');
-        app(OfficeErpRecurringBilling::class)->generate((int) $contract->id, CarbonImmutable::now('America/Sao_Paulo'));
+        $this->postJson('/api/v1/erp-commercial/receipts', [
+            'amount' => '10.00',
+            'received_on' => CarbonImmutable::now('America/Sao_Paulo')->toDateString(),
+            'allocations' => [['invoice_id' => (int) $invoice->id, 'amount' => '10.00']],
+        ], ['Idempotency-Key' => 'receipt-after-effective-contract-cancellation'])
+            ->assertCreated()
+            ->assertJsonPath('data.current_balances.0.balance.outstanding', '90.00');
 
         self::assertSame('canceled', $contract->fresh()->agreement_status);
         self::assertSame('released', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
@@ -205,6 +215,10 @@ class RecurringInvoiceTest extends OfficeErpCommercialTestCase
         self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
         self::assertSame('issued', $invoice->fresh()->document_status);
         self::assertSame('100.00', (string) $invoice->fresh()->original_total);
+        $afterReceipt = $this->getJson('/api/v1/erp-commercial/invoices/'.$invoice->id)->assertOk();
+        self::assertSame('90.00', $afterReceipt->json('data.balance.outstanding'));
+        self::assertSame('partial', $afterReceipt->json('data.balance.settlement_status'));
+        self::assertSame('issued', $afterReceipt->json('data.document_status'));
     }
 
     public function test_scheduled_tick_applies_grace_and_period_end_cancellation_without_new_period(): void

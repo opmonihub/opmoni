@@ -109,22 +109,25 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
 
     public function test_platform_module_removal_preserves_grants_and_blocks_new_forbidden_module(): void
     {
-        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 1, 'module_keys' => ['purchases', 'stock_transfers']]);
-        [$contract, $company, $subscription] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
-        $subscription->forceFill(['office_erp_contract_id' => $contract->id])->save();
-        $revisionId = (int) $contract->current_revision_id;
-        $revisionCount = DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->count();
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases', 'stock_transfers']]);
+        [$purchasesContract, , $purchasesSubscription] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['purchases']]);
+        [$stockContract, $stockCompany, $stockSubscription] = $this->acceptedOccupiedContract($ctx, 'effective', ['module_keys' => ['stock_transfers']]);
+        $purchasesSubscription->forceFill(['office_erp_contract_id' => $purchasesContract->id])->save();
+        $stockSubscription->forceFill(['office_erp_contract_id' => $stockContract->id])->save();
+        $stockRevisionId = (int) $stockContract->current_revision_id;
+        $stockRevisionCount = DB::table('office_erp_contract_revisions')->where('contract_id', $stockContract->id)->count();
         $plan = $ctx->account->subscription->plan;
         $allowance = $plan->erp_commercial;
-        $allowance['module_keys'] = ['purchases'];
+        $allowance['module_keys'] = ['stock_transfers'];
         $plan->forceFill(['erp_commercial' => $allowance])->save();
+        self::assertSame(['stock_transfers'], $plan->fresh()->erp_commercial['module_keys']);
 
         $this->withoutExceptionHandling();
         try {
             $this->withOfficeAccount($ctx, fn () => app(OfficeErpContracts::class)->amend(
                 $ctx,
-                $contract,
-                ['module_keys' => ['purchases', 'stock_transfers']],
+                $stockContract,
+                ['module_keys' => ['stock_transfers', 'purchases']],
                 'module-removed-from-platform-plan',
             ));
             self::fail('A module removed from the current platform allowance cannot be added to an existing contract.');
@@ -132,13 +135,17 @@ class ContractLifecycleTest extends OfficeErpCommercialTestCase
             self::assertSame(403, $exception->getStatusCode());
         }
 
-        self::assertSame($revisionId, (int) $contract->fresh()->current_revision_id);
-        self::assertSame($revisionCount, DB::table('office_erp_contract_revisions')->where('contract_id', $contract->id)->count());
-        self::assertSame(['purchases'], $contract->fresh()->currentRevision->module_keys);
-        self::assertSame('active', $subscription->fresh()->status);
-        self::assertSame((int) $contract->id, (int) $subscription->fresh()->office_erp_contract_id);
-        self::assertSame((int) $company->id, (int) $contract->fresh()->erp_company_id);
-        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $contract->id)->value('state'));
+        self::assertSame($stockRevisionId, (int) $stockContract->fresh()->current_revision_id);
+        self::assertSame($stockRevisionCount, DB::table('office_erp_contract_revisions')->where('contract_id', $stockContract->id)->count());
+        self::assertSame(['stock_transfers'], $stockContract->fresh()->currentRevision->module_keys);
+        self::assertSame(['purchases'], $purchasesContract->fresh()->currentRevision->module_keys);
+        self::assertSame('active', $purchasesSubscription->fresh()->status);
+        self::assertSame((int) $purchasesContract->id, (int) $purchasesSubscription->fresh()->office_erp_contract_id);
+        self::assertSame('active', $stockSubscription->fresh()->status);
+        self::assertSame((int) $stockContract->id, (int) $stockSubscription->fresh()->office_erp_contract_id);
+        self::assertSame((int) $stockCompany->id, (int) $stockContract->fresh()->erp_company_id);
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $purchasesContract->id)->value('state'));
+        self::assertSame('occupied', OfficeErpLicenceAllocation::query()->where('contract_id', $stockContract->id)->value('state'));
     }
 
     public function test_suspended_account_cannot_use_real_contract_maintenance_route(): void
