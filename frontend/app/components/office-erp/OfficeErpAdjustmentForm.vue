@@ -82,6 +82,7 @@ function submit() {
         type="button"
         variant="outline"
         label="Consultar operação"
+        :disabled="busy"
         @click="emit('recover', recoveryKey!)"
       />
     </div>

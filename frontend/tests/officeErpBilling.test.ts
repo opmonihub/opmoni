@@ -157,22 +157,109 @@ describe('office ERP billing form components', () => {
     assert.match(mounted.text(mounted.root), /excede o saldo em aberto/i)
   })
 
+  it('attaches indexed server allocation errors to the invoice in payload order after reverse selection', async (t) => {
+    const submitted: unknown[] = []
+    const mounted = mountComponent('OfficeErpReceiptModal', {
+      open: true,
+      invoices: [{ id: 7, label: 'Fatura 7', outstanding: '100.00' }, { id: 8, label: 'Fatura 8', outstanding: '100.00' }],
+      onSubmit: (payload: unknown) => submitted.push(payload)
+    })
+    t.after(() => mounted.app.unmount())
+    for (const id of ['8', '7']) {
+      const choice = mounted.find(node => node.props['data-choice'] === id)
+      assert.ok(choice)
+      ;(choice.props.onClick as () => void)()
+      await Vue.nextTick()
+    }
+    input(mounted, 'Alocação para fatura 7', '40.00')
+    input(mounted, 'Alocação para fatura 8', '30.00')
+    const form = mounted.find(node => node.tag === 'form')
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    assert.deepEqual((submitted[0] as { allocations: unknown[] }).allocations, [
+      { invoice_id: 7, amount: '40.00' }, { invoice_id: 8, amount: '30.00' }
+    ])
+
+    mounted.props.errors = { 'allocations.0.amount': ['Saldo atualizado da fatura 7.'] }
+    await Vue.nextTick()
+    const invoice7 = mounted.find(node => node.tag === 'label' && node.props['data-field'] === 'allocations.7.amount')
+    const invoice8 = mounted.find(node => node.tag === 'label' && node.props['data-field'] === 'allocations.8.amount')
+    assert.ok(invoice7)
+    assert.ok(invoice8)
+    assert.match(mounted.text(invoice7), /Saldo atualizado da fatura 7/)
+    assert.doesNotMatch(mounted.text(invoice8), /Saldo atualizado da fatura 7/)
+  })
+
+  it('emits a grouped amount above the safe integer range unchanged from the real receipt SFC', async (t) => {
+    const submitted: unknown[] = []
+    const mounted = mountComponent('OfficeErpReceiptModal', {
+      open: true,
+      invoices: [{ id: 81, label: 'Fatura 81', outstanding: '9007199254740994.00' }],
+      onSubmit: (payload: unknown) => submitted.push(payload)
+    })
+    t.after(() => mounted.app.unmount())
+    const choice = mounted.find(node => node.props['data-choice'] === '81')
+    assert.ok(choice)
+    ;(choice.props.onClick as () => void)()
+    await Vue.nextTick()
+    const amount = input(mounted, 'Alocação para fatura 81', '9.007.199.254.740.993,01')
+    await Vue.nextTick()
+    assert.equal(amount.props.value, '9.007.199.254.740.993,01')
+    const form = mounted.find(node => node.tag === 'form')
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    assert.equal((submitted[0] as { amount: string }).amount, '9007199254740993.01')
+    assert.deepEqual((submitted[0] as { allocations: unknown[] }).allocations, [{ invoice_id: 81, amount: '9007199254740993.01' }])
+  })
+
   it('keeps recovery available while a receipt command is unknown and blocks resubmission', async (t) => {
     const recovered: string[] = []
     const submitted: unknown[] = []
     const mounted = mountComponent('OfficeErpReceiptModal', {
-      open: true, busy: false, unknown: true, recoveryKey: '11111111-2222-4333-8444-555555555555', invoices: [],
+      open: true, busy: false, pending: true, unknown: true, recoveryKey: '11111111-2222-4333-8444-555555555555', invoices: [],
       onRecover: (key: string) => recovered.push(key), onSubmit: (payload: unknown) => submitted.push(payload)
     })
     t.after(() => mounted.app.unmount())
     const recover = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Consultar operação'))
     assert.ok(recover)
-    assert.equal(recover.props.disabled, undefined)
+    assert.equal(recover.props.disabled, false)
+    mounted.props.busy = true
+    await Vue.nextTick()
+    assert.equal(recover.props.disabled, true, 'a recovery already in progress prevents duplicate clicks')
+    mounted.props.busy = false
+    await Vue.nextTick()
+    assert.equal(recover.props.disabled, false, 'pending and unknown state do not disable recovery')
     ;(recover.props.onClick as () => void)()
     assert.deepEqual(recovered, ['11111111-2222-4333-8444-555555555555'])
     const submit = mounted.find(node => node.tag === 'form')
     assert.equal(submit, undefined, 'unknown command must not render an editable submit form')
     assert.deepEqual(submitted, [])
+  })
+
+  it('disables adjustment and reversal recovery only while a recovery request is busy', async (t) => {
+    const recoveryKey = '11111111-2222-4333-8444-555555555555'
+    const scenarios = [
+      { name: 'OfficeErpAdjustmentForm' as const, props: { direction: 'credit' as const, unknown: true, recoveryKey } },
+      { name: 'OfficeErpReversalModal' as const, props: { open: true, unknown: true, recoveryKey } }
+    ]
+    const mounts: ReturnType<typeof mountComponent>[] = []
+    t.after(() => mounts.forEach(mounted => mounted.app.unmount()))
+
+    for (const scenario of scenarios) {
+      const recovered: string[] = []
+      const mounted = mountComponent(scenario.name, { ...scenario.props, onRecover: (key: string) => recovered.push(key) })
+      mounts.push(mounted)
+      const recover = mounted.find(node => node.tag === 'button' && mounted.text(node).includes('Consultar operação'))
+      assert.ok(recover)
+      assert.equal(recover.props.disabled, false, `${scenario.name} remains recoverable while unknown`)
+      mounted.props.busy = true
+      await Vue.nextTick()
+      assert.equal(recover.props.disabled, true, `${scenario.name} blocks duplicate recovery while busy`)
+      mounted.props.busy = false
+      await Vue.nextTick()
+      ;(recover.props.onClick as () => void)()
+      assert.deepEqual(recovered, [recoveryKey])
+    }
   })
 
   it('validates private proof MIME and 5 MiB size before emitting a separate upload intent', async (t) => {

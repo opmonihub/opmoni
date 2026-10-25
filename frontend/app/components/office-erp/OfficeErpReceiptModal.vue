@@ -62,6 +62,11 @@ const fileError = ref('')
 const locked = computed(() => props.busy || props.pending || props.unknown)
 const selectedInvoices = computed(() => props.invoices.filter(invoice => selectedInvoiceIds.value.includes(String(invoice.id))))
 
+function allocationError(invoiceId: number): string | undefined {
+  const payloadIndex = selectedInvoices.value.findIndex(invoice => invoice.id === invoiceId)
+  return payloadIndex < 0 ? undefined : props.errors[`allocations.${payloadIndex}.amount`]?.[0]
+}
+
 function cents(value: string): bigint {
   const [whole, fraction = '00'] = parseOfficeErpMoney(value).split('.')
   return BigInt(`${whole}${fraction}`)
@@ -182,6 +187,7 @@ function submit() {
           type="button"
           variant="outline"
           label="Consultar operação"
+          :disabled="busy"
           @click="emit('recover', recoveryKey!)"
         />
       </div>
@@ -204,7 +210,7 @@ function submit() {
             :label="`Alocação para fatura ${invoice.id}`"
             :name="`allocations.${invoice.id}.amount`"
             required
-            :error="props.errors[`allocations.${selectedInvoiceIds.indexOf(String(invoice.id))}.amount`]?.[0]"
+            :error="allocationError(invoice.id)"
           >
             <UInput
               v-model="allocationAmounts[String(invoice.id)]"
