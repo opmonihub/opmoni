@@ -10,6 +10,7 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
+use Illuminate\Support\Facades\DB;
 use Tests\OfficeErpCommercialTestCase;
 
 class RetailOfferTest extends OfficeErpCommercialTestCase
@@ -61,6 +62,29 @@ class RetailOfferTest extends OfficeErpCommercialTestCase
             ->assertJsonPath('data.current_revision.price', '9007199254740993.01');
     }
 
+    public function test_large_brl_amount_round_trips_through_postgres_reads_and_storage(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('NUMERIC(20,2) large-value round-trip requires PostgreSQL; SQLite does not preserve this precision.');
+        }
+
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 2, 'module_keys' => ['purchases']]);
+        $created = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'retail-pg-exact')
+            ->postJson('/api/v1/erp-commercial/plans', $this->terms(['price' => '9007199254740993.01', 'published' => true]))
+            ->assertOk();
+        $planId = (int) $created->json('data.id');
+        $revisionId = (int) $created->json('data.current_revision.id');
+
+        $this->assertSame('9007199254740993.01', DB::selectOne(
+            'select price::text as price from office_erp_sales_plan_revisions where id = ?',
+            [$revisionId],
+        )->price);
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/plans/'.$planId)
+            ->assertOk()->assertJsonPath('data.current_revision.price', '9007199254740993.01');
+        $this->asOffice($ctx)->getJson('/api/v1/erp-commercial/plans?q=Plano%20Loja')
+            ->assertOk()->assertJsonPath('data.0.current_revision.price', '9007199254740993.01');
+    }
+
     public function test_invalid_offer_terms_are_rejected_without_effects(): void
     {
         $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 50, 'module_keys' => ['purchases']]);
@@ -110,7 +134,7 @@ class RetailOfferTest extends OfficeErpCommercialTestCase
 
     public function test_foreign_office_plan_detail_and_archive_are_not_found(): void
     {
-        $owner = $this->officeContext(['enabled' => true, 'licence_limit' => 5, 'module_keys' => ['purchases']]);
+        $owner = $this->officeContext();
         $foreign = $this->officeContext(['enabled' => true, 'licence_limit' => 5, 'module_keys' => ['purchases']]);
         $plan = $this->planWithRevision($foreign->accountId, 'Oferta privada');
 
@@ -126,6 +150,9 @@ class RetailOfferTest extends OfficeErpCommercialTestCase
         self::assertStringNotContainsString('Oferta privada', $archive->getContent());
         self::assertNull($plan->fresh()->archived_at);
         self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $owner->accountId)->count());
+        $this->asOffice($owner)->withHeader('Idempotency-Key', 'foreign-revise')
+            ->postJson('/api/v1/erp-commercial/plans/'.$plan->id.'/revisions', $this->terms(['published' => true]))
+            ->assertNotFound();
     }
 
     public function test_revising_offer_keeps_accepted_contract_terms_immutable_and_archive_needs_no_contract(): void
@@ -222,6 +249,23 @@ class RetailOfferTest extends OfficeErpCommercialTestCase
         $this->asOffice($ctx)->withHeader('Idempotency-Key', 'offer-replay')
             ->postJson('/api/v1/erp-commercial/plans', $terms)
             ->assertForbidden();
+        self::assertSame(1, OfficeErpSalesPlan::query()->where('account_id', $ctx->accountId)->count());
+    }
+
+    public function test_published_create_recovery_is_rejected_after_its_offer_is_archived(): void
+    {
+        $ctx = $this->officeContext(['enabled' => true, 'licence_limit' => 10, 'module_keys' => ['purchases']]);
+        $terms = $this->terms(['published' => true]);
+        $created = $this->asOffice($ctx)->withHeader('Idempotency-Key', 'published-create-recovery')
+            ->postJson('/api/v1/erp-commercial/plans', $terms)->assertOk();
+        $planId = (int) $created->json('data.id');
+
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'archive-created-offer')
+            ->postJson('/api/v1/erp-commercial/plans/'.$planId.'/archive', [])->assertOk();
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'published-create-recovery')
+            ->postJson('/api/v1/erp-commercial/plans', $terms)->assertConflict();
+        $this->asOffice($ctx)->withHeader('Idempotency-Key', 'published-create-recovery')
+            ->getJson('/api/v1/erp-commercial/operations/published-create-recovery')->assertConflict();
         self::assertSame(1, OfficeErpSalesPlan::query()->where('account_id', $ctx->accountId)->count());
     }
 

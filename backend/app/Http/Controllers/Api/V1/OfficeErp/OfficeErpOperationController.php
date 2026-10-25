@@ -29,10 +29,10 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey): void {
                 $planId = $payload['sales_plan_id'] ?? null;
                 abort_unless($planId === null || is_int($planId), 409);
-                $plans->authorizeOperation($ctx, $admission, $action, $payload, $planId);
+                $plans->authorizeOperation($ctx, $admission, $action, $payload, $planId, $validatedKey);
             },
         );
 

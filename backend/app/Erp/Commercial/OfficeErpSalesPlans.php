@@ -2,6 +2,7 @@
 
 namespace App\Erp\Commercial;
 
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
 use Illuminate\Support\Facades\DB;
@@ -9,15 +10,35 @@ use Illuminate\Support\Facades\DB;
 final class OfficeErpSalesPlans
 {
     /** @param array<string, mixed> $payload */
-    public function authorizeOperation(OfficeErpExecutionContext $ctx, OfficeErpAdmission $admission, string $action, array $payload, ?int $expectedPlanId): void
+    public function authorizeOperation(OfficeErpExecutionContext $ctx, OfficeErpAdmission $admission, string $action, array $payload, ?int $expectedPlanId, ?string $key = null): void
     {
         abort_unless(in_array($action, ['offer.create', 'offer.publish', 'offer.archive'], true), 422);
         $planId = $payload['sales_plan_id'] ?? null;
         abort_unless($planId === $expectedPlanId, 404);
+        if ($planId === null && in_array($action, ['offer.create', 'offer.publish'], true) && $key !== null) {
+            $operation = OfficeErpRecords::query($ctx, OfficeErpCommercialOperation::class)
+                ->where('actor_kind', $ctx->actorKind)
+                ->where('actor_identity', $ctx->actorIdentity)
+                ->where('idempotency_key', $key)
+                ->where('action', $action)
+                ->first(['payload', 'outcome']);
+            if ($operation !== null) {
+                $storedPayload = $operation->payload;
+                abort_unless(is_array($storedPayload) && ($storedPayload['sales_plan_id'] ?? null) === null, 409);
+                $createdId = $operation->outcome['data']['id'] ?? null;
+                abort_unless(is_int($createdId) && $createdId > 0, 409);
+                $planId = $createdId;
+            }
+        }
         $terms = $payload['terms'] ?? [];
         abort_unless(is_array($terms), 409);
         $modules = $terms['module_keys'] ?? [];
         abort_unless(is_array($modules) && array_is_list($modules), 409);
+
+        if ($planId !== null) {
+            // Establish tenant ownership before admission can return a state-dependent error.
+            OfficeErpRecords::query($ctx, OfficeErpSalesPlan::class)->whereKey($planId)->firstOrFail();
+        }
 
         $admission->assertCommand($ctx, $action, modules: $modules);
         if ($planId !== null) {

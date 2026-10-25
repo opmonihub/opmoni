@@ -61,7 +61,7 @@ final class OfficeErpSalesPlanController extends Controller
             $key,
             $action,
             $payload,
-            fn (string $currentAction, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $currentAction, $currentPayload, null),
+            fn (string $currentAction, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $currentAction, $currentPayload, null, $key),
             fn (): array => ['data' => $this->planData($plans->create($ctx, $terms, $key)->load('currentRevision'), $terms)],
         );
 
@@ -88,7 +88,7 @@ final class OfficeErpSalesPlanController extends Controller
             $key,
             $action,
             $payload,
-            fn (string $currentAction, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $currentAction, $currentPayload, $plan),
+            fn (string $currentAction, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $currentAction, $currentPayload, $plan, $key),
             fn (): array => ['data' => $this->planData($plans->revise($ctx, $this->lockedPlan($ctx, $plan), $terms, $key)->salesPlan()->with('currentRevision')->firstOrFail(), $terms)],
         );
 
@@ -105,7 +105,7 @@ final class OfficeErpSalesPlanController extends Controller
             $key,
             'offer.archive',
             $payload,
-            fn (string $action, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $action, $currentPayload, $plan),
+            fn (string $action, array $currentPayload): mixed => $plans->authorizeOperation($ctx, $admission, $action, $currentPayload, $plan, $key),
             function () use ($ctx, $plan, $key, $plans): array {
                 $record = $this->lockedPlan($ctx, $plan);
                 $plans->archive($ctx, $record, $key);
