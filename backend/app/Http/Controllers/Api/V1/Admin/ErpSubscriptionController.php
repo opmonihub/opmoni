@@ -49,6 +49,7 @@ class ErpSubscriptionController extends Controller
         $updated = DB::transaction(function () use ($request, $subscription, $data): ErpSubscription {
             ErpCompany::query()->whereKey($subscription->erp_company_id)->lockForUpdate()->firstOrFail();
             $subscription = ErpSubscription::query()->whereKey($subscription->id)->lockForUpdate()->firstOrFail();
+            abort_if($subscription->office_erp_contract_id !== null, 409, 'retail_contract_lifecycle_required');
             $before = $subscription->only(['status', 'erp_plan_id']);
             $subscription->update($data);
             ErpCommercialAudit::log($request, 'erp_subscription.update', (int) $subscription->erp_company_id, [

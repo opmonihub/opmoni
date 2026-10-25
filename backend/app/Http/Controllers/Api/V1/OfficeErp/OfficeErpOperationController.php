@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\OfficeErp;
 
 use App\Erp\Commercial\OfficeErpAdmission;
+use App\Erp\Commercial\OfficeErpContracts;
 use App\Erp\Commercial\OfficeErpDelinquency;
 use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpOperations;
@@ -17,7 +18,7 @@ use Illuminate\Validation\ValidationException;
 
 final class OfficeErpOperationController extends Controller
 {
-    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpReceipts $receipts): JsonResponse
+    public function __invoke(Request $request, string $key, OfficeErpAdmission $admission, OfficeErpOperations $operations, ErpOperationJournal $journal, OfficeErpSalesPlans $plans, OfficeErpDelinquency $delinquency, OfficeErpInvoices $invoices, OfficeErpOwnerInvitations $invitations, OfficeErpReceipts $receipts, OfficeErpContracts $contracts): JsonResponse
     {
         $routeKey = $key;
         $headerKey = $request->header('Idempotency-Key');
@@ -33,7 +34,7 @@ final class OfficeErpOperationController extends Controller
         $outcome = $operations->lookup(
             $ctx,
             $validatedKey,
-            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $receipts): void {
+            function (string $action, array $payload) use ($ctx, $admission, $plans, $validatedKey, $delinquency, $invoices, $invitations, $receipts, $contracts): void {
                 if ($action === 'policy.configure') {
                     $delinquency->authorizeOperation($ctx, $action, $payload);
 
@@ -51,6 +52,11 @@ final class OfficeErpOperationController extends Controller
                 }
                 if (in_array($action, ['receipt.record', 'receipt.reverse'], true)) {
                     $receipts->authorizeOperation($ctx, $action, $payload, $validatedKey);
+
+                    return;
+                }
+                if (in_array($action, ['contract.activate', 'contract.renew', 'contract.amend.price', 'contract.suspend', 'contract.resume', 'contract.cancel', 'modules.expand'], true)) {
+                    $contracts->authorizeOperation($ctx, $action, $payload, $validatedKey);
 
                     return;
                 }

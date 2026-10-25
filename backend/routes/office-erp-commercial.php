@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpClientController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContextController;
+use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpContractController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvitationController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpInvoiceController;
 use App\Http\Controllers\Api\V1\OfficeErp\OfficeErpOperationController;
@@ -22,6 +23,14 @@ Route::prefix('erp-commercial')->middleware(ResolveOfficeErpCommercial::class)->
     Route::post('/receipt-proofs', [OfficeErpReceiptProofController::class, 'store'])->name('office-erp-commercial.receipt-proofs.store');
     Route::get('/receipt-proofs/{proofId}', [OfficeErpReceiptProofController::class, 'download'])->whereUuid('proofId')->name('office-erp-commercial.receipt-proofs.download');
     Route::get('/clients', [OfficeErpClientController::class, 'index'])->name('office-erp-commercial.clients.index');
+    Route::get('/contracts', [OfficeErpContractController::class, 'index'])->name('office-erp-commercial.contracts.index');
+    Route::get('/contracts/{contract}', [OfficeErpContractController::class, 'show'])->whereNumber('contract')->name('office-erp-commercial.contracts.show');
+    Route::post('/contracts/{contract}/activate', [OfficeErpContractController::class, 'activate'])->whereNumber('contract')->name('office-erp-commercial.contracts.activate');
+    Route::patch('/contracts/{contract}/terms', [OfficeErpContractController::class, 'amend'])->whereNumber('contract')->name('office-erp-commercial.contracts.amend');
+    Route::post('/contracts/{contract}/renew', [OfficeErpContractController::class, 'renew'])->whereNumber('contract')->name('office-erp-commercial.contracts.renew');
+    Route::post('/contracts/{contract}/suspend', [OfficeErpContractController::class, 'suspend'])->whereNumber('contract')->name('office-erp-commercial.contracts.suspend');
+    Route::post('/contracts/{contract}/resume', [OfficeErpContractController::class, 'resume'])->whereNumber('contract')->name('office-erp-commercial.contracts.resume');
+    Route::post('/contracts/{contract}/cancel', [OfficeErpContractController::class, 'cancel'])->whereNumber('contract')->name('office-erp-commercial.contracts.cancel');
     Route::post('/clients/{client}/onboarding-preview', [OfficeErpClientController::class, 'preview'])->whereNumber('client')->name('office-erp-commercial.clients.preview');
     Route::post('/clients/{client}/invitations', [OfficeErpInvitationController::class, 'store'])->whereNumber('client')->name('office-erp-commercial.invitations.store');
     Route::post('/invitations/{invitation}/revoke', [OfficeErpInvitationController::class, 'revoke'])->whereNumber('invitation')->name('office-erp-commercial.invitations.revoke');

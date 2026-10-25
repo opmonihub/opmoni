@@ -15,6 +15,11 @@ const pageTabs: NavigationMenuItem[][] = [[{
   icon: 'i-lucide-users',
   to: '/gestao-erp/clientes',
   active: route.path === '/gestao-erp/clientes'
+}, {
+  label: 'Assinaturas',
+  icon: 'i-lucide-file-key',
+  to: '/gestao-erp/assinaturas',
+  active: route.path.startsWith('/gestao-erp/assinaturas')
 }]]
 
 if (route.path === '/gestao-erp')
