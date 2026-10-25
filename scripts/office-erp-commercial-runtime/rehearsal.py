@@ -37,6 +37,21 @@ COMMERCIAL_MIGRATIONS = (
     '2026_10_24_120000_create_office_erp_receipt_proofs',
     '2026_10_24_130000_create_office_erp_owner_invitations',
 )
+ALLOWED_CENTRAL_UNTRACKED = frozenset({
+    'GLOSSARY.md',
+    'openspec/changes/add-office-erp-commercial-management/.openspec.yaml',
+    'openspec/changes/add-office-erp-commercial-management/component-matrix.md',
+    'openspec/changes/add-office-erp-commercial-management/design.md',
+    'openspec/changes/add-office-erp-commercial-management/proposal.md',
+    'openspec/changes/add-office-erp-commercial-management/specs/access-pages/spec.md',
+    'openspec/changes/add-office-erp-commercial-management/specs/erp-commercial-access/spec.md',
+    'openspec/changes/add-office-erp-commercial-management/specs/office-erp-billing/spec.md',
+    'openspec/changes/add-office-erp-commercial-management/specs/office-erp-commercial-management/spec.md',
+    'openspec/changes/add-office-erp-commercial-management/specs/platform-commercial-management/spec.md',
+    'openspec/changes/add-office-erp-commercial-management/tasks.md',
+    'openspec/changes/add-office-erp-commercial-management/ui-reference-audit.md',
+    'scripts/office-erp-commercial-runtime/__pycache__/listener.cpython-312.pyc',
+})
 
 
 def run(args: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> str:
@@ -180,6 +195,8 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
         project = run(['docker', resource_type, 'inspect', '--format', '{{ index .Labels "com.docker.compose.project" }}', name])
         if project != PROJECT:
             raise RuntimeError(f'Existing private {resource_type} has an unexpected Compose project label')
+        if resource_type == 'network' and run(['docker', 'network', 'inspect', '--format', '{{.Internal}}', name]) != 'true':
+            raise RuntimeError('Rehearsal network must be internal to prevent outbound traffic')
     containers = run(['docker', 'ps', '-aq', '--filter', f'label=com.docker.compose.project={PROJECT}']).splitlines()
     source_by_role = {
         'backend-baseline': str(WORKTREES['baseline']),
@@ -217,17 +234,35 @@ def assert_private_resources_owned(*, allow_missing: bool = False) -> None:
             image = run(['docker', 'inspect', '--format', '{{.Config.Image}}', container])
             if image != 'opmoni-backend:dev':
                 raise RuntimeError('Rehearsal backend image changed; preserve it and stop')
-            mount_text = run(['docker', 'inspect', '--format', '{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Source}}|{{.Destination}}|{{.RW}}{{"\\n"}}{{end}}', container])
-            mounts = set(mount_text.splitlines())
-            expected_mounts = {
-                f'bind||{source_by_role[role]}|/workspace|false',
-                f'bind||{CENTRAL / "backend/vendor"}|/workspace/backend/vendor|false',
-                f'bind||{STATE_DIR}|/rehearsal-state|true',
-                f'bind||{SCRIPT.parent}|/rehearsal-harness|false',
+            mounts = json.loads(run(['docker', 'inspect', '--format', '{{json .Mounts}}', container]))
+            tmpfs_config = json.loads(run(['docker', 'inspect', '--format', '{{json .HostConfig.Tmpfs}}', container]))
+            expected_binds = {
+                ('bind', '', str(source_by_role[role]), '/workspace', False),
+                ('bind', '', str(CENTRAL / 'backend/vendor'), '/workspace/backend/vendor', False),
+                ('bind', '', str(STATE_DIR), '/rehearsal-state', True),
+                ('bind', '', str(SCRIPT.parent), '/rehearsal-harness', False),
             }
-            binds = {mount for mount in mounts if mount.startswith('bind|')}
-            if binds != expected_mounts:
-                raise RuntimeError('Rehearsal backend mounts differ from the reviewed source/vendor/state/harness contract')
+            expected_tmpfs = {'/workspace/backend/storage', '/workspace/backend/bootstrap/cache'}
+            if not isinstance(mounts, list) or not isinstance(tmpfs_config, dict):
+                raise RuntimeError('Rehearsal backend mount inspection returned an unexpected shape')
+            binds = set()
+            inspected_tmpfs: dict[str, bool] = {}
+            for mount in mounts:
+                mount_type = mount.get('Type')
+                if mount_type == 'bind':
+                    binds.add((mount_type, mount.get('Name', ''), mount.get('Source', ''),
+                               mount.get('Destination', ''), mount.get('RW')))
+                elif mount_type == 'tmpfs':
+                    inspected_tmpfs[mount.get('Destination', '')] = mount.get('RW')
+                else:
+                    raise RuntimeError('Rehearsal backend has an unexpected volume or mount type')
+            if binds != expected_binds or set(tmpfs_config) != expected_tmpfs:
+                raise RuntimeError('Rehearsal backend mounts differ from the reviewed bind/tmpfs contract')
+            if any(not isinstance(options, str) or 'rw' not in options.split(',') or 'ro' in options.split(',')
+                   for options in tmpfs_config.values()):
+                raise RuntimeError('Rehearsal backend tmpfs is not read/write as reviewed')
+            if inspected_tmpfs and (set(inspected_tmpfs) != expected_tmpfs or not all(inspected_tmpfs.values())):
+                raise RuntimeError('Rehearsal backend tmpfs mount type or writability differs from the reviewed contract')
         elif role in {'postgres', 'redis'}:
             expected_volume = PROJECT + ('-postgres' if role == 'postgres' else '-redis')
             target = '/var/lib/postgresql' if role == 'postgres' else '/data'
@@ -280,6 +315,10 @@ def check_source(source_sha: str) -> Path:
     actual = git_value(CENTRAL, 'rev-parse', 'HEAD')
     if actual != source_sha or git_value(CENTRAL, 'status', '--porcelain', '--untracked-files=no'):
         raise RuntimeError('Central accepted source must be clean and exactly match --source-sha')
+    untracked = set(git_value(CENTRAL, 'ls-files', '--others', '--exclude-standard').splitlines())
+    unexpected_untracked = untracked - ALLOWED_CENTRAL_UNTRACKED
+    if unexpected_untracked:
+        raise RuntimeError('Central accepted source has unreviewed untracked files; preserve them and stop')
     if not (CENTRAL / 'backend/vendor/autoload.php').is_file():
         raise RuntimeError('Existing locked backend/vendor is unavailable')
     for relative in (
@@ -301,6 +340,7 @@ def check_source(source_sha: str) -> Path:
 
 def run_probe(source_sha: str, source: Path, service: str, phase: str) -> None:
     compose(source_sha, source, ['up', '-d', service])
+    assert_private_resources_owned()
     compose(source_sha, source, ['exec', '-T', service, 'php',
                                  '/rehearsal-harness/rehearsal-probe.php', phase,
                                  '/rehearsal-state/state.json'])
@@ -308,6 +348,7 @@ def run_probe(source_sha: str, source: Path, service: str, phase: str) -> None:
 
 def run_artisan(source_sha: str, source: Path, service: str) -> None:
     compose(source_sha, source, ['up', '-d', service])
+    assert_private_resources_owned()
     compose(source_sha, source, ['exec', '-T', service, 'php', 'artisan',
                                  'migrate', '--force', '--no-interaction'])
 

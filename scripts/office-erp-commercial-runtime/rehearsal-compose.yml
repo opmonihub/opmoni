@@ -128,6 +128,7 @@ services:
 networks:
   rehearsal:
     name: opmoni-office-erp-commercial-rehearsal-net
+    internal: true
     labels:
       com.opmoni.office-erp-rehearsal: "true"
 
