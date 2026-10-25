@@ -81,6 +81,23 @@ function input(mounted: ReturnType<typeof mountComponent>, label: string, value:
 }
 
 describe('office ERP billing form components', () => {
+  it('compiles the invoice list, detail, protected print and receipt pages as real Vue SFCs', () => {
+    const mocks = {
+      '#shared/utils/officeErpCommercial': { parseOfficeErpMoney, formatOfficeErpMoney },
+      '~/components/data-table/panel': {
+        panelBodyClass: '', panelFooterClass: '', panelFooterCountClass: '',
+        panelPaginationClass: '', panelTableUi: {}
+      },
+      '~/composables/useApiError': { apiErrorMessage: () => undefined }
+    }
+    for (const path of [
+      'pages/gestao-erp/faturas/index.vue',
+      'pages/gestao-erp/faturas/[id]/index.vue',
+      'pages/gestao-erp/faturas/[id]/imprimir.vue',
+      'pages/gestao-erp/recebimentos.vue'
+    ]) assert.ok(compileVueComponent(path, {}, mocks), path)
+  })
+
   it('emits a positive credit amount and preserves it with a server validation error', async (t) => {
     const submitted: unknown[] = []
     const mounted = mountComponent('OfficeErpAdjustmentForm', { direction: 'credit', errors: {}, onSubmit: (payload: unknown) => submitted.push(payload) })
