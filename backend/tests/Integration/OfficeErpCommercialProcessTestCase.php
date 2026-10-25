@@ -173,7 +173,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         return $this->officeAdmin($fixture, function () use ($fixture, $anchor): array {
             return $fixture['context']->run(function () use ($fixture, $anchor): array {
                 foreach ($fixture['contracts'] as $index => $contract) {
-                    $company = ErpCompany::factory()->create(['name' => 'Commercial invoice race '.$index]);
+                    $company = ErpCompany::factory()->create([
+                        'name' => 'Commercial invoice race '.$index,
+                        'cnpj' => $this->uniqueCnpj(),
+                    ]);
                     $owner = User::factory()->create([
                         'email' => 'office-erp-invoice-owner-'.$fixture['account_id'].'-'.$index.'@example.test',
                     ]);
@@ -435,6 +438,28 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
                 $request->attributes->set(CurrentAccount::class, $previous);
             }
         }
+    }
+
+    private function uniqueCnpj(): string
+    {
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            $digits = array_map('intval', str_split((string) random_int(100000000000, 999999999999)));
+            foreach ([[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]] as $weights) {
+                $sum = 0;
+                foreach ($weights as $index => $weight) {
+                    $sum += $digits[$index] * $weight;
+                }
+                $remainder = $sum % 11;
+                $digits[] = $remainder < 2 ? 0 : 11 - $remainder;
+            }
+
+            $cnpj = implode('', $digits);
+            if (! DB::table('erp_companies')->where('cnpj', $cnpj)->exists()) {
+                return $cnpj;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate an unused CNPJ for the retained commercial race fixture.');
     }
 
     private function signal(Process $process, string $name): string
