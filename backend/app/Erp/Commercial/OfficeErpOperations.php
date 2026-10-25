@@ -2,6 +2,8 @@
 
 namespace App\Erp\Commercial;
 
+use App\Models\Erp\Commercial\OfficeErpAuditEvent;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -37,18 +39,37 @@ final class OfficeErpOperations
                     return $this->replayOrConflict($operation, $action, $payloadHash);
                 }
 
-                $outcome = $this->sanitizeOutcome($effect());
-
                 $record = new OfficeErpCommercialOperation;
                 $record->forceFill([
+                    'actor_kind' => $context->actorKind,
                     'actor_identity' => $context->actorIdentity,
                     'idempotency_key' => $key,
                     'action' => $action,
                     'payload_hash' => $payloadHash,
                     'payload' => json_decode($payloadJson, true, 512, JSON_THROW_ON_ERROR),
-                    'outcome' => $outcome,
                 ]);
+                $record = OfficeErpRecords::persist($context, $record);
+
+                $outcome = $this->sanitizeOutcome($effect());
+                $record->forceFill(['outcome' => $outcome]);
                 OfficeErpRecords::persist($context, $record);
+
+                $audit = new OfficeErpAuditEvent;
+                $audit->forceFill([
+                    'operation_id' => $record->getKey(),
+                    'actor_kind' => $context->actorKind,
+                    'actor_identity' => $context->actorIdentity,
+                    'actor_user_id' => $context->actor?->getKey(),
+                    'action' => $action,
+                    'subject_type' => $this->auditSubjectType($outcome),
+                    'subject_id' => $this->auditSubjectId($outcome),
+                    'metadata' => [
+                        'payload_hash' => $payloadHash,
+                        'payload' => $canonicalPayload,
+                        'outcome' => $outcome,
+                    ],
+                ]);
+                OfficeErpRecords::persist($context, $audit);
 
                 return $outcome;
             }, 3);
@@ -76,6 +97,8 @@ final class OfficeErpOperations
 
             $payload = $this->assertStoredPayload($identity->payload);
             $this->assertPayloadHasNoSecrets($payload);
+            $payload = $this->canonicalize($payload);
+            abort_unless(hash_equals((string) $identity->payload_hash, hash('sha256', $this->encode($payload))), 409);
             $authorize((string) $identity->action, $payload);
 
             $operation = $this->operationQuery($context, $key)->lockForUpdate()->first();
@@ -111,6 +134,7 @@ final class OfficeErpOperations
     private function operationQuery(OfficeErpExecutionContext $context, string $key): Builder
     {
         return OfficeErpRecords::query($context, OfficeErpCommercialOperation::class)
+            ->where('actor_kind', $context->actorKind)
             ->where('actor_identity', $context->actorIdentity)
             ->where('idempotency_key', $key);
     }
@@ -140,6 +164,8 @@ final class OfficeErpOperations
             }
             if (is_array($value)) {
                 $this->assertPayloadHasNoSecrets($value);
+            } elseif (is_object($value) || is_resource($value)) {
+                throw ValidationException::withMessages(['payload' => ['O conteúdo da operação deve usar apenas valores JSON.']]);
             }
         }
     }
@@ -155,6 +181,8 @@ final class OfficeErpOperations
             }
             if (is_array($value)) {
                 $outcome[$key] = $this->sanitizeOutcome($value);
+            } elseif (is_object($value) || is_resource($value)) {
+                unset($outcome[$key]);
             }
         }
 
@@ -164,6 +192,28 @@ final class OfficeErpOperations
     private function isSecretKey(string $key): bool
     {
         return preg_match('/(?:token|password|secret|credential|authorization|private[_-]?key|api[_-]?key)/i', $key) === 1;
+    }
+
+    /** @param array<string, mixed> $outcome */
+    private function auditSubjectType(array $outcome): ?string
+    {
+        $subjectType = $outcome['subject_type'] ?? null;
+        if (! is_string($subjectType) || strlen($subjectType) > 191 || preg_match('/^[A-Za-z0-9_\\\\.-]+$/', $subjectType) !== 1) {
+            return null;
+        }
+
+        return $subjectType;
+    }
+
+    /** @param array<string, mixed> $outcome */
+    private function auditSubjectId(array $outcome): ?int
+    {
+        $subjectId = $outcome['subject_id'] ?? null;
+        if (! is_int($subjectId) || $subjectId <= 0) {
+            return null;
+        }
+
+        return $subjectId;
     }
 
     /** @param array<string, mixed> $value */
@@ -199,7 +249,13 @@ final class OfficeErpOperations
     /** @param array<string, mixed> $payload @return array<string, mixed> */
     private function replayOrConflict(OfficeErpCommercialOperation $operation, string $action, string $payloadHash): array
     {
-        if ((string) $operation->action !== $action || ! hash_equals((string) $operation->payload_hash, $payloadHash)) {
+        $storedPayload = $this->assertStoredPayload($operation->payload);
+        $this->assertPayloadHasNoSecrets($storedPayload);
+        $storedPayloadHash = hash('sha256', $this->encode($this->canonicalize($storedPayload)));
+
+        if ((string) $operation->action !== $action
+            || ! hash_equals((string) $operation->payload_hash, $storedPayloadHash)
+            || ! hash_equals($storedPayloadHash, $payloadHash)) {
             abort(409);
         }
 
@@ -214,14 +270,14 @@ final class OfficeErpOperations
 
     private function assertKey(string $key): void
     {
-        if ($key === '' || strlen($key) > 128) {
+        if ($key === '' || strlen($key) > 191) {
             throw ValidationException::withMessages(['idempotency_key' => ['A chave da operação é inválida.']]);
         }
     }
 
     private function assertAction(string $action): void
     {
-        if ($action === '' || strlen($action) > 120) {
+        if ($action === '' || strlen($action) > 100) {
             throw ValidationException::withMessages(['action' => ['A ação da operação é inválida.']]);
         }
     }
