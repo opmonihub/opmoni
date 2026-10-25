@@ -202,6 +202,7 @@ onMounted(() => {
       <UAlert
         v-if="empty"
         color="neutral"
+        variant="subtle"
         title="Ainda não há movimentação comercial"
         description="Os indicadores serão atualizados quando houver contratos ou cobranças neste escritório."
       />

@@ -142,7 +142,7 @@ function mountOverview(api: () => Promise<unknown>) {
   const passthrough: Vue.Component = { setup: (_props, slotContext) => () => Vue.h('section', {}, [slotContext.slots.default?.(), slotContext.slots.description?.(), slotContext.slots.footer?.()]) }
   app.component('UPageGrid', passthrough)
   app.component('UPageCard', passthrough)
-  app.component('UAlert', { props: ['title', 'description'], setup: (props, slotContext) => () => Vue.h('aside', { role: 'alert' }, [String(props.title ?? ''), String(props.description ?? ''), slotContext.slots.default?.()]) })
+  app.component('UAlert', { props: ['title', 'description', 'color', 'variant'], setup: (props, slotContext) => () => Vue.h('aside', { role: 'alert', title: props.title, color: props.color, variant: props.variant }, [String(props.title ?? ''), String(props.description ?? ''), slotContext.slots.default?.()]) })
   app.component('UButton', { setup: (_props, slotContext) => () => Vue.h('button', { ...slotContext.attrs, onClick: slotContext.attrs.onClick }, slotContext.slots.default?.()) })
   app.mount(root)
 
@@ -192,4 +192,32 @@ test('refresh failure keeps prior report values explicitly marked stale', async 
   await settle()
   assert.match(page.text(), /Dados desatualizados/)
   assert.match(page.text(), /R\$\s*9\.007\.199\.254\.740\.993,01/)
+})
+
+test('empty overview uses a theme-aware neutral alert without clipping its root', async (t) => {
+  const page = mountOverview(async () => ({
+    data: {
+      ...report,
+      contracted_licences: 0,
+      reserved_licences: 0,
+      invoiced_movement: '0.00',
+      effective_received: '0.00',
+      outstanding: '0.00',
+      overdue: '0.00'
+    }
+  }))
+  t.after(() => page.app.unmount())
+  await settle()
+
+  const [alert] = page.nodes(page.root, node => node.tag === 'aside' && node.props.title === 'Ainda não há movimentação comercial')
+  assert.ok(alert, 'the empty-state alert is rendered')
+  assert.equal(alert.props.color, 'neutral')
+  assert.equal(alert.props.variant, 'subtle')
+
+  let root: HostNode | null | undefined = alert
+  while (root && !(root.tag === 'div' && typeof root.props.class === 'string' && root.props.class.includes('shrink-0'))) {
+    root = root.parent
+  }
+  assert.ok(root, 'the overview root does not flex-shrink its content')
+  assert.doesNotMatch(String(root.props.class), /overflow-hidden/)
 })
