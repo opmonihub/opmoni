@@ -284,7 +284,9 @@ describe('collapsed Clients disclosure', () => {
     menu(surface, false, 'Admin').props!['onUpdate:modelValue'](undefined)
     const adminItem = (menu(surface, false, 'Admin').props!.items as NavigationMenuItem[])[0]!
     assert.deepEqual(adminItem.children?.filter(child => child.ui?.childItem !== 'hidden').map(child => child.label), ['Contas'])
-    assert.equal((menu(surface, true, 'Admin').props!.items as NavigationMenuItem[])[0]!.children?.length, 9)
+    assert.deepEqual((menu(surface, true, 'Admin').props!.items as NavigationMenuItem[])[0]!.children?.map(child => child.label), [
+      'Resumo', 'Contas', 'Planos', 'Assinaturas', 'Usuários', 'Suporte', 'Serpro'
+    ])
     assert.equal(menu(surface, true, 'Admin').props!.popover, '')
     surface.route.path = '/customers/painel'
     await Vue.nextTick()
