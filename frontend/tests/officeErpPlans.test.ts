@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import * as Vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 import ts from 'typescript'
-import { compileVueComponent } from './helpers/compileVueComponent.ts'
+import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
 import { loadAppComposable } from './helpers/loadAppComposable.ts'
 import type { Identity, Membership } from '../shared/types/access.ts'
 import * as officeErpMoney from '../shared/utils/officeErpCommercial.ts'
@@ -260,16 +260,15 @@ describe('Office ERP navigation and access', () => {
     assert.deepEqual(navs, ['/', '/acesso-indisponivel', '/acesso-indisponivel'])
   })
 
-  it('redirects the exact commercial root to its shipped plans list', async () => {
-    const navigations: unknown[] = []
-    const page = compileVueComponent('pages/gestao-erp.vue', {
-      definePageMeta() {},
-      useRoute: () => ({ path: '/gestao-erp' }),
-      useAuth: () => ({ currentAccount: Vue.ref(office(8)) }),
-      navigateTo: async (...args: unknown[]) => { navigations.push(args) }
-    }) as { setup: (props: object, context: object) => unknown }
-    page.setup({}, { expose() {} })
-    assert.deepEqual(navigations, [['/gestao-erp/planos', { replace: true }]])
+  it('keeps the exact commercial root on its overview and preserves the plans tab', () => {
+    const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { computed: Vue.computed, route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>
+    const overview = tabsAt('/gestao-erp').flat()
+    assert.equal(overview.find(item => item.to === '/gestao-erp')?.active, true)
+    assert.deepEqual(overview.filter(item => item.active).map(item => item.label), ['Visão geral'])
+
+    const plans = tabsAt('/gestao-erp/planos').flat()
+    assert.equal(plans.find(item => item.to === '/gestao-erp')?.active, false)
+    assert.deepEqual(plans.filter(item => item.active).map(item => item.label), ['Ofertas'])
   })
 
   it('keeps legacy plan bookmarks privileged and redirects only after office authorization', async () => {
