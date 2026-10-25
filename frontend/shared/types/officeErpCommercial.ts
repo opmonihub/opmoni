@@ -29,13 +29,22 @@ export interface OfficeErpInvoiceBalance {
   overdue: boolean
 }
 
+export interface OfficeErpInvoiceBalanceEntry {
+  invoice_id: number
+  balance: OfficeErpInvoiceBalance
+}
+
+export interface OfficeErpFailureData {
+  current_balances?: OfficeErpInvoiceBalanceEntry[]
+}
+
 export interface OfficeErpFailure {
   code: string
   message: string
   errors?: Record<string, string[]>
   /** HTTP status from the transport, kept outside the server's error envelope. */
   http_status?: number
-  data?: { current_balances?: OfficeErpInvoiceBalance[] }
+  data?: OfficeErpFailureData
 }
 
 export type OfficeErpCommandResult<T>

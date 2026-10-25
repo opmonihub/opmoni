@@ -26,6 +26,7 @@
   },
   "include": [
     "tests/adminContracts.test.ts",
-    "tests/contracts/admin.ts"
+    "tests/contracts/admin.ts",
+    "tests/contracts/officeErpCommercial.ts"
   ]
 }

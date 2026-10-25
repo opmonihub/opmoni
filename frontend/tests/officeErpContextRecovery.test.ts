@@ -307,6 +307,51 @@ describe('Office ERP recovery context boundaries', () => {
     assert.equal(postCount, 1)
   })
 
+  it('keeps nested invoice balances from a real 409 command failure envelope', async (t) => {
+    const currentBalances = [{
+      invoice_id: 81,
+      balance: {
+        original_total: '100.00',
+        adjusted_charge: '100.00',
+        effective_received: '60.00',
+        outstanding: '40.00',
+        settlement_status: 'partial',
+        overdue: false
+      }
+    }]
+    const harness = mountComposables(undefined, async (path, init) => {
+      if (path === '/erp-commercial/context') return { data: fullCapabilities('cap-1') }
+      if (path === '/erp-commercial/receipts' && init?.method === 'POST') {
+        throw Object.assign(new Error('receipt allocation exceeds current balance'), {
+          statusCode: 409,
+          data: {
+            code: 'receipt_balance_conflict',
+            message: 'O saldo atual da fatura não comporta esta alocação.',
+            data: { current_balances: currentBalances }
+          }
+        })
+      }
+      return { data: {} }
+    })
+    t.after(harness.stop)
+
+    assert.deepEqual(await harness.command.execute('receipt.record', '/erp-commercial/receipts', {
+      amount: '50.00',
+      received_on: '2026-10-25',
+      allocations: [{ invoice_id: 81, amount: '50.00' }]
+    }), {
+      status: 'failed',
+      failure: {
+        code: 'receipt_balance_conflict',
+        message: 'O saldo atual da fatura não comporta esta alocação.',
+        http_status: 409,
+        data: { current_balances: currentBalances }
+      }
+    })
+    assert.equal(harness.command.pending.value, false)
+    assert.equal(harness.shared.calls.filter(call => call.path === '/erp-commercial/receipts' && call.init?.method === 'POST').length, 1)
+  })
+
   it('restores only a matching nonsecret operation and blocks admission without capabilities', async (t) => {
     const original = mountComposables(undefined, async (path, init) => {
       if (path === '/erp-commercial/context') return { data: fullCapabilities('cap-1') }
