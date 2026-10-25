@@ -1,0 +1,142 @@
+name: opmoni-office-erp-commercial-rehearsal
+
+x-backend: &backend
+  image: opmoni-backend:dev
+  pull_policy: never
+  init: true
+  entrypoint: []
+  command: [php, -r, 'while (true) { sleep(3600); }']
+  working_dir: /workspace/backend
+  env_file:
+    - ${REHEARSAL_BACKEND_ENV:?runner must create a private 0600 env file}
+  environment:
+    APP_ENV: local
+    APP_DEBUG: "false"
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_DATABASE: opmoni_test
+    DB_USERNAME: opmoni
+    DB_PASSWORD: rehearsal-private
+    DB_URL: ""
+    CACHE_STORE: redis
+    SESSION_DRIVER: redis
+    SESSION_CONNECTION: sessions
+    SESSION_STORE: sessions
+    REDIS_CLIENT: phpredis
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_PASSWORD: "null"
+    REDIS_URL: ""
+    REDIS_DB: "13"
+    REDIS_CACHE_DB: "14"
+    REDIS_SESSION_DB: "15"
+    REDIS_PREFIX: opmoni-office-erp-commercial-rehearsal-
+    CACHE_PREFIX: opmoni-office-erp-commercial-rehearsal-cache-
+    QUEUE_CONNECTION: sync
+    MAIL_MAILER: array
+    WHATSAPP_DISPATCH_ENABLED: "false"
+    ERP_REGISTRATION_ENABLED: "false"
+    ERP_RELEASE_ENABLED: "false"
+    ERP_FISCAL_PRODUCTION_ENABLED: "false"
+    ERP_FISCAL_PROVIDER: fake
+    FISCAL_CTE_ENABLED: "false"
+    FISCAL_NFSE_ENABLED: "false"
+    FISCAL_MANIFESTACAO_ENABLED: "false"
+    FISCAL_MANIFESTACAO_ROLLOUT_MODE: disabled
+  volumes:
+    - ${REHEARSAL_VENDOR:?runner must select locked dependencies}:/workspace/backend/vendor:ro
+    - ${REHEARSAL_STATE:?runner must select private state}:/rehearsal-state:rw
+    - ${REHEARSAL_HARNESS:?runner must select the reviewed probe}:/rehearsal-harness:ro
+  tmpfs:
+    - /workspace/backend/storage:rw,nosuid,nodev,size=64m
+    - /workspace/backend/bootstrap/cache:rw,nosuid,nodev,size=16m
+  networks: [rehearsal]
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    pull_policy: never
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+      com.opmoni.office-erp-rehearsal.role: postgres
+    environment:
+      POSTGRES_DB: opmoni_test
+      POSTGRES_USER: opmoni
+      POSTGRES_PASSWORD: rehearsal-private
+    volumes:
+      - rehearsal-postgres:/var/lib/postgresql
+    networks: [rehearsal]
+    healthcheck:
+      test: [CMD, pg_isready, -U, opmoni, -d, opmoni_test]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8-alpine
+    pull_policy: never
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+      com.opmoni.office-erp-rehearsal.role: redis
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - rehearsal-redis:/data
+    networks: [rehearsal]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend-baseline:
+    <<: *backend
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+      com.opmoni.office-erp-rehearsal.role: backend-baseline
+    volumes:
+      - ${REHEARSAL_BASELINE_SOURCE:?prepare baseline source first}:/workspace:ro
+      - ${REHEARSAL_VENDOR:?runner must select locked dependencies}:/workspace/backend/vendor:ro
+      - ${REHEARSAL_STATE:?runner must select private state}:/rehearsal-state:rw
+      - ${REHEARSAL_HARNESS:?runner must select the reviewed probe}:/rehearsal-harness:ro
+
+  backend-compatible:
+    <<: *backend
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+      com.opmoni.office-erp-rehearsal.role: backend-compatible
+    volumes:
+      - ${REHEARSAL_COMPATIBLE_SOURCE:?prepare compatible source first}:/workspace:ro
+      - ${REHEARSAL_VENDOR:?runner must select locked dependencies}:/workspace/backend/vendor:ro
+      - ${REHEARSAL_STATE:?runner must select private state}:/rehearsal-state:rw
+      - ${REHEARSAL_HARNESS:?runner must select the reviewed probe}:/rehearsal-harness:ro
+
+  backend-current:
+    <<: *backend
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+      com.opmoni.office-erp-rehearsal.role: backend-current
+    volumes:
+      - ${REHEARSAL_CURRENT_SOURCE:?select accepted current source}:/workspace:ro
+      - ${REHEARSAL_VENDOR:?runner must select locked dependencies}:/workspace/backend/vendor:ro
+      - ${REHEARSAL_STATE:?runner must select private state}:/rehearsal-state:rw
+      - ${REHEARSAL_HARNESS:?runner must select the reviewed probe}:/rehearsal-harness:ro
+
+networks:
+  rehearsal:
+    name: opmoni-office-erp-commercial-rehearsal-net
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+
+volumes:
+  rehearsal-postgres:
+    name: opmoni-office-erp-commercial-rehearsal-postgres
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
+  rehearsal-redis:
+    name: opmoni-office-erp-commercial-rehearsal-redis
+    labels:
+      com.opmoni.office-erp-rehearsal: "true"
