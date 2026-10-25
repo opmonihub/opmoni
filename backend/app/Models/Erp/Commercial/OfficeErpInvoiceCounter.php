@@ -2,12 +2,16 @@
 
 namespace App\Models\Erp\Commercial;
 
+use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
 use Database\Factories\Erp\Commercial\OfficeErpInvoiceCounterFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class OfficeErpInvoiceCounter extends Model
 {
@@ -32,30 +36,52 @@ class OfficeErpInvoiceCounter extends Model
     }
 
     /**
-     * Reserve the next account/year document number. Callers that already lock a contract
-     * must invoke this before locking or inserting invoices to preserve the billing lock order.
+     * Reserve the next account/year document number. Callers must hold Account then contract
+     * locks before invoking this, and reserve before locking or inserting invoices.
      */
-    public static function reserveNumber(int $accountId, int $year): string
+    public static function reserveNumber(OfficeErpExecutionContext $ctx, int $year): string
     {
-        return DB::transaction(function () use ($accountId, $year): string {
-            $timestamp = now();
-            DB::table('office_erp_invoice_counters')->insertOrIgnore([
-                'account_id' => $accountId,
-                'year' => $year,
-                'next_number' => 1,
-                'created_at' => $timestamp,
-                'updated_at' => $timestamp,
-            ]);
+        $ctx->assertVerified();
+        if ($year < 1 || $year > 9999) {
+            throw ValidationException::withMessages(['year' => 'The invoice counter year is outside the supported range.']);
+        }
 
-            $counter = self::query()
-                ->where('account_id', $accountId)
-                ->where('year', $year)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $nextNumber = (int) $counter->next_number;
-            $counter->increment('next_number');
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                return DB::transaction(function () use ($ctx, $year): string {
+                    $query = OfficeErpRecords::query($ctx, self::class)->where('year', $year);
+                    $counter = (clone $query)->lockForUpdate()->first();
+                    if ($counter === null) {
+                        $counter = OfficeErpRecords::persist($ctx, new self([
+                            'account_id' => $ctx->accountId,
+                            'year' => $year,
+                            'next_number' => 1,
+                        ]));
+                        $counter = (clone $query)->lockForUpdate()->firstOrFail();
+                    }
 
-            return sprintf('ERP-%d-%06d', $year, $nextNumber);
-        });
+                    $nextNumber = (int) $counter->next_number;
+                    $counter->next_number = $nextNumber + 1;
+                    OfficeErpRecords::persist($ctx, $counter);
+
+                    return sprintf('ERP-%d-%06d', $year, $nextNumber);
+                });
+            } catch (QueryException $exception) {
+                if ($attempt > 0 || ! self::isCounterUniquenessConflict($exception)) {
+                    throw $exception;
+                }
+            }
+        }
+
+        throw new \LogicException('Unable to reserve an invoice number.');
+    }
+
+    private static function isCounterUniquenessConflict(QueryException $exception): bool
+    {
+        $state = $exception->errorInfo[0] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return in_array($state, ['23000', '23505'], true)
+            && str_contains($message, 'office_erp_invoice_counters');
     }
 }

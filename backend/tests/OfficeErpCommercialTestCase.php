@@ -194,7 +194,7 @@ abstract class OfficeErpCommercialTestCase extends BusinessTestCase
             $contract->billing_timezone,
             (int) $revision->due_in_days,
         );
-        $number = OfficeErpInvoiceCounter::reserveNumber($ctx->accountId, (int) now($contract->billing_timezone)->format('Y'));
+        $number = OfficeErpInvoiceCounter::reserveNumber($ctx, (int) now($contract->billing_timezone)->format('Y'));
 
         $invoice = new OfficeErpInvoice([
             'account_id' => $ctx->accountId,

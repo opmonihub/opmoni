@@ -133,10 +133,13 @@ return new class extends Migration
             $table->string('billing_timezone', 64)->default('America/Sao_Paulo');
             $table->timestamps();
         });
+
+        $this->createAppendOnlyTriggers();
     }
 
     public function down(): void
     {
+        $this->dropAppendOnlyTriggers();
         Schema::dropIfExists('office_erp_commercial_settings');
         Schema::dropIfExists('office_erp_receipt_reversals');
         Schema::dropIfExists('office_erp_receipt_allocations');
@@ -145,5 +148,54 @@ return new class extends Migration
         DB::statement('DROP INDEX IF EXISTS office_erp_invoices_recurring_period_unique');
         Schema::dropIfExists('office_erp_invoices');
         Schema::dropIfExists('office_erp_invoice_counters');
+    }
+
+    private function createAppendOnlyTriggers(): void
+    {
+        $tables = ['office_erp_invoice_adjustments', 'office_erp_receipt_reversals'];
+        $driver = Schema::getConnection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION office_erp_billing_reject_mutation() RETURNS trigger
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'Billing adjustment and reversal records are append-only';
+                END;
+                $$
+                SQL);
+
+            foreach ($tables as $table) {
+                DB::unprepared("CREATE TRIGGER {$table}_append_only BEFORE UPDATE OR DELETE ON {$table} FOR EACH ROW EXECUTE FUNCTION office_erp_billing_reject_mutation()");
+            }
+
+            return;
+        }
+
+        if ($driver === 'sqlite') {
+            foreach ($tables as $table) {
+                DB::unprepared("CREATE TRIGGER {$table}_append_only_update BEFORE UPDATE ON {$table} BEGIN SELECT RAISE(ABORT, 'Billing evidence is append-only'); END");
+                DB::unprepared("CREATE TRIGGER {$table}_append_only_delete BEFORE DELETE ON {$table} BEGIN SELECT RAISE(ABORT, 'Billing evidence is append-only'); END");
+            }
+        }
+    }
+
+    private function dropAppendOnlyTriggers(): void
+    {
+        $tables = ['office_erp_invoice_adjustments', 'office_erp_receipt_reversals'];
+        $driver = Schema::getConnection()->getDriverName();
+
+        foreach ($tables as $table) {
+            if ($driver === 'pgsql') {
+                DB::unprepared("DROP TRIGGER IF EXISTS {$table}_append_only ON {$table}");
+            } elseif ($driver === 'sqlite') {
+                DB::unprepared("DROP TRIGGER IF EXISTS {$table}_append_only_update");
+                DB::unprepared("DROP TRIGGER IF EXISTS {$table}_append_only_delete");
+            }
+        }
+
+        if ($driver === 'pgsql') {
+            DB::unprepared('DROP FUNCTION IF EXISTS office_erp_billing_reject_mutation()');
+        }
     }
 };

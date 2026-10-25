@@ -7,6 +7,7 @@ use Database\Factories\Erp\Commercial\OfficeErpReceiptReversalFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class OfficeErpReceiptReversal extends Model
 {
@@ -18,6 +19,16 @@ class OfficeErpReceiptReversal extends Model
     protected function casts(): array
     {
         return ['reversed_at' => 'datetime'];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(static function (): never {
+            throw new LogicException('Receipt reversals are append-only.');
+        });
+        static::deleting(static function (): never {
+            throw new LogicException('Receipt reversals are append-only.');
+        });
     }
 
     protected static function newFactory(): OfficeErpReceiptReversalFactory

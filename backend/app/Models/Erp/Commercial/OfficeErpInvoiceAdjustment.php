@@ -7,6 +7,7 @@ use Database\Factories\Erp\Commercial\OfficeErpInvoiceAdjustmentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class OfficeErpInvoiceAdjustment extends Model
 {
@@ -20,6 +21,16 @@ class OfficeErpInvoiceAdjustment extends Model
     protected function casts(): array
     {
         return ['amount' => 'decimal:2', 'posted_at' => 'datetime'];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(static function (): never {
+            throw new LogicException('Invoice adjustments are append-only.');
+        });
+        static::deleting(static function (): never {
+            throw new LogicException('Invoice adjustments are append-only.');
+        });
     }
 
     protected static function newFactory(): OfficeErpInvoiceAdjustmentFactory

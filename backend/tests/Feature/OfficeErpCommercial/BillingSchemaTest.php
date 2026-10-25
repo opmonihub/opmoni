@@ -10,6 +10,7 @@ use App\Models\Erp\Commercial\OfficeErpInvoiceCounter;
 use App\Models\Erp\Commercial\OfficeErpReceipt;
 use App\Models\Erp\Commercial\OfficeErpReceiptAllocation;
 use App\Models\Erp\Commercial\OfficeErpReceiptReversal;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -56,9 +57,10 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
         $ctx = $this->officeContext();
         $year = 2027;
 
-        self::assertSame('ERP-2027-000001', OfficeErpInvoiceCounter::reserveNumber($ctx->accountId, $year));
-        self::assertSame('ERP-2027-000002', OfficeErpInvoiceCounter::reserveNumber($ctx->accountId, $year));
-        self::assertSame('ERP-2028-000001', OfficeErpInvoiceCounter::reserveNumber($ctx->accountId, $year + 1));
+        self::assertSame('ERP-2027-000001', OfficeErpInvoiceCounter::reserveNumber($ctx, $year));
+        self::assertSame('ERP-2027-000002', OfficeErpInvoiceCounter::reserveNumber($ctx, $year));
+        self::assertSame('ERP-2028-000001', OfficeErpInvoiceCounter::reserveNumber($ctx, $year + 1));
+        self::assertSame('ERP-2027-000001', OfficeErpInvoiceCounter::reserveNumber($this->officeContext(), $year));
     }
 
     public function test_invoice_factory_creates_a_same_account_contract_revision_pair(): void
@@ -69,6 +71,19 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
         self::assertSame($invoice->account_id, $invoice->contract->account_id);
         self::assertSame($invoice->contract_revision_id, $invoice->contractRevision->id);
         self::assertSame($invoice->account_id, $invoice->contractRevision->account_id);
+    }
+
+    public function test_default_allocation_factory_uses_one_current_office_for_both_related_records(): void
+    {
+        $ctx = $this->officeContext();
+        $allocation = $this->withOfficeAccount(
+            $ctx,
+            fn (): OfficeErpReceiptAllocation => OfficeErpReceiptAllocation::factory()->create(),
+        );
+
+        self::assertSame($ctx->accountId, $allocation->account_id);
+        self::assertSame($ctx->accountId, $allocation->receipt->account_id);
+        self::assertSame($ctx->accountId, $allocation->invoice->account_id);
     }
 
     public function test_two_manual_documents_can_share_a_period(): void
@@ -150,6 +165,7 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
         self::assertSame('120.00', OfficeErpBalances::forInvoice($invoice)['adjusted_charge']);
         self::assertSame('40.00', OfficeErpBalances::forInvoice($invoice)['effective_received']);
         self::assertSame('80.00', OfficeErpBalances::forInvoice($invoice)['outstanding']);
+        self::assertSame('partial', OfficeErpBalances::forInvoice($invoice)['settlement_status']);
 
         OfficeErpReceiptReversal::factory()->create(['account_id' => $ctx->accountId, 'receipt_id' => $receipt->id]);
         self::assertSame('0.00', OfficeErpBalances::forInvoice($invoice)['effective_received']);
@@ -185,12 +201,91 @@ class BillingSchemaTest extends OfficeErpCommercialTestCase
         $ctx = $this->officeContext();
         $contract = $this->acceptedContract($ctx);
         $invoice = $this->issuedInvoice($ctx, $contract);
-        $invoice->forceFill(['due_on' => now($contract->billing_timezone)->subDay()->toDateString()])->save();
-
+        $invoice->forceFill(['due_on' => '2027-01-10'])->save();
+        $this->travelTo(CarbonImmutable::parse('2027-01-10 23:59:59', $contract->billing_timezone));
+        self::assertFalse(OfficeErpBalances::forInvoice($invoice)['overdue']);
+        $this->travelTo(CarbonImmutable::parse('2027-01-11 00:00:00', $contract->billing_timezone));
         self::assertTrue(OfficeErpBalances::forInvoice($invoice)['overdue']);
         $invoice->forceFill(['document_status' => 'canceled'])->save();
         self::assertFalse(OfficeErpBalances::forInvoice($invoice)['overdue']);
         self::assertSame('0.00', OfficeErpBalances::forInvoice($invoice)['outstanding']);
+    }
+
+    public function test_adjustments_and_receipt_reversals_reject_model_mutation_and_deletion(): void
+    {
+        $ctx = $this->officeContext();
+        $invoice = $this->issuedInvoice($ctx, $this->acceptedContract($ctx));
+        $adjustment = OfficeErpInvoiceAdjustment::factory()->create([
+            'account_id' => $ctx->accountId,
+            'invoice_id' => $invoice->id,
+            'direction' => 'debit',
+            'amount' => '10.00',
+            'reason' => 'Original',
+        ]);
+        $receipt = OfficeErpReceipt::factory()->create(['account_id' => $ctx->accountId, 'amount' => '40.00']);
+        OfficeErpReceiptAllocation::factory()->create([
+            'account_id' => $ctx->accountId,
+            'receipt_id' => $receipt->id,
+            'invoice_id' => $invoice->id,
+            'amount' => '40.00',
+        ]);
+        $reversal = OfficeErpReceiptReversal::factory()->create([
+            'account_id' => $ctx->accountId,
+            'receipt_id' => $receipt->id,
+            'reason' => 'Original reversal reason',
+        ]);
+
+        foreach ([
+            fn () => $adjustment->forceFill(['reason' => 'Changed'])->save(),
+            fn () => $adjustment->delete(),
+            fn () => $reversal->forceFill(['reason' => 'Changed'])->save(),
+            fn () => $reversal->delete(),
+        ] as $mutation) {
+            try {
+                $mutation();
+                self::fail('Append-only billing evidence must reject Eloquent update and delete.');
+            } catch (\LogicException) {
+                self::assertTrue(true);
+            }
+        }
+
+        self::assertSame('Original', $adjustment->fresh()->reason);
+        self::assertSame('Original reversal reason', $reversal->fresh()->reason);
+        self::assertSame('110.00', OfficeErpBalances::forInvoice($invoice)['adjusted_charge']);
+        self::assertSame('110.00', OfficeErpBalances::forInvoice($invoice)['outstanding']);
+        self::assertSame('0.00', OfficeErpBalances::forInvoice($invoice)['effective_received']);
+    }
+
+    public function test_adjustment_and_reversal_rows_reject_direct_database_update_and_delete(): void
+    {
+        $ctx = $this->officeContext();
+        $invoice = $this->issuedInvoice($ctx, $this->acceptedContract($ctx));
+        $adjustment = OfficeErpInvoiceAdjustment::factory()->create([
+            'account_id' => $ctx->accountId,
+            'invoice_id' => $invoice->id,
+        ]);
+        $receipt = OfficeErpReceipt::factory()->create(['account_id' => $ctx->accountId]);
+        $reversal = OfficeErpReceiptReversal::factory()->create([
+            'account_id' => $ctx->accountId,
+            'receipt_id' => $receipt->id,
+        ]);
+
+        foreach ([
+            fn () => DB::table('office_erp_invoice_adjustments')->where('id', $adjustment->id)->update(['reason' => 'Changed']),
+            fn () => DB::table('office_erp_invoice_adjustments')->where('id', $adjustment->id)->delete(),
+            fn () => DB::table('office_erp_receipt_reversals')->where('id', $reversal->id)->update(['reason' => 'Changed']),
+            fn () => DB::table('office_erp_receipt_reversals')->where('id', $reversal->id)->delete(),
+        ] as $mutation) {
+            try {
+                $mutation();
+                self::fail('Database constraints must reject direct mutation of append-only billing evidence.');
+            } catch (QueryException) {
+                self::assertTrue(true);
+            }
+        }
+
+        self::assertSame('Ajuste de teste', DB::table('office_erp_invoice_adjustments')->where('id', $adjustment->id)->value('reason'));
+        self::assertSame(1, DB::table('office_erp_receipt_reversals')->where('id', $reversal->id)->count());
     }
 
     public function test_invoice_allocation_cannot_cross_account_boundaries(): void
