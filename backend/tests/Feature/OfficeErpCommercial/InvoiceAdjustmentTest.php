@@ -6,6 +6,7 @@ use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Erp\ErpCommercialCatalog;
 use App\Models\AccountMembership;
+use App\Models\Client;
 use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpCommercialSetting;
 use App\Models\Erp\Commercial\OfficeErpContract;
@@ -145,20 +146,39 @@ class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
         $invoiceBefore = $invoice->fresh()->getAttributes();
         $subscriptionBefore = $subscription->fresh()->getAttributes();
         $companyMembershipBefore = $companyMembership->fresh()->getAttributes();
+        $clientsBefore = Client::withTrashed()
+            ->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()
+            ->map(fn (Client $client): array => $client->getAttributes())->all();
 
         $ctx->account->subscription()->firstOrFail()->forceFill(['status' => 'canceled'])->save();
 
-        self::assertSame($accountBefore, $ctx->account->fresh()->getAttributes());
-        self::assertSame($officeMembershipBefore, AccountMembership::query()
-            ->where('account_id', $ctx->accountId)
-            ->where('user_id', $ctx->actor->id)
-            ->firstOrFail()->getAttributes());
         self::assertSame($contractBefore, $contract->fresh()->getAttributes());
         self::assertSame($revisionBefore, $contract->currentRevision()->firstOrFail()->getAttributes());
         self::assertSame($invoiceBefore, $invoice->fresh()->getAttributes());
         self::assertSame('canceled', $ctx->account->subscription()->firstOrFail()->status);
         self::assertSame($subscriptionBefore, $subscription->fresh()->getAttributes());
         self::assertSame($companyMembershipBefore, $companyMembership->fresh()->getAttributes());
+
+        $this->getJson('/api/v1/clients')->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $contract->client_id);
+        $this->postJson('/api/v1/clients', [
+            'person_type' => 'individual',
+            'tax_id' => '12345678909',
+            'name' => 'Cliente bloqueado após cancelamento',
+            'status' => 'active',
+            'tax_regime' => 'not_applicable',
+        ])->assertForbidden()->assertJsonPath('code', 'subscription_inactive');
+        self::assertSame($clientsBefore, Client::withTrashed()
+            ->where('account_id', $ctx->accountId)
+            ->orderBy('id')->get()
+            ->map(fn (Client $client): array => $client->getAttributes())->all());
+        self::assertSame($accountBefore, $ctx->account->fresh()->getAttributes());
+        self::assertSame($officeMembershipBefore, AccountMembership::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('user_id', $ctx->actor->id)
+            ->firstOrFail()->getAttributes());
 
         $this->loginAndSelectCompany($owner, $company);
         self::assertSame(0, AccountMembership::query()->where('user_id', $owner->id)->count());
