@@ -492,9 +492,9 @@ describe('Office ERP seller onboarding SFC', () => {
     page.app.unmount()
   })
 
-  it('shows a denied capacity preview without offering an issue action', async () => {
+  it('translates a denied invitation preview without offering an issue action', async () => {
     const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path) => {
-      if (path.includes('onboarding-preview')) return { data: { ...testPreview().data, capacity: { ...testPreview().data.capacity, can_issue: false, reason: 'Capacidade esgotada.' } } }
+      if (path.includes('onboarding-preview')) return { data: { ...testPreview().data, capacity: { ...testPreview().data.capacity, can_issue: false, reason: 'commercial_resale_disabled' } } }
       return path === '/erp-commercial/plans' ? testOffers() : testClients()
     } })
     await flush()
@@ -505,7 +505,28 @@ describe('Office ERP seller onboarding SFC', () => {
     await flush()
     ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
     await flush()
-    assert.match(textOf(page.root), /Capacidade esgotada/)
+    assert.match(textOf(page.root), /O plano do escritório não liberou a revenda de ERP\./)
+    assert.doesNotMatch(textOf(page.root), /commercial_resale_disabled/)
+    assert.equal(findButton(page.root, 'Enviar convite'), undefined)
+    assert.equal(page.command.executeCalls.length, 0)
+    page.app.unmount()
+  })
+
+  it('uses a Portuguese fallback for an unknown denied invitation reason', async () => {
+    const page = harness('pages/gestao-erp/clientes/novo.vue', { api: async (path) => {
+      if (path.includes('onboarding-preview')) return { data: { ...testPreview().data, capacity: { ...testPreview().data.capacity, can_issue: false, reason: 'future_internal_reason' } } }
+      return path === '/erp-commercial/plans' ? testOffers() : testClients()
+    } })
+    await flush()
+    selectOption(page.root, 'client_id', '18')
+    selectOption(page.root, 'revision_id', '34')
+    updateInput(page.root, 'owner.full_name', 'Ana Souza')
+    updateInput(page.root, 'owner.email', 'ana@example.test')
+    await flush()
+    ;(findButton(page.root, 'Revisar termos')?.props.onClick as () => void)()
+    await flush()
+    assert.match(textOf(page.root), /Este convite não pode ser emitido com a capacidade atual\./)
+    assert.doesNotMatch(textOf(page.root), /future_internal_reason/)
     assert.equal(findButton(page.root, 'Enviar convite'), undefined)
     assert.equal(page.command.executeCalls.length, 0)
     page.app.unmount()

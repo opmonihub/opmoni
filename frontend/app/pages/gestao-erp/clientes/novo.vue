@@ -35,6 +35,13 @@ const perPage = ref<25 | 50 | 100>(25)
 type OfficeErpClientOption = OfficeErpPortfolioClient & { label: string }
 type OfficeErpPublishedRevision = { id: number, revisionId: number, offer: OfficeErpOffer, label: string, revision: OfficeErpOfferRevision }
 
+const admissionReasonMessages: Record<string, string> = {
+  subscription_inactive: 'A assinatura do escritório não está ativa.',
+  commercial_resale_disabled: 'O plano do escritório não liberou a revenda de ERP.',
+  licence_capacity_reached: 'A capacidade de licenças do escritório foi atingida.'
+}
+const genericAdmissionReasonMessage = 'Este convite não pode ser emitido com a capacidade atual.'
+
 const selectedClient = ref<OfficeErpClientOption>()
 const selectedRevision = ref<OfficeErpPublishedRevision>()
 const ownerName = ref('')
@@ -76,6 +83,10 @@ const canReview = computed(() => !!selectedClient.value && !!selectedRevision.va
 
 function requestBody() {
   return { revision_id: selectedRevision.value!.revisionId, owner: { full_name: ownerName.value.trim(), email: ownerEmail.value.trim() } }
+}
+
+function admissionReasonMessage(reason: string | null | undefined) {
+  return reason ? admissionReasonMessages[reason] ?? genericAdmissionReasonMessage : genericAdmissionReasonMessage
 }
 
 function resetInvitation() {
@@ -172,7 +183,7 @@ async function reviewTerms() {
     const data = response?.data
     if (!data?.capacity || !data.offer || !data.client || !data.owner) throw new Error('A revisão dos termos está incompleta.')
     preview.value = data
-    if (!data.capacity.can_issue) previewError.value = data.capacity.reason || 'Este convite não pode ser emitido com a capacidade atual.'
+    if (!data.capacity.can_issue) previewError.value = admissionReasonMessage(data.capacity.reason)
   } catch (error) {
     if (identity === identityStamp.value && context.isCurrent(token)) previewError.value = apiErrorMessage(error) ?? 'Não foi possível revisar os termos agora.'
   } finally {
