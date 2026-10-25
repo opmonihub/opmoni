@@ -79,7 +79,7 @@ const columns: TableColumn<OfficeErpOffer>[] = [
   { id: 'price', header: 'Preço e ciclo' },
   { id: 'modules', header: 'Módulos' },
   { accessorKey: 'status', header: 'Situação' },
-  { id: 'actions', header: '' }
+  { id: 'actions', header: 'Ações' }
 ]
 
 function requestParams() {
