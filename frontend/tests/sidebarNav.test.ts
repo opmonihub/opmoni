@@ -10,10 +10,12 @@ describe('office ERP sidebar entry', () => {
     assert.equal(isOfficeErpAdmin(null), false)
   })
 
-  it('points only to the shipped offers child and marks it on the matching route', () => {
+  it('links the shipped offer and portfolio-client pages and marks either route active', () => {
     assert.deepEqual(officeErpSidebarItem('/gestao-erp/planos').children, [
-      { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: true }
+      { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: true },
+      { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: false }
     ])
+    assert.equal(officeErpSidebarItem('/gestao-erp/clientes').children[1]?.active, true)
     assert.equal(officeErpSidebarItem('/gestao-erp').children[0]?.active, false)
   })
 })

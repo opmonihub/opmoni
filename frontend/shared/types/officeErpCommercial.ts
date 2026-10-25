@@ -82,3 +82,42 @@ export interface OfficeErpOfferListResponse {
   data: OfficeErpOffer[]
   meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
 }
+
+export interface OfficeErpPortfolioClient {
+  id: number
+  name: string
+  trade_name: string | null
+  tax_id: string | null
+}
+
+export interface OfficeErpPortfolioClientListResponse {
+  data: OfficeErpPortfolioClient[]
+  meta: { current_page: number, last_page: number, per_page: 25 | 50 | 100, total: number }
+}
+
+export interface OfficeErpOnboardingPreview {
+  client: OfficeErpPortfolioClient
+  seller: { account_id: number, name: string }
+  owner: { full_name: string, email: string }
+  offer: {
+    sales_plan_id: number
+    revision_id: number
+    name: string
+    description: string | null
+    price: string
+    currency: 'BRL'
+    interval_months: 1 | 3 | 6 | 12
+    due_in_days: number
+    module_keys: string[]
+    published: boolean
+  }
+  service: { start_mode: string, billing_timezone: string, due_in_days: number }
+  capacity: { reserved: number, occupied: number, available: number | null, can_issue: boolean, reason: string | null }
+}
+
+export interface OfficeErpInvitationOutcome {
+  invitation_id: number
+  expires_at: string
+  status: 'pending' | 'accepted' | 'revoked' | 'expired'
+  url?: string
+}

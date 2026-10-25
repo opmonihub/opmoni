@@ -10,6 +10,11 @@ const pageTabs: NavigationMenuItem[][] = [[{
   icon: 'i-lucide-tags',
   to: '/gestao-erp/planos',
   active: route.path === '/gestao-erp/planos'
+}, {
+  label: 'Clientes da carteira',
+  icon: 'i-lucide-users',
+  to: '/gestao-erp/clientes',
+  active: route.path === '/gestao-erp/clientes'
 }]]
 
 if (route.path === '/gestao-erp')

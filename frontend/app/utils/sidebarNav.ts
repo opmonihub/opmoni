@@ -102,6 +102,9 @@ export function officeErpSidebarItem(path: string) {
     value: 'gestao-erp',
     active,
     defaultOpen: active,
-    children: [{ label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: path === '/gestao-erp/planos' }]
+    children: [
+      { label: 'Ofertas', to: '/gestao-erp/planos', exact: true, active: path === '/gestao-erp/planos' },
+      { label: 'Clientes da carteira', to: '/gestao-erp/clientes', exact: true, active: path === '/gestao-erp/clientes' }
+    ]
   }
 }
