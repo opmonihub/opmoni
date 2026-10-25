@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\LimitPlatformCertificateUpload;
 use App\Http\Middleware\ResolveAccount;
+use App\Http\Middleware\ResolveOfficeErpCommercial;
 use App\Http\Middleware\TrustedIngress;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(LimitPlatformCertificateUpload::class);
         $middleware->prependToPriorityList(EncryptCookies::class, TrustedIngress::class);
         $middleware->prependToPriorityList(SubstituteBindings::class, ResolveAccount::class);
+        $middleware->prependToPriorityList(SubstituteBindings::class, ResolveOfficeErpCommercial::class);
         $middleware->redirectGuestsTo(fn (Request $request): ?string => $request->is('api/*') ? null : '/');
         $middleware->convertEmptyStringsToNull(except: [
             fn (Request $request): bool => $request->is('api/v1/serpro/connection', 'api/v1/admin/accounts/*/contracting-certificate'),

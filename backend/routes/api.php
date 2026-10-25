@@ -30,6 +30,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/logout', [AccessController::class, 'logout'])->name('access.logout');
             Route::post('/account/switch', [AccessController::class, 'switchAccount'])->name('access.switch');
             require __DIR__.'/erp.php';
+            require __DIR__.'/office-erp-commercial.php';
             require __DIR__.'/business.php';
             require __DIR__.'/external-mailbox.php';
             require __DIR__.'/external-whatsapp.php';
