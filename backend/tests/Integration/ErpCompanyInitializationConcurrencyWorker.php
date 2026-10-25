@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use RuntimeException;
 use SessionHandlerInterface;
+use Tests\Support\VerifiedIntegrationCheckout;
 
 final class ErpCompanyInitializationConcurrencyWorker
 {
@@ -26,6 +27,7 @@ final class ErpCompanyInitializationConcurrencyWorker
         'tests/Integration/bootstrap.php',
         'tests/Integration/ErpCompanyInitializationConcurrencyTest.php',
         'tests/Integration/ErpCompanyInitializationConcurrencyWorker.php',
+        'tests/Support/VerifiedIntegrationCheckout.php',
     ];
 
     /** @return array<string, mixed> */
@@ -34,7 +36,13 @@ final class ErpCompanyInitializationConcurrencyWorker
         if (getenv('ERP_INITIALIZATION_RACES_ISOLATED') !== 'opmoni-erp-template:10.1'
             || ! app()->environment('testing') || app()->configurationIsCached()
             || realpath(base_path('..')) !== getenv('ERP_INITIALIZATION_RACES_CHECKOUT')
-            || ! str_starts_with((string) realpath(base_path('..')), '/home/obsidian/dev/opmoni/.worktrees/')
+            || ! VerifiedIntegrationCheckout::allows(
+                (string) realpath(base_path('..')),
+                getenv('ERP_INITIALIZATION_RACES_CHECKOUT'),
+                getenv('OPMONI_TEST_SOURCE_CHECKOUT'),
+                getenv('OPMONI_TEST_SOURCE_IDENTITY'),
+                VerifiedIntegrationCheckout::statIdentityFor((string) realpath(base_path('..'))),
+            )
             || config('database.default') !== 'pgsql'
             || config('database.connections.pgsql.host') !== 'postgres'
             || config('database.connections.pgsql.database') !== 'opmoni_test'

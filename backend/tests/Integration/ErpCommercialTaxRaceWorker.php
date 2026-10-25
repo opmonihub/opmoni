@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use RuntimeException;
+use Tests\Support\VerifiedIntegrationCheckout;
 
 final class ErpCommercialTaxRaceWorker
 {
@@ -40,6 +41,7 @@ final class ErpCommercialTaxRaceWorker
         'app/Erp/Fiscal/ErpFiscalSaleSourcePrerequisites.php', 'app/Erp/Fiscal/ErpFiscalSourceSnapshotFactory.php',
         'app/Erp/Stock/ErpStockParticipant.php', 'app/Erp/Stock/ErpStockLedger.php',
         'app/Erp/Finance/ErpFinanceParticipant.php',
+        'tests/Support/VerifiedIntegrationCheckout.php',
     ];
 
     /** @return array<string, mixed> */
@@ -48,7 +50,13 @@ final class ErpCommercialTaxRaceWorker
         if (getenv('ERP_COMMERCIAL_TAX_RACES_ISOLATED') !== 'opmoni-erp-template:10.2+10.4'
             || ! app()->environment('testing') || app()->configurationIsCached()
             || realpath(base_path('..')) !== getenv('ERP_COMMERCIAL_TAX_RACES_CHECKOUT')
-            || ! str_starts_with((string) realpath(base_path('..')), '/home/obsidian/dev/opmoni/.worktrees/')
+            || ! VerifiedIntegrationCheckout::allows(
+                (string) realpath(base_path('..')),
+                getenv('ERP_COMMERCIAL_TAX_RACES_CHECKOUT'),
+                getenv('OPMONI_TEST_SOURCE_CHECKOUT'),
+                getenv('OPMONI_TEST_SOURCE_IDENTITY'),
+                VerifiedIntegrationCheckout::statIdentityFor((string) realpath(base_path('..'))),
+            )
             || config('database.default') !== 'pgsql'
             || config('database.connections.pgsql.host') !== 'postgres'
             || config('database.connections.pgsql.database') !== 'opmoni_test'
