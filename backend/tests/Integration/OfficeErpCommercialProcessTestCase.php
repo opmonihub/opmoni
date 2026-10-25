@@ -290,7 +290,7 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         $fixture['recurring_invoice_year'] = (int) CarbonImmutable::parse($fixture['recurring_now'])->format('Y');
         $fixture['recurring_invoice_sequence'] = (int) $initialInvoice->issued_at->format('Y') === $fixture['recurring_invoice_year'] ? 2 : 1;
         $fixture['initial_invoice_id'] = (int) $initialInvoice->id;
-        $fixture['initial_invoice_snapshot'] = $initialInvoice->getAttributes();
+        $fixture['initial_invoice_snapshot'] = $initialInvoice->fresh()->getAttributes();
 
         return $fixture;
     }
