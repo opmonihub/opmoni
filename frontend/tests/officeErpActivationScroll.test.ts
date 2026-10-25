@@ -39,7 +39,7 @@ registerHooks({
   }
 })
 
-test('installed Nuxt default still treats a same-path activation token as an anchor before scrollToTop', async () => {
+test('installed Nuxt default treats a same-path activation token as an anchor before scrollToTop', async () => {
   let queriedSelector = false
   scrollState = {
     router: { options: { scrollBehaviorType: 'auto' }, currentRoute: { value: { fullPath: '/erp/ativar#token=synthetic-fixture-value' } } },
@@ -60,44 +60,62 @@ test('installed Nuxt default still treats a same-path activation token as an anc
   })
   const defaultPosition = nuxtDefault.scrollBehavior(samePathToken, { path: '/erp/ativar', hash: '' }) as { el?: string }
 
-  assert.equal(defaultPosition.el?.startsWith('#token='), true, 'the installed default returns the sensitive fragment as a selector')
-  assert.equal(queriedSelector, true, 'the installed default attempts a selector lookup before consulting scrollToTop')
+  assert.equal(defaultPosition.el?.startsWith('#token='), true, 'the installed default returns the fragment as an element selector')
+  assert.equal(queriedSelector, true, 'the default attempts selector lookup before consulting scrollToTop')
 })
 
-test('activation token route suppresses fragment scrolling while retaining normal Nuxt scroll behavior', async () => {
-  const options = (await import('../app/router.options.ts')).default as {
-    routes: (routes: Array<{ path: string, name?: string, meta?: Record<string, unknown> }>) => Array<{ path: string, name?: string, meta?: Record<string, unknown> }>
-    scrollBehavior: (to: Record<string, unknown>, from: Record<string, unknown>, savedPosition?: unknown) => unknown
-  }
-  const existingScrollPolicy = () => true
-  const activationRoute = { path: '/erp/ativar', name: 'erp-ativar', meta: { layout: 'access', scrollToTop: existingScrollPolicy } }
-  const ordinaryRoute = { path: '/clients', name: 'clients', meta: { layout: 'default' } }
-  const similarlyNamedRoute = { path: '/erp/ativar-extra', name: 'erp-ativar-extra', meta: { layout: 'default' } }
-  const routes = options.routes([activationRoute, ordinaryRoute, similarlyNamedRoute])
-  const activation = routes[0]!
-  const scrollToTop = activation.meta?.scrollToTop as (to: { path: string, hash: string }, from: { path: string, hash: string }) => boolean | undefined
-  const from = { path: '/', hash: '' }
-  const tokenRoute = { path: '/erp/ativar', hash: '#token=synthetic-fixture-value', meta: activation.meta, matched: [] }
-
-  assert.equal(scrollToTop(tokenRoute, from), false)
-  assert.equal(tokenRoute.hash, '#token=synthetic-fixture-value', 'the page still receives the fragment for its existing exchange flow')
-  assert.equal(scrollToTop({ path: '/erp/ativar', hash: '#terms' }, from), true, 'existing route scroll policy remains active for ordinary anchors')
-  assert.equal(activation.meta?.layout, 'access')
-  assert.equal(routes[1], ordinaryRoute)
-  assert.equal(routes[2], similarlyNamedRoute, 'nearby routes keep their original metadata and behavior')
-  const scrollStateForApp = {
+test('activation token bypasses the selector lookup and other navigations delegate to Nuxt', async () => {
+  const [options, nuxtDefault] = await Promise.all([
+    import('../app/router.options.ts').then(module => module.default as {
+      scrollBehavior: (to: Record<string, unknown>, from: Record<string, unknown>, savedPosition?: unknown) => unknown
+    }),
+    import('../node_modules/nuxt/dist/pages/runtime/router.options.js').then(module => module.default as {
+      scrollBehavior: (to: Record<string, unknown>, from: Record<string, unknown>, savedPosition?: unknown) => unknown
+    })
+  ])
+  scrollState = {
     router: { options: { scrollBehaviorType: 'auto' }, currentRoute: { value: { fullPath: '/erp/ativar#token=synthetic-fixture-value' } } },
     app: { hooks: { hookOnce() {} } }
   }
-  scrollState = scrollStateForApp
-  let queriedSelector = false
+  let selectorQueries = 0
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
-    value: fakeDocument(() => { queriedSelector = true })
+    value: fakeDocument(() => { selectorQueries++ })
   })
 
-  assert.equal(options.scrollBehavior(tokenRoute, { path: '/erp/ativar', hash: '', meta: activation.meta, matched: [] }), false)
-  assert.equal(queriedSelector, false, 'the activation token is rejected before a selector lookup')
-  assert.deepEqual(options.scrollBehavior({ path: '/clients', hash: '', meta: {} }, { path: '/', hash: '', meta: {}, matched: [] }, { left: 5, top: 24 }), { left: 5, top: 24 }, 'saved history positions remain available')
-  assert.deepEqual(options.scrollBehavior({ path: '/clients', hash: '#terms', meta: {}, matched: [] }, { path: '/clients', hash: '', meta: {}, matched: [] }), { el: '#terms', top: 0, behavior: 'auto' }, 'ordinary same-page anchors retain Nuxt behavior')
+  const tokenRoute = { path: '/erp/ativar', hash: '#token=synthetic-fixture-value', meta: {}, matched: [] }
+  const activationPage = { path: '/erp/ativar', hash: '', meta: {}, matched: [] }
+  assert.equal(options.scrollBehavior(tokenRoute, activationPage), false)
+  assert.equal(options.scrollBehavior(tokenRoute, { path: '/clients', hash: '', meta: {}, matched: [] }), false, 'initial activation navigation bypasses Nuxt too')
+  assert.equal(selectorQueries, 0, 'the token is rejected before Nuxt receives it')
+
+  const ordinaryAnchor = { path: '/clients', hash: '#terms', meta: {}, matched: [] }
+  const samePage = { path: '/clients', hash: '', meta: {}, matched: [] }
+  const expectedAnchor = nuxtDefault.scrollBehavior(ordinaryAnchor, samePage)
+  const actualAnchor = options.scrollBehavior(ordinaryAnchor, samePage)
+  assert.deepEqual(actualAnchor, expectedAnchor)
+  assert.equal(selectorQueries, 2, 'the ordinary anchor selector reaches both the default and the delegating wrapper')
+
+  const installedBehavior = nuxtDefault.scrollBehavior
+  const delegationResult = { left: 9, top: 19 }
+  let delegatedArguments: unknown[] = []
+  nuxtDefault.scrollBehavior = (...args) => {
+    delegatedArguments = args
+    return delegationResult
+  }
+  try {
+    assert.equal(options.scrollBehavior(ordinaryAnchor, samePage), delegationResult)
+    assert.deepEqual(delegatedArguments, [ordinaryAnchor, samePage, undefined], 'the wrapper passes ordinary navigation arguments to the installed default')
+  } finally {
+    nuxtDefault.scrollBehavior = installedBehavior
+  }
+
+  const savedPosition = { left: 5, top: 24 }
+  const routeChange = { path: '/clients', hash: '', meta: {}, matched: [] }
+  const previousAnchor = { path: '/clients', hash: '#terms', meta: {}, matched: [] }
+  assert.deepEqual(
+    options.scrollBehavior(routeChange, previousAnchor, savedPosition),
+    nuxtDefault.scrollBehavior(routeChange, previousAnchor, savedPosition),
+    'saved history positions follow the installed Nuxt default'
+  )
 })
