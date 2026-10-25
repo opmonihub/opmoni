@@ -135,6 +135,7 @@ defineExpose({ form, submit })
                 color="neutral"
                 variant="outline"
                 :loading="saving"
+                :disabled="saving"
                 @click="emit('recover', recoveryKey!)"
               >
                 Verificar resultado

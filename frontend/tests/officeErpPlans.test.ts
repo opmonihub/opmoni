@@ -54,6 +54,138 @@ const capabilities = Vue.ref({
   usage: { reserved: 1, occupied: 2 }
 })
 
+type TestNode = { tag?: string, text?: string, props: Record<string, unknown>, children: TestNode[], parent?: TestNode | null }
+
+function renderedText(node: TestNode): string {
+  return `${node.text ?? ''}${node.children.map(renderedText).join('')}`
+}
+
+function findRendered(node: TestNode, predicate: (candidate: TestNode) => boolean): TestNode[] {
+  return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => findRendered(child, predicate))]
+}
+
+function recoveryCommand(initialKey: string | null = null) {
+  const operationKey = Vue.ref(initialKey)
+  const requestInFlight = Vue.ref(false)
+  const pending = Vue.computed(() => requestInFlight.value || operationKey.value !== null)
+  const executeCalls: unknown[][] = []
+  const recoverCalls: string[] = []
+  let recoveryResult: Promise<unknown> | null = null
+  return {
+    pending,
+    recoveryKey: Vue.computed(() => operationKey.value),
+    executeCalls,
+    recoverCalls,
+    setRecoveryResult(result: Promise<unknown>) { recoveryResult = result },
+    async execute(...args: unknown[]) {
+      executeCalls.push(args)
+      requestInFlight.value = true
+      operationKey.value = '7cbbdbb6-7f88-4479-a78a-471e4cb16c78'
+      requestInFlight.value = false
+      return { status: 'unknown', key: operationKey.value }
+    },
+    async recover(key: string) {
+      recoverCalls.push(key)
+      requestInFlight.value = true
+      const result = await (recoveryResult ?? Promise.resolve({ status: 'confirmed', data: { id: 1 } }))
+      if ((result as { status?: string }).status === 'confirmed') operationKey.value = null
+      requestInFlight.value = false
+      return result
+    }
+  }
+}
+
+function mountRenderedComponent(component: Vue.Component, components: Record<string, Vue.Component>) {
+  const root: TestNode = { props: {}, children: [] }
+  const renderer = Vue.createRenderer({
+    patchProp(node: TestNode, key, _previous, next) { node.props[key] = next },
+    insert(node: TestNode, parent: TestNode, anchor?: TestNode) {
+      node.parent = parent
+      const position = anchor ? parent.children.indexOf(anchor) : -1
+      if (position < 0) parent.children.push(node)
+      else parent.children.splice(position, 0, node)
+    },
+    remove(node: TestNode) {
+      if (!node.parent) return
+      const position = node.parent.children.indexOf(node)
+      if (position >= 0) node.parent.children.splice(position, 1)
+    },
+    createElement(tag) { return { tag, props: {}, children: [], parent: null } },
+    createText(text) { return { text, props: {}, children: [], parent: null } },
+    createComment(text) { return { text, props: {}, children: [], parent: null } },
+    setText(node: TestNode, text) { node.text = text },
+    setElementText(node: TestNode, text) {
+      node.children = []
+      node.text = text
+    },
+    parentNode(node: TestNode) { return node.parent ?? null },
+    nextSibling(node: TestNode) { return node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null }
+  })
+  const app = renderer.createApp(component)
+  for (const [name, registered] of Object.entries(components)) app.component(name, registered)
+  app.mount(root)
+  return { app, root }
+}
+
+function mountPlansPage(command: Record<string, unknown>) {
+  const currentUser = Vue.ref(identity(office(8)))
+  const currentAccount = Vue.computed(() => currentUser.value.current_account)
+  const session = Vue.ref(2)
+  const apiCalls: Array<{ path: string, options?: Record<string, unknown> }> = []
+  const toasts: Array<Record<string, unknown>> = []
+  const context = {
+    capabilities,
+    capture: () => ({ key: JSON.stringify([currentUser.value.id, currentAccount.value?.id, session.value, capabilities.value.capability_key]), generation: session.value }),
+    isCurrent: (token: { key: string, generation: number }) => token.key === JSON.stringify([currentUser.value.id, currentAccount.value?.id, session.value, capabilities.value.capability_key]) && token.generation === session.value,
+    refresh: async () => {}
+  }
+  const bindings = {
+    refDebounced: (value: Vue.Ref<unknown>) => value,
+    useAccessApi: () => ({ api: async (path: string, options?: Record<string, unknown>) => {
+      apiCalls.push({ path, options })
+      return listResponse()
+    } }),
+    useAuth: () => ({ user: currentUser, currentAccount }),
+    useState: () => session,
+    useOfficeErpContext: () => context,
+    useOfficeErpCommand: () => command,
+    useRoute: () => ({ query: {} }),
+    useToast: () => ({ add: (toast: Record<string, unknown>) => { toasts.push(toast) } }),
+    definePageMeta() {}
+  }
+  const components: Record<string, Vue.Component> = {
+    UButton: {
+      props: ['disabled', 'loading'],
+      setup: (props, setupContext) => () => Vue.h('button', {
+        ...setupContext.attrs,
+        'disabled': props.disabled,
+        'data-loading': String(props.loading ?? false)
+      }, setupContext.slots.default?.())
+    },
+    UAlert: { setup: (_props, setupContext) => () => Vue.h('aside', {}, [setupContext.slots.default?.(), setupContext.slots.description?.()]) },
+    USlideover: {
+      props: ['open'],
+      setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? setupContext.slots.body?.() : [])
+    },
+    UModal: { props: ['open'], setup: (props, setupContext) => () => Vue.h('section', {}, props.open ? setupContext.slots.footer?.() : []) },
+    DataTablePanelList: { setup: (_props, setupContext) => () => Vue.h('main', {}, [setupContext.slots.action?.(), setupContext.slots.toolbar?.(), setupContext.slots.default?.()]) },
+    UTable: { props: ['data'], setup: (props, setupContext) => () => Vue.h('div', {}, (props.data as unknown[]).length ? [] : setupContext.slots.empty?.()) },
+    UPagination: { setup: () => () => Vue.h('nav') },
+    UBadge: { setup: () => () => Vue.h('span') },
+    UFormField: {
+      props: ['name'],
+      setup: (props, setupContext) => () => Vue.h('div', { 'data-field': props.name }, setupContext.slots.default?.())
+    }
+  }
+  for (const name of ['UInput', 'USelect', 'UTextarea', 'UCheckbox']) {
+    components[name] = { setup: (_props, setupContext) => () => Vue.h('div', {}, setupContext.slots.default?.()) }
+  }
+  components.OfficeErpPlanEditor = compileVueComponent('components/office-erp/OfficeErpPlanEditor.vue', bindings)
+  const component = compileVueComponent('pages/gestao-erp/planos.vue', bindings)
+  const { app, root } = mountRenderedComponent(component, components)
+  return { app, root, currentUser, apiCalls, toasts }
+}
+
 function plansSetup(api: (path: string, options?: Record<string, unknown>) => Promise<unknown>, commandOverride?: Record<string, unknown>) {
   const currentUser = Vue.ref(identity(office(8)))
   const currentAccount = Vue.computed(() => currentUser.value.current_account)
@@ -330,6 +462,127 @@ describe('Office ERP offers list SFC', () => {
     assert.equal((state.editorOpen as Vue.Ref<boolean>).value, false)
     assert.ok(harness.calls.length > requestsBeforeRefresh)
     capabilities.value = original
+    harness.scope.stop()
+  })
+
+  it('recovers an unknown save once using its retained key without resending or confirming early', async () => {
+    const command = recoveryCommand()
+    const harness = plansSetup(async () => listResponse(), command)
+    await flushVue()
+    const state = harness.state as Record<string, unknown>
+    ;(state.openCreate as () => void)()
+
+    await assert.doesNotReject((state.saveOffer as (terms: Record<string, unknown>) => Promise<void>)({
+      name: 'Plano', description: '', price: '12.34', currency: 'BRL', interval_months: 1, due_in_days: 0, module_keys: [], published: true
+    }))
+    assert.equal((state.editorOpen as Vue.Ref<boolean>).value, true)
+    assert.equal((state.mutationFailure as Vue.Ref<string>).value, 'A resposta não confirmou o resultado. Consulte a operação pelo identificador original.')
+    assert.equal(command.pending.value, true)
+    assert.equal(command.recoveryKey.value, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.deepEqual(harness.toasts, [])
+
+    await (state.recoverOperation as () => Promise<void>)()
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.equal(command.executeCalls.length, 1)
+    assert.deepEqual(harness.toasts.map(toast => toast.title), ['Operação confirmada'])
+    assert.equal(command.recoveryKey.value, null)
+    harness.scope.stop()
+  })
+
+  it('renders unknown-save recovery controls, retains editor values and disables duplicate lookup while busy', async () => {
+    const command = recoveryCommand()
+    let finish!: (value: unknown) => void
+    command.setRecoveryResult(new Promise((resolve) => {
+      finish = resolve
+    }))
+    const harness = mountPlansPage(command)
+    await flushVue()
+
+    const createButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Nova oferta'))[0]
+    assert.ok(createButton)
+    ;(createButton.props.onClick as () => void)()
+    await flushVue()
+    const inputNodes = findRendered(harness.root, node => node.tag === 'div' && typeof node.props['onUpdate:modelValue'] === 'function')
+    for (const input of inputNodes) {
+      const field = input.parent?.props['data-field']
+      if (field === 'name') (input.props['onUpdate:modelValue'] as (value: string) => void)('Plano digitado')
+      if (field === 'price') (input.props['onUpdate:modelValue'] as (value: string) => void)('12,34')
+    }
+    const form = findRendered(harness.root, node => node.tag === 'form')[0]
+    assert.ok(form)
+    ;(form.props.onSubmit as (event: { preventDefault(): void }) => void)({ preventDefault() {} })
+    await flushVue()
+    assert.equal(command.executeCalls.length, 1)
+    assert.equal(command.pending.value, true)
+    assert.equal(command.recoveryKey.value, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.deepEqual(harness.toasts, [])
+
+    const recoveryButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado'))[0]
+    const cancelButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Cancelar'))[0]
+    assert.ok(recoveryButton)
+    assert.equal(recoveryButton.props.disabled, false)
+    assert.equal(recoveryButton.props['data-loading'], 'false')
+    assert.ok(cancelButton)
+    assert.equal(cancelButton.props.disabled, false)
+    const retainedInputs = findRendered(harness.root, node => node.tag === 'div' && typeof node.props['onUpdate:modelValue'] === 'function')
+    assert.equal(retainedInputs.find(input => input.parent?.props['data-field'] === 'name')?.props.modelValue, 'Plano digitado')
+    assert.equal(retainedInputs.find(input => input.parent?.props['data-field'] === 'price')?.props.modelValue, '12,34')
+
+    ;(recoveryButton.props.onClick as () => void)()
+    await flushVue()
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    const busyButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado'))[0]!
+    assert.equal(busyButton.props.disabled, true)
+    assert.equal(busyButton.props['data-loading'], 'true')
+    assert.ok(findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado')).every(button => button.props.disabled === true))
+    ;(busyButton.props.onClick as () => void)()
+    assert.equal(command.recoverCalls.length, 1)
+
+    finish({ status: 'confirmed', data: { id: 1 } })
+    await flushVue()
+    assert.deepEqual(harness.toasts.map(toast => toast.title), ['Operação confirmada'])
+    assert.equal(command.executeCalls.length, 1)
+    assert.equal(command.recoveryKey.value, null)
+    harness.app.unmount()
+  })
+
+  it('recovers a reloaded pending key without a blind mutation send', async () => {
+    const command = recoveryCommand('7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    const harness = mountPlansPage(command)
+    await flushVue()
+
+    const recoveryButton = findRendered(harness.root, node => node.tag === 'button' && renderedText(node).includes('Verificar resultado'))[0]
+    assert.ok(recoveryButton)
+    assert.equal(command.pending.value, true)
+    assert.equal(recoveryButton.props.disabled, false)
+    assert.equal(recoveryButton.props['data-loading'], 'false')
+    ;(recoveryButton.props.onClick as () => void)()
+    await flushVue()
+
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.equal(command.executeCalls.length, 0)
+    assert.deepEqual(harness.toasts.map(toast => toast.title), ['Operação confirmada'])
+    harness.app.unmount()
+  })
+
+  it('suppresses a recovery result when Account authority changes during lookup', async () => {
+    const command = recoveryCommand('7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    let finish!: (value: unknown) => void
+    command.setRecoveryResult(new Promise((resolve) => {
+      finish = resolve
+    }))
+    const harness = plansSetup(async () => listResponse(), command)
+    await flushVue()
+    const state = harness.state as Record<string, unknown>
+    const recovery = (state.recoverOperation as () => Promise<void>)()
+    harness.currentUser.value = identity(office(9))
+    await flushVue()
+    finish({ status: 'confirmed', data: { id: 1 } })
+    await recovery
+
+    assert.deepEqual(command.recoverCalls, ['7cbbdbb6-7f88-4479-a78a-471e4cb16c78'])
+    assert.deepEqual(harness.toasts, [])
+    assert.equal(command.executeCalls.length, 0)
     harness.scope.stop()
   })
 })

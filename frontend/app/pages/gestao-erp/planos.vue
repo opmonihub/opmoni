@@ -30,12 +30,14 @@ const editorOpen = ref(false)
 const editingOffer = ref<OfficeErpOffer | null>(null)
 const fieldErrors = ref<Record<string, string[]>>({})
 const mutationFailure = ref('')
+const commandBusy = ref(false)
 const archiveTarget = ref<OfficeErpOffer | null>(null)
 const archiveConfirmOpen = computed({
   get: () => archiveTarget.value !== null,
   set: (open: boolean) => { if (!open) archiveTarget.value = null }
 })
 let listRequest = 0
+let commandBusyGeneration = 0
 
 const capabilities = context.capabilities
 const identityStamp = computed(() => JSON.stringify([
@@ -85,6 +87,15 @@ function requestParams() {
   const search = debouncedQuery.value.trim()
   if (search) params.q = search
   return params
+}
+
+function beginCommandRequest() {
+  const owner = ++commandBusyGeneration
+  commandBusy.value = true
+  return () => {
+    if (owner === commandBusyGeneration)
+      commandBusy.value = false
+  }
 }
 
 async function loadOffers() {
@@ -161,7 +172,6 @@ function reportMutation<T>(result: OfficeErpCommandResult<T>, scope: string): bo
     return true
   }
   if (result.status === 'unknown') {
-    mutationKey.value = result.key
     mutationFailure.value = 'A resposta não confirmou o resultado. Consulte a operação pelo identificador original.'
     return false
   }
@@ -173,12 +183,18 @@ function reportMutation<T>(result: OfficeErpCommandResult<T>, scope: string): bo
 }
 
 async function saveOffer(terms: OfficeErpOfferTerms) {
-  if (!capabilities.value?.can_sell_new || command.pending.value) return
+  if (!capabilities.value?.can_sell_new || command.pending.value || commandBusy.value) return
   const scope = identityStamp.value
   const token = context.capture()
   const target = editingOffer.value
   const path = target ? `/erp-commercial/plans/${target.id}/revisions` : '/erp-commercial/plans'
-  const result = await command.execute<OfficeErpOffer>(terms.published ? 'offer.publish' : 'offer.create', path, terms, 'POST')
+  const finishCommandRequest = beginCommandRequest()
+  let result: OfficeErpCommandResult<OfficeErpOffer>
+  try {
+    result = await command.execute<OfficeErpOffer>(terms.published ? 'offer.publish' : 'offer.create', path, { ...terms }, 'POST')
+  } finally {
+    finishCommandRequest()
+  }
   if (scope !== identityStamp.value || !context.isCurrent(token)) return
   if (reportMutation(result, scope)) {
     toast.add({ title: target ? 'Nova revisão da oferta confirmada' : 'Oferta criada', color: 'success' })
@@ -194,10 +210,16 @@ function requestArchive(offer: OfficeErpOffer) {
 
 async function archiveOffer() {
   const target = archiveTarget.value
-  if (!target || !capabilities.value?.can_maintain || command.pending.value) return
+  if (!target || !capabilities.value?.can_maintain || command.pending.value || commandBusy.value) return
   const scope = identityStamp.value
   const token = context.capture()
-  const result = await command.execute<OfficeErpOffer>('offer.archive', `/erp-commercial/plans/${target.id}/archive`, { sales_plan_id: target.id })
+  const finishCommandRequest = beginCommandRequest()
+  let result: OfficeErpCommandResult<OfficeErpOffer>
+  try {
+    result = await command.execute<OfficeErpOffer>('offer.archive', `/erp-commercial/plans/${target.id}/archive`, { sales_plan_id: target.id })
+  } finally {
+    finishCommandRequest()
+  }
   if (scope !== identityStamp.value || !context.isCurrent(token)) return
   if (reportMutation(result, scope)) {
     toast.add({ title: 'Oferta arquivada', color: 'success' })
@@ -207,10 +229,16 @@ async function archiveOffer() {
 }
 
 async function recoverOperation(key = recoveryKey.value) {
-  if (!key || command.pending.value) return
+  if (!key || key !== recoveryKey.value || commandBusy.value || (command.pending.value && !recoveryKey.value)) return
   const scope = identityStamp.value
   const token = context.capture()
-  const result = await command.recover<OfficeErpOffer>(key)
+  const finishCommandRequest = beginCommandRequest()
+  let result: OfficeErpCommandResult<OfficeErpOffer>
+  try {
+    result = await command.recover<OfficeErpOffer>(key)
+  } finally {
+    finishCommandRequest()
+  }
   if (scope !== identityStamp.value || !context.isCurrent(token)) return
   if (reportMutation(result, scope)) {
     toast.add({ title: 'Operação confirmada', color: 'success' })
@@ -226,6 +254,8 @@ watch([debouncedQuery, status, page, perPage], () => {
   void loadOffers()
 }, { immediate: true })
 watch(identityStamp, () => {
+  commandBusyGeneration++
+  commandBusy.value = false
   listRequest++
   offers.value = []
   total.value = 0
@@ -270,7 +300,8 @@ watch([debouncedQuery, status], () => {
             color="neutral"
             variant="outline"
             size="sm"
-            :loading="command.pending.value"
+            :loading="commandBusy"
+            :disabled="commandBusy"
             @click="recoverOperation()"
           >
             Verificar resultado
@@ -432,7 +463,7 @@ watch([debouncedQuery, status], () => {
       :offer="editingOffer"
       :module-keys="moduleKeys"
       :can-sell-new="!!capabilities?.can_sell_new"
-      :saving="command.pending.value"
+      :saving="commandBusy"
       :field-errors="fieldErrors"
       :failure="editorOpen ? mutationFailure : null"
       :recovery-key="recoveryKey"
@@ -445,15 +476,15 @@ watch([debouncedQuery, status], () => {
         <UButton
           color="neutral"
           variant="outline"
-          :disabled="command.pending.value"
+          :disabled="commandBusy"
           @click="archiveTarget = null"
         >
           Cancelar
         </UButton>
         <UButton
           color="error"
-          :loading="command.pending.value"
-          :disabled="!capabilities?.can_maintain"
+          :loading="commandBusy"
+          :disabled="!capabilities?.can_maintain || command.pending.value || commandBusy"
           @click="archiveOffer"
         >
           Arquivar oferta
