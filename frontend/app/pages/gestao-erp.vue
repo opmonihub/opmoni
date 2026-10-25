@@ -58,7 +58,13 @@ const pageTabs: NavigationMenuItem[][] = [[{
       </UDashboardNavbar>
       <UDashboardToolbar>
         <template #left>
-          <UNavigationMenu :items="pageTabs" highlight class="-mx-1 min-w-0 flex-1" />
+          <UNavigationMenu
+            as="nav"
+            aria-label="Navegação comercial ERP"
+            :items="pageTabs"
+            highlight
+            class="-mx-1 min-w-0 flex-1"
+          />
         </template>
       </UDashboardToolbar>
     </template>

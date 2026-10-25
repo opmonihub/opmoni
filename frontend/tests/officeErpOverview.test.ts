@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as Vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { compileVueComponent, evaluateVueBindings, vueSource } from './helpers/compileVueComponent.ts'
 import { formatOfficeErpMoney } from '../shared/utils/officeErpCommercial.ts'
 
@@ -18,6 +19,42 @@ const report = {
   due_from: null,
   due_to: null
 }
+
+async function renderCommercialShell(path: string): Promise<string> {
+  const shell = compileVueComponent('pages/gestao-erp.vue', {
+    useRoute: () => ({ path }),
+    useAuth: () => ({ currentAccount: Vue.ref({ name: 'Escritório exemplo' }) }),
+    definePageMeta() {}
+  })
+  const app = Vue.createSSRApp(shell)
+  app.component('UDashboardPanel', Vue.defineComponent({
+    setup: (_props, { slots }) => () => Vue.h('div', { 'data-dashboard-panel': true }, [slots.header?.(), slots.body?.()])
+  }))
+  app.component('UDashboardNavbar', Vue.defineComponent({ setup: (_props, { slots }) => () => Vue.h('header', slots.right?.()) }))
+  app.component('UDashboardSidebarCollapse', Vue.defineComponent({ setup: () => () => Vue.h('button') }))
+  app.component('UDashboardToolbar', Vue.defineComponent({ setup: (_props, { slots }) => () => Vue.h('div', slots.left?.()) }))
+  app.component('UNavigationMenu', Vue.defineComponent({
+    inheritAttrs: false,
+    props: { as: String, items: Array, highlight: Boolean },
+    setup: (props, { attrs }) => () => Vue.h(props.as ?? 'div', attrs)
+  }))
+  app.component('NuxtPage', Vue.defineComponent({ setup: () => () => Vue.h('main', { id: 'invoice-print-page' }) }))
+
+  return renderToString(app)
+}
+
+test('commercial shell exposes a named ERP navigation landmark', async () => {
+  const html = await renderCommercialShell('/gestao-erp')
+
+  assert.match(html, /<nav[^>]*aria-label="Navegação comercial ERP"/)
+})
+
+test('invoice print route stays outside the commercial navigation shell', async () => {
+  const html = await renderCommercialShell('/gestao-erp/faturas/123/imprimir')
+
+  assert.match(html, /<main id="invoice-print-page"><\/main>/)
+  assert.doesNotMatch(html, /data-dashboard-panel/)
+})
 
 test('commercial shell tabs include all shipped pages and keep invoice descendants active', () => {
   const tabsAt = (path: string) => evaluateVueBindings(vueSource('pages/gestao-erp.vue'), ['pageTabs'], { route: { path } }).pageTabs as Array<Array<{ label: string, to: string, active: boolean }>>

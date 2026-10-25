@@ -125,7 +125,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col gap-5">
+  <div class="flex shrink-0 flex-col gap-5">
     <header class="flex flex-wrap items-start justify-between gap-4">
       <div class="max-w-2xl">
         <p class="text-sm font-medium text-primary">
