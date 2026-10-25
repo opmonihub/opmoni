@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { AuthFormField, FormSubmitEvent } from '@nuxt/ui'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import { apiFailure, passwordLength } from '#shared/utils/access'
 
 type CompanyOption = { id: number, name: string, cnpj: string }
@@ -28,24 +28,17 @@ useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
 
 const { api } = useAccessApi()
 const { user, refresh, logout } = useAuth()
-const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required'>('loading')
+const state = ref<ContinuationResponse['state'] | 'loading' | 'retryable' | 'recovering' | 'recovery_required' | 'identity_login_required' | 'forbidden'>('loading')
 const invitation = ref<InvitationData | null>(null)
 const pendingAcceptance = ref<PendingAcceptance | null>(null)
 const operationKey = ref('')
 const selectedCompanyId = ref<number | null>(null)
+const passwordForm = ref<PasswordForm>({ password: '' })
+const passwordError = ref('')
 const busy = ref(false)
 const error = ref('')
 let pendingToken: string | null = null
 
-const passwordFields: AuthFormField[] = [{
-  name: 'password',
-  type: 'password',
-  label: 'Crie uma senha',
-  placeholder: 'Use ao menos 8 caracteres',
-  required: true,
-  autocomplete: 'new-password',
-  maxlength: 128
-}]
 const passwordSchema = z.object({
   password: z.string('Informe uma senha.')
     .refine(value => passwordLength(value) >= 8, 'Use ao menos 8 caracteres.')
@@ -200,12 +193,15 @@ async function accept(password?: string) {
   }
   busy.value = true
   error.value = ''
+  passwordError.value = ''
   try {
     const body: Record<string, unknown> = {}
     if (!user.value && password)
       body.password = password
     if (user.value && selectedCompanyId.value !== null)
       body.company_id = selectedCompanyId.value
+    if (isNewOwner)
+      passwordForm.value.password = ''
     await api('/erp-invitations/accept', {
       method: 'POST',
       headers: { 'Idempotency-Key': operationKey.value },
@@ -215,8 +211,23 @@ async function accept(password?: string) {
       await refresh()
     await loadCurrent()
   } catch (caught) {
-    error.value = apiFailure(caught).message
-    if (isNewOwner) {
+    const failure = apiFailure(caught)
+    error.value = failure.message
+    if (isNewOwner && failure.status > 0 && failure.status < 500) {
+      clearPendingAcceptance()
+      if (failure.status === 409 && failure.code === 'login_required') {
+        state.value = 'identity_login_required'
+      } else if (failure.status === 422) {
+        state.value = 'valid'
+        passwordError.value = failure.errors?.password?.[0] ?? failure.message
+      } else if (failure.status === 410) {
+        state.value = 'expired'
+      } else if (failure.status === 403) {
+        state.value = 'forbidden'
+      } else {
+        state.value = 'valid'
+      }
+    } else if (isNewOwner) {
       try {
         await refresh()
       } catch { /* Reconcile through the session continuation even if identity refresh is unavailable. */ }
@@ -346,6 +357,33 @@ onBeforeUnmount(() => {
         </template>
       </UAlert>
 
+      <UAlert
+        v-else-if="state === 'identity_login_required'"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-key-round"
+        title="Entre para continuar o convite"
+        :description="error || 'Já existe uma conta com o e-mail indicado. Entre com essa conta para continuar a aceitação do convite.'"
+      >
+        <template #actions>
+          <UButton
+            to="/login"
+            label="Entrar"
+            color="neutral"
+            variant="outline"
+          />
+        </template>
+      </UAlert>
+
+      <UAlert
+        v-else-if="state === 'forbidden'"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="A aceitação não foi autorizada"
+        :description="error || 'Peça ao escritório responsável para verificar as permissões do convite.'"
+      />
+
       <template v-else-if="invitation">
         <section aria-labelledby="invitation-summary-title" class="space-y-4">
           <h2 id="invitation-summary-title" class="text-base font-semibold text-default">
@@ -457,16 +495,38 @@ onBeforeUnmount(() => {
           <p class="text-sm text-muted">
             Já tem uma conta? <NuxtLink to="/login" class="font-medium text-primary underline underline-offset-4">Entre para continuar</NuxtLink>.
           </p>
-          <UAuthForm
+          <UForm
             :schema="passwordSchema"
-            :fields="passwordFields"
-            title="Crie sua senha"
-            description="Sua conta será criada para o responsável identificado acima."
-            icon="i-lucide-key-round"
-            :loading="busy"
-            :submit="{ label: 'Aceitar convite e criar empresa', disabled: busy }"
+            :state="passwordForm"
+            class="space-y-4"
             @submit="submitNewOwner"
-          />
+          >
+            <UFormField
+              label="Crie sua senha"
+              name="password"
+              :error="passwordError || undefined"
+              hint="Use ao menos 8 caracteres."
+            >
+              <UInput
+                v-model="passwordForm.password"
+                type="password"
+                autocomplete="new-password"
+                maxlength="128"
+                placeholder="Use ao menos 8 caracteres"
+                class="w-full"
+                @update:model-value="passwordError = ''"
+              />
+            </UFormField>
+            <p class="text-sm text-muted">
+              Sua conta será criada para o responsável identificado acima.
+            </p>
+            <UButton
+              type="submit"
+              label="Aceitar convite e criar empresa"
+              :loading="busy"
+              :disabled="busy"
+            />
+          </UForm>
         </template>
       </template>
 

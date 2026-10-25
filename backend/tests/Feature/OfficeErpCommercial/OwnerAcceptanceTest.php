@@ -24,6 +24,14 @@ use Tests\OfficeErpCommercialTestCase;
 
 class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
 {
+    private string $testClientIp;
+
+    protected function setUp(): void
+    {
+        $this->testClientIp = sprintf('198.%d.%d.%d', random_int(18, 19), random_int(0, 255), random_int(1, 254));
+        parent::setUp();
+    }
+
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();
@@ -35,15 +43,15 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         $issued = $this->issueInvitation();
         $token = $issued['token'];
 
-        $this->withHeader('X-CSRF-Token', $this->csrf())
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/erp-invitations/resolve', ['token' => $token])
             ->assertOk()
             ->assertJsonPath('state', 'valid')
             ->assertJsonPath('data.invitation.owner_email', 'owner@example.test');
 
         self::assertStringNotContainsString($token, serialize(session()->all()));
-        self::assertStringNotContainsString($token, $this->getJson('/api/v1/erp-invitations/current')->getContent());
-        $this->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'valid');
+        self::assertStringNotContainsString($token, $this->requestFromIsolatedIngress()->getJson('/api/v1/erp-invitations/current')->getContent());
+        $this->requestFromIsolatedIngress()->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'valid');
     }
 
     public function test_new_owner_has_no_office_membership_and_repeated_acceptance_recovers_the_original_company(): void
@@ -70,7 +78,7 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         self::assertStringNotContainsString('new-owner-secret', $journal);
 
         $this->login($owner, 'new-owner-secret');
-        $this->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'accepted');
+        $this->requestFromIsolatedIngress()->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'accepted');
         self::assertSame($key, $this->operationKey());
         $retry = $this->accept($key);
 
@@ -236,15 +244,15 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         $issued = $this->issueInvitation();
         $csrf = $this->csrf();
 
-        $this->withHeader('Origin', 'https://attacker.example')
+        $this->requestFromIsolatedIngress()->withHeader('Origin', 'https://attacker.example')
             ->withHeader('X-CSRF-Token', $csrf)
             ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
             ->assertForbidden();
-        $this->withHeader('Origin', 'http://localhost:3000')
+        $this->requestFromIsolatedIngress()->withHeader('Origin', 'http://localhost:3000')
             ->withHeader('X-CSRF-Token', '')
             ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
             ->assertForbidden();
-        $this->withHeader('X-CSRF-Token', $this->csrf())
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
             ->assertOk();
     }
@@ -257,7 +265,7 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
         $key = $this->operationKey();
         CarbonImmutable::setTestNow(now()->addMinutes(16));
 
-        $this->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'expired');
+        $this->requestFromIsolatedIngress()->getJson('/api/v1/erp-invitations/current')->assertOk()->assertJsonPath('state', 'expired');
         $this->accept($key, ['password' => 'new-owner-secret'])->assertGone();
         self::assertSame(0, ErpCompany::query()->count());
     }
@@ -317,31 +325,53 @@ class OwnerAcceptanceTest extends OfficeErpCommercialTestCase
 
     private function resolve(string $token): void
     {
-        $this->withHeader('X-CSRF-Token', $this->csrf())
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/erp-invitations/resolve', ['token' => $token])
             ->assertOk();
     }
 
     private function accept(string $key, array $input = []): TestResponse
     {
-        return $this->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $key])
+        return $this->requestFromIsolatedIngress()->withHeaders(['X-CSRF-Token' => $this->csrf(), 'Idempotency-Key' => $key])
             ->postJson('/api/v1/erp-invitations/accept', $input);
     }
 
     private function operationKey(): string
     {
-        return (string) $this->getJson('/api/v1/erp-invitations/current')->assertOk()->json('operation_key');
+        return (string) $this->requestFromIsolatedIngress()->getJson('/api/v1/erp-invitations/current')->assertOk()->json('operation_key');
     }
 
     private function login(User $user, string $password = 'password'): void
     {
-        $this->withHeader('X-CSRF-Token', $this->csrf())
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $this->csrf())
             ->postJson('/api/v1/login', ['email' => $user->email, 'password' => $password])
             ->assertOk();
     }
 
     private function csrf(): string
     {
-        return $this->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+        return $this->requestFromIsolatedIngress()->getJson('/api/v1/csrf')->assertOk()->json('csrf_token');
+    }
+
+    public function test_resolve_route_throttle_still_rejects_the_eleventh_request_from_one_ingress_ip(): void
+    {
+        $issued = $this->issueInvitation();
+        $csrf = $this->csrf();
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $csrf)
+                ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
+                ->assertOk();
+        }
+
+        $this->requestFromIsolatedIngress()->withHeader('X-CSRF-Token', $csrf)
+            ->postJson('/api/v1/erp-invitations/resolve', ['token' => $issued['token']])
+            ->assertTooManyRequests();
+    }
+
+    private function requestFromIsolatedIngress(): static
+    {
+        return $this->withServerVariables(['REMOTE_ADDR' => $this->testClientIp])
+            ->withHeader('X-Opmoni-Client-IP', $this->testClientIp);
     }
 }

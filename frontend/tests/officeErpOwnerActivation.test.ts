@@ -33,6 +33,21 @@ function text(node: Node): string {
 function nodes(node: Node, predicate: (candidate: Node) => boolean): Node[] {
   return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => nodes(child, predicate))]
 }
+function submitNewOwnerForm(root: Node) {
+  const form = nodes(root, node => node.tag === 'form')[0]
+  const submit = form?.props.onSubmit
+  const callback = Array.isArray(submit) ? submit[0] : submit
+  if (typeof callback === 'function')
+    callback({ preventDefault() {} } as Event)
+  else
+    nodes(root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite e criar empresa'))[0]?.props.onClick?.()
+}
+function setRenderedPassword(root: Node, password: string) {
+  const input = nodes(root, node => node.tag === 'input')[0]
+  assert.ok(input)
+  const onInput = input.props.onInput as ((event: Event) => void) | undefined
+  onInput?.({ target: { value: password } } as unknown as Event)
+}
 async function flushPage() {
   for (let index = 0; index < 5; index++) {
     await new Promise(done => setImmediate(done))
@@ -117,15 +132,24 @@ function harness(options: { hash?: string, user?: unknown, storage?: Map<string,
   const component = compileVueComponent('pages/erp/ativar.vue', {
     ref: Vue.ref, computed: Vue.computed, onMounted: Vue.onMounted, onBeforeUnmount: Vue.onBeforeUnmount
   }, {
-    '#shared/utils/access': { apiFailure: (error: unknown) => ({ status: Number((error as { status?: number })?.status ?? 0), message: String((error as Error)?.message ?? 'Falha') }), passwordLength: (value: string) => [...value].length }
+    '#shared/utils/access': { apiFailure: (error: unknown) => ({ status: Number((error as { status?: number })?.status ?? 0), code: String((error as { data?: { code?: string } })?.data?.code ?? ''), errors: (error as { data?: { errors?: Record<string, string[]> } })?.data?.errors ?? {}, message: String((error as { data?: { message?: string } })?.data?.message ?? (error as Error)?.message ?? 'Falha') }), passwordLength: (value: string) => [...value].length }
   })
   const passThrough: Vue.Component = { inheritAttrs: false, setup: (_props, ctx) => () => Vue.h('section', ctx.attrs, ctx.slots.default?.()) }
   const registered: Record<string, Vue.Component> = {
     UPageCard: passThrough,
     UAlert: { props: ['title', 'description'], setup: (props, ctx) => () => Vue.h('aside', {}, [Vue.h('strong', {}, String(props.title ?? '')), Vue.h('p', {}, String(props.description ?? '')), ctx.slots.actions?.()]) },
     UButton: { props: ['label', 'disabled', 'loading'], setup: (props, ctx) => () => Vue.h('button', { ...ctx.attrs, disabled: props.disabled, onClick: ctx.attrs.onClick }, props.label ?? ctx.slots.default?.()) },
-    UAuthForm: { props: ['submit', 'title', 'description'], setup: (props, ctx) => () => Vue.h('form', {}, [Vue.h('h3', {}, String(props.title)), Vue.h('button', { type: 'button', onClick: () => ctx.emit('submit', { data: { password: 'safe-password-123' } }) }, (props.submit as { label?: string })?.label)]) },
-    UFormField: { props: ['label', 'hint'], setup: (props, ctx) => () => Vue.h('label', {}, [String(props.label), String(props.hint), ctx.slots.default?.()]) },
+    UForm: {
+      props: ['state', 'schema'],
+      setup: (props, ctx) => () => Vue.h('form', {
+        onSubmit: (event: Event) => {
+          event.preventDefault()
+          ctx.emit('submit', { data: { password: (props.state as { password: string }).password } })
+        }
+      }, ctx.slots.default?.())
+    },
+    UFormField: { props: ['label', 'hint', 'error', 'name'], setup: (props, ctx) => () => Vue.h('label', {}, [String(props.label), String(props.hint), String(props.error ?? ''), ctx.slots.default?.()]) },
+    UInput: { props: ['modelValue'], setup: (props, ctx) => () => Vue.h('input', { value: props.modelValue, onInput: (event: Event) => ctx.emit('update:modelValue', (event.target as HTMLInputElement).value) }) },
     USelect: { props: ['modelValue', 'items'], setup: (props, ctx) => () => Vue.h('select', { 'aria-label': ctx.attrs['aria-label'], 'onChange': (event: Event) => ctx.emit('update:modelValue', Number((event.target as HTMLSelectElement).value) || null) }, (props.items as Array<{ label: string, value: number | null }>).map(item => Vue.h('option', { value: item.value ?? '' }, item.label))) },
     NuxtLink: { props: ['to'], setup: (props, ctx) => () => Vue.h('a', { href: props.to }, ctx.slots.default?.()) },
     USkeleton: { setup: () => () => Vue.h('span') }
@@ -239,9 +263,9 @@ test('new-owner lost response reconciles the authenticated session and accepted 
   })
   try {
     await flushPage()
-    const submit = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite e criar empresa'))[0]
-    assert.ok(submit, 'the anonymous owner initially receives the password form')
-    submit.props.onClick?.()
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0, 'the anonymous owner initially receives the password form')
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
     const pendingStorageAtDispatch = page.storage.get('office-erp.owner-acceptance.pending')
     await flushPage()
 
@@ -275,9 +299,9 @@ test('unresolved new-owner acceptance persists bounded nonsecret identity and re
   })
   try {
     await flushPage()
-    const submit = nodes(page.root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite e criar empresa'))[0]
-    assert.ok(submit)
-    submit.props.onClick?.()
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0)
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
     await flushPage()
 
     assert.match(text(page.root), /Confirme o resultado antes de continuar/)
@@ -316,6 +340,94 @@ test('unresolved new-owner acceptance persists bounded nonsecret identity and re
       assert.equal(resumed.storage.has('office-erp.owner-acceptance.pending'), false)
     } finally { resumed.restore() }
   } finally { page.restore() }
+})
+
+test('known existing-account rejection clears pending state and login resumes normal acceptance', async () => {
+  const storage = new Map<string, string>()
+  const page = harness({ storage, api: async (path) => {
+    if (path === '/erp-invitations/current') return valid
+    if (path === '/erp-invitations/accept')
+      throw Object.assign(new Error('A conta já existe. Entre para continuar.'), { status: 409, data: { code: 'login_required', message: 'A conta já existe. Entre para continuar.' } })
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    assert.equal(storage.has('office-erp.owner-acceptance.pending'), false)
+    assert.match(text(page.root), /A conta já existe\. Entre para continuar\./)
+    assert.doesNotMatch(text(page.root), /Confirme o resultado antes de continuar|já foi aceito por uma conta/i)
+    assert.ok(nodes(page.root, node => node.tag === 'button' && node.props.to === '/login').length > 0)
+  } finally { page.restore() }
+
+  const authenticated = harness({ user: { id: 4, email: 'ana@example.test' }, storage, api: async (path, config) => {
+    if (path === '/erp-invitations/current') return { ...valid, state: 'ready' }
+    if (path === '/erp-invitations/accept') return {}
+    throw new Error(`Unexpected request ${path} ${JSON.stringify(config)}`)
+  } })
+  try {
+    await flushPage()
+    assert.match(text(authenticated.root), /Criar uma nova empresa/)
+    const submit = nodes(authenticated.root, node => node.tag === 'button' && String(node.text).includes('Aceitar convite'))[0]
+    assert.ok(submit)
+    submit.props.onClick?.()
+    await flushPage()
+    assert.deepEqual(authenticated.calls.find(call => call.path === '/erp-invitations/accept')?.config?.body, {})
+  } finally { authenticated.restore() }
+})
+
+test('known password validation rejection clears pending state and allows a corrected password', async () => {
+  const passwords: unknown[] = []
+  let accepted = false
+  const page = harness({ api: async (path, config) => {
+    if (path === '/erp-invitations/current') return accepted ? { ...valid, state: 'accepted' } : valid
+    if (path === '/erp-invitations/accept') {
+      passwords.push((config?.body as Record<string, unknown>).password)
+      if (passwords.length === 1)
+        throw Object.assign(new Error('A senha informada não atende aos requisitos.'), { status: 422, data: { message: 'A senha informada não atende aos requisitos.', errors: { password: ['A senha informada não atende aos requisitos.'] } } })
+      accepted = true
+      return {}
+    }
+    throw new Error(`Unexpected request ${path}`)
+  } })
+  try {
+    await flushPage()
+    setRenderedPassword(page.root, 'safe-password-123')
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), false)
+    assert.match(text(page.root), /A senha informada não atende aos requisitos\./)
+    assert.match(text(nodes(page.root, node => node.tag === 'label')[0]!), /A senha informada não atende aos requisitos\./)
+    assert.doesNotMatch(text(page.root), /Confirme o resultado antes de continuar/)
+    assert.ok(nodes(page.root, node => node.tag === 'form').length > 0)
+    setRenderedPassword(page.root, 'corrected-password-456')
+    submitNewOwnerForm(page.root)
+    await flushPage()
+    assert.deepEqual(passwords, ['safe-password-123', 'corrected-password-456'])
+    assert.match(text(page.root), /Convite aceito/)
+  } finally { page.restore() }
+})
+
+test('known authorization and expiry rejections clear pending acceptance without claiming an unknown result', async () => {
+  for (const [status, expected] of [[403, /não foi autorizad[oa]/i], [410, /Este convite expirou/i]] as const) {
+    const page = harness({ api: async (path) => {
+      if (path === '/erp-invitations/current') return valid
+      if (path === '/erp-invitations/accept')
+        throw Object.assign(new Error(status === 410 ? 'Este convite expirou.' : 'A aceitação não foi autorizada.'), { status })
+      throw new Error(`Unexpected request ${path}`)
+    } })
+    try {
+      await flushPage()
+      setRenderedPassword(page.root, 'safe-password-123')
+      submitNewOwnerForm(page.root)
+      await flushPage()
+      assert.equal(page.storage.has('office-erp.owner-acceptance.pending'), false)
+      assert.match(text(page.root), expected)
+      assert.doesNotMatch(text(page.root), /Confirme o resultado antes de continuar/)
+      assert.equal(page.calls.filter(call => call.path === '/erp-invitations/accept').length, 1)
+    } finally { page.restore() }
+  }
 })
 
 test('login resumes the server-verified owner continuation at the activation route', async () => {
