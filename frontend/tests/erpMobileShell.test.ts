@@ -11,6 +11,7 @@ import { loadAppComposable } from './helpers/loadAppComposable.ts'
 const erpPresentation = loadAppComposable('components/erp/erpPresentation.ts')
 const workspaceNav = loadAppComposable<typeof import('../app/utils/erpWorkspaceNav.ts')>('utils/erpWorkspaceNav.ts')
 const access = loadAppComposable('../shared/utils/access.ts')
+const officeErpCommercial = loadAppComposable<typeof import('../shared/utils/officeErpCommercial.ts')>('../shared/utils/officeErpCommercial.ts')
 
 function evaluate(code: string, globals: Record<string, unknown> = {}) {
   const output = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -20,6 +21,7 @@ function evaluate(code: string, globals: Record<string, unknown> = {}) {
     if (name === '~/utils/erpModulesNav') return nav
     if (name === '~/utils/sidebarNav') return sidebarNav
     if (name === '#shared/utils/access') return access
+    if (name === '#shared/utils/officeErpCommercial') return officeErpCommercial
     if (name === '~/components/erp/erpPresentation') return erpPresentation
     assert.equal(name, '~/utils/erpWorkspaceNav')
     return workspaceNav
@@ -103,7 +105,13 @@ const company = () => ({ id: 1, name: 'Empresa A', status: 'active', access_kind
 function contract(api: () => Promise<unknown>) {
   const currentCompany = Vue.ref(company())
   const currentAccount = Vue.ref<{ id: number } | null>(null)
-  return { currentCompany, currentAccount, ...surface('pages/erp/contrato.vue', { useNuxtApp: () => ({ $api: api }), useAuth: () => ({ currentCompany, currentAccount }) }) }
+  const user = Vue.ref({ id: 5 })
+  const sessionGeneration = Vue.ref(1)
+  return { currentCompany, currentAccount, user, sessionGeneration, ...surface('pages/erp/contrato.vue', {
+    useNuxtApp: () => ({ $api: api }),
+    useAuth: () => ({ user, currentCompany, currentAccount }),
+    useState: () => sessionGeneration
+  }) }
 }
 const payload = (status = 'active') => ({ data: { status, company: { name: 'Empresa A' }, plan: { name: 'Plano A', modules: [] } } })
 
@@ -386,6 +394,35 @@ describe('ERP mobile shell and contract', () => {
     await retry.props!.onClick()
     assert.equal(view.state.error.value, null)
     assert.equal(count, 3)
+  })
+  it('keeps a legacy contract during refresh but clears it on authority loss', async () => {
+    const failures = [
+      { statusCode: 401 },
+      { statusCode: 403, data: { message: 'Acesso negado' } },
+      { response: { status: 409, _data: JSON.stringify({ code: 'company_context_changed' }) } }
+    ]
+    for (const failure of failures) {
+      let deny!: (error: unknown) => void
+      let count = 0
+      const view = contract(() => {
+        count++
+        if (count === 1)
+          return Promise.resolve(payload())
+        return new Promise((_resolve, reject) => {
+          deny = reject
+        })
+      })
+      await view.mounted[0]!()
+      const refresh = named(view.render(), 'UButton').find(node => nodes(node).some(child => typeof child.children === 'string' && child.children.includes('Atualizar')))
+      assert.ok(refresh)
+      const pending = refresh.props!.onClick()
+      assert.ok(named(view.render(), 'UCard').length, 'The last direct subscription remains visible while authority is pending')
+      deny(failure)
+      await pending
+      assert.equal(view.state.subscription.value, null, 'Authority loss clears the direct subscription')
+      assert.ok(named(view.render(), 'UAlert').length)
+      view.close()
+    }
   })
   it('clears contract state and rejects late replies on company/Account switch', async (t) => {
     const requests: Array<(value: unknown) => void> = []

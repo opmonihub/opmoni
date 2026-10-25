@@ -120,6 +120,29 @@ function authorityIsCurrent(snapshot: ReturnType<typeof captureAuthority>, versi
     && snapshot.sessionGeneration === sessionGeneration.value
 }
 
+function isAuthorityLoss(error: unknown) {
+  if (!error || typeof error !== 'object')
+    return false
+
+  const failure = error as {
+    status?: number
+    statusCode?: number
+    response?: { status?: number, _data?: unknown }
+    data?: unknown
+  }
+  const status = failure.status ?? failure.statusCode ?? failure.response?.status
+  let data = failure.data ?? failure.response?._data
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      return status === 401 || status === 403
+    }
+  }
+  const code = typeof data === 'object' && data !== null ? (data as { code?: unknown }).code : undefined
+  return status === 401 || status === 403 || (status === 409 && code === 'company_context_changed')
+}
+
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
     pending: 'Pendente de habilitação',
@@ -148,7 +171,8 @@ async function load() {
   const version = ++generation
   detailGeneration++
   const authority = captureAuthority()
-  subscription.value = null
+  if (subscription.value?.retail_contract)
+    subscription.value = null
   loading.value = true
   error.value = null
   invoices.value = []
@@ -171,8 +195,11 @@ async function load() {
 
     await loadInvoices(1, authority, version)
   } catch (loadError) {
-    if (authorityIsCurrent(authority, version))
+    if (authorityIsCurrent(authority, version)) {
+      if (isAuthorityLoss(loadError))
+        subscription.value = null
       error.value = loadError
+    }
   } finally {
     if (authorityIsCurrent(authority, version))
       loading.value = false
