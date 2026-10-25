@@ -1,13 +1,10 @@
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 import type { ContextToken, OfficeErpCommandResult, OfficeErpFailure } from '#shared/types/officeErpCommercial'
 
 type PendingOfficeCommand = {
   key: string
   contextStamp: string
-  action?: string
-  path?: string
-  method?: 'POST' | 'PATCH'
-  payload?: Record<string, unknown>
+  durableStamp: string
 }
 
 const pendingStorageKey = 'opmoni:office-erp-commercial:pending:v1'
@@ -65,7 +62,9 @@ export function useOfficeErpCommand() {
   const operation = useState<PendingOfficeCommand | null>('office-erp-command-operation', () => null)
   const inFlight = useState('office-erp-command-in-flight', () => false)
   const reservation = useState<string | null>('office-erp-command-reservation', () => null)
+  const reservationAuthority = useState<string | null>('office-erp-command-reservation-authority', () => null)
   const pending = computed(() => inFlight.value || operation.value !== null)
+  const recoveryKey = computed(() => operation.value?.key ?? null)
   const storageScope = computed(() => JSON.stringify([user.value?.id ?? null, currentAccount.value?.id ?? null]))
   let previousStorageKey = `${pendingStorageKey}:${storageScope.value}`
 
@@ -76,6 +75,16 @@ export function useOfficeErpCommand() {
       currentAccount.value?.id ?? null,
       currentAccount.value?.status ?? null,
       currentAccount.value?.role ?? null
+    ])
+  }
+
+  function durableStamp(): string {
+    return JSON.stringify([
+      user.value?.id ?? null,
+      currentAccount.value?.id ?? null,
+      currentAccount.value?.status ?? null,
+      currentAccount.value?.role ?? null,
+      context.capabilities.value?.capability_key ?? null
     ])
   }
 
@@ -95,7 +104,7 @@ export function useOfficeErpCommand() {
   function saveOperation(value: PendingOfficeCommand): boolean {
     if (typeof sessionStorage === 'undefined') return false
     try {
-      sessionStorage.setItem(previousStorageKey, JSON.stringify({ version: 1, key: value.key, contextStamp: value.contextStamp }))
+      sessionStorage.setItem(previousStorageKey, JSON.stringify({ version: 1, key: value.key, durableStamp: value.durableStamp }))
       return true
     } catch {
       return false
@@ -106,13 +115,13 @@ export function useOfficeErpCommand() {
     if (typeof sessionStorage === 'undefined') return null
     try {
       const raw = sessionStorage.getItem(previousStorageKey)
-      const stored = raw ? JSON.parse(raw) as { version?: unknown, key?: unknown, contextStamp?: unknown } : null
+      const stored = raw ? JSON.parse(raw) as { version?: unknown, key?: unknown, durableStamp?: unknown } : null
       if (!raw) return null
-      if (stored?.version !== 1 || typeof stored.key !== 'string' || !validOperationKey.test(stored.key) || stored.contextStamp !== stamp) {
+      if (stored?.version !== 1 || typeof stored.key !== 'string' || !validOperationKey.test(stored.key) || stored.durableStamp !== durableStamp()) {
         sessionStorage.removeItem(previousStorageKey)
         return null
       }
-      return { key: stored.key, contextStamp: stamp }
+      return { key: stored.key, contextStamp: stamp, durableStamp: durableStamp() }
     } catch {
       return null
     }
@@ -123,16 +132,28 @@ export function useOfficeErpCommand() {
     const oldKey = previousStorageKey
     previousStorageKey = `${pendingStorageKey}:${next}`
     removeStored(oldKey)
-    operation.value = null
-    reservation.value = null
-    inFlight.value = false
+    if (reservation.value && reservationAuthority.value !== authorityKey()) {
+      if (operation.value?.key === reservation.value) operation.value = null
+      reservation.value = null
+      reservationAuthority.value = null
+      inFlight.value = false
+    }
   })
   watch(contextStamp, (stamp, previous) => {
     if (previous !== undefined && previous !== stamp && !context.capabilities.value)
       removeStored()
-    if (operation.value && operation.value.contextStamp !== stamp) {
-      clearOperation(operation.value.key)
+    if (operation.value && operation.value.durableStamp !== durableStamp()) {
+      const staleKey = operation.value.key
+      clearOperation(staleKey)
+      if (reservation.value === staleKey) {
+        reservation.value = null
+        reservationAuthority.value = null
+        inFlight.value = false
+      }
+    }
+    if (reservation.value && reservationAuthority.value !== authorityKey()) {
       reservation.value = null
+      reservationAuthority.value = null
       inFlight.value = false
     }
     if (!operation.value && !inFlight.value && context.capabilities.value)
@@ -161,6 +182,7 @@ export function useOfficeErpCommand() {
     }
     const key = crypto.randomUUID()
     reservation.value = key
+    reservationAuthority.value = authorityKey()
     inFlight.value = true
 
     let token: ContextToken | null = null
@@ -170,16 +192,19 @@ export function useOfficeErpCommand() {
       const initialAuthority = authorityKey()
       const hadCapabilities = !!context.capabilities.value
       await context.refresh()
+      if (reservation.value !== key) return { status: 'stale' }
       if (authorityKey() !== initialAuthority || context.capture().generation !== initialToken.generation
         || (hadCapabilities && context.capture().key !== initialToken.key)) {
         inFlight.value = false
         reservation.value = null
+        reservationAuthority.value = null
         return { status: 'stale' }
       }
       if (reservation.value !== key) return { status: 'stale' }
       if (!context.capabilities.value) {
         inFlight.value = false
         reservation.value = null
+        reservationAuthority.value = null
         return { status: 'failed', failure: { code: 'office_erp_context_unavailable', message: 'Não foi possível confirmar o acesso comercial do escritório.' } }
       }
       token = context.capture()
@@ -189,9 +214,10 @@ export function useOfficeErpCommand() {
         const priorKey = operation.value.key
         inFlight.value = false
         reservation.value = null
+        reservationAuthority.value = null
         return unknown(priorKey)
       }
-      const command: PendingOfficeCommand = { key, contextStamp: stamp, action, path, method, payload }
+      const command: PendingOfficeCommand = { key, contextStamp: stamp, durableStamp: durableStamp() }
       operation.value = command
 
       await refreshCsrf()
@@ -206,7 +232,7 @@ export function useOfficeErpCommand() {
       if (!context.isCurrent(token) || reservation.value !== key) return { status: 'stale' }
       const envelope = dataEnvelope<T>(response)
       if (!envelope.valid) {
-        operation.value = { key, contextStamp: stamp }
+        operation.value = { key, contextStamp: stamp, durableStamp: durableStamp() }
         return unknown(key)
       }
 
@@ -227,12 +253,13 @@ export function useOfficeErpCommand() {
         return { status: 'failed', failure: failureOf(error, status) }
       }
       if (operation.value?.key === key)
-        operation.value = { key, contextStamp: operation.value.contextStamp }
+        operation.value = { key, contextStamp: operation.value.contextStamp, durableStamp: operation.value.durableStamp }
       return unknown(key)
     } finally {
       if ((!token || context.isCurrent(token)) && reservation.value === key) {
         inFlight.value = false
         reservation.value = null
+        reservationAuthority.value = null
       }
     }
   }
@@ -246,10 +273,11 @@ export function useOfficeErpCommand() {
     const token = context.capture()
     const stamp = tokenStamp(token)
     if (!operation.value) operation.value = restoreOperation(stamp)
-    if (!operation.value || operation.value.key !== key || operation.value.contextStamp !== stamp)
+    if (!operation.value || operation.value.key !== key || operation.value.durableStamp !== durableStamp())
       return { status: 'stale' }
 
     reservation.value = key
+    reservationAuthority.value = authorityKey()
     inFlight.value = true
     try {
       const response = await api<unknown>(`/erp-commercial/operations/${encodeURIComponent(key)}`)
@@ -267,12 +295,14 @@ export function useOfficeErpCommand() {
       if (context.isCurrent(token) && reservation.value === key) {
         inFlight.value = false
         reservation.value = null
+        reservationAuthority.value = null
       }
     }
   }
 
   return {
     pending: pending as ComputedRef<boolean>,
+    recoveryKey: recoveryKey as Readonly<Ref<string | null>>,
     execute,
     recover
   }

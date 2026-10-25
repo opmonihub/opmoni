@@ -22,6 +22,7 @@ type Result<T>
     | { status: 'stale' }
 type Command = {
   pending: Vue.Ref<boolean>
+  recoveryKey: Vue.Ref<string | null>
   execute<T>(action: string, path: string, body: Record<string, unknown>, method?: 'POST' | 'PATCH'): Promise<Result<T>>
   recover<T>(key: string): Promise<Result<T>>
 }
@@ -36,15 +37,13 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
-function fixture(options: { api?: (path: string, init?: Record<string, unknown>) => Promise<unknown>, csrf?: () => Promise<void> } = {}) {
-  const identity = Vue.ref<Identity>({ id: 41, current_account: { id: 8, status: 'active', role: 'admin' } })
-  const session = Vue.ref(3)
-  const states = new Map<string, Vue.Ref<unknown>>()
-  const storage = new Map<string, string>()
-  const calls: Array<{ path: string, init?: Record<string, unknown> }> = []
+type Shared = { identity: Vue.Ref<Identity>, session: Vue.Ref<number>, states: Map<string, Vue.Ref<unknown>>, storage: Map<string, string>, calls: Array<{ path: string, init?: Record<string, unknown> }>, uuid: number }
+function fixture(options: { api?: (path: string, init?: Record<string, unknown>) => Promise<unknown>, csrf?: () => Promise<void>, shared?: Shared, capabilities?: Capabilities } = {}) {
+  const shared = options.shared ?? { identity: Vue.ref<Identity>({ id: 41, current_account: { id: 8, status: 'active', role: 'admin' } }), session: Vue.ref(3), states: new Map<string, Vue.Ref<unknown>>(), storage: new Map<string, string>(), calls: [] as Array<{ path: string, init?: Record<string, unknown> }>, uuid: 0 }
+  const { identity, session, states, storage, calls } = shared
   const api = options.api ?? (async (path, init) => {
     calls.push({ path, init })
-    if (path === '/erp-commercial/context') return { data: caps }
+    if (path === '/erp-commercial/context') return { data: options.capabilities ?? caps }
     if (path.startsWith('/erp-commercial/operations/')) return { data: { outcome: 'created', id: 72 } }
     return { data: { id: 72 } }
   })
@@ -68,7 +67,7 @@ function fixture(options: { api?: (path: string, init?: Record<string, unknown>)
       },
       refreshCsrf: async () => { await options.csrf?.() }
     }),
-    crypto: { randomUUID: () => '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' },
+    crypto: { randomUUID: () => (++shared.uuid === 1 ? '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' : `7cbbdbb6-7f88-4479-a78a-${String(shared.uuid).padStart(12, '0')}`) },
     sessionStorage: {
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => { storage.set(key, value) },
@@ -81,8 +80,9 @@ function fixture(options: { api?: (path: string, init?: Record<string, unknown>)
     useOfficeErpContext: contextModule.useOfficeErpContext
   })
   const scope = Vue.effectScope()
+  const context = scope.run(() => (contextModule.useOfficeErpContext as () => { refresh(): Promise<void> })())!
   const command = scope.run(() => (loaded.useOfficeErpCommand as () => Command)())!
-  return { command, identity, session, calls, storage, stop: () => scope.stop() }
+  return { command, context, identity, session, calls, storage, shared, stop: () => scope.stop() }
 }
 
 describe('useOfficeErpCommand', () => {
@@ -90,16 +90,17 @@ describe('useOfficeErpCommand', () => {
     const csrf = deferred<undefined>()
     const harness = fixture({ csrf: () => csrf.promise })
     t.after(harness.stop)
-    const body = { name: 'Plano inicial', nested: { price: '100.00' } }
+    const body = { name: 'Plano inicial', invitation_token: 'SSR-secret-token', nested: { price: '100.00' } }
     const first = harness.command.execute('plan.create', '/erp-commercial/plans', body)
     body.nested.price = '999.00'
     const duplicate = await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'different' })
     assert.equal(duplicate.status, 'unknown')
+    assert.doesNotMatch(JSON.stringify([...harness.shared.states].map(([key, state]) => [key, state.value])), /SSR-secret-token|invitation_token/)
     assert.equal(harness.command.pending.value, true)
     csrf.resolve(undefined)
     assert.deepEqual(await first, { status: 'confirmed', data: { id: 72 } })
     const write = harness.calls.find(call => call.path === '/erp-commercial/plans')!
-    assert.deepEqual(write.init?.body, { name: 'Plano inicial', nested: { price: '100.00' } })
+    assert.deepEqual(write.init?.body, { name: 'Plano inicial', invitation_token: 'SSR-secret-token', nested: { price: '100.00' } })
     assert.equal((write.init?.headers as Record<string, string>)['Idempotency-Key'], '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
     assert.equal(harness.command.pending.value, false)
   })
@@ -121,6 +122,7 @@ describe('useOfficeErpCommand', () => {
     const result = await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'Offer', invitation_token: 'do-not-store' })
     assert.deepEqual(result, { status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78' })
     assert.equal(harness.command.pending.value, true)
+    assert.equal(harness.command.recoveryKey.value, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
     const saved = [...harness.storage.values()].join('\n')
     assert.match(saved, /7cbbdbb6-7f88-4479-a78a-471e4cb16c78/)
     assert.doesNotMatch(saved, /invitation_token|do-not-store|Offer/)
@@ -130,6 +132,7 @@ describe('useOfficeErpCommand', () => {
     assert.deepEqual(recovered, { status: 'confirmed', data: { id: 72, status: 'created' } })
     assert.equal(harness.calls.at(-1)?.path, '/erp-commercial/operations/7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
     assert.equal(harness.command.pending.value, false)
+    assert.equal(harness.command.recoveryKey.value, null)
   })
 
   it('preserves validation, authority, foreign-resource and conflict HTTP distinctions', async (t) => {
@@ -166,6 +169,21 @@ describe('useOfficeErpCommand', () => {
     assert.equal(harness.calls.some(call => call.path === '/erp-commercial/plans'), false)
   })
 
+  it('releases only the old reservation when the authenticated session generation changes during CSRF', async (t) => {
+    const csrf = deferred<undefined>()
+    const harness = fixture({ csrf: () => csrf.promise })
+    t.after(harness.stop)
+    const command = harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'old session' })
+    await Vue.nextTick()
+    harness.session.value++
+    await Vue.nextTick()
+    csrf.resolve(undefined)
+
+    assert.deepEqual(await command, { status: 'stale' })
+    assert.equal(harness.command.pending.value, false)
+    assert.deepEqual(await harness.command.execute('plan.create', '/erp-commercial/plans', { name: 'new session' }), { status: 'confirmed', data: { id: 72 } })
+  })
+
   it('discards a delayed success after the Account changes during transport', async (t) => {
     const response = deferred<unknown>()
     const harness = fixture({ api: async (path, init) => {
@@ -195,5 +213,62 @@ describe('useOfficeErpCommand', () => {
       status: 'unknown', key: '7cbbdbb6-7f88-4479-a78a-471e4cb16c78'
     })
     assert.equal(harness.command.pending.value, true)
+  })
+
+  it('keeps a newly admitted command reserved when an old deferred context read resolves after Account switch', async (t) => {
+    const oldContext = deferred<unknown>()
+    const csrf = deferred<undefined>()
+    const seed = fixture()
+    const shared = seed.shared
+    seed.stop()
+    const old = fixture({ shared, api: async path => path === '/erp-commercial/context' ? oldContext.promise : { data: {} } })
+    const current = fixture({ shared, csrf: () => csrf.promise })
+    t.after(old.stop)
+    t.after(current.stop)
+    const oldCommand = old.command.execute('plan.create', '/erp-commercial/plans', { name: 'old' })
+    current.identity.value.current_account = { id: 9, status: 'active', role: 'admin' }
+    await Vue.nextTick()
+    const currentCommand = current.command.execute('plan.create', '/erp-commercial/plans', { name: 'current' })
+    await Vue.nextTick()
+
+    oldContext.resolve({ data: caps })
+    assert.deepEqual(await oldCommand, { status: 'stale' })
+    assert.equal(current.command.pending.value, true)
+    csrf.resolve(undefined)
+    assert.deepEqual(await currentCommand, { status: 'confirmed', data: { id: 72 } })
+    assert.equal(current.calls.filter(call => call.path === '/erp-commercial/plans').length, 2, 'one mutation is observed at both API harness layers')
+  })
+
+  it('restores only a matching server capability operation after a fresh Nuxt state reload', async (t) => {
+    const first = fixture({ api: async (path) => {
+      if (path === '/erp-commercial/context') return { data: caps }
+      throw new Error('connection dropped')
+    } })
+    t.after(first.stop)
+    const unknown = await first.command.execute('plan.create', '/erp-commercial/plans', { password: 'never persisted' })
+    assert.equal(unknown.status, 'unknown')
+    assert.equal(first.command.recoveryKey.value, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    const stored = [...first.storage.values()].join('\n')
+    assert.doesNotMatch(stored, /password|never persisted/)
+    const mismatchedStorage = new Map(first.storage)
+    const changedServerSession = fixture({ capabilities: { ...caps, capability_key: 'different-server-session-capability' }, shared: { identity: Vue.ref({ id: 41, current_account: { id: 8, status: 'active', role: 'admin' } }), session: Vue.ref(0), states: new Map(), storage: mismatchedStorage, calls: [], uuid: 11 } })
+    t.after(changedServerSession.stop)
+    assert.deepEqual(await changedServerSession.command.recover('7cbbdbb6-7f88-4479-a78a-471e4cb16c78'), { status: 'stale' })
+    assert.equal(changedServerSession.command.recoveryKey.value, null)
+
+    const reloaded = fixture({ shared: { identity: Vue.ref({ id: 41, current_account: { id: 8, status: 'active', role: 'admin' } }), session: Vue.ref(0), states: new Map(), storage: first.storage, calls: [], uuid: 10 } })
+    t.after(reloaded.stop)
+    await reloaded.context.refresh()
+    await Vue.nextTick()
+    assert.equal(reloaded.command.recoveryKey.value, '7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    await reloaded.command.recover('7cbbdbb6-7f88-4479-a78a-471e4cb16c78')
+    assert.equal(reloaded.command.recoveryKey.value, null)
+    assert.equal(reloaded.calls.filter(call => call.path.endsWith('/7cbbdbb6-7f88-4479-a78a-471e4cb16c78')).length, 2, 'one operation lookup is observed at both API harness layers')
+    assert.deepEqual(await reloaded.command.recover('7cbbdbb6-7f88-4479-a78a-471e4cb16c78'), { status: 'stale' })
+
+    const foreign = fixture({ shared: { identity: Vue.ref({ id: 42, current_account: { id: 8, status: 'active', role: 'admin' } }), session: Vue.ref(0), states: new Map(), storage: first.storage, calls: [], uuid: 20 } })
+    t.after(foreign.stop)
+    assert.equal(foreign.command.recoveryKey.value, null)
+    assert.deepEqual(await foreign.command.recover('7cbbdbb6-7f88-4479-a78a-471e4cb16c78'), { status: 'stale' })
   })
 })
