@@ -149,11 +149,12 @@ final class OfficeErpInvoices
         $revisionId = (int) $revision->getKey();
         $period = $this->periodInput($period);
         $payload = ['command' => 'issue_period', 'contract_id' => $contractId, 'revision_id' => $revisionId, 'period' => $period];
+        $action = $ctx->actorKind === 'system' ? 'billing.generate' : 'invoice.issue';
 
         $outcome = $this->operations->execute(
             $ctx,
             $key,
-            'invoice.issue',
+            $action,
             $payload,
             fn (string $action, array $currentPayload): mixed => $this->authorizeOperation($ctx, $action, $currentPayload),
             function () use ($ctx, $contractId, $revisionId, $period): array {
@@ -161,6 +162,7 @@ final class OfficeErpInvoices
                 abort_unless($contract->agreement_status === 'effective', 409, 'contract_not_effective');
                 $revision = $this->revision($ctx, $contract, $revisionId);
                 abort_unless((int) $contract->current_revision_id === $revisionId, 409, 'contract_revision_stale');
+                $this->assertPeriodAtOrAfterAnchor($contract, $period);
                 $existing = OfficeErpRecords::query($ctx, OfficeErpInvoice::class)
                     ->where('contract_id', $contractId)
                     ->where('kind', 'recurring')
@@ -354,12 +356,15 @@ final class OfficeErpInvoices
     /** Revalidate current authority and prelock all business targets before journal identity. @param array<string, mixed> $payload */
     public function authorizeOperation(OfficeErpExecutionContext $ctx, string $action, array $payload): void
     {
-        abort_unless(in_array($action, ['invoice.issue', 'invoice.correct'], true), 422);
         $command = $payload['command'] ?? null;
-        $isIssue = $action === 'invoice.issue';
-        abort_unless(is_string($command) && ($isIssue
-            ? in_array($command, ['draft', 'update_draft', 'issue', 'issue_period'], true)
-            : in_array($command, ['adjust', 'cancel'], true)), 409);
+        abort_unless(is_string($command), 409);
+        $expectedAction = match ($command) {
+            'draft', 'update_draft', 'issue' => 'invoice.issue',
+            'issue_period' => $ctx->actorKind === 'system' ? 'billing.generate' : 'invoice.issue',
+            'adjust', 'cancel' => 'invoice.correct',
+            default => null,
+        };
+        abort_unless($expectedAction !== null && $action === $expectedAction, 409);
         $expectedKeys = match ($command) {
             'draft' => ['command', 'contract_id', 'input'],
             'update_draft' => ['command', 'invoice_id', 'input'],
@@ -374,13 +379,17 @@ final class OfficeErpInvoices
         if (in_array($command, ['draft', 'issue_period'], true)) {
             $contractId = $this->id($payload['contract_id'] ?? null, 'contract_id');
             $contract = $this->contract($ctx, $contractId);
-            $this->admission->assertCommand($ctx, $action, $contract);
+            $admissionAction = $command === 'issue_period' && $ctx->actorKind === 'system'
+                ? 'billing.generate'
+                : $action;
+            $this->admission->assertCommand($ctx, $admissionAction, $contract);
             $contract = $this->contract($ctx, $contractId, true);
             $this->lockCompanySubscription($contract);
             if ($command === 'issue_period') {
                 $revisionId = $this->id($payload['revision_id'] ?? null, 'revision_id');
                 $this->revision($ctx, $contract, $revisionId);
                 $period = $this->periodInput($payload['period'] ?? []);
+                $this->assertPeriodAtOrAfterAnchor($contract, $period);
                 $existing = OfficeErpRecords::query($ctx, OfficeErpInvoice::class)
                     ->where('contract_id', $contractId)
                     ->where('kind', 'recurring')
@@ -768,12 +777,20 @@ final class OfficeErpInvoices
     {
         return [
             'id' => (int) $adjustment->id,
+            'invoice_id' => (int) $adjustment->invoice_id,
             'direction' => (string) $adjustment->direction,
             'amount' => OfficeErpMoney::canonical((string) $adjustment->getRawOriginal('amount'), 'amount'),
             'reason' => (string) $adjustment->reason,
             'corrects_adjustment_id' => $adjustment->correction_of_id === null ? null : (int) $adjustment->correction_of_id,
             'posted_at' => $adjustment->posted_at?->toISOString(),
         ];
+    }
+
+    /** @param array{start:string,end:string,due_on:string} $period */
+    private function assertPeriodAtOrAfterAnchor(OfficeErpContract $contract, array $period): void
+    {
+        $anchor = $contract->service_anchor_on?->toDateString();
+        abort_unless($anchor !== null && $period['start'] >= $anchor, 409, 'invoice_period_precedes_activation');
     }
 
     private function invoiceFromOutcome(OfficeErpExecutionContext $ctx, array $outcome): OfficeErpInvoice

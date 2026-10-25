@@ -64,8 +64,9 @@ class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
         [, $contract] = $this->effectiveContract();
         $invoice = $this->issuedInvoiceOverHttp($contract, '100.00', 'adjust-replay');
         $payload = ['direction' => 'debit', 'amount' => '10.00', 'reason' => 'Ajuste de teste'];
-        $first = $this->postJson('/api/v1/erp-commercial/invoices/'.$invoice->id.'/adjustments', $payload, ['Idempotency-Key' => 'adjust-replay-key'])
-            ->assertCreated()->json('data.id');
+        $firstOutcome = $this->postJson('/api/v1/erp-commercial/invoices/'.$invoice->id.'/adjustments', $payload, ['Idempotency-Key' => 'adjust-replay-key'])
+            ->assertCreated()->json('data');
+        $first = $firstOutcome['id'];
         $replayed = $this->postJson('/api/v1/erp-commercial/invoices/'.$invoice->id.'/adjustments', $payload, ['Idempotency-Key' => 'adjust-replay-key'])
             ->assertCreated()->json('data.id');
 
@@ -75,8 +76,9 @@ class InvoiceAdjustmentTest extends OfficeErpCommercialTestCase
         ], ['Idempotency-Key' => 'adjust-replay-key'])->assertConflict();
         self::assertSame(1, $invoice->fresh()->adjustments()->count());
 
-        $this->getJson('/api/v1/erp-commercial/operations/adjust-replay-key', ['Idempotency-Key' => 'adjust-replay-key'])
-            ->assertOk()->assertJsonPath('data.id', $first);
+        $lookup = $this->getJson('/api/v1/erp-commercial/operations/adjust-replay-key', ['Idempotency-Key' => 'adjust-replay-key'])
+            ->assertOk()->json('data');
+        self::assertSame($firstOutcome, $lookup);
     }
 
     public function test_opposite_adjustment_is_append_only_correction_and_cancellation_requires_receipt_reversal(): void

@@ -4,7 +4,11 @@ namespace Tests\Feature\OfficeErpCommercial;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
 use App\Erp\Commercial\OfficeErpInvoices;
+use App\Erp\Commercial\OfficeErpOperations;
+use App\Models\Account;
 use App\Models\AccountMembership;
+use App\Models\Erp\Commercial\OfficeErpAuditEvent;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpInvoice;
@@ -197,8 +201,89 @@ class InvoiceTest extends OfficeErpCommercialTestCase
             ->assertOk()->assertJsonPath('data.bill_to_snapshot.client.person_type', 'company');
 
         $membership = AccountMembership::query()->where('account_id', $ctx->accountId)->where('user_id', $ctx->actor->id)->firstOrFail();
-        $membership->update(['role' => 'operator']);
+        $membership->update(['role' => 'operador']);
         $this->getJson('/api/v1/erp-commercial/operations/lookup-snapshot-issue', ['Idempotency-Key' => 'lookup-snapshot-issue'])->assertForbidden();
+    }
+
+    public function test_scheduler_can_issue_effective_contract_period_after_resale_rights_are_lost_but_cannot_make_manual_invoices(): void
+    {
+        [$ctx, $contract] = $this->effectiveContract();
+        $subscription = $ctx->account->subscription()->firstOrFail();
+        $subscription->forceFill(['status' => 'canceled'])->save();
+        $system = $this->systemContext($ctx->account, 'billing:office-erp-contract:'.$contract->id);
+        $revision = $contract->currentRevision()->firstOrFail();
+        $period = ['start' => '2026-10-01', 'end' => '2026-11-01', 'due_on' => '2026-10-11'];
+        $invoices = app(OfficeErpInvoices::class);
+
+        $issued = $invoices->issuePeriod($system, $contract, $revision, $period, 'system-period-after-resale-loss');
+        self::assertSame('issued', $issued->document_status);
+        self::assertSame('billing.generate', OfficeErpCommercialOperation::query()
+            ->where('account_id', $ctx->accountId)
+            ->where('idempotency_key', 'system-period-after-resale-loss')
+            ->value('action'));
+        $lookup = app(OfficeErpOperations::class)->lookup(
+            $system,
+            'system-period-after-resale-loss',
+            fn (string $action, array $payload) => $invoices->authorizeOperation($system, $action, $payload),
+        );
+        self::assertSame($issued->id, $lookup['data']['id']);
+
+        try {
+            $invoices->draft($system, $contract, [
+                'items' => [['description' => 'Manual system invoice', 'amount' => '10.00', 'discount' => '0.00']],
+                'period_start' => '2026-10-01', 'period_end' => '2026-11-01', 'due_on' => '2026-10-11',
+            ], 'system-manual-invoice-denied');
+            self::fail('System context must not create manual invoices.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+        self::assertSame(1, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)
+            ->where('idempotency_key', 'system-manual-invoice-denied')->count());
+
+        $inactivePeriod = ['start' => '2026-11-01', 'end' => '2026-12-01', 'due_on' => '2026-11-11'];
+        Account::query()->whereKey($ctx->accountId)->update(['status' => 'suspended']);
+        try {
+            $invoices->issuePeriod($system, $contract, $revision, $inactivePeriod, 'system-period-inactive-account');
+            self::fail('System billing must reject an inactive account.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)
+            ->whereDate('period_start', $inactivePeriod['start'])->count());
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)
+            ->where('idempotency_key', 'system-period-inactive-account')->count());
+        try {
+            app(OfficeErpOperations::class)->lookup(
+                $system,
+                'system-period-after-resale-loss',
+                fn (string $action, array $payload) => $invoices->authorizeOperation($system, $action, $payload),
+            );
+            self::fail('System operation lookup must recheck active account authority.');
+        } catch (HttpException $exception) {
+            self::assertSame(403, $exception->getStatusCode());
+        }
+    }
+
+    public function test_recurring_period_before_service_anchor_has_no_invoice_counter_or_journal_effects(): void
+    {
+        [$ctx, $contract] = $this->effectiveContract();
+        $revision = $contract->currentRevision()->firstOrFail();
+        $period = ['start' => '2026-09-01', 'end' => '2026-10-01', 'due_on' => '2026-09-11'];
+        $invoices = app(OfficeErpInvoices::class);
+
+        try {
+            $this->withOfficeAccount($ctx, fn () => $invoices->issuePeriod($ctx, $contract, $revision, $period, 'period-before-anchor'));
+            self::fail('A recurring period before service activation must be rejected.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
+
+        self::assertSame(0, OfficeErpInvoice::query()->where('contract_id', $contract->id)->count());
+        self::assertSame(0, OfficeErpInvoiceCounter::query()->where('account_id', $ctx->accountId)->count());
+        self::assertSame(0, OfficeErpCommercialOperation::query()->where('account_id', $ctx->accountId)
+            ->where('idempotency_key', 'period-before-anchor')->count());
+        self::assertSame(0, OfficeErpAuditEvent::query()->where('actor_identity', $ctx->actorIdentity)->count());
     }
 
     public function test_recurring_issue_period_is_idempotent_and_canceled_period_is_reserved(): void

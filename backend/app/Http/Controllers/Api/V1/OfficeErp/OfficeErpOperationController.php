@@ -37,7 +37,7 @@ final class OfficeErpOperationController extends Controller
 
                     return;
                 }
-                if (in_array($action, ['invoice.issue', 'invoice.correct'], true)) {
+                if (in_array($action, ['invoice.issue', 'invoice.correct', 'billing.generate'], true)) {
                     $invoices->authorizeOperation($ctx, $action, $payload);
 
                     return;
