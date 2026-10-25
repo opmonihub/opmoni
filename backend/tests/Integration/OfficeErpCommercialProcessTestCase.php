@@ -10,10 +10,15 @@ use App\Models\Erp\Commercial\OfficeErpContract;
 use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\Erp\Commercial\OfficeErpSalesPlan;
 use App\Models\Erp\Commercial\OfficeErpSalesPlanRevision;
+use App\Models\Erp\ErpCompany;
+use App\Models\Erp\ErpCompanyMembership;
+use App\Models\Erp\ErpPlan;
+use App\Models\Erp\ErpSubscription;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Support\CurrentAccount;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
@@ -26,8 +31,10 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
 {
     private const PRESERVED_TABLES = [
         'accounts', 'account_memberships', 'users', 'subscriptions', 'plans', 'departments', 'clients',
+        'erp_companies', 'erp_company_memberships', 'erp_plans', 'erp_subscriptions',
         'office_erp_sales_plans', 'office_erp_sales_plan_revisions', 'office_erp_contracts',
-        'office_erp_contract_revisions', 'office_erp_licence_allocations',
+        'office_erp_contract_revisions', 'office_erp_licence_allocations', 'office_erp_invoices',
+        'office_erp_invoice_counters', 'office_erp_commercial_operations', 'office_erp_audit_events',
     ];
 
     private const SOURCES = [
@@ -35,9 +42,23 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
         'app/Erp/Commercial/OfficeErpAdmission.php',
         'app/Erp/Commercial/OfficeErpExecutionContext.php',
         'app/Erp/Commercial/OfficeErpLicenceAllocator.php',
+        'app/Erp/Commercial/OfficeErpInvoices.php',
+        'app/Erp/Commercial/OfficeErpOperations.php',
         'app/Erp/Commercial/OfficeErpRecords.php',
         'app/Models/Erp/Commercial/OfficeErpContract.php',
         'app/Models/Erp/Commercial/OfficeErpLicenceAllocation.php',
+        'app/Models/Erp/Commercial/OfficeErpInvoice.php',
+        'app/Models/Erp/Commercial/OfficeErpInvoiceCounter.php',
+        'app/Models/Erp/Commercial/OfficeErpCommercialOperation.php',
+        'app/Models/Erp/Commercial/OfficeErpAuditEvent.php',
+        'app/Models/Erp/ErpCompany.php',
+        'app/Models/Erp/ErpCompanyMembership.php',
+        'app/Models/Erp/ErpPlan.php',
+        'app/Models/Erp/ErpSubscription.php',
+        'database/factories/Erp/ErpCompanyFactory.php',
+        'database/factories/Erp/ErpCompanyMembershipFactory.php',
+        'database/factories/Erp/ErpPlanFactory.php',
+        'database/factories/Erp/ErpSubscriptionFactory.php',
         'tests/Integration/OfficeErpCommercialConcurrencyTest.php',
         'tests/Integration/OfficeErpCommercialProcessTestCase.php',
         'tests/Integration/OfficeErpCommercialConcurrencyWorker.php',
@@ -140,6 +161,58 @@ abstract class OfficeErpCommercialProcessTestCase extends TestCase
             'contract_ids' => array_map(static fn (OfficeErpContract $contract): int => (int) $contract->id, $contracts),
             'second_contract_snapshot' => $contracts[1]->getAttributes(),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function effectiveInvoiceFixture(): array
+    {
+        $fixture = $this->commercialFixture(2);
+        $anchor = CarbonImmutable::now('America/Sao_Paulo')->startOfMonth();
+
+        return $this->officeAdmin($fixture, function () use ($fixture, $anchor): array {
+            return $fixture['context']->run(function () use ($fixture, $anchor): array {
+                foreach ($fixture['contracts'] as $index => $contract) {
+                    $company = ErpCompany::factory()->create(['name' => 'Commercial invoice race '.$index]);
+                    $owner = User::factory()->create([
+                        'email' => 'office-erp-invoice-owner-'.$fixture['account_id'].'-'.$index.'@example.test',
+                    ]);
+                    ErpCompanyMembership::factory()->create([
+                        'erp_company_id' => $company->id,
+                        'user_id' => $owner->id,
+                        'role' => 'owner',
+                    ]);
+                    ErpSubscription::factory()->active()->create([
+                        'erp_company_id' => $company->id,
+                        'erp_plan_id' => ErpPlan::factory()->create()->id,
+                        'office_erp_contract_id' => $contract->id,
+                    ]);
+                    $contract->forceFill([
+                        'erp_company_id' => $company->id,
+                        'agreement_status' => 'effective',
+                        'accepted_at' => now(),
+                        'effective_at' => now(),
+                        'service_anchor_on' => $anchor->toDateString(),
+                    ])->save();
+                    OfficeErpLicenceAllocation::factory()->create([
+                        'account_id' => $fixture['account_id'],
+                        'contract_id' => $contract->id,
+                        'erp_company_id' => $company->id,
+                        'state' => 'occupied',
+                        'expires_at' => null,
+                    ]);
+                    $fixture['contracts'][$index] = $contract->refresh();
+                }
+
+                return $fixture + [
+                    'invoice_period' => [
+                        'start' => $anchor->toDateString(),
+                        'end' => $anchor->addMonthNoOverflow()->toDateString(),
+                        'due_on' => $anchor->addDays(10)->toDateString(),
+                    ],
+                    'invoice_year' => (int) $anchor->year,
+                ];
+            });
+        });
     }
 
     /** @param array<string, mixed> $fixture */

@@ -3,11 +3,14 @@
 namespace Tests\Integration;
 
 use App\Erp\Commercial\OfficeErpExecutionContext;
+use App\Erp\Commercial\OfficeErpInvoices;
 use App\Erp\Commercial\OfficeErpLicenceAllocator;
 use App\Erp\Commercial\OfficeErpRecords;
 use App\Models\Account;
 use App\Models\AccountMembership;
+use App\Models\Erp\Commercial\OfficeErpCommercialOperation;
 use App\Models\Erp\Commercial\OfficeErpContract;
+use App\Models\Erp\Commercial\OfficeErpContractRevision;
 use App\Models\User;
 use App\Support\CurrentAccount;
 use Carbon\CarbonImmutable;
@@ -45,8 +48,8 @@ final class OfficeErpCommercialConcurrencyWorker
         $request->attributes->set(CurrentAccount::class, new CurrentAccount($account, $membership));
         $context = OfficeErpExecutionContext::officeAdmin($account, $actor, 'commercial-race-worker:'.$input['contract_id']);
 
-        if ($input['action'] !== 'reserve') {
-            throw new RuntimeException('Unsupported action in the accepted allocation subset: '.$input['action']);
+        if (! in_array($input['action'], ['reserve', 'issue_period'], true)) {
+            throw new RuntimeException('Unsupported action in the accepted invoice race subset: '.$input['action']);
         }
 
         if ($input['hold_account_lock'] ?? false) {
@@ -73,12 +76,37 @@ final class OfficeErpCommercialConcurrencyWorker
             $contract = OfficeErpRecords::query($context, OfficeErpContract::class)
                 ->whereKey($input['contract_id'])
                 ->firstOrFail();
-            $allocation = $context->run(fn () => app(OfficeErpLicenceAllocator::class)->reserve(
-                $context,
-                $contract,
-                CarbonImmutable::parse($input['expires_at']),
-            ));
-            $result = ['status' => 201, 'allocation_id' => (int) $allocation->id];
+            if ($input['action'] === 'reserve') {
+                $allocation = $context->run(fn () => app(OfficeErpLicenceAllocator::class)->reserve(
+                    $context,
+                    $contract,
+                    CarbonImmutable::parse($input['expires_at']),
+                ));
+                $result = ['status' => 201, 'allocation_id' => (int) $allocation->id];
+            } else {
+                $revision = OfficeErpRecords::query($context, OfficeErpContractRevision::class)
+                    ->where('contract_id', $contract->id)
+                    ->whereKey($input['revision_id'])
+                    ->firstOrFail();
+                $invoiceService = app(OfficeErpInvoices::class);
+                $invoice = $context->run(fn () => $invoiceService->issuePeriod(
+                    $context,
+                    $contract,
+                    $revision,
+                    $input['period'],
+                    $input['idempotency_key'],
+                ));
+                $operation = OfficeErpRecords::query($context, OfficeErpCommercialOperation::class)
+                    ->where('idempotency_key', $input['idempotency_key'])
+                    ->firstOrFail();
+                $result = [
+                    'status' => 201,
+                    'invoice_id' => (int) $invoice->id,
+                    'number' => (string) $invoice->number,
+                    'operation_id' => (int) $operation->id,
+                    'operation_outcome' => $operation->outcome,
+                ];
+            }
         } catch (HttpExceptionInterface $exception) {
             $result = ['status' => $exception->getStatusCode()];
         }
