@@ -25,7 +25,7 @@ export const panelTableUi = {
  * a rule under itself.
  */
 export const panelCardUi = {
-  container: 'p-0 sm:p-0 gap-y-0',
+  container: 'min-w-0 p-0 sm:p-0 gap-y-0',
   wrapper: 'items-stretch',
   header: 'p-4 mb-0 border-b border-default'
 } as const
